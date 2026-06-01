@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "maze-core"
+]
+
+resolver = "2"
