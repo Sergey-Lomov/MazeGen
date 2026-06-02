@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "code-index": {
+      "command": "C:\\Users\\user\\AppData\\Local\\Programs\\Python\\Python310\\Scripts\\uvx.exe",
+      "args": ["--system-certs", "code-index-mcp"]
+    }
+  }
+}

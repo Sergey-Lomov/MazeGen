@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/Development/GFTV/**)",
+      "mcp__code-index__get_settings_info",
+      "mcp__code-index__set_project_path"
+    ]
+  }
+}
