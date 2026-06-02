@@ -3,7 +3,16 @@
     "allow": [
       "Read(//d/Development/GFTV/**)",
       "mcp__code-index__get_settings_info",
-      "mcp__code-index__set_project_path"
+      "mcp__code-index__set_project_path",
+      "Bash(Remove-Item -Recurse -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\engine\", \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\rules\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\ids\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\examples\")",
+      "Bash(cargo build *)",
+      "Bash(cargo run *)",
+      "PowerShell(New-Item -ItemType Directory -Force \"d:\\\\Development\\\\MazeGen\\\\Specs\")",
+      "PowerShell(New-Item -ItemType Directory -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\Specs\")",
+      "Bash(dir \"d:\\\\Development\\\\MazeGen\\\\maze-core\")",
+      "Bash(cargo test *)"
     ]
   }
 }

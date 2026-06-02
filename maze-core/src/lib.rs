@@ -1,14 +1,15 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub mod ids;
+pub mod graph;
+pub mod space;
+pub mod generation;
+pub mod validation;
+pub mod io;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub use ids::{NodeId, IdGenerator};
+pub use graph::Graph;
+pub use space::Field;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub struct Maze<F: Field> {
+    pub field: F,
+    pub graph: Graph,
 }
