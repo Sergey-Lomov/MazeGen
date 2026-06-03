@@ -7,10 +7,19 @@ const NODE_SPACING = 40;
 const NODE_COLOR = 0x4a9eff;
 const NODE_HOVER_COLOR = 0xff9f4a;
 const NODE_SELECTED_COLOR = 0xff4a4a;
+const NODE_START_COLOR = 0x44dd88;
+const NODE_FINISH_COLOR = 0xdd4466;
 const EDGE_COLOR = 0x888888;
 const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: 0xffffff });
 
 interface Pos { x: number; y: number; }
+
+function nodeColor(id: number, selectedNode: number | null, start: number | null, finish: number | null): number {
+  if (id === selectedNode) return NODE_SELECTED_COLOR;
+  if (id === start) return NODE_START_COLOR;
+  if (id === finish) return NODE_FINISH_COLOR;
+  return NODE_COLOR;
+}
 
 function drawArrowhead(g: Graphics, from: Pos, to: Pos, edgeLen: number): void {
   if (edgeLen < 1) return;
@@ -102,7 +111,8 @@ export class MazeRenderer {
   private subscribeToStore(): void {
     let prev = useMazeStore.getState();
     this.unsubscribe = useMazeStore.subscribe((state) => {
-      const nodesChanged = state.nodes !== prev.nodes || state.edges !== prev.edges;
+      const nodesChanged = state.nodes !== prev.nodes || state.edges !== prev.edges
+        || state.start !== prev.start || state.finish !== prev.finish;
       const debugChanged =
         state.showNodeIds !== prev.showNodeIds ||
         state.showCoords !== prev.showCoords;
@@ -114,11 +124,11 @@ export class MazeRenderer {
       }
 
       if (nodesChanged) {
-        this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode);
+        this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode, state.start, state.finish);
       } else if (debugChanged) {
         this.updateLabels(state.nodes, state.showNodeIds, state.showCoords);
       } else if (selectionChanged) {
-        this.updateSelection(prev.selectedNode, state.selectedNode);
+        this.updateSelection(prev.selectedNode, state.selectedNode, state.start, state.finish);
       }
 
       prev = state;
@@ -131,6 +141,8 @@ export class MazeRenderer {
     showNodeIds: boolean,
     showCoords: boolean,
     selectedNode: number | null,
+    start: number | null,
+    finish: number | null,
   ): void {
     for (const g of this.nodeViews.values()) g.destroy();
     for (const t of this.nodeLabels.values()) t.destroy();
@@ -192,7 +204,7 @@ export class MazeRenderer {
     for (const node of nodes) {
       const pos = nodePos.get(node.id)!;
       const g = new Graphics();
-      const color = node.id === selectedNode ? NODE_SELECTED_COLOR : NODE_COLOR;
+      const color = nodeColor(node.id, selectedNode, start, finish);
       g.circle(0, 0, NODE_RADIUS);
       g.fill(color);
       g.x = pos.x;
@@ -201,17 +213,19 @@ export class MazeRenderer {
       g.cursor = "pointer";
 
       g.on("pointerover", () => {
-        if (useMazeStore.getState().selectedNode !== node.id) {
+        const s = useMazeStore.getState();
+        if (s.selectedNode !== node.id) {
           g.clear();
           g.circle(0, 0, NODE_RADIUS);
-          g.fill(NODE_HOVER_COLOR);
+          const base = nodeColor(node.id, null, s.start, s.finish);
+          g.fill(base !== NODE_COLOR ? base : NODE_HOVER_COLOR);
         }
       });
       g.on("pointerout", () => {
-        const sel = useMazeStore.getState().selectedNode;
+        const s = useMazeStore.getState();
         g.clear();
         g.circle(0, 0, NODE_RADIUS);
-        g.fill(sel === node.id ? NODE_SELECTED_COLOR : NODE_COLOR);
+        g.fill(nodeColor(node.id, s.selectedNode, s.start, s.finish));
       });
       g.on("pointerdown", (e) => {
         e.stopPropagation();
@@ -256,10 +270,10 @@ export class MazeRenderer {
     }
   }
 
-  private updateSelection(prevId: number | null, nextId: number | null): void {
+  private updateSelection(prevId: number | null, nextId: number | null, start: number | null, finish: number | null): void {
     if (prevId !== null) {
       const g = this.nodeViews.get(prevId);
-      if (g) { g.clear(); g.circle(0, 0, NODE_RADIUS); g.fill(NODE_COLOR); }
+      if (g) { g.clear(); g.circle(0, 0, NODE_RADIUS); g.fill(nodeColor(prevId, null, start, finish)); }
     }
     if (nextId !== null) {
       const g = this.nodeViews.get(nextId);

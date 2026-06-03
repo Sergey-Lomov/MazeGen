@@ -25,7 +25,9 @@
       "Bash(npm run *)",
       "Bash(dir d:\\\\Development\\\\MazeGen\\\\maze-wasm\\\\pkg /od)",
       "mcp__code-index__get_symbol_body",
-      "Bash(dir \"d:\\\\Development\\\\MazeGen\\\\Specs\" /s /b)"
+      "Bash(dir \"d:\\\\Development\\\\MazeGen\\\\Specs\" /s /b)",
+      "mcp__code-index__find_files",
+      "Bash(npx tsc *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

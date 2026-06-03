@@ -12,4 +12,6 @@ export interface EdgeDto {
 export interface MazeSnapshot {
   nodes: NodeDto[];
   edges: EdgeDto[];
+  start: number | null;
+  finish: number | null;
 }

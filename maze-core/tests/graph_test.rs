@@ -93,3 +93,27 @@ fn edges_filters_tombstones() {
     graph.remove_edge(eid_ab);
     assert_eq!(graph.edges().count(), 1);
 }
+
+#[test]
+fn reachable_from_follows_outgoing_only() {
+    let (mut graph, a, b, c) = setup();
+    graph.add_edge(a, b, EdgeKind::Basic);
+    graph.add_edge(b, c, EdgeKind::Basic);
+    // a → b → c, no reverse edges
+    let reachable = graph.reachable_from(a);
+    assert!(reachable.contains(&a));
+    assert!(reachable.contains(&b));
+    assert!(reachable.contains(&c));
+    // from c: only c itself (no outgoing)
+    let from_c = graph.reachable_from(c);
+    assert_eq!(from_c.len(), 1);
+    assert!(from_c.contains(&c));
+}
+
+#[test]
+fn reachable_from_unknown_node_is_empty() {
+    let (graph, _, _, _) = setup();
+    let unknown: u64 = 9999;
+    let reachable = graph.reachable_from(unknown);
+    assert!(reachable.is_empty());
+}

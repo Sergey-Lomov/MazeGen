@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use crate::ids::{NodeId, EdgeId};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -90,6 +90,25 @@ impl Graph {
         self.outgoing.get(&from)?.iter().find(|&&eid| {
             self.edges[eid].as_ref().map_or(false, |e| e.to == to)
         }).copied()
+    }
+
+    pub fn reachable_from(&self, start: NodeId) -> Vec<NodeId> {
+        let mut visited: HashSet<NodeId> = HashSet::new();
+        let mut queue = VecDeque::new();
+        if self.outgoing.contains_key(&start) {
+            visited.insert(start);
+            queue.push_back(start);
+        }
+        while let Some(current) = queue.pop_front() {
+            for neighbor in self.outgoing_neighbors(current) {
+                if visited.insert(neighbor) {
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        let mut result: Vec<NodeId> = visited.into_iter().collect();
+        result.sort_unstable();
+        result
     }
 
     pub fn node_count(&self) -> usize {

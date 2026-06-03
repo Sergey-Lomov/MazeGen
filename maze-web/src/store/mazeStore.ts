@@ -8,6 +8,8 @@ interface MazeState {
   height: number;
   nodes: NodeDto[];
   edges: EdgeDto[];
+  start: number | null;
+  finish: number | null;
   showNodeIds: boolean;
   showCoords: boolean;
   selectedNode: number | null;
@@ -30,6 +32,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   height: 10,
   nodes: [],
   edges: [],
+  start: null,
+  finish: null,
   showNodeIds: false,
   showCoords: false,
   selectedNode: null,
@@ -43,14 +47,14 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const { seed, width, height } = get();
     try {
       const snapshot = generateMaze(seed, width, height);
-      set({ nodes: snapshot.nodes, edges: snapshot.edges, selectedNode: null, error: null });
+      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, selectedNode: null, error: null });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       set({ error: msg });
     }
   },
 
-  reset: () => set({ nodes: [], edges: [], selectedNode: null, error: null }),
+  reset: () => set({ nodes: [], edges: [], start: null, finish: null, selectedNode: null, error: null }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
