@@ -8,13 +8,13 @@ Verify correctness of a Maze after generation or rule application.
 
 ### is_connected
 
-BFS from `start` node through `maze.graph.neighbors()`. Counts visited nodes, compares to `maze.graph.node_count()`.
-
 ```rust
-pub fn is_connected<F: Field>(maze: &Maze<F>, start: NodeId) -> bool
+pub fn is_connected(graph: &Graph, start: NodeId) -> bool
 ```
 
-Returns `true` if all nodes are reachable from `start`. Empty graph returns `true`.
+BFS from `start` over the union of outgoing and incoming edges. Counts visited nodes, compares to `graph.node_count()`. Returns `true` if all nodes are reachable. Empty graph returns `true`.
+
+Union traversal (outgoing + incoming) makes this correct for both fully bidirectional mazes and graphs with one-way edges — connectivity is checked in the undirected sense.
 
 ## Future Checks
 

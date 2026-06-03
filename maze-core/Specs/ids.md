@@ -16,9 +16,17 @@ Shared identity primitives used across all modules. Extracted to break circular 
 
 ### IdGenerator
 
-Sequential counter starting at 0. Single source of NodeId generation. Passed by `&mut` to `Field::build_graph` so multiple fields share one namespace.
+Sequential counter starting at 0. Single source of NodeId generation. Passed by `&mut` to `StandardField::new` so multiple fields share one namespace.
+
+```rust
+IdGenerator::new() -> Self       // starts at 0
+generator.next_id() -> NodeId   // returns current, increments
+```
+
+Implements `Default` (delegates to `new()`).
 
 ## Invariants
 
 - NodeId values are sequential but callers must not rely on order or gaps.
-- EdgeId is a direct index — valid as long as the Graph exists.
+- EdgeId is a direct index — valid as long as the Graph exists and the edge has not been removed.
+- IdGenerator is not thread-safe — single-threaded use only.

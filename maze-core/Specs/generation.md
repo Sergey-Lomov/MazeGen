@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build maze structure by adding edges to a Graph. Operates on a Graph that already has nodes (built by `Field::build_graph`). Does not know about coordinates — uses `Field::neighbors` for adjacency.
+Build maze structure by adding edges to a Graph. Operates on a Graph that already has nodes (built by `Field::build_nodes`). Does not know about coordinates — uses `Field::neighbors` for adjacency.
 
 ## Algorithm
 
@@ -21,10 +21,12 @@ loop:
     stack.pop()
   else:
     chosen = unvisited[rng.random_range(0..len)]
-    graph.add_edge(current, chosen, EdgeKind::Basic)
+    graph.add_bidirectional_edge(current, chosen, EdgeKind::Basic)
     visited.insert(chosen)
     stack.push(chosen)
 ```
+
+Each corridor is represented as two directed edges (both directions). Result has `2 * (node_count - 1)` edges total.
 
 ## API
 
@@ -34,10 +36,10 @@ pub fn generate_maze<F: Field>(graph: &mut Graph, field: &F, seed: u64, start: N
 
 ## Contracts
 
-- Graph must contain all nodes before calling (call `field.build_graph` first).
+- Graph must contain all nodes before calling (call `field.build_nodes` first).
 - `seed` is mandatory — no default. Same seed + same field = identical maze.
 - `start` is the DFS origin. All nodes reachable from start will be connected.
-- Result is a spanning tree: `node_count - 1` edges, fully connected.
+- Result is a spanning tree: `node_count - 1` corridors, `2 * (node_count - 1)` directed edges, fully connected.
 
 ## RNG
 
