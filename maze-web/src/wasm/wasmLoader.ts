@@ -5,7 +5,10 @@ let initPromise: Promise<void> | null = null;
 
 export function initWasm(): Promise<void> {
   if (!initPromise) {
-    initPromise = import("../../pkg/maze_wasm").then((pkg) => { wasmModule = pkg; });
+    initPromise = import("../../pkg/maze_wasm").then(async (pkg) => {
+      await pkg.default();
+      wasmModule = pkg;
+    });
   }
   return initPromise;
 }

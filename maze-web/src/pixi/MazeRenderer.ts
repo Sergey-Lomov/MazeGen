@@ -10,6 +10,26 @@ const NODE_SELECTED_COLOR = 0xff4a4a;
 const EDGE_COLOR = 0x888888;
 const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: 0xffffff });
 
+interface Pos { x: number; y: number; }
+
+function drawArrowhead(g: Graphics, from: Pos, to: Pos, edgeLen: number): void {
+  if (edgeLen < 1) return;
+  const side = 0.1 * edgeLen;
+  const height = side * Math.sqrt(3) / 2;
+  const dx = (to.x - from.x) / edgeLen;
+  const dy = (to.y - from.y) / edgeLen;
+  const px = -dy;
+  const py = dx;
+  const baseCx = to.x - dx * height;
+  const baseCy = to.y - dy * height;
+  g.poly([
+    to.x, to.y,
+    baseCx + px * side / 2, baseCy + py * side / 2,
+    baseCx - px * side / 2, baseCy - py * side / 2,
+  ]);
+  g.fill(EDGE_COLOR);
+}
+
 export class MazeRenderer {
   private app: Application;
   private viewport: Container;
@@ -119,19 +139,53 @@ export class MazeRenderer {
     this.edgesContainer.removeChildren();
     this.nodesContainer.removeChildren();
 
-    const nodePos = new Map<number, { x: number; y: number }>();
+    const nodePos = new Map<number, Pos>();
     for (const node of nodes) {
       nodePos.set(node.id, { x: node.x * NODE_SPACING, y: -node.y * NODE_SPACING });
     }
 
+    // Single pass: for each pair {lo,hi} track which directions exist
+    // pairKey = "${lo}:${hi}" where lo = min(from,to), hi = max(from,to)
+    // loToHi = edge lo→hi exists; hiToLo = edge hi→lo exists
+    type PairFlags = { loToHi: boolean; hiToLo: boolean };
+    const pairs = new Map<string, PairFlags>();
+
     for (const edge of edges) {
-      const a = nodePos.get(edge.a);
-      const b = nodePos.get(edge.b);
-      if (!a || !b) continue;
+      const lo = Math.min(edge.from, edge.to);
+      const hi = Math.max(edge.from, edge.to);
+      const pairKey = `${lo}:${hi}`;
+      let flags = pairs.get(pairKey);
+      if (!flags) {
+        flags = { loToHi: false, hiToLo: false };
+        pairs.set(pairKey, flags);
+      }
+      if (edge.from === lo) flags.loToHi = true;
+      else flags.hiToLo = true;
+    }
+
+    for (const [pairKey, { loToHi, hiToLo }] of pairs) {
+      const [loStr, hiStr] = pairKey.split(":");
+      const lo = Number(loStr);
+      const hi = Number(hiStr);
+      const posLo = nodePos.get(lo);
+      const posHi = nodePos.get(hi);
+      if (!posLo || !posHi) continue;
+
+      const dx = posHi.x - posLo.x;
+      const dy = posHi.y - posLo.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+
       const g = new Graphics();
-      g.moveTo(a.x, a.y);
-      g.lineTo(b.x, b.y);
+      g.moveTo(posLo.x, posLo.y);
+      g.lineTo(posHi.x, posHi.y);
       g.stroke({ width: 2, color: EDGE_COLOR });
+
+      if (loToHi && !hiToLo) {
+        drawArrowhead(g, posLo, posHi, len);
+      } else if (hiToLo && !loToHi) {
+        drawArrowhead(g, posHi, posLo, len);
+      }
+
       this.edgesContainer.addChild(g);
     }
 

@@ -14,8 +14,8 @@ pub enum EdgeKind {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Edge {
     pub id: EdgeId,
-    pub a: NodeId,
-    pub b: NodeId,
+    pub from: NodeId,
+    pub to: NodeId,
     pub kind: EdgeKind,
 }
 
@@ -23,8 +23,8 @@ pub struct Edge {
 pub struct Graph {
     nodes: Vec<Node>,
     edges: Vec<Option<Edge>>,
-    adjacency: Vec<Vec<EdgeId>>,
-    node_index: HashMap<NodeId, usize>,
+    outgoing: HashMap<NodeId, Vec<EdgeId>>,
+    incoming: HashMap<NodeId, Vec<EdgeId>>,
 }
 
 impl Graph {
@@ -32,51 +32,63 @@ impl Graph {
         Self {
             nodes: Vec::new(),
             edges: Vec::new(),
-            adjacency: Vec::new(),
-            node_index: HashMap::new(),
+            outgoing: HashMap::new(),
+            incoming: HashMap::new(),
         }
     }
 
     pub fn add_node(&mut self, id: NodeId) {
-        let idx = self.nodes.len();
         self.nodes.push(Node { id });
-        self.adjacency.push(Vec::new());
-        self.node_index.insert(id, idx);
+        self.outgoing.insert(id, Vec::new());
+        self.incoming.insert(id, Vec::new());
     }
 
-    pub fn add_edge(&mut self, a: NodeId, b: NodeId, kind: EdgeKind) -> EdgeId {
+    pub fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
+        debug_assert!(self.outgoing.contains_key(&from), "add_edge: node {from} not in graph");
+        debug_assert!(self.incoming.contains_key(&to), "add_edge: node {to} not in graph");
         let id = self.edges.len();
-        let edge = Edge { id, a, b, kind };
-        self.edges.push(Some(edge));
-        let idx_a = self.node_index[&a];
-        let idx_b = self.node_index[&b];
-        self.adjacency[idx_a].push(id);
-        self.adjacency[idx_b].push(id);
+        self.edges.push(Some(Edge { id, from, to, kind }));
+        self.outgoing.entry(from).or_default().push(id);
+        self.incoming.entry(to).or_default().push(id);
         id
+    }
+
+    pub fn add_bidirectional_edge(&mut self, a: NodeId, b: NodeId, kind: EdgeKind) -> (EdgeId, EdgeId) {
+        let ab = self.add_edge(a, b, kind.clone());
+        let ba = self.add_edge(b, a, kind);
+        (ab, ba)
     }
 
     pub fn remove_edge(&mut self, id: EdgeId) {
         if let Some(edge) = self.edges[id].take() {
-            let idx_a = self.node_index[&edge.a];
-            let idx_b = self.node_index[&edge.b];
-            self.adjacency[idx_a].retain(|&e| e != id);
-            self.adjacency[idx_b].retain(|&e| e != id);
+            self.outgoing.entry(edge.from).and_modify(|v| v.retain(|&e| e != id));
+            self.incoming.entry(edge.to).and_modify(|v| v.retain(|&e| e != id));
         }
     }
 
-    pub fn neighbors(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
-        let idx = self.node_index[&node];
-        self.adjacency[idx].iter().filter_map(move |&eid| {
-            self.edges[eid].as_ref().map(|e| if e.a == node { e.b } else { e.a })
-        })
+    pub fn outgoing_neighbors(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        self.outgoing
+            .get(&node)
+            .into_iter()
+            .flat_map(|ids| ids.iter())
+            .filter_map(move |&eid| {
+                self.edges[eid].as_ref().map(|e| e.to)
+            })
     }
 
-    pub fn edge_between(&self, a: NodeId, b: NodeId) -> Option<EdgeId> {
-        let idx_a = self.node_index.get(&a)?;
-        self.adjacency[*idx_a].iter().find(|&&eid| {
-            self.edges[eid].as_ref().map_or(false, |e| {
-                (e.a == a && e.b == b) || (e.a == b && e.b == a)
+    pub fn incoming_neighbors(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        self.incoming
+            .get(&node)
+            .into_iter()
+            .flat_map(|ids| ids.iter())
+            .filter_map(move |&eid| {
+                self.edges[eid].as_ref().map(|e| e.from)
             })
+    }
+
+    pub fn edge_between(&self, from: NodeId, to: NodeId) -> Option<EdgeId> {
+        self.outgoing.get(&from)?.iter().find(|&&eid| {
+            self.edges[eid].as_ref().map_or(false, |e| e.to == to)
         }).copied()
     }
 

@@ -5,8 +5,8 @@ export interface NodeDto {
 }
 
 export interface EdgeDto {
-  a: number;
-  b: number;
+  from: number;
+  to: number;
 }
 
 export interface MazeSnapshot {

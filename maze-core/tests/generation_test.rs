@@ -18,8 +18,8 @@ fn same_seed_same_maze() {
     let (mut g2, f2, start2) = build(8, 8);
     generate_maze(&mut g1, &f1, 42, start1);
     generate_maze(&mut g2, &f2, 42, start2);
-    let edges1: Vec<_> = g1.edges().map(|e| (e.a, e.b)).collect();
-    let edges2: Vec<_> = g2.edges().map(|e| (e.a, e.b)).collect();
+    let edges1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
+    let edges2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges1, edges2);
 }
 
@@ -29,8 +29,8 @@ fn different_seed_different_maze() {
     let (mut g2, f2, start2) = build(8, 8);
     generate_maze(&mut g1, &f1, 1, start1);
     generate_maze(&mut g2, &f2, 2, start2);
-    let edges1: Vec<_> = g1.edges().map(|e| (e.a, e.b)).collect();
-    let edges2: Vec<_> = g2.edges().map(|e| (e.a, e.b)).collect();
+    let edges1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
+    let edges2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
     assert_ne!(edges1, edges2);
 }
 
@@ -38,5 +38,7 @@ fn different_seed_different_maze() {
 fn generated_maze_is_connected() {
     let (mut graph, field, start) = build(10, 10);
     generate_maze(&mut graph, &field, 99, start);
+    // BFS via outgoing edges is valid here because generate_maze uses
+    // add_bidirectional_edge exclusively, so all corridors have both directions.
     assert!(is_connected(&graph, start));
 }

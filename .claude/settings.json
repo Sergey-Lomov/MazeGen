@@ -18,10 +18,18 @@
       "PowerShell(cargo install wasm-pack 2>&1)",
       "PowerShell($env:CARGO_HTTP_CHECK_REVOKE = \"false\"; cargo install wasm-pack 2>&1)",
       "Read(//c/Users/user/.cargo/**)",
-      "mcp__code-index__search_code_advanced"
+      "mcp__code-index__search_code_advanced",
+      "Bash(Get-ChildItem -Path \"d:\\\\Development\\\\MazeGen\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(python3 -c ' *)",
+      "Bash(npm run *)",
+      "Bash(dir d:\\\\Development\\\\MazeGen\\\\maze-wasm\\\\pkg /od)",
+      "mcp__code-index__get_symbol_body",
+      "Bash(dir \"d:\\\\Development\\\\MazeGen\\\\Specs\" /s /b)"
     ],
     "additionalDirectories": [
-      "C:\\Users\\user\\.cargo"
+      "C:\\Users\\user\\.cargo",
+      "d:\\Development\\MazeGen\\maze-wasm\\pkg"
     ]
   }
 }

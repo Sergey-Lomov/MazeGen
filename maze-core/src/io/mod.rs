@@ -17,39 +17,60 @@ pub fn render_ascii(maze: &Maze<SquareField>) -> String {
     }
 
     // horizontal walls (between row y and y-1)
+    // point_a = (x, y) [north cell], point_b = (x, y-1) [south cell]
+    // ab = north→south, ba = south→north
     for y in 0..=height {
         for x in 0..width {
-            let wall = if y == 0 || y == height {
-                true
+            let (ch0, ch1, ch2) = if y == 0 || y == height {
+                ('-', '-', '-')
             } else {
                 let point_a = SquarePoint { x: x as i32, y: y as i32 };
                 let point_b = SquarePoint { x: x as i32, y: y as i32 - 1 };
                 match (maze.field.node_at(point_a), maze.field.node_at(point_b)) {
-                    (Some(a), Some(b)) => maze.graph.edge_between(a, b).is_none(),
-                    _ => true,
+                    (Some(a), Some(b)) => {
+                        let ab = maze.graph.edge_between(a, b).is_some();
+                        let ba = maze.graph.edge_between(b, a).is_some();
+                        match (ab, ba) {
+                            (true, true)  => (' ', ' ', ' '),
+                            (true, false) => (' ', 'v', ' '),
+                            (false, true) => (' ', '^', ' '),
+                            (false, false) => ('-', '-', '-'),
+                        }
+                    }
+                    _ => ('-', '-', '-'),
                 }
             };
-            let ch = if wall { '-' } else { ' ' };
-            grid[2 * y][4 * x + 1] = ch;
-            grid[2 * y][4 * x + 2] = ch;
-            grid[2 * y][4 * x + 3] = ch;
+            grid[2 * y][4 * x + 1] = ch0;
+            grid[2 * y][4 * x + 2] = ch1;
+            grid[2 * y][4 * x + 3] = ch2;
         }
     }
 
     // vertical walls (between col x and x-1)
+    // point_a = (x, y) [east cell], point_b = (x-1, y) [west cell]
+    // ab = east→west, ba = west→east
     for y in 0..height {
         for x in 0..=width {
-            let wall = if x == 0 || x == width {
-                true
+            let ch = if x == 0 || x == width {
+                '|'
             } else {
                 let point_a = SquarePoint { x: x as i32, y: y as i32 };
                 let point_b = SquarePoint { x: x as i32 - 1, y: y as i32 };
                 match (maze.field.node_at(point_a), maze.field.node_at(point_b)) {
-                    (Some(a), Some(b)) => maze.graph.edge_between(a, b).is_none(),
-                    _ => true,
+                    (Some(a), Some(b)) => {
+                        let ab = maze.graph.edge_between(a, b).is_some();
+                        let ba = maze.graph.edge_between(b, a).is_some();
+                        match (ab, ba) {
+                            (true, true)  => ' ',
+                            (true, false) => '<',
+                            (false, true) => '>',
+                            (false, false) => '|',
+                        }
+                    }
+                    _ => '|',
                 }
             };
-            grid[2 * y + 1][4 * x] = if wall { '|' } else { ' ' };
+            grid[2 * y + 1][4 * x] = ch;
         }
     }
 

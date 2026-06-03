@@ -44,8 +44,8 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
         .edges()
         .map(|e| -> Result<EdgeDto, JsValue> {
             Ok(EdgeDto {
-                a: u32::try_from(e.a).map_err(|_| JsValue::from_str("edge endpoint overflow"))?,
-                b: u32::try_from(e.b).map_err(|_| JsValue::from_str("edge endpoint overflow"))?,
+                from: u32::try_from(e.from).map_err(|_| JsValue::from_str("edge endpoint overflow"))?,
+                to: u32::try_from(e.to).map_err(|_| JsValue::from_str("edge endpoint overflow"))?,
             })
         })
         .collect::<Result<Vec<_>, JsValue>>()?;

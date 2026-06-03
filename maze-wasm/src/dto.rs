@@ -9,8 +9,8 @@ pub struct NodeDto {
 
 #[derive(Serialize)]
 pub struct EdgeDto {
-    pub a: u32,
-    pub b: u32,
+    pub from: u32,
+    pub to: u32,
 }
 
 #[derive(Serialize)]
