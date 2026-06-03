@@ -12,7 +12,16 @@
       "PowerShell(New-Item -ItemType Directory -Force \"d:\\\\Development\\\\MazeGen\\\\Specs\")",
       "PowerShell(New-Item -ItemType Directory -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\Specs\")",
       "Bash(dir \"d:\\\\Development\\\\MazeGen\\\\maze-core\")",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "Bash(wasm-pack build *)",
+      "PowerShell(wasm-pack build --target bundler --manifest-path \"d:\\\\Development\\\\MazeGen\\\\maze-wasm\\\\Cargo.toml\" --out-dir \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\pkg\" 2>&1)",
+      "PowerShell(cargo install wasm-pack 2>&1)",
+      "PowerShell($env:CARGO_HTTP_CHECK_REVOKE = \"false\"; cargo install wasm-pack 2>&1)",
+      "Read(//c/Users/user/.cargo/**)",
+      "mcp__code-index__search_code_advanced"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\user\\.cargo"
     ]
   }
 }

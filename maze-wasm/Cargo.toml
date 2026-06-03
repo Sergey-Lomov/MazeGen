@@ -1,0 +1,17 @@
+[package]
+name = "maze-wasm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[dependencies]
+maze-core = { path = "../maze-core" }
+wasm-bindgen = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+getrandom = { version = "0.3", features = ["wasm_js"] }
