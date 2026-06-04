@@ -12,6 +12,7 @@ interface MazeState {
   finish: number | null;
   showNodeIds: boolean;
   showCoords: boolean;
+  showGraphOverlay: boolean;
   selectedNode: number | null;
   error: string | null;
 }
@@ -22,7 +23,7 @@ interface MazeActions {
   setHeight: (height: number) => void;
   generate: () => void;
   reset: () => void;
-  setDebugFlag: (key: "showNodeIds" | "showCoords", value: boolean) => void;
+  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showGraphOverlay", value: boolean) => void;
   selectNode: (id: number | null) => void;
 }
 
@@ -36,6 +37,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   finish: null,
   showNodeIds: false,
   showCoords: false,
+  showGraphOverlay: true,
   selectedNode: null,
   error: null,
 

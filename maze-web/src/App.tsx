@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Application } from "pixi.js";
-import { MazeRenderer } from "./pixi/MazeRenderer";
+import { MazeScene } from "./pixi/MazeScene";
 import { ControlPanel } from "./components/ControlPanel";
 import { DebugPanel } from "./components/DebugPanel";
 
 export function App() {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<MazeRenderer | null>(null);
+  const sceneRef = useRef<MazeScene | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!canvasRef.current || rendererRef.current) return;
+    if (!canvasRef.current || sceneRef.current) return;
 
     let cancelled = false;
     const app = new Application();
@@ -27,14 +27,14 @@ export function App() {
           return;
         }
         canvasRef.current!.appendChild(app.canvas);
-        rendererRef.current = new MazeRenderer(app);
+        sceneRef.current = new MazeScene(app);
         setReady(true);
       });
 
     return () => {
       cancelled = true;
-      rendererRef.current?.destroy();
-      rendererRef.current = null;
+      sceneRef.current?.destroy();
+      sceneRef.current = null;
     };
   }, []);
 

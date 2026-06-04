@@ -1,9 +1,9 @@
-import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
+import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeDto, EdgeDto } from "../wasm/types";
+import { TILE_SIZE } from "./constants";
 
 const NODE_RADIUS = 6;
-const NODE_SPACING = 40;
 const NODE_COLOR = 0x4a9eff;
 const NODE_HOVER_COLOR = 0xff9f4a;
 const NODE_SELECTED_COLOR = 0xff4a4a;
@@ -39,73 +39,23 @@ function drawArrowhead(g: Graphics, from: Pos, to: Pos, edgeLen: number): void {
   g.fill(EDGE_COLOR);
 }
 
-export class MazeRenderer {
-  private app: Application;
-  private viewport: Container;
+export class MazeGraphRenderer {
+  private overlayContainer: Container;
   private edgesContainer: Container;
   private nodesContainer: Container;
   private nodeViews: Map<number, Graphics> = new Map();
   private nodeLabels: Map<number, Text> = new Map();
 
-  private isDragging = false;
-  private dragStart = { x: 0, y: 0 };
-  private viewportStart = { x: 0, y: 0 };
-
   private unsubscribe: (() => void) | null = null;
-  private onBlur = () => { this.isDragging = false; };
-  private onWheel: (e: WheelEvent) => void = () => {};
 
-  constructor(app: Application) {
-    this.app = app;
-
-    this.viewport = new Container();
+  constructor(overlayContainer: Container) {
+    this.overlayContainer = overlayContainer;
     this.edgesContainer = new Container();
     this.nodesContainer = new Container();
-    this.viewport.addChild(this.edgesContainer);
-    this.viewport.addChild(this.nodesContainer);
-    this.app.stage.addChild(this.viewport);
+    this.overlayContainer.addChild(this.edgesContainer);
+    this.overlayContainer.addChild(this.nodesContainer);
 
-    this.viewport.x = app.screen.width / 2;
-    this.viewport.y = app.screen.height / 2;
-
-    this.setupInteraction();
     this.subscribeToStore();
-  }
-
-  private setupInteraction(): void {
-    const stage = this.app.stage;
-    stage.interactive = true;
-    stage.hitArea = this.app.screen;
-
-    stage.on("pointerdown", (e) => {
-      this.isDragging = true;
-      this.dragStart = { x: e.globalX, y: e.globalY };
-      this.viewportStart = { x: this.viewport.x, y: this.viewport.y };
-    });
-
-    stage.on("pointermove", (e) => {
-      if (!this.isDragging) return;
-      this.viewport.x = this.viewportStart.x + (e.globalX - this.dragStart.x);
-      this.viewport.y = this.viewportStart.y + (e.globalY - this.dragStart.y);
-    });
-
-    stage.on("pointerup", () => { this.isDragging = false; });
-    stage.on("pointerupoutside", () => { this.isDragging = false; });
-
-    window.addEventListener("blur", this.onBlur);
-
-    this.onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      const rect = this.app.canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      this.viewport.x = mouseX + (this.viewport.x - mouseX) * factor;
-      this.viewport.y = mouseY + (this.viewport.y - mouseY) * factor;
-      this.viewport.scale.x *= factor;
-      this.viewport.scale.y *= factor;
-    };
-    this.app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
   }
 
   private subscribeToStore(): void {
@@ -117,7 +67,6 @@ export class MazeRenderer {
         state.showNodeIds !== prev.showNodeIds ||
         state.showCoords !== prev.showCoords;
       const selectionChanged = state.selectedNode !== prev.selectedNode;
-
       if (!nodesChanged && !debugChanged && !selectionChanged) {
         prev = state;
         return;
@@ -125,10 +74,14 @@ export class MazeRenderer {
 
       if (nodesChanged) {
         this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode, state.start, state.finish);
-      } else if (debugChanged) {
-        this.updateLabels(state.nodes, state.showNodeIds, state.showCoords);
-      } else if (selectionChanged) {
-        this.updateSelection(prev.selectedNode, state.selectedNode, state.start, state.finish);
+      } else {
+        if (debugChanged) {
+          this.updateLabels(state.nodes, state.showNodeIds, state.showCoords);
+        }
+        if (selectionChanged) {
+          // start/finish are stable here: they only change with nodes, which triggers nodesChanged above.
+          this.updateSelection(prev.selectedNode, state.selectedNode, state.start, state.finish);
+        }
       }
 
       prev = state;
@@ -144,21 +97,20 @@ export class MazeRenderer {
     start: number | null,
     finish: number | null,
   ): void {
-    for (const g of this.nodeViews.values()) g.destroy();
-    for (const t of this.nodeLabels.values()) t.destroy();
     this.nodeViews.clear();
     this.nodeLabels.clear();
-    this.edgesContainer.removeChildren();
-    this.nodesContainer.removeChildren();
+    this.edgesContainer.destroy({ children: true });
+    this.nodesContainer.destroy({ children: true });
+    this.edgesContainer = new Container();
+    this.nodesContainer = new Container();
+    this.overlayContainer.addChild(this.edgesContainer);
+    this.overlayContainer.addChild(this.nodesContainer);
 
     const nodePos = new Map<number, Pos>();
     for (const node of nodes) {
-      nodePos.set(node.id, { x: node.x * NODE_SPACING, y: -node.y * NODE_SPACING });
+      nodePos.set(node.id, { x: node.x * TILE_SIZE, y: -node.y * TILE_SIZE });
     }
 
-    // Single pass: for each pair {lo,hi} track which directions exist
-    // pairKey = "${lo}:${hi}" where lo = min(from,to), hi = max(from,to)
-    // loToHi = edge lo→hi exists; hiToLo = edge hi→lo exists
     type PairFlags = { loToHi: boolean; hiToLo: boolean };
     const pairs = new Map<string, PairFlags>();
 
@@ -283,8 +235,9 @@ export class MazeRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
-    window.removeEventListener("blur", this.onBlur);
-    this.app.canvas.removeEventListener("wheel", this.onWheel);
-    this.app.destroy();
+    this.edgesContainer.destroy({ children: true });
+    this.nodesContainer.destroy({ children: true });
+    this.nodeViews.clear();
+    this.nodeLabels.clear();
   }
 }

@@ -27,7 +27,10 @@
       "mcp__code-index__get_symbol_body",
       "Bash(dir \"d:\\\\Development\\\\MazeGen\\\\Specs\" /s /b)",
       "mcp__code-index__find_files",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(cmd /c \"cd /d d:\\\\Development\\\\MazeGen\\\\maze-web && npm run build 2>&1\")",
+      "Bash(git -C \"d:/Development/MazeGen\" remote -v)",
+      "Bash(cmd /c \"cd /d d:\\\\Development\\\\MazeGen\\\\maze-web && type package.json\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

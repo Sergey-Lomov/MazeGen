@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/components/controlpanel.tsx","./src/components/debugpanel.tsx","./src/pixi/mazerenderer.ts","./src/pixi/mazescene.ts","./src/pixi/mazetilerenderer.ts","./src/pixi/constants.ts","./src/store/mazestore.ts","./src/wasm/mazeservice.ts","./src/wasm/types.ts","./src/wasm/wasmloader.ts"],"version":"5.7.3"}
