@@ -1,14 +1,14 @@
 mod dto;
 
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
-use rand::SeedableRng;
-use rand::rngs::SmallRng;
 use maze_core::{
     ids::IdGenerator,
     graph::Graph,
     space::{SquareField, SquarePoint, SquareSize},
-    generation::generate_maze,
-    rules::{MazeMeta, RuleEngine, AssignStartRule, AssignFinishRule},
+    generation::{generate_maze, pipeline::build_maze},
+    quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, MISSING_START, MISSING_FINISH},
+    repair::{RepairEngine, RepairStrategy, CreateStartStrategy, CreateFinishStrategy},
     Field,
 };
 use dto::{EdgeDto, MazeSnapshot, NodeDto};
@@ -35,23 +35,27 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
 
     generate_maze(&mut graph, &field, seed, start);
 
-    let mut meta = MazeMeta::empty();
-    let mut rng = SmallRng::seed_from_u64(seed);
-    let engine = RuleEngine::new(vec![
-        Box::new(AssignStartRule),
-        Box::new(AssignFinishRule),
+    let qc_engine = QualityControlEngine::new(vec![
+        Box::new(MissingStartCheck),
+        Box::new(MissingFinishCheck),
     ]);
-    engine.run(&mut graph, &mut meta, &mut rng);
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
+    strategies.insert(MISSING_START, Box::new(CreateStartStrategy));
+    strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
+    let repair_engine = RepairEngine::new(strategies);
 
-    let nodes: Vec<NodeDto> = graph
+    let maze = build_maze(field, graph, seed, qc_engine, repair_engine)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let nodes: Vec<NodeDto> = maze.graph
         .nodes()
         .filter_map(|n| {
             let id = u32::try_from(n.id).ok()?;
-            field.point_of(n.id).map(|p| NodeDto { id, x: p.x, y: p.y })
+            maze.field.point_of(n.id).map(|p| NodeDto { id, x: p.x, y: p.y })
         })
         .collect();
 
-    let edges: Vec<EdgeDto> = graph
+    let edges: Vec<EdgeDto> = maze.graph
         .edges()
         .map(|e| -> Result<EdgeDto, JsValue> {
             Ok(EdgeDto {
@@ -61,8 +65,8 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
         })
         .collect::<Result<Vec<_>, JsValue>>()?;
 
-    let meta_start = meta.start.and_then(|id| u32::try_from(id).ok());
-    let meta_finish = meta.finish.and_then(|id| u32::try_from(id).ok());
+    let meta_start = maze.meta.start.and_then(|id| u32::try_from(id).ok());
+    let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
 
     let snapshot = MazeSnapshot { nodes, edges, start: meta_start, finish: meta_finish };
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))

@@ -11,11 +11,11 @@ pub struct MazeMeta {
 }
 ```
 
-Both fields are `Option` — a meta value is absent until explicitly assigned by a rule.
+Both fields are `Option` — a meta value is absent until explicitly assigned by a repair strategy.
 
 ## Invariants
 
-- `start` and `finish` are expected to differ when both are `Some`. This is not enforced by the type; it is the responsibility of the rules that assign them.
+- `start` and `finish` are expected to differ when both are `Some`. This is not enforced by the type; it is the responsibility of the strategies that assign them.
 - `MazeMeta` does not own or reference graph nodes. It holds `NodeId` values only. Validity (i.e. the node actually exists in the graph) is not checked.
 
 ## Construction
@@ -26,13 +26,14 @@ MazeMeta::empty()  // both fields None
 
 ## Lifecycle
 
-`MazeMeta` is created empty after graph generation, populated by `RuleEngine`, then bundled into `Maze`:
+`MazeMeta` is created empty inside `Maze::new`, then populated by repair strategies during the pipeline run:
 
 ```
 generate_maze(graph, field, seed, start_node)
-MazeMeta::empty()
-RuleEngine::run(graph, meta, rng)
-Maze { field, graph, meta }
+build_maze(field, graph, seed, qc_engine, repair_engine)
+  → Maze::new(field, graph)          // MazeMeta::empty() inside
+  → QC + Repair loop
+  → meta fields assigned by strategies
 ```
 
 ## Future Extension

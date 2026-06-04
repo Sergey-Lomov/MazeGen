@@ -33,7 +33,10 @@
       "Bash(cmd /c \"cd /d d:\\\\Development\\\\MazeGen\\\\maze-web && type package.json\")",
       "Bash(npm install *)",
       "Bash(npm list *)",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Bash(Remove-Item -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\rules\\\\mod.rs\")",
+      "Bash(Remove-Item -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\rules\" -Recurse)",
+      "mcp__code-index__build_deep_index"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

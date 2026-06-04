@@ -1,0 +1,129 @@
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use maze_core::{Graph, IdGenerator, Field};
+use maze_core::space::{SquareField, SquarePoint, SquareSize};
+use maze_core::generation::{generate_maze, pipeline::build_maze};
+use maze_core::quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, MISSING_START, MISSING_FINISH};
+use maze_core::repair::{RepairEngine, RepairStrategy, CreateStartStrategy, CreateFinishStrategy};
+
+fn make_engines() -> (QualityControlEngine<SquareField>, RepairEngine<SquareField>) {
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingStartCheck),
+        Box::new(MissingFinishCheck),
+    ]);
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
+    strategies.insert(MISSING_START, Box::new(CreateStartStrategy));
+    strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
+    let repair = RepairEngine::new(strategies);
+    (qc, repair)
+}
+
+fn make_generated_graph(seed: u64) -> (SquareField, Graph) {
+    let mut ids = IdGenerator::new();
+    let field = SquareField::new(SquareSize { width: 5, height: 5 }, &mut ids);
+    let mut graph = Graph::new();
+    field.build_nodes(&mut graph);
+    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    generate_maze(&mut graph, &field, seed, start);
+    (field, graph)
+}
+
+#[test]
+fn pipeline_assigns_start_and_finish() {
+    let (field, graph) = make_generated_graph(42);
+    let (qc, repair) = make_engines();
+    let maze = build_maze(field, graph, 42, qc, repair).expect("pipeline failed");
+    assert!(maze.meta.start.is_some());
+    assert!(maze.meta.finish.is_some());
+    assert_ne!(maze.meta.start, maze.meta.finish);
+}
+
+#[test]
+fn pipeline_deterministic() {
+    let seed = 77u64;
+    let run = || {
+        let (field, graph) = make_generated_graph(seed);
+        let (qc, repair) = make_engines();
+        let maze = build_maze(field, graph, seed, qc, repair).unwrap();
+        (maze.meta.start, maze.meta.finish)
+    };
+    let (s1, f1) = run();
+    let (s2, f2) = run();
+    assert_eq!(s1, s2);
+    assert_eq!(f1, f2);
+}
+
+#[test]
+fn pipeline_err_when_no_strategy_for_issue() {
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingStartCheck),
+        Box::new(MissingFinishCheck),
+    ]);
+    let repair: RepairEngine<SquareField> = RepairEngine::new(HashMap::new());
+    let result = build_maze(field, graph, 1, qc, repair);
+    assert!(result.is_err());
+}
+
+#[test]
+fn pipeline_err_when_strategy_always_fails() {
+    use maze_core::quality_control::Issue;
+    use maze_core::repair::{RepairResult, RepairStrategy};
+    use maze_core::Maze;
+    use rand::RngCore;
+
+    struct AlwaysFail;
+    impl RepairStrategy<SquareField> for AlwaysFail {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareField>, _: &mut dyn RngCore) -> RepairResult {
+            RepairResult::Failed
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingStartCheck),
+        Box::new(MissingFinishCheck),
+    ]);
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
+    strategies.insert(MISSING_START, Box::new(AlwaysFail));
+    strategies.insert(MISSING_FINISH, Box::new(AlwaysFail));
+    let repair = RepairEngine::new(strategies);
+    let result = build_maze(field, graph, 1, qc, repair);
+    assert!(result.is_err());
+}
+
+#[test]
+fn pipeline_deduplicates_issues_from_duplicate_checks() {
+    use maze_core::quality_control::Issue;
+    use maze_core::repair::{RepairResult, RepairStrategy};
+    use maze_core::Maze;
+    use rand::RngCore;
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+
+    struct CountingStrategy {
+        count: Arc<AtomicUsize>,
+    }
+    impl RepairStrategy<SquareField> for CountingStrategy {
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareField>, _: &mut dyn RngCore) -> RepairResult {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            maze.meta.start = maze.graph.nodes().next().map(|n| n.id);
+            RepairResult::Fixed
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingStartCheck),
+        Box::new(MissingStartCheck),
+        Box::new(MissingFinishCheck),
+    ]);
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
+    strategies.insert(MISSING_START, Box::new(CountingStrategy { count: Arc::clone(&call_count) }));
+    strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
+    let repair = RepairEngine::new(strategies);
+
+    build_maze(field, graph, 1, qc, repair).expect("pipeline failed");
+    assert_eq!(call_count.load(Ordering::SeqCst), 1, "strategy called more than once for duplicate issue");
+}

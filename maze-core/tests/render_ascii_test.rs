@@ -1,4 +1,4 @@
-use maze_core::{Maze, Graph, IdGenerator, MazeMeta};
+use maze_core::{Maze, Graph, IdGenerator};
 use maze_core::graph::EdgeKind;
 use maze_core::space::{SquareField, SquarePoint, SquareSize, Field};
 use maze_core::io::render_ascii;
@@ -14,7 +14,7 @@ fn make_maze(width: usize, height: usize) -> (Maze<SquareField>, Vec<Vec<NodeId>
             .map(|x| field.node_at(SquarePoint { x: x as i32, y: y as i32 }).unwrap())
             .collect())
         .collect();
-    let maze = Maze { field, graph, meta: MazeMeta::empty() };
+    let maze = Maze::new(field, graph);
     (maze, nodes)
 }
 

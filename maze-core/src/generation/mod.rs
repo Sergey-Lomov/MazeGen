@@ -1,3 +1,5 @@
+pub mod pipeline;
+
 use std::collections::HashSet;
 use rand::{SeedableRng, Rng};
 use rand::rngs::SmallRng;
