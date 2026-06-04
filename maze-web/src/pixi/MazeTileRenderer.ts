@@ -12,9 +12,9 @@ const ONE_WAY_COLOR = 0xffaa00;
 
 interface Pos { x: number; y: number; }
 
-type PassageKind = "both" | "forward" | "backward" | "none";
+export type PassageKind = "both" | "forward" | "backward" | "none";
 
-function buildPassageMap(nodes: NodeDto[], edges: EdgeDto[]): Map<string, PassageKind> {
+export function buildPassageMap(nodes: NodeDto[], edges: EdgeDto[]): Map<string, PassageKind> {
   const nodeById = new Map<number, NodeDto>();
   for (const n of nodes) nodeById.set(n.id, n);
 

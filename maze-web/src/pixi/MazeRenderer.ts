@@ -14,7 +14,7 @@ const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: 0xffffff });
 
 interface Pos { x: number; y: number; }
 
-function nodeColor(id: number, selectedNode: number | null, start: number | null, finish: number | null): number {
+export function nodeColor(id: number, selectedNode: number | null, start: number | null, finish: number | null): number {
   if (id === selectedNode) return NODE_SELECTED_COLOR;
   if (id === start) return NODE_START_COLOR;
   if (id === finish) return NODE_FINISH_COLOR;
