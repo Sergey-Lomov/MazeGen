@@ -19,4 +19,5 @@ pub struct MazeSnapshot {
     pub edges: Vec<EdgeDto>,
     pub start: Option<u32>,
     pub finish: Option<u32>,
+    pub warnings: Vec<String>,
 }

@@ -24,6 +24,7 @@ const validSnapshot = {
   ],
   start: 0,
   finish: 1,
+  warnings: [],
 };
 
 describe("generateMaze / validateSnapshot", () => {
@@ -73,6 +74,7 @@ describe("generateMaze / validateSnapshot", () => {
     mockGenerate.mockReturnValue({
       nodes: [{ id: 0, x: 0, y: 0 }],
       edges: [{ from: 99, to: 0 }],
+      warnings: [],
     });
     expect(() => generateMaze(1, 1, 1)).toThrow("edge.from 99 not in nodes");
   });
@@ -81,19 +83,20 @@ describe("generateMaze / validateSnapshot", () => {
     mockGenerate.mockReturnValue({
       nodes: [{ id: 0, x: 0, y: 0 }],
       edges: [{ from: 0, to: 99 }],
+      warnings: [],
     });
     expect(() => generateMaze(1, 1, 1)).toThrow("edge.to 99 not in nodes");
   });
 
   it("accepts empty nodes and edges", () => {
-    mockGenerate.mockReturnValue({ nodes: [], edges: [], start: null, finish: null });
+    mockGenerate.mockReturnValue({ nodes: [], edges: [], start: null, finish: null, warnings: [] });
     const result = generateMaze(0, 0, 0);
     expect(result.nodes).toHaveLength(0);
     expect(result.edges).toHaveLength(0);
   });
 
   it("accepts null start/finish", () => {
-    mockGenerate.mockReturnValue({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null });
+    mockGenerate.mockReturnValue({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null, warnings: [] });
     const result = generateMaze(1, 1, 1);
     expect(result.start).toBeNull();
     expect(result.finish).toBeNull();

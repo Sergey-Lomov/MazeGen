@@ -12,8 +12,10 @@ interface MazeState {
   finish: number | null;
   showNodeIds: boolean;
   showCoords: boolean;
+  showMaze: boolean;
   showGraphOverlay: boolean;
   selectedNode: number | null;
+  warnings: string[];
   error: string | null;
 }
 
@@ -23,7 +25,7 @@ interface MazeActions {
   setHeight: (height: number) => void;
   generate: () => void;
   reset: () => void;
-  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showGraphOverlay", value: boolean) => void;
+  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze" | "showGraphOverlay", value: boolean) => void;
   selectNode: (id: number | null) => void;
 }
 
@@ -37,8 +39,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   finish: null,
   showNodeIds: false,
   showCoords: false,
+  showMaze: true,
   showGraphOverlay: true,
   selectedNode: null,
+  warnings: [],
   error: null,
 
   setSeed: (seed) => set({ seed, error: null }),
@@ -49,14 +53,14 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const { seed, width, height } = get();
     try {
       const snapshot = generateMaze(seed, width, height);
-      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, selectedNode: null, error: null });
+      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, selectedNode: null, warnings: snapshot.warnings, error: null });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       set({ error: msg });
     }
   },
 
-  reset: () => set({ nodes: [], edges: [], start: null, finish: null, selectedNode: null, error: null }),
+  reset: () => set({ nodes: [], edges: [], start: null, finish: null, selectedNode: null, warnings: [], error: null }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 

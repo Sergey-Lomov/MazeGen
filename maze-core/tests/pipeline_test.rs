@@ -33,7 +33,8 @@ fn make_generated_graph(seed: u64) -> (SquareField, Graph) {
 fn pipeline_assigns_start_and_finish() {
     let (field, graph) = make_generated_graph(42);
     let (qc, repair) = make_engines();
-    let maze = build_maze(field, graph, 42, qc, repair).expect("pipeline failed");
+    let (maze, warnings) = build_maze(field, graph, 42, qc, repair);
+    assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
     assert_ne!(maze.meta.start, maze.meta.finish);
@@ -45,7 +46,7 @@ fn pipeline_deterministic() {
     let run = || {
         let (field, graph) = make_generated_graph(seed);
         let (qc, repair) = make_engines();
-        let maze = build_maze(field, graph, seed, qc, repair).unwrap();
+        let (maze, _) = build_maze(field, graph, seed, qc, repair);
         (maze.meta.start, maze.meta.finish)
     };
     let (s1, f1) = run();
@@ -55,19 +56,19 @@ fn pipeline_deterministic() {
 }
 
 #[test]
-fn pipeline_err_when_no_strategy_for_issue() {
+fn pipeline_warns_when_no_strategy_for_issue() {
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![
         Box::new(MissingStartCheck),
         Box::new(MissingFinishCheck),
     ]);
     let repair: RepairEngine<SquareField> = RepairEngine::new(HashMap::new());
-    let result = build_maze(field, graph, 1, qc, repair);
-    assert!(result.is_err());
+    let (_, warnings) = build_maze(field, graph, 1, qc, repair);
+    assert!(!warnings.is_empty());
 }
 
 #[test]
-fn pipeline_err_when_strategy_always_fails() {
+fn pipeline_warns_when_strategy_always_fails() {
     use maze_core::quality_control::Issue;
     use maze_core::repair::{RepairResult, RepairStrategy};
     use maze_core::Maze;
@@ -89,8 +90,8 @@ fn pipeline_err_when_strategy_always_fails() {
     strategies.insert(MISSING_START, Box::new(AlwaysFail));
     strategies.insert(MISSING_FINISH, Box::new(AlwaysFail));
     let repair = RepairEngine::new(strategies);
-    let result = build_maze(field, graph, 1, qc, repair);
-    assert!(result.is_err());
+    let (_, warnings) = build_maze(field, graph, 1, qc, repair);
+    assert!(!warnings.is_empty());
 }
 
 #[test]
@@ -124,6 +125,7 @@ fn pipeline_deduplicates_issues_from_duplicate_checks() {
     strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
     let repair = RepairEngine::new(strategies);
 
-    build_maze(field, graph, 1, qc, repair).expect("pipeline failed");
+    let (_, warnings) = build_maze(field, graph, 1, qc, repair);
+    assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     assert_eq!(call_count.load(Ordering::SeqCst), 1, "strategy called more than once for duplicate issue");
 }

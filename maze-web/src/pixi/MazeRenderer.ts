@@ -21,9 +21,14 @@ export function nodeColor(id: number, selectedNode: number | null, start: number
   return NODE_COLOR;
 }
 
+function arrowHeight(edgeLen: number): number {
+  const side = Math.min(0.3 * edgeLen, NODE_RADIUS * 3);
+  return side * Math.sqrt(3) / 2;
+}
+
 function drawArrowhead(g: Graphics, from: Pos, to: Pos, edgeLen: number): void {
   if (edgeLen < 1) return;
-  const side = 0.1 * edgeLen;
+  const side = Math.min(0.3 * edgeLen, NODE_RADIUS * 3);
   const height = side * Math.sqrt(3) / 2;
   const dx = (to.x - from.x) / edgeLen;
   const dy = (to.y - from.y) / edgeLen;
@@ -138,16 +143,35 @@ export class MazeGraphRenderer {
       const dx = posHi.x - posLo.x;
       const dy = posHi.y - posLo.y;
       const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1) continue;
+
+      const ux = dx / len;
+      const uy = dy / len;
+      const margin = NODE_RADIUS + 1;
+      const startPt = { x: posLo.x + ux * margin, y: posLo.y + uy * margin };
+      const endPt   = { x: posHi.x - ux * margin, y: posHi.y - uy * margin };
+      const innerLen = len - 2 * margin;
 
       const g = new Graphics();
-      g.moveTo(posLo.x, posLo.y);
-      g.lineTo(posHi.x, posHi.y);
-      g.stroke({ width: 2, color: EDGE_COLOR });
 
       if (loToHi && !hiToLo) {
-        drawArrowhead(g, posLo, posHi, len);
+        const ah = arrowHeight(innerLen);
+        const lineEnd = { x: endPt.x - ux * ah, y: endPt.y - uy * ah };
+        g.moveTo(startPt.x, startPt.y);
+        g.lineTo(lineEnd.x, lineEnd.y);
+        g.stroke({ width: 2, color: EDGE_COLOR });
+        drawArrowhead(g, startPt, endPt, innerLen);
       } else if (hiToLo && !loToHi) {
-        drawArrowhead(g, posHi, posLo, len);
+        const ah = arrowHeight(innerLen);
+        const lineEnd = { x: startPt.x + ux * ah, y: startPt.y + uy * ah };
+        g.moveTo(endPt.x, endPt.y);
+        g.lineTo(lineEnd.x, lineEnd.y);
+        g.stroke({ width: 2, color: EDGE_COLOR });
+        drawArrowhead(g, endPt, startPt, innerLen);
+      } else {
+        g.moveTo(startPt.x, startPt.y);
+        g.lineTo(endPt.x, endPt.y);
+        g.stroke({ width: 2, color: EDGE_COLOR });
       }
 
       this.edgesContainer.addChild(g);

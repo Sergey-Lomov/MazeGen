@@ -1,0 +1,17 @@
+use crate::Maze;
+use crate::space::Field;
+use crate::quality_control::check::Check;
+use crate::quality_control::issue::{Issue, UNREACHABLE_FINISH};
+
+pub struct UnreachableFinishCheck;
+
+impl<F: Field> Check<F> for UnreachableFinishCheck {
+    fn check(&self, maze: &Maze<F>, issues: &mut Vec<Issue>) {
+        let (Some(start), Some(finish)) = (maze.meta.start, maze.meta.finish) else {
+            return;
+        };
+        if !maze.graph.reachable_from(start).contains(&finish) {
+            issues.push(Issue::new(UNREACHABLE_FINISH));
+        }
+    }
+}

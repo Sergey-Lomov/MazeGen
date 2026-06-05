@@ -25,7 +25,16 @@ pub fn generate_maze<F: Field>(graph: &mut Graph, field: &F, seed: u64, start: N
         } else {
             let idx = rng.random_range(0..unvisited.len());
             let chosen = unvisited[idx];
-            graph.add_bidirectional_edge(current, chosen, EdgeKind::Basic);
+            const ONE_WAY_CHANCE: f64 = 0.4;
+            if rng.random::<f64>() < ONE_WAY_CHANCE {
+                if rng.random::<bool>() {
+                    graph.add_edge(current, chosen, EdgeKind::Basic);
+                } else {
+                    graph.add_edge(chosen, current, EdgeKind::Basic);
+                }
+            } else {
+                graph.add_bidirectional_edge(current, chosen, EdgeKind::Basic);
+            }
             visited.insert(chosen);
             stack.push(chosen);
         }

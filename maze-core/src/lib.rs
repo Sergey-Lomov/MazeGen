@@ -12,7 +12,7 @@ pub use ids::{NodeId, IdGenerator};
 pub use graph::Graph;
 pub use space::Field;
 pub use meta::MazeMeta;
-pub use generation::pipeline::{build_maze, PipelineError, MAX_REPAIR_ITERATIONS};
+pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
 
 #[derive(Default)]
 pub struct MazeAnalysis {}

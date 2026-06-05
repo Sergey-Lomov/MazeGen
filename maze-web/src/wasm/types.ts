@@ -14,4 +14,5 @@ export interface MazeSnapshot {
   edges: EdgeDto[];
   start: number | null;
   finish: number | null;
+  warnings: string[];
 }

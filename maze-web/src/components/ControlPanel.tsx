@@ -14,6 +14,7 @@ export function ControlPanel({ disabled = false }: Props) {
   const generate = useMazeStore((s) => s.generate);
   const reset = useMazeStore((s) => s.reset);
   const error = useMazeStore((s) => s.error);
+  const warnings = useMazeStore((s) => s.warnings);
 
   return (
     <div style={styles.panel}>
@@ -51,6 +52,11 @@ export function ControlPanel({ disabled = false }: Props) {
       </label>
       <button style={{ ...styles.btn, ...(disabled ? styles.btnDisabled : {}) }} onClick={generate} disabled={disabled}>Generate</button>
       <button style={{ ...styles.btn, ...styles.btnSecondary, ...(disabled ? styles.btnDisabled : {}) }} onClick={reset} disabled={disabled}>Reset</button>
+      {warnings.length > 0 && (
+        <div style={styles.warning}>
+          Issues: {warnings.join(", ")}
+        </div>
+      )}
       {error && <div style={styles.error}>{error}</div>}
     </div>
   );
@@ -85,5 +91,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnSecondary: { background: "#555" },
   btnDisabled: { opacity: 0.4, cursor: "not-allowed" },
+  warning: { fontSize: 11, color: "#ffaa44", background: "#2a2010", padding: "4px 6px", borderRadius: 3 },
   error: { fontSize: 11, color: "#ff6b6b", background: "#2a1a1a", padding: "4px 6px", borderRadius: 3 },
 };

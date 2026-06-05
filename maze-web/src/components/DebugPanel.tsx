@@ -4,7 +4,6 @@ import { useMazeStore } from "../store/mazeStore";
 export function DebugPanel() {
   const showNodeIds = useMazeStore((s) => s.showNodeIds);
   const showCoords = useMazeStore((s) => s.showCoords);
-  const showGraphOverlay = useMazeStore((s) => s.showGraphOverlay);
   const setDebugFlag = useMazeStore((s) => s.setDebugFlag);
   const nodes = useMazeStore((s) => s.nodes);
   const selectedNode = useMazeStore((s) => s.selectedNode);
@@ -31,14 +30,6 @@ export function DebugPanel() {
           onChange={(e) => setDebugFlag("showCoords", e.target.checked)}
         />
         Coordinates
-      </label>
-      <label style={styles.checkLabel}>
-        <input
-          type="checkbox"
-          checked={showGraphOverlay}
-          onChange={(e) => setDebugFlag("showGraphOverlay", e.target.checked)}
-        />
-        Graph overlay
       </label>
       {selected && (
         <div style={styles.info}>

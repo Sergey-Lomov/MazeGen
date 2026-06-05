@@ -21,6 +21,7 @@ export class MazeScene {
   private onWheel: (e: WheelEvent) => void = () => {};
   private unsubscribeFit: (() => void) | null = null;
   private unsubscribeOverlay: (() => void) | null = null;
+  private unsubscribeMaze: (() => void) | null = null;
 
   constructor(app: Application) {
     this.app = app;
@@ -44,12 +45,15 @@ export class MazeScene {
     this.graphOverlay.x = app.screen.width / 2;
     this.graphOverlay.y = app.screen.height / 2;
 
+    this.viewport.visible = useMazeStore.getState().showMaze;
+
     this.tileRenderer = new MazeTileRenderer(this.viewport);
     this.graphRenderer = new MazeGraphRenderer(graphInner);
 
     this.setupInteraction();
     this.subscribeToFit();
     this.subscribeToOverlay();
+    this.subscribeToMaze();
   }
 
   private subscribeToOverlay(): void {
@@ -58,6 +62,16 @@ export class MazeScene {
       if (state.showGraphOverlay !== prev) {
         prev = state.showGraphOverlay;
         this.graphOverlay.visible = state.showGraphOverlay;
+      }
+    });
+  }
+
+  private subscribeToMaze(): void {
+    let prev = useMazeStore.getState().showMaze;
+    this.unsubscribeMaze = useMazeStore.subscribe((state) => {
+      if (state.showMaze !== prev) {
+        prev = state.showMaze;
+        this.viewport.visible = state.showMaze;
       }
     });
   }
@@ -141,6 +155,7 @@ export class MazeScene {
   destroy(): void {
     this.unsubscribeFit?.();
     this.unsubscribeOverlay?.();
+    this.unsubscribeMaze?.();
     this.tileRenderer.destroy();
     this.graphRenderer.destroy();
     window.removeEventListener("blur", this.onBlur);

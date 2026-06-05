@@ -36,7 +36,8 @@
       "Bash(npm test *)",
       "Bash(Remove-Item -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\rules\\\\mod.rs\")",
       "Bash(Remove-Item -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\rules\" -Recurse)",
-      "mcp__code-index__build_deep_index"
+      "mcp__code-index__build_deep_index",
+      "Bash(npx vitest *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

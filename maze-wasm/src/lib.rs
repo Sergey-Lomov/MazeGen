@@ -7,7 +7,7 @@ use maze_core::{
     graph::Graph,
     space::{SquareField, SquarePoint, SquareSize},
     generation::{generate_maze, pipeline::build_maze},
-    quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, MISSING_START, MISSING_FINISH},
+    quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, UnreachableFinishCheck, MISSING_START, MISSING_FINISH},
     repair::{RepairEngine, RepairStrategy, CreateStartStrategy, CreateFinishStrategy},
     Field,
 };
@@ -38,14 +38,15 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
     let qc_engine = QualityControlEngine::new(vec![
         Box::new(MissingStartCheck),
         Box::new(MissingFinishCheck),
+        Box::new(UnreachableFinishCheck),
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
     strategies.insert(MISSING_START, Box::new(CreateStartStrategy));
     strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
     let repair_engine = RepairEngine::new(strategies);
 
-    let maze = build_maze(field, graph, seed, qc_engine, repair_engine)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let (maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
+    let warnings: Vec<String> = issues.iter().map(|i| i.kind.to_string()).collect();
 
     let nodes: Vec<NodeDto> = maze.graph
         .nodes()
@@ -68,6 +69,6 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
     let meta_start = maze.meta.start.and_then(|id| u32::try_from(id).ok());
     let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
 
-    let snapshot = MazeSnapshot { nodes, edges, start: meta_start, finish: meta_finish };
+    let snapshot = MazeSnapshot { nodes, edges, start: meta_start, finish: meta_finish, warnings };
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
 }

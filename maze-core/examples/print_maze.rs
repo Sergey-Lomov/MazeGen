@@ -26,8 +26,10 @@ fn main() {
     strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
     let repair_engine = RepairEngine::new(strategies);
 
-    let maze = build_maze(field, graph, seed, qc_engine, repair_engine)
-        .expect("pipeline failed");
+    let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine);
+    if !warnings.is_empty() {
+        eprintln!("warnings: {:?}", warnings.iter().map(|i| i.kind).collect::<Vec<_>>());
+    }
 
     println!("{}", render_ascii(&maze));
     println!("start:  {:?}", maze.meta.start);

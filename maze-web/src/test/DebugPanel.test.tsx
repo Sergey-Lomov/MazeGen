@@ -7,7 +7,6 @@ vi.mock("../store/mazeStore", () => {
   const state = {
     showNodeIds: false,
     showCoords: false,
-    showGraphOverlay: true,
     nodes: [] as { id: number; x: number; y: number }[],
     selectedNode: null as number | null,
     setDebugFlag: vi.fn(),
@@ -24,7 +23,6 @@ beforeEach(() => {
   const s = getState();
   s.showNodeIds = false;
   s.showCoords = false;
-  s.showGraphOverlay = true;
   s.nodes = [];
   s.selectedNode = null;
   vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
@@ -32,10 +30,10 @@ beforeEach(() => {
 });
 
 describe("DebugPanel", () => {
-  it("renders three checkboxes", () => {
+  it("renders two checkboxes", () => {
     render(<DebugPanel />);
     const boxes = screen.getAllByRole("checkbox");
-    expect(boxes).toHaveLength(3);
+    expect(boxes).toHaveLength(2);
   });
 
   it("Node IDs checkbox reflects showNodeIds", () => {
@@ -52,11 +50,6 @@ describe("DebugPanel", () => {
     expect(screen.getByLabelText("Coordinates")).toBeChecked();
   });
 
-  it("Graph overlay checkbox reflects showGraphOverlay", () => {
-    render(<DebugPanel />);
-    expect(screen.getByLabelText("Graph overlay")).toBeChecked();
-  });
-
   it("calls setDebugFlag('showNodeIds') on checkbox toggle", () => {
     render(<DebugPanel />);
     fireEvent.click(screen.getByLabelText("Node IDs"));
@@ -67,12 +60,6 @@ describe("DebugPanel", () => {
     render(<DebugPanel />);
     fireEvent.click(screen.getByLabelText("Coordinates"));
     expect(getState().setDebugFlag).toHaveBeenCalledWith("showCoords", true);
-  });
-
-  it("calls setDebugFlag('showGraphOverlay') on checkbox toggle", () => {
-    render(<DebugPanel />);
-    fireEvent.click(screen.getByLabelText("Graph overlay"));
-    expect(getState().setDebugFlag).toHaveBeenCalledWith("showGraphOverlay", false);
   });
 
   it("shows selected node info when selectedNode set", () => {

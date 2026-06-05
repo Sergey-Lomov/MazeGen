@@ -21,6 +21,8 @@ function validateSnapshot(raw: unknown): MazeSnapshot {
     throw new Error("WASM snapshot: invalid nodes");
   if (!Array.isArray(s.edges) || !s.edges.every(isEdgeDto))
     throw new Error("WASM snapshot: invalid edges");
+  if (!Array.isArray(s.warnings) || !s.warnings.every(w => typeof w === "string"))
+    throw new Error("WASM snapshot: invalid warnings");
   const nodeIds = new Set<number>((s.nodes as NodeDto[]).map(n => n.id));
   for (const e of s.edges as EdgeDto[]) {
     if (!nodeIds.has(e.from)) throw new Error(`WASM snapshot: edge.from ${e.from} not in nodes`);

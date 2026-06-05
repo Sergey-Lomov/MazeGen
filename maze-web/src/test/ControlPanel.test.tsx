@@ -8,6 +8,7 @@ vi.mock("../store/mazeStore", () => {
     seed: 42,
     width: 10,
     height: 10,
+    warnings: [] as string[],
     error: null as string | null,
     setSeed: vi.fn(),
     setWidth: vi.fn(),
@@ -28,6 +29,7 @@ beforeEach(() => {
   s.seed = 42;
   s.width = 10;
   s.height = 10;
+  s.warnings = [];
   s.error = null;
   vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
   (s.setSeed as ReturnType<typeof vi.fn>).mockReset();

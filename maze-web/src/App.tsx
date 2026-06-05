@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
 import { ControlPanel } from "./components/ControlPanel";
+import { LayersPanel } from "./components/LayersPanel";
 import { DebugPanel } from "./components/DebugPanel";
 
 export function App() {
@@ -42,6 +43,7 @@ export function App() {
     <div style={styles.root}>
       <div style={styles.sidebar}>
         <ControlPanel disabled={!ready} />
+        <LayersPanel />
         <DebugPanel />
         {!ready && <div style={styles.loading}>Loading…</div>}
       </div>

@@ -33,7 +33,7 @@ pub fn build_maze<F: Field>(
     seed: u64,
     qc_engine: QualityControlEngine<F>,
     repair_engine: RepairEngine<F>,
-) -> Result<Maze<F>, PipelineError> {
+) -> (Maze<F>, Vec<crate::quality_control::Issue>) {
     let mut maze = Maze::new(field, graph);
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut failed: HashSet<IssueKind> = HashSet::new();
@@ -64,9 +64,5 @@ pub fn build_maze<F: Field>(
     }
 
     let remaining = qc_engine.run(&maze);
-    if remaining.is_empty() {
-        Ok(maze)
-    } else {
-        Err(PipelineError::UnresolvedIssues(remaining))
-    }
+    (maze, remaining)
 }
