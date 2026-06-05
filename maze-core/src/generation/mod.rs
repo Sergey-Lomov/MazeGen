@@ -25,7 +25,7 @@ pub fn generate_maze<F: Field>(graph: &mut Graph, field: &F, seed: u64, start: N
         } else {
             let idx = rng.random_range(0..unvisited.len());
             let chosen = unvisited[idx];
-            const ONE_WAY_CHANCE: f64 = 0.4;
+            const ONE_WAY_CHANCE: f64 = 0.04;
             if rng.random::<f64>() < ONE_WAY_CHANCE {
                 if rng.random::<bool>() {
                     graph.add_edge(current, chosen, EdgeKind::Basic);

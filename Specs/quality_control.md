@@ -17,6 +17,7 @@ Built-in constants:
 ```rust
 pub const MISSING_START: IssueKind = "missing_start";
 pub const MISSING_FINISH: IssueKind = "missing_finish";
+pub const UNREACHABLE_FINISH: IssueKind = "unreachable_finish";
 ```
 
 ### Issue
@@ -73,6 +74,12 @@ Produces `Issue::new(MISSING_START)` if `maze.meta.start.is_none()`.
 
 Produces `Issue::new(MISSING_FINISH)` if `maze.meta.finish.is_none()`.
 
+### UnreachableFinishCheck
+
+Produces `Issue::new(UNREACHABLE_FINISH)` if both `maze.meta.start` and `maze.meta.finish` are `Some` but `finish` is not reachable from `start` via directed graph traversal (`graph.reachable_from(start)`).
+
+Skips the check silently if either `start` or `finish` is `None` — those cases are covered by `MissingStartCheck` and `MissingFinishCheck`.
+
 ## Usage Example
 
 ```rust
@@ -85,6 +92,6 @@ let issues = engine.run(&maze);
 
 ## Architectural Contract
 
-Only `quality_control` writes to `maze.analysis`. The `repair` module reads `maze.analysis` but must not write to it.
+Only code that owns the `Maze` may call `&mut self` accessors on `maze.analysis`. QC checks and repair strategies may read `maze.analysis` via shared reference but must not write to it.
 
-`MazeAnalysis` is currently an empty placeholder (`pub struct MazeAnalysis {}`). It exists as a reserved slot for future caching of QC computation results. No checks currently read from it.
+`MazeAnalysis` caches derived data lazily. See `analysis.md` for the full contract. No QC checks currently read from it.

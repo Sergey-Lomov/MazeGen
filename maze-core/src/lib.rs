@@ -14,8 +14,24 @@ pub use space::Field;
 pub use meta::MazeMeta;
 pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
 
-#[derive(Default)]
-pub struct MazeAnalysis {}
+pub struct MazeAnalysis {
+    nav_graph: Option<graph::nav::NavGraph>,
+}
+
+impl Default for MazeAnalysis {
+    fn default() -> Self {
+        Self { nav_graph: None }
+    }
+}
+
+impl MazeAnalysis {
+    pub fn nav_graph<'a>(&'a mut self, graph: &Graph) -> &'a graph::nav::NavGraph {
+        if self.nav_graph.is_none() {
+            self.nav_graph = Some(graph::nav::build_nav_graph(graph));
+        }
+        self.nav_graph.as_ref().unwrap()
+    }
+}
 
 pub struct Maze<F: Field> {
     pub field: F,

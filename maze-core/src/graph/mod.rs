@@ -1,3 +1,5 @@
+pub mod nav;
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::ids::{NodeId, EdgeId};
 

@@ -1,5 +1,5 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, MazeSnapshot } from "./types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeSnapshot } from "./types";
 
 function isNodeDto(v: unknown): v is NodeDto {
   return typeof v === "object" && v !== null &&
@@ -14,6 +14,20 @@ function isEdgeDto(v: unknown): v is EdgeDto {
     typeof (v as EdgeDto).to === "number";
 }
 
+function isNavNodeDto(v: unknown): v is NavNodeDto {
+  return typeof v === "object" && v !== null &&
+    typeof (v as NavNodeDto).id === "number" &&
+    typeof (v as NavNodeDto).node_id === "number";
+}
+
+function isNavEdgeDto(v: unknown): v is NavEdgeDto {
+  return typeof v === "object" && v !== null &&
+    typeof (v as NavEdgeDto).from === "number" &&
+    typeof (v as NavEdgeDto).to === "number" &&
+    Array.isArray((v as NavEdgeDto).path) &&
+    (v as NavEdgeDto).path.every((n: unknown) => typeof n === "number");
+}
+
 function validateSnapshot(raw: unknown): MazeSnapshot {
   if (typeof raw !== "object" || raw === null) throw new Error("WASM returned invalid snapshot");
   const s = raw as Record<string, unknown>;
@@ -23,6 +37,10 @@ function validateSnapshot(raw: unknown): MazeSnapshot {
     throw new Error("WASM snapshot: invalid edges");
   if (!Array.isArray(s.warnings) || !s.warnings.every(w => typeof w === "string"))
     throw new Error("WASM snapshot: invalid warnings");
+  if (!Array.isArray(s.nav_nodes) || !s.nav_nodes.every(isNavNodeDto))
+    throw new Error("WASM snapshot: invalid nav_nodes");
+  if (!Array.isArray(s.nav_edges) || !s.nav_edges.every(isNavEdgeDto))
+    throw new Error("WASM snapshot: invalid nav_edges");
   const nodeIds = new Set<number>((s.nodes as NodeDto[]).map(n => n.id));
   for (const e of s.edges as EdgeDto[]) {
     if (!nodeIds.has(e.from)) throw new Error(`WASM snapshot: edge.from ${e.from} not in nodes`);

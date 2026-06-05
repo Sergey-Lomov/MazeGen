@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     ids::IdGenerator,
-    graph::Graph,
+    graph::{Graph, nav::build_nav_graph},
     space::{SquareField, SquarePoint, SquareSize},
     generation::{generate_maze, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, UnreachableFinishCheck, MISSING_START, MISSING_FINISH},
     repair::{RepairEngine, RepairStrategy, CreateStartStrategy, CreateFinishStrategy},
     Field,
 };
-use dto::{EdgeDto, MazeSnapshot, NodeDto};
+use dto::{EdgeDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto};
 
 #[wasm_bindgen]
 pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> {
@@ -69,6 +69,27 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
     let meta_start = maze.meta.start.and_then(|id| u32::try_from(id).ok());
     let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
 
-    let snapshot = MazeSnapshot { nodes, edges, start: meta_start, finish: meta_finish, warnings };
+    let nav = build_nav_graph(&maze.graph);
+
+    let nav_nodes: Vec<NavNodeDto> = nav.nodes.iter()
+        .filter_map(|n| {
+            let id = u32::try_from(n.id).ok()?;
+            let node_id = u32::try_from(n.node_id).ok()?;
+            Some(NavNodeDto { id, node_id })
+        })
+        .collect();
+
+    let nav_edges: Vec<NavEdgeDto> = nav.edges.iter()
+        .filter_map(|e| {
+            let from = u32::try_from(e.from).ok()?;
+            let to = u32::try_from(e.to).ok()?;
+            let path: Option<Vec<u32>> = e.path.iter()
+                .map(|&nid| u32::try_from(nid).ok())
+                .collect();
+            Some(NavEdgeDto { from, to, path: path? })
+        })
+        .collect();
+
+    let snapshot = MazeSnapshot { nodes, edges, start: meta_start, finish: meta_finish, warnings, nav_nodes, nav_edges };
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
 }

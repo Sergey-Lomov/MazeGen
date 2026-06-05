@@ -37,7 +37,8 @@
       "Bash(Remove-Item -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\rules\\\\mod.rs\")",
       "Bash(Remove-Item -Force \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\rules\" -Recurse)",
       "mcp__code-index__build_deep_index",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\\\\pixi\\\\NavRenderer.ts\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

@@ -1,7 +1,7 @@
 import { Application, Container } from "pixi.js";
 import { MazeTileRenderer } from "./MazeTileRenderer";
 import { TILE_SIZE } from "./constants";
-import { MazeGraphRenderer } from "./MazeRenderer";
+import { MazeGraphRenderer, NavGraphRenderer } from "./MazeRenderer";
 import { useMazeStore } from "../store/mazeStore";
 
 const FIT_PADDING = 0.9;
@@ -10,8 +10,10 @@ export class MazeScene {
   private app: Application;
   private viewport: Container;
   private graphOverlay: Container;
+  private navOverlay: Container;
   private tileRenderer: MazeTileRenderer;
   private graphRenderer: MazeGraphRenderer;
+  private navRenderer: NavGraphRenderer;
 
   private isDragging = false;
   private dragStart = { x: 0, y: 0 };
@@ -21,6 +23,7 @@ export class MazeScene {
   private onWheel: (e: WheelEvent) => void = () => {};
   private unsubscribeFit: (() => void) | null = null;
   private unsubscribeOverlay: (() => void) | null = null;
+  private unsubscribeNavOverlay: (() => void) | null = null;
   private unsubscribeMaze: (() => void) | null = null;
 
   constructor(app: Application) {
@@ -37,22 +40,34 @@ export class MazeScene {
     graphInner.y = -TILE_SIZE / 2;
     this.graphOverlay.addChild(graphInner);
 
+    this.navOverlay = new Container();
+    this.navOverlay.visible = useMazeStore.getState().showNavOverlay;
+    const navInner = new Container();
+    navInner.x = TILE_SIZE / 2;
+    navInner.y = -TILE_SIZE / 2;
+    this.navOverlay.addChild(navInner);
+
     this.app.stage.addChild(this.viewport);
     this.app.stage.addChild(this.graphOverlay);
+    this.app.stage.addChild(this.navOverlay);
 
     this.viewport.x = app.screen.width / 2;
     this.viewport.y = app.screen.height / 2;
     this.graphOverlay.x = app.screen.width / 2;
     this.graphOverlay.y = app.screen.height / 2;
+    this.navOverlay.x = app.screen.width / 2;
+    this.navOverlay.y = app.screen.height / 2;
 
     this.viewport.visible = useMazeStore.getState().showMaze;
 
     this.tileRenderer = new MazeTileRenderer(this.viewport);
     this.graphRenderer = new MazeGraphRenderer(graphInner);
+    this.navRenderer = new NavGraphRenderer(navInner);
 
     this.setupInteraction();
     this.subscribeToFit();
     this.subscribeToOverlay();
+    this.subscribeToNavOverlay();
     this.subscribeToMaze();
   }
 
@@ -62,6 +77,16 @@ export class MazeScene {
       if (state.showGraphOverlay !== prev) {
         prev = state.showGraphOverlay;
         this.graphOverlay.visible = state.showGraphOverlay;
+      }
+    });
+  }
+
+  private subscribeToNavOverlay(): void {
+    let prev = useMazeStore.getState().showNavOverlay;
+    this.unsubscribeNavOverlay = useMazeStore.subscribe((state) => {
+      if (state.showNavOverlay !== prev) {
+        prev = state.showNavOverlay;
+        this.navOverlay.visible = state.showNavOverlay;
       }
     });
   }
@@ -104,6 +129,9 @@ export class MazeScene {
     this.graphOverlay.scale.set(scale);
     this.graphOverlay.x = this.viewport.x;
     this.graphOverlay.y = this.viewport.y;
+    this.navOverlay.scale.set(scale);
+    this.navOverlay.x = this.viewport.x;
+    this.navOverlay.y = this.viewport.y;
   }
 
   private setupInteraction(): void {
@@ -125,6 +153,8 @@ export class MazeScene {
       this.viewport.y = this.viewportStart.y + dy;
       this.graphOverlay.x = this.viewportStart.x + dx;
       this.graphOverlay.y = this.viewportStart.y + dy;
+      this.navOverlay.x = this.viewportStart.x + dx;
+      this.navOverlay.y = this.viewportStart.y + dy;
     });
 
     stage.on("pointerup", () => { this.isDragging = false; });
@@ -148,6 +178,10 @@ export class MazeScene {
       this.graphOverlay.y = this.viewport.y;
       this.graphOverlay.scale.x = this.viewport.scale.x;
       this.graphOverlay.scale.y = this.viewport.scale.y;
+      this.navOverlay.x = this.viewport.x;
+      this.navOverlay.y = this.viewport.y;
+      this.navOverlay.scale.x = this.viewport.scale.x;
+      this.navOverlay.scale.y = this.viewport.scale.y;
     };
     this.app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
   }
@@ -155,9 +189,11 @@ export class MazeScene {
   destroy(): void {
     this.unsubscribeFit?.();
     this.unsubscribeOverlay?.();
+    this.unsubscribeNavOverlay?.();
     this.unsubscribeMaze?.();
     this.tileRenderer.destroy();
     this.graphRenderer.destroy();
+    this.navRenderer.destroy();
     window.removeEventListener("blur", this.onBlur);
     this.app.canvas.removeEventListener("wheel", this.onWheel);
     this.app.destroy();

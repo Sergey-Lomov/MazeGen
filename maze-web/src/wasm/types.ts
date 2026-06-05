@@ -9,10 +9,23 @@ export interface EdgeDto {
   to: number;
 }
 
+export interface NavNodeDto {
+  id: number;
+  node_id: number;
+}
+
+export interface NavEdgeDto {
+  from: number;
+  to: number;
+  path: number[];
+}
+
 export interface MazeSnapshot {
   nodes: NodeDto[];
   edges: EdgeDto[];
   start: number | null;
   finish: number | null;
   warnings: string[];
+  nav_nodes: NavNodeDto[];
+  nav_edges: NavEdgeDto[];
 }

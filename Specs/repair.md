@@ -84,23 +84,18 @@ Defined in `maze_core::generation::pipeline`.
 ```rust
 pub const MAX_REPAIR_ITERATIONS: usize = 8;
 
-pub enum PipelineError {
-    UnresolvedIssues(Vec<Issue>),
-}
-
-impl Display for PipelineError { ... }
-impl std::error::Error for PipelineError {}
-
 pub fn build_maze<F: Field>(
     field: F,
     graph: Graph,
     seed: u64,
     qc_engine: QualityControlEngine<F>,
     repair_engine: RepairEngine<F>,
-) -> Result<Maze<F>, PipelineError>
+) -> (Maze<F>, Vec<Issue>)
 ```
 
-Both `build_maze` and `PipelineError` and `MAX_REPAIR_ITERATIONS` are re-exported from `maze_core` root.
+`build_maze` and `MAX_REPAIR_ITERATIONS` are re-exported from `maze_core` root.
+
+The second return value is the list of unresolved issues after all repair iterations. An empty vec means all issues were resolved. Callers decide how to handle unresolved issues — the pipeline always returns a maze regardless.
 
 Logic:
 
@@ -111,12 +106,12 @@ Logic:
 5. Loop up to `MAX_REPAIR_ITERATIONS`:
    - Run QC.
    - Deduplicate issues by `IssueKind` (keep first occurrence per kind), then filter out `failed` kinds. This preserves one issue per kind, in original QC order.
-   - If no active issues: break (success).
+   - If no active issues: break (all resolved).
    - Compute fingerprint: sorted list of active `IssueKind` values.
    - If fingerprint equals previous: break (no progress possible).
    - Run repair on active issues.
    - Add `Failed` results to `failed` set.
-6. Final QC: if any issues remain → `Err(UnresolvedIssues)`. Otherwise → `Ok(maze)`.
+6. Final QC: return `(maze, remaining_issues)`.
 
 **Note:** `generate_maze` must be called **before** `build_maze`. `build_maze` only handles metadata, not graph structure.
 

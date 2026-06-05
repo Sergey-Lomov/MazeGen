@@ -3,6 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 export function LayersPanel() {
   const showMaze = useMazeStore((s) => s.showMaze);
   const showGraphOverlay = useMazeStore((s) => s.showGraphOverlay);
+  const showNavOverlay = useMazeStore((s) => s.showNavOverlay);
   const setDebugFlag = useMazeStore((s) => s.setDebugFlag);
 
   return (
@@ -23,6 +24,14 @@ export function LayersPanel() {
           onChange={(e) => setDebugFlag("showGraphOverlay", e.target.checked)}
         />
         Graph
+      </label>
+      <label style={styles.checkLabel}>
+        <input
+          type="checkbox"
+          checked={showNavOverlay}
+          onChange={(e) => setDebugFlag("showNavOverlay", e.target.checked)}
+        />
+        Nav graph
       </label>
     </div>
   );

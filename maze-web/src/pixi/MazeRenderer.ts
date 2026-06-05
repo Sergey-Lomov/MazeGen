@@ -1,9 +1,9 @@
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
 import { TILE_SIZE } from "./constants";
 
-const NODE_RADIUS = 6;
+export const NODE_RADIUS = 6;
 const NODE_COLOR = 0x4a9eff;
 const NODE_HOVER_COLOR = 0xff9f4a;
 const NODE_SELECTED_COLOR = 0xff4a4a;
@@ -21,17 +21,21 @@ export function nodeColor(id: number, selectedNode: number | null, start: number
   return NODE_COLOR;
 }
 
-function arrowHeight(edgeLen: number): number {
-  const side = Math.min(0.3 * edgeLen, NODE_RADIUS * 3);
+function gridPos(node: NodeDto): Pos {
+  return { x: node.x * TILE_SIZE, y: -node.y * TILE_SIZE };
+}
+
+function arrowHeight(len: number): number {
+  const side = Math.min(0.3 * len, NODE_RADIUS * 3);
   return side * Math.sqrt(3) / 2;
 }
 
-function drawArrowhead(g: Graphics, from: Pos, to: Pos, edgeLen: number): void {
-  if (edgeLen < 1) return;
-  const side = Math.min(0.3 * edgeLen, NODE_RADIUS * 3);
+function drawArrowhead(g: Graphics, from: Pos, to: Pos, innerLen: number, color: number): void {
+  if (innerLen < 1) return;
+  const side = Math.min(0.3 * innerLen, NODE_RADIUS * 3);
   const height = side * Math.sqrt(3) / 2;
-  const dx = (to.x - from.x) / edgeLen;
-  const dy = (to.y - from.y) / edgeLen;
+  const dx = (to.x - from.x) / innerLen;
+  const dy = (to.y - from.y) / innerLen;
   const px = -dy;
   const py = dx;
   const baseCx = to.x - dx * height;
@@ -41,17 +45,89 @@ function drawArrowhead(g: Graphics, from: Pos, to: Pos, edgeLen: number): void {
     baseCx + px * side / 2, baseCy + py * side / 2,
     baseCx - px * side / 2, baseCy - py * side / 2,
   ]);
-  g.fill(EDGE_COLOR);
+  g.fill(color);
 }
 
-export class MazeGraphRenderer {
-  private overlayContainer: Container;
-  private edgesContainer: Container;
-  private nodesContainer: Container;
-  private nodeViews: Map<number, Graphics> = new Map();
-  private nodeLabels: Map<number, Text> = new Map();
+interface RenderEdge {
+  /** Full path of positions from source to target (inclusive). */
+  path: Pos[];
+  /** True if there is also an edge in the reverse direction. */
+  hasReverse: boolean;
+}
 
-  private unsubscribe: (() => void) | null = null;
+interface RenderNode {
+  id: number;
+  pos: Pos;
+}
+
+/**
+ * Draws a directed edge as a polyline with:
+ * - margin from the first and last point only
+ * - arrowhead at the end if not bidirectional
+ */
+function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
+  const pts = edge.path;
+  if (pts.length < 2) return;
+
+  const first = pts[0];
+  const second = pts[1];
+  const secondLast = pts[pts.length - 2];
+  const last = pts[pts.length - 1];
+
+  // Direction vectors at endpoints
+  const dxStart = second.x - first.x;
+  const dyStart = second.y - first.y;
+  const lenStart = Math.sqrt(dxStart * dxStart + dyStart * dyStart);
+
+  const dxEnd = last.x - secondLast.x;
+  const dyEnd = last.y - secondLast.y;
+  const lenEnd = Math.sqrt(dxEnd * dxEnd + dyEnd * dyEnd);
+
+  if (lenStart < 1 || lenEnd < 1) return;
+
+  const margin = NODE_RADIUS + 1;
+  const startPt: Pos = {
+    x: first.x + (dxStart / lenStart) * margin,
+    y: first.y + (dyStart / lenStart) * margin,
+  };
+  const endPt: Pos = {
+    x: last.x - (dxEnd / lenEnd) * margin,
+    y: last.y - (dyEnd / lenEnd) * margin,
+  };
+
+  // End-segment length for arrow sizing
+  const endSegLen = Math.sqrt(
+    (endPt.x - secondLast.x) ** 2 + (endPt.y - secondLast.y) ** 2
+  );
+
+  // Build the polyline: startPt → intermediate points → endPt (or lineEnd if arrow)
+  let lineEndPt = endPt;
+  if (!edge.hasReverse) {
+    const ah = arrowHeight(endSegLen);
+    const ux = dxEnd / lenEnd;
+    const uy = dyEnd / lenEnd;
+    lineEndPt = { x: endPt.x - ux * ah, y: endPt.y - uy * ah };
+  }
+
+  g.moveTo(startPt.x, startPt.y);
+  for (let i = 1; i < pts.length - 1; i++) {
+    g.lineTo(pts[i].x, pts[i].y);
+  }
+  g.lineTo(lineEndPt.x, lineEndPt.y);
+  g.stroke({ width: 2, color });
+
+  if (!edge.hasReverse) {
+    drawArrowhead(g, secondLast, endPt, endSegLen, color);
+  }
+}
+
+// ─── Base class ──────────────────────────────────────────────────────────────
+
+abstract class BaseGraphRenderer {
+  protected overlayContainer: Container;
+  protected edgesContainer: Container;
+  protected nodesContainer: Container;
+  protected unsubscribe: (() => void) | null = null;
 
   constructor(overlayContainer: Container) {
     this.overlayContainer = overlayContainer;
@@ -59,7 +135,84 @@ export class MazeGraphRenderer {
     this.nodesContainer = new Container();
     this.overlayContainer.addChild(this.edgesContainer);
     this.overlayContainer.addChild(this.nodesContainer);
+  }
 
+  protected resetContainers(): void {
+    this.edgesContainer.destroy({ children: true });
+    this.nodesContainer.destroy({ children: true });
+    this.edgesContainer = new Container();
+    this.nodesContainer = new Container();
+    this.overlayContainer.addChild(this.edgesContainer);
+    this.overlayContainer.addChild(this.nodesContainer);
+  }
+
+  protected drawEdges(edges: RenderEdge[], color: number): void {
+    const g = new Graphics();
+    for (const edge of edges) {
+      drawEdge(g, edge, color);
+    }
+    this.edgesContainer.addChild(g);
+  }
+
+  protected drawNodes(
+    renderNodes: RenderNode[],
+    selectedNode: number | null,
+    start: number | null,
+    finish: number | null,
+    interactive: boolean,
+  ): Map<number, Graphics> {
+    const views = new Map<number, Graphics>();
+    for (const { id, pos } of renderNodes) {
+      const g = new Graphics();
+      const color = nodeColor(id, selectedNode, start, finish);
+      g.circle(0, 0, NODE_RADIUS);
+      g.fill(color);
+      g.x = pos.x;
+      g.y = pos.y;
+
+      if (interactive) {
+        g.interactive = true;
+        g.cursor = "pointer";
+        g.on("pointerover", () => {
+          const s = useMazeStore.getState();
+          if (s.selectedNode !== id) {
+            g.clear(); g.circle(0, 0, NODE_RADIUS);
+            const base = nodeColor(id, null, s.start, s.finish);
+            g.fill(base !== NODE_COLOR ? base : NODE_HOVER_COLOR);
+          }
+        });
+        g.on("pointerout", () => {
+          const s = useMazeStore.getState();
+          g.clear(); g.circle(0, 0, NODE_RADIUS);
+          g.fill(nodeColor(id, s.selectedNode, s.start, s.finish));
+        });
+        g.on("pointerdown", (e) => {
+          e.stopPropagation();
+          useMazeStore.getState().selectNode(id);
+        });
+      }
+
+      this.nodesContainer.addChild(g);
+      views.set(id, g);
+    }
+    return views;
+  }
+
+  destroy(): void {
+    this.unsubscribe?.();
+    this.edgesContainer.destroy({ children: true });
+    this.nodesContainer.destroy({ children: true });
+  }
+}
+
+// ─── MazeGraphRenderer ───────────────────────────────────────────────────────
+
+export class MazeGraphRenderer extends BaseGraphRenderer {
+  private nodeViews: Map<number, Graphics> = new Map();
+  private nodeLabels: Map<number, Text> = new Map();
+
+  constructor(overlayContainer: Container) {
+    super(overlayContainer);
     this.subscribeToStore();
   }
 
@@ -68,27 +221,17 @@ export class MazeGraphRenderer {
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const nodesChanged = state.nodes !== prev.nodes || state.edges !== prev.edges
         || state.start !== prev.start || state.finish !== prev.finish;
-      const debugChanged =
-        state.showNodeIds !== prev.showNodeIds ||
-        state.showCoords !== prev.showCoords;
+      const debugChanged = state.showNodeIds !== prev.showNodeIds || state.showCoords !== prev.showCoords;
       const selectionChanged = state.selectedNode !== prev.selectedNode;
-      if (!nodesChanged && !debugChanged && !selectionChanged) {
-        prev = state;
-        return;
-      }
+
+      if (!nodesChanged && !debugChanged && !selectionChanged) { prev = state; return; }
 
       if (nodesChanged) {
         this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode, state.start, state.finish);
       } else {
-        if (debugChanged) {
-          this.updateLabels(state.nodes, state.showNodeIds, state.showCoords);
-        }
-        if (selectionChanged) {
-          // start/finish are stable here: they only change with nodes, which triggers nodesChanged above.
-          this.updateSelection(prev.selectedNode, state.selectedNode, state.start, state.finish);
-        }
+        if (debugChanged) this.updateLabels(state.nodes, state.showNodeIds, state.showCoords);
+        if (selectionChanged) this.updateSelection(prev.selectedNode, state.selectedNode, state.start, state.finish);
       }
-
       prev = state;
     });
   }
@@ -104,115 +247,43 @@ export class MazeGraphRenderer {
   ): void {
     this.nodeViews.clear();
     this.nodeLabels.clear();
-    this.edgesContainer.destroy({ children: true });
-    this.nodesContainer.destroy({ children: true });
-    this.edgesContainer = new Container();
-    this.nodesContainer = new Container();
-    this.overlayContainer.addChild(this.edgesContainer);
-    this.overlayContainer.addChild(this.nodesContainer);
+    this.resetContainers();
 
     const nodePos = new Map<number, Pos>();
-    for (const node of nodes) {
-      nodePos.set(node.id, { x: node.x * TILE_SIZE, y: -node.y * TILE_SIZE });
-    }
+    for (const node of nodes) nodePos.set(node.id, gridPos(node));
 
+    // Build pair flags for directedness
     type PairFlags = { loToHi: boolean; hiToLo: boolean };
     const pairs = new Map<string, PairFlags>();
-
     for (const edge of edges) {
       const lo = Math.min(edge.from, edge.to);
       const hi = Math.max(edge.from, edge.to);
-      const pairKey = `${lo}:${hi}`;
-      let flags = pairs.get(pairKey);
-      if (!flags) {
-        flags = { loToHi: false, hiToLo: false };
-        pairs.set(pairKey, flags);
-      }
-      if (edge.from === lo) flags.loToHi = true;
-      else flags.hiToLo = true;
+      const key = `${lo}:${hi}`;
+      let f = pairs.get(key);
+      if (!f) { f = { loToHi: false, hiToLo: false }; pairs.set(key, f); }
+      if (edge.from === lo) f.loToHi = true; else f.hiToLo = true;
     }
 
-    for (const [pairKey, { loToHi, hiToLo }] of pairs) {
-      const [loStr, hiStr] = pairKey.split(":");
-      const lo = Number(loStr);
-      const hi = Number(hiStr);
-      const posLo = nodePos.get(lo);
-      const posHi = nodePos.get(hi);
+    const renderEdges: RenderEdge[] = [];
+    for (const [key, { loToHi, hiToLo }] of pairs) {
+      const [loStr, hiStr] = key.split(":");
+      const posLo = nodePos.get(Number(loStr));
+      const posHi = nodePos.get(Number(hiStr));
       if (!posLo || !posHi) continue;
-
-      const dx = posHi.x - posLo.x;
-      const dy = posHi.y - posLo.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len < 1) continue;
-
-      const ux = dx / len;
-      const uy = dy / len;
-      const margin = NODE_RADIUS + 1;
-      const startPt = { x: posLo.x + ux * margin, y: posLo.y + uy * margin };
-      const endPt   = { x: posHi.x - ux * margin, y: posHi.y - uy * margin };
-      const innerLen = len - 2 * margin;
-
-      const g = new Graphics();
-
-      if (loToHi && !hiToLo) {
-        const ah = arrowHeight(innerLen);
-        const lineEnd = { x: endPt.x - ux * ah, y: endPt.y - uy * ah };
-        g.moveTo(startPt.x, startPt.y);
-        g.lineTo(lineEnd.x, lineEnd.y);
-        g.stroke({ width: 2, color: EDGE_COLOR });
-        drawArrowhead(g, startPt, endPt, innerLen);
-      } else if (hiToLo && !loToHi) {
-        const ah = arrowHeight(innerLen);
-        const lineEnd = { x: startPt.x + ux * ah, y: startPt.y + uy * ah };
-        g.moveTo(endPt.x, endPt.y);
-        g.lineTo(lineEnd.x, lineEnd.y);
-        g.stroke({ width: 2, color: EDGE_COLOR });
-        drawArrowhead(g, endPt, startPt, innerLen);
-      } else {
-        g.moveTo(startPt.x, startPt.y);
-        g.lineTo(endPt.x, endPt.y);
-        g.stroke({ width: 2, color: EDGE_COLOR });
-      }
-
-      this.edgesContainer.addChild(g);
+      const both = loToHi && hiToLo;
+      if (loToHi) renderEdges.push({ path: [posLo, posHi], hasReverse: both });
+      if (hiToLo) renderEdges.push({ path: [posHi, posLo], hasReverse: both });
     }
+
+    this.drawEdges(renderEdges, EDGE_COLOR);
+
+    const renderNodes: RenderNode[] = nodes.map(n => ({ id: n.id, pos: nodePos.get(n.id)! }));
+    this.nodeViews = this.drawNodes(renderNodes, selectedNode, start, finish, true);
 
     for (const node of nodes) {
-      const pos = nodePos.get(node.id)!;
-      const g = new Graphics();
-      const color = nodeColor(node.id, selectedNode, start, finish);
-      g.circle(0, 0, NODE_RADIUS);
-      g.fill(color);
-      g.x = pos.x;
-      g.y = pos.y;
-      g.interactive = true;
-      g.cursor = "pointer";
-
-      g.on("pointerover", () => {
-        const s = useMazeStore.getState();
-        if (s.selectedNode !== node.id) {
-          g.clear();
-          g.circle(0, 0, NODE_RADIUS);
-          const base = nodeColor(node.id, null, s.start, s.finish);
-          g.fill(base !== NODE_COLOR ? base : NODE_HOVER_COLOR);
-        }
-      });
-      g.on("pointerout", () => {
-        const s = useMazeStore.getState();
-        g.clear();
-        g.circle(0, 0, NODE_RADIUS);
-        g.fill(nodeColor(node.id, s.selectedNode, s.start, s.finish));
-      });
-      g.on("pointerdown", (e) => {
-        e.stopPropagation();
-        useMazeStore.getState().selectNode(node.id);
-      });
-
-      this.nodesContainer.addChild(g);
-      this.nodeViews.set(node.id, g);
-
       const label = this.makeLabel(node, showNodeIds, showCoords);
       if (label) {
+        const pos = nodePos.get(node.id)!;
         label.x = pos.x + NODE_RADIUS + 2;
         label.y = pos.y - NODE_RADIUS - 2;
         this.nodesContainer.addChild(label);
@@ -232,7 +303,6 @@ export class MazeGraphRenderer {
   private updateLabels(nodes: NodeDto[], showNodeIds: boolean, showCoords: boolean): void {
     for (const t of this.nodeLabels.values()) t.destroy();
     this.nodeLabels.clear();
-
     for (const node of nodes) {
       const g = this.nodeViews.get(node.id);
       if (!g) continue;
@@ -257,11 +327,80 @@ export class MazeGraphRenderer {
     }
   }
 
-  destroy(): void {
-    this.unsubscribe?.();
-    this.edgesContainer.destroy({ children: true });
-    this.nodesContainer.destroy({ children: true });
+  override destroy(): void {
     this.nodeViews.clear();
     this.nodeLabels.clear();
+    super.destroy();
+  }
+}
+
+// ─── NavGraphRenderer ────────────────────────────────────────────────────────
+
+export class NavGraphRenderer extends BaseGraphRenderer {
+  constructor(overlayContainer: Container) {
+    super(overlayContainer);
+    this.subscribeToStore();
+  }
+
+  private subscribeToStore(): void {
+    let prev = useMazeStore.getState();
+    this.unsubscribe = useMazeStore.subscribe((state) => {
+      const changed = state.nodes !== prev.nodes
+        || state.navNodes !== prev.navNodes
+        || state.navEdges !== prev.navEdges
+        || state.start !== prev.start
+        || state.finish !== prev.finish;
+      prev = state;
+      if (changed) {
+        this.renderNav(state.nodes, state.navNodes, state.navEdges, state.start, state.finish);
+      }
+    });
+
+    const s = useMazeStore.getState();
+    this.renderNav(s.nodes, s.navNodes, s.navEdges, s.start, s.finish);
+  }
+
+  private renderNav(
+    nodes: NodeDto[],
+    navNodes: NavNodeDto[],
+    navEdges: NavEdgeDto[],
+    start: number | null,
+    finish: number | null,
+  ): void {
+    this.resetContainers();
+    if (nodes.length === 0) return;
+
+    const nodePos = new Map<number, Pos>();
+    for (const node of nodes) nodePos.set(node.id, gridPos(node));
+
+    // Detect reverse pairs among nav edges
+    const edgeKeys = new Set<string>();
+    for (const e of navEdges) {
+      const fromNode = e.path[0];
+      const toNode = e.path[e.path.length - 1];
+      edgeKeys.add(`${fromNode}->${toNode}`);
+    }
+
+    const renderEdges: RenderEdge[] = [];
+    for (const e of navEdges) {
+      const path = e.path.map(nid => nodePos.get(nid)).filter((p): p is Pos => p !== undefined);
+      if (path.length < 2) continue;
+      const fromNode = e.path[0];
+      const toNode = e.path[e.path.length - 1];
+      const hasReverse = edgeKeys.has(`${toNode}->${fromNode}`);
+      renderEdges.push({ path, hasReverse });
+    }
+
+    this.drawEdges(renderEdges, EDGE_COLOR);
+
+    // Only render nav junction nodes (not corridor intermediates)
+    const navNodeIds = new Set(navNodes.map(n => n.node_id));
+    const renderNodes: RenderNode[] = [];
+    for (const nid of navNodeIds) {
+      const pos = nodePos.get(nid);
+      if (pos) renderNodes.push({ id: nid, pos });
+    }
+
+    this.drawNodes(renderNodes, null, start, finish, false);
   }
 }

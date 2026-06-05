@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { generateMaze } from "../wasm/mazeService";
-import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
 
 interface MazeState {
   seed: number;
@@ -10,10 +10,13 @@ interface MazeState {
   edges: EdgeDto[];
   start: number | null;
   finish: number | null;
+  navNodes: NavNodeDto[];
+  navEdges: NavEdgeDto[];
   showNodeIds: boolean;
   showCoords: boolean;
   showMaze: boolean;
   showGraphOverlay: boolean;
+  showNavOverlay: boolean;
   selectedNode: number | null;
   warnings: string[];
   error: string | null;
@@ -25,7 +28,7 @@ interface MazeActions {
   setHeight: (height: number) => void;
   generate: () => void;
   reset: () => void;
-  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze" | "showGraphOverlay", value: boolean) => void;
+  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze" | "showGraphOverlay" | "showNavOverlay", value: boolean) => void;
   selectNode: (id: number | null) => void;
 }
 
@@ -37,10 +40,13 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   edges: [],
   start: null,
   finish: null,
+  navNodes: [],
+  navEdges: [],
   showNodeIds: false,
   showCoords: false,
   showMaze: true,
   showGraphOverlay: true,
+  showNavOverlay: false,
   selectedNode: null,
   warnings: [],
   error: null,
@@ -53,14 +59,14 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const { seed, width, height } = get();
     try {
       const snapshot = generateMaze(seed, width, height);
-      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, selectedNode: null, warnings: snapshot.warnings, error: null });
+      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, selectedNode: null, warnings: snapshot.warnings, error: null });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       set({ error: msg });
     }
   },
 
-  reset: () => set({ nodes: [], edges: [], start: null, finish: null, selectedNode: null, warnings: [], error: null }),
+  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], selectedNode: null, warnings: [], error: null }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
