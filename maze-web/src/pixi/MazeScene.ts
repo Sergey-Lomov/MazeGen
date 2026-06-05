@@ -2,6 +2,7 @@ import { Application, Container } from "pixi.js";
 import { MazeTileRenderer } from "./MazeTileRenderer";
 import { TILE_SIZE } from "./constants";
 import { MazeGraphRenderer, NavGraphRenderer } from "./MazeRenderer";
+import { ComponentRenderer } from "./ComponentRenderer";
 import { useMazeStore } from "../store/mazeStore";
 
 const FIT_PADDING = 0.9;
@@ -9,9 +10,11 @@ const FIT_PADDING = 0.9;
 export class MazeScene {
   private app: Application;
   private viewport: Container;
+  private componentOverlay: Container;
   private graphOverlay: Container;
   private navOverlay: Container;
   private tileRenderer: MazeTileRenderer;
+  private componentRenderer: ComponentRenderer;
   private graphRenderer: MazeGraphRenderer;
   private navRenderer: NavGraphRenderer;
 
@@ -24,12 +27,18 @@ export class MazeScene {
   private unsubscribeFit: (() => void) | null = null;
   private unsubscribeOverlay: (() => void) | null = null;
   private unsubscribeNavOverlay: (() => void) | null = null;
+  private unsubscribeComponentOverlay: (() => void) | null = null;
   private unsubscribeMaze: (() => void) | null = null;
 
   constructor(app: Application) {
     this.app = app;
 
     this.viewport = new Container();
+    // componentOverlay sits above viewport tiles but below graph overlays.
+    // Uses same coordinate system as viewport: tile top-left at (x*TILE_SIZE, -y*TILE_SIZE - TILE_SIZE).
+    this.componentOverlay = new Container();
+    this.componentOverlay.visible = useMazeStore.getState().showComponents;
+
     // graphOverlay shares position/scale with viewport.
     // Graph nodes render at (x*TILE_SIZE, -y*TILE_SIZE); tile centers are at (x*TILE_SIZE + TILE_SIZE/2, -y*TILE_SIZE - TILE_SIZE/2).
     // Offset inner container by (TILE_SIZE/2, -TILE_SIZE/2) to align nodes to tile centers.
@@ -48,11 +57,14 @@ export class MazeScene {
     this.navOverlay.addChild(navInner);
 
     this.app.stage.addChild(this.viewport);
+    this.app.stage.addChild(this.componentOverlay);
     this.app.stage.addChild(this.graphOverlay);
     this.app.stage.addChild(this.navOverlay);
 
     this.viewport.x = app.screen.width / 2;
     this.viewport.y = app.screen.height / 2;
+    this.componentOverlay.x = app.screen.width / 2;
+    this.componentOverlay.y = app.screen.height / 2;
     this.graphOverlay.x = app.screen.width / 2;
     this.graphOverlay.y = app.screen.height / 2;
     this.navOverlay.x = app.screen.width / 2;
@@ -61,6 +73,7 @@ export class MazeScene {
     this.viewport.visible = useMazeStore.getState().showMaze;
 
     this.tileRenderer = new MazeTileRenderer(this.viewport);
+    this.componentRenderer = new ComponentRenderer(this.componentOverlay);
     this.graphRenderer = new MazeGraphRenderer(graphInner);
     this.navRenderer = new NavGraphRenderer(navInner);
 
@@ -68,6 +81,7 @@ export class MazeScene {
     this.subscribeToFit();
     this.subscribeToOverlay();
     this.subscribeToNavOverlay();
+    this.subscribeToComponentOverlay();
     this.subscribeToMaze();
   }
 
@@ -87,6 +101,16 @@ export class MazeScene {
       if (state.showNavOverlay !== prev) {
         prev = state.showNavOverlay;
         this.navOverlay.visible = state.showNavOverlay;
+      }
+    });
+  }
+
+  private subscribeToComponentOverlay(): void {
+    let prev = useMazeStore.getState().showComponents;
+    this.unsubscribeComponentOverlay = useMazeStore.subscribe((state) => {
+      if (state.showComponents !== prev) {
+        prev = state.showComponents;
+        this.componentOverlay.visible = state.showComponents;
       }
     });
   }
@@ -126,6 +150,9 @@ export class MazeScene {
     this.viewport.x = screenW / 2 - scale * W / 2;
     this.viewport.y = screenH / 2 + scale * H / 2;
 
+    this.componentOverlay.scale.set(scale);
+    this.componentOverlay.x = this.viewport.x;
+    this.componentOverlay.y = this.viewport.y;
     this.graphOverlay.scale.set(scale);
     this.graphOverlay.x = this.viewport.x;
     this.graphOverlay.y = this.viewport.y;
@@ -151,6 +178,8 @@ export class MazeScene {
       const dy = e.globalY - this.dragStart.y;
       this.viewport.x = this.viewportStart.x + dx;
       this.viewport.y = this.viewportStart.y + dy;
+      this.componentOverlay.x = this.viewportStart.x + dx;
+      this.componentOverlay.y = this.viewportStart.y + dy;
       this.graphOverlay.x = this.viewportStart.x + dx;
       this.graphOverlay.y = this.viewportStart.y + dy;
       this.navOverlay.x = this.viewportStart.x + dx;
@@ -174,6 +203,10 @@ export class MazeScene {
       this.viewport.scale.x *= factor;
       this.viewport.scale.y *= factor;
 
+      this.componentOverlay.x = this.viewport.x;
+      this.componentOverlay.y = this.viewport.y;
+      this.componentOverlay.scale.x = this.viewport.scale.x;
+      this.componentOverlay.scale.y = this.viewport.scale.y;
       this.graphOverlay.x = this.viewport.x;
       this.graphOverlay.y = this.viewport.y;
       this.graphOverlay.scale.x = this.viewport.scale.x;
@@ -190,8 +223,10 @@ export class MazeScene {
     this.unsubscribeFit?.();
     this.unsubscribeOverlay?.();
     this.unsubscribeNavOverlay?.();
+    this.unsubscribeComponentOverlay?.();
     this.unsubscribeMaze?.();
     this.tileRenderer.destroy();
+    this.componentRenderer.destroy();
     this.graphRenderer.destroy();
     this.navRenderer.destroy();
     window.removeEventListener("blur", this.onBlur);

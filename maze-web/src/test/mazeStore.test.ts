@@ -12,6 +12,10 @@ const mockSnapshot = {
   edges: [{ from: 0, to: 1 }],
   start: 0,
   finish: 1,
+  warnings: [],
+  nav_nodes: [],
+  nav_edges: [],
+  components: [],
 };
 
 beforeEach(() => {

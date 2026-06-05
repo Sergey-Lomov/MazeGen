@@ -28,4 +28,5 @@ export interface MazeSnapshot {
   warnings: string[];
   nav_nodes: NavNodeDto[];
   nav_edges: NavEdgeDto[];
+  components: number[][];
 }

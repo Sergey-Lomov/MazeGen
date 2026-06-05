@@ -16,11 +16,12 @@ pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
 
 pub struct MazeAnalysis {
     nav_graph: Option<graph::nav::NavGraph>,
+    scc: Option<graph::scc::ConnectedComponents>,
 }
 
 impl Default for MazeAnalysis {
     fn default() -> Self {
-        Self { nav_graph: None }
+        Self { nav_graph: None, scc: None }
     }
 }
 
@@ -30,6 +31,13 @@ impl MazeAnalysis {
             self.nav_graph = Some(graph::nav::build_nav_graph(graph));
         }
         self.nav_graph.as_ref().unwrap()
+    }
+
+    pub fn scc<'a>(&'a mut self, graph: &Graph) -> &'a graph::scc::ConnectedComponents {
+        if self.scc.is_none() {
+            self.scc = Some(graph::scc::build_scc(graph));
+        }
+        self.scc.as_ref().unwrap()
     }
 }
 

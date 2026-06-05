@@ -36,4 +36,6 @@ pub struct MazeSnapshot {
     pub warnings: Vec<String>,
     pub nav_nodes: Vec<NavNodeDto>,
     pub nav_edges: Vec<NavEdgeDto>,
+    /// Strongly connected components. Each entry is a sorted list of NodeIds.
+    pub components: Vec<Vec<u32>>,
 }

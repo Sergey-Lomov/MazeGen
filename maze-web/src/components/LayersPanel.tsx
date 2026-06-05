@@ -2,6 +2,7 @@ import { useMazeStore } from "../store/mazeStore";
 
 export function LayersPanel() {
   const showMaze = useMazeStore((s) => s.showMaze);
+  const showComponents = useMazeStore((s) => s.showComponents);
   const showGraphOverlay = useMazeStore((s) => s.showGraphOverlay);
   const showNavOverlay = useMazeStore((s) => s.showNavOverlay);
   const setDebugFlag = useMazeStore((s) => s.setDebugFlag);
@@ -16,6 +17,14 @@ export function LayersPanel() {
           onChange={(e) => setDebugFlag("showMaze", e.target.checked)}
         />
         Maze
+      </label>
+      <label style={styles.checkLabel}>
+        <input
+          type="checkbox"
+          checked={showComponents}
+          onChange={(e) => setDebugFlag("showComponents", e.target.checked)}
+        />
+        Components
       </label>
       <label style={styles.checkLabel}>
         <input

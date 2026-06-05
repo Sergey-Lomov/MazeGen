@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     ids::IdGenerator,
-    graph::{Graph, nav::build_nav_graph},
+    graph::{Graph, nav::build_nav_graph, scc::build_scc},
     space::{SquareField, SquarePoint, SquareSize},
     generation::{generate_maze, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, UnreachableFinishCheck, MISSING_START, MISSING_FINISH},
@@ -90,6 +90,11 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
         })
         .collect();
 
-    let snapshot = MazeSnapshot { nodes, edges, start: meta_start, finish: meta_finish, warnings, nav_nodes, nav_edges };
+    let scc = build_scc(&maze.graph);
+    let components: Vec<Vec<u32>> = scc.components.iter()
+        .map(|comp| comp.iter().filter_map(|&id| u32::try_from(id).ok()).collect())
+        .collect();
+
+    let snapshot = MazeSnapshot { nodes, edges, start: meta_start, finish: meta_finish, warnings, nav_nodes, nav_edges, components };
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
 }

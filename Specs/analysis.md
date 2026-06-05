@@ -7,6 +7,7 @@ Cached derived data attached to a `Maze`. Computed lazily on first access and re
 ```rust
 pub struct MazeAnalysis {
     nav_graph: Option<graph::nav::NavGraph>,
+    scc: Option<graph::scc::ConnectedComponents>,
 }
 ```
 
@@ -15,10 +16,11 @@ pub struct MazeAnalysis {
 ```rust
 impl MazeAnalysis {
     pub fn nav_graph(&mut self, graph: &Graph) -> &NavGraph;
+    pub fn scc(&mut self, graph: &Graph) -> &ConnectedComponents;
 }
 ```
 
-- On first call: builds the `NavGraph` via `build_nav_graph(graph)` and stores it.
+- On first call: builds the value and stores it.
 - On subsequent calls: returns the cached value.
 - Takes `&mut self` because it may populate the cache.
 

@@ -1,13 +1,11 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import { TILE_SIZE } from "./constants";
+import { TILE_SIZE, NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
 
 const WALL_THICKNESS = 3;
 const WALL_COLOR = 0xcccccc;
 const FLOOR_COLOR = 0x2a2a2a;
-const START_COLOR = 0x1a5c35;
-const FINISH_COLOR = 0x5c1a28;
 const ONE_WAY_COLOR = 0xffaa00;
 
 interface Pos { x: number; y: number; }
@@ -73,6 +71,7 @@ export class MazeTileRenderer {
   private viewport: Container;
   private tilesContainer: Container;
   private wallsContainer: Container;
+  private markersContainer: Container;
 
   private unsubscribe: (() => void) | null = null;
 
@@ -81,8 +80,10 @@ export class MazeTileRenderer {
 
     this.tilesContainer = new Container();
     this.wallsContainer = new Container();
+    this.markersContainer = new Container();
     this.viewport.addChild(this.tilesContainer);
     this.viewport.addChild(this.wallsContainer);
+    this.viewport.addChild(this.markersContainer);
 
     this.subscribeToStore();
   }
@@ -109,10 +110,13 @@ export class MazeTileRenderer {
   private render(nodes: NodeDto[], edges: EdgeDto[], start: number | null, finish: number | null): void {
     this.tilesContainer.destroy({ children: true });
     this.wallsContainer.destroy({ children: true });
+    this.markersContainer.destroy({ children: true });
     this.tilesContainer = new Container();
     this.wallsContainer = new Container();
+    this.markersContainer = new Container();
     this.viewport.addChild(this.tilesContainer);
     this.viewport.addChild(this.wallsContainer);
+    this.viewport.addChild(this.markersContainer);
 
     if (nodes.length === 0) return;
 
@@ -124,11 +128,8 @@ export class MazeTileRenderer {
     const floors = new Graphics();
     for (const node of nodes) {
       const tl = tileTopLeft(node);
-      const isStart = node.id === start;
-      const isFinish = node.id === finish;
-      const color = isStart ? START_COLOR : isFinish ? FINISH_COLOR : FLOOR_COLOR;
       floors.rect(tl.x, tl.y, TILE_SIZE, TILE_SIZE);
-      floors.fill(color);
+      floors.fill(FLOOR_COLOR);
     }
     this.tilesContainer.addChild(floors);
 
@@ -191,11 +192,26 @@ export class MazeTileRenderer {
 
     this.wallsContainer.addChild(wallsG);
     this.wallsContainer.addChild(oneWayG);
+
+    // Draw start/finish circles over tiles, matching graph node style
+    const markersG = new Graphics();
+    for (const node of nodes) {
+      const tl = tileTopLeft(node);
+      const cx = tl.x + TILE_SIZE / 2;
+      const cy = tl.y + TILE_SIZE / 2;
+      if (node.id === start) {
+        markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_START_COLOR);
+      } else if (node.id === finish) {
+        markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_FINISH_COLOR);
+      }
+    }
+    this.markersContainer.addChild(markersG);
   }
 
   destroy(): void {
     this.unsubscribe?.();
     this.tilesContainer.destroy({ children: true });
     this.wallsContainer.destroy({ children: true });
+    this.markersContainer.destroy({ children: true });
   }
 }

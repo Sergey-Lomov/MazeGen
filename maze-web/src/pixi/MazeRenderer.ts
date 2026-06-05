@@ -1,14 +1,12 @@
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
-import { TILE_SIZE } from "./constants";
+import { TILE_SIZE, NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
 
-export const NODE_RADIUS = 6;
+export { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
 const NODE_COLOR = 0x4a9eff;
 const NODE_HOVER_COLOR = 0xff9f4a;
 const NODE_SELECTED_COLOR = 0xff4a4a;
-const NODE_START_COLOR = 0x44dd88;
-const NODE_FINISH_COLOR = 0xdd4466;
 const EDGE_COLOR = 0x888888;
 const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: 0xffffff });
 
