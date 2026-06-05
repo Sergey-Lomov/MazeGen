@@ -3,17 +3,13 @@ use crate::ids::NodeId;
 use super::Graph;
 
 pub type NavNodeId = usize;
-pub type NavEdgeId = usize;
 
 /// A junction node in the navigation graph. Corresponds to a node in the maze graph
 /// that is not a simple bidirectional corridor node.
 #[derive(Debug, Clone)]
 pub struct NavNode {
-    pub id: NavNodeId,
     /// The maze graph node this nav node represents.
     pub node_id: NodeId,
-    pub outgoing: Vec<NavEdgeId>,
-    pub incoming: Vec<NavEdgeId>,
 }
 
 /// A directed edge in the navigation graph, representing a compressed corridor.
@@ -21,7 +17,6 @@ pub struct NavNode {
 /// path[0] is the source nav node's maze node, path[last] is the target nav node's maze node.
 #[derive(Debug, Clone)]
 pub struct NavEdge {
-    pub id: NavEdgeId,
     pub from: NavNodeId,
     pub to: NavNodeId,
     /// All maze NodeIds along this corridor, inclusive of both endpoints.
@@ -45,22 +40,15 @@ impl NavGraph {
             return id;
         }
         let id = self.nodes.len();
-        self.nodes.push(NavNode { id, node_id, outgoing: Vec::new(), incoming: Vec::new() });
+        self.nodes.push(NavNode { node_id });
         self.node_index.insert(node_id, id);
         id
     }
 
-    fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>) -> NavEdgeId {
-        let id = self.edges.len();
-        self.edges.push(NavEdge { id, from: from_nav, to: to_nav, path });
-        self.nodes[from_nav].outgoing.push(id);
-        self.nodes[to_nav].incoming.push(id);
-        id
+    fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>) {
+        self.edges.push(NavEdge { from: from_nav, to: to_nav, path });
     }
 
-    pub fn nav_node_for(&self, node_id: NodeId) -> Option<NavNodeId> {
-        self.node_index.get(&node_id).copied()
-    }
 }
 
 /// A node is a corridor node if it has exactly 2 outgoing and 2 incoming edges,
@@ -100,15 +88,11 @@ fn walk_corridor(
         visited_corridor.insert(next);
         path.push(next);
         // advance: find the outgoing neighbor of `next` that is not `current`
-        let candidates: Vec<NodeId> = graph
-            .outgoing_neighbors(next)
-            .filter(|&n| n != current)
-            .collect();
-        if candidates.is_empty() {
+        let Some(advance) = graph.outgoing_neighbors(next).filter(|&n| n != current).min() else {
             return (path, next);
-        }
+        };
         current = next;
-        next = candidates[0];
+        next = advance;
     }
 }
 
@@ -153,12 +137,11 @@ fn find_component_start(graph: &Graph, remaining: &HashSet<NodeId>) -> Component
     let mut current = seed;
 
     loop {
-        let next_candidates: Vec<NodeId> = graph.outgoing_neighbors(current).collect();
-        if next_candidates.is_empty() {
+        let next_opt = graph.outgoing_neighbors(current).min();
+        let Some(next) = next_opt else {
             // Dead end with no outgoing — treat as junction
             return ComponentStart::Junction(current);
-        }
-        let next = next_candidates[0];
+        };
 
         if next == seed {
             return ComponentStart::Ring(seed);
@@ -248,17 +231,13 @@ fn build_ring(
         let mut current = first_step;
 
         loop {
-            let next_candidates: Vec<NodeId> = graph
-                .outgoing_neighbors(current)
-                .filter(|&n| n != prev)
-                .collect();
+            let next_opt = graph.outgoing_neighbors(current).filter(|&n| n != prev).min();
 
-            if next_candidates.is_empty() || next_candidates[0] == ring_start {
+            if next_opt.map_or(true, |n| n == ring_start) {
                 path.push(ring_start);
                 break;
             }
-
-            let next = next_candidates[0];
+            let next = next_opt.unwrap();
             remaining.remove(&next);
             path.push(next);
             prev = current;

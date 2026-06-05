@@ -7,10 +7,14 @@ const MASK_ALPHA = 0.45;
 
 // Quantized hue palette: 12 steps of 30°, pre-ordered by golden-angle jumps
 // so consecutive indices are maximally separated on the color wheel.
-// Skips 60° (yellow) and 120° (yellow-green) which look similar to neighbours.
 const HUE_PALETTE = [0, 210, 30, 270, 90, 330, 150, 60, 240, 120, 300, 180];
 
-function hslToRgb(h: number, s: number, l: number): number {
+// Lightness levels per pass over the palette. Each pass uses a different L
+// so that when all 12 hues are exhausted, the next 12 are visually distinct
+// from the first (darker), preventing exact color duplicates.
+const LIGHTNESS_PASSES = [0.65, 0.48, 0.78];
+
+export function hslToRgb(h: number, s: number, l: number): number {
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs((h / 60) % 2 - 1));
   const m = l - c / 2;
@@ -24,17 +28,25 @@ function hslToRgb(h: number, s: number, l: number): number {
   return (Math.round((r + m) * 255) << 16) | (Math.round((g + m) * 255) << 8) | Math.round((b + m) * 255);
 }
 
-function buildPalette(count: number): number[] {
+export function buildPalette(count: number): number[] {
   const S = 0.65;
-  const L = 0.65;
-  const used: number[] = [];
+  const result: number[] = [];
+  // Single array reset at the start of each pass — no need to keep all passes in memory.
+  let usedHues: number[] = [];
+  let currentPass = 0;
 
   for (let i = 0; i < count; i++) {
-    // Pick next hue from palette not too close to any already used
-    let best = HUE_PALETTE[i % HUE_PALETTE.length];
-    let bestDist = 0;
+    const pass = Math.floor(i / HUE_PALETTE.length);
+    if (pass !== currentPass) {
+      usedHues = [];
+      currentPass = pass;
+    }
+    const L = LIGHTNESS_PASSES[pass % LIGHTNESS_PASSES.length];
+
+    let best = HUE_PALETTE[0];
+    let bestDist = -1;
     for (const candidate of HUE_PALETTE) {
-      const minDist = used.reduce((d, u) => {
+      const minDist = usedHues.reduce((d, u) => {
         const diff = Math.abs(candidate - u);
         return Math.min(d, diff, 360 - diff);
       }, 360);
@@ -42,12 +54,13 @@ function buildPalette(count: number): number[] {
         bestDist = minDist;
         best = candidate;
       }
-      if (bestDist >= 30) break;
     }
-    used.push(best);
+
+    usedHues.push(best);
+    result.push(hslToRgb(best, S, L));
   }
 
-  return used.map(h => hslToRgb(h, S, L));
+  return result;
 }
 
 export class ComponentRenderer {

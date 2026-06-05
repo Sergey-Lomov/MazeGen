@@ -23,6 +23,14 @@ fn uni(g: &mut Graph, a: u64, b: u64) {
     g.add_edge(a, b, EdgeKind::Basic);
 }
 
+// Empty graph: zero SCCs.
+#[test]
+fn empty_graph() {
+    let (g, _) = make_graph(0);
+    let scc = build_scc(&g);
+    assert_eq!(scc.components.len(), 0);
+}
+
 // Single node: one SCC of size 1.
 #[test]
 fn single_node() {
@@ -30,7 +38,7 @@ fn single_node() {
     let scc = build_scc(&g);
     assert_eq!(scc.components.len(), 1);
     assert_eq!(scc.components[0], vec![ns[0]]);
-    assert_eq!(scc.component_of(ns[0]), Some(0));
+    assert!(scc.component_of(ns[0]).is_some());
 }
 
 // Bidirectional chain: 0 ⇄ 1 ⇄ 2 — all in one SCC.

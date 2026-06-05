@@ -20,10 +20,7 @@ All other nodes are **junction nodes** and become `NavNode` entries.
 
 ```rust
 pub struct NavNode {
-    pub id: NavNodeId,
     pub node_id: NodeId,   // corresponding maze graph node
-    pub outgoing: Vec<NavEdgeId>,
-    pub incoming: Vec<NavEdgeId>,
 }
 ```
 
@@ -53,11 +50,9 @@ pub struct NavGraph {
     pub nodes: Vec<NavNode>,
     pub edges: Vec<NavEdge>,
 }
-
-impl NavGraph {
-    pub fn nav_node_for(&self, node_id: NodeId) -> Option<NavNodeId>;
-}
 ```
+
+`nav_node_for` has been removed — it was unused. Lookup by maze `NodeId` is not part of the public API.
 
 ## Builder
 
@@ -74,7 +69,7 @@ pub fn build_nav_graph(graph: &Graph) -> NavGraph
       - If the neighbor is a corridor node: walk the corridor until the next junction, consuming all intermediate nodes from `remaining`. Emit one `NavEdge`.
       - If the neighbor is a junction: emit a direct `NavEdge` with `path = [from, to]`.
    c. **Ring component**: pick the start node as the single `NavNode`. Walk both outgoing directions until the path closes, emitting two self-edges.
-3. Determinism is guaranteed by always selecting `remaining.iter().min()` as the component seed.
+3. Determinism is guaranteed by always selecting `remaining.iter().min()` as the component seed, and by always following the minimum-id neighbor at each step of the corridor and ring walks.
 
 ### Corner case: pure ring
 

@@ -355,7 +355,9 @@ export class NavGraphRenderer extends BaseGraphRenderer {
     });
 
     const s = useMazeStore.getState();
-    this.renderNav(s.nodes, s.navNodes, s.navEdges, s.start, s.finish);
+    if (s.nodes.length > 0) {
+      this.renderNav(s.nodes, s.navNodes, s.navEdges, s.start, s.finish);
+    }
   }
 
   private renderNav(

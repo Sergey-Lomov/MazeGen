@@ -18,6 +18,9 @@ export class MazeScene {
   private graphRenderer: MazeGraphRenderer;
   private navRenderer: NavGraphRenderer;
 
+  // All containers that must stay in sync with viewport position/scale.
+  private syncedLayers: Container[] = [];
+
   private isDragging = false;
   private dragStart = { x: 0, y: 0 };
   private viewportStart = { x: 0, y: 0 };
@@ -34,6 +37,7 @@ export class MazeScene {
     this.app = app;
 
     this.viewport = new Container();
+
     // componentOverlay sits above viewport tiles but below graph overlays.
     // Uses same coordinate system as viewport: tile top-left at (x*TILE_SIZE, -y*TILE_SIZE - TILE_SIZE).
     this.componentOverlay = new Container();
@@ -56,19 +60,16 @@ export class MazeScene {
     navInner.y = -TILE_SIZE / 2;
     this.navOverlay.addChild(navInner);
 
-    this.app.stage.addChild(this.viewport);
-    this.app.stage.addChild(this.componentOverlay);
-    this.app.stage.addChild(this.graphOverlay);
-    this.app.stage.addChild(this.navOverlay);
+    this.syncedLayers = [this.componentOverlay, this.graphOverlay, this.navOverlay];
 
-    this.viewport.x = app.screen.width / 2;
-    this.viewport.y = app.screen.height / 2;
-    this.componentOverlay.x = app.screen.width / 2;
-    this.componentOverlay.y = app.screen.height / 2;
-    this.graphOverlay.x = app.screen.width / 2;
-    this.graphOverlay.y = app.screen.height / 2;
-    this.navOverlay.x = app.screen.width / 2;
-    this.navOverlay.y = app.screen.height / 2;
+    this.app.stage.addChild(this.viewport);
+    for (const layer of this.syncedLayers) this.app.stage.addChild(layer);
+
+    const cx = app.screen.width / 2;
+    const cy = app.screen.height / 2;
+    this.viewport.x = cx;
+    this.viewport.y = cy;
+    for (const layer of this.syncedLayers) { layer.x = cx; layer.y = cy; }
 
     this.viewport.visible = useMazeStore.getState().showMaze;
 
@@ -137,6 +138,15 @@ export class MazeScene {
     });
   }
 
+  private syncLayersToViewport(): void {
+    for (const layer of this.syncedLayers) {
+      layer.x = this.viewport.x;
+      layer.y = this.viewport.y;
+      layer.scale.x = this.viewport.scale.x;
+      layer.scale.y = this.viewport.scale.y;
+    }
+  }
+
   private fitMaze(mazeWidth: number, mazeHeight: number): void {
     const W = mazeWidth * TILE_SIZE;
     const H = mazeHeight * TILE_SIZE;
@@ -150,15 +160,7 @@ export class MazeScene {
     this.viewport.x = screenW / 2 - scale * W / 2;
     this.viewport.y = screenH / 2 + scale * H / 2;
 
-    this.componentOverlay.scale.set(scale);
-    this.componentOverlay.x = this.viewport.x;
-    this.componentOverlay.y = this.viewport.y;
-    this.graphOverlay.scale.set(scale);
-    this.graphOverlay.x = this.viewport.x;
-    this.graphOverlay.y = this.viewport.y;
-    this.navOverlay.scale.set(scale);
-    this.navOverlay.x = this.viewport.x;
-    this.navOverlay.y = this.viewport.y;
+    this.syncLayersToViewport();
   }
 
   private setupInteraction(): void {
@@ -178,12 +180,7 @@ export class MazeScene {
       const dy = e.globalY - this.dragStart.y;
       this.viewport.x = this.viewportStart.x + dx;
       this.viewport.y = this.viewportStart.y + dy;
-      this.componentOverlay.x = this.viewportStart.x + dx;
-      this.componentOverlay.y = this.viewportStart.y + dy;
-      this.graphOverlay.x = this.viewportStart.x + dx;
-      this.graphOverlay.y = this.viewportStart.y + dy;
-      this.navOverlay.x = this.viewportStart.x + dx;
-      this.navOverlay.y = this.viewportStart.y + dy;
+      this.syncLayersToViewport();
     });
 
     stage.on("pointerup", () => { this.isDragging = false; });
@@ -202,19 +199,7 @@ export class MazeScene {
       this.viewport.y = mouseY + (this.viewport.y - mouseY) * factor;
       this.viewport.scale.x *= factor;
       this.viewport.scale.y *= factor;
-
-      this.componentOverlay.x = this.viewport.x;
-      this.componentOverlay.y = this.viewport.y;
-      this.componentOverlay.scale.x = this.viewport.scale.x;
-      this.componentOverlay.scale.y = this.viewport.scale.y;
-      this.graphOverlay.x = this.viewport.x;
-      this.graphOverlay.y = this.viewport.y;
-      this.graphOverlay.scale.x = this.viewport.scale.x;
-      this.graphOverlay.scale.y = this.viewport.scale.y;
-      this.navOverlay.x = this.viewport.x;
-      this.navOverlay.y = this.viewport.y;
-      this.navOverlay.scale.x = this.viewport.scale.x;
-      this.navOverlay.scale.y = this.viewport.scale.y;
+      this.syncLayersToViewport();
     };
     this.app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
   }

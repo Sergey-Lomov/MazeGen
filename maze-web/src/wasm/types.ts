@@ -10,7 +10,6 @@ export interface EdgeDto {
 }
 
 export interface NavNodeDto {
-  id: number;
   node_id: number;
 }
 

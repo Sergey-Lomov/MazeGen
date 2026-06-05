@@ -39,7 +39,8 @@
       "mcp__code-index__build_deep_index",
       "Bash(npx vitest *)",
       "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\\\\pixi\\\\NavRenderer.ts\")",
-      "Bash(cargo check *)"
+      "Bash(cargo check *)",
+      "Bash(grep -v \"^.*:.*//\\\\|outgoing_neighbors\\\\|incoming_neighbors\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

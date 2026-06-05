@@ -15,7 +15,6 @@ pub struct EdgeDto {
 
 #[derive(Serialize)]
 pub struct NavNodeDto {
-    pub id: u32,
     pub node_id: u32,
 }
 

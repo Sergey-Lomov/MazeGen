@@ -44,7 +44,7 @@ impl ConnectedComponents {
 pub fn build_scc(graph: &Graph) -> ConnectedComponents
 ```
 
-Uses Tarjan's algorithm (single DFS pass). Node iteration order is sorted by NodeId for determinism.
+Uses Tarjan's algorithm (iterative, single DFS pass via explicit work stack). Recursion is avoided to prevent call-stack overflow on large graphs. Node iteration order is sorted by NodeId for determinism.
 
 ## Caching
 

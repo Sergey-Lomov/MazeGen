@@ -25,7 +25,7 @@ const validSnapshot = {
   start: 0,
   finish: 1,
   warnings: [],
-  nav_nodes: [{ id: 0, node_id: 0 }, { id: 1, node_id: 1 }],
+  nav_nodes: [{ node_id: 0 }, { node_id: 1 }],
   nav_edges: [{ from: 0, to: 1, path: [0, 1] }],
   components: [[0], [1]],
 };

@@ -152,3 +152,39 @@ fn deterministic() {
     }
 }
 
+// Ring determinism: two graphs with same topology but edges inserted in reverse order
+// must produce nav graphs with the same anchor node and equivalent paths.
+#[test]
+fn ring_deterministic_insertion_order() {
+    // Graph A: edges inserted 0→1→2→0
+    let mut g1 = make_graph(3);
+    bi(&mut g1, 0, 1);
+    bi(&mut g1, 1, 2);
+    bi(&mut g1, 2, 0);
+
+    // Graph B: edges inserted 2→1→0→2 (reverse)
+    let mut g2 = make_graph(3);
+    bi(&mut g2, 2, 1);
+    bi(&mut g2, 1, 0);
+    bi(&mut g2, 0, 2);
+
+    let nav1 = build_nav_graph(&g1);
+    let nav2 = build_nav_graph(&g2);
+
+    // Both must produce 1 nav node and 2 self-edges
+    assert_eq!(nav1.nodes.len(), 1);
+    assert_eq!(nav2.nodes.len(), 1);
+    assert_eq!(nav1.edges.len(), 2);
+    assert_eq!(nav2.edges.len(), 2);
+
+    // Anchor must be the same (min-id node = 0)
+    assert_eq!(nav1.nodes[0].node_id, nav2.nodes[0].node_id);
+
+    // Paths must match exactly (same anchor, same min-direction walk)
+    let mut paths1: Vec<Vec<_>> = nav1.edges.iter().map(|e| e.path.clone()).collect();
+    let mut paths2: Vec<Vec<_>> = nav2.edges.iter().map(|e| e.path.clone()).collect();
+    paths1.sort();
+    paths2.sort();
+    assert_eq!(paths1, paths2);
+}
+

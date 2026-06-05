@@ -16,7 +16,6 @@ function isEdgeDto(v: unknown): v is EdgeDto {
 
 function isNavNodeDto(v: unknown): v is NavNodeDto {
   return typeof v === "object" && v !== null &&
-    typeof (v as NavNodeDto).id === "number" &&
     typeof (v as NavNodeDto).node_id === "number";
 }
 

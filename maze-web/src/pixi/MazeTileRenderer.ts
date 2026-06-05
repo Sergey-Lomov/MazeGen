@@ -121,12 +121,14 @@ export class MazeTileRenderer {
     if (nodes.length === 0) return;
 
     const passages = buildPassageMap(nodes, edges);
+    // Single pass: build nodeCoords for wall ownership and nodeById for markers,
+    // while drawing floor tiles.
     const nodeCoords = new Set<string>();
-    for (const n of nodes) nodeCoords.add(`${n.x},${n.y}`);
-
-    // Draw floor tiles
+    const nodeById = new Map<number, NodeDto>();
     const floors = new Graphics();
     for (const node of nodes) {
+      nodeCoords.add(`${node.x},${node.y}`);
+      nodeById.set(node.id, node);
       const tl = tileTopLeft(node);
       floors.rect(tl.x, tl.y, TILE_SIZE, TILE_SIZE);
       floors.fill(FLOOR_COLOR);
@@ -195,15 +197,17 @@ export class MazeTileRenderer {
 
     // Draw start/finish circles over tiles, matching graph node style
     const markersG = new Graphics();
-    for (const node of nodes) {
-      const tl = tileTopLeft(node);
-      const cx = tl.x + TILE_SIZE / 2;
-      const cy = tl.y + TILE_SIZE / 2;
-      if (node.id === start) {
-        markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_START_COLOR);
-      } else if (node.id === finish) {
-        markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_FINISH_COLOR);
-      }
+    const startNode = start !== null ? nodeById.get(start) : undefined;
+    const finishNode = finish !== null ? nodeById.get(finish) : undefined;
+    if (startNode) {
+      const cx = startNode.x * TILE_SIZE + TILE_SIZE / 2;
+      const cy = -startNode.y * TILE_SIZE - TILE_SIZE / 2;
+      markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_START_COLOR);
+    }
+    if (finishNode) {
+      const cx = finishNode.x * TILE_SIZE + TILE_SIZE / 2;
+      const cy = -finishNode.y * TILE_SIZE - TILE_SIZE / 2;
+      markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_FINISH_COLOR);
     }
     this.markersContainer.addChild(markersG);
   }

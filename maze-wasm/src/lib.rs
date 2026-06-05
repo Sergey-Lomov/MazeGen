@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     ids::IdGenerator,
-    graph::{Graph, nav::build_nav_graph, scc::build_scc},
+    graph::Graph,
     space::{SquareField, SquarePoint, SquareSize},
     generation::{generate_maze, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, UnreachableFinishCheck, MISSING_START, MISSING_FINISH},
@@ -45,7 +45,7 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
     strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
     let repair_engine = RepairEngine::new(strategies);
 
-    let (maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
+    let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
     let warnings: Vec<String> = issues.iter().map(|i| i.kind.to_string()).collect();
 
     let nodes: Vec<NodeDto> = maze.graph
@@ -69,13 +69,12 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
     let meta_start = maze.meta.start.and_then(|id| u32::try_from(id).ok());
     let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
 
-    let nav = build_nav_graph(&maze.graph);
+    let nav = maze.analysis.nav_graph(&maze.graph);
 
     let nav_nodes: Vec<NavNodeDto> = nav.nodes.iter()
         .filter_map(|n| {
-            let id = u32::try_from(n.id).ok()?;
             let node_id = u32::try_from(n.node_id).ok()?;
-            Some(NavNodeDto { id, node_id })
+            Some(NavNodeDto { node_id })
         })
         .collect();
 
@@ -90,7 +89,7 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
         })
         .collect();
 
-    let scc = build_scc(&maze.graph);
+    let scc = maze.analysis.scc(&maze.graph);
     let components: Vec<Vec<u32>> = scc.components.iter()
         .map(|comp| comp.iter().filter_map(|&id| u32::try_from(id).ok()).collect())
         .collect();
