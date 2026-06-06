@@ -1,5 +1,5 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeSnapshot } from "./types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, GenerateConfig } from "./types";
 
 function isNodeDto(v: unknown): v is NodeDto {
   return typeof v === "object" && v !== null &&
@@ -51,7 +51,15 @@ function validateSnapshot(raw: unknown): MazeSnapshot {
   return s as unknown as MazeSnapshot;
 }
 
-export function generateMaze(seed: number, width: number, height: number): MazeSnapshot {
-  const raw = getWasm().generate(BigInt(seed), width, height);
+export function getAvailableChecks(): CheckDescriptor[] {
+  return getWasm().available_checks() as CheckDescriptor[];
+}
+
+export function getAvailableStrategies(): StrategyDescriptor[] {
+  return getWasm().available_strategies() as StrategyDescriptor[];
+}
+
+export function generateMaze(seed: number, width: number, height: number, config: GenerateConfig): MazeSnapshot {
+  const raw = getWasm().generate(BigInt(seed), width, height, config);
   return validateSnapshot(raw);
 }

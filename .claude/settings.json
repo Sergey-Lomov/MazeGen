@@ -44,7 +44,14 @@
       "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\quality_control\\\\checks\\\\missing_start.rs\")",
       "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\quality_control\\\\checks\\\\missing_finish.rs\")",
       "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\repair\\\\strategies\\\\create_start.rs\")",
-      "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\repair\\\\strategies\\\\create_finish.rs\")"
+      "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\repair\\\\strategies\\\\create_finish.rs\")",
+      "Bash(npx playwright *)",
+      "Bash(where chromium *)",
+      "Bash(where chrome *)",
+      "Bash(where \"Google Chrome\")",
+      "Read(//c/Program Files/Google/Chrome/Application/**)",
+      "Read(//c/Program Files \\(x86\\)/Google/Chrome/**)",
+      "Bash(node -e ' *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

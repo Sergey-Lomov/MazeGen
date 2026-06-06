@@ -31,7 +31,8 @@ beforeEach(() => {
   s.height = 10;
   s.warnings = [];
   s.error = null;
-  vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
   (s.setSeed as ReturnType<typeof vi.fn>).mockReset();
   (s.setWidth as ReturnType<typeof vi.fn>).mockReset();
   (s.setHeight as ReturnType<typeof vi.fn>).mockReset();
@@ -79,7 +80,8 @@ describe("ControlPanel", () => {
 
   it("shows error message when error set", () => {
     getState().error = "WASM error";
-    vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(getState()));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(getState()));
     render(<ControlPanel />);
     expect(screen.getByText("WASM error")).toBeInTheDocument();
   });

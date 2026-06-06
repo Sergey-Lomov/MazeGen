@@ -29,3 +29,18 @@ export interface MazeSnapshot {
   nav_edges: NavEdgeDto[];
   components: number[][];
 }
+
+export interface CheckDescriptor {
+  id: string;
+  issue_kinds: string[];
+}
+
+export interface StrategyDescriptor {
+  id: string;
+  handles: string;
+}
+
+export interface GenerateConfig {
+  checks: string[];
+  strategies: Record<string, string>;
+}

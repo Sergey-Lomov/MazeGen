@@ -55,7 +55,7 @@ impl<F: Field> RepairEngine<F> {
 
 ## Built-in Strategies
 
-### CreateEndpointsStrategy
+### RandomEndpointsStrategy
 
 Handles `MISSING_ENDPOINTS`.
 
@@ -124,4 +124,4 @@ A `build_maze` call is fully deterministic if:
 2. The same `seed` is used.
 3. The same checks and strategies are registered in the same order.
 
-`CreateEndpointsStrategy` sorts candidate lists before sampling, making results independent of node insertion order. `FarthestEndpointsStrategy` breaks distance ties by minimum `node_id` for determinism.
+`RandomEndpointsStrategy` sorts candidate lists before sampling, making results independent of node insertion order. `FarthestEndpointsStrategy` breaks distance ties by minimum `node_id` for determinism.

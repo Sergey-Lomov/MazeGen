@@ -19,13 +19,16 @@ function getState() {
   return (useMazeStore as unknown as { __state: Record<string, unknown> }).__state;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockImpl = (fn: any) => (useMazeStore as any).mockImplementation(fn);
+
 beforeEach(() => {
   const s = getState();
   s.showNodeIds = false;
   s.showCoords = false;
   s.nodes = [];
   s.selectedNode = null;
-  vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
+  mockImpl((fn: (s: unknown) => unknown) => fn(s));
   (s.setDebugFlag as ReturnType<typeof vi.fn>).mockReset();
 });
 
@@ -38,14 +41,14 @@ describe("DebugPanel", () => {
 
   it("Node IDs checkbox reflects showNodeIds", () => {
     getState().showNodeIds = true;
-    vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(getState()));
+    mockImpl((fn: (s: unknown) => unknown) => fn(getState()));
     render(<DebugPanel />);
     expect(screen.getByLabelText("Node IDs")).toBeChecked();
   });
 
   it("Coordinates checkbox reflects showCoords", () => {
     getState().showCoords = true;
-    vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(getState()));
+    mockImpl((fn: (s: unknown) => unknown) => fn(getState()));
     render(<DebugPanel />);
     expect(screen.getByLabelText("Coordinates")).toBeChecked();
   });
@@ -65,7 +68,7 @@ describe("DebugPanel", () => {
   it("shows selected node info when selectedNode set", () => {
     getState().nodes = [{ id: 3, x: 2, y: 5 }];
     getState().selectedNode = 3;
-    vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(getState()));
+    mockImpl((fn: (s: unknown) => unknown) => fn(getState()));
     render(<DebugPanel />);
     expect(screen.getByText("ID: 3")).toBeInTheDocument();
     expect(screen.getByText("x: 2, y: 5")).toBeInTheDocument();
@@ -79,7 +82,7 @@ describe("DebugPanel", () => {
   it("hides node info when selected id not in nodes", () => {
     getState().nodes = [{ id: 1, x: 0, y: 0 }];
     getState().selectedNode = 99;
-    vi.mocked(useMazeStore).mockImplementation((fn: (s: unknown) => unknown) => fn(getState()));
+    mockImpl((fn: (s: unknown) => unknown) => fn(getState()));
     render(<DebugPanel />);
     expect(screen.queryByText(/ID:/)).not.toBeInTheDocument();
   });

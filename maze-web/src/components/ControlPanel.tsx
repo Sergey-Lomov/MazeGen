@@ -2,9 +2,11 @@ import { useMazeStore } from "../store/mazeStore";
 
 interface Props {
   disabled?: boolean;
+  onSettingsToggle?: () => void;
+  settingsOpen?: boolean;
 }
 
-export function ControlPanel({ disabled = false }: Props) {
+export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen = false }: Props) {
   const seed = useMazeStore((s) => s.seed);
   const width = useMazeStore((s) => s.width);
   const height = useMazeStore((s) => s.height);
@@ -52,6 +54,7 @@ export function ControlPanel({ disabled = false }: Props) {
       </label>
       <button style={{ ...styles.btn, ...(disabled ? styles.btnDisabled : {}) }} onClick={generate} disabled={disabled}>Generate</button>
       <button style={{ ...styles.btn, ...styles.btnSecondary, ...(disabled ? styles.btnDisabled : {}) }} onClick={reset} disabled={disabled}>Reset</button>
+      <button style={{ ...styles.btn, ...styles.btnSettings, ...(settingsOpen ? styles.btnSettingsActive : {}) }} onClick={onSettingsToggle}>Settings</button>
       {warnings.length > 0 && (
         <div style={styles.warning}>
           Issues: {warnings.join(", ")}
@@ -90,6 +93,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
   },
   btnSecondary: { background: "#555" },
+  btnSettings: { background: "#444" },
+  btnSettingsActive: { background: "#2a5080", outline: "1px solid #3a6ea8" },
   btnDisabled: { opacity: 0.4, cursor: "not-allowed" },
   warning: { fontSize: 11, color: "#ffaa44", background: "#2a2010", padding: "4px 6px", borderRadius: 3 },
   error: { fontSize: 11, color: "#ff6b6b", background: "#2a1a1a", padding: "4px 6px", borderRadius: 3 },

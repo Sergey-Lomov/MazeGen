@@ -7,7 +7,7 @@ use maze_core::space::{SquareField, SquarePoint, SquareSize};
 use maze_core::quality_control::{Issue, MISSING_ENDPOINTS};
 use maze_core::repair::{
     RepairEngine, RepairResult, RepairStrategy,
-    CreateEndpointsStrategy, FarthestEndpointsStrategy,
+    RandomEndpointsStrategy, FarthestEndpointsStrategy,
 };
 
 fn make_maze(n_cols: usize, n_rows: usize) -> Maze<SquareField> {
@@ -34,14 +34,14 @@ fn make_rng() -> SmallRng {
     SmallRng::seed_from_u64(42)
 }
 
-// --- CreateEndpointsStrategy ---
+// --- RandomEndpointsStrategy ---
 
 #[test]
-fn create_endpoints_sets_both_when_neither_set() {
+fn random_endpoints_sets_both_when_neither_set() {
     let (mut maze, _) = make_connected_maze(3);
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
-    let result = CreateEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
+    let result = RandomEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
     assert!(matches!(result, RepairResult::Fixed));
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
@@ -49,12 +49,12 @@ fn create_endpoints_sets_both_when_neither_set() {
 }
 
 #[test]
-fn create_endpoints_sets_finish_when_only_start_set() {
+fn random_endpoints_sets_finish_when_only_start_set() {
     let (mut maze, ordered) = make_connected_maze(3);
     maze.meta.start = Some(ordered[0]);
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
-    let result = CreateEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
+    let result = RandomEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
     assert!(matches!(result, RepairResult::Fixed));
     assert_eq!(maze.meta.start, Some(ordered[0]));
     assert!(maze.meta.finish.is_some());
@@ -62,51 +62,51 @@ fn create_endpoints_sets_finish_when_only_start_set() {
 }
 
 #[test]
-fn create_endpoints_sets_start_reachable_to_finish() {
+fn random_endpoints_sets_start_reachable_to_finish() {
     let (mut maze, ordered) = make_connected_maze(3);
     maze.meta.finish = Some(ordered[2]);
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
-    let result = CreateEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
+    let result = RandomEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
     assert!(matches!(result, RepairResult::Fixed));
     assert!(maze.meta.start.is_some());
     assert_ne!(maze.meta.start, maze.meta.finish);
 }
 
 #[test]
-fn create_endpoints_idempotent_when_both_set() {
+fn random_endpoints_idempotent_when_both_set() {
     let (mut maze, ordered) = make_connected_maze(3);
     maze.meta.start = Some(ordered[0]);
     maze.meta.finish = Some(ordered[2]);
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
-    let result = CreateEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
+    let result = RandomEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
     assert!(matches!(result, RepairResult::Fixed));
     assert_eq!(maze.meta.start, Some(ordered[0]));
     assert_eq!(maze.meta.finish, Some(ordered[2]));
 }
 
 #[test]
-fn create_endpoints_empty_graph_returns_failed() {
+fn random_endpoints_empty_graph_returns_failed() {
     let mut ids = IdGenerator::new();
     let field = SquareField::new(SquareSize { width: 1, height: 1 }, &mut ids);
     let graph = Graph::new();
     let mut maze = Maze::new(field, graph);
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
-    let result = CreateEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
+    let result = RandomEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
     assert!(matches!(result, RepairResult::Failed));
 }
 
 #[test]
-fn create_endpoints_isolated_start_returns_failed() {
+fn random_endpoints_isolated_start_returns_failed() {
     let mut maze = make_maze(3, 1);
     let start = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
     maze.meta.start = Some(start);
     // no edges — start is isolated
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
-    let result = CreateEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
+    let result = RandomEndpointsStrategy.apply(&issue, &mut maze, &mut rng);
     assert!(matches!(result, RepairResult::Failed));
     assert!(maze.meta.finish.is_none());
 }
@@ -223,7 +223,7 @@ fn repair_engine_routes_by_kind() {
     let (mut maze, _) = make_connected_maze(3);
     let mut rng = make_rng();
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
-    strategies.insert(MISSING_ENDPOINTS, Box::new(CreateEndpointsStrategy));
+    strategies.insert(MISSING_ENDPOINTS, Box::new(RandomEndpointsStrategy));
     let engine = RepairEngine::new(strategies);
     let issues = vec![Issue::new(MISSING_ENDPOINTS)];
     let results = engine.run(&issues, &mut maze, &mut rng);

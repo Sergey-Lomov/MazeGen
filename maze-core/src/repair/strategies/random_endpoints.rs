@@ -5,9 +5,9 @@ use crate::quality_control::Issue;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
 
-pub struct CreateEndpointsStrategy;
+pub struct RandomEndpointsStrategy;
 
-impl<F: Field> RepairStrategy<F> for CreateEndpointsStrategy {
+impl<F: Field> RepairStrategy<F> for RandomEndpointsStrategy {
     fn apply(&self, _issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
             return RepairResult::Fixed;

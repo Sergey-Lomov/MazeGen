@@ -3,6 +3,8 @@ import { useMazeStore } from "../store/mazeStore";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
+  getAvailableChecks: vi.fn(() => []),
+  getAvailableStrategies: vi.fn(() => []),
 }));
 
 import { generateMaze } from "../wasm/mazeService";
@@ -72,11 +74,11 @@ describe("mazeStore.generate", () => {
     expect(s.selectedNode).toBeNull();
   });
 
-  it("calls generateMaze with current seed/width/height", () => {
+  it("calls generateMaze with current seed/width/height and config", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
-    useMazeStore.setState({ seed: 7, width: 3, height: 4 });
+    useMazeStore.setState({ seed: 7, width: 3, height: 4, selectedChecks: [], selectedStrategies: {} });
     useMazeStore.getState().generate();
-    expect(generateMaze).toHaveBeenCalledWith(7, 3, 4);
+    expect(generateMaze).toHaveBeenCalledWith(7, 3, 4, { checks: [], strategies: {} });
   });
 
   it("stores error string on Error throw", () => {

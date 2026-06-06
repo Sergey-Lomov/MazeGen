@@ -4,11 +4,19 @@ import { MazeScene } from "./pixi/MazeScene";
 import { ControlPanel } from "./components/ControlPanel";
 import { LayersPanel } from "./components/LayersPanel";
 import { DebugPanel } from "./components/DebugPanel";
+import { QualityControlPanel } from "./components/QualityControlPanel";
+import { useMazeStore } from "./store/mazeStore";
 
 export function App() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<MazeScene | null>(null);
   const [ready, setReady] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const loadRegistry = useMazeStore((s) => s.loadRegistry);
+
+  useEffect(() => {
+    loadRegistry();
+  }, [loadRegistry]);
 
   useEffect(() => {
     if (!canvasRef.current || sceneRef.current) return;
@@ -42,10 +50,13 @@ export function App() {
   return (
     <div style={styles.root}>
       <div style={styles.sidebar}>
-        <ControlPanel disabled={!ready} />
+        <ControlPanel disabled={!ready} onSettingsToggle={() => setSettingsOpen((v) => !v)} settingsOpen={settingsOpen} />
         <LayersPanel />
         <DebugPanel />
         {!ready && <div style={styles.loading}>Loading…</div>}
+      </div>
+      <div style={{ ...styles.settingsPanel, width: settingsOpen ? 480 : 0 }}>
+        <QualityControlPanel />
       </div>
       <div ref={canvasRef} style={styles.canvas} />
     </div>
@@ -66,6 +77,11 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     borderRight: "1px solid #333",
     overflowY: "auto",
+  },
+  settingsPanel: {
+    overflow: "hidden",
+    transition: "width 0.25s ease",
+    flexShrink: 0,
   },
   canvas: {
     flex: 1,
