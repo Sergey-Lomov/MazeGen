@@ -16,16 +16,48 @@ pub enum RepairResult {
 - `Fixed` — strategy resolved the issue (or the issue was already absent; see idempotency below).
 - `Failed` — the strategy cannot fix this issue under current conditions and must not be called again for this issue in the current pipeline run.
 
+### Strategy Parameters
+
+```rust
+pub struct StrategyParam {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub kind: StrategyParamKind,
+}
+
+pub enum StrategyParamKind {
+    Float { default: f64, min: f64, max: f64 },
+    Bool { default: bool },
+    Enum { options: &'static [&'static str], default: &'static str },
+}
+
+pub enum StrategyParamValue {
+    Float(f64),
+    Bool(bool),
+    Enum(String),
+}
+
+pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
+```
+
+`build_params(descriptors, overrides)` builds a `StrategyParams` map from a descriptor slice and an optional `HashMap<String, String>` of raw string overrides:
+- Float: parsed with `str::parse::<f64>`, clamped to `[min, max]`; NaN/infinite/unparseable → default.
+- Bool: `"true"` / `"1"` → `true`, `"false"` / `"0"` → `false`; anything else → default.
+- Enum: accepted only if the value is in `options`; otherwise → default.
+- Keys in `overrides` that don't match any descriptor are ignored.
+
 ### RepairStrategy trait
 
 ```rust
 pub trait RepairStrategy<F: Field> {
-    fn apply(&self, issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore) -> RepairResult;
+    fn params(&self) -> &'static [StrategyParam] { &[] }
+    fn apply(&self, issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, params: &StrategyParams) -> RepairResult;
 }
 ```
 
+- `params()` returns the descriptor slice for this strategy's configurable parameters. Default impl returns empty slice.
 - Receives `rng` from the caller — must not create its own RNG instances.
-- Must be deterministic: given the same `maze` state and `rng` state, `apply` must produce the same result.
+- Must be deterministic: given the same `maze` state, `rng` state, and `params`, `apply` must produce the same result.
 - Must not depend on external or global state.
 - May read `maze.analysis` but must not write to it.
 - **Idempotency**: if the relevant meta field is already set, return `Fixed` immediately without modifying state or consuming `rng`. This ensures safe re-invocation.
@@ -35,10 +67,14 @@ pub trait RepairStrategy<F: Field> {
 ```rust
 pub struct RepairEngine<F: Field> {
     strategies: HashMap<IssueKind, Box<dyn RepairStrategy<F>>>,
+    param_overrides: HashMap<IssueKind, HashMap<String, String>>,
 }
 
 impl<F: Field> RepairEngine<F> {
-    pub fn new(strategies: HashMap<IssueKind, Box<dyn RepairStrategy<F>>>) -> Self;
+    pub fn new(
+        strategies: HashMap<IssueKind, Box<dyn RepairStrategy<F>>>,
+        param_overrides: HashMap<IssueKind, HashMap<String, String>>,
+    ) -> Self;
     pub fn run(
         &self,
         issues: &[Issue],
@@ -48,7 +84,8 @@ impl<F: Field> RepairEngine<F> {
 }
 ```
 
-- For each issue: looks up strategy by `issue.kind`.
+- `param_overrides` is keyed by `IssueKind` (same key space as `strategies`).
+- For each issue: looks up strategy by `issue.kind`, calls `build_params(strategy.params(), overrides)`, then calls `apply`.
 - If no strategy found: issue is skipped (not included in results). The pipeline detects this via the progress fingerprint guard.
 - Returns results only for issues that had a matching strategy, in the same order as the input slice.
 - One `IssueKind` maps to exactly one strategy. Multiple issues of the same kind are not expected by the engine (the pipeline deduplicates before calling).
@@ -57,7 +94,7 @@ impl<F: Field> RepairEngine<F> {
 
 ### RandomEndpointsStrategy
 
-Handles `MISSING_ENDPOINTS`.
+Handles `MISSING_ENDPOINTS`. No configurable parameters.
 
 - If both `maze.meta.start` and `maze.meta.finish` are `Some`: returns `Fixed` immediately (idempotency guard).
 - If `maze.meta.start.is_none()`:
@@ -69,15 +106,41 @@ Handles `MISSING_ENDPOINTS`.
 
 ### FarthestEndpointsStrategy
 
-Handles `MISSING_ENDPOINTS`. Places start and finish at maximally distant nav-graph nodes (distance measured in tile count — edge weight = `path.len() - 1`).
+Handles `MISSING_ENDPOINTS`. No configurable parameters. Places start and finish at maximally distant nav-graph nodes (distance measured in tile count — edge weight = `path.len() - 1`).
 
 - If both `maze.meta.start` and `maze.meta.finish` are `Some`: returns `Fixed` immediately.
 - Empty nav graph: returns `Failed`.
-- **Neither set**: picks a random nav node via `rng`, runs Dijkstra from it, takes the farthest node as `start`. Then runs Dijkstra from `start`, takes the farthest node as `finish`.
+- **Neither set**: picks a random nav node via `rng`. Runs reverse Dijkstra (incoming edges) from that node to find the node farthest *upstream* — this becomes `start` (landing in a source SCC). Then runs forward Dijkstra from `start` to find the farthest reachable node — this becomes `finish`.
 - **Only start set**: runs Dijkstra from `start`'s nav node, takes the farthest node as `finish`.
 - **Only finish set**: runs reverse Dijkstra (traversing incoming edges) from `finish`'s nav node, takes the farthest node as `start`. This finds the node with the longest path that can actually reach `finish`, which is correct for one-way graphs.
 - If farthest node equals the source (isolated nav node or no reachable peers in the same component): returns `Failed`.
 - Disconnected nav-graph: Dijkstra only reaches nodes in the same connected component as the source. Unreachable nodes (distance `usize::MAX`) are excluded from selection, so start and finish always end up in the same component.
+
+### ScoredEndpointsStrategy
+
+Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted score over all reachable (start → finish) paths in the nav graph.
+
+**Parameters:**
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `path_weight` | Float | 1.0 | [0, 100] | Weight applied to path tile count |
+| `junction_weight` | Float | 3.0 | [0, 100] | Weight applied to number of junction nav nodes on path |
+| `oneway_weight` | Float | 5.0 | [0, 100] | Weight applied to number of one-way nav edges on path |
+
+Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight`
+
+- Junction: nav node with ≥ 3 distinct neighbors (union of incoming and outgoing).
+- One-way edge: nav edge `(u → v)` where no reverse edge `(v → u)` exists.
+- Path cost (for Dijkstra): edge weight = `path.len() - 1` (tile count).
+
+Behavior per case:
+- Both set: returns `Fixed` immediately.
+- Empty nav graph: returns `Failed`.
+- **Neither set**: finds the `(start, finish)` pair with the highest score across all nav node pairs. Runs Dijkstra for each candidate start.
+- **Only start set**: fixes start, searches for best finish.
+- **Only finish set**: fixes finish, searches for best start.
+- No reachable path found: returns `Failed`.
 
 ## Pipeline
 
@@ -123,5 +186,6 @@ A `build_maze` call is fully deterministic if:
 1. The same graph structure is provided.
 2. The same `seed` is used.
 3. The same checks and strategies are registered in the same order.
+4. The same `param_overrides` are provided.
 
 `RandomEndpointsStrategy` sorts candidate lists before sampling, making results independent of node insertion order. `FarthestEndpointsStrategy` breaks distance ties by minimum `node_id` for determinism.

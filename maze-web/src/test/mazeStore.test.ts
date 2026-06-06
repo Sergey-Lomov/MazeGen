@@ -7,7 +7,7 @@ vi.mock("../wasm/mazeService", () => ({
   getAvailableStrategies: vi.fn(() => []),
 }));
 
-import { generateMaze } from "../wasm/mazeService";
+import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 
 const mockSnapshot = {
   nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }],
@@ -197,6 +197,51 @@ describe("mazeStore.selectNode", () => {
     useMazeStore.setState({ selectedNode: 3 });
     useMazeStore.getState().selectNode(null);
     expect(useMazeStore.getState().selectedNode).toBeNull();
+  });
+});
+
+describe("mazeStore.loadRegistry", () => {
+  it("stores available checks and strategies", () => {
+    const checks = [{ id: "missing_endpoints", issue_kinds: ["missing_endpoints"] }];
+    const strategies = [{ id: "farthest_endpoints", handles: "missing_endpoints", params: [] }];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
+    useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().availableChecks).toEqual(checks);
+    expect(useMazeStore.getState().availableStrategies).toEqual(strategies);
+  });
+
+  it("auto-selects all checks", () => {
+    const checks = [
+      { id: "check_a", issue_kinds: ["kind_a"] },
+      { id: "check_b", issue_kinds: ["kind_b"] },
+    ];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue([]);
+    useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().selectedChecks).toEqual(["check_a", "check_b"]);
+  });
+
+  it("auto-selects first matching strategy per issue kind", () => {
+    const checks = [{ id: "check_a", issue_kinds: ["kind_a"] }];
+    const strategies = [
+      { id: "strategy_first", handles: "kind_a", params: [] },
+      { id: "strategy_second", handles: "kind_a", params: [] },
+    ];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
+    useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().selectedStrategies["kind_a"]).toBe("strategy_first");
+  });
+
+  it("leaves issue kind without strategy unselected", () => {
+    const checks = [{ id: "check_a", issue_kinds: ["kind_a", "kind_b"] }];
+    const strategies = [{ id: "strategy_a", handles: "kind_a", params: [] }];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
+    useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().selectedStrategies["kind_a"]).toBe("strategy_a");
+    expect(useMazeStore.getState().selectedStrategies["kind_b"]).toBeUndefined();
   });
 });
 
