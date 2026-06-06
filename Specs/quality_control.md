@@ -15,8 +15,7 @@ String identifier for a problem type. Always define as a named constant — neve
 Built-in constants:
 
 ```rust
-pub const MISSING_START: IssueKind = "missing_start";
-pub const MISSING_FINISH: IssueKind = "missing_finish";
+pub const MISSING_ENDPOINTS: IssueKind = "missing_endpoints";
 pub const UNREACHABLE_FINISH: IssueKind = "unreachable_finish";
 ```
 
@@ -66,26 +65,22 @@ impl<F: Field> QualityControlEngine<F> {
 
 ## Built-in Checks
 
-### MissingStartCheck
+### MissingEndpointsCheck
 
-Produces `Issue::new(MISSING_START)` if `maze.meta.start.is_none()`.
-
-### MissingFinishCheck
-
-Produces `Issue::new(MISSING_FINISH)` if `maze.meta.finish.is_none()`.
+Produces `Issue::new(MISSING_ENDPOINTS)` if either `maze.meta.start` or `maze.meta.finish` is `None`.
 
 ### UnreachableFinishCheck
 
 Produces `Issue::new(UNREACHABLE_FINISH)` if both `maze.meta.start` and `maze.meta.finish` are `Some` but `finish` is not reachable from `start` via directed graph traversal (`graph.reachable_from(start)`).
 
-Skips the check silently if either `start` or `finish` is `None` — those cases are covered by `MissingStartCheck` and `MissingFinishCheck`.
+Skips the check silently if either `start` or `finish` is `None` — those cases are covered by `MissingEndpointsCheck`.
 
 ## Usage Example
 
 ```rust
 let engine = QualityControlEngine::new(vec![
-    Box::new(MissingStartCheck),
-    Box::new(MissingFinishCheck),
+    Box::new(MissingEndpointsCheck),
+    Box::new(UnreachableFinishCheck),
 ]);
 let issues = engine.run(&maze);
 ```

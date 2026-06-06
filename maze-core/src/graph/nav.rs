@@ -26,13 +26,21 @@ pub struct NavEdge {
 #[derive(Debug, Clone)]
 pub struct NavGraph {
     pub nodes: Vec<NavNode>,
-    pub edges: Vec<NavEdge>,
+    edges: Vec<NavEdge>,
     node_index: HashMap<NodeId, NavNodeId>,
+    outgoing: Vec<Vec<usize>>,
+    incoming: Vec<Vec<usize>>,
 }
 
 impl NavGraph {
     fn new() -> Self {
-        Self { nodes: Vec::new(), edges: Vec::new(), node_index: HashMap::new() }
+        Self {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            node_index: HashMap::new(),
+            outgoing: Vec::new(),
+            incoming: Vec::new(),
+        }
     }
 
     fn add_node(&mut self, node_id: NodeId) -> NavNodeId {
@@ -42,13 +50,35 @@ impl NavGraph {
         let id = self.nodes.len();
         self.nodes.push(NavNode { node_id });
         self.node_index.insert(node_id, id);
+        self.outgoing.push(Vec::new());
+        self.incoming.push(Vec::new());
         id
     }
 
     fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>) {
+        let edge_idx = self.edges.len();
         self.edges.push(NavEdge { from: from_nav, to: to_nav, path });
+        self.outgoing[from_nav].push(edge_idx);
+        self.incoming[to_nav].push(edge_idx);
     }
 
+    pub fn nav_node_for(&self, node_id: NodeId) -> Option<NavNodeId> {
+        self.node_index.get(&node_id).copied()
+    }
+
+    pub fn edges(&self) -> impl Iterator<Item = &NavEdge> {
+        self.edges.iter()
+    }
+
+    /// Panics if `node` is not a valid NavNodeId for this graph.
+    pub fn outgoing_edges(&self, node: NavNodeId) -> impl Iterator<Item = &NavEdge> {
+        self.outgoing[node].iter().map(|&i| &self.edges[i])
+    }
+
+    /// Panics if `node` is not a valid NavNodeId for this graph.
+    pub fn incoming_edges(&self, node: NavNodeId) -> impl Iterator<Item = &NavEdge> {
+        self.incoming[node].iter().map(|&i| &self.edges[i])
+    }
 }
 
 /// A node is a corridor node if it has exactly 2 outgoing and 2 incoming edges,

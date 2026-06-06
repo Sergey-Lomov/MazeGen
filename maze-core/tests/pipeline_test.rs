@@ -4,17 +4,16 @@ use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Field};
 use maze_core::space::{SquareField, SquarePoint, SquareSize};
 use maze_core::generation::{generate_maze, pipeline::build_maze};
-use maze_core::quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, MISSING_START, MISSING_FINISH};
-use maze_core::repair::{RepairEngine, RepairStrategy, CreateStartStrategy, CreateFinishStrategy};
+use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
+use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy};
 
 fn make_engines() -> (QualityControlEngine<SquareField>, RepairEngine<SquareField>) {
     let qc = QualityControlEngine::new(vec![
-        Box::new(MissingStartCheck),
-        Box::new(MissingFinishCheck),
+        Box::new(MissingEndpointsCheck),
+        Box::new(UnreachableFinishCheck),
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
-    strategies.insert(MISSING_START, Box::new(CreateStartStrategy));
-    strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
+    strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
     let repair = RepairEngine::new(strategies);
     (qc, repair)
 }
@@ -58,10 +57,7 @@ fn pipeline_deterministic() {
 #[test]
 fn pipeline_warns_when_no_strategy_for_issue() {
     let (field, graph) = make_generated_graph(1);
-    let qc = QualityControlEngine::new(vec![
-        Box::new(MissingStartCheck),
-        Box::new(MissingFinishCheck),
-    ]);
+    let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck)]);
     let repair: RepairEngine<SquareField> = RepairEngine::new(HashMap::new());
     let (_, warnings) = build_maze(field, graph, 1, qc, repair);
     assert!(!warnings.is_empty());
@@ -82,13 +78,9 @@ fn pipeline_warns_when_strategy_always_fails() {
     }
 
     let (field, graph) = make_generated_graph(1);
-    let qc = QualityControlEngine::new(vec![
-        Box::new(MissingStartCheck),
-        Box::new(MissingFinishCheck),
-    ]);
+    let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck)]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
-    strategies.insert(MISSING_START, Box::new(AlwaysFail));
-    strategies.insert(MISSING_FINISH, Box::new(AlwaysFail));
+    strategies.insert(MISSING_ENDPOINTS, Box::new(AlwaysFail));
     let repair = RepairEngine::new(strategies);
     let (_, warnings) = build_maze(field, graph, 1, qc, repair);
     assert!(!warnings.is_empty());
@@ -109,20 +101,21 @@ fn pipeline_deduplicates_issues_from_duplicate_checks() {
     impl RepairStrategy<SquareField> for CountingStrategy {
         fn apply(&self, _: &Issue, maze: &mut Maze<SquareField>, _: &mut dyn RngCore) -> RepairResult {
             self.count.fetch_add(1, Ordering::SeqCst);
-            maze.meta.start = maze.graph.nodes().next().map(|n| n.id);
+            let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
+            nodes.sort_unstable();
+            maze.meta.start = nodes.first().copied();
+            maze.meta.finish = nodes.last().copied();
             RepairResult::Fixed
         }
     }
 
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![
-        Box::new(MissingStartCheck),
-        Box::new(MissingStartCheck),
-        Box::new(MissingFinishCheck),
+        Box::new(MissingEndpointsCheck),
+        Box::new(MissingEndpointsCheck),
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
-    strategies.insert(MISSING_START, Box::new(CountingStrategy { count: Arc::clone(&call_count) }));
-    strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
+    strategies.insert(MISSING_ENDPOINTS, Box::new(CountingStrategy { count: Arc::clone(&call_count) }));
     let repair = RepairEngine::new(strategies);
 
     let (_, warnings) = build_maze(field, graph, 1, qc, repair);

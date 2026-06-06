@@ -1,7 +1,5 @@
-pub mod missing_start;
-pub mod missing_finish;
+pub mod missing_endpoints;
 pub mod unreachable_finish;
 
-pub use missing_start::MissingStartCheck;
-pub use missing_finish::MissingFinishCheck;
+pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;

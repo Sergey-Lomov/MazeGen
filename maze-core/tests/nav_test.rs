@@ -37,14 +37,14 @@ fn linear_corridor_bidirectional() {
     let nav = build_nav_graph(&g);
 
     assert_eq!(nav.nodes.len(), 2, "expected 2 nav nodes (endpoints only)");
-    assert_eq!(nav.edges.len(), 2, "expected 2 nav edges (forward + backward)");
+    assert_eq!(nav.edges().count(), 2, "expected 2 nav edges (forward + backward)");
 
-    for e in &nav.edges {
+    for e in nav.edges() {
         assert_eq!(e.path.len(), 4, "each corridor path spans all 4 nodes");
     }
 
     // One path is the reverse of the other
-    let mut paths: Vec<Vec<_>> = nav.edges.iter().map(|e| e.path.clone()).collect();
+    let mut paths: Vec<Vec<_>> = nav.edges().map(|e| e.path.clone()).collect();
     paths.sort();
     assert_eq!(paths[0], paths[1].iter().copied().rev().collect::<Vec<_>>());
 }
@@ -58,7 +58,7 @@ fn isolated_single_node() {
 
     let nav = build_nav_graph(&g);
     assert_eq!(nav.nodes.len(), 1);
-    assert_eq!(nav.edges.len(), 0);
+    assert_eq!(nav.edges().count(), 0);
 }
 
 // Fork: 0 ⇄ 1, 1 ⇄ 2, 1 ⇄ 3
@@ -77,7 +77,7 @@ fn fork_junction() {
     // 0, 1, 2, 3 all junctions (node 1 has 3 neighbors, others have 1)
     assert_eq!(nav.nodes.len(), 4);
     // 3 bidirectional pairs = 6 directed nav edges
-    assert_eq!(nav.edges.len(), 6);
+    assert_eq!(nav.edges().count(), 6);
 }
 
 // Pure ring: 0 ⇄ 1 ⇄ 2 ⇄ 0
@@ -93,9 +93,9 @@ fn pure_ring() {
     let nav = build_nav_graph(&g);
 
     assert_eq!(nav.nodes.len(), 1, "ring should produce 1 nav node");
-    assert_eq!(nav.edges.len(), 2, "ring should produce 2 self-edges");
+    assert_eq!(nav.edges().count(), 2, "ring should produce 2 self-edges");
 
-    for e in &nav.edges {
+    for e in nav.edges() {
         assert_eq!(e.from, e.to, "ring edges are self-edges");
         // path visits all 3 nodes + closes back = 4 entries
         assert_eq!(e.path.len(), 4);
@@ -114,7 +114,7 @@ fn two_isolated_components() {
     let nav = build_nav_graph(&g);
 
     assert_eq!(nav.nodes.len(), 4);
-    assert_eq!(nav.edges.len(), 4); // 2 bidirectional pairs
+    assert_eq!(nav.edges().count(), 4); // 2 bidirectional pairs
 }
 
 // One-way corridor: 0 → 1 → 2 → 3 (unidirectional)
@@ -131,7 +131,7 @@ fn one_way_corridor() {
 
     // Each node: 0 has 0 in / 1 out; 1 has 1 in / 1 out (not symmetric); 2 same; 3 has 1 in / 0 out
     assert_eq!(nav.nodes.len(), 4);
-    assert_eq!(nav.edges.len(), 3);
+    assert_eq!(nav.edges().count(), 3);
 }
 
 // nav_graph is deterministic: same graph → same result
@@ -146,8 +146,8 @@ fn deterministic() {
     let nav2 = build_nav_graph(&g);
 
     assert_eq!(nav1.nodes.len(), nav2.nodes.len());
-    assert_eq!(nav1.edges.len(), nav2.edges.len());
-    for (e1, e2) in nav1.edges.iter().zip(nav2.edges.iter()) {
+    assert_eq!(nav1.edges().count(), nav2.edges().count());
+    for (e1, e2) in nav1.edges().zip(nav2.edges()) {
         assert_eq!(e1.path, e2.path);
     }
 }
@@ -174,15 +174,15 @@ fn ring_deterministic_insertion_order() {
     // Both must produce 1 nav node and 2 self-edges
     assert_eq!(nav1.nodes.len(), 1);
     assert_eq!(nav2.nodes.len(), 1);
-    assert_eq!(nav1.edges.len(), 2);
-    assert_eq!(nav2.edges.len(), 2);
+    assert_eq!(nav1.edges().count(), 2);
+    assert_eq!(nav2.edges().count(), 2);
 
     // Anchor must be the same (min-id node = 0)
     assert_eq!(nav1.nodes[0].node_id, nav2.nodes[0].node_id);
 
     // Paths must match exactly (same anchor, same min-direction walk)
-    let mut paths1: Vec<Vec<_>> = nav1.edges.iter().map(|e| e.path.clone()).collect();
-    let mut paths2: Vec<Vec<_>> = nav2.edges.iter().map(|e| e.path.clone()).collect();
+    let mut paths1: Vec<Vec<_>> = nav1.edges().map(|e| e.path.clone()).collect();
+    let mut paths2: Vec<Vec<_>> = nav2.edges().map(|e| e.path.clone()).collect();
     paths1.sort();
     paths2.sort();
     assert_eq!(paths1, paths2);

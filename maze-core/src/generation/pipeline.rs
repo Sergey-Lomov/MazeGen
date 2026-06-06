@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fmt;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 use crate::{Graph, Maze};
@@ -8,24 +7,6 @@ use crate::quality_control::{IssueKind, QualityControlEngine};
 use crate::repair::{RepairEngine, RepairResult};
 
 pub const MAX_REPAIR_ITERATIONS: usize = 8;
-
-#[derive(Debug)]
-pub enum PipelineError {
-    UnresolvedIssues(Vec<crate::quality_control::Issue>),
-}
-
-impl fmt::Display for PipelineError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PipelineError::UnresolvedIssues(issues) => {
-                let kinds: Vec<_> = issues.iter().map(|i| i.kind).collect();
-                write!(f, "unresolved issues: {}", kinds.join(", "))
-            }
-        }
-    }
-}
-
-impl std::error::Error for PipelineError {}
 
 pub fn build_maze<F: Field>(
     field: F,

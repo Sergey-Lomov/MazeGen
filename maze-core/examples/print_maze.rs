@@ -4,8 +4,8 @@ use maze_core::space::{SquareField, SquarePoint, SquareSize, Field};
 use maze_core::generation::{generate_maze, pipeline::build_maze};
 use maze_core::validation::is_connected;
 use maze_core::io::render_ascii;
-use maze_core::quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, MISSING_START, MISSING_FINISH};
-use maze_core::repair::{RepairEngine, RepairStrategy, CreateStartStrategy, CreateFinishStrategy};
+use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
+use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy};
 
 fn main() {
     let seed = 3u64;
@@ -18,12 +18,11 @@ fn main() {
     assert!(is_connected(&graph, start));
 
     let qc_engine = QualityControlEngine::new(vec![
-        Box::new(MissingStartCheck),
-        Box::new(MissingFinishCheck),
+        Box::new(MissingEndpointsCheck),
+        Box::new(UnreachableFinishCheck),
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
-    strategies.insert(MISSING_START, Box::new(CreateStartStrategy));
-    strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
+    strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
     let repair_engine = RepairEngine::new(strategies);
 
     let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine);

@@ -28,8 +28,8 @@ impl MazeAnalysis {
 
 - `MazeAnalysis` is created via `Default::default()` inside `Maze::new` — all fields start as `None`.
 - QC checks may read `maze.analysis` but must not write to it (per the QC architectural contract).
-- Repair strategies may read `maze.analysis` but must not write to it.
-- Only code that owns the `Maze` may call `&mut self` accessors.
+- Repair strategies may read `maze.analysis` but must not write maze data (`meta`, `graph`) via analysis. Calling a lazy accessor such as `nav_graph` is permitted — it manages its own cache and is transparent to the caller.
+- Only code with `&mut Maze` access may call `&mut self` accessors on `MazeAnalysis`.
 - The cache becomes stale if the underlying graph is mutated after `nav_graph` was first accessed. No invalidation mechanism exists — callers must not mutate the graph after analysis is cached.
 
 ## Future Extension

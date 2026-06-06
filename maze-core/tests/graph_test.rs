@@ -117,3 +117,27 @@ fn reachable_from_unknown_node_is_empty() {
     let reachable = graph.reachable_from(unknown);
     assert!(reachable.is_empty());
 }
+
+#[test]
+fn reachable_to_follows_incoming_only() {
+    let (mut graph, a, b, c) = setup();
+    graph.add_edge(a, b, EdgeKind::Basic);
+    graph.add_edge(b, c, EdgeKind::Basic);
+    // a → b → c: reachable_to(c) = {a, b, c}
+    let to_c = graph.reachable_to(c);
+    assert!(to_c.contains(&a));
+    assert!(to_c.contains(&b));
+    assert!(to_c.contains(&c));
+    // reachable_to(a) = {a} only (nothing points to a)
+    let to_a = graph.reachable_to(a);
+    assert_eq!(to_a.len(), 1);
+    assert!(to_a.contains(&a));
+}
+
+#[test]
+fn reachable_to_unknown_node_is_empty() {
+    let (graph, _, _, _) = setup();
+    let unknown: u64 = 9999;
+    let reachable = graph.reachable_to(unknown);
+    assert!(reachable.is_empty());
+}

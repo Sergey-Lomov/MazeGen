@@ -40,7 +40,11 @@
       "Bash(npx vitest *)",
       "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\\\\pixi\\\\NavRenderer.ts\")",
       "Bash(cargo check *)",
-      "Bash(grep -v \"^.*:.*//\\\\|outgoing_neighbors\\\\|incoming_neighbors\")"
+      "Bash(grep -v \"^.*:.*//\\\\|outgoing_neighbors\\\\|incoming_neighbors\")",
+      "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\quality_control\\\\checks\\\\missing_start.rs\")",
+      "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\quality_control\\\\checks\\\\missing_finish.rs\")",
+      "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\repair\\\\strategies\\\\create_start.rs\")",
+      "Bash(Remove-Item \"d:\\\\Development\\\\MazeGen\\\\maze-core\\\\src\\\\repair\\\\strategies\\\\create_finish.rs\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

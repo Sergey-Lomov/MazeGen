@@ -7,8 +7,8 @@ use maze_core::{
     graph::Graph,
     space::{SquareField, SquarePoint, SquareSize},
     generation::{generate_maze, pipeline::build_maze},
-    quality_control::{QualityControlEngine, MissingStartCheck, MissingFinishCheck, UnreachableFinishCheck, MISSING_START, MISSING_FINISH},
-    repair::{RepairEngine, RepairStrategy, CreateStartStrategy, CreateFinishStrategy},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS},
+    repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy},
     Field,
 };
 use dto::{EdgeDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto};
@@ -36,13 +36,11 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
     generate_maze(&mut graph, &field, seed, start);
 
     let qc_engine = QualityControlEngine::new(vec![
-        Box::new(MissingStartCheck),
-        Box::new(MissingFinishCheck),
+        Box::new(MissingEndpointsCheck),
         Box::new(UnreachableFinishCheck),
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
-    strategies.insert(MISSING_START, Box::new(CreateStartStrategy));
-    strategies.insert(MISSING_FINISH, Box::new(CreateFinishStrategy));
+    strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
     let repair_engine = RepairEngine::new(strategies);
 
     let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
@@ -78,7 +76,7 @@ pub fn generate(seed: u64, width: u32, height: u32) -> Result<JsValue, JsValue> 
         })
         .collect();
 
-    let nav_edges: Vec<NavEdgeDto> = nav.edges.iter()
+    let nav_edges: Vec<NavEdgeDto> = nav.edges()
         .filter_map(|e| {
             let from = u32::try_from(e.from).ok()?;
             let to = u32::try_from(e.to).ok()?;

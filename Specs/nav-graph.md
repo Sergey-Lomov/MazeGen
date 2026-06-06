@@ -30,7 +30,6 @@ A directed edge representing a compressed corridor between two junction nodes.
 
 ```rust
 pub struct NavEdge {
-    pub id: NavEdgeId,
     pub from: NavNodeId,
     pub to: NavNodeId,
     /// Maze NodeIds from source to target, inclusive of both endpoints, in traversal order.
@@ -48,11 +47,27 @@ pub struct NavEdge {
 ```rust
 pub struct NavGraph {
     pub nodes: Vec<NavNode>,
-    pub edges: Vec<NavEdge>,
+    // edges field is private; use .edges(), .outgoing_edges(), .incoming_edges()
 }
 ```
 
-`nav_node_for` has been removed — it was unused. Lookup by maze `NodeId` is not part of the public API.
+Public API:
+
+```rust
+impl NavGraph {
+    /// Returns the NavNodeId for a given maze NodeId, if it is a junction node.
+    pub fn nav_node_for(&self, node_id: NodeId) -> Option<NavNodeId>;
+
+    /// Iterates all edges in the graph.
+    pub fn edges(&self) -> impl Iterator<Item = &NavEdge>;
+
+    /// Iterates outgoing edges from `node`. Panics if `node` is not a valid NavNodeId.
+    pub fn outgoing_edges(&self, node: NavNodeId) -> impl Iterator<Item = &NavEdge>;
+
+    /// Iterates incoming edges to `node`. Panics if `node` is not a valid NavNodeId.
+    pub fn incoming_edges(&self, node: NavNodeId) -> impl Iterator<Item = &NavEdge>;
+}
+```
 
 ## Builder
 

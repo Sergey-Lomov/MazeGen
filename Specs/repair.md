@@ -9,13 +9,11 @@ A mutation pass that attempts to fix issues detected by Quality Control. Works w
 ```rust
 pub enum RepairResult {
     Fixed,
-    Deferred,
     Failed,
 }
 ```
 
 - `Fixed` — strategy resolved the issue (or the issue was already absent; see idempotency below).
-- `Deferred` — a prerequisite is not yet satisfied; try again in the next pipeline iteration.
 - `Failed` — the strategy cannot fix this issue under current conditions and must not be called again for this issue in the current pipeline run.
 
 ### RepairStrategy trait
@@ -57,25 +55,29 @@ impl<F: Field> RepairEngine<F> {
 
 ## Built-in Strategies
 
-### CreateStartStrategy
+### CreateEndpointsStrategy
 
-Handles `MISSING_START`.
+Handles `MISSING_ENDPOINTS`.
 
-- If `maze.meta.start.is_some()`: returns `Fixed` immediately (idempotency guard).
-- Collects all node ids from `maze.graph`, sorts them (determinism), picks one at random via `rng`.
-- Sets `maze.meta.start`.
+- If both `maze.meta.start` and `maze.meta.finish` are `Some`: returns `Fixed` immediately (idempotency guard).
+- If `maze.meta.start.is_none()`:
+  - If `finish` is also `None`: candidates = all node ids (sorted).
+  - If `finish` is `Some`: candidates = `reachable_to(finish)` minus finish (nodes that can reach finish). Empty → `Failed`.
+  - Picks candidate at random via `rng`, sets `maze.meta.start`.
+- If `maze.meta.finish.is_none()`: candidates = `reachable_from(start)` minus start. Empty → `Failed`. Picks at random, sets `maze.meta.finish`.
 - Returns `Fixed`.
-- Empty graph: leaves `maze.meta.start` as `None`, returns `Failed`.
 
-### CreateFinishStrategy
+### FarthestEndpointsStrategy
 
-Handles `MISSING_FINISH`.
+Handles `MISSING_ENDPOINTS`. Places start and finish at maximally distant nav-graph nodes (distance measured in tile count — edge weight = `path.len() - 1`).
 
-- If `maze.meta.finish.is_some()`: returns `Fixed` immediately (idempotency guard).
-- If `maze.meta.start.is_none()`: returns `Deferred`. The pipeline will retry after start is assigned.
-- Computes `maze.graph.reachable_from(start)`, removes start from candidates.
-- No candidates (isolated start node or single-node graph): returns `Failed`.
-- Otherwise: picks a candidate at random via `rng`, sets `maze.meta.finish`, returns `Fixed`.
+- If both `maze.meta.start` and `maze.meta.finish` are `Some`: returns `Fixed` immediately.
+- Empty nav graph: returns `Failed`.
+- **Neither set**: picks a random nav node via `rng`, runs Dijkstra from it, takes the farthest node as `start`. Then runs Dijkstra from `start`, takes the farthest node as `finish`.
+- **Only start set**: runs Dijkstra from `start`'s nav node, takes the farthest node as `finish`.
+- **Only finish set**: runs reverse Dijkstra (traversing incoming edges) from `finish`'s nav node, takes the farthest node as `start`. This finds the node with the longest path that can actually reach `finish`, which is correct for one-way graphs.
+- If farthest node equals the source (isolated nav node or no reachable peers in the same component): returns `Failed`.
+- Disconnected nav-graph: Dijkstra only reaches nodes in the same connected component as the source. Unreachable nodes (distance `usize::MAX`) are excluded from selection, so start and finish always end up in the same component.
 
 ## Pipeline
 
@@ -122,4 +124,4 @@ A `build_maze` call is fully deterministic if:
 2. The same `seed` is used.
 3. The same checks and strategies are registered in the same order.
 
-Both `CreateStartStrategy` and `CreateFinishStrategy` sort candidate lists before sampling, making them independent of node insertion order.
+`CreateEndpointsStrategy` sorts candidate lists before sampling, making results independent of node insertion order. `FarthestEndpointsStrategy` breaks distance ties by minimum `node_id` for determinism.

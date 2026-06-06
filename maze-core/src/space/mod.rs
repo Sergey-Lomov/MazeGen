@@ -77,7 +77,9 @@ impl<T: Tessellation> Field for StandardField<T> {
     }
 
     fn build_nodes(&self, graph: &mut Graph) {
-        for id in self.node_to_point.keys().copied() {
+        let mut ids: Vec<NodeId> = self.node_to_point.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
             graph.add_node(id);
         }
     }

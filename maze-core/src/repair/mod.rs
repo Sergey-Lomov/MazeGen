@@ -6,4 +6,4 @@ pub mod strategies;
 pub use result::RepairResult;
 pub use strategy::RepairStrategy;
 pub use engine::RepairEngine;
-pub use strategies::{CreateStartStrategy, CreateFinishStrategy};
+pub use strategies::{CreateEndpointsStrategy, FarthestEndpointsStrategy};

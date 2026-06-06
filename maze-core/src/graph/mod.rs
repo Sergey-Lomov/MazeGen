@@ -95,6 +95,25 @@ impl Graph {
         }).copied()
     }
 
+    pub fn reachable_to(&self, target: NodeId) -> Vec<NodeId> {
+        let mut visited: HashSet<NodeId> = HashSet::new();
+        let mut queue = VecDeque::new();
+        if self.incoming.contains_key(&target) {
+            visited.insert(target);
+            queue.push_back(target);
+        }
+        while let Some(current) = queue.pop_front() {
+            for neighbor in self.incoming_neighbors(current) {
+                if visited.insert(neighbor) {
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        let mut result: Vec<NodeId> = visited.into_iter().collect();
+        result.sort_unstable();
+        result
+    }
+
     pub fn reachable_from(&self, start: NodeId) -> Vec<NodeId> {
         let mut visited: HashSet<NodeId> = HashSet::new();
         let mut queue = VecDeque::new();
