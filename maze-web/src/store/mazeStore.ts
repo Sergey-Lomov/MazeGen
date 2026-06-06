@@ -26,6 +26,8 @@ interface MazeState {
   availableStrategies: StrategyDescriptor[];
   selectedChecks: string[];
   selectedStrategies: Record<string, string>;
+  /** strategyParams[strategyId][paramId] = raw string value */
+  strategyParams: Record<string, Record<string, string>>;
 }
 
 interface MazeActions {
@@ -39,6 +41,7 @@ interface MazeActions {
   loadRegistry: () => void;
   toggleCheck: (id: string) => void;
   setStrategy: (issueKind: string, strategyId: string) => void;
+  setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
 }
 
 export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
@@ -65,6 +68,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   availableStrategies: [],
   selectedChecks: [],
   selectedStrategies: {},
+  strategyParams: {},
 
   setSeed: (seed) => set({ seed, error: null }),
   setWidth: (width) => set({ width, error: null }),
@@ -85,14 +89,26 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   },
 
   generate: () => {
-    const { seed, width, height, selectedChecks, selectedStrategies } = get();
+    const { seed, width, height, selectedChecks, selectedStrategies, strategyParams, availableStrategies } = get();
     try {
-      const activeStrategies = Object.fromEntries(
-        Object.entries(selectedStrategies).filter(([, v]) => v !== "")
-      );
+      const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
+      for (const [kind, strategyId] of Object.entries(selectedStrategies)) {
+        if (!strategyId) continue;
+        const descriptor = availableStrategies.find((s) => s.id === strategyId);
+        const paramOverrides = strategyParams[strategyId] ?? {};
+        const params: Record<string, string> = {};
+        if (descriptor) {
+          for (const p of descriptor.params) {
+            if (paramOverrides[p.id] !== undefined) {
+              params[p.id] = paramOverrides[p.id];
+            }
+          }
+        }
+        strategies[kind] = { id: strategyId, params };
+      }
       const snapshot = generateMaze(seed, width, height, {
         checks: selectedChecks,
-        strategies: activeStrategies,
+        strategies,
       });
       set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null });
     } catch (err) {
@@ -116,5 +132,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setStrategy: (issueKind, strategyId) => set((state) => ({
     selectedStrategies: { ...state.selectedStrategies, [issueKind]: strategyId },
+  })),
+
+  setStrategyParam: (strategyId, paramId, value) => set((state) => ({
+    strategyParams: {
+      ...state.strategyParams,
+      [strategyId]: { ...(state.strategyParams[strategyId] ?? {}), [paramId]: value },
+    },
   })),
 }));

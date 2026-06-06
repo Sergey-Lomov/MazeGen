@@ -23,7 +23,7 @@ fn main() {
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
-    let repair_engine = RepairEngine::new(strategies);
+    let repair_engine = RepairEngine::new(strategies, HashMap::new());
 
     let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine);
     if !warnings.is_empty() {

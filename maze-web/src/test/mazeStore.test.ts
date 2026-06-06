@@ -99,6 +99,54 @@ describe("mazeStore.generate", () => {
     useMazeStore.getState().generate();
     expect(useMazeStore.getState().selectedNode).toBeNull();
   });
+
+  it("passes strategyParams overrides to generateMaze", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      selectedChecks: ["missing_endpoints"],
+      selectedStrategies: { missing_endpoints: "scored_endpoints" },
+      strategyParams: { scored_endpoints: { path_weight: "2", junction_weight: "6" } },
+      availableStrategies: [{
+        id: "scored_endpoints",
+        handles: "missing_endpoints",
+        params: [
+          { id: "path_weight", label: "Path length weight", kind: { type: "float", default: 1, min: 0, max: 100 } },
+          { id: "junction_weight", label: "Junction weight", kind: { type: "float", default: 3, min: 0, max: 100 } },
+        ],
+      }],
+    });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(42, 10, 10, {
+      checks: ["missing_endpoints"],
+      strategies: {
+        missing_endpoints: {
+          id: "scored_endpoints",
+          params: { path_weight: "2", junction_weight: "6" },
+        },
+      },
+    });
+  });
+
+  it("omits strategyParams not in descriptor from generateMaze call", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      selectedChecks: [],
+      selectedStrategies: { missing_endpoints: "scored_endpoints" },
+      strategyParams: { scored_endpoints: { unknown_param: "99" } },
+      availableStrategies: [{
+        id: "scored_endpoints",
+        handles: "missing_endpoints",
+        params: [
+          { id: "path_weight", label: "Path length weight", kind: { type: "float", default: 1, min: 0, max: 100 } },
+        ],
+      }],
+    });
+    useMazeStore.getState().generate();
+    const call = vi.mocked(generateMaze).mock.calls[0];
+    const strategies = call[3].strategies;
+    expect(strategies["missing_endpoints"].params).not.toHaveProperty("unknown_param");
+    expect(strategies["missing_endpoints"].params).not.toHaveProperty("path_weight");
+  });
 });
 
 describe("mazeStore.reset", () => {
@@ -149,5 +197,36 @@ describe("mazeStore.selectNode", () => {
     useMazeStore.setState({ selectedNode: 3 });
     useMazeStore.getState().selectNode(null);
     expect(useMazeStore.getState().selectedNode).toBeNull();
+  });
+});
+
+describe("mazeStore.setStrategyParam", () => {
+  it("stores param value keyed by strategyId", () => {
+    useMazeStore.setState({ strategyParams: {} });
+    useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "2.5");
+    expect(useMazeStore.getState().strategyParams["scored_endpoints"]["path_weight"]).toBe("2.5");
+  });
+
+  it("merges params for same strategyId", () => {
+    useMazeStore.setState({ strategyParams: {} });
+    useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "2");
+    useMazeStore.getState().setStrategyParam("scored_endpoints", "junction_weight", "6");
+    const params = useMazeStore.getState().strategyParams["scored_endpoints"];
+    expect(params["path_weight"]).toBe("2");
+    expect(params["junction_weight"]).toBe("6");
+  });
+
+  it("keeps params for different strategyIds independent", () => {
+    useMazeStore.setState({ strategyParams: {} });
+    useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "2");
+    useMazeStore.getState().setStrategyParam("farthest_endpoints", "path_weight", "9");
+    expect(useMazeStore.getState().strategyParams["scored_endpoints"]["path_weight"]).toBe("2");
+    expect(useMazeStore.getState().strategyParams["farthest_endpoints"]["path_weight"]).toBe("9");
+  });
+
+  it("overrides existing param value", () => {
+    useMazeStore.setState({ strategyParams: { scored_endpoints: { path_weight: "1" } } });
+    useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "5");
+    expect(useMazeStore.getState().strategyParams["scored_endpoints"]["path_weight"]).toBe("5");
   });
 });

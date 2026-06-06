@@ -6,13 +6,14 @@ use crate::ids::NodeId;
 use crate::space::Field;
 use crate::graph::nav::NavGraph;
 use crate::quality_control::Issue;
+use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
 
 pub struct FarthestEndpointsStrategy;
 
 impl<F: Field> RepairStrategy<F> for FarthestEndpointsStrategy {
-    fn apply(&self, _issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore) -> RepairResult {
+    fn apply(&self, _issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, _params: &StrategyParams) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
             return RepairResult::Fixed;
         }
@@ -27,10 +28,11 @@ impl<F: Field> RepairStrategy<F> for FarthestEndpointsStrategy {
             (None, None) => {
                 let random_idx = rng.random_range(0..nav.nodes.len());
                 let random_node = nav.nodes[random_idx].node_id;
-                // random_node and start_node come from nav.nodes, so they are always in node_index
                 let random_nav = nav.nav_node_for(random_node).unwrap();
 
-                let start_node = farthest_from(nav, random_nav);
+                // Find start as the node farthest upstream from random — places start in source SCCs.
+                // Then find finish as the node farthest downstream from start.
+                let start_node = farthest_to(nav, random_nav);
                 let start_nav = nav.nav_node_for(start_node).unwrap();
 
                 let finish_node = farthest_from(nav, start_nav);

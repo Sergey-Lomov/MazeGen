@@ -5,7 +5,7 @@ use maze_core::{Graph, IdGenerator, Field};
 use maze_core::space::{SquareField, SquarePoint, SquareSize};
 use maze_core::generation::{generate_maze, pipeline::build_maze};
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
-use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy};
+use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, StrategyParams};
 
 fn make_engines() -> (QualityControlEngine<SquareField>, RepairEngine<SquareField>) {
     let qc = QualityControlEngine::new(vec![
@@ -14,7 +14,7 @@ fn make_engines() -> (QualityControlEngine<SquareField>, RepairEngine<SquareFiel
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
-    let repair = RepairEngine::new(strategies);
+    let repair = RepairEngine::new(strategies, HashMap::new());
     (qc, repair)
 }
 
@@ -58,7 +58,7 @@ fn pipeline_deterministic() {
 fn pipeline_warns_when_no_strategy_for_issue() {
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck)]);
-    let repair: RepairEngine<SquareField> = RepairEngine::new(HashMap::new());
+    let repair: RepairEngine<SquareField> = RepairEngine::new(HashMap::new(), HashMap::new());
     let (_, warnings) = build_maze(field, graph, 1, qc, repair);
     assert!(!warnings.is_empty());
 }
@@ -72,7 +72,7 @@ fn pipeline_warns_when_strategy_always_fails() {
 
     struct AlwaysFail;
     impl RepairStrategy<SquareField> for AlwaysFail {
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareField>, _: &mut dyn RngCore) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareField>, _: &mut dyn RngCore, _: &StrategyParams) -> RepairResult {
             RepairResult::Failed
         }
     }
@@ -81,7 +81,7 @@ fn pipeline_warns_when_strategy_always_fails() {
     let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck)]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(AlwaysFail));
-    let repair = RepairEngine::new(strategies);
+    let repair = RepairEngine::new(strategies, HashMap::new());
     let (_, warnings) = build_maze(field, graph, 1, qc, repair);
     assert!(!warnings.is_empty());
 }
@@ -99,7 +99,7 @@ fn pipeline_deduplicates_issues_from_duplicate_checks() {
         count: Arc<AtomicUsize>,
     }
     impl RepairStrategy<SquareField> for CountingStrategy {
-        fn apply(&self, _: &Issue, maze: &mut Maze<SquareField>, _: &mut dyn RngCore) -> RepairResult {
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareField>, _: &mut dyn RngCore, _: &StrategyParams) -> RepairResult {
             self.count.fetch_add(1, Ordering::SeqCst);
             let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
             nodes.sort_unstable();
@@ -116,7 +116,7 @@ fn pipeline_deduplicates_issues_from_duplicate_checks() {
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(CountingStrategy { count: Arc::clone(&call_count) }));
-    let repair = RepairEngine::new(strategies);
+    let repair = RepairEngine::new(strategies, HashMap::new());
 
     let (_, warnings) = build_maze(field, graph, 1, qc, repair);
     assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);

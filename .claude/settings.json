@@ -51,7 +51,9 @@
       "Bash(where \"Google Chrome\")",
       "Read(//c/Program Files/Google/Chrome/Application/**)",
       "Read(//c/Program Files \\(x86\\)/Google/Chrome/**)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(npx vite *)",
+      "Bash(npx --prefix maze-web vitest run)"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

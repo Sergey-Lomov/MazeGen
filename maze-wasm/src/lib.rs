@@ -9,15 +9,22 @@ use maze_core::{
     space::{SquareField, SquarePoint, SquareSize},
     generation::{generate_maze, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
-    repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy},
+    repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
     Field,
 };
 use dto::{EdgeDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto};
 
 #[derive(Deserialize)]
+struct StrategyConfig {
+    id: String,
+    #[serde(default)]
+    params: HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
 struct GenerateConfig {
     checks: Vec<String>,
-    strategies: HashMap<String, String>,
+    strategies: HashMap<String, StrategyConfig>,
 }
 
 impl Default for GenerateConfig {
@@ -29,11 +36,29 @@ impl Default for GenerateConfig {
             ],
             strategies: {
                 let mut m = HashMap::new();
-                m.insert(MISSING_ENDPOINTS.to_string(), "farthest_endpoints".to_string());
+                m.insert(MISSING_ENDPOINTS.to_string(), StrategyConfig {
+                    id: "farthest_endpoints".to_string(),
+                    params: HashMap::new(),
+                });
                 m
             },
         }
     }
+}
+
+#[derive(Serialize)]
+struct ParamDescriptor {
+    id: &'static str,
+    label: &'static str,
+    kind: ParamKindDto,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ParamKindDto {
+    Float { default: f64, min: f64, max: f64 },
+    Bool { default: bool },
+    Enum { options: Vec<&'static str>, default: &'static str },
 }
 
 #[derive(Serialize)]
@@ -46,6 +71,26 @@ struct CheckDescriptor {
 struct StrategyDescriptor {
     id: &'static str,
     handles: &'static str,
+    params: Vec<ParamDescriptor>,
+}
+
+fn param_kind_dto(kind: &maze_core::repair::StrategyParamKind) -> ParamKindDto {
+    match kind {
+        maze_core::repair::StrategyParamKind::Float { default, min, max } =>
+            ParamKindDto::Float { default: *default, min: *min, max: *max },
+        maze_core::repair::StrategyParamKind::Bool { default } =>
+            ParamKindDto::Bool { default: *default },
+        maze_core::repair::StrategyParamKind::Enum { options, default } =>
+            ParamKindDto::Enum { options: options.to_vec(), default },
+    }
+}
+
+fn strategy_params_dto(strategy: &dyn RepairStrategy<SquareField>) -> Vec<ParamDescriptor> {
+    strategy.params().iter().map(|p| ParamDescriptor {
+        id: p.id,
+        label: p.label,
+        kind: param_kind_dto(&p.kind),
+    }).collect()
 }
 
 #[wasm_bindgen]
@@ -59,9 +104,19 @@ pub fn available_checks() -> JsValue {
 
 #[wasm_bindgen]
 pub fn available_strategies() -> JsValue {
-    let strategies = vec![
-        StrategyDescriptor { id: "random_endpoints", handles: MISSING_ENDPOINTS },
-        StrategyDescriptor { id: "farthest_endpoints", handles: MISSING_ENDPOINTS },
+    let strategies: Vec<StrategyDescriptor> = vec![
+        {
+            let s = RandomEndpointsStrategy;
+            StrategyDescriptor { id: "random_endpoints", handles: MISSING_ENDPOINTS, params: strategy_params_dto(&s) }
+        },
+        {
+            let s = FarthestEndpointsStrategy;
+            StrategyDescriptor { id: "farthest_endpoints", handles: MISSING_ENDPOINTS, params: strategy_params_dto(&s) }
+        },
+        {
+            let s = ScoredEndpointsStrategy;
+            StrategyDescriptor { id: "scored_endpoints", handles: MISSING_ENDPOINTS, params: strategy_params_dto(&s) }
+        },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()
 }
@@ -106,20 +161,26 @@ pub fn generate(seed: u64, width: u32, height: u32, config: JsValue) -> Result<J
     let qc_engine = QualityControlEngine::new(checks);
 
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
-    for (issue_kind, strategy_id) in &config.strategies {
-        let strategy: Box<dyn RepairStrategy<SquareField>> = match strategy_id.as_str() {
-            "random_endpoints" => Box::new(RandomEndpointsStrategy),
-            "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
-            other => return Err(JsValue::from_str(&format!("unknown strategy: {other}"))),
-        };
+    let mut param_overrides: HashMap<&'static str, HashMap<String, String>> = HashMap::new();
+
+    for (issue_kind, strategy_cfg) in &config.strategies {
         let kind: &'static str = match issue_kind.as_str() {
             MISSING_ENDPOINTS => MISSING_ENDPOINTS,
             UNREACHABLE_FINISH => UNREACHABLE_FINISH,
             other => return Err(JsValue::from_str(&format!("unknown issue kind: {other}"))),
         };
+        let strategy: Box<dyn RepairStrategy<SquareField>> = match strategy_cfg.id.as_str() {
+            "random_endpoints" => Box::new(RandomEndpointsStrategy),
+            "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
+            "scored_endpoints" => Box::new(ScoredEndpointsStrategy),
+            other => return Err(JsValue::from_str(&format!("unknown strategy: {other}"))),
+        };
         strategies.insert(kind, strategy);
+        if !strategy_cfg.params.is_empty() {
+            param_overrides.insert(kind, strategy_cfg.params.clone());
+        }
     }
-    let repair_engine = RepairEngine::new(strategies);
+    let repair_engine = RepairEngine::new(strategies, param_overrides);
 
     let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
     let warnings: Vec<String> = issues.iter().map(|i| i.kind.to_string()).collect();

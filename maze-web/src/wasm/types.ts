@@ -35,12 +35,29 @@ export interface CheckDescriptor {
   issue_kinds: string[];
 }
 
+export type ParamKind =
+  | { type: "float"; default: number; min: number; max: number }
+  | { type: "bool"; default: boolean }
+  | { type: "enum"; options: string[]; default: string };
+
+export interface ParamDescriptor {
+  id: string;
+  label: string;
+  kind: ParamKind;
+}
+
 export interface StrategyDescriptor {
   id: string;
   handles: string;
+  params: ParamDescriptor[];
+}
+
+export interface StrategyConfig {
+  id: string;
+  params: Record<string, string>;
 }
 
 export interface GenerateConfig {
   checks: string[];
-  strategies: Record<string, string>;
+  strategies: Record<string, StrategyConfig>;
 }

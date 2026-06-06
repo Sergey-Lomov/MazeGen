@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useMazeStore } from "../store/mazeStore";
+import { StrategyParamsModal } from "./StrategyParamsModal";
 
 export function QualityControlPanel() {
   const availableChecks = useMazeStore((s) => s.availableChecks);
@@ -8,6 +10,8 @@ export function QualityControlPanel() {
   const toggleCheck = useMazeStore((s) => s.toggleCheck);
   const setStrategy = useMazeStore((s) => s.setStrategy);
 
+  const [openParams, setOpenParams] = useState<string | null>(null);
+
   const activeIssueKinds = Array.from(
     new Set(
       availableChecks
@@ -16,63 +20,88 @@ export function QualityControlPanel() {
     )
   );
 
+  const paramsModalData = openParams
+    ? availableStrategies.find((s) => s.id === openParams)
+    : null;
+
   return (
-    <div style={styles.panel}>
-      <div style={styles.column}>
-        <div style={styles.colHeader}>Checks</div>
-        {availableChecks.map((check) => (
-          <label key={check.id} style={styles.row}>
-            <input
-              type="checkbox"
-              checked={selectedChecks.includes(check.id)}
-              onChange={() => toggleCheck(check.id)}
-            />
-            <span style={styles.label}>{check.id}</span>
-          </label>
-        ))}
-      </div>
+    <>
+      <div style={styles.panel}>
+        <div style={styles.column}>
+          <div style={styles.colHeader}>Checks</div>
+          {availableChecks.map((check) => (
+            <label key={check.id} style={styles.row}>
+              <input
+                type="checkbox"
+                checked={selectedChecks.includes(check.id)}
+                onChange={() => toggleCheck(check.id)}
+              />
+              <span style={styles.label}>{check.id}</span>
+            </label>
+          ))}
+        </div>
 
-      <div style={styles.divider} />
+        <div style={styles.divider} />
 
-      <div style={styles.column}>
-        <div style={styles.colHeader}>Issues</div>
-        {activeIssueKinds.length === 0
-          ? <div style={styles.empty}>—</div>
-          : activeIssueKinds.map((kind) => (
-            <div key={kind} style={styles.issueRow}>
-              <span style={styles.label}>{kind}</span>
-            </div>
-          ))
-        }
-      </div>
-
-      <div style={styles.divider} />
-
-      <div style={styles.column}>
-        <div style={styles.colHeader}>Strategies</div>
-        {activeIssueKinds.length === 0
-          ? <div style={styles.empty}>—</div>
-          : activeIssueKinds.map((kind) => {
-            const options = availableStrategies.filter((s) => s.handles === kind);
-            const current = selectedStrategies[kind] ?? "";
-            return (
-              <div key={kind} style={styles.strategyRow}>
-                <select
-                  style={styles.select}
-                  value={current}
-                  onChange={(e) => setStrategy(kind, e.target.value)}
-                >
-                  <option value="">none</option>
-                  {options.map((s) => (
-                    <option key={s.id} value={s.id}>{s.id}</option>
-                  ))}
-                </select>
+        <div style={styles.column}>
+          <div style={styles.colHeader}>Issues</div>
+          {activeIssueKinds.length === 0
+            ? <div style={styles.empty}>—</div>
+            : activeIssueKinds.map((kind) => (
+              <div key={kind} style={styles.issueRow}>
+                <span style={styles.label}>{kind}</span>
               </div>
-            );
-          })
-        }
+            ))
+          }
+        </div>
+
+        <div style={styles.divider} />
+
+        <div style={styles.column}>
+          <div style={styles.colHeader}>Strategies</div>
+          {activeIssueKinds.length === 0
+            ? <div style={styles.empty}>—</div>
+            : activeIssueKinds.map((kind) => {
+              const options = availableStrategies.filter((s) => s.handles === kind);
+              const current = selectedStrategies[kind] ?? "";
+              const currentDescriptor = options.find((s) => s.id === current);
+              const hasParams = (currentDescriptor?.params.length ?? 0) > 0;
+              return (
+                <div key={kind} style={styles.strategyRow}>
+                  <select
+                    style={{ ...styles.select, flex: 1 }}
+                    value={current}
+                    onChange={(e) => setStrategy(kind, e.target.value)}
+                  >
+                    <option value="">none</option>
+                    {options.map((s) => (
+                      <option key={s.id} value={s.id}>{s.id}</option>
+                    ))}
+                  </select>
+                  {hasParams && (
+                    <button
+                      style={styles.gearBtn}
+                      title="Configure strategy parameters"
+                      onClick={() => setOpenParams(current)}
+                    >
+                      ⚙
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          }
+        </div>
       </div>
-    </div>
+
+      {openParams && paramsModalData && (
+        <StrategyParamsModal
+          strategyId={openParams}
+          params={paramsModalData.params}
+          onClose={() => setOpenParams(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -122,6 +151,7 @@ const styles: Record<string, React.CSSProperties> = {
   strategyRow: {
     display: "flex",
     alignItems: "center",
+    gap: 4,
     height: 22,
   },
   label: {
@@ -140,5 +170,16 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     padding: "1px 4px",
     width: "100%",
+  },
+  gearBtn: {
+    background: "#2a2a2a",
+    border: "1px solid #444",
+    color: "#aaa",
+    cursor: "pointer",
+    fontSize: 13,
+    borderRadius: 3,
+    padding: "1px 5px",
+    lineHeight: 1,
+    flexShrink: 0,
   },
 };
