@@ -80,9 +80,9 @@ export class ComponentRenderer {
     let prev = useMazeStore.getState();
     this.unsubscribe = useMazeStore.subscribe((state) => {
       if (state.nodes !== prev.nodes || state.components !== prev.components
-          || state.tessellationConfig !== prev.tessellationConfig) {
+          || state.activeTessellationConfig !== prev.activeTessellationConfig) {
         prev = state;
-        this.render(state.nodes, state.components, state.tessellationConfig);
+        this.render(state.nodes, state.components, state.activeTessellationConfig);
       } else {
         prev = state;
       }
@@ -106,11 +106,13 @@ export class ComponentRenderer {
           const x = node.x * TILE_SIZE;
           const y = -node.y * TILE_SIZE - TILE_SIZE;
           this.graphics.rect(x, y, TILE_SIZE, TILE_SIZE).fill({ color, alpha: MASK_ALPHA });
-        } else {
+        } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
           const orientation = cfg.orientation ?? "flat_top";
           const { x: cx, y: cy } = hexCenter(node.x, node.y, orientation);
           const verts = hexVertices(cx, cy, orientation);
           this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
+        } else {
+          cfg satisfies never;
         }
       }
     }

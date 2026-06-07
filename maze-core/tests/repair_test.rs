@@ -3,7 +3,7 @@ use rand::SeedableRng;
 use rand::rngs::SmallRng;
 use maze_core::{Graph, IdGenerator, Maze, Field, NodeId};
 use maze_core::graph::EdgeKind;
-use maze_core::space::{SquareField, SquarePoint, SquareSize};
+use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField};
 use maze_core::quality_control::{Issue, MISSING_ENDPOINTS};
 use maze_core::repair::{
     RepairEngine, RepairResult, RepairStrategy, StrategyParams,
@@ -12,7 +12,7 @@ use maze_core::repair::{
 
 fn make_maze(n_cols: usize, n_rows: usize) -> Maze<SquareField> {
     let mut ids = IdGenerator::new();
-    let field = SquareField::new(SquareSize { width: n_cols, height: n_rows }, &mut ids);
+    let field = ShapedField::new(SquareRect { width: n_cols, height: n_rows }, &mut ids);
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     Maze::new(field, graph)
@@ -93,7 +93,7 @@ fn random_endpoints_idempotent_when_both_set() {
 #[test]
 fn random_endpoints_empty_graph_returns_failed() {
     let mut ids = IdGenerator::new();
-    let field = SquareField::new(SquareSize { width: 1, height: 1 }, &mut ids);
+    let field: SquareField = ShapedField::new(SquareRect { width: 1, height: 1 }, &mut ids);
     let graph = Graph::new();
     let mut maze = Maze::new(field, graph);
     let mut rng = make_rng();

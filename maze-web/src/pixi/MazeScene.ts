@@ -127,7 +127,7 @@ export class MazeScene {
       if (state.nodes !== prevNodes) {
         prevNodes = state.nodes;
         if (state.nodes.length > 0) {
-          this.fitMaze(state.tessellationConfig, state.nodes);
+          this.fitMaze(state.activeTessellationConfig, state.nodes);
         }
       }
     });

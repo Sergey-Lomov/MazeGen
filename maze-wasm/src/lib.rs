@@ -6,7 +6,11 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     ids::IdGenerator,
     graph::Graph,
-    space::{SquareField, SquarePoint, SquareSize, HexField, HexPoint, HexSize, Field, Tessellation},
+    space::{
+        SquareField, SquarePoint, SquareRect, ShapedField,
+        HexField, HexPoint, HexParallelogram, HexHexagon,
+        Field, Tessellation,
+    },
     generation::{generate_maze, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
@@ -24,10 +28,18 @@ struct StrategyConfig {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum TessellationConfig {
     Square { width: u32, height: u32 },
-    Hex {
+    HexParallelogram {
         cols: u32,
         rows: u32,
+        // Accepted for deserialization; rendering orientation is handled client-side.
         #[serde(default)]
+        #[allow(dead_code)]
+        orientation: HexOrientationDto,
+    },
+    HexHexagon {
+        radius: u32,
+        #[serde(default)]
+        #[allow(dead_code)]
         orientation: HexOrientationDto,
     },
 }
@@ -37,6 +49,7 @@ impl Default for TessellationConfig {
         TessellationConfig::Square { width: 10, height: 10 }
     }
 }
+
 
 #[derive(Deserialize)]
 struct GenerateConfig {
@@ -189,8 +202,6 @@ fn run_generate<F: Field>(
     field: F,
     start: <F::T as Tessellation>::Point,
     config: &GenerateConfig,
-    tessellation_type: &str,
-    orientation: Option<HexOrientationDto>,
     point_to_xy: impl Fn(<F::T as Tessellation>::Point) -> (i32, i32),
 ) -> Result<JsValue, JsValue> {
     let mut graph = Graph::new();
@@ -265,8 +276,6 @@ fn run_generate<F: Field>(
         nav_nodes,
         nav_edges,
         components,
-        tessellation_type: tessellation_type.to_string(),
-        orientation,
     };
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
 }
@@ -287,18 +296,33 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *width == 0 || *height == 0 {
                 return Err(JsValue::from_str("width and height must be > 0"));
             }
-            let size = SquareSize { width: *width as usize, height: *height as usize };
-            let field = SquareField::new(size, &mut ids);
-            run_generate(seed, field, SquarePoint { x: 0, y: 0 }, &config, "square", None,
+            let field: SquareField = ShapedField::new(
+                SquareRect { width: *width as usize, height: *height as usize },
+                &mut ids,
+            );
+            run_generate(seed, field, SquarePoint { x: 0, y: 0 }, &config,
                 |p: SquarePoint| (p.x, p.y))
         }
-        TessellationConfig::Hex { cols, rows, orientation } => {
+        TessellationConfig::HexParallelogram { cols, rows, .. } => {
             if *cols == 0 || *rows == 0 {
                 return Err(JsValue::from_str("cols and rows must be > 0"));
             }
-            let size = HexSize { cols: *cols as usize, rows: *rows as usize };
-            let field = HexField::new(size, &mut ids);
-            run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config, "hex", Some(*orientation),
+            let field: HexField<HexParallelogram> = ShapedField::new(
+                HexParallelogram { cols: *cols as usize, rows: *rows as usize },
+                &mut ids,
+            );
+            run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config,
+                |p: HexPoint| (p.q, p.r))
+        }
+        TessellationConfig::HexHexagon { radius, .. } => {
+            if *radius == 0 {
+                return Err(JsValue::from_str("radius must be > 0"));
+            }
+            let field: HexField<HexHexagon> = ShapedField::new(
+                HexHexagon { radius: *radius as usize },
+                &mut ids,
+            );
+            run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config,
                 |p: HexPoint| (p.q, p.r))
         }
     }

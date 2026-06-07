@@ -226,7 +226,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
       if (!nodesChanged && !debugChanged && !selectionChanged) { prev = state; return; }
 
       if (nodesChanged) {
-        this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode, state.start, state.finish, state.tessellationConfig);
+        this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode, state.start, state.finish, state.activeTessellationConfig);
       } else {
         if (debugChanged) this.updateLabels(state.nodes, state.showNodeIds, state.showCoords);
         if (selectionChanged) this.updateSelection(prev.selectedNode, state.selectedNode, state.start, state.finish);
@@ -352,13 +352,13 @@ export class NavGraphRenderer extends BaseGraphRenderer {
         || state.finish !== prev.finish;
       prev = state;
       if (changed) {
-        this.renderNav(state.nodes, state.navNodes, state.navEdges, state.start, state.finish, state.tessellationConfig);
+        this.renderNav(state.nodes, state.navNodes, state.navEdges, state.start, state.finish, state.activeTessellationConfig);
       }
     });
 
     const s = useMazeStore.getState();
     if (s.nodes.length > 0) {
-      this.renderNav(s.nodes, s.navNodes, s.navEdges, s.start, s.finish, s.tessellationConfig);
+      this.renderNav(s.nodes, s.navNodes, s.navEdges, s.start, s.finish, s.activeTessellationConfig);
     }
   }
 

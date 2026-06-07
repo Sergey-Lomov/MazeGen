@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { squareCenter, hexCenter, hexVertices, mazeBounds, INRADIUS } from "../pixi/hexGeometry";
+import { squareCenter, hexCenter, cellCenter, hexVertices, mazeBounds, INRADIUS } from "../pixi/hexGeometry";
 import { TILE_SIZE } from "../pixi/constants";
-
-const EPS = 1e-9;
-function near(a: number, b: number) { return Math.abs(a - b) < EPS; }
 
 describe("squareCenter", () => {
   it("square_cell_center_origin", () => {
@@ -26,19 +23,60 @@ describe("hexCenter flat_top", () => {
     expect(y).toBeCloseTo(0);
   });
 
-  it("flat_top_cell_center_q1", () => {
+  it("flat_top_cell_center_q1_r0", () => {
     // q=1, r=0: cx = 1.5*T, cy = -(0 + 1*INRADIUS) = -INRADIUS
     const { x, y } = hexCenter(1, 0, "flat_top");
     expect(x).toBeCloseTo(TILE_SIZE * 1.5);
     expect(y).toBeCloseTo(-INRADIUS);
   });
+
+  it("flat_top_cell_center_q0_r1", () => {
+    // q=0, r=1: cx = 0, cy = -(1*2*INRADIUS + 0) = -2*INRADIUS
+    const { x, y } = hexCenter(0, 1, "flat_top");
+    expect(x).toBeCloseTo(0);
+    expect(y).toBeCloseTo(-2 * INRADIUS);
+  });
+
+  it("flat_top_cell_center_q1_r1", () => {
+    // q=1, r=1: cx = 1.5*T, cy = -(1*2*INRADIUS + 1*INRADIUS) = -3*INRADIUS
+    const { x, y } = hexCenter(1, 1, "flat_top");
+    expect(x).toBeCloseTo(TILE_SIZE * 1.5);
+    expect(y).toBeCloseTo(-3 * INRADIUS);
+  });
+
+  it("flat_top_negative_coords", () => {
+    // q=-1, r=0: cx = -1.5*T, cy = INRADIUS
+    const { x, y } = hexCenter(-1, 0, "flat_top");
+    expect(x).toBeCloseTo(-TILE_SIZE * 1.5);
+    expect(y).toBeCloseTo(INRADIUS);
+  });
 });
 
 describe("hexCenter pointy_top", () => {
-  it("pointy_top_cell_center_r1", () => {
+  it("pointy_top_cell_center_origin", () => {
+    const { x, y } = hexCenter(0, 0, "pointy_top");
+    expect(x).toBeCloseTo(0);
+    expect(y).toBeCloseTo(0);
+  });
+
+  it("pointy_top_cell_center_q0_r1", () => {
     // q=0, r=1: cx = 0 + 1*INRADIUS = INRADIUS, cy = -(1*1.5*T) = -1.5*T
     const { x, y } = hexCenter(0, 1, "pointy_top");
     expect(x).toBeCloseTo(INRADIUS);
+    expect(y).toBeCloseTo(-TILE_SIZE * 1.5);
+  });
+
+  it("pointy_top_cell_center_q1_r0", () => {
+    // q=1, r=0: cx = 1*2*INRADIUS + 0 = 2*INRADIUS, cy = 0
+    const { x, y } = hexCenter(1, 0, "pointy_top");
+    expect(x).toBeCloseTo(2 * INRADIUS);
+    expect(y).toBeCloseTo(0);
+  });
+
+  it("pointy_top_cell_center_q1_r1", () => {
+    // q=1, r=1: cx = 2*INRADIUS + 1*INRADIUS = 3*INRADIUS, cy = -1.5*T
+    const { x, y } = hexCenter(1, 1, "pointy_top");
+    expect(x).toBeCloseTo(3 * INRADIUS);
     expect(y).toBeCloseTo(-TILE_SIZE * 1.5);
   });
 });
@@ -96,6 +134,36 @@ describe("hexVertices", () => {
   });
 });
 
+describe("cellCenter", () => {
+  it("square_dispatches_to_squareCenter", () => {
+    const node = { id: 0, x: 2, y: 3 };
+    const { x, y } = cellCenter(node, { type: "square", width: 10, height: 10 });
+    expect(x).toBeCloseTo(squareCenter(2, 3).x);
+    expect(y).toBeCloseTo(squareCenter(2, 3).y);
+  });
+
+  it("hex_parallelogram_dispatches_to_hexCenter", () => {
+    const node = { id: 0, x: 1, y: 2 };
+    const { x, y } = cellCenter(node, { type: "hex_parallelogram", cols: 5, rows: 5, orientation: "flat_top" });
+    expect(x).toBeCloseTo(hexCenter(1, 2, "flat_top").x);
+    expect(y).toBeCloseTo(hexCenter(1, 2, "flat_top").y);
+  });
+
+  it("hex_hexagon_dispatches_to_hexCenter", () => {
+    const node = { id: 0, x: -1, y: 1 };
+    const { x, y } = cellCenter(node, { type: "hex_hexagon", radius: 3, orientation: "pointy_top" });
+    expect(x).toBeCloseTo(hexCenter(-1, 1, "pointy_top").x);
+    expect(y).toBeCloseTo(hexCenter(-1, 1, "pointy_top").y);
+  });
+
+  it("hex_parallelogram_default_orientation_is_flat_top", () => {
+    const node = { id: 0, x: 1, y: 0 };
+    const { x, y } = cellCenter(node, { type: "hex_parallelogram", cols: 5, rows: 5 });
+    expect(x).toBeCloseTo(hexCenter(1, 0, "flat_top").x);
+    expect(y).toBeCloseTo(hexCenter(1, 0, "flat_top").y);
+  });
+});
+
 describe("mazeBounds", () => {
   it("maze_bounds_single_node", () => {
     const cx = 10, cy = -5, half = 20;
@@ -104,5 +172,23 @@ describe("mazeBounds", () => {
     expect(bounds.minY).toBeCloseTo(cy - half);
     expect(bounds.maxX).toBeCloseTo(cx + half);
     expect(bounds.maxY).toBeCloseTo(cy + half);
+  });
+
+  it("maze_bounds_multiple_nodes", () => {
+    const centers = [{ x: 0, y: 0 }, { x: 10, y: -20 }, { x: -5, y: 15 }];
+    const half = 5;
+    const bounds = mazeBounds(centers, half);
+    expect(bounds.minX).toBeCloseTo(-5 - half);
+    expect(bounds.minY).toBeCloseTo(-20 - half);
+    expect(bounds.maxX).toBeCloseTo(10 + half);
+    expect(bounds.maxY).toBeCloseTo(15 + half);
+  });
+
+  it("maze_bounds_padding_symmetric", () => {
+    const centers = [{ x: 0, y: 0 }];
+    const half = 7;
+    const bounds = mazeBounds(centers, half);
+    expect(bounds.maxX - bounds.minX).toBeCloseTo(2 * half);
+    expect(bounds.maxY - bounds.minY).toBeCloseTo(2 * half);
   });
 });

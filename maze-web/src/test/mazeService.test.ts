@@ -30,8 +30,6 @@ const validSnapshot = {
   nav_nodes: [{ node_id: 0 }, { node_id: 1 }],
   nav_edges: [{ from: 0, to: 1, path: [0, 1] }],
   components: [[0], [1]],
-  tessellation_type: "square",
-  orientation: null,
 };
 
 describe("generateMaze / validateSnapshot", () => {
@@ -85,8 +83,6 @@ describe("generateMaze / validateSnapshot", () => {
       nav_nodes: [],
       nav_edges: [],
       components: [],
-      tessellation_type: "square",
-      orientation: null,
     });
     expect(() => generateMaze(1, defaultConfig)).toThrow("edge.from 99 not in nodes");
   });
@@ -99,21 +95,19 @@ describe("generateMaze / validateSnapshot", () => {
       nav_nodes: [],
       nav_edges: [],
       components: [],
-      tessellation_type: "square",
-      orientation: null,
     });
     expect(() => generateMaze(1, defaultConfig)).toThrow("edge.to 99 not in nodes");
   });
 
   it("accepts empty nodes and edges", () => {
-    mockGenerate.mockReturnValue({ nodes: [], edges: [], start: null, finish: null, warnings: [], nav_nodes: [], nav_edges: [], components: [], tessellation_type: "square", orientation: null });
+    mockGenerate.mockReturnValue({ nodes: [], edges: [], start: null, finish: null, warnings: [], nav_nodes: [], nav_edges: [], components: [] });
     const result = generateMaze(0, defaultConfig);
     expect(result.nodes).toHaveLength(0);
     expect(result.edges).toHaveLength(0);
   });
 
   it("accepts null start/finish", () => {
-    mockGenerate.mockReturnValue({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null, warnings: [], nav_nodes: [], nav_edges: [], components: [], tessellation_type: "square", orientation: null });
+    mockGenerate.mockReturnValue({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null, warnings: [], nav_nodes: [], nav_edges: [], components: [] });
     const result = generateMaze(1, defaultConfig);
     expect(result.start).toBeNull();
     expect(result.finish).toBeNull();

@@ -62,15 +62,27 @@ describe("ControlPanel", () => {
     expect(getState().setTessellationConfig).toHaveBeenCalledWith({ type: "square", width: 10, height: 7 });
   });
 
-  it("shows hex fields when tessellation is hex", () => {
+  it("shows hex parallelogram fields when tessellation is hex_parallelogram", () => {
     const s = getState();
-    s.tessellationConfig = { type: "hex", cols: 8, rows: 6, orientation: "flat_top" };
+    s.tessellationConfig = { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
     render(<ControlPanel />);
     expect(screen.getByLabelText("Cols")).toHaveValue(8);
     expect(screen.getByLabelText("Rows")).toHaveValue(6);
     expect(screen.queryByLabelText("Width")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Radius")).not.toBeInTheDocument();
+  });
+
+  it("shows hex hexagon fields when tessellation is hex_hexagon", () => {
+    const s = getState();
+    s.tessellationConfig = { type: "hex_hexagon", radius: 4, orientation: "pointy_top" };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
+    render(<ControlPanel />);
+    expect(screen.getByLabelText("Radius")).toHaveValue(4);
+    expect(screen.queryByLabelText("Width")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Cols")).not.toBeInTheDocument();
   });
 
   it("calls generate on Generate button click", () => {

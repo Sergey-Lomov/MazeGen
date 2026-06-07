@@ -45,6 +45,4 @@ pub struct MazeSnapshot {
     pub nav_edges: Vec<NavEdgeDto>,
     /// Strongly connected components. Each entry is a sorted list of NodeIds.
     pub components: Vec<Vec<u32>>,
-    pub tessellation_type: String,
-    pub orientation: Option<HexOrientationDto>,
 }

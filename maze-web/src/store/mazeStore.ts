@@ -5,6 +5,7 @@ import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, Strateg
 interface MazeState {
   seed: number;
   tessellationConfig: TessellationConfig;
+  activeTessellationConfig: TessellationConfig;
   nodes: NodeDto[];
   edges: EdgeDto[];
   start: number | null;
@@ -45,6 +46,7 @@ interface MazeActions {
 export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   seed: 42,
   tessellationConfig: { type: "square", width: 10, height: 10 },
+  activeTessellationConfig: { type: "square", width: 10, height: 10 },
   nodes: [],
   edges: [],
   start: null,
@@ -107,7 +109,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         checks: selectedChecks,
         strategies,
       });
-      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null });
+      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null, activeTessellationConfig: tessellationConfig });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       set({ error: msg });

@@ -18,8 +18,6 @@ const mockSnapshot = {
   nav_nodes: [],
   nav_edges: [],
   components: [],
-  tessellation_type: "square",
-  orientation: null,
 };
 
 beforeEach(() => {
@@ -49,10 +47,10 @@ describe("mazeStore setters", () => {
 
   it("setTessellationConfig updates config and clears error", () => {
     useMazeStore.setState({ error: "old error" });
-    useMazeStore.getState().setTessellationConfig({ type: "hex", cols: 5, rows: 7, orientation: "pointy_top" });
+    useMazeStore.getState().setTessellationConfig({ type: "hex_parallelogram", cols: 5, rows: 7, orientation: "pointy_top" });
     const cfg = useMazeStore.getState().tessellationConfig;
-    expect(cfg.type).toBe("hex");
-    if (cfg.type === "hex") {
+    expect(cfg.type).toBe("hex_parallelogram");
+    if (cfg.type === "hex_parallelogram") {
       expect(cfg.cols).toBe(5);
       expect(cfg.rows).toBe(7);
       expect(cfg.orientation).toBe("pointy_top");
@@ -86,17 +84,33 @@ describe("mazeStore.generate", () => {
     expect(generateMaze).toHaveBeenCalledWith(7, { tessellation: { type: "square", width: 3, height: 4 }, checks: [], strategies: {} });
   });
 
-  it("calls generateMaze with hex tessellationConfig", () => {
+  it("calls generateMaze with hex_parallelogram tessellationConfig", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
     useMazeStore.setState({
       seed: 7,
-      tessellationConfig: { type: "hex", cols: 5, rows: 6, orientation: "flat_top" },
+      tessellationConfig: { type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" },
       selectedChecks: [],
       selectedStrategies: {},
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
-      tessellation: { type: "hex", cols: 5, rows: 6, orientation: "flat_top" },
+      tessellation: { type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" },
+      checks: [],
+      strategies: {},
+    });
+  });
+
+  it("calls generateMaze with hex_hexagon tessellationConfig", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      seed: 7,
+      tessellationConfig: { type: "hex_hexagon", radius: 3, orientation: "pointy_top" },
+      selectedChecks: [],
+      selectedStrategies: {},
+    });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(7, {
+      tessellation: { type: "hex_hexagon", radius: 3, orientation: "pointy_top" },
       checks: [],
       strategies: {},
     });

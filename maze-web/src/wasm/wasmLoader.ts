@@ -1,11 +1,11 @@
-type WasmModule = typeof import("../../pkg/maze_wasm");
+type WasmModule = typeof import("./pkg/maze_wasm");
 
 let wasmModule: WasmModule | null = null;
 let initPromise: Promise<void> | null = null;
 
 export function initWasm(): Promise<void> {
   if (!initPromise) {
-    initPromise = import("../../pkg/maze_wasm").then(async (pkg) => {
+    initPromise = import("./pkg/maze_wasm").then(async (pkg) => {
       await pkg.default();
       wasmModule = pkg;
     });

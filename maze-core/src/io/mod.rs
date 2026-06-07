@@ -2,8 +2,8 @@ use crate::space::{SquareField, SquarePoint, Field};
 use crate::Maze;
 
 pub fn render_ascii(maze: &Maze<SquareField>) -> String {
-    let width = maze.field.size.width;
-    let height = maze.field.size.height;
+    let width = maze.field.shape.width;
+    let height = maze.field.shape.height;
     let cols = 4 * width + 1;
     let rows = 2 * height + 1;
 

@@ -7,6 +7,15 @@ interface Props {
   settingsOpen?: boolean;
 }
 
+type TessType = TessellationConfig["type"];
+
+function orientationOf(cfg: TessellationConfig): "flat_top" | "pointy_top" {
+  if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
+    return cfg.orientation ?? "flat_top";
+  }
+  return "flat_top";
+}
+
 export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen = false }: Props) {
   const seed = useMazeStore((s) => s.seed);
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
@@ -17,17 +26,18 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
   const error = useMazeStore((s) => s.error);
   const warnings = useMazeStore((s) => s.warnings);
 
-  function handleTypeChange(type: "square" | "hex") {
+  function handleTypeChange(type: TessType) {
     if (type === "square") {
-      const cfg = tessellationConfig.type === "square"
-        ? tessellationConfig
-        : { type: "square" as const, width: 10, height: 10 };
-      setTessellationConfig(cfg);
+      if (tessellationConfig.type === "square") return;
+      setTessellationConfig({ type: "square", width: 10, height: 10 });
+    } else if (type === "hex_parallelogram") {
+      const orientation = orientationOf(tessellationConfig);
+      if (tessellationConfig.type === "hex_parallelogram") return;
+      setTessellationConfig({ type: "hex_parallelogram", cols: 10, rows: 10, orientation });
     } else {
-      const cfg = tessellationConfig.type === "hex"
-        ? tessellationConfig
-        : { type: "hex" as const, cols: 10, rows: 10, orientation: "flat_top" as const };
-      setTessellationConfig(cfg);
+      const orientation = orientationOf(tessellationConfig);
+      if (tessellationConfig.type === "hex_hexagon") return;
+      setTessellationConfig({ type: "hex_hexagon", radius: 5, orientation });
     }
   }
 
@@ -52,10 +62,11 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
         <select
           style={styles.input}
           value={tessellationConfig.type}
-          onChange={(e) => handleTypeChange(e.target.value as "square" | "hex")}
+          onChange={(e) => handleTypeChange(e.target.value as TessType)}
         >
           <option value="square">Square</option>
-          <option value="hex">Hex</option>
+          <option value="hex_parallelogram">Hex parallelogram</option>
+          <option value="hex_hexagon">Hex hexagon</option>
         </select>
       </label>
       {tessellationConfig.type === "square" && (
@@ -84,7 +95,7 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
           </label>
         </>
       )}
-      {tessellationConfig.type === "hex" && (
+      {tessellationConfig.type === "hex_parallelogram" && (
         <>
           <label style={styles.label}>
             Cols
@@ -106,6 +117,32 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
               max={200}
               value={tessellationConfig.rows}
               onChange={(e) => setField("rows", Number(e.target.value))}
+            />
+          </label>
+          <label style={styles.label}>
+            Orientation
+            <select
+              style={styles.input}
+              value={tessellationConfig.orientation ?? "flat_top"}
+              onChange={(e) => setField("orientation", e.target.value)}
+            >
+              <option value="flat_top">Flat top</option>
+              <option value="pointy_top">Pointy top</option>
+            </select>
+          </label>
+        </>
+      )}
+      {tessellationConfig.type === "hex_hexagon" && (
+        <>
+          <label style={styles.label}>
+            Radius
+            <input
+              style={styles.input}
+              type="number"
+              min={1}
+              max={50}
+              value={tessellationConfig.radius}
+              onChange={(e) => setField("radius", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>

@@ -12,7 +12,6 @@ const ONE_WAY_COLOR = 0xffaa00;
 
 export type PassageKind = "both" | "forward" | "backward" | "none";
 
-// Topology-agnostic: builds passage map by edge list (works for any tessellation).
 export function buildPassageMap(nodes: NodeDto[], edges: EdgeDto[]): Map<string, PassageKind> {
   const nodeById = new Map<number, NodeDto>();
   for (const n of nodes) nodeById.set(n.id, n);
@@ -68,13 +67,10 @@ function drawOneWayTriangle(g: Graphics, wallCx: number, wallCy: number, pointin
   g.fill(ONE_WAY_COLOR);
 }
 
-// Neighbor (dq,dr) for the edge between v[i] and v[(i+1)%6], per orientation.
-// hexVertices uses startAngle=0 (flat_top) or π/2 (pointy_top), y-inverted screen coords.
+// Neighbor (dq,dr) for the shared edge between v[i] and v[(i+1)%6], per orientation.
+// hexVertices: startAngle=0 (flat_top), π/2 (pointy_top), y-inverted screen coords.
 // Flat-top:   v[0]=right, v[1]=top-right, v[2]=top-left, v[3]=left, v[4]=bottom-left, v[5]=bottom-right
 // Pointy-top: v[0]=top,   v[1]=top-left,  v[2]=bottom-left, v[3]=bottom, v[4]=bottom-right, v[5]=top-right
-// Neighbor (dq,dr) for the shared edge between v[i] and v[(i+1)%6].
-// Computed by matching vertex coordinates between adjacent hexagons.
-// Flat-top (startAngle=0): v[0]=right, v[1]=top-right, v[2]=top-left, v[3]=left, v[4]=bottom-left, v[5]=bottom-right
 const HEX_NEIGHBOR_OFFSETS_FLAT: [number, number][] = [
   [1, 0],   // E  — edge v[0]→v[1]
   [0, 1],   // SE — edge v[1]→v[2]
@@ -325,10 +321,10 @@ export class MazeTileRenderer {
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const mazeChanged = state.nodes !== prev.nodes || state.edges !== prev.edges
         || state.start !== prev.start || state.finish !== prev.finish
-        || state.tessellationConfig !== prev.tessellationConfig;
+        || state.activeTessellationConfig !== prev.activeTessellationConfig;
 
       if (mazeChanged) {
-        this.render(state.nodes, state.edges, state.start, state.finish, state.tessellationConfig);
+        this.render(state.nodes, state.edges, state.start, state.finish, state.activeTessellationConfig);
       }
 
       prev = state;
@@ -336,7 +332,7 @@ export class MazeTileRenderer {
 
     const s = useMazeStore.getState();
     if (s.nodes.length > 0) {
-      this.render(s.nodes, s.edges, s.start, s.finish, s.tessellationConfig);
+      this.render(s.nodes, s.edges, s.start, s.finish, s.activeTessellationConfig);
     }
   }
 
@@ -355,8 +351,10 @@ export class MazeTileRenderer {
 
     if (cfg.type === "square") {
       renderSquare(nodes, edges, start, finish, this.tilesContainer, this.wallsContainer, this.markersContainer);
-    } else {
+    } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
       renderHex(nodes, edges, start, finish, cfg.orientation ?? "flat_top", this.tilesContainer, this.wallsContainer, this.markersContainer);
+    } else {
+      cfg satisfies never;
     }
   }
 

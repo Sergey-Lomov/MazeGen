@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Field};
-use maze_core::space::{SquareField, SquarePoint, SquareSize};
+use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField};
 use maze_core::generation::{generate_maze, pipeline::build_maze};
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
 use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, StrategyParams};
@@ -20,7 +20,7 @@ fn make_engines() -> (QualityControlEngine<SquareField>, RepairEngine<SquareFiel
 
 fn make_generated_graph(seed: u64) -> (SquareField, Graph) {
     let mut ids = IdGenerator::new();
-    let field = SquareField::new(SquareSize { width: 5, height: 5 }, &mut ids);
+    let field = ShapedField::new(SquareRect { width: 5, height: 5 }, &mut ids);
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();

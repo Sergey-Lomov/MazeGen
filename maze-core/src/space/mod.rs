@@ -6,12 +6,15 @@ use crate::graph::Graph;
 pub trait Tessellation {
     type Point: Copy + Eq + Hash;
     type Face: Copy + 'static;
-    type Size;
 
     fn step(point: Self::Point, face: Self::Face) -> Self::Point;
-    fn contains(size: &Self::Size, point: Self::Point) -> bool;
     fn faces() -> &'static [Self::Face];
-    fn all_points(size: &Self::Size) -> Vec<Self::Point>;
+}
+
+pub trait FieldShape {
+    type Point: Copy + Eq + Hash;
+    fn contains(&self, point: Self::Point) -> bool;
+    fn iter_points(&self) -> impl Iterator<Item = Self::Point>;
 }
 
 pub trait Field {
@@ -24,26 +27,26 @@ pub trait Field {
     fn build_nodes(&self, graph: &mut Graph);
 }
 
-pub struct StandardField<T: Tessellation> {
-    pub size: T::Size,
+pub struct ShapedField<T: Tessellation, S: FieldShape<Point = T::Point>> {
+    pub shape: S,
     point_to_node: HashMap<T::Point, NodeId>,
     node_to_point: HashMap<NodeId, T::Point>,
 }
 
-impl<T: Tessellation> StandardField<T> {
-    pub fn new(size: T::Size, ids: &mut IdGenerator) -> Self {
+impl<T: Tessellation, S: FieldShape<Point = T::Point>> ShapedField<T, S> {
+    pub fn new(shape: S, ids: &mut IdGenerator) -> Self {
         let mut point_to_node = HashMap::new();
         let mut node_to_point = HashMap::new();
-        for point in T::all_points(&size) {
+        for point in shape.iter_points() {
             let id = ids.next_id();
             point_to_node.insert(point, id);
             node_to_point.insert(id, point);
         }
-        Self { size, point_to_node, node_to_point }
+        Self { shape, point_to_node, node_to_point }
     }
 }
 
-impl<T: Tessellation> Field for StandardField<T> {
+impl<T: Tessellation, S: FieldShape<Point = T::Point>> Field for ShapedField<T, S> {
     type T = T;
 
     fn node_count(&self) -> usize {
@@ -59,7 +62,7 @@ impl<T: Tessellation> Field for StandardField<T> {
             .iter()
             .filter_map(|&face| {
                 let neighbor_point = T::step(point, face);
-                if T::contains(&self.size, neighbor_point) {
+                if self.shape.contains(neighbor_point) {
                     self.point_to_node.get(&neighbor_point).copied()
                 } else {
                     None
@@ -101,17 +104,11 @@ pub enum SquareFace {
     W,
 }
 
-pub struct SquareSize {
-    pub width: usize,
-    pub height: usize,
-}
-
 pub struct SquareTessellation;
 
 impl Tessellation for SquareTessellation {
     type Point = SquarePoint;
     type Face = SquareFace;
-    type Size = SquareSize;
 
     fn step(point: SquarePoint, face: SquareFace) -> SquarePoint {
         match face {
@@ -122,29 +119,34 @@ impl Tessellation for SquareTessellation {
         }
     }
 
-    fn contains(size: &SquareSize, point: SquarePoint) -> bool {
-        point.x >= 0
-            && point.y >= 0
-            && (point.x as usize) < size.width
-            && (point.y as usize) < size.height
-    }
-
     fn faces() -> &'static [SquareFace] {
         &[SquareFace::N, SquareFace::S, SquareFace::E, SquareFace::W]
     }
+}
 
-    fn all_points(size: &SquareSize) -> Vec<SquarePoint> {
-        let mut points = Vec::with_capacity(size.width * size.height);
-        for y in 0..size.height {
-            for x in 0..size.width {
-                points.push(SquarePoint { x: x as i32, y: y as i32 });
-            }
-        }
-        points
+pub struct SquareRect {
+    pub width: usize,
+    pub height: usize,
+}
+
+impl FieldShape for SquareRect {
+    type Point = SquarePoint;
+
+    fn contains(&self, p: SquarePoint) -> bool {
+        p.x >= 0 && p.y >= 0
+            && (p.x as usize) < self.width
+            && (p.y as usize) < self.height
+    }
+
+    fn iter_points(&self) -> impl Iterator<Item = SquarePoint> {
+        let w = self.width;
+        (0..self.height).flat_map(move |y|
+            (0..w).map(move |x| SquarePoint { x: x as i32, y: y as i32 })
+        )
     }
 }
 
-pub type SquareField = StandardField<SquareTessellation>;
+pub type SquareField = ShapedField<SquareTessellation, SquareRect>;
 
 // Hex tessellation
 
@@ -152,11 +154,6 @@ pub type SquareField = StandardField<SquareTessellation>;
 pub struct HexPoint {
     pub q: i32,
     pub r: i32,
-}
-
-pub struct HexSize {
-    pub cols: usize,
-    pub rows: usize,
 }
 
 #[derive(Copy, Clone)]
@@ -174,7 +171,6 @@ pub struct HexTessellation;
 impl Tessellation for HexTessellation {
     type Point = HexPoint;
     type Face = HexFace;
-    type Size = HexSize;
 
     fn step(point: HexPoint, face: HexFace) -> HexPoint {
         match face {
@@ -187,26 +183,51 @@ impl Tessellation for HexTessellation {
         }
     }
 
-    fn contains(size: &HexSize, point: HexPoint) -> bool {
-        point.q >= 0
-            && point.r >= 0
-            && (point.q as usize) < size.cols
-            && (point.r as usize) < size.rows
-    }
-
     fn faces() -> &'static [HexFace] {
         &[HexFace::E, HexFace::NE, HexFace::NW, HexFace::W, HexFace::SW, HexFace::SE]
     }
+}
 
-    fn all_points(size: &HexSize) -> Vec<HexPoint> {
-        let mut points = Vec::with_capacity(size.cols * size.rows);
-        for r in 0..size.rows {
-            for q in 0..size.cols {
-                points.push(HexPoint { q: q as i32, r: r as i32 });
-            }
-        }
-        points
+pub struct HexParallelogram {
+    pub cols: usize,
+    pub rows: usize,
+}
+
+impl FieldShape for HexParallelogram {
+    type Point = HexPoint;
+
+    fn contains(&self, p: HexPoint) -> bool {
+        p.q >= 0 && p.r >= 0
+            && (p.q as usize) < self.cols
+            && (p.r as usize) < self.rows
+    }
+
+    fn iter_points(&self) -> impl Iterator<Item = HexPoint> {
+        let cols = self.cols;
+        (0..self.rows).flat_map(move |r|
+            (0..cols).map(move |q| HexPoint { q: q as i32, r: r as i32 })
+        )
     }
 }
 
-pub type HexField = StandardField<HexTessellation>;
+pub struct HexHexagon {
+    pub radius: usize,
+}
+
+impl FieldShape for HexHexagon {
+    type Point = HexPoint;
+
+    fn contains(&self, p: HexPoint) -> bool {
+        let n = self.radius as i32;
+        p.q.abs() <= n && p.r.abs() <= n && (p.q + p.r).abs() <= n
+    }
+
+    fn iter_points(&self) -> impl Iterator<Item = HexPoint> {
+        let n = self.radius as i32;
+        (-n..=n).flat_map(move |q|
+            ((-n).max(-q - n)..=n.min(-q + n)).map(move |r| HexPoint { q, r })
+        )
+    }
+}
+
+pub type HexField<S> = ShapedField<HexTessellation, S>;

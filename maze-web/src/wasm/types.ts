@@ -28,8 +28,6 @@ export interface MazeSnapshot {
   nav_nodes: NavNodeDto[];
   nav_edges: NavEdgeDto[];
   components: number[][];
-  tessellation_type: string;
-  orientation: "flat_top" | "pointy_top" | null;
 }
 
 export interface CheckDescriptor {
@@ -61,7 +59,8 @@ export interface StrategyConfig {
 
 export type TessellationConfig =
   | { type: "square"; width: number; height: number }
-  | { type: "hex"; cols: number; rows: number; orientation?: "flat_top" | "pointy_top" };
+  | { type: "hex_parallelogram"; cols: number; rows: number; orientation?: "flat_top" | "pointy_top" }
+  | { type: "hex_hexagon"; radius: number; orientation?: "flat_top" | "pointy_top" };
 
 export interface GenerateConfig {
   tessellation: TessellationConfig;

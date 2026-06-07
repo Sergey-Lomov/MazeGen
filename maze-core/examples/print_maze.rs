@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use maze_core::{IdGenerator, Graph};
-use maze_core::space::{SquareField, SquarePoint, SquareSize, Field};
+use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField, Field};
 use maze_core::generation::{generate_maze, pipeline::build_maze};
 use maze_core::validation::is_connected;
 use maze_core::io::render_ascii;
@@ -10,7 +10,7 @@ use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy}
 fn main() {
     let seed = 3u64;
     let mut ids = IdGenerator::new();
-    let field = SquareField::new(SquareSize { width: 10, height: 10 }, &mut ids);
+    let field = ShapedField::new(SquareRect { width: 10, height: 10 }, &mut ids);
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);

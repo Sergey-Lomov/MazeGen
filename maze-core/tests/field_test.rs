@@ -1,9 +1,9 @@
 use maze_core::{IdGenerator};
-use maze_core::space::{SquareField, SquarePoint, SquareSize, Field};
+use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField, Field};
 
 fn make_field(width: usize, height: usize) -> SquareField {
     let mut ids = IdGenerator::new();
-    SquareField::new(SquareSize { width, height }, &mut ids)
+    ShapedField::new(SquareRect { width, height }, &mut ids)
 }
 
 #[test]

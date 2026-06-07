@@ -26,8 +26,11 @@ export function hexCenter(q: number, r: number, orientation: "flat_top" | "point
 export function cellCenter(node: NodeDto, cfg: TessellationConfig): Pos {
   if (cfg.type === "square") {
     return squareCenter(node.x, node.y);
-  } else {
+  } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
     return hexCenter(node.x, node.y, cfg.orientation ?? "flat_top");
+  } else {
+    cfg satisfies never;
+    throw new Error(`unknown tessellation type: ${(cfg as { type: string }).type}`);
   }
 }
 

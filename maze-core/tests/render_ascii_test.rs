@@ -1,11 +1,11 @@
 use maze_core::{Maze, Graph, IdGenerator};
 use maze_core::graph::EdgeKind;
-use maze_core::space::{SquareField, SquarePoint, SquareSize, Field};
+use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField, Field};
 use maze_core::io::render_ascii;
 
 fn make_maze(width: usize, height: usize) -> (Maze<SquareField>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
-    let field = SquareField::new(SquareSize { width, height }, &mut ids);
+    let field = ShapedField::new(SquareRect { width, height }, &mut ids);
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     // build node grid for easy access

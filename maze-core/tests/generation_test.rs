@@ -1,11 +1,11 @@
 use maze_core::{Graph, IdGenerator};
-use maze_core::space::{SquareField, SquareSize, Field};
+use maze_core::space::{SquareField, SquareRect, ShapedField, Field};
 use maze_core::generation::generate_maze;
 use maze_core::validation::is_connected;
 
 fn build(width: usize, height: usize) -> (Graph, SquareField, u64) {
     let mut ids = IdGenerator::new();
-    let field = SquareField::new(SquareSize { width, height }, &mut ids);
+    let field = ShapedField::new(SquareRect { width, height }, &mut ids);
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(maze_core::space::SquarePoint { x: 0, y: 0 }).unwrap();

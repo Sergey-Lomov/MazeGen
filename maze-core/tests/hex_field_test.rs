@@ -1,14 +1,21 @@
 use maze_core::IdGenerator;
-use maze_core::space::{HexField, HexPoint, HexSize, Field};
+use maze_core::space::{HexField, HexPoint, HexParallelogram, HexHexagon, ShapedField, Field, FieldShape};
 
-fn make_field(cols: usize, rows: usize) -> HexField {
+fn make_parallelogram(cols: usize, rows: usize) -> HexField<HexParallelogram> {
     let mut ids = IdGenerator::new();
-    HexField::new(HexSize { cols, rows }, &mut ids)
+    ShapedField::new(HexParallelogram { cols, rows }, &mut ids)
 }
+
+fn make_hexagon(radius: usize) -> HexField<HexHexagon> {
+    let mut ids = IdGenerator::new();
+    ShapedField::new(HexHexagon { radius }, &mut ids)
+}
+
+// --- HexParallelogram ---
 
 #[test]
 fn parallelogram_corner_has_three_neighbors() {
-    let field = make_field(3, 3);
+    let field = make_parallelogram(3, 3);
     // (0,2): E=(1,2)✓, NE=(1,1)✓, NW=(0,1)✓, W=(-1,2)✗, SW=(-1,3)✗, SE=(0,3)✗
     let node = field.node_at(HexPoint { q: 0, r: 2 }).unwrap();
     assert_eq!(field.neighbors(node).len(), 3);
@@ -16,7 +23,7 @@ fn parallelogram_corner_has_three_neighbors() {
 
 #[test]
 fn parallelogram_edge_has_four_neighbors() {
-    let field = make_field(3, 3);
+    let field = make_parallelogram(3, 3);
     // (1,0) on r=0 edge: E=(2,0)✓, NE=(2,-1)✗, NW=(1,-1)✗, W=(0,0)✓, SW=(0,1)✓, SE=(1,1)✓
     let node = field.node_at(HexPoint { q: 1, r: 0 }).unwrap();
     assert_eq!(field.neighbors(node).len(), 4);
@@ -24,27 +31,96 @@ fn parallelogram_edge_has_four_neighbors() {
 
 #[test]
 fn parallelogram_interior_has_six_neighbors() {
-    let field = make_field(3, 3);
+    let field = make_parallelogram(3, 3);
     let node = field.node_at(HexPoint { q: 1, r: 1 }).unwrap();
     assert_eq!(field.neighbors(node).len(), 6);
 }
 
 #[test]
-fn node_at_unknown_point_is_none() {
-    let field = make_field(3, 3);
+fn parallelogram_node_at_unknown_point_is_none() {
+    let field = make_parallelogram(3, 3);
     assert!(field.node_at(HexPoint { q: 10, r: 10 }).is_none());
 }
 
 #[test]
-fn point_of_round_trip() {
-    let field = make_field(3, 3);
+fn parallelogram_point_of_round_trip() {
+    let field = make_parallelogram(3, 3);
     let point = HexPoint { q: 2, r: 1 };
     let node = field.node_at(point).unwrap();
     assert_eq!(field.point_of(node), Some(point));
 }
 
 #[test]
-fn node_count_matches_size() {
-    let field = make_field(5, 7);
+fn parallelogram_node_count_matches_size() {
+    let field = make_parallelogram(5, 7);
     assert_eq!(field.node_count(), 35);
+}
+
+// --- HexHexagon ---
+
+#[test]
+fn hexagon_radius0_has_one_node() {
+    let field = make_hexagon(0);
+    assert_eq!(field.node_count(), 1);
+    assert!(field.node_at(HexPoint { q: 0, r: 0 }).is_some());
+}
+
+#[test]
+fn hexagon_radius1_has_seven_nodes() {
+    let field = make_hexagon(1);
+    assert_eq!(field.node_count(), 7);
+}
+
+#[test]
+fn hexagon_radius2_has_nineteen_nodes() {
+    let field = make_hexagon(2);
+    assert_eq!(field.node_count(), 19);
+}
+
+#[test]
+fn hexagon_radius3_has_thirtyseven_nodes() {
+    let field = make_hexagon(3);
+    assert_eq!(field.node_count(), 37);
+}
+
+#[test]
+fn hexagon_center_has_six_neighbors() {
+    let field = make_hexagon(2);
+    let center = field.node_at(HexPoint { q: 0, r: 0 }).unwrap();
+    assert_eq!(field.neighbors(center).len(), 6);
+}
+
+#[test]
+fn hexagon_edge_node_has_fewer_neighbors() {
+    let field = make_hexagon(2);
+    // corner of hexagon (e.g. q=2, r=0) — on boundary
+    let corner = field.node_at(HexPoint { q: 2, r: 0 }).unwrap();
+    assert!(field.neighbors(corner).len() < 6);
+}
+
+#[test]
+fn hexagon_contains_boundary_points() {
+    let shape = HexHexagon { radius: 2 };
+    // boundary: |q|=2, r=0
+    assert!(shape.contains(HexPoint { q: 2, r: 0 }));
+    assert!(shape.contains(HexPoint { q: -2, r: 0 }));
+    assert!(shape.contains(HexPoint { q: 0, r: 2 }));
+    assert!(shape.contains(HexPoint { q: 0, r: -2 }));
+}
+
+#[test]
+fn hexagon_excludes_outside_points() {
+    let shape = HexHexagon { radius: 2 };
+    // just outside radius
+    assert!(!shape.contains(HexPoint { q: 3, r: 0 }));
+    assert!(!shape.contains(HexPoint { q: 2, r: 1 })); // q+r=3 > 2
+    assert!(!shape.contains(HexPoint { q: -2, r: -1 })); // |q+r|=3 > 2
+}
+
+#[test]
+fn hexagon_point_of_round_trip() {
+    let field = make_hexagon(2);
+    let point = HexPoint { q: 1, r: -1 };
+    let node = field.node_at(point).unwrap();
+    assert_eq!(field.point_of(node), Some(point));
 }
