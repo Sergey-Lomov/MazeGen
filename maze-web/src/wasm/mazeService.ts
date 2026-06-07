@@ -43,6 +43,8 @@ function validateSnapshot(raw: unknown): MazeSnapshot {
   if (!Array.isArray(s.components) || !s.components.every(
     (c: unknown) => Array.isArray(c) && (c as unknown[]).every(n => typeof n === "number")
   )) throw new Error("WASM snapshot: invalid components");
+  if (typeof s.tessellation_type !== "string")
+    throw new Error("WASM snapshot: invalid tessellation_type");
   const nodeIds = new Set<number>((s.nodes as NodeDto[]).map(n => n.id));
   for (const e of s.edges as EdgeDto[]) {
     if (!nodeIds.has(e.from)) throw new Error(`WASM snapshot: edge.from ${e.from} not in nodes`);
@@ -59,7 +61,7 @@ export function getAvailableStrategies(): StrategyDescriptor[] {
   return getWasm().available_strategies() as StrategyDescriptor[];
 }
 
-export function generateMaze(seed: number, width: number, height: number, config: GenerateConfig): MazeSnapshot {
-  const raw = getWasm().generate(BigInt(seed), width, height, config);
+export function generateMaze(seed: number, config: GenerateConfig): MazeSnapshot {
+  const raw = getWasm().generate(BigInt(seed), config);
   return validateSnapshot(raw);
 }

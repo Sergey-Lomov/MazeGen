@@ -1,7 +1,8 @@
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, TessellationConfig } from "../wasm/types";
 import { TILE_SIZE, NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
+import { cellCenter } from "./hexGeometry";
 
 export { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
 const NODE_COLOR = 0x4a9eff;
@@ -19,8 +20,8 @@ export function nodeColor(id: number, selectedNode: number | null, start: number
   return NODE_COLOR;
 }
 
-function gridPos(node: NodeDto): Pos {
-  return { x: node.x * TILE_SIZE, y: -node.y * TILE_SIZE };
+function gridPos(node: NodeDto, cfg: TessellationConfig): Pos {
+  return cellCenter(node, cfg);
 }
 
 function arrowHeight(len: number): number {
@@ -225,7 +226,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
       if (!nodesChanged && !debugChanged && !selectionChanged) { prev = state; return; }
 
       if (nodesChanged) {
-        this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode, state.start, state.finish);
+        this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode, state.start, state.finish, state.tessellationConfig);
       } else {
         if (debugChanged) this.updateLabels(state.nodes, state.showNodeIds, state.showCoords);
         if (selectionChanged) this.updateSelection(prev.selectedNode, state.selectedNode, state.start, state.finish);
@@ -242,13 +243,14 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     selectedNode: number | null,
     start: number | null,
     finish: number | null,
+    cfg: TessellationConfig,
   ): void {
     this.nodeViews.clear();
     this.nodeLabels.clear();
     this.resetContainers();
 
     const nodePos = new Map<number, Pos>();
-    for (const node of nodes) nodePos.set(node.id, gridPos(node));
+    for (const node of nodes) nodePos.set(node.id, gridPos(node, cfg));
 
     // Build pair flags for directedness
     type PairFlags = { loToHi: boolean; hiToLo: boolean };
@@ -350,13 +352,13 @@ export class NavGraphRenderer extends BaseGraphRenderer {
         || state.finish !== prev.finish;
       prev = state;
       if (changed) {
-        this.renderNav(state.nodes, state.navNodes, state.navEdges, state.start, state.finish);
+        this.renderNav(state.nodes, state.navNodes, state.navEdges, state.start, state.finish, state.tessellationConfig);
       }
     });
 
     const s = useMazeStore.getState();
     if (s.nodes.length > 0) {
-      this.renderNav(s.nodes, s.navNodes, s.navEdges, s.start, s.finish);
+      this.renderNav(s.nodes, s.navNodes, s.navEdges, s.start, s.finish, s.tessellationConfig);
     }
   }
 
@@ -366,12 +368,13 @@ export class NavGraphRenderer extends BaseGraphRenderer {
     navEdges: NavEdgeDto[],
     start: number | null,
     finish: number | null,
+    cfg: TessellationConfig,
   ): void {
     this.resetContainers();
     if (nodes.length === 0) return;
 
     const nodePos = new Map<number, Pos>();
-    for (const node of nodes) nodePos.set(node.id, gridPos(node));
+    for (const node of nodes) nodePos.set(node.id, gridPos(node, cfg));
 
     // Detect reverse pairs among nav edges
     const edgeKeys = new Set<string>();

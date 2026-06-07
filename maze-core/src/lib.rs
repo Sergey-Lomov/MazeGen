@@ -10,7 +10,7 @@ pub mod repair;
 
 pub use ids::{NodeId, IdGenerator};
 pub use graph::Graph;
-pub use space::Field;
+pub use space::{Field, HexField, HexPoint, HexSize, HexFace, HexTessellation};
 pub use meta::MazeMeta;
 pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
 

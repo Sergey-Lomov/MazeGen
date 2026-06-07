@@ -18,13 +18,14 @@ const mockSnapshot = {
   nav_nodes: [],
   nav_edges: [],
   components: [],
+  tessellation_type: "square",
+  orientation: null,
 };
 
 beforeEach(() => {
   useMazeStore.setState({
     seed: 42,
-    width: 10,
-    height: 10,
+    tessellationConfig: { type: "square", width: 10, height: 10 },
     nodes: [],
     edges: [],
     start: null,
@@ -46,17 +47,16 @@ describe("mazeStore setters", () => {
     expect(useMazeStore.getState().error).toBeNull();
   });
 
-  it("setWidth updates width and clears error", () => {
+  it("setTessellationConfig updates config and clears error", () => {
     useMazeStore.setState({ error: "old error" });
-    useMazeStore.getState().setWidth(5);
-    expect(useMazeStore.getState().width).toBe(5);
-    expect(useMazeStore.getState().error).toBeNull();
-  });
-
-  it("setHeight updates height and clears error", () => {
-    useMazeStore.setState({ error: "old error" });
-    useMazeStore.getState().setHeight(7);
-    expect(useMazeStore.getState().height).toBe(7);
+    useMazeStore.getState().setTessellationConfig({ type: "hex", cols: 5, rows: 7, orientation: "pointy_top" });
+    const cfg = useMazeStore.getState().tessellationConfig;
+    expect(cfg.type).toBe("hex");
+    if (cfg.type === "hex") {
+      expect(cfg.cols).toBe(5);
+      expect(cfg.rows).toBe(7);
+      expect(cfg.orientation).toBe("pointy_top");
+    }
     expect(useMazeStore.getState().error).toBeNull();
   });
 });
@@ -74,11 +74,32 @@ describe("mazeStore.generate", () => {
     expect(s.selectedNode).toBeNull();
   });
 
-  it("calls generateMaze with current seed/width/height and config", () => {
+  it("calls generateMaze with current seed and tessellationConfig", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
-    useMazeStore.setState({ seed: 7, width: 3, height: 4, selectedChecks: [], selectedStrategies: {} });
+    useMazeStore.setState({
+      seed: 7,
+      tessellationConfig: { type: "square", width: 3, height: 4 },
+      selectedChecks: [],
+      selectedStrategies: {},
+    });
     useMazeStore.getState().generate();
-    expect(generateMaze).toHaveBeenCalledWith(7, 3, 4, { checks: [], strategies: {} });
+    expect(generateMaze).toHaveBeenCalledWith(7, { tessellation: { type: "square", width: 3, height: 4 }, checks: [], strategies: {} });
+  });
+
+  it("calls generateMaze with hex tessellationConfig", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      seed: 7,
+      tessellationConfig: { type: "hex", cols: 5, rows: 6, orientation: "flat_top" },
+      selectedChecks: [],
+      selectedStrategies: {},
+    });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(7, {
+      tessellation: { type: "hex", cols: 5, rows: 6, orientation: "flat_top" },
+      checks: [],
+      strategies: {},
+    });
   });
 
   it("stores error string on Error throw", () => {
@@ -103,6 +124,7 @@ describe("mazeStore.generate", () => {
   it("passes strategyParams overrides to generateMaze", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
     useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 10, height: 10 },
       selectedChecks: ["missing_endpoints"],
       selectedStrategies: { missing_endpoints: "scored_endpoints" },
       strategyParams: { scored_endpoints: { path_weight: "2", junction_weight: "6" } },
@@ -116,7 +138,8 @@ describe("mazeStore.generate", () => {
       }],
     });
     useMazeStore.getState().generate();
-    expect(generateMaze).toHaveBeenCalledWith(42, 10, 10, {
+    expect(generateMaze).toHaveBeenCalledWith(42, {
+      tessellation: { type: "square", width: 10, height: 10 },
       checks: ["missing_endpoints"],
       strategies: {
         missing_endpoints: {
@@ -143,7 +166,7 @@ describe("mazeStore.generate", () => {
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
-    const strategies = call[3].strategies;
+    const strategies = call[1].strategies;
     expect(strategies["missing_endpoints"].params).not.toHaveProperty("unknown_param");
     expect(strategies["missing_endpoints"].params).not.toHaveProperty("path_weight");
   });

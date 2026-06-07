@@ -1,7 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import type { NodeDto } from "../wasm/types";
+import type { NodeDto, TessellationConfig } from "../wasm/types";
 import { TILE_SIZE } from "./constants";
+import { hexVertices, hexCenter } from "./hexGeometry";
 
 const MASK_ALPHA = 0.45;
 
@@ -76,18 +77,19 @@ export class ComponentRenderer {
   }
 
   private subscribe(): void {
-    let prevNodes = useMazeStore.getState().nodes;
-    let prevComponents = useMazeStore.getState().components;
+    let prev = useMazeStore.getState();
     this.unsubscribe = useMazeStore.subscribe((state) => {
-      if (state.nodes !== prevNodes || state.components !== prevComponents) {
-        prevNodes = state.nodes;
-        prevComponents = state.components;
-        this.render(state.nodes, state.components);
+      if (state.nodes !== prev.nodes || state.components !== prev.components
+          || state.tessellationConfig !== prev.tessellationConfig) {
+        prev = state;
+        this.render(state.nodes, state.components, state.tessellationConfig);
+      } else {
+        prev = state;
       }
     });
   }
 
-  private render(nodes: NodeDto[], components: number[][]): void {
+  private render(nodes: NodeDto[], components: number[][], cfg: TessellationConfig): void {
     this.graphics.clear();
     if (nodes.length === 0 || components.length === 0) return;
 
@@ -100,9 +102,16 @@ export class ComponentRenderer {
       for (const nodeId of components[compIdx]) {
         const node = nodeById.get(nodeId);
         if (!node) continue;
-        const x = node.x * TILE_SIZE;
-        const y = -node.y * TILE_SIZE - TILE_SIZE;
-        this.graphics.rect(x, y, TILE_SIZE, TILE_SIZE).fill({ color, alpha: MASK_ALPHA });
+        if (cfg.type === "square") {
+          const x = node.x * TILE_SIZE;
+          const y = -node.y * TILE_SIZE - TILE_SIZE;
+          this.graphics.rect(x, y, TILE_SIZE, TILE_SIZE).fill({ color, alpha: MASK_ALPHA });
+        } else {
+          const orientation = cfg.orientation ?? "flat_top";
+          const { x: cx, y: cy } = hexCenter(node.x, node.y, orientation);
+          const verts = hexVertices(cx, cy, orientation);
+          this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
+        }
       }
     }
   }

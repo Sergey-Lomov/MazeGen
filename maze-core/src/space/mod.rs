@@ -145,3 +145,68 @@ impl Tessellation for SquareTessellation {
 }
 
 pub type SquareField = StandardField<SquareTessellation>;
+
+// Hex tessellation
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct HexPoint {
+    pub q: i32,
+    pub r: i32,
+}
+
+pub struct HexSize {
+    pub cols: usize,
+    pub rows: usize,
+}
+
+#[derive(Copy, Clone)]
+pub enum HexFace {
+    E,
+    NE,
+    NW,
+    W,
+    SW,
+    SE,
+}
+
+pub struct HexTessellation;
+
+impl Tessellation for HexTessellation {
+    type Point = HexPoint;
+    type Face = HexFace;
+    type Size = HexSize;
+
+    fn step(point: HexPoint, face: HexFace) -> HexPoint {
+        match face {
+            HexFace::E  => HexPoint { q: point.q + 1, r: point.r },
+            HexFace::NE => HexPoint { q: point.q + 1, r: point.r - 1 },
+            HexFace::NW => HexPoint { q: point.q,     r: point.r - 1 },
+            HexFace::W  => HexPoint { q: point.q - 1, r: point.r },
+            HexFace::SW => HexPoint { q: point.q - 1, r: point.r + 1 },
+            HexFace::SE => HexPoint { q: point.q,     r: point.r + 1 },
+        }
+    }
+
+    fn contains(size: &HexSize, point: HexPoint) -> bool {
+        point.q >= 0
+            && point.r >= 0
+            && (point.q as usize) < size.cols
+            && (point.r as usize) < size.rows
+    }
+
+    fn faces() -> &'static [HexFace] {
+        &[HexFace::E, HexFace::NE, HexFace::NW, HexFace::W, HexFace::SW, HexFace::SE]
+    }
+
+    fn all_points(size: &HexSize) -> Vec<HexPoint> {
+        let mut points = Vec::with_capacity(size.cols * size.rows);
+        for r in 0..size.rows {
+            for q in 0..size.cols {
+                points.push(HexPoint { q: q as i32, r: r as i32 });
+            }
+        }
+        points
+    }
+}
+
+pub type HexField = StandardField<HexTessellation>;

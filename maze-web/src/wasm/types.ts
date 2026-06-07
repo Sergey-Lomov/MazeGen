@@ -28,6 +28,8 @@ export interface MazeSnapshot {
   nav_nodes: NavNodeDto[];
   nav_edges: NavEdgeDto[];
   components: number[][];
+  tessellation_type: string;
+  orientation: "flat_top" | "pointy_top" | null;
 }
 
 export interface CheckDescriptor {
@@ -57,7 +59,12 @@ export interface StrategyConfig {
   params: Record<string, string>;
 }
 
+export type TessellationConfig =
+  | { type: "square"; width: number; height: number }
+  | { type: "hex"; cols: number; rows: number; orientation?: "flat_top" | "pointy_top" };
+
 export interface GenerateConfig {
+  tessellation: TessellationConfig;
   checks: string[];
   strategies: Record<string, StrategyConfig>;
 }

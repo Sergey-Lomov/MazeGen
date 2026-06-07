@@ -1,9 +1,11 @@
 import { Application, Container } from "pixi.js";
 import { MazeTileRenderer } from "./MazeTileRenderer";
 import { TILE_SIZE } from "./constants";
+import { cellCenter, mazeBounds } from "./hexGeometry";
 import { MazeGraphRenderer, NavGraphRenderer } from "./MazeRenderer";
 import { ComponentRenderer } from "./ComponentRenderer";
 import { useMazeStore } from "../store/mazeStore";
+import type { TessellationConfig } from "../wasm/types";
 
 const FIT_PADDING = 0.9;
 
@@ -43,21 +45,14 @@ export class MazeScene {
     this.componentOverlay = new Container();
     this.componentOverlay.visible = useMazeStore.getState().showComponents;
 
-    // graphOverlay shares position/scale with viewport.
-    // Graph nodes render at (x*TILE_SIZE, -y*TILE_SIZE); tile centers are at (x*TILE_SIZE + TILE_SIZE/2, -y*TILE_SIZE - TILE_SIZE/2).
-    // Offset inner container by (TILE_SIZE/2, -TILE_SIZE/2) to align nodes to tile centers.
     this.graphOverlay = new Container();
     this.graphOverlay.visible = useMazeStore.getState().showGraphOverlay;
     const graphInner = new Container();
-    graphInner.x = TILE_SIZE / 2;
-    graphInner.y = -TILE_SIZE / 2;
     this.graphOverlay.addChild(graphInner);
 
     this.navOverlay = new Container();
     this.navOverlay.visible = useMazeStore.getState().showNavOverlay;
     const navInner = new Container();
-    navInner.x = TILE_SIZE / 2;
-    navInner.y = -TILE_SIZE / 2;
     this.navOverlay.addChild(navInner);
 
     this.syncedLayers = [this.componentOverlay, this.graphOverlay, this.navOverlay];
@@ -132,7 +127,7 @@ export class MazeScene {
       if (state.nodes !== prevNodes) {
         prevNodes = state.nodes;
         if (state.nodes.length > 0) {
-          this.fitMaze(state.width, state.height);
+          this.fitMaze(state.tessellationConfig, state.nodes);
         }
       }
     });
@@ -147,18 +142,20 @@ export class MazeScene {
     }
   }
 
-  private fitMaze(mazeWidth: number, mazeHeight: number): void {
-    const W = mazeWidth * TILE_SIZE;
-    const H = mazeHeight * TILE_SIZE;
+  private fitMaze(cfg: TessellationConfig, nodes: { x: number; y: number; id: number }[]): void {
+    const centers = nodes.map(n => cellCenter(n, cfg));
+    const halfTile = TILE_SIZE;
+    const { minX, minY, maxX, maxY } = mazeBounds(centers, halfTile);
+    const W = maxX - minX;
+    const H = maxY - minY;
     const screenW = this.app.screen.width;
     const screenH = this.app.screen.height;
     const scale = Math.min(FIT_PADDING * screenW / W, FIT_PADDING * screenH / H);
 
     this.viewport.scale.set(scale);
-    // Maze local coords: x in [0, W], y in [-H, 0]. Center = (W/2, -H/2).
-    // After scale, place center at screen center.
-    this.viewport.x = screenW / 2 - scale * W / 2;
-    this.viewport.y = screenH / 2 + scale * H / 2;
+    // Center the bounding box on screen.
+    this.viewport.x = screenW / 2 - scale * (minX + W / 2);
+    this.viewport.y = screenH / 2 - scale * (minY + H / 2);
 
     this.syncLayersToViewport();
   }

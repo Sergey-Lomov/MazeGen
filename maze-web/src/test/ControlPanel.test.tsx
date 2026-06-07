@@ -6,13 +6,11 @@ import { useMazeStore } from "../store/mazeStore";
 vi.mock("../store/mazeStore", () => {
   const state = {
     seed: 42,
-    width: 10,
-    height: 10,
+    tessellationConfig: { type: "square", width: 10, height: 10 },
     warnings: [] as string[],
     error: null as string | null,
     setSeed: vi.fn(),
-    setWidth: vi.fn(),
-    setHeight: vi.fn(),
+    setTessellationConfig: vi.fn(),
     generate: vi.fn(),
     reset: vi.fn(),
   };
@@ -27,21 +25,19 @@ function getState() {
 beforeEach(() => {
   const s = getState();
   s.seed = 42;
-  s.width = 10;
-  s.height = 10;
+  s.tessellationConfig = { type: "square", width: 10, height: 10 };
   s.warnings = [];
   s.error = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
   (s.setSeed as ReturnType<typeof vi.fn>).mockReset();
-  (s.setWidth as ReturnType<typeof vi.fn>).mockReset();
-  (s.setHeight as ReturnType<typeof vi.fn>).mockReset();
+  (s.setTessellationConfig as ReturnType<typeof vi.fn>).mockReset();
   (s.generate as ReturnType<typeof vi.fn>).mockReset();
   (s.reset as ReturnType<typeof vi.fn>).mockReset();
 });
 
 describe("ControlPanel", () => {
-  it("renders seed/width/height inputs with values", () => {
+  it("renders seed and square dimension inputs with values", () => {
     render(<ControlPanel />);
     expect(screen.getByLabelText("Seed")).toHaveValue(42);
     expect(screen.getByLabelText("Width")).toHaveValue(10);
@@ -54,16 +50,27 @@ describe("ControlPanel", () => {
     expect(getState().setSeed).toHaveBeenCalledWith(99);
   });
 
-  it("calls setWidth when width input changes", () => {
+  it("calls setTessellationConfig when width input changes", () => {
     render(<ControlPanel />);
     fireEvent.change(screen.getByLabelText("Width"), { target: { value: "5" } });
-    expect(getState().setWidth).toHaveBeenCalledWith(5);
+    expect(getState().setTessellationConfig).toHaveBeenCalledWith({ type: "square", width: 5, height: 10 });
   });
 
-  it("calls setHeight when height input changes", () => {
+  it("calls setTessellationConfig when height input changes", () => {
     render(<ControlPanel />);
     fireEvent.change(screen.getByLabelText("Height"), { target: { value: "7" } });
-    expect(getState().setHeight).toHaveBeenCalledWith(7);
+    expect(getState().setTessellationConfig).toHaveBeenCalledWith({ type: "square", width: 10, height: 7 });
+  });
+
+  it("shows hex fields when tessellation is hex", () => {
+    const s = getState();
+    s.tessellationConfig = { type: "hex", cols: 8, rows: 6, orientation: "flat_top" };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
+    render(<ControlPanel />);
+    expect(screen.getByLabelText("Cols")).toHaveValue(8);
+    expect(screen.getByLabelText("Rows")).toHaveValue(6);
+    expect(screen.queryByLabelText("Width")).not.toBeInTheDocument();
   });
 
   it("calls generate on Generate button click", () => {

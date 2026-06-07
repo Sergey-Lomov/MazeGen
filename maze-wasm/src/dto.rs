@@ -1,4 +1,12 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HexOrientationDto {
+    #[default]
+    FlatTop,
+    PointyTop,
+}
 
 #[derive(Serialize)]
 pub struct NodeDto {
@@ -37,4 +45,6 @@ pub struct MazeSnapshot {
     pub nav_edges: Vec<NavEdgeDto>,
     /// Strongly connected components. Each entry is a sorted list of NodeIds.
     pub components: Vec<Vec<u32>>,
+    pub tessellation_type: String,
+    pub orientation: Option<HexOrientationDto>,
 }

@@ -6,13 +6,12 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     ids::IdGenerator,
     graph::Graph,
-    space::{SquareField, SquarePoint, SquareSize},
+    space::{SquareField, SquarePoint, SquareSize, HexField, HexPoint, HexSize, Field, Tessellation},
     generation::{generate_maze, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
-    Field,
 };
-use dto::{EdgeDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto};
+use dto::{EdgeDto, HexOrientationDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto};
 
 #[derive(Deserialize)]
 struct StrategyConfig {
@@ -22,14 +21,37 @@ struct StrategyConfig {
 }
 
 #[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum TessellationConfig {
+    Square { width: u32, height: u32 },
+    Hex {
+        cols: u32,
+        rows: u32,
+        #[serde(default)]
+        orientation: HexOrientationDto,
+    },
+}
+
+impl Default for TessellationConfig {
+    fn default() -> Self {
+        TessellationConfig::Square { width: 10, height: 10 }
+    }
+}
+
+#[derive(Deserialize)]
 struct GenerateConfig {
+    #[serde(default)]
+    tessellation: TessellationConfig,
+    #[serde(default)]
     checks: Vec<String>,
+    #[serde(default)]
     strategies: HashMap<String, StrategyConfig>,
 }
 
 impl Default for GenerateConfig {
     fn default() -> Self {
         Self {
+            tessellation: TessellationConfig::default(),
             checks: vec![
                 MISSING_ENDPOINTS.to_string(),
                 UNREACHABLE_FINISH.to_string(),
@@ -85,8 +107,8 @@ fn param_kind_dto(kind: &maze_core::repair::StrategyParamKind) -> ParamKindDto {
     }
 }
 
-fn strategy_params_dto(strategy: &dyn RepairStrategy<SquareField>) -> Vec<ParamDescriptor> {
-    strategy.params().iter().map(|p| ParamDescriptor {
+fn strategy_params_dto(params: &[maze_core::repair::StrategyParam]) -> Vec<ParamDescriptor> {
+    params.iter().map(|p| ParamDescriptor {
         id: p.id,
         label: p.label,
         kind: param_kind_dto(&p.kind),
@@ -105,52 +127,29 @@ pub fn available_checks() -> JsValue {
 #[wasm_bindgen]
 pub fn available_strategies() -> JsValue {
     let strategies: Vec<StrategyDescriptor> = vec![
-        {
-            let s = RandomEndpointsStrategy;
-            StrategyDescriptor { id: "random_endpoints", handles: MISSING_ENDPOINTS, params: strategy_params_dto(&s) }
+        StrategyDescriptor {
+            id: "random_endpoints",
+            handles: MISSING_ENDPOINTS,
+            params: strategy_params_dto(<RandomEndpointsStrategy as RepairStrategy<SquareField>>::params(&RandomEndpointsStrategy)),
         },
-        {
-            let s = FarthestEndpointsStrategy;
-            StrategyDescriptor { id: "farthest_endpoints", handles: MISSING_ENDPOINTS, params: strategy_params_dto(&s) }
+        StrategyDescriptor {
+            id: "farthest_endpoints",
+            handles: MISSING_ENDPOINTS,
+            params: strategy_params_dto(<FarthestEndpointsStrategy as RepairStrategy<SquareField>>::params(&FarthestEndpointsStrategy)),
         },
-        {
-            let s = ScoredEndpointsStrategy;
-            StrategyDescriptor { id: "scored_endpoints", handles: MISSING_ENDPOINTS, params: strategy_params_dto(&s) }
+        StrategyDescriptor {
+            id: "scored_endpoints",
+            handles: MISSING_ENDPOINTS,
+            params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareField>>::params(&ScoredEndpointsStrategy)),
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()
 }
 
-#[wasm_bindgen]
-pub fn generate(seed: u64, width: u32, height: u32, config: JsValue) -> Result<JsValue, JsValue> {
-    if width == 0 || height == 0 {
-        return Err(JsValue::from_str("width and height must be > 0"));
-    }
-
-    let config: GenerateConfig = if config.is_null() || config.is_undefined() {
-        GenerateConfig::default()
-    } else {
-        serde_wasm_bindgen::from_value(config)
-            .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?
-    };
-
-    let mut ids = IdGenerator::new();
-    let size = SquareSize {
-        width: width as usize,
-        height: height as usize,
-    };
-    let field = SquareField::new(size, &mut ids);
-
-    let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-
-    let start = field
-        .node_at(SquarePoint { x: 0, y: 0 })
-        .ok_or_else(|| JsValue::from_str("start node not found"))?;
-
-    generate_maze(&mut graph, &field, seed, start);
-
-    let mut checks: Vec<Box<dyn maze_core::quality_control::Check<SquareField>>> = Vec::new();
+fn build_qc_and_repair<F: Field>(
+    config: &GenerateConfig,
+) -> Result<(QualityControlEngine<F>, RepairEngine<F>), JsValue> {
+    let mut checks: Vec<Box<dyn maze_core::quality_control::Check<F>>> = Vec::new();
     for id in &config.checks {
         match id.as_str() {
             MISSING_ENDPOINTS => checks.push(Box::new(MissingEndpointsCheck)),
@@ -160,7 +159,7 @@ pub fn generate(seed: u64, width: u32, height: u32, config: JsValue) -> Result<J
     }
     let qc_engine = QualityControlEngine::new(checks);
 
-    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<F>>> = HashMap::new();
     let mut param_overrides: HashMap<&'static str, HashMap<String, String>> = HashMap::new();
 
     for (issue_kind, strategy_cfg) in &config.strategies {
@@ -169,7 +168,7 @@ pub fn generate(seed: u64, width: u32, height: u32, config: JsValue) -> Result<J
             UNREACHABLE_FINISH => UNREACHABLE_FINISH,
             other => return Err(JsValue::from_str(&format!("unknown issue kind: {other}"))),
         };
-        let strategy: Box<dyn RepairStrategy<SquareField>> = match strategy_cfg.id.as_str() {
+        let strategy: Box<dyn RepairStrategy<F>> = match strategy_cfg.id.as_str() {
             "random_endpoints" => Box::new(RandomEndpointsStrategy),
             "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
             "scored_endpoints" => Box::new(ScoredEndpointsStrategy),
@@ -182,6 +181,29 @@ pub fn generate(seed: u64, width: u32, height: u32, config: JsValue) -> Result<J
     }
     let repair_engine = RepairEngine::new(strategies, param_overrides);
 
+    Ok((qc_engine, repair_engine))
+}
+
+fn run_generate<F: Field>(
+    seed: u64,
+    field: F,
+    start: <F::T as Tessellation>::Point,
+    config: &GenerateConfig,
+    tessellation_type: &str,
+    orientation: Option<HexOrientationDto>,
+    point_to_xy: impl Fn(<F::T as Tessellation>::Point) -> (i32, i32),
+) -> Result<JsValue, JsValue> {
+    let mut graph = Graph::new();
+    field.build_nodes(&mut graph);
+
+    let start_id = field
+        .node_at(start)
+        .ok_or_else(|| JsValue::from_str("start node not found"))?;
+
+    generate_maze(&mut graph, &field, seed, start_id);
+
+    let (qc_engine, repair_engine) = build_qc_and_repair::<F>(config)?;
+
     let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
     let warnings: Vec<String> = issues.iter().map(|i| i.kind.to_string()).collect();
 
@@ -189,7 +211,10 @@ pub fn generate(seed: u64, width: u32, height: u32, config: JsValue) -> Result<J
         .nodes()
         .filter_map(|n| {
             let id = u32::try_from(n.id).ok()?;
-            maze.field.point_of(n.id).map(|p| NodeDto { id, x: p.x, y: p.y })
+            maze.field.point_of(n.id).map(|p| {
+                let (x, y) = point_to_xy(p);
+                NodeDto { id, x, y }
+            })
         })
         .collect();
 
@@ -231,6 +256,50 @@ pub fn generate(seed: u64, width: u32, height: u32, config: JsValue) -> Result<J
         .map(|comp| comp.iter().filter_map(|&id| u32::try_from(id).ok()).collect())
         .collect();
 
-    let snapshot = MazeSnapshot { nodes, edges, start: meta_start, finish: meta_finish, warnings, nav_nodes, nav_edges, components };
+    let snapshot = MazeSnapshot {
+        nodes,
+        edges,
+        start: meta_start,
+        finish: meta_finish,
+        warnings,
+        nav_nodes,
+        nav_edges,
+        components,
+        tessellation_type: tessellation_type.to_string(),
+        orientation,
+    };
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
+    let config: GenerateConfig = if config.is_null() || config.is_undefined() {
+        GenerateConfig::default()
+    } else {
+        serde_wasm_bindgen::from_value(config)
+            .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?
+    };
+
+    let mut ids = IdGenerator::new();
+
+    match &config.tessellation {
+        TessellationConfig::Square { width, height } => {
+            if *width == 0 || *height == 0 {
+                return Err(JsValue::from_str("width and height must be > 0"));
+            }
+            let size = SquareSize { width: *width as usize, height: *height as usize };
+            let field = SquareField::new(size, &mut ids);
+            run_generate(seed, field, SquarePoint { x: 0, y: 0 }, &config, "square", None,
+                |p: SquarePoint| (p.x, p.y))
+        }
+        TessellationConfig::Hex { cols, rows, orientation } => {
+            if *cols == 0 || *rows == 0 {
+                return Err(JsValue::from_str("cols and rows must be > 0"));
+            }
+            let size = HexSize { cols: *cols as usize, rows: *rows as usize };
+            let field = HexField::new(size, &mut ids);
+            run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config, "hex", Some(*orientation),
+                |p: HexPoint| (p.q, p.r))
+        }
+    }
 }

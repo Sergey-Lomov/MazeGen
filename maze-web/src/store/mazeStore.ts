@@ -1,11 +1,10 @@
 import { create } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig } from "../wasm/types";
 
 interface MazeState {
   seed: number;
-  width: number;
-  height: number;
+  tessellationConfig: TessellationConfig;
   nodes: NodeDto[];
   edges: EdgeDto[];
   start: number | null;
@@ -32,8 +31,7 @@ interface MazeState {
 
 interface MazeActions {
   setSeed: (seed: number) => void;
-  setWidth: (width: number) => void;
-  setHeight: (height: number) => void;
+  setTessellationConfig: (cfg: TessellationConfig) => void;
   generate: () => void;
   reset: () => void;
   setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze" | "showGraphOverlay" | "showNavOverlay" | "showComponents", value: boolean) => void;
@@ -46,8 +44,7 @@ interface MazeActions {
 
 export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   seed: 42,
-  width: 10,
-  height: 10,
+  tessellationConfig: { type: "square", width: 10, height: 10 },
   nodes: [],
   edges: [],
   start: null,
@@ -71,8 +68,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   strategyParams: {},
 
   setSeed: (seed) => set({ seed, error: null }),
-  setWidth: (width) => set({ width, error: null }),
-  setHeight: (height) => set({ height, error: null }),
+  setTessellationConfig: (cfg) => set({ tessellationConfig: cfg, error: null }),
 
   loadRegistry: () => {
     const checks = getAvailableChecks();
@@ -89,7 +85,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   },
 
   generate: () => {
-    const { seed, width, height, selectedChecks, selectedStrategies, strategyParams, availableStrategies } = get();
+    const { seed, tessellationConfig, selectedChecks, selectedStrategies, strategyParams, availableStrategies } = get();
     try {
       const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
       for (const [kind, strategyId] of Object.entries(selectedStrategies)) {
@@ -106,7 +102,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         }
         strategies[kind] = { id: strategyId, params };
       }
-      const snapshot = generateMaze(seed, width, height, {
+      const snapshot = generateMaze(seed, {
+        tessellation: tessellationConfig,
         checks: selectedChecks,
         strategies,
       });

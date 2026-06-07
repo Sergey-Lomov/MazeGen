@@ -53,7 +53,10 @@
       "Read(//c/Program Files \\(x86\\)/Google/Chrome/**)",
       "Bash(node -e ' *)",
       "Bash(npx vite *)",
-      "Bash(npx --prefix maze-web vitest run)"
+      "Bash(npx --prefix maze-web vitest run)",
+      "Bash(Get-ChildItem -Path \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",
