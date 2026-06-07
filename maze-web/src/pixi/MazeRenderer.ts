@@ -1,7 +1,7 @@
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, TessellationConfig } from "../wasm/types";
-import { TILE_SIZE, NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
+import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
 import { cellCenter } from "./hexGeometry";
 
 export { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";

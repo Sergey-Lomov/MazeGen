@@ -2,8 +2,11 @@ import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeDto, EdgeDto, TessellationConfig } from "../wasm/types";
 import { TILE_SIZE, NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
-import { hexCenter, hexVertices, INRADIUS } from "./hexGeometry";
+import { hexCenter, hexVertices } from "./hexGeometry";
 import type { Pos } from "./hexGeometry";
+import { squareCenter, squareVertices } from "./squareGeometry";
+import { triCenter, triVertices } from "./triGeometry";
+import type { TriOrientation } from "./triGeometry";
 
 const WALL_THICKNESS = 3;
 const WALL_COLOR = 0xcccccc;
@@ -105,9 +108,9 @@ function renderSquare(
   for (const node of nodes) {
     nodeCoords.add(`${node.x},${node.y}`);
     nodeById.set(node.id, node);
-    const tl = tileTopLeft(node);
-    floors.rect(tl.x, tl.y, TILE_SIZE, TILE_SIZE);
-    floors.fill(FLOOR_COLOR);
+    const { x: cx, y: cy } = squareCenter(node.x, node.y);
+    const verts = squareVertices(cx, cy);
+    floors.poly(verts.flatMap(v => [v.x, v.y])).fill(FLOOR_COLOR);
   }
   tilesContainer.addChild(floors);
 
@@ -170,13 +173,11 @@ function renderSquare(
   const startNode = start !== null ? nodeById.get(start) : undefined;
   const finishNode = finish !== null ? nodeById.get(finish) : undefined;
   if (startNode) {
-    const cx = startNode.x * TILE_SIZE + TILE_SIZE / 2;
-    const cy = -startNode.y * TILE_SIZE - TILE_SIZE / 2;
+    const { x: cx, y: cy } = squareCenter(startNode.x, startNode.y);
     markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_START_COLOR);
   }
   if (finishNode) {
-    const cx = finishNode.x * TILE_SIZE + TILE_SIZE / 2;
-    const cy = -finishNode.y * TILE_SIZE - TILE_SIZE / 2;
+    const { x: cx, y: cy } = squareCenter(finishNode.x, finishNode.y);
     markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_FINISH_COLOR);
   }
   markersContainer.addChild(markersG);
@@ -295,6 +296,119 @@ function renderHex(
   markersContainer.addChild(markersG);
 }
 
+// Neighbor offsets for triangle rendering (col + row parity).
+// up(parity=0):   [Left=(-1,0), Right=(+1,0), Base=(0,-1)]  → vert pairs [v0↔v2, v0↔v1, v1↔v2]
+// down(parity=1): [Left=(-1,0), Right=(+1,0), Base=(0,+1)]  → vert pairs [v0↔v2, v1↔v2, v0↔v1]
+const TRI_NEIGHBOR_OFFSETS_UP:   [number, number][] = [[-1, 0], [1, 0], [0, -1]];
+const TRI_NEIGHBOR_OFFSETS_DOWN: [number, number][] = [[-1, 0], [1, 0], [0,  1]];
+const TRI_EDGE_VERTS_UP:   [number, number][] = [[0, 2], [0, 1], [1, 2]];
+const TRI_EDGE_VERTS_DOWN: [number, number][] = [[0, 2], [1, 2], [0, 1]];
+
+function renderTriangle(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  start: number | null,
+  finish: number | null,
+  orientation: TriOrientation,
+  tilesContainer: Container,
+  wallsContainer: Container,
+  markersContainer: Container,
+): void {
+  const nodeById = new Map<number, NodeDto>();
+  const nodeCoords = new Map<string, NodeDto>();
+  for (const n of nodes) {
+    nodeById.set(n.id, n);
+    nodeCoords.set(`${n.x},${n.y}`, n);
+  }
+
+  const directed = new Set<string>();
+  for (const e of edges) {
+    const from = nodeById.get(e.from);
+    const to = nodeById.get(e.to);
+    if (!from || !to) continue;
+    directed.add(`${from.x},${from.y}->${to.x},${to.y}`);
+  }
+
+  const floors = new Graphics();
+  const wallsG = new Graphics();
+  const oneWayG = new Graphics();
+  const markersG = new Graphics();
+
+  const wallStyle = { width: WALL_THICKNESS, color: WALL_COLOR, cap: "round" as const, join: "round" as const };
+
+  for (const node of nodes) {
+    const pointingUp = (node.x + node.y) % 2 === 0;
+    const { x: cx, y: cy } = triCenter(node.x, node.y, orientation);
+    const verts = triVertices(node.x, node.y, orientation);
+    floors.poly(verts.flatMap(v => [v.x, v.y])).fill(FLOOR_COLOR);
+
+    const neighborOffsets = pointingUp ? TRI_NEIGHBOR_OFFSETS_UP : TRI_NEIGHBOR_OFFSETS_DOWN;
+    const edgeVerts = pointingUp ? TRI_EDGE_VERTS_UP : TRI_EDGE_VERTS_DOWN;
+
+    for (let i = 0; i < 3; i++) {
+      const [dq, dr] = neighborOffsets[i];
+      const nq = node.x + dq;
+      const nr = node.y + dr;
+      const neighbor = nodeCoords.get(`${nq},${nr}`);
+
+      const [vi, vj] = edgeVerts[i];
+      const v0 = verts[vi];
+      const v1 = verts[vj];
+
+      if (!neighbor) {
+        wallsG.moveTo(v0.x, v0.y).lineTo(v1.x, v1.y).stroke(wallStyle);
+      } else {
+        const ownsEdge = node.x < nq || (node.x === nq && node.y < nr);
+        if (!ownsEdge) continue;
+
+        const fwd = directed.has(`${node.x},${node.y}->${nq},${nr}`);
+        const bwd = directed.has(`${nq},${nr}->${node.x},${node.y}`);
+
+        if (fwd && bwd) {
+          // bidirectional — no wall
+        } else if (!fwd && !bwd) {
+          wallsG.moveTo(v0.x, v0.y).lineTo(v1.x, v1.y).stroke(wallStyle);
+        } else {
+          wallsG.moveTo(v0.x, v0.y).lineTo(v1.x, v1.y).stroke(wallStyle);
+
+          const midX = (v0.x + v1.x) / 2;
+          const midY = (v0.y + v1.y) / 2;
+
+          const edgeDx = v1.x - v0.x;
+          const edgeDy = v1.y - v0.y;
+          let normalX = -edgeDy;
+          let normalY = edgeDx;
+
+          const { x: ncx, y: ncy } = triCenter(nq, nr, orientation);
+          const toDx = fwd ? ncx - cx : cx - ncx;
+          const toDy = fwd ? ncy - cy : cy - ncy;
+          const dot = normalX * toDx + normalY * toDy;
+          if (dot < 0) { normalX = -normalX; normalY = -normalY; }
+
+          const len = Math.sqrt(normalX * normalX + normalY * normalY);
+          drawOneWayTriangle(oneWayG, midX, midY, normalX / len, normalY / len);
+        }
+      }
+    }
+  }
+
+  tilesContainer.addChild(floors);
+  wallsContainer.addChild(wallsG);
+  wallsContainer.addChild(oneWayG);
+
+  const startNode = start !== null ? nodeById.get(start) : undefined;
+  const finishNode = finish !== null ? nodeById.get(finish) : undefined;
+  if (startNode) {
+    const { x: cx, y: cy } = triCenter(startNode.x, startNode.y, orientation);
+    markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_START_COLOR);
+  }
+  if (finishNode) {
+    const { x: cx, y: cy } = triCenter(finishNode.x, finishNode.y, orientation);
+    markersG.circle(cx, cy, NODE_RADIUS).fill(NODE_FINISH_COLOR);
+  }
+  markersContainer.addChild(markersG);
+}
+
 export class MazeTileRenderer {
   private viewport: Container;
   private tilesContainer: Container;
@@ -353,6 +467,8 @@ export class MazeTileRenderer {
       renderSquare(nodes, edges, start, finish, this.tilesContainer, this.wallsContainer, this.markersContainer);
     } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
       renderHex(nodes, edges, start, finish, cfg.orientation ?? "flat_top", this.tilesContainer, this.wallsContainer, this.markersContainer);
+    } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon") {
+      renderTriangle(nodes, edges, start, finish, cfg.orientation ?? "r0", this.tilesContainer, this.wallsContainer, this.markersContainer);
     } else {
       cfg satisfies never;
     }

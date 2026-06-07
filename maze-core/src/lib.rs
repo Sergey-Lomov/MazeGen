@@ -15,6 +15,7 @@ pub use space::{
     HexField, HexPoint, HexFace, HexTessellation,
     HexParallelogram, HexHexagon,
     SquareField, SquarePoint, SquareTessellation, SquareRect,
+    TriField, TriPoint, TriFace, TriTessellation, TriRect, TriTriangle, TriHexagon,
 };
 pub use meta::MazeMeta;
 pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};

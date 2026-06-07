@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
+import { initWasm } from "../wasm/wasmLoader";
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig } from "../wasm/types";
 
 interface MazeState {
@@ -73,17 +74,19 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setTessellationConfig: (cfg) => set({ tessellationConfig: cfg, error: null }),
 
   loadRegistry: () => {
-    const checks = getAvailableChecks();
-    const strategies = getAvailableStrategies();
-    const selectedChecks = checks.map((c) => c.id);
-    const selectedStrategies: Record<string, string> = {};
-    for (const check of checks) {
-      for (const kind of check.issue_kinds) {
-        const match = strategies.find((s) => s.handles === kind);
-        if (match) selectedStrategies[kind] = match.id;
+    initWasm().then(() => {
+      const checks = getAvailableChecks();
+      const strategies = getAvailableStrategies();
+      const selectedChecks = checks.map((c) => c.id);
+      const selectedStrategies: Record<string, string> = {};
+      for (const check of checks) {
+        for (const kind of check.issue_kinds) {
+          const match = strategies.find((s) => s.handles === kind);
+          if (match) selectedStrategies[kind] = match.id;
+        }
       }
-    }
-    set({ availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies });
+      set({ availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies });
+    });
   },
 
   generate: () => {

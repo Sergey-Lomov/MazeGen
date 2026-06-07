@@ -9,13 +9,14 @@ use maze_core::{
     space::{
         SquareField, SquarePoint, SquareRect, ShapedField,
         HexField, HexPoint, HexParallelogram, HexHexagon,
+        TriField, TriPoint, TriRect, TriTriangle, TriHexagon,
         Field, Tessellation,
     },
     generation::{generate_maze, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
-use dto::{EdgeDto, HexOrientationDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto};
+use dto::{EdgeDto, HexOrientationDto, TriangleOrientationDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto};
 
 #[derive(Deserialize)]
 struct StrategyConfig {
@@ -41,6 +42,25 @@ enum TessellationConfig {
         #[serde(default)]
         #[allow(dead_code)]
         orientation: HexOrientationDto,
+    },
+    TriangleRect {
+        cols: u32,
+        rows: u32,
+        #[serde(default)]
+        #[allow(dead_code)]
+        orientation: TriangleOrientationDto,
+    },
+    TriangleTriangle {
+        side: u32,
+        #[serde(default)]
+        #[allow(dead_code)]
+        orientation: TriangleOrientationDto,
+    },
+    TriangleHexagon {
+        radius: u32,
+        #[serde(default)]
+        #[allow(dead_code)]
+        orientation: TriangleOrientationDto,
     },
 }
 
@@ -324,6 +344,44 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             );
             run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config,
                 |p: HexPoint| (p.q, p.r))
+        }
+        TessellationConfig::TriangleRect { cols, rows, .. } => {
+            if *cols == 0 || *rows == 0 {
+                return Err(JsValue::from_str("cols and rows must be > 0"));
+            }
+            let field: TriField<TriRect> = ShapedField::new(
+                TriRect { cols: *cols as usize, rows: *rows as usize },
+                &mut ids,
+            );
+            run_generate(seed, field, TriPoint { col: 0, row: 0 }, &config,
+                |p: TriPoint| (p.col, p.row))
+        }
+        TessellationConfig::TriangleTriangle { side, .. } => {
+            if *side == 0 {
+                return Err(JsValue::from_str("side must be > 0"));
+            }
+            // Apex is at (N-1, 0) with the centered equilateral layout.
+            let n = *side as i32;
+            let field: TriField<TriTriangle> = ShapedField::new(
+                TriTriangle { side: *side as usize },
+                &mut ids,
+            );
+            run_generate(seed, field, TriPoint { col: n - 1, row: 0 }, &config,
+                |p: TriPoint| (p.col, p.row))
+        }
+        TessellationConfig::TriangleHexagon { radius, .. } => {
+            if *radius == 0 {
+                return Err(JsValue::from_str("radius must be > 0"));
+            }
+            // Start at first (pointing-down) triangle in top row: col = odd_base = indent(0).
+            let r = *radius as i32;
+            let odd_base = if r % 2 == 0 { r - 1 } else { r };
+            let field: TriField<TriHexagon> = ShapedField::new(
+                TriHexagon { radius: *radius as usize },
+                &mut ids,
+            );
+            run_generate(seed, field, TriPoint { col: odd_base, row: 0 }, &config,
+                |p: TriPoint| (p.col, p.row))
         }
     }
 }

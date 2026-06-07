@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { squareCenter, hexCenter, cellCenter, hexVertices, mazeBounds, INRADIUS } from "../pixi/hexGeometry";
+import { hexCenter, cellCenter, hexVertices, mazeBounds, INRADIUS } from "../pixi/hexGeometry";
+import { squareCenter } from "../pixi/squareGeometry";
 import { TILE_SIZE } from "../pixi/constants";
 
 describe("squareCenter", () => {

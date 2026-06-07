@@ -1,13 +1,11 @@
 import { TILE_SIZE } from "./constants";
 import type { NodeDto, TessellationConfig } from "../wasm/types";
+import { squareCenter } from "./squareGeometry";
+import { triCenter } from "./triGeometry";
 
 export const INRADIUS = TILE_SIZE * Math.sqrt(3) / 2;
 
 export interface Pos { x: number; y: number; }
-
-export function squareCenter(x: number, y: number): Pos {
-  return { x: x * TILE_SIZE + TILE_SIZE / 2, y: -y * TILE_SIZE - TILE_SIZE / 2 };
-}
 
 export function hexCenter(q: number, r: number, orientation: "flat_top" | "pointy_top"): Pos {
   if (orientation === "flat_top") {
@@ -28,6 +26,8 @@ export function cellCenter(node: NodeDto, cfg: TessellationConfig): Pos {
     return squareCenter(node.x, node.y);
   } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
     return hexCenter(node.x, node.y, cfg.orientation ?? "flat_top");
+  } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon") {
+    return triCenter(node.x, node.y, cfg.orientation ?? "r0");
   } else {
     cfg satisfies never;
     throw new Error(`unknown tessellation type: ${(cfg as { type: string }).type}`);

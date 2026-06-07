@@ -1,8 +1,9 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeDto, TessellationConfig } from "../wasm/types";
-import { TILE_SIZE } from "./constants";
 import { hexVertices, hexCenter } from "./hexGeometry";
+import { squareCenter, squareVertices } from "./squareGeometry";
+import { triCenter, triVertices } from "./triGeometry";
 
 const MASK_ALPHA = 0.45;
 
@@ -103,13 +104,18 @@ export class ComponentRenderer {
         const node = nodeById.get(nodeId);
         if (!node) continue;
         if (cfg.type === "square") {
-          const x = node.x * TILE_SIZE;
-          const y = -node.y * TILE_SIZE - TILE_SIZE;
-          this.graphics.rect(x, y, TILE_SIZE, TILE_SIZE).fill({ color, alpha: MASK_ALPHA });
+          const { x: cx, y: cy } = squareCenter(node.x, node.y);
+          const verts = squareVertices(cx, cy);
+          this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
         } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
           const orientation = cfg.orientation ?? "flat_top";
           const { x: cx, y: cy } = hexCenter(node.x, node.y, orientation);
           const verts = hexVertices(cx, cy, orientation);
+          this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
+        } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon") {
+          const orientation = cfg.orientation ?? "r0";
+          const { x: cx, y: cy } = triCenter(node.x, node.y, orientation);
+          const verts = triVertices(node.x, node.y, orientation);
           this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
         } else {
           cfg satisfies never;
