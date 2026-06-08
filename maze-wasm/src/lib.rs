@@ -13,6 +13,7 @@ use maze_core::{
         Field, Tessellation,
     },
     generation::{generate_maze, pipeline::build_maze},
+    VertexWeights, EdgeWeights, GenerationConfig, OneWayApplicator, EdgeApplicator,
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
@@ -71,6 +72,25 @@ impl Default for TessellationConfig {
 }
 
 
+#[derive(Deserialize, Default)]
+struct GenerationElementsConfig {
+    /// weights[i] = weight for a node whose current bidirectional degree is i.
+    /// Empty = uniform weights.
+    #[serde(default)]
+    vertex_weights: Vec<f64>,
+    /// Probability [0, 1] of adding a back-edge (cycle) instead of a tree-edge.
+    #[serde(default)]
+    cycle_prob: f64,
+    /// Weight for one-way (directed) passage. Relative to standard_weight.
+    #[serde(default)]
+    one_way_weight: f64,
+    /// Weight for standard bidirectional passage.
+    #[serde(default = "default_standard_weight")]
+    standard_weight: f64,
+}
+
+fn default_standard_weight() -> f64 { 1.0 }
+
 #[derive(Deserialize)]
 struct GenerateConfig {
     #[serde(default)]
@@ -79,6 +99,8 @@ struct GenerateConfig {
     checks: Vec<String>,
     #[serde(default)]
     strategies: HashMap<String, StrategyConfig>,
+    #[serde(default)]
+    elements: GenerationElementsConfig,
 }
 
 impl Default for GenerateConfig {
@@ -97,6 +119,7 @@ impl Default for GenerateConfig {
                 });
                 m
             },
+            elements: GenerationElementsConfig::default(),
         }
     }
 }
@@ -146,6 +169,49 @@ fn strategy_params_dto(params: &[maze_core::repair::StrategyParam]) -> Vec<Param
         label: p.label,
         kind: param_kind_dto(&p.kind),
     }).collect()
+}
+
+#[derive(Serialize)]
+struct VertexElementDescriptor {
+    degree: usize,
+    label: &'static str,
+}
+
+#[derive(Serialize)]
+struct EdgeElementDescriptor {
+    id: &'static str,
+    label: &'static str,
+}
+
+#[derive(Serialize)]
+struct ElementDescriptors {
+    vertex_elements: Vec<VertexElementDescriptor>,
+    edge_elements: Vec<EdgeElementDescriptor>,
+}
+
+#[wasm_bindgen]
+pub fn available_elements(tessellation_type: String) -> JsValue {
+    let max_degree: usize = match tessellation_type.as_str() {
+        t if t.starts_with("triangle") => 3,
+        t if t.starts_with("hex") => 6,
+        _ => 4, // square and unknown
+    };
+
+    let degree_labels: &[&str] = &["Dead-end", "Passage", "3-way fork", "4-way crossing", "5-way crossing", "6-way crossing"];
+    let vertex_elements: Vec<VertexElementDescriptor> = (1..=max_degree)
+        .map(|d| VertexElementDescriptor {
+            degree: d,
+            label: degree_labels.get(d - 1).copied().unwrap_or("Fork"),
+        })
+        .collect();
+
+    let edge_elements = vec![
+        EdgeElementDescriptor { id: "standard", label: "Standard" },
+        EdgeElementDescriptor { id: "one_way",  label: "One-way" },
+    ];
+
+    let descriptors = ElementDescriptors { vertex_elements, edge_elements };
+    serde_wasm_bindgen::to_value(&descriptors).unwrap()
 }
 
 #[wasm_bindgen]
@@ -222,6 +288,7 @@ fn run_generate<F: Field>(
     field: F,
     start: <F::T as Tessellation>::Point,
     config: &GenerateConfig,
+    max_degree: usize,
     point_to_xy: impl Fn(<F::T as Tessellation>::Point) -> (i32, i32),
 ) -> Result<JsValue, JsValue> {
     let mut graph = Graph::new();
@@ -231,7 +298,24 @@ fn run_generate<F: Field>(
         .node_at(start)
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    generate_maze(&mut graph, &field, seed, start_id);
+    let vertex_weights = if config.elements.vertex_weights.is_empty() {
+        VertexWeights::uniform(max_degree)
+    } else {
+        VertexWeights { weights: config.elements.vertex_weights.clone() }
+    };
+
+    let gen_config = GenerationConfig::new(vertex_weights, config.elements.cycle_prob, max_degree);
+
+    let edge_weights = EdgeWeights {
+        one_way: config.elements.one_way_weight,
+        standard: config.elements.standard_weight,
+    };
+
+    let applicators: Vec<Box<dyn EdgeApplicator<F>>> = vec![
+        Box::new(OneWayApplicator { weights: edge_weights }),
+    ];
+
+    generate_maze(&mut graph, &field, seed, start_id, &gen_config, &applicators);
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<F>(config)?;
 
@@ -320,7 +404,7 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
                 SquareRect { width: *width as usize, height: *height as usize },
                 &mut ids,
             );
-            run_generate(seed, field, SquarePoint { x: 0, y: 0 }, &config,
+            run_generate(seed, field, SquarePoint { x: 0, y: 0 }, &config, 4,
                 |p: SquarePoint| (p.x, p.y))
         }
         TessellationConfig::HexParallelogram { cols, rows, .. } => {
@@ -331,7 +415,7 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
                 HexParallelogram { cols: *cols as usize, rows: *rows as usize },
                 &mut ids,
             );
-            run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config,
+            run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config, 6,
                 |p: HexPoint| (p.q, p.r))
         }
         TessellationConfig::HexHexagon { radius, .. } => {
@@ -342,7 +426,7 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
                 HexHexagon { radius: *radius as usize },
                 &mut ids,
             );
-            run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config,
+            run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config, 6,
                 |p: HexPoint| (p.q, p.r))
         }
         TessellationConfig::TriangleRect { cols, rows, .. } => {
@@ -353,34 +437,32 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
                 TriRect { cols: *cols as usize, rows: *rows as usize },
                 &mut ids,
             );
-            run_generate(seed, field, TriPoint { col: 0, row: 0 }, &config,
+            run_generate(seed, field, TriPoint { col: 0, row: 0 }, &config, 3,
                 |p: TriPoint| (p.col, p.row))
         }
         TessellationConfig::TriangleTriangle { side, .. } => {
             if *side == 0 {
                 return Err(JsValue::from_str("side must be > 0"));
             }
-            // Apex is at (N-1, 0) with the centered equilateral layout.
             let n = *side as i32;
             let field: TriField<TriTriangle> = ShapedField::new(
                 TriTriangle { side: *side as usize },
                 &mut ids,
             );
-            run_generate(seed, field, TriPoint { col: n - 1, row: 0 }, &config,
+            run_generate(seed, field, TriPoint { col: n - 1, row: 0 }, &config, 3,
                 |p: TriPoint| (p.col, p.row))
         }
         TessellationConfig::TriangleHexagon { radius, .. } => {
             if *radius == 0 {
                 return Err(JsValue::from_str("radius must be > 0"));
             }
-            // Start at first (pointing-down) triangle in top row: col = odd_base = indent(0).
             let r = *radius as i32;
             let odd_base = if r % 2 == 0 { r - 1 } else { r };
             let field: TriField<TriHexagon> = ShapedField::new(
                 TriHexagon { radius: *radius as usize },
                 &mut ids,
             );
-            run_generate(seed, field, TriPoint { col: odd_base, row: 0 }, &config,
+            run_generate(seed, field, TriPoint { col: odd_base, row: 0 }, &config, 3,
                 |p: TriPoint| (p.col, p.row))
         }
     }

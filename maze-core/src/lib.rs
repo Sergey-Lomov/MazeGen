@@ -19,6 +19,8 @@ pub use space::{
 };
 pub use meta::MazeMeta;
 pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
+pub use generation::elements::{VertexWeights, EdgeWeights, GenerationConfig};
+pub use generation::applicators::{EdgeApplicator, OneWayApplicator};
 
 pub struct MazeAnalysis {
     nav_graph: Option<graph::nav::NavGraph>,

@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)", "Read(*)", "Write(*)", "Edit(*)",
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "PowerShell(*)",
       "Read(//d/Development/GFTV/**)",
       "mcp__code-index__get_settings_info",
       "mcp__code-index__set_project_path",
@@ -64,7 +68,9 @@
       "Bash(node)",
       "Bash(sleep 3 && cat /c/Users/user/AppData/Local/Temp/claude/d--Development-MazeGen/1c86e1d2-fc48-4984-8c5f-3340636acd04/tasks/bmnotsbgb.output 2>/dev/null | head -20)",
       "Read(//c/Users/user/AppData/Local/Temp/claude/d--Development-MazeGen/1c86e1d2-fc48-4984-8c5f-3340636acd04/tasks/**)",
-      "Bash(curl -s http://localhost:5176/)"
+      "Bash(curl -s http://localhost:5176/)",
+      "Read(//c/Temp/**)",
+      "PowerShell(Start-Process \"http://localhost:5177/\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

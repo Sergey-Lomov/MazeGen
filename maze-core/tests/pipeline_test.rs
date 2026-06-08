@@ -4,6 +4,7 @@ use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Field};
 use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField};
 use maze_core::generation::{generate_maze, pipeline::build_maze};
+use maze_core::generation::elements::{VertexWeights, GenerationConfig};
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
 use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, StrategyParams};
 
@@ -24,7 +25,9 @@ fn make_generated_graph(seed: u64) -> (SquareField, Graph) {
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    generate_maze(&mut graph, &field, seed, start);
+    // degree=1 excluded so the graph is always connected (needed for pipeline tests).
+    let cfg = GenerationConfig::new(VertexWeights { weights: vec![0.0, 0.0, 1.0, 1.0, 1.0] }, 0.0, 4);
+    generate_maze(&mut graph, &field, seed, start, &cfg, &[]);
     (field, graph)
 }
 

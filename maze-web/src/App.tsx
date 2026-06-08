@@ -5,6 +5,7 @@ import { ControlPanel } from "./components/ControlPanel";
 import { LayersPanel } from "./components/LayersPanel";
 import { DebugPanel } from "./components/DebugPanel";
 import { QualityControlPanel } from "./components/QualityControlPanel";
+import { ElementsPanel } from "./components/ElementsPanel";
 import { useMazeStore } from "./store/mazeStore";
 
 export function App() {
@@ -56,7 +57,10 @@ export function App() {
         {!ready && <div style={styles.loading}>Loading…</div>}
       </div>
       <div style={{ ...styles.settingsPanel, width: settingsOpen ? 480 : 0 }}>
-        <QualityControlPanel />
+        <div style={styles.settingsScroll}>
+          <ElementsPanel />
+          <QualityControlPanel />
+        </div>
       </div>
       <div ref={canvasRef} style={styles.canvas} />
     </div>
@@ -82,6 +86,13 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     transition: "width 0.25s ease",
     flexShrink: 0,
+  },
+  settingsScroll: {
+    display: "flex",
+    flexDirection: "column",
+    width: 480,
+    height: "100%",
+    overflowY: "auto",
   },
   canvas: {
     flex: 1,

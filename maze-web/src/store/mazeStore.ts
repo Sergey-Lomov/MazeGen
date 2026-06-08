@@ -1,7 +1,15 @@
 import { create } from "zustand";
-import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
+import { generateMaze, getAvailableChecks, getAvailableStrategies, getAvailableElements } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, ElementDescriptors } from "../wasm/types";
+
+function defaultVertexWeights(elements: ElementDescriptors): number[] {
+  const last = elements.vertex_elements[elements.vertex_elements.length - 1];
+  const maxDegree = last?.degree ?? 0;
+  const arr = new Array(maxDegree + 1).fill(0);
+  for (const el of elements.vertex_elements) arr[el.degree] = 1.0;
+  return arr;
+}
 
 interface MazeState {
   seed: number;
@@ -29,6 +37,10 @@ interface MazeState {
   selectedStrategies: Record<string, string>;
   /** strategyParams[strategyId][paramId] = raw string value */
   strategyParams: Record<string, Record<string, string>>;
+  vertexWeights: number[];
+  edgeWeights: { standard: number; one_way: number };
+  cycleProb: number;
+  availableElements: ElementDescriptors | null;
 }
 
 interface MazeActions {
@@ -42,6 +54,10 @@ interface MazeActions {
   toggleCheck: (id: string) => void;
   setStrategy: (issueKind: string, strategyId: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
+  setVertexWeight: (degree: number, weight: number) => void;
+  setEdgeWeight: (id: "standard" | "one_way", weight: number) => void;
+  setCycleProb: (prob: number) => void;
+  loadElements: (tessellationType: string) => void;
 }
 
 export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
@@ -69,6 +85,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   selectedChecks: [],
   selectedStrategies: {},
   strategyParams: {},
+  vertexWeights: [],
+  edgeWeights: { standard: 1.0, one_way: 0.0417 },
+  cycleProb: 0.0,
+  availableElements: null,
 
   setSeed: (seed) => set({ seed, error: null }),
   setTessellationConfig: (cfg) => set({ tessellationConfig: cfg, error: null }),
@@ -85,12 +105,17 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
           if (match) selectedStrategies[kind] = match.id;
         }
       }
-      set({ availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies });
+      const tessellationType = get().tessellationConfig.type;
+      const availableElements = getAvailableElements(tessellationType);
+      const prevWeights = get().vertexWeights;
+      const defaults = defaultVertexWeights(availableElements);
+      const vertexWeights = prevWeights.length === defaults.length ? prevWeights : defaults;
+      set({ availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies, availableElements, vertexWeights });
     });
   },
 
   generate: () => {
-    const { seed, tessellationConfig, selectedChecks, selectedStrategies, strategyParams, availableStrategies } = get();
+    const { seed, tessellationConfig, selectedChecks, selectedStrategies, strategyParams, availableStrategies, vertexWeights, edgeWeights, cycleProb } = get();
     try {
       const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
       for (const [kind, strategyId] of Object.entries(selectedStrategies)) {
@@ -111,6 +136,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         tessellation: tessellationConfig,
         checks: selectedChecks,
         strategies,
+        elements: {
+          vertex_weights: vertexWeights,
+          cycle_prob: cycleProb,
+          one_way_weight: edgeWeights.one_way,
+          standard_weight: edgeWeights.standard,
+        },
       });
       set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null, activeTessellationConfig: tessellationConfig });
     } catch (err) {
@@ -142,4 +173,27 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       [strategyId]: { ...(state.strategyParams[strategyId] ?? {}), [paramId]: value },
     },
   })),
+
+  setVertexWeight: (degree, weight) => set((state) => {
+    const next = [...state.vertexWeights];
+    next[degree] = weight;
+    return { vertexWeights: next };
+  }),
+
+  setEdgeWeight: (id, weight) => set((state) => ({
+    edgeWeights: { ...state.edgeWeights, [id]: weight },
+  })),
+
+  setCycleProb: (prob) => set({ cycleProb: Math.min(1, Math.max(0, prob)) }),
+
+  loadElements: (tessellationType) => {
+    const availableElements = getAvailableElements(tessellationType);
+    set((state) => {
+      const defaults = defaultVertexWeights(availableElements);
+      const vertexWeights = state.vertexWeights.length === defaults.length
+        ? state.vertexWeights
+        : defaults;
+      return { availableElements, vertexWeights };
+    });
+  },
 }));

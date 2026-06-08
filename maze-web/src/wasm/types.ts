@@ -69,4 +69,27 @@ export interface GenerateConfig {
   tessellation: TessellationConfig;
   checks: string[];
   strategies: Record<string, StrategyConfig>;
+  elements?: GenerationElementsConfig;
+}
+
+export interface GenerationElementsConfig {
+  vertex_weights: number[];
+  cycle_prob: number;
+  one_way_weight: number;
+  standard_weight: number;
+}
+
+export interface VertexElementDescriptor {
+  degree: number;
+  label: string;
+}
+
+export interface EdgeElementDescriptor {
+  id: string;
+  label: string;
+}
+
+export interface ElementDescriptors {
+  vertex_elements: VertexElementDescriptor[];
+  edge_elements: EdgeElementDescriptor[];
 }

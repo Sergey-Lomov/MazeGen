@@ -133,6 +133,12 @@ impl Graph {
         result
     }
 
+    pub fn bidirectional_degree(&self, node: NodeId) -> usize {
+        self.outgoing_neighbors(node)
+            .filter(|&nb| self.edge_between(nb, node).is_some())
+            .count()
+    }
+
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
