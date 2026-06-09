@@ -56,6 +56,36 @@ pub struct GenerationStepsSnapshot {
 }
 
 #[derive(Serialize)]
+pub struct JunctionBucket {
+    pub degree: usize,
+    pub count: usize,
+}
+
+#[derive(Serialize)]
+pub struct NodeStatsDto {
+    pub dead_ends: usize,
+    pub straight: usize,
+    pub turns: usize,
+    pub junctions: Vec<JunctionBucket>,
+}
+
+#[derive(Serialize)]
+pub struct SpatialEdgeStatsDto {
+    pub bidirectional: usize,
+    pub one_way: usize,
+    pub walls: usize,
+}
+
+#[derive(Serialize)]
+pub struct RouteInfoDto {
+    pub path_length: usize,
+    pub junction_count: usize,
+    pub one_way_count: usize,
+    pub score: Option<f64>,
+    pub path: Vec<u32>,
+}
+
+#[derive(Serialize)]
 pub struct MazeSnapshot {
     pub nodes: Vec<NodeDto>,
     pub edges: Vec<EdgeDto>,
@@ -66,4 +96,7 @@ pub struct MazeSnapshot {
     pub nav_edges: Vec<NavEdgeDto>,
     /// Strongly connected components. Each entry is a sorted list of NodeIds.
     pub components: Vec<Vec<u32>>,
+    pub node_stats: NodeStatsDto,
+    pub edge_stats: SpatialEdgeStatsDto,
+    pub route_info: Option<RouteInfoDto>,
 }

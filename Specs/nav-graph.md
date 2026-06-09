@@ -1,6 +1,6 @@
 # Navigation Graph
 
-A derived read-only structure built from the maze graph. Compresses linear corridors into single edges, exposing only junction nodes. Used for pathfinding, analytics, and visualization.
+A derived read-only structure built from the maze graph. Compresses linear passages into single edges, exposing only junction nodes. Used for pathfinding, analytics, and visualization.
 
 ## Location
 
@@ -8,13 +8,16 @@ A derived read-only structure built from the maze graph. Compresses linear corri
 
 ## Core Concepts
 
-### Corridor Node
+### Passage Node
 
-A maze node is a **corridor node** if and only if:
+A maze node is a **passage node** if and only if:
 - It has exactly 2 outgoing edges and exactly 2 incoming edges.
 - The sets of outgoing neighbors and incoming neighbors are identical (two symmetric bidirectional pairs).
+- It is not in the **pinned** set (see `build_nav_graph_pinned`).
 
 All other nodes are **junction nodes** and become `NavNode` entries.
+
+> **Note on terminology:** "Corridor" in generation settings (`corridor_chance`, `corridor_length`) refers to multi-node passages generated as a unit — a different concept. The nav graph uses "passage node" for the topological property (exactly 2 symmetric bidirectional neighbors), independent of how the maze was generated. The geometric stat "Straight" in `GeometricNodeStats` is a related but distinct concept: a node with 2 outgoing neighbors where the path is geometrically straight (per `field.is_straight`).
 
 ### NavNode
 
@@ -39,8 +42,8 @@ pub struct NavEdge {
 
 - `path[0]` is the maze node of the source `NavNode`.
 - `path[last]` is the maze node of the target `NavNode`.
-- Intermediate entries are the corridor nodes absorbed into this edge.
-- For a bidirectional corridor `A⇄X⇄B`, two edges are produced: `A→B` with path `[A, X, B]` and `B→A` with path `[B, X, A]`.
+- Intermediate entries are the passage nodes absorbed into this edge.
+- For a bidirectional passage `A⇄X⇄B`, two edges are produced: `A→B` with path `[A, X, B]` and `B→A` with path `[B, X, A]`.
 
 ### NavGraph
 
@@ -69,28 +72,46 @@ impl NavGraph {
 }
 ```
 
+## NavGraph internal indices
+
+`NavGraph` maintains two lookup maps built during construction:
+
+- `node_index: HashMap<NodeId, NavNodeId>` — maps junction maze nodes to their nav node ID.
+- `corridor_index: HashMap<NodeId, NavNodeId>` — maps interior passage maze nodes to the `NavNodeId` of the edge's destination nav node.
+
+Both support O(1) lookup. `nav_node_for` queries `node_index`; routing code queries `corridor_index` for corridor nodes that are not themselves nav nodes.
+
 ## Builder
 
 ```rust
 pub fn build_nav_graph(graph: &Graph) -> NavGraph
+pub fn build_nav_graph_pinned(graph: &Graph, pinned: &HashSet<NodeId>) -> NavGraph
 ```
 
-### Algorithm: DFS with corridor compression
+`build_nav_graph` delegates to `build_nav_graph_pinned` with an empty pinned set.
+
+`build_nav_graph_pinned` accepts a set of **pinned** maze nodes that must become `NavNode` entries regardless of their passage status. This is used to force route endpoints to be nav nodes so that pathfinding can start and end exactly at those nodes rather than at some arbitrary nav node within the same passage.
+
+### Algorithm: DFS with passage compression
 
 1. Collect all maze nodes into a `remaining` pool.
 2. While `remaining` is non-empty:
-   a. Walk from the smallest-id node in `remaining` to find the first junction (non-corridor node). If the walk loops back to the start, the component is a pure ring.
+   a. Walk from the smallest-id node in `remaining` to find the first junction (non-passage node). If the walk loops back to the start, the component is a pure ring.
    b. **Junction component**: DFS from the junction. For each outgoing edge:
-      - If the neighbor is a corridor node: walk the corridor until the next junction, consuming all intermediate nodes from `remaining`. Emit one `NavEdge`.
+      - If the neighbor is a passage node: walk the passage until the next junction, consuming all intermediate nodes from `remaining`. Emit one `NavEdge`.
       - If the neighbor is a junction: emit a direct `NavEdge` with `path = [from, to]`.
    c. **Ring component**: pick the start node as the single `NavNode`. Walk both outgoing directions until the path closes, emitting two self-edges.
-3. Determinism is guaranteed by always selecting `remaining.iter().min()` as the component seed, and by always following the minimum-id neighbor at each step of the corridor and ring walks.
+3. Determinism is guaranteed by always selecting `remaining.iter().min()` as the component seed, and by always following the minimum-id neighbor at each step of the passage and ring walks.
 
 ### Corner case: pure ring
 
 A set of nodes forming a ring with no junctions (e.g. `A⇄B⇄C⇄A`) produces:
 - One `NavNode` (the anchor, chosen by min id).
 - Two self-edges, one per direction, with paths that start and end at the anchor.
+
+### Corner case: ring with pinned nodes
+
+If a pure ring component contains a pinned node, the pinned node is promoted to the ring anchor nav node (instead of the min-id passage node). The self-edges then start and end at the pinned node.
 
 ## Isolation
 

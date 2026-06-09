@@ -27,7 +27,11 @@ pub struct NavEdge {
 pub struct NavGraph {
     pub nodes: Vec<NavNode>,
     edges: Vec<NavEdge>,
+    /// Maps junction maze NodeId → NavNodeId.
     node_index: HashMap<NodeId, NavNodeId>,
+    /// Maps corridor maze NodeId → the NavNodeId of the edge's destination nav node.
+    /// Populated during nav graph construction for O(1) lookup of corridor nodes.
+    pub(crate) corridor_index: HashMap<NodeId, NavNodeId>,
     outgoing: Vec<Vec<usize>>,
     incoming: Vec<Vec<usize>>,
 }
@@ -38,6 +42,7 @@ impl NavGraph {
             nodes: Vec::new(),
             edges: Vec::new(),
             node_index: HashMap::new(),
+            corridor_index: HashMap::new(),
             outgoing: Vec::new(),
             incoming: Vec::new(),
         }
@@ -57,6 +62,10 @@ impl NavGraph {
 
     fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>) {
         let edge_idx = self.edges.len();
+        // Index all interior corridor nodes to the destination nav node.
+        for &corridor_node in path[1..path.len().saturating_sub(1)].iter() {
+            self.corridor_index.entry(corridor_node).or_insert(to_nav);
+        }
         self.edges.push(NavEdge { from: from_nav, to: to_nav, path });
         self.outgoing[from_nav].push(edge_idx);
         self.incoming[to_nav].push(edge_idx);
@@ -84,7 +93,9 @@ impl NavGraph {
 /// A node is a corridor node if it has exactly 2 outgoing and 2 incoming edges,
 /// and those form two symmetric pairs: for each outgoing neighbor B there is a
 /// corresponding incoming edge from B (and vice versa).
-fn is_corridor_node(graph: &Graph, node: NodeId) -> bool {
+/// Pinned nodes are never corridor nodes — they are forced to be nav nodes.
+fn is_corridor_node(graph: &Graph, node: NodeId, pinned: &HashSet<NodeId>) -> bool {
+    if pinned.contains(&node) { return false; }
     let out: Vec<NodeId> = graph.outgoing_neighbors(node).collect();
     let inc: Vec<NodeId> = graph.incoming_neighbors(node).collect();
     if out.len() != 2 || inc.len() != 2 {
@@ -104,13 +115,14 @@ fn walk_corridor(
     start: NodeId,
     next_node: NodeId,
     visited_corridor: &mut HashSet<NodeId>,
+    pinned: &HashSet<NodeId>,
 ) -> (Vec<NodeId>, NodeId) {
     let mut path = vec![start];
     let mut current = start;
     let mut next = next_node;
 
     loop {
-        if visited_corridor.contains(&next) || !is_corridor_node(graph, next) {
+        if visited_corridor.contains(&next) || !is_corridor_node(graph, next, pinned) {
             // next is a junction or already visited (ring close)
             path.push(next);
             return (path, next);
@@ -127,19 +139,23 @@ fn walk_corridor(
 }
 
 pub fn build_nav_graph(graph: &Graph) -> NavGraph {
+    build_nav_graph_pinned(graph, &HashSet::new())
+}
+
+pub fn build_nav_graph_pinned(graph: &Graph, pinned: &HashSet<NodeId>) -> NavGraph {
     let mut nav = NavGraph::new();
     let mut remaining: HashSet<NodeId> = graph.nodes().map(|n| n.id).collect();
     let mut visited_junctions: HashSet<NodeId> = HashSet::new();
 
     while !remaining.is_empty() {
-        let component_start = find_component_start(graph, &remaining);
+        let component_start = find_component_start(graph, &remaining, pinned);
 
         match component_start {
             ComponentStart::Junction(junction) => {
-                dfs_from_junction(graph, junction, &mut nav, &mut remaining, &mut visited_junctions);
+                dfs_from_junction(graph, junction, &mut nav, &mut remaining, &mut visited_junctions, pinned);
             }
             ComponentStart::Ring(ring_start) => {
-                build_ring(graph, ring_start, &mut nav, &mut remaining);
+                build_ring(graph, ring_start, &mut nav, &mut remaining, pinned);
             }
         }
     }
@@ -153,11 +169,11 @@ enum ComponentStart {
 }
 
 /// Walk from any node in `remaining` until we find a junction or loop back to start.
-fn find_component_start(graph: &Graph, remaining: &HashSet<NodeId>) -> ComponentStart {
+fn find_component_start(graph: &Graph, remaining: &HashSet<NodeId>, pinned: &HashSet<NodeId>) -> ComponentStart {
     let seed = *remaining.iter().min().unwrap();
 
     // If seed itself is a junction, done
-    if !is_corridor_node(graph, seed) {
+    if !is_corridor_node(graph, seed, pinned) {
         return ComponentStart::Junction(seed);
     }
 
@@ -180,7 +196,7 @@ fn find_component_start(graph: &Graph, remaining: &HashSet<NodeId>) -> Component
             // Loop that doesn't pass through seed — pick the repeated node as ring anchor
             return ComponentStart::Ring(next);
         }
-        if !is_corridor_node(graph, next) {
+        if !is_corridor_node(graph, next, pinned) {
             return ComponentStart::Junction(next);
         }
         visited.insert(next);
@@ -195,6 +211,7 @@ fn dfs_from_junction(
     nav: &mut NavGraph,
     remaining: &mut HashSet<NodeId>,
     visited_junctions: &mut HashSet<NodeId>,
+    pinned: &HashSet<NodeId>,
 ) {
     let mut junction_stack: Vec<NodeId> = vec![start];
 
@@ -206,13 +223,13 @@ fn dfs_from_junction(
         nav.add_node(junction);
 
         for next in graph.outgoing_neighbors(junction).collect::<Vec<_>>() {
-            if is_corridor_node(graph, next) {
+            if is_corridor_node(graph, next, pinned) {
                 // Walk the corridor
                 let mut visited_corridor: HashSet<NodeId> = HashSet::new();
                 visited_corridor.insert(junction);
                 remaining.remove(&next);
 
-                let (path, terminal) = walk_corridor(graph, junction, next, &mut visited_corridor);
+                let (path, terminal) = walk_corridor(graph, junction, next, &mut visited_corridor, pinned);
 
                 // Remove all corridor intermediates from remaining
                 for &n in &path[1..path.len().saturating_sub(1)] {
@@ -243,21 +260,49 @@ fn dfs_from_junction(
 }
 
 /// Build nav edges for a pure ring (all corridor nodes, no junctions).
-/// Picks `ring_start` as the single nav node, adds two self-edges (CW and CCW).
+/// If any node in the ring is pinned, it becomes the anchor nav node.
+/// Otherwise picks `ring_start` as the single nav node, adds two self-edges (CW and CCW).
 fn build_ring(
     graph: &Graph,
     ring_start: NodeId,
     nav: &mut NavGraph,
     remaining: &mut HashSet<NodeId>,
+    pinned: &HashSet<NodeId>,
 ) {
-    let nav_id = nav.add_node(ring_start);
+    // If there are pinned nodes in the ring, delegate to junction DFS by treating
+    // ring_start as a corridor node — find a pinned anchor first.
+    // Simple approach: pick the first pinned node found in the ring as anchor.
+    let mut anchor = ring_start;
+    if !pinned.is_empty() {
+        if let Some(first) = graph.outgoing_neighbors(ring_start).min() {
+            let mut walk = first;
+            let mut walk_prev = ring_start;
+            loop {
+                if pinned.contains(&walk) {
+                    anchor = walk;
+                    break;
+                }
+                let next_opt = graph.outgoing_neighbors(walk).filter(|&n| n != walk_prev).min();
+                match next_opt {
+                    Some(n) if n == ring_start => break,
+                    Some(n) => { walk_prev = walk; walk = n; }
+                    None => break,
+                }
+            }
+        }
+    }
+
+    let nav_id = nav.add_node(anchor);
+    remaining.remove(&anchor);
+    // ring_start may differ from anchor; ensure it is not left in remaining.
+    // All other ring nodes are consumed during the outgoing walks below.
     remaining.remove(&ring_start);
 
-    // Walk both outgoing directions from ring_start
-    for first_step in graph.outgoing_neighbors(ring_start).collect::<Vec<_>>() {
-        let mut path = vec![ring_start, first_step];
+    // Walk both outgoing directions from anchor
+    for first_step in graph.outgoing_neighbors(anchor).collect::<Vec<_>>() {
+        let mut path = vec![anchor, first_step];
         remaining.remove(&first_step);
-        let mut prev = ring_start;
+        let mut prev = anchor;
         let mut current = first_step;
 
         let mut completed = false;
@@ -265,8 +310,8 @@ fn build_ring(
             let next_opt = graph.outgoing_neighbors(current).filter(|&n| n != prev).min();
 
             match next_opt {
-                Some(n) if n == ring_start => {
-                    path.push(ring_start);
+                Some(n) if n == anchor => {
+                    path.push(anchor);
                     completed = true;
                     break;
                 }

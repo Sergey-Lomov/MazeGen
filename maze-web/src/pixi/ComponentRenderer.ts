@@ -3,7 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { NodeDto, TessellationConfig } from "../wasm/types";
 import { hexVertices, hexCenter } from "./hexGeometry";
 import { squareCenter, squareVertices } from "./squareGeometry";
-import { triCenter, triVertices } from "./triGeometry";
+import { triVertices } from "./triGeometry";
 
 const MASK_ALPHA = 0.45;
 
@@ -114,7 +114,6 @@ export class ComponentRenderer {
           this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
         } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon") {
           const orientation = cfg.orientation ?? "r0";
-          const { x: cx, y: cy } = triCenter(node.x, node.y, orientation);
           const verts = triVertices(node.x, node.y, orientation);
           this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
         } else {

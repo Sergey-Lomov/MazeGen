@@ -16,12 +16,13 @@ pub struct MazeAnalysis {
 ```rust
 impl MazeAnalysis {
     pub fn nav_graph(&mut self, graph: &Graph) -> &NavGraph;
+    pub fn nav_graph_pinned(&mut self, graph: &Graph, pinned: &HashSet<NodeId>) -> &NavGraph;
     pub fn scc(&mut self, graph: &Graph) -> &ConnectedComponents;
 }
 ```
 
-- On first call: builds the value and stores it.
-- On subsequent calls: returns the cached value.
+- `nav_graph`: builds once and caches. Returns the cached value on subsequent calls.
+- `nav_graph_pinned`: **always rebuilds** and overwrites the shared `nav_graph` cache. The pinned set may differ between calls, so no cache reuse is possible. **Ordering rule:** always call `nav_graph` (unpinned) before `nav_graph_pinned` within a single build step. After `nav_graph_pinned` runs, any subsequent `nav_graph` call returns the pinned version silently. In `maze-wasm/src/lib.rs` the unpinned nav graph (for overlay DTO) is built first, then `nav_graph_pinned` is called for routing — this order must be preserved. If independent results are needed simultaneously, store them before the pinned call.
 - Takes `&mut self` because it may populate the cache.
 
 ## Invariants

@@ -4,6 +4,7 @@ import { TILE_SIZE } from "./constants";
 import { cellCenter, mazeBounds } from "./hexGeometry";
 import { MazeGraphRenderer, NavGraphRenderer } from "./MazeRenderer";
 import { ComponentRenderer } from "./ComponentRenderer";
+import { RouteOverlay } from "./RouteOverlay";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationConfig } from "../wasm/types";
 
@@ -19,6 +20,8 @@ export class MazeScene {
   private componentRenderer: ComponentRenderer;
   private graphRenderer: MazeGraphRenderer;
   private navRenderer: NavGraphRenderer;
+  private routeOverlay: RouteOverlay;
+  private routeOverlayContainer: Container;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
@@ -34,6 +37,7 @@ export class MazeScene {
   private unsubscribeNavOverlay: (() => void) | null = null;
   private unsubscribeComponentOverlay: (() => void) | null = null;
   private unsubscribeMaze: (() => void) | null = null;
+  private refitTimerId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(app: Application) {
     this.app = app;
@@ -55,7 +59,8 @@ export class MazeScene {
     const navInner = new Container();
     this.navOverlay.addChild(navInner);
 
-    this.syncedLayers = [this.componentOverlay, this.graphOverlay, this.navOverlay];
+    this.routeOverlayContainer = new Container();
+    this.syncedLayers = [this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer];
 
     this.app.stage.addChild(this.viewport);
     for (const layer of this.syncedLayers) this.app.stage.addChild(layer);
@@ -72,6 +77,7 @@ export class MazeScene {
     this.componentRenderer = new ComponentRenderer(this.componentOverlay);
     this.graphRenderer = new MazeGraphRenderer(graphInner);
     this.navRenderer = new NavGraphRenderer(navInner);
+    this.routeOverlay = new RouteOverlay(this.routeOverlayContainer);
 
     this.setupInteraction();
     this.subscribeToFit();
@@ -168,13 +174,21 @@ export class MazeScene {
       this.fitMaze(activeTessellationConfig, nodes);
       return;
     }
+    if (this.refitTimerId !== null) {
+      clearTimeout(this.refitTimerId);
+      this.refitTimerId = null;
+    }
     const step = 16;
     const steps = Math.ceil(durationMs / step);
     let i = 0;
     const tick = () => {
       this.app.resize();
       this.fitMaze(activeTessellationConfig, nodes);
-      if (++i < steps) setTimeout(tick, step);
+      if (++i < steps) {
+        this.refitTimerId = setTimeout(tick, step);
+      } else {
+        this.refitTimerId = null;
+      }
     };
     tick();
   }
@@ -221,6 +235,10 @@ export class MazeScene {
   }
 
   destroy(): void {
+    if (this.refitTimerId !== null) {
+      clearTimeout(this.refitTimerId);
+      this.refitTimerId = null;
+    }
     this.unsubscribeFit?.();
     this.unsubscribeOverlay?.();
     this.unsubscribeNavOverlay?.();
@@ -230,6 +248,7 @@ export class MazeScene {
     this.componentRenderer.destroy();
     this.graphRenderer.destroy();
     this.navRenderer.destroy();
+    this.routeOverlay.destroy();
     window.removeEventListener("blur", this.onBlur);
     this.app.canvas.removeEventListener("wheel", this.onWheel);
     this.app.destroy();

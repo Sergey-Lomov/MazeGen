@@ -46,7 +46,7 @@ impl<F: Field> RepairStrategy<F> for ScoredEndpointsStrategy {
         params: &StrategyParams,
     ) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
-            return RepairResult::Fixed;
+            return RepairResult::Fixed { score: None };
         }
 
         let path_weight = params.get(PARAM_PATH_WEIGHT)
@@ -67,6 +67,8 @@ impl<F: Field> RepairStrategy<F> for ScoredEndpointsStrategy {
         let oneway_flags = oneway_flags(&edges);
         let outgoing_by_node = outgoing_by_node(nav, &edges);
 
+        let achieved_score;
+
         match (maze.meta.start, maze.meta.finish) {
             (None, None) => {
                 let best = best_pair(
@@ -74,9 +76,10 @@ impl<F: Field> RepairStrategy<F> for ScoredEndpointsStrategy {
                     None, None, path_weight, junction_weight, oneway_weight,
                 );
                 match best {
-                    Some((s, f)) => {
+                    Some((s, f, score)) => {
                         maze.meta.start = Some(nav.nodes[s].node_id);
                         maze.meta.finish = Some(nav.nodes[f].node_id);
+                        achieved_score = score;
                     }
                     None => return RepairResult::Failed,
                 }
@@ -91,7 +94,10 @@ impl<F: Field> RepairStrategy<F> for ScoredEndpointsStrategy {
                     Some(start_nav), None, path_weight, junction_weight, oneway_weight,
                 );
                 match best {
-                    Some((_, f)) => maze.meta.finish = Some(nav.nodes[f].node_id),
+                    Some((_, f, score)) => {
+                        maze.meta.finish = Some(nav.nodes[f].node_id);
+                        achieved_score = score;
+                    }
                     None => return RepairResult::Failed,
                 }
             }
@@ -105,14 +111,17 @@ impl<F: Field> RepairStrategy<F> for ScoredEndpointsStrategy {
                     None, Some(finish_nav), path_weight, junction_weight, oneway_weight,
                 );
                 match best {
-                    Some((s, _)) => maze.meta.start = Some(nav.nodes[s].node_id),
+                    Some((s, _, score)) => {
+                        maze.meta.start = Some(nav.nodes[s].node_id);
+                        achieved_score = score;
+                    }
                     None => return RepairResult::Failed,
                 }
             }
             (Some(_), Some(_)) => unreachable!(),
         }
 
-        RepairResult::Fixed
+        RepairResult::Fixed { score: Some(achieved_score) }
     }
 }
 
@@ -150,7 +159,7 @@ fn best_pair(
     path_weight: f64,
     junction_weight: f64,
     oneway_weight: f64,
-) -> Option<(NavNodeId, NavNodeId)> {
+) -> Option<(NavNodeId, NavNodeId, f64)> {
     let n = nav.nodes.len();
 
     let starts: Vec<NavNodeId> = match fixed_start {
@@ -159,7 +168,7 @@ fn best_pair(
     };
 
     let mut best_score: Option<f64> = None;
-    let mut best: Option<(NavNodeId, NavNodeId)> = None;
+    let mut best: Option<(NavNodeId, NavNodeId, f64)> = None;
 
     for &s in &starts {
         let (dist, prev_edge) = dijkstra(edges, outgoing_by_node, n, s);
@@ -181,7 +190,7 @@ fn best_pair(
 
             if best_score.map_or(true, |b| score > b) {
                 best_score = Some(score);
-                best = Some((s, f));
+                best = Some((s, f, score));
             }
         }
     }

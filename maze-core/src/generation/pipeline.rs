@@ -37,9 +37,15 @@ pub fn build_maze<F: Field>(
         previous_fingerprint = Some(fingerprint);
 
         let results = repair_engine.run(&active, &mut maze, &mut rng);
-        for (kind, result) in results {
-            if matches!(result, RepairResult::Failed) {
-                failed.insert(kind);
+        for (kind, result) in &results {
+            match result {
+                RepairResult::Failed => { failed.insert(*kind); }
+                RepairResult::Fixed { score: Some(s) } => {
+                    if maze.meta.route_score.is_none() {
+                        maze.meta.route_score = Some(*s);
+                    }
+                }
+                RepairResult::Fixed { score: None } => {}
             }
         }
     }

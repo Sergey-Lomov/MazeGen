@@ -17,4 +17,7 @@ Copy-Item "$wasmPkg\maze_wasm_bg.js"        "$webPkg\maze_wasm_bg.js"        -Fo
 Copy-Item "$wasmPkg\maze_wasm.d.ts"         "$webPkg\maze_wasm.d.ts"         -Force
 Copy-Item "$wasmPkg\maze_wasm_bg.wasm.d.ts" "$webPkg\maze_wasm_bg.wasm.d.ts" -Force
 
+# Touch the JS entry point so Vite's HMR watcher picks up the new WASM binary
+(Get-Item "$webPkg\maze_wasm.js").LastWriteTime = Get-Date
+
 Write-Host "Done." -ForegroundColor Green

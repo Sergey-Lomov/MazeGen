@@ -15,7 +15,7 @@ pub struct FarthestEndpointsStrategy;
 impl<F: Field> RepairStrategy<F> for FarthestEndpointsStrategy {
     fn apply(&self, _issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, _params: &StrategyParams) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
-            return RepairResult::Fixed;
+            return RepairResult::Fixed { score: None };
         }
 
         let nav = maze.analysis.nav_graph(&maze.graph);
@@ -69,7 +69,7 @@ impl<F: Field> RepairStrategy<F> for FarthestEndpointsStrategy {
             (Some(_), Some(_)) => unreachable!(),
         }
 
-        RepairResult::Fixed
+        RepairResult::Fixed { score: None }
     }
 }
 

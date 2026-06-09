@@ -1,4 +1,4 @@
 pub enum RepairResult {
-    Fixed,
+    Fixed { score: Option<f64> },
     Failed,
 }

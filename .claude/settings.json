@@ -82,7 +82,8 @@
       "PowerShell(cargo build -p maze-wasm 2>&1)",
       "PowerShell(npx tsc --noEmit -p maze-web/tsconfig.json 2>&1)",
       "PowerShell(cargo test -p maze-core 2>&1)",
-      "PowerShell(& \"d:\\\\Development\\\\MazeGen\\\\wasm-rebuild.ps1\")"
+      "PowerShell(& \"d:\\\\Development\\\\MazeGen\\\\wasm-rebuild.ps1\")",
+      "PowerShell(tail -5)"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

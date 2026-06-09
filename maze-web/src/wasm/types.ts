@@ -19,6 +19,32 @@ export interface NavEdgeDto {
   path: number[];
 }
 
+export interface JunctionBucket {
+  degree: number;
+  count: number;
+}
+
+export interface NodeStatsDto {
+  dead_ends: number;
+  straight: number;
+  turns: number;
+  junctions: JunctionBucket[];
+}
+
+export interface SpatialEdgeStatsDto {
+  bidirectional: number;
+  one_way: number;
+  walls: number;
+}
+
+export interface RouteInfoDto {
+  path_length: number;
+  junction_count: number;
+  one_way_count: number;
+  score: number | null;
+  path: number[];
+}
+
 export interface MazeSnapshot {
   nodes: NodeDto[];
   edges: EdgeDto[];
@@ -28,6 +54,9 @@ export interface MazeSnapshot {
   nav_nodes: NavNodeDto[];
   nav_edges: NavEdgeDto[];
   components: number[][];
+  node_stats: NodeStatsDto;
+  edge_stats: SpatialEdgeStatsDto;
+  route_info: RouteInfoDto | null;
 }
 
 export interface CheckDescriptor {

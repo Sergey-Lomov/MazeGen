@@ -15,8 +15,9 @@ use maze_core::{
     generation::{generate_maze, generate_maze_steps, GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
+    compute_node_stats, compute_spatial_edge_stats, compute_route_info,
 };
-use dto::{EdgeDto, HexOrientationDto, TriangleOrientationDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto, GenerationStepDto, GenerationStepsSnapshot};
+use dto::{EdgeDto, HexOrientationDto, TriangleOrientationDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto, GenerationStepDto, GenerationStepsSnapshot, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, JunctionBucket};
 
 #[derive(Deserialize)]
 struct StrategyConfig {
@@ -377,6 +378,44 @@ fn run_generate<F: Field>(
         .map(|comp| comp.iter().filter_map(|&id| u32::try_from(id).ok()).collect())
         .collect();
 
+    let raw_node_stats = compute_node_stats(&maze.graph, &maze.field);
+    let node_stats = NodeStatsDto {
+        dead_ends: raw_node_stats.dead_ends,
+        straight: raw_node_stats.straight,
+        turns: raw_node_stats.turns,
+        junctions: raw_node_stats.junctions.iter()
+            .map(|&(degree, count)| JunctionBucket { degree, count })
+            .collect(),
+    };
+
+    let raw_edge_stats = compute_spatial_edge_stats(&maze.graph, &maze.field);
+    let edge_stats = SpatialEdgeStatsDto {
+        bidirectional: raw_edge_stats.bidirectional,
+        one_way: raw_edge_stats.one_way,
+        walls: raw_edge_stats.walls,
+    };
+
+    let route_score = maze.meta.route_score;
+    let route_info = match (maze.meta.start, maze.meta.finish) {
+        (Some(s), Some(f)) => {
+            let mut pinned = std::collections::HashSet::new();
+            pinned.insert(s);
+            pinned.insert(f);
+            let nav = maze.analysis.nav_graph_pinned(&maze.graph, &pinned);
+            compute_route_info(nav, s, f).map(|mut r| {
+                r.score = route_score;
+                RouteInfoDto {
+                    path_length: r.path_length,
+                    junction_count: r.junction_count,
+                    one_way_count: r.one_way_count,
+                    score: r.score,
+                    path: r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
+                }
+            })
+        }
+        _ => None,
+    };
+
     let snapshot = MazeSnapshot {
         nodes,
         edges,
@@ -386,6 +425,9 @@ fn run_generate<F: Field>(
         nav_nodes,
         nav_edges,
         components,
+        node_stats,
+        edge_stats,
+        route_info,
     };
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
 }

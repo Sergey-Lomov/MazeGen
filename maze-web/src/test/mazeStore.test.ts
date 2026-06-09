@@ -23,6 +23,9 @@ const mockSnapshot = {
   nav_nodes: [],
   nav_edges: [],
   components: [],
+  node_stats: { dead_ends: 2, straight: 0, turns: 0, junctions: [] },
+  edge_stats: { bidirectional: 0, one_way: 1, walls: 0 },
+  route_info: null,
 };
 
 beforeEach(() => {

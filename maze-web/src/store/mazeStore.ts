@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto } from "../wasm/types";
 
 interface MazeState {
   seed: number;
@@ -20,6 +20,7 @@ interface MazeState {
   showGraphOverlay: boolean;
   showNavOverlay: boolean;
   showComponents: boolean;
+  showRoute: boolean;
   selectedNode: number | null;
   warnings: string[];
   error: string | null;
@@ -31,6 +32,9 @@ interface MazeState {
   strategyParams: Record<string, Record<string, string>>;
   initialConfig: InitialGenerationConfig;
   elementsConfig: ElementsConfig;
+  nodeStats: NodeStatsDto | null;
+  edgeStats: SpatialEdgeStatsDto | null;
+  routeInfo: RouteInfoDto | null;
 }
 
 interface MazeActions {
@@ -38,7 +42,7 @@ interface MazeActions {
   setTessellationConfig: (cfg: TessellationConfig) => void;
   generate: () => void;
   reset: () => void;
-  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze" | "showGraphOverlay" | "showNavOverlay" | "showComponents", value: boolean) => void;
+  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze" | "showGraphOverlay" | "showNavOverlay" | "showComponents" | "showRoute", value: boolean) => void;
   selectNode: (id: number | null) => void;
   loadRegistry: () => Promise<void>;
   toggleCheck: (id: string) => void;
@@ -68,6 +72,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   showGraphOverlay: true,
   showNavOverlay: false,
   showComponents: false,
+  showRoute: false,
   selectedNode: null,
   warnings: [],
   error: null,
@@ -78,6 +83,9 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   strategyParams: {},
   initialConfig: { method: "custom_vertex_based" as const, depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
   elementsConfig: { one_way_chance: 0.04 },
+  nodeStats: null,
+  edgeStats: null,
+  routeInfo: null,
 
   setSeed: (seed) => set({ seed, error: null }),
   setTessellationConfig: (cfg) => set({ tessellationConfig: cfg, error: null }),
@@ -127,14 +135,14 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         initial: initialConfig,
         elements: elementsConfig,
       });
-      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null, activeTessellationConfig: tessellationConfig });
+      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null, activeTessellationConfig: tessellationConfig, nodeStats: snapshot.node_stats, edgeStats: snapshot.edge_stats, routeInfo: snapshot.route_info });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       set({ error: msg });
     }
   },
 
-  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null }),
+  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
@@ -197,6 +205,11 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     navEdges: [],
     components: [],
     selectedNode: null,
+    warnings: [],
+    error: null,
+    nodeStats: null,
+    edgeStats: null,
+    routeInfo: null,
     activeTessellationConfig: cfg,
   }),
 }));

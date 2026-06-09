@@ -11,7 +11,7 @@ pub struct RandomEndpointsStrategy;
 impl<F: Field> RepairStrategy<F> for RandomEndpointsStrategy {
     fn apply(&self, _issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, _params: &StrategyParams) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
-            return RepairResult::Fixed;
+            return RepairResult::Fixed { score: None };
         }
 
         if maze.meta.start.is_none() {
@@ -48,6 +48,6 @@ impl<F: Field> RepairStrategy<F> for RandomEndpointsStrategy {
             maze.meta.finish = Some(candidates[idx]);
         }
 
-        RepairResult::Fixed
+        RepairResult::Fixed { score: None }
     }
 }

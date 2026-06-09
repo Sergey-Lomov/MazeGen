@@ -10,6 +10,10 @@ pub mod repair;
 
 pub use ids::{NodeId, IdGenerator};
 pub use graph::Graph;
+pub use graph::classify::{
+    GeometricNodeClass, GeometricNodeStats, SpatialEdgeStats, RouteInfo,
+    classify_node, compute_node_stats, compute_spatial_edge_stats, compute_route_info,
+};
 pub use space::{
     Field, FieldShape, ShapedField,
     HexField, HexPoint, HexFace, HexTessellation,
@@ -37,6 +41,12 @@ impl MazeAnalysis {
         if self.nav_graph.is_none() {
             self.nav_graph = Some(graph::nav::build_nav_graph(graph));
         }
+        self.nav_graph.as_ref().unwrap()
+    }
+
+    pub fn nav_graph_pinned<'a>(&'a mut self, graph: &Graph, pinned: &std::collections::HashSet<ids::NodeId>) -> &'a graph::nav::NavGraph {
+        // Always rebuild when pinned nodes are specified — pinned set may differ from cached build.
+        self.nav_graph = Some(graph::nav::build_nav_graph_pinned(graph, pinned));
         self.nav_graph.as_ref().unwrap()
     }
 

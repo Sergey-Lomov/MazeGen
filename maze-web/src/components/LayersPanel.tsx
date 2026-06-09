@@ -5,6 +5,7 @@ export function LayersPanel() {
   const showComponents = useMazeStore((s) => s.showComponents);
   const showGraphOverlay = useMazeStore((s) => s.showGraphOverlay);
   const showNavOverlay = useMazeStore((s) => s.showNavOverlay);
+  const showRoute = useMazeStore((s) => s.showRoute);
   const setDebugFlag = useMazeStore((s) => s.setDebugFlag);
 
   return (
@@ -41,6 +42,14 @@ export function LayersPanel() {
           onChange={(e) => setDebugFlag("showNavOverlay", e.target.checked)}
         />
         Nav graph
+      </label>
+      <label style={styles.checkLabel}>
+        <input
+          type="checkbox"
+          checked={showRoute}
+          onChange={(e) => setDebugFlag("showRoute", e.target.checked)}
+        />
+        Route
       </label>
     </div>
   );

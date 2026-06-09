@@ -105,7 +105,7 @@ fn pipeline_deduplicates_issues_from_duplicate_checks() {
             nodes.sort_unstable();
             maze.meta.start = nodes.first().copied();
             maze.meta.finish = nodes.last().copied();
-            RepairResult::Fixed
+            RepairResult::Fixed { score: None }
         }
     }
 
