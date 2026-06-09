@@ -1,11 +1,20 @@
-# Rebuild WASM and restart the web dev server
+# Rebuild WASM and copy artifacts to web source directory
 $root = $PSScriptRoot
+$wasmPkg = "$root\maze-wasm\pkg"
+$webPkg  = "$root\maze-web\src\wasm\pkg"
+
+# Force Cargo to recompile on Windows (bash `touch` does not update NTFS mtime)
+(Get-Item "$root\maze-wasm\src\lib.rs").LastWriteTime = Get-Date
 
 Write-Host "Building WASM..." -ForegroundColor Cyan
-Set-Location "$root\maze-wasm"
-wasm-pack build --target web --out-dir "$root\maze-web\pkg"
+wasm-pack build "$root\maze-wasm" --target web
 if (-not $?) { Write-Host "wasm-pack failed" -ForegroundColor Red; exit 1 }
 
-Write-Host "Starting dev server..." -ForegroundColor Cyan
-Set-Location "$root\maze-web"
-npm run dev
+Write-Host "Copying artifacts to $webPkg..." -ForegroundColor Cyan
+Copy-Item "$wasmPkg\maze_wasm_bg.wasm"      "$webPkg\maze_wasm_bg.wasm"      -Force
+Copy-Item "$wasmPkg\maze_wasm.js"           "$webPkg\maze_wasm.js"           -Force
+Copy-Item "$wasmPkg\maze_wasm_bg.js"        "$webPkg\maze_wasm_bg.js"        -Force
+Copy-Item "$wasmPkg\maze_wasm.d.ts"         "$webPkg\maze_wasm.d.ts"         -Force
+Copy-Item "$wasmPkg\maze_wasm_bg.wasm.d.ts" "$webPkg\maze_wasm_bg.wasm.d.ts" -Force
+
+Write-Host "Done." -ForegroundColor Green

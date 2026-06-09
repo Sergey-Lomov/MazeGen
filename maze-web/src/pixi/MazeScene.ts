@@ -127,6 +127,7 @@ export class MazeScene {
       if (state.nodes !== prevNodes) {
         prevNodes = state.nodes;
         if (state.nodes.length > 0) {
+          this.app.resize();
           this.fitMaze(state.activeTessellationConfig, state.nodes);
         }
       }
@@ -153,11 +154,29 @@ export class MazeScene {
     const scale = Math.min(FIT_PADDING * screenW / W, FIT_PADDING * screenH / H);
 
     this.viewport.scale.set(scale);
-    // Center the bounding box on screen.
     this.viewport.x = screenW / 2 - scale * (minX + W / 2);
     this.viewport.y = screenH / 2 - scale * (minY + H / 2);
 
     this.syncLayersToViewport();
+  }
+
+  refit(durationMs = 0): void {
+    const { nodes, activeTessellationConfig } = useMazeStore.getState();
+    if (nodes.length === 0) return;
+    if (durationMs <= 0) {
+      this.app.resize();
+      this.fitMaze(activeTessellationConfig, nodes);
+      return;
+    }
+    const step = 16;
+    const steps = Math.ceil(durationMs / step);
+    let i = 0;
+    const tick = () => {
+      this.app.resize();
+      this.fitMaze(activeTessellationConfig, nodes);
+      if (++i < steps) setTimeout(tick, step);
+    };
+    tick();
   }
 
   private setupInteraction(): void {

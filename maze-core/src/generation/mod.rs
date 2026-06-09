@@ -7,36 +7,255 @@ use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::Field;
 
-pub fn generate_maze<F: Field>(graph: &mut Graph, field: &F, seed: u64, start: NodeId) {
-    let mut visited: HashSet<NodeId> = HashSet::new();
-    let mut stack: Vec<NodeId> = vec![start];
-    visited.insert(start);
+#[derive(Debug, Clone)]
+pub struct GenerationParams {
+    pub depth_first:     f64,
+    pub corridor_chance: f64,
+    pub branching:       f64,
+    pub directionality:  f64,
+    pub one_way_chance:  f64,
+}
+
+impl Default for GenerationParams {
+    fn default() -> Self {
+        GenerationParams {
+            depth_first:     0.9,
+            corridor_chance: 0.7,
+            branching:       0.5,
+            directionality:  0.0,
+            one_way_chance:  0.04,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GenerationEdge {
+    pub from: NodeId,
+    pub to:   NodeId,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenerationStep {
+    /// All edges present in the graph after this step.
+    pub edges: Vec<GenerationEdge>,
+}
+
+pub fn generate_maze<F: Field>(
+    graph: &mut Graph,
+    field: &F,
+    seed: u64,
+    start: NodeId,
+    params: GenerationParams,
+) {
+    generate_inner(graph, field, seed, start, params, None);
+}
+
+pub fn generate_maze_steps<F: Field>(
+    graph: &mut Graph,
+    field: &F,
+    seed: u64,
+    start: NodeId,
+    params: GenerationParams,
+) -> Vec<GenerationStep> {
+    let mut steps: Vec<GenerationStep> = Vec::new();
+    let mut on_step = |g: &Graph| {
+        let edges = g.edges().map(|e| GenerationEdge { from: e.from, to: e.to }).collect();
+        steps.push(GenerationStep { edges });
+    };
+    generate_inner(graph, field, seed, start, params, Some(&mut on_step));
+    steps
+}
+
+// ─── Internal ────────────────────────────────────────────────────────────────
+
+struct FrontierEntry {
+    node:   NodeId,
+    parent: Option<NodeId>,
+}
+
+fn generate_inner<F: Field>(
+    graph: &mut Graph,
+    field: &F,
+    seed: u64,
+    start: NodeId,
+    params: GenerationParams,
+    mut on_step: Option<&mut dyn FnMut(&Graph)>,
+) {
+    let mut visited:     HashSet<NodeId> = HashSet::new();
+    let mut in_frontier: HashSet<NodeId> = HashSet::new();
+    let mut frontier:    Vec<FrontierEntry> = Vec::new();
+    let mut reserve:     Vec<NodeId> = Vec::new();
+    let mut in_reserve:  HashSet<NodeId> = HashSet::new();
     let mut rng = SmallRng::seed_from_u64(seed);
 
-    while let Some(&current) = stack.last() {
-        let unvisited: Vec<NodeId> = field
-            .neighbors(current)
+    add_to_frontier(start, None, &mut frontier, &mut in_frontier);
+    visited.insert(start);
+
+    loop {
+        if frontier.is_empty() {
+            let Some(src) = pop_reserve(&mut reserve, &mut in_reserve, &params, &mut rng) else {
+                break;
+            };
+            let visited_neighbors: Vec<NodeId> = field.neighbors(src)
+                .into_iter()
+                .filter(|n| visited.contains(n))
+                .collect();
+            if visited_neighbors.is_empty() { continue; }
+            let bridge = visited_neighbors[rng.random_range(0..visited_neighbors.len())];
+            add_edge(graph, bridge, src, &params, &mut rng);
+            visited.insert(src);
+            add_to_frontier(src, Some(bridge), &mut frontier, &mut in_frontier);
+            if let Some(ref mut cb) = on_step { cb(graph); }
+            continue;
+        }
+
+        let fi = choose_from_frontier(&frontier, &params, &mut rng);
+        let src = frontier[fi].node;
+        let parent = frontier[fi].parent;
+
+        frontier.swap_remove(fi);
+        in_frontier.remove(&src);
+
+        let free_neighbors: Vec<NodeId> = field.neighbors(src)
             .into_iter()
-            .filter(|n| !visited.contains(n))
+            .filter(|n| !visited.contains(n) && !in_frontier.contains(n))
             .collect();
 
-        if unvisited.is_empty() {
-            stack.pop();
-        } else {
-            let idx = rng.random_range(0..unvisited.len());
-            let chosen = unvisited[idx];
-            const ONE_WAY_CHANCE: f64 = 0.04;
-            if rng.random::<f64>() < ONE_WAY_CHANCE {
-                if rng.random::<bool>() {
-                    graph.add_edge(current, chosen, EdgeKind::Basic);
-                } else {
-                    graph.add_edge(chosen, current, EdgeKind::Basic);
-                }
+        let is_corridor = rng.random::<f64>() < params.corridor_chance;
+
+        let connected: Vec<NodeId> = if is_corridor {
+            if free_neighbors.is_empty() {
+                vec![]
             } else {
-                graph.add_bidirectional_edge(current, chosen, EdgeKind::Basic);
+                vec![choose_candidate(&free_neighbors, parent, src, &params, &mut rng, field)]
             }
-            visited.insert(chosen);
-            stack.push(chosen);
+        } else {
+            let max = free_neighbors.len();
+            if max == 0 {
+                vec![]
+            } else if max == 1 {
+                vec![free_neighbors[0]]
+            } else {
+                let count = junction_count(max, &params, &mut rng);
+                choose_junction_candidates(&free_neighbors, parent, src, count, &params, &mut rng, field)
+            }
+        };
+
+        for &dst in &connected {
+            add_edge(graph, src, dst, &params, &mut rng);
+            visited.insert(dst);
+            in_reserve.remove(&dst);
+            reserve.retain(|&x| x != dst);
+            add_to_frontier(dst, Some(src), &mut frontier, &mut in_frontier);
         }
+
+        let connected_set: HashSet<NodeId> = connected.iter().copied().collect();
+        for n in free_neighbors {
+            if !connected_set.contains(&n) && !in_reserve.contains(&n) && !visited.contains(&n) {
+                reserve.push(n);
+                in_reserve.insert(n);
+            }
+        }
+
+        if !connected.is_empty() {
+            if let Some(ref mut cb) = on_step { cb(graph); }
+        }
+    }
+}
+
+fn add_to_frontier(node: NodeId, parent: Option<NodeId>, frontier: &mut Vec<FrontierEntry>, in_frontier: &mut HashSet<NodeId>) {
+    if in_frontier.insert(node) {
+        frontier.push(FrontierEntry { node, parent });
+    }
+}
+
+fn pop_reserve(
+    reserve: &mut Vec<NodeId>,
+    in_reserve: &mut HashSet<NodeId>,
+    params: &GenerationParams,
+    rng: &mut SmallRng,
+) -> Option<NodeId> {
+    if reserve.is_empty() { return None; }
+    let idx = if rng.random::<f64>() < params.depth_first {
+        reserve.len() - 1
+    } else {
+        rng.random_range(0..reserve.len())
+    };
+    let node = reserve.swap_remove(idx);
+    in_reserve.remove(&node);
+    Some(node)
+}
+
+fn choose_from_frontier(frontier: &[FrontierEntry], params: &GenerationParams, rng: &mut SmallRng) -> usize {
+    if frontier.len() == 1 { return 0; }
+    if rng.random::<f64>() < params.depth_first {
+        frontier.len() - 1
+    } else {
+        rng.random_range(0..frontier.len())
+    }
+}
+
+fn junction_count(max: usize, params: &GenerationParams, rng: &mut SmallRng) -> usize {
+    let mut count = 2;
+    for _ in 0..(max - 2) {
+        if rng.random::<f64>() < params.branching {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn choose_candidate<F: Field>(
+    candidates: &[NodeId],
+    parent: Option<NodeId>,
+    src: NodeId,
+    params: &GenerationParams,
+    rng: &mut SmallRng,
+    field: &F,
+) -> NodeId {
+    if candidates.len() == 1 { return candidates[0]; }
+    if let Some(p) = parent {
+        if rng.random::<f64>() < params.directionality {
+            if let Some(&straight) = candidates.iter().find(|&&n| field.is_straight(p, src, n)) {
+                return straight;
+            }
+        }
+    }
+    candidates[rng.random_range(0..candidates.len())]
+}
+
+fn choose_junction_candidates<F: Field>(
+    candidates: &[NodeId],
+    parent: Option<NodeId>,
+    src: NodeId,
+    count: usize,
+    params: &GenerationParams,
+    rng: &mut SmallRng,
+    field: &F,
+) -> Vec<NodeId> {
+    let mut pool: Vec<NodeId> = candidates.to_vec();
+    let mut chosen = Vec::with_capacity(count);
+
+    let first = choose_candidate(&pool, parent, src, params, rng, field);
+    chosen.push(first);
+    pool.retain(|&n| n != first);
+
+    while chosen.len() < count && !pool.is_empty() {
+        let idx = rng.random_range(0..pool.len());
+        chosen.push(pool.swap_remove(idx));
+    }
+
+    chosen
+}
+
+fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, params: &GenerationParams, rng: &mut SmallRng) {
+    if rng.random::<f64>() < params.one_way_chance {
+        if rng.random::<bool>() {
+            graph.add_edge(src, dst, EdgeKind::Basic);
+        } else {
+            graph.add_edge(dst, src, EdgeKind::Basic);
+        }
+    } else {
+        graph.add_bidirectional_edge(src, dst, EdgeKind::Basic);
     }
 }

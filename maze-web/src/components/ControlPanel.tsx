@@ -5,6 +5,8 @@ interface Props {
   disabled?: boolean;
   onSettingsToggle?: () => void;
   settingsOpen?: boolean;
+  onDebugToggle?: () => void;
+  debugOpen?: boolean;
 }
 
 type TessType = TessellationConfig["type"];
@@ -19,7 +21,7 @@ function orientationOf(cfg: TessellationConfig): "flat_top" | "pointy_top" | "r0
   return "r0";
 }
 
-export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen = false }: Props) {
+export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen = false, onDebugToggle, debugOpen = false }: Props) {
   const seed = useMazeStore((s) => s.seed);
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
   const setSeed = useMazeStore((s) => s.setSeed);
@@ -277,6 +279,7 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
       <button style={{ ...styles.btn, ...(disabled ? styles.btnDisabled : {}) }} onClick={generate} disabled={disabled}>Generate</button>
       <button style={{ ...styles.btn, ...styles.btnSecondary, ...(disabled ? styles.btnDisabled : {}) }} onClick={reset} disabled={disabled}>Reset</button>
       <button style={{ ...styles.btn, ...styles.btnSettings, ...(settingsOpen ? styles.btnSettingsActive : {}) }} onClick={onSettingsToggle}>Settings</button>
+      <button style={{ ...styles.btn, ...styles.btnSettings, ...(debugOpen ? styles.btnSettingsActive : {}), ...(disabled ? styles.btnDisabled : {}) }} onClick={onDebugToggle} disabled={disabled}>Debug</button>
       {warnings.length > 0 && (
         <div style={styles.warning}>
           Issues: {warnings.join(", ")}

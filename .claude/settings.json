@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)", "Read(*)", "Write(*)", "Edit(*)",
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
       "Read(//d/Development/GFTV/**)",
       "mcp__code-index__get_settings_info",
       "mcp__code-index__set_project_path",
@@ -64,7 +67,17 @@
       "Bash(node)",
       "Bash(sleep 3 && cat /c/Users/user/AppData/Local/Temp/claude/d--Development-MazeGen/1c86e1d2-fc48-4984-8c5f-3340636acd04/tasks/bmnotsbgb.output 2>/dev/null | head -20)",
       "Read(//c/Users/user/AppData/Local/Temp/claude/d--Development-MazeGen/1c86e1d2-fc48-4984-8c5f-3340636acd04/tasks/**)",
-      "Bash(curl -s http://localhost:5176/)"
+      "Bash(curl -s http://localhost:5176/)",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(\\(Get-Item \"maze-core\\\\src\\\\graph\\\\nav.rs\"\\).LastWriteTime = Get-Date; wasm-pack build maze-wasm 2>&1)",
+      "PowerShell(Copy-Item \"maze-wasm\\\\pkg\\\\maze_wasm_bg.wasm\" \"maze-web\\\\src\\\\wasm\\\\pkg\\\\maze_wasm_bg.wasm\" -Force)",
+      "PowerShell(Copy-Item \"maze-wasm\\\\pkg\\\\maze_wasm.js\" \"maze-web\\\\src\\\\wasm\\\\pkg\\\\maze_wasm.js\" -Force)",
+      "PowerShell(Copy-Item \"maze-wasm\\\\pkg\\\\maze_wasm_bg.js\" \"maze-web\\\\src\\\\wasm\\\\pkg\\\\maze_wasm_bg.js\" -Force)",
+      "PowerShell(.\\\\wasm-rebuild.ps1 2>&1)",
+      "PowerShell(& \"d:\\\\Development\\\\MazeGen\\\\wasm-rebuild.ps1\" 2>&1)",
+      "PowerShell(Copy-Item \"d:\\\\Development\\\\MazeGen\\\\maze-wasm\\\\pkg\\\\maze_wasm.d.ts\" \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\\\\wasm\\\\pkg\\\\maze_wasm.d.ts\" -Force)",
+      "PowerShell(Copy-Item \"d:\\\\Development\\\\MazeGen\\\\maze-wasm\\\\pkg\\\\maze_wasm_bg.wasm.d.ts\" \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\\\\wasm\\\\pkg\\\\maze_wasm_bg.wasm.d.ts\" -Force)"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

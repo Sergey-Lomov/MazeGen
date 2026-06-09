@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Field};
 use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField};
-use maze_core::generation::{generate_maze, pipeline::build_maze};
+use maze_core::generation::{generate_maze, GenerationParams, pipeline::build_maze};
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
 use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, StrategyParams};
 
@@ -24,7 +24,7 @@ fn make_generated_graph(seed: u64) -> (SquareField, Graph) {
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    generate_maze(&mut graph, &field, seed, start);
+    generate_maze(&mut graph, &field, seed, start, GenerationParams::default());
     (field, graph)
 }
 

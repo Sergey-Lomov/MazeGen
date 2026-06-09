@@ -65,8 +65,26 @@ export type TessellationConfig =
   | { type: "triangle_triangle"; side: number; orientation?: "r0" | "r90" | "r180" | "r270" }
   | { type: "triangle_hexagon"; radius: number; orientation?: "r0" | "r90" | "r180" | "r270" };
 
+export interface GenerationParams {
+  depth_first?: number;
+  corridor_chance?: number;
+  branching?: number;
+  directionality?: number;
+  one_way_chance?: number;
+}
+
+export interface GenerationStepDto {
+  edges: EdgeDto[];
+}
+
+export interface GenerationStepsSnapshot {
+  nodes: NodeDto[];
+  steps: GenerationStepDto[];
+}
+
 export interface GenerateConfig {
   tessellation: TessellationConfig;
   checks: string[];
   strategies: Record<string, StrategyConfig>;
+  generation?: GenerationParams;
 }

@@ -18,6 +18,7 @@ pub use space::{
     TriField, TriPoint, TriFace, TriTessellation, TriRect, TriTriangle, TriHexagon,
 };
 pub use meta::MazeMeta;
+pub use generation::{generate_maze, generate_maze_steps, GenerationParams, GenerationEdge, GenerationStep};
 pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
 
 pub struct MazeAnalysis {

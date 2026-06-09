@@ -5,6 +5,8 @@ import { ControlPanel } from "./components/ControlPanel";
 import { LayersPanel } from "./components/LayersPanel";
 import { DebugPanel } from "./components/DebugPanel";
 import { QualityControlPanel } from "./components/QualityControlPanel";
+import { GenerationParamsPanel } from "./components/GenerationParamsPanel";
+import { GenerationDebugPanel } from "./components/GenerationDebugPanel";
 import { useMazeStore } from "./store/mazeStore";
 
 export function App() {
@@ -12,6 +14,8 @@ export function App() {
   const sceneRef = useRef<MazeScene | null>(null);
   const [ready, setReady] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const SETTINGS_TRANSITION_MS = 270;
   const loadRegistry = useMazeStore((s) => s.loadRegistry);
 
   useEffect(() => {
@@ -50,12 +54,17 @@ export function App() {
   return (
     <div style={styles.root}>
       <div style={styles.sidebar}>
-        <ControlPanel disabled={!ready} onSettingsToggle={() => setSettingsOpen((v) => !v)} settingsOpen={settingsOpen} />
+        <ControlPanel disabled={!ready} onSettingsToggle={() => {
+          setSettingsOpen((v) => !v);
+          sceneRef.current?.refit(SETTINGS_TRANSITION_MS);
+        }} settingsOpen={settingsOpen} onDebugToggle={() => setDebugOpen((v) => !v)} debugOpen={debugOpen} />
+        {debugOpen && <GenerationDebugPanel onClose={() => setDebugOpen(false)} />}
         <LayersPanel />
         <DebugPanel />
         {!ready && <div style={styles.loading}>Loading…</div>}
       </div>
       <div style={{ ...styles.settingsPanel, width: settingsOpen ? 480 : 0 }}>
+        <GenerationParamsPanel />
         <QualityControlPanel />
       </div>
       <div ref={canvasRef} style={styles.canvas} />

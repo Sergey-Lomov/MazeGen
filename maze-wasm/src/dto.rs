@@ -45,6 +45,17 @@ pub struct NavEdgeDto {
 }
 
 #[derive(Serialize)]
+pub struct GenerationStepDto {
+    pub edges: Vec<EdgeDto>,
+}
+
+#[derive(Serialize)]
+pub struct GenerationStepsSnapshot {
+    pub nodes: Vec<NodeDto>,
+    pub steps: Vec<GenerationStepDto>,
+}
+
+#[derive(Serialize)]
 pub struct MazeSnapshot {
     pub nodes: Vec<NodeDto>,
     pub edges: Vec<EdgeDto>,

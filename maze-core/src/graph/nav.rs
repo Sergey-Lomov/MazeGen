@@ -260,20 +260,30 @@ fn build_ring(
         let mut prev = ring_start;
         let mut current = first_step;
 
+        let mut completed = false;
         loop {
             let next_opt = graph.outgoing_neighbors(current).filter(|&n| n != prev).min();
 
-            if next_opt.map_or(true, |n| n == ring_start) {
-                path.push(ring_start);
-                break;
+            match next_opt {
+                Some(n) if n == ring_start => {
+                    path.push(ring_start);
+                    completed = true;
+                    break;
+                }
+                Some(next) => {
+                    remaining.remove(&next);
+                    path.push(next);
+                    prev = current;
+                    current = next;
+                }
+                None => {
+                    break;
+                }
             }
-            let next = next_opt.unwrap();
-            remaining.remove(&next);
-            path.push(next);
-            prev = current;
-            current = next;
         }
 
-        nav.add_edge(nav_id, nav_id, path);
+        if completed {
+            nav.add_edge(nav_id, nav_id, path);
+        }
     }
 }

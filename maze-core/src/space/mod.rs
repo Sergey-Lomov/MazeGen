@@ -5,10 +5,12 @@ use crate::graph::Graph;
 
 pub trait Tessellation {
     type Point: Copy + Eq + Hash;
-    type Face: Copy + 'static;
+    type Face: Copy + PartialEq + 'static;
 
     fn step(point: Self::Point, face: Self::Face) -> Self::Point;
     fn faces() -> &'static [Self::Face];
+    fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
+    fn opposite_face(face: Self::Face) -> Option<Self::Face>;
 }
 
 pub trait FieldShape {
@@ -25,6 +27,7 @@ pub trait Field {
     fn node_at(&self, point: <Self::T as Tessellation>::Point) -> Option<NodeId>;
     fn point_of(&self, node: NodeId) -> Option<<Self::T as Tessellation>::Point>;
     fn build_nodes(&self, graph: &mut Graph);
+    fn is_straight(&self, from: NodeId, via: NodeId, to: NodeId) -> bool;
 }
 
 pub struct ShapedField<T: Tessellation, S: FieldShape<Point = T::Point>> {
@@ -86,6 +89,15 @@ impl<T: Tessellation, S: FieldShape<Point = T::Point>> Field for ShapedField<T, 
             graph.add_node(id);
         }
     }
+
+    fn is_straight(&self, from: NodeId, via: NodeId, to: NodeId) -> bool {
+        let Some(fp) = self.node_to_point.get(&from) else { return false; };
+        let Some(vp) = self.node_to_point.get(&via)  else { return false; };
+        let Some(tp) = self.node_to_point.get(&to)   else { return false; };
+        let Some(face_in)  = T::face_between(*fp, *vp) else { return false; };
+        let Some(face_out) = T::face_between(*vp, *tp) else { return false; };
+        T::opposite_face(face_in) == Some(face_out)
+    }
 }
 
 // Square tessellation
@@ -96,7 +108,7 @@ pub struct SquarePoint {
     pub y: i32,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum SquareFace {
     N,
     S,
@@ -121,6 +133,25 @@ impl Tessellation for SquareTessellation {
 
     fn faces() -> &'static [SquareFace] {
         &[SquareFace::N, SquareFace::S, SquareFace::E, SquareFace::W]
+    }
+
+    fn face_between(from: SquarePoint, to: SquarePoint) -> Option<SquareFace> {
+        match (to.x - from.x, to.y - from.y) {
+            (0, 1)  => Some(SquareFace::N),
+            (0, -1) => Some(SquareFace::S),
+            (1, 0)  => Some(SquareFace::E),
+            (-1, 0) => Some(SquareFace::W),
+            _       => None,
+        }
+    }
+
+    fn opposite_face(face: SquareFace) -> Option<SquareFace> {
+        Some(match face {
+            SquareFace::N => SquareFace::S,
+            SquareFace::S => SquareFace::N,
+            SquareFace::E => SquareFace::W,
+            SquareFace::W => SquareFace::E,
+        })
     }
 }
 
@@ -156,7 +187,7 @@ pub struct HexPoint {
     pub r: i32,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum HexFace {
     E,
     NE,
@@ -185,6 +216,29 @@ impl Tessellation for HexTessellation {
 
     fn faces() -> &'static [HexFace] {
         &[HexFace::E, HexFace::NE, HexFace::NW, HexFace::W, HexFace::SW, HexFace::SE]
+    }
+
+    fn face_between(from: HexPoint, to: HexPoint) -> Option<HexFace> {
+        match (to.q - from.q, to.r - from.r) {
+            (1, 0)   => Some(HexFace::E),
+            (1, -1)  => Some(HexFace::NE),
+            (0, -1)  => Some(HexFace::NW),
+            (-1, 0)  => Some(HexFace::W),
+            (-1, 1)  => Some(HexFace::SW),
+            (0, 1)   => Some(HexFace::SE),
+            _        => None,
+        }
+    }
+
+    fn opposite_face(face: HexFace) -> Option<HexFace> {
+        Some(match face {
+            HexFace::E  => HexFace::W,
+            HexFace::NE => HexFace::SW,
+            HexFace::NW => HexFace::SE,
+            HexFace::W  => HexFace::E,
+            HexFace::SW => HexFace::NE,
+            HexFace::SE => HexFace::NW,
+        })
     }
 }
 
@@ -240,7 +294,7 @@ pub struct TriPoint {
     pub row: i32,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum TriFace {
     Left,
     Right,
@@ -268,6 +322,20 @@ impl Tessellation for TriTessellation {
 
     fn faces() -> &'static [TriFace] {
         &[TriFace::Left, TriFace::Right, TriFace::Base]
+    }
+
+    fn face_between(from: TriPoint, to: TriPoint) -> Option<TriFace> {
+        let pointing_up = (from.col + from.row).rem_euclid(2) == 0;
+        match (to.col - from.col, to.row - from.row) {
+            (-1, 0) => Some(TriFace::Left),
+            (1, 0)  => Some(TriFace::Right),
+            (0, dy) if (pointing_up && dy == -1) || (!pointing_up && dy == 1) => Some(TriFace::Base),
+            _ => None,
+        }
+    }
+
+    fn opposite_face(_: TriFace) -> Option<TriFace> {
+        None
     }
 }
 
