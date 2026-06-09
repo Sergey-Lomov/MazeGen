@@ -6,7 +6,7 @@ Build maze structure by adding edges to a Graph. Operates on a Graph that alread
 
 ## Overview
 
-Two algorithms available: `CustomVertexBased` (default) and `RecursiveBacktracker`. Both share an `add_edge` helper that applies `ElementsConfig.one_way_chance`:
+Three algorithms available: `CustomVertexBased` (default), `RecursiveBacktracker`, and `WilsonAlgorithm`. All share an `add_edge` helper that applies `ElementsConfig.one_way_chance`:
 
 ```
 fn add_edge(graph, src, dst, elements, rng):
@@ -24,6 +24,33 @@ Note: one-way edges consume two RNG samples; bidirectional consumes one. This me
 ### Custom Vertex-Based (`GenerationAlgorithm::CustomVertexBased`)
 
 Frontier-based algorithm with configurable parameters. Maintains a frontier set and a reserve set; supports configurable depth-first vs. breadth-first bias, corridor vs. junction probability, extra branching, and directional preference.
+
+### Wilson's Algorithm (`GenerationAlgorithm::WilsonAlgorithm`)
+
+Loop-erased random walk. Produces a uniformly random spanning tree — every possible maze has equal probability. Visually the most organic: no visible patterns, corridors vary in length and direction naturally.
+
+Algorithm: mark `start` as visited. While unvisited nodes remain, pick one at random and perform a random walk until hitting any visited node, erasing loops as they form. Commit the resulting path to the maze. Repeat.
+
+```
+visited = {start}
+unvisited = all_nodes \ {start}
+
+while unvisited not empty:
+  walk_start = unvisited[random]
+  next: HashMap<NodeId, NodeId> = {}
+  current = walk_start
+  loop:
+    chosen = field.neighbors(current)[random]
+    next[current] = chosen
+    if visited.contains(chosen): break
+    current = chosen
+  node = walk_start
+  while not visited.contains(node):
+    add_edge(graph, node, next[node], elements, rng)
+    visited.insert(node)
+    node = next[node]
+  unvisited.retain(not in visited)
+```
 
 ### Recursive Backtracker (`GenerationAlgorithm::RecursiveBacktracker`)
 
@@ -49,6 +76,8 @@ while stack not empty:
 ## Parameters
 
 ### `GenerationParams` (Custom Vertex-Based only)
+
+`GenerationParams` is `pub` within `maze-core` but is **not re-exported** from the crate root (`lib.rs`). External crates access it only through `GenerationAlgorithm::CustomVertexBased(...)` or `GenerationConfig`. Direct construction requires `use maze_core::generation::GenerationParams`.
 
 ```rust
 pub struct GenerationParams {

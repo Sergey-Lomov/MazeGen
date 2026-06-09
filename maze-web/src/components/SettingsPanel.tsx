@@ -15,6 +15,9 @@ const GENERATION_METHODS: Record<string, MethodMeta> = {
   recursive_backtracker: {
     label: "Recursive Backtracker",
   },
+  wilson_algorithm: {
+    label: "Wilson's Algorithm",
+  },
 };
 
 export function SettingsPanel() {

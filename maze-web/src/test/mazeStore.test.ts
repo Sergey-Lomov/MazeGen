@@ -12,6 +12,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 }));
 
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
+import { initWasm } from "../wasm/wasmLoader";
 
 const mockSnapshot = {
   nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }],
@@ -37,8 +38,11 @@ beforeEach(() => {
     showGraphOverlay: true,
     selectedNode: null,
     error: null,
+    initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
+    elementsConfig: { one_way_chance: 0.04 },
   });
   vi.mocked(generateMaze).mockReset();
+  vi.mocked(initWasm).mockResolvedValue(undefined);
 });
 
 describe("mazeStore setters", () => {
@@ -296,6 +300,18 @@ describe("mazeStore.loadRegistry", () => {
     expect(useMazeStore.getState().selectedStrategies["kind_a"]).toBe("strategy_a");
     expect(useMazeStore.getState().selectedStrategies["kind_b"]).toBeUndefined();
   });
+
+  it("sets error when initWasm rejects", async () => {
+    vi.mocked(initWasm).mockRejectedValueOnce(new Error("wasm load failed"));
+    await useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().error).toBe("wasm load failed");
+  });
+
+  it("sets error string when initWasm rejects with non-Error", async () => {
+    vi.mocked(initWasm).mockRejectedValueOnce("fatal");
+    await useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().error).toBe("fatal");
+  });
 });
 
 describe("mazeStore.setStrategyParam", () => {
@@ -384,6 +400,11 @@ describe("mazeStore.setGenerationMethod", () => {
   it("switches to recursive_backtracker", () => {
     useMazeStore.getState().setGenerationMethod("recursive_backtracker");
     expect(useMazeStore.getState().initialConfig.method).toBe("recursive_backtracker");
+  });
+
+  it("switches to wilson_algorithm", () => {
+    useMazeStore.getState().setGenerationMethod("wilson_algorithm");
+    expect(useMazeStore.getState().initialConfig.method).toBe("wilson_algorithm");
   });
 });
 

@@ -89,6 +89,7 @@ struct ElementsConfigDto {
 enum InitialGenerationConfig {
     CustomVertexBased(GenerationParamsConfig),
     RecursiveBacktracker,
+    WilsonAlgorithm,
 }
 
 impl Default for InitialGenerationConfig {
@@ -256,6 +257,9 @@ fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
         }
         InitialGenerationConfig::RecursiveBacktracker => {
             GenerationAlgorithm::RecursiveBacktracker
+        }
+        InitialGenerationConfig::WilsonAlgorithm => {
+            GenerationAlgorithm::WilsonAlgorithm
         }
     };
     let elements = build_elements_config(&config.elements);
