@@ -115,3 +115,69 @@ Parameters are passed via the `generation` field of `GenerateConfig` (all option
 ```
 
 All values are clamped to `[0.0, 1.0]` in the WASM layer before use.
+
+---
+
+## CustomEdgeBased Algorithm
+
+### Overview
+
+Edge-first growth model. A node is selected from the active set, then a neighbor is chosen via weighted sampling. One edge is added per step. No explicit degree constraints — structure emerges from stochastic decisions.
+
+Produces a spanning tree of the subgraph reachable from `start`. Geometrically disconnected clusters remain unconnected.
+
+### Parameters
+
+| Parameter | Range | Default | Effect |
+|---|---|---|---|
+| `corridor_length` | 0.0–1.0 | 0.5 | Probability of advancing to the last-connected destination as the next `src` (chain: A→B→C→…). 0 = no chaining, 1 = always continue from last destination. |
+| `branching` | 0.0–1.0 | 0.5 | Weight boost for destinations with more unseen neighbors. Uses `sqrt` of the free-neighbor count. 0 = uniform, 1 = strongly prefer high-potential destinations. |
+| `locality` | 0.0–1.0 | 0.0 | Bias toward `src` nodes closer to start (by tree depth). 0 = uniform selection, 1 = strongly prefer shallow nodes. |
+| `directionality` | 0.0–1.0 | 0.0 | Weight multiplier (up to 4×) for candidates geometrically straight ahead from `src`'s parent. Requires `Field::is_straight`. Has no effect when `src` has no parent or when corridor chaining fired this step. |
+
+### Invariants
+
+- `NodeState ∈ {Unseen, Active, Visited}` — single source of truth, no separate HashSets
+- `node_state[n] == Active` ⟺ `n ∈ active`
+- Each node transitions `Unseen → Active → Visited` exactly once
+- `last_dst` is reset to `None` when the referenced node is removed from active
+
+### Source Selection (`choose_src`)
+
+Two-state machine:
+
+1. **Corridor attempt**: if `last_dst` exists and `rng.random() < corridor_length`, use `last_dst` as next `src` if it still has unseen neighbors. This creates a chain A→B→C→… where each newly connected node becomes the next source.
+2. **Locality weighted sampling**: weight for each node = `exp(-locality * depth / max_depth_in_active)`. Dynamic normalization by current max depth prevents center-biased growth over time.
+
+### Destination Weighting
+
+For each unseen neighbor `dst` of `src`:
+
+```
+free = count of unseen neighbors of dst
+w = 1.0 + branching * sqrt(free)
+if not corridor_fired and parent(src) exists and is_straight(parent(src), src, dst):
+    w *= 1.0 + directionality * 3.0
+```
+
+`sqrt` normalization prevents hub nodes (high tessellation degree) from dominating. `corridor_fired` is true when the corridor attempt succeeded this step — in that case directionality is skipped so the two effects remain orthogonal.
+
+### Termination and Disconnected Nodes
+
+The algorithm terminates when `active` becomes empty. Unlike `CustomVertexBased`, there is **no reserve mechanism** and no recovery path for unreachable nodes. Any node not reachable from `start` via unseen-neighbor chains will never be added to `active` and will remain isolated — no edge will be created for it.
+
+This differs from `CustomVertexBased`, which bridges isolated clusters back to the visited set via the reserve. `CustomEdgeBased` produces a spanning tree strictly of the reachable subgraph.
+
+### WASM JSON Format
+
+```json
+{
+  "method": "custom_edge_based",
+  "corridor_length": 0.5,
+  "branching": 0.5,
+  "locality": 0.0,
+  "directionality": 0.0
+}
+```
+
+All values are clamped to `[0.0, 1.0]` before use. `one_way_chance` is not part of `CustomEdgeBased` parameters — it is configured separately via the `elements` section of the generation config.

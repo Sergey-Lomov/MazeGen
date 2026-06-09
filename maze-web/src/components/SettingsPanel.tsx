@@ -1,6 +1,7 @@
 import React from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { GenerationParamsPanel } from "./GenerationParamsPanel";
+import { EdgeBasedParamsPanel } from "./EdgeBasedParamsPanel";
 import { ElementsPanel } from "./ElementsPanel";
 import { QualityControlPanel } from "./QualityControlPanel";
 
@@ -11,6 +12,10 @@ const GENERATION_METHODS: Record<string, MethodMeta> = {
   custom_vertex_based: {
     label: "Custom Vertex-Based",
     component: GenerationParamsPanel,
+  },
+  custom_edge_based: {
+    label: "Custom Edge-Based",
+    component: EdgeBasedParamsPanel,
   },
   recursive_backtracker: {
     label: "Recursive Backtracker",

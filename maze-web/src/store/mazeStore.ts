@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams, ElementsConfig, InitialGenerationConfig } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig } from "../wasm/types";
 
 interface MazeState {
   seed: number;
@@ -45,6 +45,7 @@ interface MazeActions {
   setStrategy: (issueKind: string, strategyId: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
+  setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;
   setGenerationMethod: (method: string) => void;
   setElementsParam: (key: keyof ElementsConfig, value: number) => void;
   setDebugState: (nodes: NodeDto[], edges: EdgeDto[], cfg: TessellationConfig) => void;
@@ -162,9 +163,15 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     return { initialConfig: { ...state.initialConfig, [key]: value } };
   }),
 
+  setEdgeBasedParam: (key, value) => set((state) => {
+    if (state.initialConfig.method !== "custom_edge_based") return {};
+    return { initialConfig: { ...state.initialConfig, [key]: value } };
+  }),
+
   setGenerationMethod: (method) => {
     const defaults: Record<string, InitialGenerationConfig> = {
       custom_vertex_based: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
+      custom_edge_based: { method: "custom_edge_based", corridor_length: 0.5, branching: 0.5, locality: 0.0, directionality: 0.0 },
       recursive_backtracker: { method: "recursive_backtracker" },
       wilson_algorithm: { method: "wilson_algorithm" },
       kruskal_algorithm: { method: "kruskal_algorithm" },

@@ -12,7 +12,7 @@ use maze_core::{
         TriField, TriPoint, TriRect, TriTriangle, TriHexagon,
         Field, Tessellation,
     },
-    generation::{generate_maze, generate_maze_steps, GenerationParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, pipeline::build_maze},
+    generation::{generate_maze, generate_maze_steps, GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
@@ -80,6 +80,14 @@ struct GenerationParamsConfig {
 }
 
 #[derive(Deserialize, Default)]
+struct EdgeBasedParamsConfig {
+    corridor_length: Option<f64>,
+    branching:       Option<f64>,
+    locality:        Option<f64>,
+    directionality:  Option<f64>,
+}
+
+#[derive(Deserialize, Default)]
 struct ElementsConfigDto {
     one_way_chance: Option<f64>,
 }
@@ -88,6 +96,7 @@ struct ElementsConfigDto {
 #[serde(tag = "method", rename_all = "snake_case")]
 enum InitialGenerationConfig {
     CustomVertexBased(GenerationParamsConfig),
+    CustomEdgeBased(EdgeBasedParamsConfig),
     RecursiveBacktracker,
     WilsonAlgorithm,
     KruskalAlgorithm,
@@ -256,6 +265,9 @@ fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
         InitialGenerationConfig::CustomVertexBased(p) => {
             GenerationAlgorithm::CustomVertexBased(build_gen_params(p))
         }
+        InitialGenerationConfig::CustomEdgeBased(p) => {
+            GenerationAlgorithm::CustomEdgeBased(build_edge_params(p))
+        }
         InitialGenerationConfig::RecursiveBacktracker => {
             GenerationAlgorithm::RecursiveBacktracker
         }
@@ -275,6 +287,15 @@ fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
     if let Some(v) = cfg.depth_first     { p.depth_first     = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.corridor_chance { p.corridor_chance = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
+    p
+}
+
+fn build_edge_params(cfg: &EdgeBasedParamsConfig) -> EdgeBasedParams {
+    let mut p = EdgeBasedParams::default();
+    if let Some(v) = cfg.corridor_length { p.corridor_length = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.locality        { p.locality        = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
     p
 }

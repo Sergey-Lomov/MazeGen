@@ -72,6 +72,13 @@ export interface GenerationParams {
   directionality?: number;
 }
 
+export interface EdgeBasedParams {
+  corridor_length?: number;
+  branching?: number;
+  locality?: number;
+  directionality?: number;
+}
+
 export interface ElementsConfig {
   one_way_chance?: number;
 }
@@ -87,6 +94,7 @@ export interface GenerationStepsSnapshot {
 
 export type InitialGenerationConfig =
   | ({ method: "custom_vertex_based" } & GenerationParams)
+  | ({ method: "custom_edge_based" } & EdgeBasedParams)
   | { method: "recursive_backtracker" }
   | { method: "wilson_algorithm" }
   | { method: "kruskal_algorithm" };
