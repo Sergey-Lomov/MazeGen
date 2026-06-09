@@ -82,9 +82,12 @@ export interface GenerationStepsSnapshot {
   steps: GenerationStepDto[];
 }
 
+export type InitialGenerationConfig =
+  | ({ method: "custom_vertex_based" } & GenerationParams);
+
 export interface GenerateConfig {
   tessellation: TessellationConfig;
   checks: string[];
   strategies: Record<string, StrategyConfig>;
-  generation?: GenerationParams;
+  initial: InitialGenerationConfig;
 }

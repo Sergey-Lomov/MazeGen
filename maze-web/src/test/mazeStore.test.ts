@@ -81,7 +81,12 @@ describe("mazeStore.generate", () => {
       selectedStrategies: {},
     });
     useMazeStore.getState().generate();
-    expect(generateMaze).toHaveBeenCalledWith(7, { tessellation: { type: "square", width: 3, height: 4 }, checks: [], strategies: {} });
+    expect(generateMaze).toHaveBeenCalledWith(7, {
+      tessellation: { type: "square", width: 3, height: 4 },
+      checks: [],
+      strategies: {},
+      initial: expect.objectContaining({ method: "custom_vertex_based" }),
+    });
   });
 
   it("calls generateMaze with hex_parallelogram tessellationConfig", () => {
@@ -97,6 +102,7 @@ describe("mazeStore.generate", () => {
       tessellation: { type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" },
       checks: [],
       strategies: {},
+      initial: expect.objectContaining({ method: "custom_vertex_based" }),
     });
   });
 
@@ -113,6 +119,7 @@ describe("mazeStore.generate", () => {
       tessellation: { type: "hex_hexagon", radius: 3, orientation: "pointy_top" },
       checks: [],
       strategies: {},
+      initial: expect.objectContaining({ method: "custom_vertex_based" }),
     });
   });
 
@@ -161,6 +168,7 @@ describe("mazeStore.generate", () => {
           params: { path_weight: "2", junction_weight: "6" },
         },
       },
+      initial: expect.objectContaining({ method: "custom_vertex_based" }),
     });
   });
 
@@ -310,5 +318,53 @@ describe("mazeStore.setStrategyParam", () => {
     useMazeStore.setState({ strategyParams: { scored_endpoints: { path_weight: "1" } } });
     useMazeStore.getState().setStrategyParam("scored_endpoints", "path_weight", "5");
     expect(useMazeStore.getState().strategyParams["scored_endpoints"]["path_weight"]).toBe("5");
+  });
+});
+
+describe("mazeStore.setGenerationParam", () => {
+  it("updates single param in initialConfig", () => {
+    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, one_way_chance: 0.04 } });
+    useMazeStore.getState().setGenerationParam("depth_first", 0.3);
+    const cfg = useMazeStore.getState().initialConfig;
+    expect(cfg.method).toBe("custom_vertex_based");
+    if (cfg.method === "custom_vertex_based") {
+      expect(cfg.depth_first).toBe(0.3);
+    }
+  });
+
+  it("preserves other params when updating one", () => {
+    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, one_way_chance: 0.04 } });
+    useMazeStore.getState().setGenerationParam("branching", 0.1);
+    const cfg = useMazeStore.getState().initialConfig;
+    if (cfg.method === "custom_vertex_based") {
+      expect(cfg.depth_first).toBe(0.9);
+      expect(cfg.corridor_chance).toBe(0.7);
+      expect(cfg.branching).toBe(0.1);
+      expect(cfg.directionality).toBe(0.0);
+      expect(cfg.one_way_chance).toBe(0.04);
+    }
+  });
+
+  it("preserves method after param update", () => {
+    useMazeStore.getState().setGenerationParam("one_way_chance", 0.5);
+    expect(useMazeStore.getState().initialConfig.method).toBe("custom_vertex_based");
+  });
+});
+
+describe("mazeStore.setGenerationMethod", () => {
+  it("switches initialConfig to defaults for new method", () => {
+    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.1, corridor_chance: 0.1, branching: 0.1, directionality: 0.1, one_way_chance: 0.1 } });
+    useMazeStore.getState().setGenerationMethod("custom_vertex_based");
+    const cfg = useMazeStore.getState().initialConfig;
+    expect(cfg.method).toBe("custom_vertex_based");
+    if (cfg.method === "custom_vertex_based") {
+      expect(cfg.depth_first).toBe(0.9);
+    }
+  });
+
+  it("does not update store for unknown method", () => {
+    const before = useMazeStore.getState().initialConfig;
+    useMazeStore.getState().setGenerationMethod("nonexistent_method");
+    expect(useMazeStore.getState().initialConfig).toBe(before);
   });
 });

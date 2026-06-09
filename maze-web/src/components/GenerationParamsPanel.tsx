@@ -10,14 +10,16 @@ const PARAMS: { key: keyof GenerationParams; label: string }[] = [
 ];
 
 export function GenerationParamsPanel() {
-  const generationParams = useMazeStore((s) => s.generationParams);
+  const initialConfig = useMazeStore((s) => s.initialConfig);
   const setGenerationParam = useMazeStore((s) => s.setGenerationParam);
+
+  if (initialConfig.method !== "custom_vertex_based") return null;
+  const params: GenerationParams = initialConfig;
 
   return (
     <div style={styles.panel}>
-      <div style={styles.colHeader}>Generation</div>
       {PARAMS.map(({ key, label }) => {
-        const value = generationParams[key] ?? 0;
+        const value = params[key] ?? 0;
         return (
           <div key={key} style={styles.row}>
             <span style={styles.label}>{label}</span>
@@ -41,17 +43,6 @@ export function GenerationParamsPanel() {
 const styles: Record<string, React.CSSProperties> = {
   panel: {
     padding: "8px 10px",
-    borderBottom: "1px solid #333",
-  },
-  colHeader: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: "#888",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 8,
-    borderBottom: "1px solid #333",
-    paddingBottom: 4,
   },
   row: {
     display: "flex",

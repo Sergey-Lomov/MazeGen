@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams, InitialGenerationConfig } from "../wasm/types";
 
 interface MazeState {
   seed: number;
@@ -29,7 +29,7 @@ interface MazeState {
   selectedStrategies: Record<string, string>;
   /** strategyParams[strategyId][paramId] = raw string value */
   strategyParams: Record<string, Record<string, string>>;
-  generationParams: GenerationParams;
+  initialConfig: InitialGenerationConfig;
 }
 
 interface MazeActions {
@@ -44,6 +44,7 @@ interface MazeActions {
   setStrategy: (issueKind: string, strategyId: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
+  setGenerationMethod: (method: string) => void;
   setDebugState: (nodes: NodeDto[], edges: EdgeDto[], cfg: TessellationConfig) => void;
 }
 
@@ -72,7 +73,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   selectedChecks: [],
   selectedStrategies: {},
   strategyParams: {},
-  generationParams: { depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, one_way_chance: 0.04 },
+  initialConfig: { method: "custom_vertex_based" as const, depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, one_way_chance: 0.04 },
 
   setSeed: (seed) => set({ seed, error: null }),
   setTessellationConfig: (cfg) => set({ tessellationConfig: cfg, error: null }),
@@ -94,7 +95,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   },
 
   generate: () => {
-    const { seed, tessellationConfig, selectedChecks, selectedStrategies, strategyParams, availableStrategies, generationParams } = get();
+    const { seed, tessellationConfig, selectedChecks, selectedStrategies, strategyParams, availableStrategies, initialConfig } = get();
     try {
       const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
       for (const [kind, strategyId] of Object.entries(selectedStrategies)) {
@@ -115,7 +116,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         tessellation: tessellationConfig,
         checks: selectedChecks,
         strategies,
-        generation: generationParams,
+        initial: initialConfig,
       });
       set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null, activeTessellationConfig: tessellationConfig });
     } catch (err) {
@@ -149,8 +150,20 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   })),
 
   setGenerationParam: (key, value) => set((state) => ({
-    generationParams: { ...state.generationParams, [key]: value },
+    initialConfig: { ...state.initialConfig, [key]: value },
   })),
+
+  setGenerationMethod: (method) => {
+    const defaults: Record<string, InitialGenerationConfig> = {
+      custom_vertex_based: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, one_way_chance: 0.04 },
+    };
+    const next = defaults[method];
+    if (!next) {
+      console.error(`Unknown generation method: ${method}`);
+      return;
+    }
+    set({ initialConfig: next });
+  },
 
   setDebugState: (nodes, edges, cfg) => set({
     nodes,

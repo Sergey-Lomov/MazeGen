@@ -10,7 +10,7 @@ interface Props {
 export function GenerationDebugPanel({ onClose }: Props) {
   const seed = useMazeStore((s) => s.seed);
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
-  const generationParams = useMazeStore((s) => s.generationParams);
+  const initialConfig = useMazeStore((s) => s.initialConfig);
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const selectedStrategies = useMazeStore((s) => s.selectedStrategies);
   const strategyParams = useMazeStore((s) => s.strategyParams);
@@ -23,14 +23,15 @@ export function GenerationDebugPanel({ onClose }: Props) {
   const load = useCallback(() => {
     try {
       const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
-      for (const id of Object.values(selectedStrategies)) {
-        strategies[id] = { id, params: strategyParams[id] ?? {} };
+      for (const [issueKind, strategyId] of Object.entries(selectedStrategies)) {
+        if (!strategyId) continue;
+        strategies[issueKind] = { id: strategyId, params: strategyParams[strategyId] ?? {} };
       }
       const result = generateMazeSteps(seed, {
         tessellation: tessellationConfig,
         checks: selectedChecks,
         strategies,
-        generation: generationParams,
+        initial: initialConfig,
       });
       setSnapshot(result);
       setError(null);
@@ -41,7 +42,7 @@ export function GenerationDebugPanel({ onClose }: Props) {
     } catch (e) {
       setError(String(e));
     }
-  }, [seed, tessellationConfig, generationParams, selectedChecks, selectedStrategies, strategyParams, setDebugState]);
+  }, [seed, tessellationConfig, initialConfig, selectedChecks, selectedStrategies, strategyParams, setDebugState]);
 
   const applyStep = useCallback((s: number) => {
     if (!snapshot) return;

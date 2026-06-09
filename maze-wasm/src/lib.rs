@@ -81,6 +81,18 @@ struct GenerationParamsConfig {
 }
 
 #[derive(Deserialize)]
+#[serde(tag = "method", rename_all = "snake_case")]
+enum InitialGenerationConfig {
+    CustomVertexBased(GenerationParamsConfig),
+}
+
+impl Default for InitialGenerationConfig {
+    fn default() -> Self {
+        InitialGenerationConfig::CustomVertexBased(GenerationParamsConfig::default())
+    }
+}
+
+#[derive(Deserialize)]
 struct GenerateConfig {
     #[serde(default)]
     tessellation: TessellationConfig,
@@ -89,7 +101,7 @@ struct GenerateConfig {
     #[serde(default)]
     strategies: HashMap<String, StrategyConfig>,
     #[serde(default)]
-    generation: GenerationParamsConfig,
+    initial: InitialGenerationConfig,
 }
 
 impl Default for GenerateConfig {
@@ -108,7 +120,7 @@ impl Default for GenerateConfig {
                 });
                 m
             },
-            generation: GenerationParamsConfig::default(),
+            initial: InitialGenerationConfig::default(),
         }
     }
 }
@@ -229,6 +241,12 @@ fn build_qc_and_repair<F: Field>(
     Ok((qc_engine, repair_engine))
 }
 
+fn build_gen_params_from_initial(initial: &InitialGenerationConfig) -> GenerationParams {
+    match initial {
+        InitialGenerationConfig::CustomVertexBased(p) => build_gen_params(p),
+    }
+}
+
 fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
     let mut p = GenerationParams::default();
     if let Some(v) = cfg.depth_first     { p.depth_first     = v.clamp(0.0, 1.0); }
@@ -253,7 +271,7 @@ fn run_generate<F: Field>(
         .node_at(start)
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    let gen_params = build_gen_params(&config.generation);
+    let gen_params = build_gen_params_from_initial(&config.initial);
     generate_maze(&mut graph, &field, seed, start_id, gen_params);
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<F>(config)?;
@@ -347,7 +365,7 @@ fn run_generate_steps<F: Field>(
         .node_at(start)
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    let gen_params = build_gen_params(&config.generation);
+    let gen_params = build_gen_params_from_initial(&config.initial);
     let raw_steps = generate_maze_steps(&mut graph, &field, seed, start_id, gen_params);
 
     let steps: Vec<GenerationStepDto> = raw_steps.into_iter().map(|s| {

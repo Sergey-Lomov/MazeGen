@@ -4,8 +4,7 @@ import { MazeScene } from "./pixi/MazeScene";
 import { ControlPanel } from "./components/ControlPanel";
 import { LayersPanel } from "./components/LayersPanel";
 import { DebugPanel } from "./components/DebugPanel";
-import { QualityControlPanel } from "./components/QualityControlPanel";
-import { GenerationParamsPanel } from "./components/GenerationParamsPanel";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { GenerationDebugPanel } from "./components/GenerationDebugPanel";
 import { useMazeStore } from "./store/mazeStore";
 
@@ -64,8 +63,7 @@ export function App() {
         {!ready && <div style={styles.loading}>Loading…</div>}
       </div>
       <div style={{ ...styles.settingsPanel, width: settingsOpen ? 480 : 0 }}>
-        <GenerationParamsPanel />
-        <QualityControlPanel />
+        <SettingsPanel />
       </div>
       <div ref={canvasRef} style={styles.canvas} />
     </div>

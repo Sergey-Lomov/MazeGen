@@ -9,7 +9,8 @@ import { getWasm } from "../wasm/wasmLoader";
 
 const mockGenerate = vi.fn();
 
-const defaultConfig = { tessellation: { type: "square" as const, width: 1, height: 1 }, checks: [], strategies: {} };
+const defaultInitial = { method: "custom_vertex_based" as const };
+const defaultConfig = { tessellation: { type: "square" as const, width: 1, height: 1 }, checks: [], strategies: {}, initial: defaultInitial };
 
 beforeEach(() => {
   vi.mocked(getWasm).mockReturnValue({ generate: mockGenerate } as never);
@@ -35,9 +36,9 @@ const validSnapshot = {
 describe("generateMaze / validateSnapshot", () => {
   it("returns valid snapshot", () => {
     mockGenerate.mockReturnValue(validSnapshot);
-    const result = generateMaze(42, { tessellation: { type: "square", width: 2, height: 1 }, checks: [], strategies: {} });
+    const result = generateMaze(42, { tessellation: { type: "square", width: 2, height: 1 }, checks: [], strategies: {}, initial: defaultInitial });
     expect(result).toEqual(validSnapshot);
-    expect(mockGenerate).toHaveBeenCalledWith(BigInt(42), { tessellation: { type: "square", width: 2, height: 1 }, checks: [], strategies: {} });
+    expect(mockGenerate).toHaveBeenCalledWith(BigInt(42), { tessellation: { type: "square", width: 2, height: 1 }, checks: [], strategies: {}, initial: defaultInitial });
   });
 
   it("throws when raw is null", () => {
