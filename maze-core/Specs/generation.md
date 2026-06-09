@@ -6,7 +6,7 @@ Build maze structure by adding edges to a Graph. Operates on a Graph that alread
 
 ## Overview
 
-Three algorithms available: `CustomVertexBased` (default), `RecursiveBacktracker`, and `WilsonAlgorithm`. All share an `add_edge` helper that applies `ElementsConfig.one_way_chance`:
+Four algorithms available: `CustomVertexBased` (default), `RecursiveBacktracker`, `WilsonAlgorithm`, and `KruskalAlgorithm`. All share an `add_edge` helper that applies `ElementsConfig.one_way_chance`:
 
 ```
 fn add_edge(graph, src, dst, elements, rng):
@@ -51,6 +51,24 @@ while unvisited not empty:
     node = next[node]
   unvisited.retain(not in visited)
 ```
+
+### Kruskal's Algorithm (`GenerationAlgorithm::KruskalAlgorithm`)
+
+Randomized Kruskal's minimum spanning tree. Collects all unique undirected field edges, shuffles them randomly, then adds each edge only if its endpoints belong to different components (union-find). Produces uniformly distributed short passages with many short dead ends — visually "chunky" with no strong directional bias. Works on any tessellation.
+
+```
+edges = all unique (a, b) pairs where b in field.neighbors(a), a < b, sorted then shuffled
+parent: HashMap<NodeId, NodeId> = { node: node for each node }
+
+for (a, b) in edges:
+  ra = find(parent, a)
+  rb = find(parent, b)
+  if ra != rb:
+    union(parent, ra, rb)
+    add_edge(graph, a, b, elements, rng)
+```
+
+`find` uses path compression (halving). `union` merges by lower id for determinism.
 
 ### Recursive Backtracker (`GenerationAlgorithm::RecursiveBacktracker`)
 
@@ -134,11 +152,13 @@ pub fn generate_maze_steps<F: Field>(
 
 `generate_maze_steps` returns a snapshot of all edges after each step — used for debug visualization.
 
+Note: `start` is part of the public API for all algorithms but is only meaningful for `CustomVertexBased`, `RecursiveBacktracker`, and `WilsonAlgorithm`. `KruskalAlgorithm` ignores it.
+
 ## Contracts
 
 - Graph must contain all nodes before calling (call `field.build_nodes` first).
 - `seed` is mandatory — no default. Same seed + same field + same params = identical maze.
-- `start` is the DFS origin. All nodes reachable from start will be connected.
+- `start` is used as origin by `CustomVertexBased`, `RecursiveBacktracker`, and `WilsonAlgorithm`. `KruskalAlgorithm` ignores it — the spanning tree covers all nodes regardless.
 - Result is a spanning tree: `node_count - 1` corridors, `2 * (node_count - 1)` directed edges when `one_way_chance == 0`, fewer when `one_way_chance > 0` (one-way edges contribute 1 directed edge instead of 2).
 - Connectivity guarantee: with `one_way_chance == 0` the result is strongly connected. With `one_way_chance > 0` the result is weakly connected (a path exists ignoring edge direction), but strong connectivity is not guaranteed.
 

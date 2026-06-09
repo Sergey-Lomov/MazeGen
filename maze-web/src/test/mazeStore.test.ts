@@ -406,6 +406,11 @@ describe("mazeStore.setGenerationMethod", () => {
     useMazeStore.getState().setGenerationMethod("wilson_algorithm");
     expect(useMazeStore.getState().initialConfig.method).toBe("wilson_algorithm");
   });
+
+  it("switches to kruskal_algorithm", () => {
+    useMazeStore.getState().setGenerationMethod("kruskal_algorithm");
+    expect(useMazeStore.getState().initialConfig.method).toBe("kruskal_algorithm");
+  });
 });
 
 describe("mazeStore.setElementsParam", () => {

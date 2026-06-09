@@ -88,7 +88,8 @@ export interface GenerationStepsSnapshot {
 export type InitialGenerationConfig =
   | ({ method: "custom_vertex_based" } & GenerationParams)
   | { method: "recursive_backtracker" }
-  | { method: "wilson_algorithm" };
+  | { method: "wilson_algorithm" }
+  | { method: "kruskal_algorithm" };
 
 export interface GenerateConfig {
   tessellation: TessellationConfig;

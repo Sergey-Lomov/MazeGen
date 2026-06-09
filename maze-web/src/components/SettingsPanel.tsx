@@ -18,6 +18,9 @@ const GENERATION_METHODS: Record<string, MethodMeta> = {
   wilson_algorithm: {
     label: "Wilson's Algorithm",
   },
+  kruskal_algorithm: {
+    label: "Kruskal's Algorithm",
+  },
 };
 
 export function SettingsPanel() {

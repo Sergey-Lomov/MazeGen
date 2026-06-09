@@ -90,6 +90,7 @@ enum InitialGenerationConfig {
     CustomVertexBased(GenerationParamsConfig),
     RecursiveBacktracker,
     WilsonAlgorithm,
+    KruskalAlgorithm,
 }
 
 impl Default for InitialGenerationConfig {
@@ -260,6 +261,9 @@ fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
         }
         InitialGenerationConfig::WilsonAlgorithm => {
             GenerationAlgorithm::WilsonAlgorithm
+        }
+        InitialGenerationConfig::KruskalAlgorithm => {
+            GenerationAlgorithm::KruskalAlgorithm
         }
     };
     let elements = build_elements_config(&config.elements);

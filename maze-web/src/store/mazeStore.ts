@@ -167,6 +167,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       custom_vertex_based: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
       recursive_backtracker: { method: "recursive_backtracker" },
       wilson_algorithm: { method: "wilson_algorithm" },
+      kruskal_algorithm: { method: "kruskal_algorithm" },
     };
     const next = defaults[method];
     if (!next) {

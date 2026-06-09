@@ -132,3 +132,46 @@ fn generated_maze_is_connected_with_all_one_way_edges() {
         );
     }
 }
+
+fn kruskal_config() -> GenerationConfig {
+    GenerationConfig {
+        algorithm: GenerationAlgorithm::KruskalAlgorithm,
+        elements: ElementsConfig { one_way_chance: 0.0 },
+    }
+}
+
+#[test]
+fn kruskal_is_connected() {
+    for seed in [1, 42, 99, 1234, 9999] {
+        let (mut graph, field, start) = build(10, 10);
+        generate_maze(&mut graph, &field, seed, start, kruskal_config());
+        assert!(is_connected(&graph, start), "seed={seed}: kruskal maze is not connected");
+    }
+}
+
+#[test]
+fn kruskal_edges_only_connect_field_neighbors() {
+    for seed in [42, 1, 99] {
+        let (mut graph, field, start) = build(10, 10);
+        generate_maze(&mut graph, &field, seed, start, kruskal_config());
+        for edge in graph.edges() {
+            let neighbors = field.neighbors(edge.from);
+            assert!(
+                neighbors.contains(&edge.to),
+                "seed={seed}: kruskal edge connects non-adjacent nodes: {} -> {}",
+                edge.from, edge.to
+            );
+        }
+    }
+}
+
+#[test]
+fn kruskal_same_seed_same_maze() {
+    let (mut g1, f1, start1) = build(8, 8);
+    let (mut g2, f2, start2) = build(8, 8);
+    generate_maze(&mut g1, &f1, 42, start1, kruskal_config());
+    generate_maze(&mut g2, &f2, 42, start2, kruskal_config());
+    let edges1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
+    let edges2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
+    assert_eq!(edges1, edges2);
+}
