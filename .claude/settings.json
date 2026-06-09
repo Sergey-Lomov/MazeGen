@@ -81,7 +81,8 @@
       "PowerShell(git -C \"d:\\\\Development\\\\MazeGen\" status --short \"maze-core/src/generation/\")",
       "PowerShell(cargo build -p maze-wasm 2>&1)",
       "PowerShell(npx tsc --noEmit -p maze-web/tsconfig.json 2>&1)",
-      "PowerShell(cargo test -p maze-core 2>&1)"
+      "PowerShell(cargo test -p maze-core 2>&1)",
+      "PowerShell(& \"d:\\\\Development\\\\MazeGen\\\\wasm-rebuild.ps1\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

@@ -96,7 +96,7 @@ impl<T: Tessellation, S: FieldShape<Point = T::Point>> Field for ShapedField<T, 
         let Some(tp) = self.node_to_point.get(&to)   else { return false; };
         let Some(face_in)  = T::face_between(*fp, *vp) else { return false; };
         let Some(face_out) = T::face_between(*vp, *tp) else { return false; };
-        T::opposite_face(face_in) == Some(face_out)
+        face_in == face_out
     }
 }
 
