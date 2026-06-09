@@ -1,6 +1,6 @@
 import { useMazeStore } from "../store/mazeStore";
+import type { HexShape, TriangleShape, TessellationKind } from "../store/mazeStore";
 import type { TessellationConfig } from "../wasm/types";
-
 
 interface Props {
   disabled?: boolean;
@@ -12,22 +12,16 @@ interface Props {
   debugOpen?: boolean;
 }
 
-type TessType = TessellationConfig["type"];
-
-function orientationOf(cfg: TessellationConfig): "flat_top" | "pointy_top" | "r0" | "r90" | "r180" | "r270" {
-  if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
-    return cfg.orientation ?? "flat_top";
-  }
-  if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon") {
-    return cfg.orientation ?? "r0";
-  }
-  return "r0";
-}
-
 export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen = false, onInfoToggle, infoOpen = false, onDebugToggle, debugOpen = false }: Props) {
   const seed = useMazeStore((s) => s.seed);
+  const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const hexShape = useMazeStore((s) => s.hexShape);
+  const triangleShape = useMazeStore((s) => s.triangleShape);
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
   const setSeed = useMazeStore((s) => s.setSeed);
+  const setTessellationKind = useMazeStore((s) => s.setTessellationKind);
+  const setHexShape = useMazeStore((s) => s.setHexShape);
+  const setTriangleShape = useMazeStore((s) => s.setTriangleShape);
   const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
   const generate = useMazeStore((s) => s.generate);
   const reset = useMazeStore((s) => s.reset);
@@ -35,39 +29,12 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
   const warnings = useMazeStore((s) => s.warnings);
   const nodeStats = useMazeStore((s) => s.nodeStats);
 
-  function handleTypeChange(type: TessType) {
-    if (type === "square") {
-      if (tessellationConfig.type === "square") return;
-      setTessellationConfig({ type: "square", width: 10, height: 10 });
-    } else if (type === "hex_parallelogram") {
-      const orientation = orientationOf(tessellationConfig);
-      if (tessellationConfig.type === "hex_parallelogram") return;
-      setTessellationConfig({ type: "hex_parallelogram", cols: 10, rows: 10, orientation: (orientation === "flat_top" || orientation === "pointy_top") ? orientation : "flat_top" });
-    } else if (type === "hex_hexagon") {
-      const orientation = orientationOf(tessellationConfig);
-      if (tessellationConfig.type === "hex_hexagon") return;
-      setTessellationConfig({ type: "hex_hexagon", radius: 5, orientation: (orientation === "flat_top" || orientation === "pointy_top") ? orientation : "flat_top" });
-    } else if (type === "triangle_rect") {
-      if (tessellationConfig.type === "triangle_rect") return;
-      const triOrient = orientationOf(tessellationConfig);
-      const triO = (triOrient === "r0" || triOrient === "r90" || triOrient === "r180" || triOrient === "r270") ? triOrient : "r0";
-      setTessellationConfig({ type: "triangle_rect", cols: 10, rows: 10, orientation: triO });
-    } else if (type === "triangle_triangle") {
-      if (tessellationConfig.type === "triangle_triangle") return;
-      const triOrient = orientationOf(tessellationConfig);
-      const triO = (triOrient === "r0" || triOrient === "r90" || triOrient === "r180" || triOrient === "r270") ? triOrient : "r0";
-      setTessellationConfig({ type: "triangle_triangle", side: 8, orientation: triO });
-    } else {
-      if (tessellationConfig.type === "triangle_hexagon") return;
-      const triOrient = orientationOf(tessellationConfig);
-      const triO = (triOrient === "r0" || triOrient === "r90" || triOrient === "r180" || triOrient === "r270") ? triOrient : "r0";
-      setTessellationConfig({ type: "triangle_hexagon", radius: 4, orientation: triO });
-    }
-  }
-
   function setField(field: string, value: number | string) {
     setTessellationConfig({ ...tessellationConfig, [field]: value } as TessellationConfig);
   }
+
+  const showHexShape = tessellationKind === "hex";
+  const showTriangleShape = tessellationKind === "triangle";
 
   return (
     <div style={styles.panel}>
@@ -85,37 +52,53 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
         Tessellation
         <select
           style={styles.input}
-          value={tessellationConfig.type}
-          onChange={(e) => handleTypeChange(e.target.value as TessType)}
+          value={tessellationKind}
+          onChange={(e) => setTessellationKind(e.target.value as TessellationKind)}
         >
           <option value="square">Square</option>
-          <option value="hex_parallelogram">Hex parallelogram</option>
-          <option value="hex_hexagon">Hex hexagon</option>
-          <option value="triangle_rect">Triangle rect</option>
-          <option value="triangle_triangle">Triangle triangle</option>
-          <option value="triangle_hexagon">Triangle hexagon</option>
+          <option value="hex">Hex</option>
+          <option value="triangle">Triangle</option>
         </select>
       </label>
+      {showHexShape && (
+        <label style={styles.label}>
+          Shape
+          <select
+            style={styles.input}
+            value={hexShape}
+            onChange={(e) => setHexShape(e.target.value as HexShape)}
+          >
+            <option value="parallelogram">Parallelogram</option>
+            <option value="hexagon">Hexagon</option>
+          </select>
+        </label>
+      )}
+      {showTriangleShape && (
+        <label style={styles.label}>
+          Shape
+          <select
+            style={styles.input}
+            value={triangleShape}
+            onChange={(e) => setTriangleShape(e.target.value as TriangleShape)}
+          >
+            <option value="rect">Rect</option>
+            <option value="triangle">Triangle</option>
+            <option value="hexagon">Hexagon</option>
+          </select>
+        </label>
+      )}
       {tessellationConfig.type === "square" && (
         <>
           <label style={styles.label}>
             Width
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={200}
+            <input style={styles.input} type="number" min={1} max={200}
               value={tessellationConfig.width}
               onChange={(e) => setField("width", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>
             Height
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={200}
+            <input style={styles.input} type="number" min={1} max={200}
               value={tessellationConfig.height}
               onChange={(e) => setField("height", Number(e.target.value))}
             />
@@ -126,30 +109,21 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
         <>
           <label style={styles.label}>
             Cols
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={200}
+            <input style={styles.input} type="number" min={1} max={200}
               value={tessellationConfig.cols}
               onChange={(e) => setField("cols", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>
             Rows
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={200}
+            <input style={styles.input} type="number" min={1} max={200}
               value={tessellationConfig.rows}
               onChange={(e) => setField("rows", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>
             Orientation
-            <select
-              style={styles.input}
+            <select style={styles.input}
               value={tessellationConfig.orientation ?? "flat_top"}
               onChange={(e) => setField("orientation", e.target.value)}
             >
@@ -163,19 +137,14 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
         <>
           <label style={styles.label}>
             Radius
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={50}
+            <input style={styles.input} type="number" min={1} max={50}
               value={tessellationConfig.radius}
               onChange={(e) => setField("radius", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>
             Orientation
-            <select
-              style={styles.input}
+            <select style={styles.input}
               value={tessellationConfig.orientation ?? "flat_top"}
               onChange={(e) => setField("orientation", e.target.value)}
             >
@@ -189,30 +158,21 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
         <>
           <label style={styles.label}>
             Cols
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={200}
+            <input style={styles.input} type="number" min={1} max={200}
               value={tessellationConfig.cols}
               onChange={(e) => setField("cols", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>
             Rows
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={200}
+            <input style={styles.input} type="number" min={1} max={200}
               value={tessellationConfig.rows}
               onChange={(e) => setField("rows", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>
             Orientation
-            <select
-              style={styles.input}
+            <select style={styles.input}
               value={tessellationConfig.orientation ?? "r0"}
               onChange={(e) => setField("orientation", e.target.value)}
             >
@@ -228,19 +188,14 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
         <>
           <label style={styles.label}>
             Side
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={30}
+            <input style={styles.input} type="number" min={1} max={30}
               value={tessellationConfig.side}
               onChange={(e) => setField("side", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>
             Orientation
-            <select
-              style={styles.input}
+            <select style={styles.input}
               value={tessellationConfig.orientation ?? "r0"}
               onChange={(e) => setField("orientation", e.target.value)}
             >
@@ -256,19 +211,14 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
         <>
           <label style={styles.label}>
             Radius
-            <input
-              style={styles.input}
-              type="number"
-              min={1}
-              max={15}
+            <input style={styles.input} type="number" min={1} max={15}
               value={tessellationConfig.radius}
               onChange={(e) => setField("radius", Number(e.target.value))}
             />
           </label>
           <label style={styles.label}>
             Orientation
-            <select
-              style={styles.input}
+            <select style={styles.input}
               value={tessellationConfig.orientation ?? "r0"}
               onChange={(e) => setField("orientation", e.target.value)}
             >

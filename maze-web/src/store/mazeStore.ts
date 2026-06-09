@@ -3,8 +3,15 @@ import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../was
 import { initWasm } from "../wasm/wasmLoader";
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto } from "../wasm/types";
 
+export type TessellationKind = "square" | "hex" | "triangle";
+export type HexShape = "parallelogram" | "hexagon";
+export type TriangleShape = "rect" | "triangle" | "hexagon";
+
 interface MazeState {
   seed: number;
+  tessellationKind: TessellationKind;
+  hexShape: HexShape;
+  triangleShape: TriangleShape;
   tessellationConfig: TessellationConfig;
   activeTessellationConfig: TessellationConfig;
   nodes: NodeDto[];
@@ -39,6 +46,9 @@ interface MazeState {
 
 interface MazeActions {
   setSeed: (seed: number) => void;
+  setTessellationKind: (kind: TessellationKind) => void;
+  setHexShape: (shape: HexShape) => void;
+  setTriangleShape: (shape: TriangleShape) => void;
   setTessellationConfig: (cfg: TessellationConfig) => void;
   generate: () => void;
   reset: () => void;
@@ -55,8 +65,53 @@ interface MazeActions {
   setDebugState: (nodes: NodeDto[], edges: EdgeDto[], cfg: TessellationConfig) => void;
 }
 
+function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; hexShape: HexShape; triangleShape: TriangleShape } {
+  switch (cfg.type) {
+    case "square":
+      return { kind: "square", hexShape: "parallelogram", triangleShape: "rect" };
+    case "hex_parallelogram":
+      return { kind: "hex", hexShape: "parallelogram", triangleShape: "rect" };
+    case "hex_hexagon":
+      return { kind: "hex", hexShape: "hexagon", triangleShape: "rect" };
+    case "triangle_rect":
+      return { kind: "triangle", hexShape: "parallelogram", triangleShape: "rect" };
+    case "triangle_triangle":
+      return { kind: "triangle", hexShape: "parallelogram", triangleShape: "triangle" };
+    case "triangle_hexagon":
+      return { kind: "triangle", hexShape: "parallelogram", triangleShape: "hexagon" };
+  }
+}
+
+function buildTessellationConfig(
+  kind: TessellationKind,
+  hexShape: HexShape,
+  triangleShape: TriangleShape,
+  current: TessellationConfig
+): TessellationConfig {
+  if (kind === "square") {
+    return { type: "square", width: 10, height: 10 };
+  }
+  if (kind === "hex") {
+    const orientation = (current.type === "hex_parallelogram" || current.type === "hex_hexagon")
+      ? (current.orientation ?? "flat_top")
+      : "flat_top";
+    if (hexShape === "parallelogram") return { type: "hex_parallelogram", cols: 10, rows: 10, orientation };
+    return { type: "hex_hexagon", radius: 5, orientation };
+  }
+  // triangle
+  const orientation = (current.type === "triangle_rect" || current.type === "triangle_triangle" || current.type === "triangle_hexagon")
+    ? (current.orientation ?? "r0")
+    : "r0";
+  if (triangleShape === "rect") return { type: "triangle_rect", cols: 10, rows: 10, orientation };
+  if (triangleShape === "triangle") return { type: "triangle_triangle", side: 8, orientation };
+  return { type: "triangle_hexagon", radius: 4, orientation };
+}
+
 export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   seed: 42,
+  tessellationKind: "square",
+  hexShape: "parallelogram",
+  triangleShape: "rect",
   tessellationConfig: { type: "square", width: 10, height: 10 },
   activeTessellationConfig: { type: "square", width: 10, height: 10 },
   nodes: [],
@@ -88,7 +143,26 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   routeInfo: null,
 
   setSeed: (seed) => set({ seed, error: null }),
-  setTessellationConfig: (cfg) => set({ tessellationConfig: cfg, error: null }),
+
+  setTessellationKind: (kind) => set((state) => {
+    const cfg = buildTessellationConfig(kind, state.hexShape, state.triangleShape, state.tessellationConfig);
+    return { tessellationKind: kind, tessellationConfig: cfg, error: null };
+  }),
+
+  setHexShape: (shape) => set((state) => {
+    const cfg = buildTessellationConfig("hex", shape, state.triangleShape, state.tessellationConfig);
+    return { hexShape: shape, tessellationConfig: cfg, error: null };
+  }),
+
+  setTriangleShape: (shape) => set((state) => {
+    const cfg = buildTessellationConfig("triangle", state.hexShape, shape, state.tessellationConfig);
+    return { triangleShape: shape, tessellationConfig: cfg, error: null };
+  }),
+
+  setTessellationConfig: (cfg) => {
+    const { kind, hexShape, triangleShape } = kindAndShapeFromConfig(cfg);
+    set({ tessellationConfig: cfg, tessellationKind: kind, hexShape, triangleShape, error: null });
+  },
 
   loadRegistry: () => {
     return initWasm().then(() => {
@@ -196,20 +270,27 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     elementsConfig: { ...state.elementsConfig, [key]: value },
   })),
 
-  setDebugState: (nodes, edges, cfg) => set({
-    nodes,
-    edges,
-    start: null,
-    finish: null,
-    navNodes: [],
-    navEdges: [],
-    components: [],
-    selectedNode: null,
-    warnings: [],
-    error: null,
-    nodeStats: null,
-    edgeStats: null,
-    routeInfo: null,
-    activeTessellationConfig: cfg,
-  }),
+  setDebugState: (nodes, edges, cfg) => {
+    const { kind, hexShape, triangleShape } = kindAndShapeFromConfig(cfg);
+    set({
+      nodes,
+      edges,
+      start: null,
+      finish: null,
+      navNodes: [],
+      navEdges: [],
+      components: [],
+      selectedNode: null,
+      warnings: [],
+      error: null,
+      nodeStats: null,
+      edgeStats: null,
+      routeInfo: null,
+      tessellationKind: kind,
+      hexShape,
+      triangleShape,
+      tessellationConfig: cfg,
+      activeTessellationConfig: cfg,
+    });
+  },
 }));

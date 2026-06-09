@@ -31,6 +31,9 @@ const mockSnapshot = {
 beforeEach(() => {
   useMazeStore.setState({
     seed: 42,
+    tessellationKind: "square",
+    hexShape: "parallelogram",
+    triangleShape: "rect",
     tessellationConfig: { type: "square", width: 10, height: 10 },
     nodes: [],
     edges: [],
@@ -67,6 +70,112 @@ describe("mazeStore setters", () => {
       expect(cfg.orientation).toBe("pointy_top");
     }
     expect(useMazeStore.getState().error).toBeNull();
+  });
+
+  it("setTessellationConfig syncs tessellationKind and hexShape", () => {
+    useMazeStore.getState().setTessellationConfig({ type: "hex_hexagon", radius: 3, orientation: "flat_top" });
+    const s = useMazeStore.getState();
+    expect(s.tessellationKind).toBe("hex");
+    expect(s.hexShape).toBe("hexagon");
+  });
+
+  it("setTessellationConfig syncs tessellationKind and triangleShape", () => {
+    useMazeStore.getState().setTessellationConfig({ type: "triangle_triangle", side: 5, orientation: "r90" });
+    const s = useMazeStore.getState();
+    expect(s.tessellationKind).toBe("triangle");
+    expect(s.triangleShape).toBe("triangle");
+  });
+});
+
+describe("mazeStore tessellation kind/shape actions", () => {
+  it("setTessellationKind to hex sets tessellationKind and hex config type", () => {
+    useMazeStore.getState().setTessellationKind("hex");
+    const s = useMazeStore.getState();
+    expect(s.tessellationKind).toBe("hex");
+    expect(s.tessellationConfig.type).toBe("hex_parallelogram");
+  });
+
+  it("setTessellationKind to triangle sets tessellationKind and triangle config type", () => {
+    useMazeStore.getState().setTessellationKind("triangle");
+    const s = useMazeStore.getState();
+    expect(s.tessellationKind).toBe("triangle");
+    expect(s.tessellationConfig.type).toBe("triangle_rect");
+  });
+
+  it("setTessellationKind to square sets tessellationKind and square config type", () => {
+    useMazeStore.setState({ tessellationKind: "hex" });
+    useMazeStore.getState().setTessellationKind("square");
+    const s = useMazeStore.getState();
+    expect(s.tessellationKind).toBe("square");
+    expect(s.tessellationConfig.type).toBe("square");
+  });
+
+  it("setHexShape to hexagon sets hexShape and hex_hexagon config type", () => {
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      hexShape: "parallelogram",
+      tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "pointy_top" },
+    });
+    useMazeStore.getState().setHexShape("hexagon");
+    const s = useMazeStore.getState();
+    expect(s.hexShape).toBe("hexagon");
+    expect(s.tessellationConfig.type).toBe("hex_hexagon");
+  });
+
+  it("setHexShape preserves hex orientation", () => {
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      hexShape: "parallelogram",
+      tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "pointy_top" },
+    });
+    useMazeStore.getState().setHexShape("hexagon");
+    const cfg = useMazeStore.getState().tessellationConfig;
+    if (cfg.type === "hex_hexagon") {
+      expect(cfg.orientation).toBe("pointy_top");
+    } else {
+      throw new Error("unexpected config type");
+    }
+  });
+
+  it("setTriangleShape to triangle sets triangleShape and triangle_triangle config type", () => {
+    useMazeStore.setState({
+      tessellationKind: "triangle",
+      triangleShape: "rect",
+      tessellationConfig: { type: "triangle_rect", cols: 10, rows: 10, orientation: "r90" },
+    });
+    useMazeStore.getState().setTriangleShape("triangle");
+    const s = useMazeStore.getState();
+    expect(s.triangleShape).toBe("triangle");
+    expect(s.tessellationConfig.type).toBe("triangle_triangle");
+  });
+
+  it("setTriangleShape preserves triangle orientation", () => {
+    useMazeStore.setState({
+      tessellationKind: "triangle",
+      triangleShape: "rect",
+      tessellationConfig: { type: "triangle_rect", cols: 10, rows: 10, orientation: "r180" },
+    });
+    useMazeStore.getState().setTriangleShape("hexagon");
+    const cfg = useMazeStore.getState().tessellationConfig;
+    if (cfg.type === "triangle_hexagon") {
+      expect(cfg.orientation).toBe("r180");
+    } else {
+      throw new Error("unexpected config type");
+    }
+  });
+
+  it("setTessellationKind hex→triangle preserves triangle orientation default when coming from non-triangle", () => {
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
+    });
+    useMazeStore.getState().setTessellationKind("triangle");
+    const cfg = useMazeStore.getState().tessellationConfig;
+    if (cfg.type === "triangle_rect") {
+      expect(cfg.orientation).toBe("r0");
+    } else {
+      throw new Error("unexpected config type");
+    }
   });
 });
 

@@ -6,10 +6,17 @@ import { useMazeStore } from "../store/mazeStore";
 vi.mock("../store/mazeStore", () => {
   const state = {
     seed: 42,
+    tessellationKind: "square" as "square" | "hex" | "triangle",
+    hexShape: "parallelogram" as "parallelogram" | "hexagon",
+    triangleShape: "rect" as "rect" | "triangle" | "hexagon",
     tessellationConfig: { type: "square", width: 10, height: 10 },
     warnings: [] as string[],
     error: null as string | null,
+    nodeStats: null,
     setSeed: vi.fn(),
+    setTessellationKind: vi.fn(),
+    setHexShape: vi.fn(),
+    setTriangleShape: vi.fn(),
     setTessellationConfig: vi.fn(),
     generate: vi.fn(),
     reset: vi.fn(),
@@ -25,12 +32,19 @@ function getState() {
 beforeEach(() => {
   const s = getState();
   s.seed = 42;
+  s.tessellationKind = "square";
+  s.hexShape = "parallelogram";
+  s.triangleShape = "rect";
   s.tessellationConfig = { type: "square", width: 10, height: 10 };
   s.warnings = [];
   s.error = null;
+  s.nodeStats = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
   (s.setSeed as ReturnType<typeof vi.fn>).mockReset();
+  (s.setTessellationKind as ReturnType<typeof vi.fn>).mockReset();
+  (s.setHexShape as ReturnType<typeof vi.fn>).mockReset();
+  (s.setTriangleShape as ReturnType<typeof vi.fn>).mockReset();
   (s.setTessellationConfig as ReturnType<typeof vi.fn>).mockReset();
   (s.generate as ReturnType<typeof vi.fn>).mockReset();
   (s.reset as ReturnType<typeof vi.fn>).mockReset();
@@ -62,8 +76,10 @@ describe("ControlPanel", () => {
     expect(getState().setTessellationConfig).toHaveBeenCalledWith({ type: "square", width: 10, height: 7 });
   });
 
-  it("shows hex parallelogram fields when tessellation is hex_parallelogram", () => {
+  it("shows hex parallelogram fields when tessellation is hex/parallelogram", () => {
     const s = getState();
+    s.tessellationKind = "hex";
+    s.hexShape = "parallelogram";
     s.tessellationConfig = { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
@@ -74,8 +90,10 @@ describe("ControlPanel", () => {
     expect(screen.queryByLabelText("Radius")).not.toBeInTheDocument();
   });
 
-  it("shows hex hexagon fields when tessellation is hex_hexagon", () => {
+  it("shows hex hexagon fields when tessellation is hex/hexagon", () => {
     const s = getState();
+    s.tessellationKind = "hex";
+    s.hexShape = "hexagon";
     s.tessellationConfig = { type: "hex_hexagon", radius: 4, orientation: "pointy_top" };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (useMazeStore as any).mockImplementation((fn: (s: unknown) => unknown) => fn(s));
