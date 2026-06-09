@@ -93,14 +93,32 @@ fn generate_inner<F: Field>(
 
     loop {
         if frontier.is_empty() {
-            let Some(src) = pop_reserve(&mut reserve, &mut in_reserve, &params, &mut rng) else {
-                break;
+            // Find a reserve node that has at least one visited neighbor.
+            // Nodes without visited neighbors are re-queued; we stop after
+            // exhausting all current reserve nodes with no progress.
+            let mut remaining = reserve.len();
+            let src = loop {
+                if remaining == 0 { break None; }
+                let Some(candidate) = pop_reserve(&mut reserve, &mut in_reserve, &params, &mut rng) else {
+                    break None;
+                };
+                if visited.contains(&candidate) { continue; }
+                let has_visited_neighbor = field.neighbors(candidate)
+                    .into_iter()
+                    .any(|n| visited.contains(&n));
+                if has_visited_neighbor {
+                    break Some(candidate);
+                }
+                // No visited neighbor yet — put back and try another.
+                reserve.push(candidate);
+                in_reserve.insert(candidate);
+                remaining -= 1;
             };
+            let Some(src) = src else { break; };
             let visited_neighbors: Vec<NodeId> = field.neighbors(src)
                 .into_iter()
                 .filter(|n| visited.contains(n))
                 .collect();
-            if visited_neighbors.is_empty() { continue; }
             let bridge = visited_neighbors[rng.random_range(0..visited_neighbors.len())];
             add_edge(graph, bridge, src, &params, &mut rng);
             visited.insert(src);
@@ -145,13 +163,11 @@ fn generate_inner<F: Field>(
             add_edge(graph, src, dst, &params, &mut rng);
             visited.insert(dst);
             in_reserve.remove(&dst);
-            reserve.retain(|&x| x != dst);
             add_to_frontier(dst, Some(src), &mut frontier, &mut in_frontier);
         }
-
-        let connected_set: HashSet<NodeId> = connected.iter().copied().collect();
+        reserve.retain(|x| !connected.contains(x));
         for n in free_neighbors {
-            if !connected_set.contains(&n) && !in_reserve.contains(&n) && !visited.contains(&n) {
+            if !connected.contains(&n) && !in_reserve.contains(&n) && !visited.contains(&n) {
                 reserve.push(n);
                 in_reserve.insert(n);
             }
@@ -196,8 +212,9 @@ fn choose_from_frontier(frontier: &[FrontierEntry], params: &GenerationParams, r
 }
 
 fn junction_count(max: usize, params: &GenerationParams, rng: &mut SmallRng) -> usize {
+    debug_assert!(max >= 2, "junction_count requires max >= 2, got {max}");
     let mut count = 2;
-    for _ in 0..(max - 2) {
+    for _ in 0..max.saturating_sub(2) {
         if rng.random::<f64>() < params.branching {
             count += 1;
         }
@@ -257,5 +274,51 @@ fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, params: &GenerationPara
         }
     } else {
         graph.add_bidirectional_edge(src, dst, EdgeKind::Basic);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rng(seed: u64) -> SmallRng { SmallRng::seed_from_u64(seed) }
+
+    #[test]
+    fn junction_count_branching_zero_always_two() {
+        let params = GenerationParams { branching: 0.0, ..GenerationParams::default() };
+        for seed in 0..50 {
+            assert_eq!(junction_count(10, &params, &mut rng(seed)), 2);
+        }
+    }
+
+    #[test]
+    fn junction_count_branching_one_always_max() {
+        let params = GenerationParams { branching: 1.0, ..GenerationParams::default() };
+        for max in 2..=6 {
+            for seed in 0..20 {
+                assert_eq!(junction_count(max, &params, &mut rng(seed)), max);
+            }
+        }
+    }
+
+    #[test]
+    fn junction_count_max_two_always_two_regardless_of_branching() {
+        for branching in [0.0, 0.5, 1.0] {
+            let params = GenerationParams { branching, ..GenerationParams::default() };
+            for seed in 0..20 {
+                assert_eq!(junction_count(2, &params, &mut rng(seed)), 2);
+            }
+        }
+    }
+
+    #[test]
+    fn junction_count_result_in_range() {
+        let params = GenerationParams { branching: 0.5, ..GenerationParams::default() };
+        for max in 2..=8 {
+            for seed in 0..50 {
+                let count = junction_count(max, &params, &mut rng(seed));
+                assert!(count >= 2 && count <= max, "count={count} not in [2,{max}]");
+            }
+        }
     }
 }

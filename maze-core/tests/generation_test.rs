@@ -107,3 +107,16 @@ fn generate_maze_params_affect_structure() {
     let edges2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
     assert_ne!(edges1, edges2);
 }
+
+#[test]
+fn generated_maze_is_connected_with_all_one_way_edges() {
+    let params = GenerationParams { one_way_chance: 1.0, ..GenerationParams::default() };
+    for seed in [1, 42, 99, 1234, 9999] {
+        let (mut graph, field, start) = build(8, 8);
+        generate_maze(&mut graph, &field, seed, start, params.clone());
+        assert!(
+            is_connected(&graph, start),
+            "seed={seed}: maze with one_way_chance=1.0 is not connected"
+        );
+    }
+}

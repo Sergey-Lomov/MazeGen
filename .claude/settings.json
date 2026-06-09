@@ -77,7 +77,8 @@
       "PowerShell(.\\\\wasm-rebuild.ps1 2>&1)",
       "PowerShell(& \"d:\\\\Development\\\\MazeGen\\\\wasm-rebuild.ps1\" 2>&1)",
       "PowerShell(Copy-Item \"d:\\\\Development\\\\MazeGen\\\\maze-wasm\\\\pkg\\\\maze_wasm.d.ts\" \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\\\\wasm\\\\pkg\\\\maze_wasm.d.ts\" -Force)",
-      "PowerShell(Copy-Item \"d:\\\\Development\\\\MazeGen\\\\maze-wasm\\\\pkg\\\\maze_wasm_bg.wasm.d.ts\" \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\\\\wasm\\\\pkg\\\\maze_wasm_bg.wasm.d.ts\" -Force)"
+      "PowerShell(Copy-Item \"d:\\\\Development\\\\MazeGen\\\\maze-wasm\\\\pkg\\\\maze_wasm_bg.wasm.d.ts\" \"d:\\\\Development\\\\MazeGen\\\\maze-web\\\\src\\\\wasm\\\\pkg\\\\maze_wasm_bg.wasm.d.ts\" -Force)",
+      "PowerShell(git -C \"d:\\\\Development\\\\MazeGen\" status --short \"maze-core/src/generation/\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

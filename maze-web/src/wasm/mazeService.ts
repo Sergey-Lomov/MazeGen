@@ -65,6 +65,15 @@ export function generateMaze(seed: number, config: GenerateConfig): MazeSnapshot
 }
 
 export function generateMazeSteps(seed: number, config: GenerateConfig): GenerationStepsSnapshot {
-  const raw = getWasm().generate_steps(BigInt(seed), config) as GenerationStepsSnapshot;
-  return raw;
+  const raw = getWasm().generate_steps(BigInt(seed), config);
+  if (typeof raw !== "object" || raw === null) throw new Error("generate_steps returned invalid data");
+  const s = raw as Record<string, unknown>;
+  if (!Array.isArray(s.nodes) || !s.nodes.every(isNodeDto))
+    throw new Error("generate_steps: invalid nodes");
+  if (!Array.isArray(s.steps) || !s.steps.every(
+    (step: unknown) => typeof step === "object" && step !== null &&
+      Array.isArray((step as Record<string, unknown>).edges) &&
+      ((step as Record<string, unknown>).edges as unknown[]).every(isEdgeDto)
+  )) throw new Error("generate_steps: invalid steps");
+  return s as unknown as GenerationStepsSnapshot;
 }

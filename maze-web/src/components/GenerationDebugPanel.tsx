@@ -33,12 +33,15 @@ export function GenerationDebugPanel({ onClose }: Props) {
         generation: generationParams,
       });
       setSnapshot(result);
-      setStep(result.steps.length > 0 ? result.steps.length - 1 : 0);
       setError(null);
+      const lastStep = result.steps.length > 0 ? result.steps.length - 1 : 0;
+      setStep(lastStep);
+      const edges: EdgeDto[] = result.steps[lastStep]?.edges ?? [];
+      setDebugState(result.nodes, edges, tessellationConfig);
     } catch (e) {
       setError(String(e));
     }
-  }, [seed, tessellationConfig, generationParams, selectedChecks, selectedStrategies, strategyParams]);
+  }, [seed, tessellationConfig, generationParams, selectedChecks, selectedStrategies, strategyParams, setDebugState]);
 
   const applyStep = useCallback((s: number) => {
     if (!snapshot) return;
@@ -56,7 +59,7 @@ export function GenerationDebugPanel({ onClose }: Props) {
       </div>
       <button style={styles.btn} onClick={load}>Load Steps</button>
       {error && <div style={styles.error}>{error}</div>}
-      {snapshot && (
+      {snapshot && snapshot.steps.length > 0 && (
         <>
           <div style={styles.stepLabel}>
             Step {step + 1} / {snapshot.steps.length}

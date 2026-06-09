@@ -229,6 +229,16 @@ fn build_qc_and_repair<F: Field>(
     Ok((qc_engine, repair_engine))
 }
 
+fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
+    let mut p = GenerationParams::default();
+    if let Some(v) = cfg.depth_first     { p.depth_first     = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.corridor_chance { p.corridor_chance = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.one_way_chance  { p.one_way_chance  = v.clamp(0.0, 1.0); }
+    p
+}
+
 fn run_generate<F: Field>(
     seed: u64,
     field: F,
@@ -243,13 +253,7 @@ fn run_generate<F: Field>(
         .node_at(start)
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    let mut gen_params = GenerationParams::default();
-    if let Some(v) = config.generation.depth_first     { gen_params.depth_first     = v.clamp(0.0, 1.0); }
-    if let Some(v) = config.generation.corridor_chance { gen_params.corridor_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = config.generation.branching       { gen_params.branching       = v.clamp(0.0, 1.0); }
-    if let Some(v) = config.generation.directionality  { gen_params.directionality  = v.clamp(0.0, 1.0); }
-    if let Some(v) = config.generation.one_way_chance  { gen_params.one_way_chance  = v.clamp(0.0, 1.0); }
-
+    let gen_params = build_gen_params(&config.generation);
     generate_maze(&mut graph, &field, seed, start_id, gen_params);
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<F>(config)?;
@@ -343,13 +347,7 @@ fn run_generate_steps<F: Field>(
         .node_at(start)
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    let mut gen_params = GenerationParams::default();
-    if let Some(v) = config.generation.depth_first     { gen_params.depth_first     = v.clamp(0.0, 1.0); }
-    if let Some(v) = config.generation.corridor_chance { gen_params.corridor_chance = v.clamp(0.0, 1.0); }
-    if let Some(v) = config.generation.branching       { gen_params.branching       = v.clamp(0.0, 1.0); }
-    if let Some(v) = config.generation.directionality  { gen_params.directionality  = v.clamp(0.0, 1.0); }
-    if let Some(v) = config.generation.one_way_chance  { gen_params.one_way_chance  = v.clamp(0.0, 1.0); }
-
+    let gen_params = build_gen_params(&config.generation);
     let raw_steps = generate_maze_steps(&mut graph, &field, seed, start_id, gen_params);
 
     let steps: Vec<GenerationStepDto> = raw_steps.into_iter().map(|s| {
