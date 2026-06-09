@@ -533,13 +533,15 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *side == 0 {
                 return Err(JsValue::from_str("side must be > 0"));
             }
-            // Apex is at (N-1, 0) with the centered equilateral layout.
+            // Apex is at (N-1 + N%2, 0): parity shift ensures apex is pointing-down
+            // so it has a Base neighbour in row 1 (required for connectivity).
             let n = *side as i32;
+            let apex_col = n - 1 + n % 2;
             let field: TriField<TriTriangle> = ShapedField::new(
                 TriTriangle { side: *side as usize },
                 &mut ids,
             );
-            run_generate(seed, field, TriPoint { col: n - 1, row: 0 }, &config,
+            run_generate(seed, field, TriPoint { col: apex_col, row: 0 }, &config,
                 |p: TriPoint| (p.col, p.row))
         }
         TessellationConfig::TriangleHexagon { radius, .. } => {

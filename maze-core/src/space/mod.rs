@@ -370,11 +370,15 @@ pub struct TriTriangle {
 impl FieldShape for TriTriangle {
     type Point = TriPoint;
 
-    // Equilateral pointing-up triangle: apex at row 0 (1 tile), base at row N-1 (2N-1 tiles).
-    // Row k is centered: col in [N-1-k .. N-1+k].
+    // Equilateral triangle: apex at row 0 (1 tile), base at row N-1 (2N-1 tiles).
+    // indent = N - 1 - row + (N % 2) ensures the apex tile is pointing-down so it has
+    // a Base neighbour in row 1 (pointing-down.Base = row+1). Without the parity shift,
+    // an odd N produces a pointing-up apex with no downward neighbour, disconnecting the field.
+    // Apex col = N-1 + (N%2); pointing-down when N is odd, pointing-down when N is even too.
     fn contains(&self, p: TriPoint) -> bool {
         let n = self.side as i32;
-        let indent = n - 1 - p.row;
+        let shift = n % 2;
+        let indent = n - 1 - p.row + shift;
         p.row >= 0 && p.row < n && p.col >= indent && p.col <= indent + 2 * p.row
     }
 
@@ -382,7 +386,8 @@ impl FieldShape for TriTriangle {
         let side = self.side;
         (0..side).flat_map(move |row| {
             let n = side as i32;
-            let indent = n - 1 - row as i32;
+            let shift = n % 2;
+            let indent = n - 1 - row as i32 + shift;
             (indent..=indent + 2 * row as i32).map(move |col| TriPoint { col, row: row as i32 })
         })
     }
@@ -502,16 +507,16 @@ mod tri_tests {
 
     #[test]
     fn tri_triangle_apex_has_no_neighbors() {
-        // N=1: apex at (0,0). Left=(-1,0) out, Right=(1,0) out (indent=0, width=1), Base=(0,-1) out.
+        // N=1: shift=1, apex at (1,0). All neighbours out of bounds.
         let field = make_triangle(1);
-        let node = field.node_at(TriPoint { col: 0, row: 0 }).unwrap();
+        let node = field.node_at(TriPoint { col: 1, row: 0 }).unwrap();
         assert_eq!(field.neighbors(node).len(), 0);
     }
 
     #[test]
     fn tri_triangle_interior_has_three_neighbors() {
-        // N=4: row=2, indent=1, cols [1..5]. Point (3,2): parity=5%2=1 → down.
-        // Base=(3,3): row=3, indent=0, cols [0..6] → ok. Left=(2,2): col=2 ∈ [1..5] ok. Right=(4,2): 4 ∈ [1..5] ok.
+        // N=4: shift=0, indent(2)=1, cols [1..5]. Point (3,2): parity=1 → down.
+        // Base=(3,3): indent(3)=0, cols [0..6] → ok. Left=(2,2) ok. Right=(4,2) ok.
         let field = make_triangle(4);
         let node = field.node_at(TriPoint { col: 3, row: 2 }).unwrap();
         assert_eq!(field.neighbors(node).len(), 3);
@@ -530,6 +535,22 @@ mod tri_tests {
                     field.point_of(node)
                 );
             }
+        }
+    }
+
+    #[test]
+    fn tri_triangle_odd_side_is_connected() {
+        // Odd N used to produce a disconnected field (apex pointing-up had no downward neighbour).
+        for side in [1usize, 3, 5] {
+            let field = make_triangle(side);
+            if field.node_count() == 1 { continue; }
+            let mut graph = crate::graph::Graph::new();
+            field.build_nodes(&mut graph);
+            // Every non-apex node must have at least one neighbour.
+            let isolated: Vec<_> = graph.nodes()
+                .filter(|n| field.neighbors(n.id).is_empty())
+                .collect();
+            assert!(isolated.is_empty(), "isolated nodes in triangle side={side}: {isolated:?}");
         }
     }
 
