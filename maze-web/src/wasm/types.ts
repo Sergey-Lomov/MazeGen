@@ -70,6 +70,9 @@ export interface GenerationParams {
   corridor_chance?: number;
   branching?: number;
   directionality?: number;
+}
+
+export interface ElementsConfig {
   one_way_chance?: number;
 }
 
@@ -83,11 +86,13 @@ export interface GenerationStepsSnapshot {
 }
 
 export type InitialGenerationConfig =
-  | ({ method: "custom_vertex_based" } & GenerationParams);
+  | ({ method: "custom_vertex_based" } & GenerationParams)
+  | { method: "recursive_backtracker" };
 
 export interface GenerateConfig {
   tessellation: TessellationConfig;
   checks: string[];
   strategies: Record<string, StrategyConfig>;
   initial: InitialGenerationConfig;
+  elements: ElementsConfig;
 }

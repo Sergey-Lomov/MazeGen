@@ -11,9 +11,11 @@ export function GenerationDebugPanel({ onClose }: Props) {
   const seed = useMazeStore((s) => s.seed);
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
   const initialConfig = useMazeStore((s) => s.initialConfig);
+  const elementsConfig = useMazeStore((s) => s.elementsConfig);
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const selectedStrategies = useMazeStore((s) => s.selectedStrategies);
   const strategyParams = useMazeStore((s) => s.strategyParams);
+  const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const setDebugState = useMazeStore((s) => s.setDebugState);
 
   const [snapshot, setSnapshot] = useState<GenerationStepsSnapshot | null>(null);
@@ -25,13 +27,22 @@ export function GenerationDebugPanel({ onClose }: Props) {
       const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
       for (const [issueKind, strategyId] of Object.entries(selectedStrategies)) {
         if (!strategyId) continue;
-        strategies[issueKind] = { id: strategyId, params: strategyParams[strategyId] ?? {} };
+        const descriptor = availableStrategies.find((s) => s.id === strategyId);
+        const paramOverrides = strategyParams[strategyId] ?? {};
+        const params: Record<string, string> = {};
+        if (descriptor) {
+          for (const p of descriptor.params) {
+            if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
+          }
+        }
+        strategies[issueKind] = { id: strategyId, params };
       }
       const result = generateMazeSteps(seed, {
         tessellation: tessellationConfig,
         checks: selectedChecks,
         strategies,
         initial: initialConfig,
+        elements: elementsConfig,
       });
       setSnapshot(result);
       setError(null);
@@ -42,7 +53,7 @@ export function GenerationDebugPanel({ onClose }: Props) {
     } catch (e) {
       setError(String(e));
     }
-  }, [seed, tessellationConfig, initialConfig, selectedChecks, selectedStrategies, strategyParams, setDebugState]);
+  }, [seed, tessellationConfig, initialConfig, elementsConfig, selectedChecks, selectedStrategies, strategyParams, availableStrategies, setDebugState]);
 
   const applyStep = useCallback((s: number) => {
     if (!snapshot) return;

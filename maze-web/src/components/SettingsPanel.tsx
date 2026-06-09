@@ -1,15 +1,19 @@
 import React from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { GenerationParamsPanel } from "./GenerationParamsPanel";
+import { ElementsPanel } from "./ElementsPanel";
 import { QualityControlPanel } from "./QualityControlPanel";
 
-type MethodMeta = { label: string; component: React.ComponentType };
+type MethodMeta = { label: string; component?: React.ComponentType };
 
-// When adding a method: 1) add entry here, 2) add to DEFAULT_INITIAL_CONFIGS in mazeStore, 3) add Rust enum variant
+// When adding a method: 1) add entry here, 2) add to defaults in mazeStore.setGenerationMethod, 3) add Rust enum variant
 const GENERATION_METHODS: Record<string, MethodMeta> = {
   custom_vertex_based: {
     label: "Custom Vertex-Based",
     component: GenerationParamsPanel,
+  },
+  recursive_backtracker: {
+    label: "Recursive Backtracker",
   },
 };
 
@@ -38,6 +42,11 @@ export function SettingsPanel() {
       </div>
 
       <div style={styles.section}>
+        <div style={styles.sectionHeader}>Elements</div>
+        <ElementsPanel />
+      </div>
+
+      <div style={styles.section}>
         <div style={styles.sectionHeader}>Post-processing</div>
         <QualityControlPanel />
       </div>
@@ -51,7 +60,6 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
   },
   section: {
-    borderBottom: "1px solid #333",
   },
   sectionHeader: {
     fontSize: 11,

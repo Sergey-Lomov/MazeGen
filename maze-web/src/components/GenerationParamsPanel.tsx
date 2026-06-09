@@ -6,7 +6,6 @@ const PARAMS: { key: keyof GenerationParams; label: string }[] = [
   { key: "corridor_chance", label: "Corridor Chance" },
   { key: "branching",       label: "Branching" },
   { key: "directionality",  label: "Directionality" },
-  { key: "one_way_chance",  label: "One-Way Chance" },
 ];
 
 export function GenerationParamsPanel() {

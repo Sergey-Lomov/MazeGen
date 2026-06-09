@@ -1,4 +1,4 @@
-mod dto;
+﻿mod dto;
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use maze_core::{
         TriField, TriPoint, TriRect, TriTriangle, TriHexagon,
         Field, Tessellation,
     },
-    generation::{generate_maze, generate_maze_steps, GenerationParams, pipeline::build_maze},
+    generation::{generate_maze, generate_maze_steps, GenerationParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
@@ -77,13 +77,18 @@ struct GenerationParamsConfig {
     corridor_chance: Option<f64>,
     branching:       Option<f64>,
     directionality:  Option<f64>,
-    one_way_chance:  Option<f64>,
+}
+
+#[derive(Deserialize, Default)]
+struct ElementsConfigDto {
+    one_way_chance: Option<f64>,
 }
 
 #[derive(Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
 enum InitialGenerationConfig {
     CustomVertexBased(GenerationParamsConfig),
+    RecursiveBacktracker,
 }
 
 impl Default for InitialGenerationConfig {
@@ -102,6 +107,8 @@ struct GenerateConfig {
     strategies: HashMap<String, StrategyConfig>,
     #[serde(default)]
     initial: InitialGenerationConfig,
+    #[serde(default)]
+    elements: ElementsConfigDto,
 }
 
 impl Default for GenerateConfig {
@@ -121,6 +128,7 @@ impl Default for GenerateConfig {
                 m
             },
             initial: InitialGenerationConfig::default(),
+            elements: ElementsConfigDto::default(),
         }
     }
 }
@@ -241,10 +249,17 @@ fn build_qc_and_repair<F: Field>(
     Ok((qc_engine, repair_engine))
 }
 
-fn build_gen_params_from_initial(initial: &InitialGenerationConfig) -> GenerationParams {
-    match initial {
-        InitialGenerationConfig::CustomVertexBased(p) => build_gen_params(p),
-    }
+fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
+    let algorithm = match &config.initial {
+        InitialGenerationConfig::CustomVertexBased(p) => {
+            GenerationAlgorithm::CustomVertexBased(build_gen_params(p))
+        }
+        InitialGenerationConfig::RecursiveBacktracker => {
+            GenerationAlgorithm::RecursiveBacktracker
+        }
+    };
+    let elements = build_elements_config(&config.elements);
+    GenerationConfig { algorithm, elements }
 }
 
 fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
@@ -253,8 +268,13 @@ fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
     if let Some(v) = cfg.corridor_chance { p.corridor_chance = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.one_way_chance  { p.one_way_chance  = v.clamp(0.0, 1.0); }
     p
+}
+
+fn build_elements_config(dto: &ElementsConfigDto) -> ElementsConfig {
+    let mut e = ElementsConfig::default();
+    if let Some(v) = dto.one_way_chance { e.one_way_chance = v.clamp(0.0, 1.0); }
+    e
 }
 
 fn run_generate<F: Field>(
@@ -271,8 +291,8 @@ fn run_generate<F: Field>(
         .node_at(start)
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    let gen_params = build_gen_params_from_initial(&config.initial);
-    generate_maze(&mut graph, &field, seed, start_id, gen_params);
+    let gen_config = build_generation_config(config);
+    generate_maze(&mut graph, &field, seed, start_id, gen_config);
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<F>(config)?;
 
@@ -365,8 +385,8 @@ fn run_generate_steps<F: Field>(
         .node_at(start)
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    let gen_params = build_gen_params_from_initial(&config.initial);
-    let raw_steps = generate_maze_steps(&mut graph, &field, seed, start_id, gen_params);
+    let gen_config = build_generation_config(config);
+    let raw_steps = generate_maze_steps(&mut graph, &field, seed, start_id, gen_config);
 
     let steps: Vec<GenerationStepDto> = raw_steps.into_iter().map(|s| {
         let edges = s.edges.into_iter().filter_map(|e| {
@@ -551,3 +571,4 @@ pub fn generate_steps(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
         }
     }
 }
+

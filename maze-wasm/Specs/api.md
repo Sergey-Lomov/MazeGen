@@ -45,6 +45,7 @@ Returns `Array<StrategyDescriptor>` — list of all registered repair strategies
     params: Record<string, string>
   }>,
   initial: InitialGenerationConfig,   // default: { method: "custom_vertex_based" }
+  elements: ElementsConfig,           // default: { one_way_chance: 0.04 }
 }
 ```
 
@@ -53,16 +54,26 @@ Returns `Array<StrategyDescriptor>` — list of all registered repair strategies
 Discriminated union keyed on `method`:
 
 ```ts
-{ method: "custom_vertex_based",
-  depth_first?: number,     // [0, 1], default 0.9
-  corridor_chance?: number, // [0, 1], default 0.7
-  branching?: number,       // [0, 1], default 0.5
-  directionality?: number,  // [0, 1], default 0.0
-  one_way_chance?: number,  // [0, 1], default 0.04
-}
+| { method: "custom_vertex_based",
+    depth_first?: number,     // [0, 1], default 0.9
+    corridor_chance?: number, // [0, 1], default 0.7
+    branching?: number,       // [0, 1], default 0.5
+    directionality?: number,  // [0, 1], default 0.0
+  }
+| { method: "recursive_backtracker" }
 ```
 
 All numeric params are clamped to `[0.0, 1.0]` server-side. Omitted params use core defaults.
+
+### `ElementsConfig`
+
+Parameters applied to all edges during generation, regardless of algorithm:
+
+```ts
+{
+  one_way_chance?: number,  // [0, 1], default 0.04 — probability of placing a one-way edge
+}
+```
 
 ### `TessellationConfig`
 

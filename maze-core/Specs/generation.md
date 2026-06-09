@@ -4,31 +4,51 @@
 
 Build maze structure by adding edges to a Graph. Operates on a Graph that already has nodes (built by `Field::build_nodes`). Does not know about coordinates — uses `Field::neighbors` for adjacency.
 
-## Algorithm
+## Overview
 
-Randomized DFS (recursive backtracker). Produces a spanning tree — every node reachable from start, no cycles.
+Two algorithms available: `CustomVertexBased` (default) and `RecursiveBacktracker`. Both share an `add_edge` helper that applies `ElementsConfig.one_way_chance`:
 
 ```
-visited: HashSet<NodeId>
+fn add_edge(graph, src, dst, elements, rng):
+  if rng.random::<f64>() < elements.one_way_chance:
+    if rng.random::<bool>(): graph.add_edge(src, dst)
+    else:                     graph.add_edge(dst, src)
+  else:
+    graph.add_bidirectional_edge(src, dst)
+```
+
+Note: one-way edges consume two RNG samples; bidirectional consumes one. This means maze topology changes between runs with `one_way_chance > 0` and `one_way_chance == 0`, even at the same seed.
+
+## Algorithms
+
+### Custom Vertex-Based (`GenerationAlgorithm::CustomVertexBased`)
+
+Frontier-based algorithm with configurable parameters. Maintains a frontier set and a reserve set; supports configurable depth-first vs. breadth-first bias, corridor vs. junction probability, extra branching, and directional preference.
+
+### Recursive Backtracker (`GenerationAlgorithm::RecursiveBacktracker`)
+
+Classic randomized DFS. Stack-based traversal: always extends from the most recently visited node; backtracks when no unvisited neighbors remain. Produces perfect mazes with long winding corridors. No algorithm-specific parameters.
+
+```
+visited: HashSet<NodeId> = {start}
 stack: Vec<NodeId> = [start]
-visited.insert(start)
 rng = SmallRng::seed_from_u64(seed)
 
-loop:
+while stack not empty:
   current = stack.last()
   unvisited = field.neighbors(current).filter(not in visited)
   if unvisited is empty:
     stack.pop()
   else:
     chosen = unvisited[rng.random_range(0..len)]
-    graph.add_bidirectional_edge(current, chosen, EdgeKind::Basic)
+    add_edge(graph, current, chosen, elements, rng)
     visited.insert(chosen)
     stack.push(chosen)
 ```
 
-Each corridor is represented as two directed edges (both directions). Result has `2 * (node_count - 1)` edges total.
+## Parameters
 
-## Generation Parameters
+### `GenerationParams` (Custom Vertex-Based only)
 
 ```rust
 pub struct GenerationParams {
@@ -36,7 +56,6 @@ pub struct GenerationParams {
     pub corridor_chance: f64,  // 0.0–1.0, default 0.7
     pub branching:       f64,  // 0.0–1.0, default 0.5
     pub directionality:  f64,  // 0.0–1.0, default 0.0
-    pub one_way_chance:  f64,  // 0.0–1.0, default 0.04
 }
 ```
 
@@ -44,7 +63,25 @@ pub struct GenerationParams {
 - `corridor_chance` — probability of treating a junction as a corridor (single child). Lower values produce more branching junctions.
 - `branching` — per-extra-branch probability at a junction. At 0.0 junctions always produce exactly 2 branches; at 1.0 all free neighbors are connected.
 - `directionality` — probability of preferring a straight-line neighbor when extending a corridor. Higher values produce longer straight passages.
-- `one_way_chance` — probability of adding an edge as one-way (single direction) instead of bidirectional.
+
+### `ElementsConfig` (all algorithms)
+
+```rust
+pub struct ElementsConfig {
+    pub one_way_chance: f64,  // 0.0–1.0, default 0.04
+}
+```
+
+- `one_way_chance` — probability of placing an edge as one-way (single direction) instead of bidirectional. Applied by every algorithm when adding an edge.
+
+### `GenerationConfig`
+
+```rust
+pub struct GenerationConfig {
+    pub algorithm: GenerationAlgorithm,
+    pub elements:  ElementsConfig,
+}
+```
 
 ## API
 
@@ -54,7 +91,7 @@ pub fn generate_maze<F: Field>(
     field: &F,
     seed: u64,
     start: NodeId,
-    params: GenerationParams,
+    config: GenerationConfig,
 )
 
 pub fn generate_maze_steps<F: Field>(
@@ -62,7 +99,7 @@ pub fn generate_maze_steps<F: Field>(
     field: &F,
     seed: u64,
     start: NodeId,
-    params: GenerationParams,
+    config: GenerationConfig,
 ) -> Vec<GenerationStep>
 ```
 
@@ -73,7 +110,8 @@ pub fn generate_maze_steps<F: Field>(
 - Graph must contain all nodes before calling (call `field.build_nodes` first).
 - `seed` is mandatory — no default. Same seed + same field + same params = identical maze.
 - `start` is the DFS origin. All nodes reachable from start will be connected.
-- Result is a spanning tree: `node_count - 1` corridors, up to `2 * (node_count - 1)` directed edges (fewer when `one_way_chance > 0`), fully connected.
+- Result is a spanning tree: `node_count - 1` corridors, `2 * (node_count - 1)` directed edges when `one_way_chance == 0`, fewer when `one_way_chance > 0` (one-way edges contribute 1 directed edge instead of 2).
+- Connectivity guarantee: with `one_way_chance == 0` the result is strongly connected. With `one_way_chance > 0` the result is weakly connected (a path exists ignoring edge direction), but strong connectivity is not guaranteed.
 
 ## RNG
 

@@ -7,6 +7,10 @@ vi.mock("../wasm/mazeService", () => ({
   getAvailableStrategies: vi.fn(() => []),
 }));
 
+vi.mock("../wasm/wasmLoader", () => ({
+  initWasm: vi.fn(() => Promise.resolve()),
+}));
+
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 
 const mockSnapshot = {
@@ -86,6 +90,7 @@ describe("mazeStore.generate", () => {
       checks: [],
       strategies: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
+      elements: { one_way_chance: 0.04 },
     });
   });
 
@@ -103,6 +108,7 @@ describe("mazeStore.generate", () => {
       checks: [],
       strategies: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
+      elements: { one_way_chance: 0.04 },
     });
   });
 
@@ -120,6 +126,7 @@ describe("mazeStore.generate", () => {
       checks: [],
       strategies: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
+      elements: { one_way_chance: 0.04 },
     });
   });
 
@@ -169,6 +176,7 @@ describe("mazeStore.generate", () => {
         },
       },
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
+      elements: { one_way_chance: 0.04 },
     });
   });
 
@@ -246,28 +254,28 @@ describe("mazeStore.selectNode", () => {
 });
 
 describe("mazeStore.loadRegistry", () => {
-  it("stores available checks and strategies", () => {
+  it("stores available checks and strategies", async () => {
     const checks = [{ id: "missing_endpoints", issue_kinds: ["missing_endpoints"] }];
     const strategies = [{ id: "farthest_endpoints", handles: "missing_endpoints", params: [] }];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
-    useMazeStore.getState().loadRegistry();
+    await useMazeStore.getState().loadRegistry();
     expect(useMazeStore.getState().availableChecks).toEqual(checks);
     expect(useMazeStore.getState().availableStrategies).toEqual(strategies);
   });
 
-  it("auto-selects all checks", () => {
+  it("auto-selects all checks", async () => {
     const checks = [
       { id: "check_a", issue_kinds: ["kind_a"] },
       { id: "check_b", issue_kinds: ["kind_b"] },
     ];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue([]);
-    useMazeStore.getState().loadRegistry();
+    await useMazeStore.getState().loadRegistry();
     expect(useMazeStore.getState().selectedChecks).toEqual(["check_a", "check_b"]);
   });
 
-  it("auto-selects first matching strategy per issue kind", () => {
+  it("auto-selects first matching strategy per issue kind", async () => {
     const checks = [{ id: "check_a", issue_kinds: ["kind_a"] }];
     const strategies = [
       { id: "strategy_first", handles: "kind_a", params: [] },
@@ -275,16 +283,16 @@ describe("mazeStore.loadRegistry", () => {
     ];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
-    useMazeStore.getState().loadRegistry();
+    await useMazeStore.getState().loadRegistry();
     expect(useMazeStore.getState().selectedStrategies["kind_a"]).toBe("strategy_first");
   });
 
-  it("leaves issue kind without strategy unselected", () => {
+  it("leaves issue kind without strategy unselected", async () => {
     const checks = [{ id: "check_a", issue_kinds: ["kind_a", "kind_b"] }];
     const strategies = [{ id: "strategy_a", handles: "kind_a", params: [] }];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
-    useMazeStore.getState().loadRegistry();
+    await useMazeStore.getState().loadRegistry();
     expect(useMazeStore.getState().selectedStrategies["kind_a"]).toBe("strategy_a");
     expect(useMazeStore.getState().selectedStrategies["kind_b"]).toBeUndefined();
   });
@@ -323,7 +331,7 @@ describe("mazeStore.setStrategyParam", () => {
 
 describe("mazeStore.setGenerationParam", () => {
   it("updates single param in initialConfig", () => {
-    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, one_way_chance: 0.04 } });
+    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 } });
     useMazeStore.getState().setGenerationParam("depth_first", 0.3);
     const cfg = useMazeStore.getState().initialConfig;
     expect(cfg.method).toBe("custom_vertex_based");
@@ -333,7 +341,7 @@ describe("mazeStore.setGenerationParam", () => {
   });
 
   it("preserves other params when updating one", () => {
-    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, one_way_chance: 0.04 } });
+    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 } });
     useMazeStore.getState().setGenerationParam("branching", 0.1);
     const cfg = useMazeStore.getState().initialConfig;
     if (cfg.method === "custom_vertex_based") {
@@ -341,19 +349,24 @@ describe("mazeStore.setGenerationParam", () => {
       expect(cfg.corridor_chance).toBe(0.7);
       expect(cfg.branching).toBe(0.1);
       expect(cfg.directionality).toBe(0.0);
-      expect(cfg.one_way_chance).toBe(0.04);
     }
   });
 
   it("preserves method after param update", () => {
-    useMazeStore.getState().setGenerationParam("one_way_chance", 0.5);
+    useMazeStore.getState().setGenerationParam("directionality", 0.5);
     expect(useMazeStore.getState().initialConfig.method).toBe("custom_vertex_based");
+  });
+
+  it("is no-op when method is recursive_backtracker", () => {
+    useMazeStore.setState({ initialConfig: { method: "recursive_backtracker" } });
+    useMazeStore.getState().setGenerationParam("depth_first", 0.5);
+    expect(useMazeStore.getState().initialConfig).toEqual({ method: "recursive_backtracker" });
   });
 });
 
 describe("mazeStore.setGenerationMethod", () => {
   it("switches initialConfig to defaults for new method", () => {
-    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.1, corridor_chance: 0.1, branching: 0.1, directionality: 0.1, one_way_chance: 0.1 } });
+    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.1, corridor_chance: 0.1, branching: 0.1, directionality: 0.1 } });
     useMazeStore.getState().setGenerationMethod("custom_vertex_based");
     const cfg = useMazeStore.getState().initialConfig;
     expect(cfg.method).toBe("custom_vertex_based");
@@ -366,5 +379,25 @@ describe("mazeStore.setGenerationMethod", () => {
     const before = useMazeStore.getState().initialConfig;
     useMazeStore.getState().setGenerationMethod("nonexistent_method");
     expect(useMazeStore.getState().initialConfig).toBe(before);
+  });
+
+  it("switches to recursive_backtracker", () => {
+    useMazeStore.getState().setGenerationMethod("recursive_backtracker");
+    expect(useMazeStore.getState().initialConfig.method).toBe("recursive_backtracker");
+  });
+});
+
+describe("mazeStore.setElementsParam", () => {
+  it("updates one_way_chance in elementsConfig", () => {
+    useMazeStore.setState({ elementsConfig: { one_way_chance: 0.04 } });
+    useMazeStore.getState().setElementsParam("one_way_chance", 0.2);
+    expect(useMazeStore.getState().elementsConfig.one_way_chance).toBe(0.2);
+  });
+
+  it("last call wins when called twice for same key", () => {
+    useMazeStore.setState({ elementsConfig: { one_way_chance: 0.1 } });
+    useMazeStore.getState().setElementsParam("one_way_chance", 0.3);
+    useMazeStore.getState().setElementsParam("one_way_chance", 0.7);
+    expect(useMazeStore.getState().elementsConfig.one_way_chance).toBe(0.7);
   });
 });
