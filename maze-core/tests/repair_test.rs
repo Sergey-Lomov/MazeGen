@@ -1,25 +1,24 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
-use maze_core::{Graph, IdGenerator, Maze, Field, NodeId};
+use maze_core::{Graph, IdGenerator, Maze, NodeId};
 use maze_core::graph::EdgeKind;
-use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField};
+use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::quality_control::{Issue, MISSING_ENDPOINTS};
 use maze_core::repair::{
     RepairEngine, RepairResult, RepairStrategy, StrategyParams,
     RandomEndpointsStrategy, FarthestEndpointsStrategy,
 };
 
-fn make_maze(n_cols: usize, n_rows: usize) -> Maze<SquareField> {
+fn make_maze(n_cols: usize, n_rows: usize) -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = ShapedField::new(SquareRect { width: n_cols, height: n_rows }, &mut ids);
+    let field = Field::new(square_rect(n_cols, n_rows), &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     Maze::new(field, graph)
 }
 
-/// Returns maze and nodes in stable left-to-right order: (0,0), (1,0), ..., (n-1,0).
-fn make_connected_maze(n_cols: usize) -> (Maze<SquareField>, Vec<NodeId>) {
+fn make_connected_maze(n_cols: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut maze = make_maze(n_cols, 1);
     let ordered: Vec<NodeId> = (0..n_cols)
         .map(|x| maze.field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
@@ -93,7 +92,7 @@ fn random_endpoints_idempotent_when_both_set() {
 #[test]
 fn random_endpoints_empty_graph_returns_failed() {
     let mut ids = IdGenerator::new();
-    let field: SquareField = ShapedField::new(SquareRect { width: 1, height: 1 }, &mut ids);
+    let field = Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap();
     let graph = Graph::new();
     let mut maze = Maze::new(field, graph);
     let mut rng = make_rng();
@@ -107,7 +106,6 @@ fn random_endpoints_isolated_start_returns_failed() {
     let mut maze = make_maze(3, 1);
     let start = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
     maze.meta.start = Some(start);
-    // no edges вЂ” start is isolated
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
     let result = RandomEndpointsStrategy.apply(&issue, &mut maze, &mut rng, &no_params());
@@ -132,7 +130,7 @@ fn farthest_endpoints_sets_both_when_neither_set() {
 #[test]
 fn farthest_endpoints_sets_finish_when_only_start_set() {
     let (mut maze, ordered) = make_connected_maze(5);
-    maze.meta.start = Some(ordered[0]); // leftmost = junction
+    maze.meta.start = Some(ordered[0]);
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
     let result = FarthestEndpointsStrategy.apply(&issue, &mut maze, &mut rng, &no_params());
@@ -145,7 +143,7 @@ fn farthest_endpoints_sets_finish_when_only_start_set() {
 #[test]
 fn farthest_endpoints_sets_start_when_only_finish_set() {
     let (mut maze, ordered) = make_connected_maze(5);
-    maze.meta.finish = Some(ordered[4]); // rightmost = junction
+    maze.meta.finish = Some(ordered[4]);
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
     let result = FarthestEndpointsStrategy.apply(&issue, &mut maze, &mut rng, &no_params());
@@ -183,9 +181,7 @@ fn farthest_endpoints_deterministic() {
     assert!(f1.is_some());
 }
 
-// Two separate 2-node components: (0,0)в†”(1,0) and (2,0)в†”(3,0), no edges between them.
-// Returns maze and nodes in stable order.
-fn make_disconnected_maze() -> (Maze<SquareField>, Vec<NodeId>) {
+fn make_disconnected_maze() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut maze = make_maze(4, 1);
     let ordered: Vec<NodeId> = (0..4)
         .map(|x| maze.field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
@@ -204,7 +200,6 @@ fn farthest_endpoints_disconnected_graph_stays_in_same_component() {
     let result = FarthestEndpointsStrategy.apply(&issue, &mut maze, &mut rng, &no_params());
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     let finish = maze.meta.finish.expect("finish must be set");
-    // finish must be in the same component as start (nodes 0 and 1)
     assert!(finish == ordered[0] || finish == ordered[1],
         "finish {finish} must be in same component as start {}", ordered[0]);
     assert_ne!(maze.meta.finish, maze.meta.start);
@@ -212,7 +207,6 @@ fn farthest_endpoints_disconnected_graph_stays_in_same_component() {
 
 #[test]
 fn farthest_endpoints_isolated_nav_node_returns_failed() {
-    // Single nav node (no edges) вЂ” farthest == source в†’ Failed
     let mut maze = make_maze(1, 1);
     let mut rng = make_rng();
     let issue = Issue::new(MISSING_ENDPOINTS);
@@ -226,7 +220,7 @@ fn farthest_endpoints_isolated_nav_node_returns_failed() {
 fn repair_engine_routes_by_kind() {
     let (mut maze, _) = make_connected_maze(3);
     let mut rng = make_rng();
-    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareField>>> = HashMap::new();
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(RandomEndpointsStrategy));
     let engine = RepairEngine::new(strategies, HashMap::new());
     let issues = vec![Issue::new(MISSING_ENDPOINTS)];
@@ -241,7 +235,7 @@ fn repair_engine_routes_by_kind() {
 fn repair_engine_no_strategy_leaves_unresolved() {
     let mut maze = make_maze(2, 1);
     let mut rng = make_rng();
-    let engine: RepairEngine<SquareField> = RepairEngine::new(HashMap::new(), HashMap::new());
+    let engine: RepairEngine<SquareTessellation> = RepairEngine::new(HashMap::new(), HashMap::new());
     let issues = vec![Issue::new(MISSING_ENDPOINTS)];
     let results = engine.run(&issues, &mut maze, &mut rng);
     assert!(results.is_empty());

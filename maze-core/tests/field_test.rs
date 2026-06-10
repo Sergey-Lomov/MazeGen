@@ -1,9 +1,9 @@
-use maze_core::{IdGenerator};
-use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField, Field};
+use maze_core::IdGenerator;
+use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 
-fn make_field(width: usize, height: usize) -> SquareField {
+fn make_field(width: usize, height: usize) -> Field<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    ShapedField::new(SquareRect { width, height }, &mut ids)
+    Field::new(square_rect(width, height), &mut ids).unwrap()
 }
 
 #[test]

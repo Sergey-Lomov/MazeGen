@@ -1,14 +1,15 @@
 use maze_core::{Maze, Graph, IdGenerator};
 use maze_core::graph::EdgeKind;
-use maze_core::space::{SquareField, SquarePoint, SquareRect, ShapedField, Field};
+use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::io::render_ascii;
 
-fn make_maze(width: usize, height: usize) -> (Maze<SquareField>, Vec<Vec<NodeId>>) {
+use maze_core::NodeId;
+
+fn make_maze(width: usize, height: usize) -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
-    let field = ShapedField::new(SquareRect { width, height }, &mut ids);
+    let field = Field::new(square_rect(width, height), &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
-    // build node grid for easy access
     let nodes: Vec<Vec<NodeId>> = (0..height)
         .map(|y| (0..width)
             .map(|x| field.node_at(SquarePoint { x: x as i32, y: y as i32 }).unwrap())
@@ -17,8 +18,6 @@ fn make_maze(width: usize, height: usize) -> (Maze<SquareField>, Vec<Vec<NodeId>
     let maze = Maze::new(field, graph);
     (maze, nodes)
 }
-
-use maze_core::NodeId;
 
 #[test]
 fn wall_rendered_when_no_edge() {

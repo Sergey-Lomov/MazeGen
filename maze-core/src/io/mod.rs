@@ -1,9 +1,17 @@
-use crate::space::{SquareField, SquarePoint, Field};
+use crate::space::{SquareTessellation, SquarePoint};
 use crate::Maze;
 
-pub fn render_ascii(maze: &Maze<SquareField>) -> String {
-    let width = maze.field.shape.width;
-    let height = maze.field.shape.height;
+pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
+    let (width, height) = {
+        let mut max_x = 0i32;
+        let mut max_y = 0i32;
+        for p in maze.field.all_points() {
+            if p.x > max_x { max_x = p.x; }
+            if p.y > max_y { max_y = p.y; }
+        }
+        ((max_x + 1) as usize, (max_y + 1) as usize)
+    };
+
     let cols = 4 * width + 1;
     let rows = 2 * height + 1;
 
@@ -17,8 +25,6 @@ pub fn render_ascii(maze: &Maze<SquareField>) -> String {
     }
 
     // horizontal walls (between row y and y-1)
-    // point_a = (x, y) [north cell], point_b = (x, y-1) [south cell]
-    // ab = north→south, ba = south→north
     for y in 0..=height {
         for x in 0..width {
             let (ch0, ch1, ch2) = if y == 0 || y == height {
@@ -47,8 +53,6 @@ pub fn render_ascii(maze: &Maze<SquareField>) -> String {
     }
 
     // vertical walls (between col x and x-1)
-    // point_a = (x, y) [east cell], point_b = (x-1, y) [west cell]
-    // ab = east→west, ba = west→east
     for y in 0..height {
         for x in 0..=width {
             let ch = if x == 0 || x == width {

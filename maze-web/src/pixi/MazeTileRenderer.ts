@@ -463,12 +463,12 @@ export class MazeTileRenderer {
 
     if (nodes.length === 0) return;
 
-    if (cfg.type === "square") {
+    if (cfg.type === "square" || cfg.type === "square_custom") {
       renderSquare(nodes, edges, start, finish, this.tilesContainer, this.wallsContainer, this.markersContainer);
-    } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
-      renderHex(nodes, edges, start, finish, cfg.orientation ?? "flat_top", this.tilesContainer, this.wallsContainer, this.markersContainer);
-    } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon") {
-      renderTriangle(nodes, edges, start, finish, cfg.orientation ?? "r0", this.tilesContainer, this.wallsContainer, this.markersContainer);
+    } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
+      renderHex(nodes, edges, start, finish, (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top", this.tilesContainer, this.wallsContainer, this.markersContainer);
+    } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom") {
+      renderTriangle(nodes, edges, start, finish, (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0", this.tilesContainer, this.wallsContainer, this.markersContainer);
     } else {
       cfg satisfies never;
     }

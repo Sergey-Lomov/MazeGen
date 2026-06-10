@@ -15,11 +15,10 @@ pub use graph::classify::{
     classify_node, compute_node_stats, compute_spatial_edge_stats, compute_route_info,
 };
 pub use space::{
-    Field, FieldShape, ShapedField,
-    HexField, HexPoint, HexFace, HexTessellation,
-    HexParallelogram, HexHexagon,
-    SquareField, SquarePoint, SquareTessellation, SquareRect,
-    TriField, TriPoint, TriFace, TriTessellation, TriRect, TriTriangle, TriHexagon,
+    Tessellation, Field,
+    HexPoint, HexFace, HexTessellation, hex_parallelogram, hex_hexagon,
+    SquarePoint, SquareTessellation, SquareFace, square_rect,
+    TriPoint, TriFace, TriTessellation, tri_rect, tri_triangle, tri_hexagon,
 };
 pub use meta::MazeMeta;
 pub use generation::{generate_maze, generate_maze_steps, ElementsConfig, GenerationConfig, GenerationAlgorithm, GenerationEdge, GenerationStep};
@@ -58,15 +57,15 @@ impl MazeAnalysis {
     }
 }
 
-pub struct Maze<F: Field> {
-    pub field: F,
+pub struct Maze<T: Tessellation> {
+    pub field: Field<T>,
     pub graph: Graph,
     pub meta: MazeMeta,
     pub analysis: MazeAnalysis,
 }
 
-impl<F: Field> Maze<F> {
-    pub fn new(field: F, graph: Graph) -> Self {
+impl<T: Tessellation> Maze<T> {
+    pub fn new(field: Field<T>, graph: Graph) -> Self {
         Self {
             field,
             graph,

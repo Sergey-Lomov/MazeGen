@@ -22,12 +22,12 @@ export function hexCenter(q: number, r: number, orientation: "flat_top" | "point
 }
 
 export function cellCenter(node: NodeDto, cfg: TessellationConfig): Pos {
-  if (cfg.type === "square") {
+  if (cfg.type === "square" || cfg.type === "square_custom") {
     return squareCenter(node.x, node.y);
-  } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
-    return hexCenter(node.x, node.y, cfg.orientation ?? "flat_top");
-  } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon") {
-    return triCenter(node.x, node.y, cfg.orientation ?? "r0");
+  } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
+    return hexCenter(node.x, node.y, (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top");
+  } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom") {
+    return triCenter(node.x, node.y, (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0");
   } else {
     cfg satisfies never;
     throw new Error(`unknown tessellation type: ${(cfg as { type: string }).type}`);

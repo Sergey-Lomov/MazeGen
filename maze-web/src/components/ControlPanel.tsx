@@ -1,5 +1,5 @@
 import { useMazeStore } from "../store/mazeStore";
-import type { HexShape, TriangleShape, TessellationKind } from "../store/mazeStore";
+import type { HexShape, TriangleShape, TessellationKind, SquareShape, HexOrientation, TriOrientation } from "../store/mazeStore";
 import type { TessellationConfig } from "../wasm/types";
 
 interface Props {
@@ -15,26 +15,38 @@ interface Props {
 export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen = false, onInfoToggle, infoOpen = false, onDebugToggle, debugOpen = false }: Props) {
   const seed = useMazeStore((s) => s.seed);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const squareShape = useMazeStore((s) => s.squareShape);
   const hexShape = useMazeStore((s) => s.hexShape);
   const triangleShape = useMazeStore((s) => s.triangleShape);
+  const hexOrientation = useMazeStore((s) => s.hexOrientation);
+  const triOrientation = useMazeStore((s) => s.triOrientation);
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
   const setSeed = useMazeStore((s) => s.setSeed);
   const setTessellationKind = useMazeStore((s) => s.setTessellationKind);
+  const setSquareShape = useMazeStore((s) => s.setSquareShape);
   const setHexShape = useMazeStore((s) => s.setHexShape);
   const setTriangleShape = useMazeStore((s) => s.setTriangleShape);
+  const setHexOrientation = useMazeStore((s) => s.setHexOrientation);
+  const setTriOrientation = useMazeStore((s) => s.setTriOrientation);
   const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
   const generate = useMazeStore((s) => s.generate);
   const reset = useMazeStore((s) => s.reset);
   const error = useMazeStore((s) => s.error);
   const warnings = useMazeStore((s) => s.warnings);
   const nodeStats = useMazeStore((s) => s.nodeStats);
+  const isEditingField = useMazeStore((s) => s.isEditingField);
+  const fieldPoints = useMazeStore((s) => s.fieldPoints);
+  const showFieldOverlay = useMazeStore((s) => s.showFieldOverlay);
+  const setShowFieldOverlay = useMazeStore((s) => s.setShowFieldOverlay);
 
   function setField(field: string, value: number | string) {
     setTessellationConfig({ ...tessellationConfig, [field]: value } as TessellationConfig);
   }
 
-  const showHexShape = tessellationKind === "hex";
-  const showTriangleShape = tessellationKind === "triangle";
+  const isHex = tessellationKind === "hex";
+  const isTri = tessellationKind === "triangle";
+  const generateDisabled = disabled || (isEditingField && fieldPoints.size < 2);
+  const isFree = squareShape === "free" || hexShape === "free" || triangleShape === "free";
 
   return (
     <div style={styles.panel}>
@@ -60,7 +72,48 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
           <option value="triangle">Triangle</option>
         </select>
       </label>
-      {showHexShape && (
+      {isHex && (
+        <label style={styles.label}>
+          Orientation
+          <select
+            style={styles.input}
+            value={hexOrientation}
+            onChange={(e) => setHexOrientation(e.target.value as HexOrientation)}
+          >
+            <option value="flat_top">Flat top</option>
+            <option value="pointy_top">Pointy top</option>
+          </select>
+        </label>
+      )}
+      {isTri && (
+        <label style={styles.label}>
+          Orientation
+          <select
+            style={styles.input}
+            value={triOrientation}
+            onChange={(e) => setTriOrientation(e.target.value as TriOrientation)}
+          >
+            <option value="r0">0° — base bottom</option>
+            <option value="r90">90° — base left</option>
+            <option value="r180">180° — base top</option>
+            <option value="r270">270° — base right</option>
+          </select>
+        </label>
+      )}
+      {tessellationKind === "square" && (
+        <label style={styles.label}>
+          Shape
+          <select
+            style={styles.input}
+            value={squareShape}
+            onChange={(e) => setSquareShape(e.target.value as SquareShape)}
+          >
+            <option value="rect">Rect</option>
+            <option value="free">Free</option>
+          </select>
+        </label>
+      )}
+      {isHex && (
         <label style={styles.label}>
           Shape
           <select
@@ -70,10 +123,11 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
           >
             <option value="parallelogram">Parallelogram</option>
             <option value="hexagon">Hexagon</option>
+            <option value="free">Free</option>
           </select>
         </label>
       )}
-      {showTriangleShape && (
+      {isTri && (
         <label style={styles.label}>
           Shape
           <select
@@ -84,6 +138,7 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
             <option value="rect">Rect</option>
             <option value="triangle">Triangle</option>
             <option value="hexagon">Hexagon</option>
+            <option value="free">Free</option>
           </select>
         </label>
       )}
@@ -121,38 +176,16 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
               onChange={(e) => setField("rows", Number(e.target.value))}
             />
           </label>
-          <label style={styles.label}>
-            Orientation
-            <select style={styles.input}
-              value={tessellationConfig.orientation ?? "flat_top"}
-              onChange={(e) => setField("orientation", e.target.value)}
-            >
-              <option value="flat_top">Flat top</option>
-              <option value="pointy_top">Pointy top</option>
-            </select>
-          </label>
         </>
       )}
       {tessellationConfig.type === "hex_hexagon" && (
-        <>
-          <label style={styles.label}>
-            Radius
-            <input style={styles.input} type="number" min={1} max={50}
-              value={tessellationConfig.radius}
-              onChange={(e) => setField("radius", Number(e.target.value))}
-            />
-          </label>
-          <label style={styles.label}>
-            Orientation
-            <select style={styles.input}
-              value={tessellationConfig.orientation ?? "flat_top"}
-              onChange={(e) => setField("orientation", e.target.value)}
-            >
-              <option value="flat_top">Flat top</option>
-              <option value="pointy_top">Pointy top</option>
-            </select>
-          </label>
-        </>
+        <label style={styles.label}>
+          Radius
+          <input style={styles.input} type="number" min={1} max={50}
+            value={tessellationConfig.radius}
+            onChange={(e) => setField("radius", Number(e.target.value))}
+          />
+        </label>
       )}
       {tessellationConfig.type === "triangle_rect" && (
         <>
@@ -170,67 +203,45 @@ export function ControlPanel({ disabled = false, onSettingsToggle, settingsOpen 
               onChange={(e) => setField("rows", Number(e.target.value))}
             />
           </label>
-          <label style={styles.label}>
-            Orientation
-            <select style={styles.input}
-              value={tessellationConfig.orientation ?? "r0"}
-              onChange={(e) => setField("orientation", e.target.value)}
-            >
-              <option value="r0">0° — base bottom</option>
-              <option value="r90">90° — base left</option>
-              <option value="r180">180° — base top</option>
-              <option value="r270">270° — base right</option>
-            </select>
-          </label>
         </>
       )}
       {tessellationConfig.type === "triangle_triangle" && (
-        <>
-          <label style={styles.label}>
-            Side
-            <input style={styles.input} type="number" min={1} max={30}
-              value={tessellationConfig.side}
-              onChange={(e) => setField("side", Number(e.target.value))}
-            />
-          </label>
-          <label style={styles.label}>
-            Orientation
-            <select style={styles.input}
-              value={tessellationConfig.orientation ?? "r0"}
-              onChange={(e) => setField("orientation", e.target.value)}
-            >
-              <option value="r0">0° — base bottom</option>
-              <option value="r90">90° — base left</option>
-              <option value="r180">180° — base top</option>
-              <option value="r270">270° — base right</option>
-            </select>
-          </label>
-        </>
+        <label style={styles.label}>
+          Side
+          <input style={styles.input} type="number" min={1} max={30}
+            value={tessellationConfig.side}
+            onChange={(e) => setField("side", Number(e.target.value))}
+          />
+        </label>
       )}
       {tessellationConfig.type === "triangle_hexagon" && (
+        <label style={styles.label}>
+          Radius
+          <input style={styles.input} type="number" min={1} max={15}
+            value={tessellationConfig.radius}
+            onChange={(e) => setField("radius", Number(e.target.value))}
+          />
+        </label>
+      )}
+      {isFree && (
         <>
           <label style={styles.label}>
-            Radius
-            <input style={styles.input} type="number" min={1} max={15}
-              value={tessellationConfig.radius}
-              onChange={(e) => setField("radius", Number(e.target.value))}
-            />
-          </label>
-          <label style={styles.label}>
-            Orientation
-            <select style={styles.input}
-              value={tessellationConfig.orientation ?? "r0"}
-              onChange={(e) => setField("orientation", e.target.value)}
+            View
+            <select
+              style={styles.input}
+              value={showFieldOverlay ? "overlay" : "maze"}
+              onChange={(e) => setShowFieldOverlay(e.target.value === "overlay")}
             >
-              <option value="r0">0° — base bottom</option>
-              <option value="r90">90° — base left</option>
-              <option value="r180">180° — base top</option>
-              <option value="r270">270° — base right</option>
+              <option value="overlay">Grid + cells</option>
+              <option value="maze">Maze only</option>
             </select>
           </label>
+          <div style={styles.freeInfo}>
+            {fieldPoints.size} cell{fieldPoints.size !== 1 ? "s" : ""}
+          </div>
         </>
       )}
-      <button style={{ ...styles.btn, ...(disabled ? styles.btnDisabled : {}) }} onClick={generate} disabled={disabled}>Generate</button>
+      <button style={{ ...styles.btn, ...(generateDisabled ? styles.btnDisabled : {}) }} onClick={generate} disabled={generateDisabled}>Generate</button>
       <button style={{ ...styles.btn, ...styles.btnSecondary, ...(disabled ? styles.btnDisabled : {}) }} onClick={reset} disabled={disabled}>Reset</button>
       <button style={{ ...styles.btn, ...styles.btnSettings, ...(settingsOpen ? styles.btnSettingsActive : {}) }} onClick={onSettingsToggle}>Settings</button>
       <button style={{ ...styles.btn, ...styles.btnSettings, ...(infoOpen ? styles.btnSettingsActive : {}), ...(nodeStats === null ? styles.btnDisabled : {}) }} onClick={onInfoToggle} disabled={nodeStats === null}>Info</button>
@@ -276,6 +287,7 @@ const styles: Record<string, React.CSSProperties> = {
   btnSettings: { background: "#444" },
   btnSettingsActive: { background: "#2a5080", outline: "1px solid #3a6ea8" },
   btnDisabled: { opacity: 0.4, cursor: "not-allowed" },
+  freeInfo: { fontSize: 11, color: "#888", textAlign: "center" },
   warning: { fontSize: 11, color: "#ffaa44", background: "#2a2010", padding: "4px 6px", borderRadius: 3 },
   error: { fontSize: 11, color: "#ff6b6b", background: "#2a1a1a", padding: "4px 6px", borderRadius: 3 },
 };

@@ -4,7 +4,7 @@ use rand::rngs::SmallRng;
 use rand::Rng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
-use crate::space::Field;
+use crate::space::{Field, Tessellation};
 
 #[derive(Debug, Clone)]
 pub struct ElementsConfig {
@@ -90,9 +90,9 @@ pub struct GenerationStep {
     pub edges: Vec<GenerationEdge>,
 }
 
-pub fn generate_maze<F: Field>(
+pub fn generate_maze<T: Tessellation>(
     graph: &mut Graph,
-    field: &F,
+    field: &Field<T>,
     seed: u64,
     start: NodeId,
     config: GenerationConfig,
@@ -111,9 +111,9 @@ pub fn generate_maze<F: Field>(
     }
 }
 
-pub fn generate_maze_steps<F: Field>(
+pub fn generate_maze_steps<T: Tessellation>(
     graph: &mut Graph,
-    field: &F,
+    field: &Field<T>,
     seed: u64,
     start: NodeId,
     config: GenerationConfig,
@@ -163,7 +163,7 @@ mod vertex_based {
     use rand::rngs::SmallRng;
     use crate::ids::NodeId;
     use crate::graph::Graph;
-    use crate::space::Field;
+    use crate::space::{Field, Tessellation};
     use super::{ElementsConfig, GenerationParams, add_edge};
 
     struct FrontierEntry {
@@ -171,9 +171,9 @@ mod vertex_based {
         parent: Option<NodeId>,
     }
 
-    pub fn generate<F: Field>(
+    pub fn generate<T: Tessellation>(
         graph: &mut Graph,
-        field: &F,
+        field: &Field<T>,
         seed: u64,
         start: NodeId,
         params: &GenerationParams,
@@ -320,13 +320,13 @@ mod vertex_based {
         count
     }
 
-    fn choose_candidate<F: Field>(
+    fn choose_candidate<T: Tessellation>(
         candidates: &[NodeId],
         parent: Option<NodeId>,
         src: NodeId,
         params: &GenerationParams,
         rng: &mut SmallRng,
-        field: &F,
+        field: &Field<T>,
     ) -> NodeId {
         if candidates.len() == 1 { return candidates[0]; }
         if let Some(p) = parent {
@@ -339,14 +339,14 @@ mod vertex_based {
         candidates[rng.random_range(0..candidates.len())]
     }
 
-    fn choose_junction_candidates<F: Field>(
+    fn choose_junction_candidates<T: Tessellation>(
         candidates: &[NodeId],
         parent: Option<NodeId>,
         src: NodeId,
         count: usize,
         params: &GenerationParams,
         rng: &mut SmallRng,
-        field: &F,
+        field: &Field<T>,
     ) -> Vec<NodeId> {
         let mut pool: Vec<NodeId> = candidates.to_vec();
         let mut chosen = Vec::with_capacity(count);
@@ -370,12 +370,12 @@ mod wilson {
     use rand::rngs::SmallRng;
     use crate::ids::NodeId;
     use crate::graph::Graph;
-    use crate::space::Field;
+    use crate::space::{Field, Tessellation};
     use super::{ElementsConfig, add_edge};
 
-    pub fn generate<F: Field>(
+    pub fn generate<T: Tessellation>(
         graph: &mut Graph,
-        field: &F,
+        field: &Field<T>,
         seed: u64,
         start: NodeId,
         elements: &ElementsConfig,
@@ -431,12 +431,12 @@ mod kruskal {
     use rand::rngs::SmallRng;
     use crate::ids::NodeId;
     use crate::graph::Graph;
-    use crate::space::Field;
+    use crate::space::{Field, Tessellation};
     use super::{ElementsConfig, add_edge};
 
-    pub fn generate<F: Field>(
+    pub fn generate<T: Tessellation>(
         graph: &mut Graph,
-        field: &F,
+        field: &Field<T>,
         seed: u64,
         elements: &ElementsConfig,
         mut on_step: Option<&mut dyn FnMut(&Graph)>,
@@ -491,12 +491,12 @@ mod recursive_backtracker {
     use rand::rngs::SmallRng;
     use crate::ids::NodeId;
     use crate::graph::Graph;
-    use crate::space::Field;
+    use crate::space::{Field, Tessellation};
     use super::{ElementsConfig, add_edge};
 
-    pub fn generate<F: Field>(
+    pub fn generate<T: Tessellation>(
         graph: &mut Graph,
-        field: &F,
+        field: &Field<T>,
         seed: u64,
         start: NodeId,
         elements: &ElementsConfig,
@@ -533,7 +533,7 @@ mod edge_based {
     use rand::rngs::SmallRng;
     use crate::ids::NodeId;
     use crate::graph::Graph;
-    use crate::space::Field;
+    use crate::space::{Field, Tessellation};
     use super::{EdgeBasedParams, ElementsConfig, add_edge};
 
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -544,9 +544,9 @@ mod edge_based {
         pub(crate) tree_depth: u32,
     }
 
-    pub fn generate<F: Field>(
+    pub fn generate<T: Tessellation>(
         graph: &mut Graph,
-        field: &F,
+        field: &Field<T>,
         seed: u64,
         start: NodeId,
         params: &EdgeBasedParams,
@@ -629,14 +629,14 @@ mod edge_based {
         }
     }
 
-    pub(crate) fn choose_src<F: Field>(
+    pub(crate) fn choose_src<T: Tessellation>(
         active: &[NodeId],
         last_dst: Option<NodeId>,
         node_state: &HashMap<NodeId, NodeState>,
         node_meta: &HashMap<NodeId, NodeMeta>,
         max_active_depth: u32,
         params: &EdgeBasedParams,
-        field: &F,
+        field: &Field<T>,
         rng: &mut SmallRng,
     ) -> NodeId {
         // State 1: corridor attempt — continue from last dst (chain: A→B→C→...)
@@ -689,7 +689,7 @@ mod tests {
     use super::*;
     use crate::graph::Graph;
     use crate::ids::IdGenerator;
-    use crate::space::{ShapedField, SquareRect, Field};
+    use crate::space::{Field, SquareTessellation, square_rect};
     use crate::validation::is_connected;
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
@@ -743,9 +743,9 @@ mod tests {
         assert_eq!(ElementsConfig::default().one_way_chance, 0.04);
     }
 
-    fn make_field_and_graph(w: usize, h: usize) -> (crate::space::SquareField, Graph) {
+    fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
-        let field: crate::space::SquareField = ShapedField::new(SquareRect { width: w, height: h }, &mut ids);
+        let field = Field::new(square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
         field.build_nodes(&mut graph);
         (field, graph)
@@ -900,10 +900,10 @@ mod tests {
     fn choose_src_returns_last_dst_when_corridor_length_one() {
         use std::collections::HashMap;
         use edge_based::{NodeState, NodeMeta, choose_src};
-        use crate::space::{ShapedField, SquareRect, Field};
+        use crate::space::{Field, SquareTessellation, square_rect};
 
         let mut ids = crate::ids::IdGenerator::new();
-        let field: crate::space::SquareField = ShapedField::new(SquareRect { width: 3, height: 3 }, &mut ids);
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
         let mut graph = crate::graph::Graph::new();
         field.build_nodes(&mut graph);
 
@@ -933,10 +933,10 @@ mod tests {
     fn choose_src_ignores_corridor_when_length_zero() {
         use std::collections::HashMap;
         use edge_based::{NodeState, NodeMeta, choose_src};
-        use crate::space::{ShapedField, SquareRect, Field};
+        use crate::space::{Field, SquareTessellation, square_rect};
 
         let mut ids = crate::ids::IdGenerator::new();
-        let field: crate::space::SquareField = ShapedField::new(SquareRect { width: 3, height: 3 }, &mut ids);
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
         let mut graph = crate::graph::Graph::new();
         field.build_nodes(&mut graph);
 
@@ -968,10 +968,10 @@ mod tests {
     fn choose_src_locality_one_prefers_shallow_nodes() {
         use std::collections::HashMap;
         use edge_based::{NodeState, NodeMeta, choose_src};
-        use crate::space::{ShapedField, SquareRect};
+        use crate::space::{Field, SquareTessellation, square_rect};
 
         let mut ids = crate::ids::IdGenerator::new();
-        let field: crate::space::SquareField = ShapedField::new(SquareRect { width: 4, height: 4 }, &mut ids);
+        let field: Field<SquareTessellation> = Field::new(square_rect(4, 4), &mut ids).unwrap();
         let mut graph = crate::graph::Graph::new();
         field.build_nodes(&mut graph);
 

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use crate::ids::NodeId;
-use crate::space::Field;
+use crate::space::{Field, Tessellation};
 use crate::graph::Graph;
 use crate::graph::nav::{NavGraph, NavNodeId};
 
@@ -43,7 +43,7 @@ fn unique_neighbors(graph: &Graph, node: NodeId) -> Vec<NodeId> {
     v
 }
 
-pub fn classify_node<F: Field>(graph: &Graph, node: NodeId, field: &F) -> GeometricNodeClass {
+pub fn classify_node<T: Tessellation>(graph: &Graph, node: NodeId, field: &Field<T>) -> GeometricNodeClass {
     let neighbors = unique_neighbors(graph, node);
     match neighbors.len() {
         0 | 1 => GeometricNodeClass::DeadEnd,
@@ -58,7 +58,7 @@ pub fn classify_node<F: Field>(graph: &Graph, node: NodeId, field: &F) -> Geomet
     }
 }
 
-pub fn compute_node_stats<F: Field>(graph: &Graph, field: &F) -> GeometricNodeStats {
+pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &Field<T>) -> GeometricNodeStats {
     let mut dead_ends = 0usize;
     let mut straight = 0usize;
     let mut turns = 0usize;
@@ -89,7 +89,7 @@ pub fn compute_node_stats<F: Field>(graph: &Graph, field: &F) -> GeometricNodeSt
     stats
 }
 
-fn adjacency_pairs<F: Field>(graph: &Graph, field: &F) -> Vec<(NodeId, NodeId)> {
+fn adjacency_pairs<T: Tessellation>(graph: &Graph, field: &Field<T>) -> Vec<(NodeId, NodeId)> {
     let mut seen: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut pairs = Vec::new();
     for node in graph.nodes() {
@@ -107,7 +107,7 @@ fn adjacency_pairs<F: Field>(graph: &Graph, field: &F) -> Vec<(NodeId, NodeId)> 
     pairs
 }
 
-pub fn compute_spatial_edge_stats<F: Field>(graph: &Graph, field: &F) -> SpatialEdgeStats {
+pub fn compute_spatial_edge_stats<T: Tessellation>(graph: &Graph, field: &Field<T>) -> SpatialEdgeStats {
     let pairs = adjacency_pairs(graph, field);
     let total = pairs.len();
     let mut bidirectional = 0usize;

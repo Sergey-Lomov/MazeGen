@@ -1,8 +1,8 @@
 use crate::Maze;
-use crate::space::Field;
+use crate::space::Tessellation;
 use super::issue::{Issue, IssueKind};
 
-pub trait Check<F: Field> {
+pub trait Check<T: Tessellation> {
     fn issue_kinds(&self) -> &'static [IssueKind];
-    fn check(&self, maze: &Maze<F>, issues: &mut Vec<Issue>);
+    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>);
 }

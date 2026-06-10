@@ -1,6 +1,6 @@
 use rand::{Rng, RngCore};
 use crate::Maze;
-use crate::space::Field;
+use crate::space::Tessellation;
 use crate::quality_control::Issue;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
@@ -8,8 +8,8 @@ use crate::repair::strategy::RepairStrategy;
 
 pub struct RandomEndpointsStrategy;
 
-impl<F: Field> RepairStrategy<F> for RandomEndpointsStrategy {
-    fn apply(&self, _issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, _params: &StrategyParams) -> RepairResult {
+impl<T: Tessellation> RepairStrategy<T> for RandomEndpointsStrategy {
+    fn apply(&self, _issue: &Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore, _params: &StrategyParams) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
             return RepairResult::Fixed { score: None };
         }

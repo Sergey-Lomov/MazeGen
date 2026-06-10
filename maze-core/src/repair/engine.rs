@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
-use crate::space::Field;
+use crate::space::Tessellation;
 use crate::quality_control::{Issue, IssueKind};
 use super::params::{build_params, StrategyParams};
 use super::result::RepairResult;
 use super::strategy::RepairStrategy;
 
-pub struct RepairEngine<F: Field> {
-    strategies: HashMap<IssueKind, Box<dyn RepairStrategy<F>>>,
+pub struct RepairEngine<T: Tessellation> {
+    strategies: HashMap<IssueKind, Box<dyn RepairStrategy<T>>>,
     param_overrides: HashMap<IssueKind, HashMap<String, String>>,
 }
 
-impl<F: Field> RepairEngine<F> {
+impl<T: Tessellation> RepairEngine<T> {
     pub fn new(
-        strategies: HashMap<IssueKind, Box<dyn RepairStrategy<F>>>,
+        strategies: HashMap<IssueKind, Box<dyn RepairStrategy<T>>>,
         param_overrides: HashMap<IssueKind, HashMap<String, String>>,
     ) -> Self {
         Self { strategies, param_overrides }
@@ -23,7 +23,7 @@ impl<F: Field> RepairEngine<F> {
     pub fn run(
         &self,
         issues: &[Issue],
-        maze: &mut Maze<F>,
+        maze: &mut Maze<T>,
         rng: &mut impl RngCore,
     ) -> Vec<(IssueKind, RepairResult)> {
         let mut results = Vec::new();

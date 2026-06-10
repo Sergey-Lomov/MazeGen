@@ -2,19 +2,19 @@ use std::collections::HashSet;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 use crate::{Graph, Maze};
-use crate::space::Field;
+use crate::space::{Field, Tessellation};
 use crate::quality_control::{IssueKind, QualityControlEngine};
 use crate::repair::{RepairEngine, RepairResult};
 
 pub const MAX_REPAIR_ITERATIONS: usize = 8;
 
-pub fn build_maze<F: Field>(
-    field: F,
+pub fn build_maze<T: Tessellation>(
+    field: Field<T>,
     graph: Graph,
     seed: u64,
-    qc_engine: QualityControlEngine<F>,
-    repair_engine: RepairEngine<F>,
-) -> (Maze<F>, Vec<crate::quality_control::Issue>) {
+    qc_engine: QualityControlEngine<T>,
+    repair_engine: RepairEngine<T>,
+) -> (Maze<T>, Vec<crate::quality_control::Issue>) {
     let mut maze = Maze::new(field, graph);
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut failed: HashSet<IssueKind> = HashSet::new();

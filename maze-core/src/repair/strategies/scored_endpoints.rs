@@ -2,7 +2,7 @@ use std::collections::{BinaryHeap, HashSet};
 use std::cmp::Reverse;
 use rand::RngCore;
 use crate::Maze;
-use crate::space::Field;
+use crate::space::Tessellation;
 use crate::graph::nav::{NavGraph, NavNodeId};
 use crate::quality_control::Issue;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
@@ -33,7 +33,7 @@ static PARAMS: &[StrategyParam] = &[
 
 pub struct ScoredEndpointsStrategy;
 
-impl<F: Field> RepairStrategy<F> for ScoredEndpointsStrategy {
+impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
     }
@@ -41,7 +41,7 @@ impl<F: Field> RepairStrategy<F> for ScoredEndpointsStrategy {
     fn apply(
         &self,
         _issue: &Issue,
-        maze: &mut Maze<F>,
+        maze: &mut Maze<T>,
         _rng: &mut dyn RngCore,
         params: &StrategyParams,
     ) -> RepairResult {

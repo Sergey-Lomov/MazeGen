@@ -1,11 +1,11 @@
 use rand::RngCore;
 use crate::Maze;
-use crate::space::Field;
+use crate::space::Tessellation;
 use crate::quality_control::Issue;
 use super::params::{StrategyParam, StrategyParams};
 use super::result::RepairResult;
 
-pub trait RepairStrategy<F: Field> {
+pub trait RepairStrategy<T: Tessellation> {
     fn params(&self) -> &'static [StrategyParam] {
         &[]
     }
@@ -13,7 +13,7 @@ pub trait RepairStrategy<F: Field> {
     fn apply(
         &self,
         issue: &Issue,
-        maze: &mut Maze<F>,
+        maze: &mut Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
     ) -> RepairResult;

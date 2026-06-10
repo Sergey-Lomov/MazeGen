@@ -2,7 +2,7 @@ use maze_core::graph::Graph;
 use maze_core::graph::nav::build_nav_graph;
 use maze_core::graph::EdgeKind;
 use maze_core::ids::IdGenerator;
-use maze_core::space::{SquareField, SquareRect, SquarePoint, ShapedField, Field};
+use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationConfig};
 
 fn bi(g: &mut Graph, a: u64, b: u64) {
@@ -160,7 +160,7 @@ fn deterministic() {
 #[test]
 fn nav_paths_only_contain_adjacent_maze_nodes() {
     let mut ids = IdGenerator::new();
-    let field: SquareField = ShapedField::new(SquareRect { width: 10, height: 10 }, &mut ids);
+    let field = Field::<SquareTessellation>::new(square_rect(10, 10), &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
@@ -267,4 +267,3 @@ fn ring_deterministic_insertion_order() {
     paths2.sort();
     assert_eq!(paths1, paths2);
 }
-

@@ -1,14 +1,14 @@
 use maze_core::IdGenerator;
-use maze_core::space::{HexField, HexPoint, HexParallelogram, HexHexagon, ShapedField, Field, FieldShape};
+use maze_core::space::{Field, HexTessellation, HexPoint, hex_parallelogram, hex_hexagon};
 
-fn make_parallelogram(cols: usize, rows: usize) -> HexField<HexParallelogram> {
+fn make_parallelogram(cols: usize, rows: usize) -> Field<HexTessellation> {
     let mut ids = IdGenerator::new();
-    ShapedField::new(HexParallelogram { cols, rows }, &mut ids)
+    Field::new(hex_parallelogram(cols, rows), &mut ids).unwrap()
 }
 
-fn make_hexagon(radius: usize) -> HexField<HexHexagon> {
+fn make_hexagon(radius: usize) -> Field<HexTessellation> {
     let mut ids = IdGenerator::new();
-    ShapedField::new(HexHexagon { radius }, &mut ids)
+    Field::new(hex_hexagon(radius), &mut ids).unwrap()
 }
 
 // --- HexParallelogram ---
@@ -16,7 +16,6 @@ fn make_hexagon(radius: usize) -> HexField<HexHexagon> {
 #[test]
 fn parallelogram_corner_has_three_neighbors() {
     let field = make_parallelogram(3, 3);
-    // (0,2): E=(1,2)✓, NE=(1,1)✓, NW=(0,1)✓, W=(-1,2)✗, SW=(-1,3)✗, SE=(0,3)✗
     let node = field.node_at(HexPoint { q: 0, r: 2 }).unwrap();
     assert_eq!(field.neighbors(node).len(), 3);
 }
@@ -24,7 +23,6 @@ fn parallelogram_corner_has_three_neighbors() {
 #[test]
 fn parallelogram_edge_has_four_neighbors() {
     let field = make_parallelogram(3, 3);
-    // (1,0) on r=0 edge: E=(2,0)✓, NE=(2,-1)✗, NW=(1,-1)✗, W=(0,0)✓, SW=(0,1)✓, SE=(1,1)✓
     let node = field.node_at(HexPoint { q: 1, r: 0 }).unwrap();
     assert_eq!(field.neighbors(node).len(), 4);
 }
@@ -93,28 +91,25 @@ fn hexagon_center_has_six_neighbors() {
 #[test]
 fn hexagon_edge_node_has_fewer_neighbors() {
     let field = make_hexagon(2);
-    // corner of hexagon (e.g. q=2, r=0) — on boundary
     let corner = field.node_at(HexPoint { q: 2, r: 0 }).unwrap();
     assert!(field.neighbors(corner).len() < 6);
 }
 
 #[test]
 fn hexagon_contains_boundary_points() {
-    let shape = HexHexagon { radius: 2 };
-    // boundary: |q|=2, r=0
-    assert!(shape.contains(HexPoint { q: 2, r: 0 }));
-    assert!(shape.contains(HexPoint { q: -2, r: 0 }));
-    assert!(shape.contains(HexPoint { q: 0, r: 2 }));
-    assert!(shape.contains(HexPoint { q: 0, r: -2 }));
+    let field = make_hexagon(2);
+    assert!(field.contains(HexPoint { q: 2, r: 0 }));
+    assert!(field.contains(HexPoint { q: -2, r: 0 }));
+    assert!(field.contains(HexPoint { q: 0, r: 2 }));
+    assert!(field.contains(HexPoint { q: 0, r: -2 }));
 }
 
 #[test]
 fn hexagon_excludes_outside_points() {
-    let shape = HexHexagon { radius: 2 };
-    // just outside radius
-    assert!(!shape.contains(HexPoint { q: 3, r: 0 }));
-    assert!(!shape.contains(HexPoint { q: 2, r: 1 })); // q+r=3 > 2
-    assert!(!shape.contains(HexPoint { q: -2, r: -1 })); // |q+r|=3 > 2
+    let field = make_hexagon(2);
+    assert!(!field.contains(HexPoint { q: 3, r: 0 }));
+    assert!(!field.contains(HexPoint { q: 2, r: 1 }));
+    assert!(!field.contains(HexPoint { q: -2, r: -1 }));
 }
 
 #[test]

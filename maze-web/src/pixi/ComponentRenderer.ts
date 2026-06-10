@@ -103,17 +103,17 @@ export class ComponentRenderer {
       for (const nodeId of components[compIdx]) {
         const node = nodeById.get(nodeId);
         if (!node) continue;
-        if (cfg.type === "square") {
+        if (cfg.type === "square" || cfg.type === "square_custom") {
           const { x: cx, y: cy } = squareCenter(node.x, node.y);
           const verts = squareVertices(cx, cy);
           this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
-        } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon") {
-          const orientation = cfg.orientation ?? "flat_top";
+        } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
+          const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
           const { x: cx, y: cy } = hexCenter(node.x, node.y, orientation);
           const verts = hexVertices(cx, cy, orientation);
           this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
-        } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon") {
-          const orientation = cfg.orientation ?? "r0";
+        } else if (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom") {
+          const orientation = (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0";
           const verts = triVertices(node.x, node.y, orientation);
           this.graphics.poly(verts.flatMap(v => [v.x, v.y])).fill({ color, alpha: MASK_ALPHA });
         } else {

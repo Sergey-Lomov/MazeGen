@@ -1,4 +1,4 @@
-﻿mod dto;
+mod dto;
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
@@ -7,10 +7,10 @@ use maze_core::{
     ids::IdGenerator,
     graph::Graph,
     space::{
-        SquareField, SquarePoint, SquareRect, ShapedField,
-        HexField, HexPoint, HexParallelogram, HexHexagon,
-        TriField, TriPoint, TriRect, TriTriangle, TriHexagon,
         Field, Tessellation,
+        SquareTessellation, SquarePoint, square_rect,
+        HexTessellation, HexPoint, hex_parallelogram, hex_hexagon,
+        TriTessellation, TriPoint, tri_rect, tri_triangle, tri_hexagon,
     },
     generation::{generate_maze, generate_maze_steps, GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, pipeline::build_maze},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
@@ -33,7 +33,6 @@ enum TessellationConfig {
     HexParallelogram {
         cols: u32,
         rows: u32,
-        // Accepted for deserialization; rendering orientation is handled client-side.
         #[serde(default)]
         #[allow(dead_code)]
         orientation: HexOrientationDto,
@@ -63,6 +62,9 @@ enum TessellationConfig {
         #[allow(dead_code)]
         orientation: TriangleOrientationDto,
     },
+    SquareCustom { points: Vec<[i32; 2]> },
+    HexCustom    { points: Vec<[i32; 2]> },
+    TriCustom    { points: Vec<[i32; 2]> },
 }
 
 impl Default for TessellationConfig {
@@ -173,6 +175,16 @@ struct StrategyDescriptor {
     params: Vec<ParamDescriptor>,
 }
 
+fn pick_start<P: Copy>(points: &[P], to_xy: impl Fn(P) -> (i32, i32)) -> P {
+    let n = points.len() as i32;
+    let cx: i32 = points.iter().map(|&p| to_xy(p).0).sum::<i32>() / n;
+    let cy: i32 = points.iter().map(|&p| to_xy(p).1).sum::<i32>() / n;
+    *points.iter().min_by_key(|&&p| {
+        let (x, y) = to_xy(p);
+        (x - cx) * (x - cx) + (y - cy) * (y - cy)
+    }).unwrap()
+}
+
 fn param_kind_dto(kind: &maze_core::repair::StrategyParamKind) -> ParamKindDto {
     match kind {
         maze_core::repair::StrategyParamKind::Float { default, min, max } =>
@@ -207,26 +219,52 @@ pub fn available_strategies() -> JsValue {
         StrategyDescriptor {
             id: "random_endpoints",
             handles: MISSING_ENDPOINTS,
-            params: strategy_params_dto(<RandomEndpointsStrategy as RepairStrategy<SquareField>>::params(&RandomEndpointsStrategy)),
+            params: strategy_params_dto(<RandomEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&RandomEndpointsStrategy)),
         },
         StrategyDescriptor {
             id: "farthest_endpoints",
             handles: MISSING_ENDPOINTS,
-            params: strategy_params_dto(<FarthestEndpointsStrategy as RepairStrategy<SquareField>>::params(&FarthestEndpointsStrategy)),
+            params: strategy_params_dto(<FarthestEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&FarthestEndpointsStrategy)),
         },
         StrategyDescriptor {
             id: "scored_endpoints",
             handles: MISSING_ENDPOINTS,
-            params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareField>>::params(&ScoredEndpointsStrategy)),
+            params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy)),
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()
 }
 
-fn build_qc_and_repair<F: Field>(
+#[wasm_bindgen]
+pub fn expand_field_points(config: JsValue) -> Result<JsValue, JsValue> {
+    let config: TessellationConfig = serde_wasm_bindgen::from_value(config)
+        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
+
+    let points: Vec<[i32; 2]> = match config {
+        TessellationConfig::Square { width, height } =>
+            square_rect(width as usize, height as usize).into_iter().map(|p| [p.x, p.y]).collect(),
+        TessellationConfig::HexParallelogram { cols, rows, .. } =>
+            hex_parallelogram(cols as usize, rows as usize).into_iter().map(|p| [p.q, p.r]).collect(),
+        TessellationConfig::HexHexagon { radius, .. } =>
+            hex_hexagon(radius as usize).into_iter().map(|p| [p.q, p.r]).collect(),
+        TessellationConfig::TriangleRect { cols, rows, .. } =>
+            tri_rect(cols as usize, rows as usize).into_iter().map(|p| [p.col, p.row]).collect(),
+        TessellationConfig::TriangleTriangle { side, .. } =>
+            tri_triangle(side as usize).into_iter().map(|p| [p.col, p.row]).collect(),
+        TessellationConfig::TriangleHexagon { radius, .. } =>
+            tri_hexagon(radius as usize).into_iter().map(|p| [p.col, p.row]).collect(),
+        TessellationConfig::SquareCustom { points } => points,
+        TessellationConfig::HexCustom { points } => points,
+        TessellationConfig::TriCustom { points } => points,
+    };
+
+    serde_wasm_bindgen::to_value(&points).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+fn build_qc_and_repair<T: Tessellation>(
     config: &GenerateConfig,
-) -> Result<(QualityControlEngine<F>, RepairEngine<F>), JsValue> {
-    let mut checks: Vec<Box<dyn maze_core::quality_control::Check<F>>> = Vec::new();
+) -> Result<(QualityControlEngine<T>, RepairEngine<T>), JsValue> {
+    let mut checks: Vec<Box<dyn maze_core::quality_control::Check<T>>> = Vec::new();
     for id in &config.checks {
         match id.as_str() {
             MISSING_ENDPOINTS => checks.push(Box::new(MissingEndpointsCheck)),
@@ -236,7 +274,7 @@ fn build_qc_and_repair<F: Field>(
     }
     let qc_engine = QualityControlEngine::new(checks);
 
-    let mut strategies: HashMap<_, Box<dyn RepairStrategy<F>>> = HashMap::new();
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<T>>> = HashMap::new();
     let mut param_overrides: HashMap<&'static str, HashMap<String, String>> = HashMap::new();
 
     for (issue_kind, strategy_cfg) in &config.strategies {
@@ -245,7 +283,7 @@ fn build_qc_and_repair<F: Field>(
             UNREACHABLE_FINISH => UNREACHABLE_FINISH,
             other => return Err(JsValue::from_str(&format!("unknown issue kind: {other}"))),
         };
-        let strategy: Box<dyn RepairStrategy<F>> = match strategy_cfg.id.as_str() {
+        let strategy: Box<dyn RepairStrategy<T>> = match strategy_cfg.id.as_str() {
             "random_endpoints" => Box::new(RandomEndpointsStrategy),
             "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
             "scored_endpoints" => Box::new(ScoredEndpointsStrategy),
@@ -307,12 +345,12 @@ fn build_elements_config(dto: &ElementsConfigDto) -> ElementsConfig {
     e
 }
 
-fn run_generate<F: Field>(
+fn run_generate<T: Tessellation>(
     seed: u64,
-    field: F,
-    start: <F::T as Tessellation>::Point,
+    field: Field<T>,
+    start: T::Point,
     config: &GenerateConfig,
-    point_to_xy: impl Fn(<F::T as Tessellation>::Point) -> (i32, i32),
+    point_to_xy: impl Fn(T::Point) -> (i32, i32),
 ) -> Result<JsValue, JsValue> {
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
@@ -324,7 +362,7 @@ fn run_generate<F: Field>(
     let gen_config = build_generation_config(config);
     generate_maze(&mut graph, &field, seed, start_id, gen_config);
 
-    let (qc_engine, repair_engine) = build_qc_and_repair::<F>(config)?;
+    let (qc_engine, repair_engine) = build_qc_and_repair::<T>(config)?;
 
     let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
     let warnings: Vec<String> = issues.iter().map(|i| i.kind.to_string()).collect();
@@ -432,12 +470,12 @@ fn run_generate<F: Field>(
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-fn run_generate_steps<F: Field>(
+fn run_generate_steps<T: Tessellation>(
     seed: u64,
-    field: F,
-    start: <F::T as Tessellation>::Point,
+    field: Field<T>,
+    start: T::Point,
     config: &GenerateConfig,
-    point_to_xy: impl Fn(<F::T as Tessellation>::Point) -> (i32, i32),
+    point_to_xy: impl Fn(T::Point) -> (i32, i32),
 ) -> Result<JsValue, JsValue> {
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
@@ -489,10 +527,10 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *width == 0 || *height == 0 {
                 return Err(JsValue::from_str("width and height must be > 0"));
             }
-            let field: SquareField = ShapedField::new(
-                SquareRect { width: *width as usize, height: *height as usize },
+            let field = Field::<SquareTessellation>::new(
+                square_rect(*width as usize, *height as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate(seed, field, SquarePoint { x: 0, y: 0 }, &config,
                 |p: SquarePoint| (p.x, p.y))
         }
@@ -500,10 +538,10 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *cols == 0 || *rows == 0 {
                 return Err(JsValue::from_str("cols and rows must be > 0"));
             }
-            let field: HexField<HexParallelogram> = ShapedField::new(
-                HexParallelogram { cols: *cols as usize, rows: *rows as usize },
+            let field = Field::<HexTessellation>::new(
+                hex_parallelogram(*cols as usize, *rows as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config,
                 |p: HexPoint| (p.q, p.r))
         }
@@ -511,10 +549,10 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *radius == 0 {
                 return Err(JsValue::from_str("radius must be > 0"));
             }
-            let field: HexField<HexHexagon> = ShapedField::new(
-                HexHexagon { radius: *radius as usize },
+            let field = Field::<HexTessellation>::new(
+                hex_hexagon(*radius as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate(seed, field, HexPoint { q: 0, r: 0 }, &config,
                 |p: HexPoint| (p.q, p.r))
         }
@@ -522,10 +560,10 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *cols == 0 || *rows == 0 {
                 return Err(JsValue::from_str("cols and rows must be > 0"));
             }
-            let field: TriField<TriRect> = ShapedField::new(
-                TriRect { cols: *cols as usize, rows: *rows as usize },
+            let field = Field::<TriTessellation>::new(
+                tri_rect(*cols as usize, *rows as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate(seed, field, TriPoint { col: 0, row: 0 }, &config,
                 |p: TriPoint| (p.col, p.row))
         }
@@ -537,10 +575,10 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             // so it has a Base neighbour in row 1 (required for connectivity).
             let n = *side as i32;
             let apex_col = n - 1 + n % 2;
-            let field: TriField<TriTriangle> = ShapedField::new(
-                TriTriangle { side: *side as usize },
+            let field = Field::<TriTessellation>::new(
+                tri_triangle(*side as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate(seed, field, TriPoint { col: apex_col, row: 0 }, &config,
                 |p: TriPoint| (p.col, p.row))
         }
@@ -551,12 +589,33 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             // Start at first (pointing-down) triangle in top row: col = odd_base = indent(0).
             let r = *radius as i32;
             let odd_base = if r % 2 == 0 { r - 1 } else { r };
-            let field: TriField<TriHexagon> = ShapedField::new(
-                TriHexagon { radius: *radius as usize },
+            let field = Field::<TriTessellation>::new(
+                tri_hexagon(*radius as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate(seed, field, TriPoint { col: odd_base, row: 0 }, &config,
                 |p: TriPoint| (p.col, p.row))
+        }
+        TessellationConfig::SquareCustom { points } => {
+            let pts: Vec<SquarePoint> = points.iter().map(|&[x, y]| SquarePoint { x, y }).collect();
+            let start = pick_start(&pts, |p| (p.x, p.y));
+            let field = Field::<SquareTessellation>::new(pts, &mut ids)
+                .map_err(|e| JsValue::from_str(e))?;
+            run_generate(seed, field, start, &config, |p: SquarePoint| (p.x, p.y))
+        }
+        TessellationConfig::HexCustom { points } => {
+            let pts: Vec<HexPoint> = points.iter().map(|&[q, r]| HexPoint { q, r }).collect();
+            let start = pick_start(&pts, |p| (p.q, p.r));
+            let field = Field::<HexTessellation>::new(pts, &mut ids)
+                .map_err(|e| JsValue::from_str(e))?;
+            run_generate(seed, field, start, &config, |p: HexPoint| (p.q, p.r))
+        }
+        TessellationConfig::TriCustom { points } => {
+            let pts: Vec<TriPoint> = points.iter().map(|&[col, row]| TriPoint { col, row }).collect();
+            let start = pick_start(&pts, |p| (p.col, p.row));
+            let field = Field::<TriTessellation>::new(pts, &mut ids)
+                .map_err(|e| JsValue::from_str(e))?;
+            run_generate(seed, field, start, &config, |p: TriPoint| (p.col, p.row))
         }
     }
 }
@@ -577,10 +636,10 @@ pub fn generate_steps(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *width == 0 || *height == 0 {
                 return Err(JsValue::from_str("width and height must be > 0"));
             }
-            let field: SquareField = ShapedField::new(
-                SquareRect { width: *width as usize, height: *height as usize },
+            let field = Field::<SquareTessellation>::new(
+                square_rect(*width as usize, *height as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate_steps(seed, field, SquarePoint { x: 0, y: 0 }, &config,
                 |p: SquarePoint| (p.x, p.y))
         }
@@ -588,10 +647,10 @@ pub fn generate_steps(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *cols == 0 || *rows == 0 {
                 return Err(JsValue::from_str("cols and rows must be > 0"));
             }
-            let field: HexField<HexParallelogram> = ShapedField::new(
-                HexParallelogram { cols: *cols as usize, rows: *rows as usize },
+            let field = Field::<HexTessellation>::new(
+                hex_parallelogram(*cols as usize, *rows as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate_steps(seed, field, HexPoint { q: 0, r: 0 }, &config,
                 |p: HexPoint| (p.q, p.r))
         }
@@ -599,10 +658,10 @@ pub fn generate_steps(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *radius == 0 {
                 return Err(JsValue::from_str("radius must be > 0"));
             }
-            let field: HexField<HexHexagon> = ShapedField::new(
-                HexHexagon { radius: *radius as usize },
+            let field = Field::<HexTessellation>::new(
+                hex_hexagon(*radius as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate_steps(seed, field, HexPoint { q: 0, r: 0 }, &config,
                 |p: HexPoint| (p.q, p.r))
         }
@@ -610,10 +669,10 @@ pub fn generate_steps(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             if *cols == 0 || *rows == 0 {
                 return Err(JsValue::from_str("cols and rows must be > 0"));
             }
-            let field: TriField<TriRect> = ShapedField::new(
-                TriRect { cols: *cols as usize, rows: *rows as usize },
+            let field = Field::<TriTessellation>::new(
+                tri_rect(*cols as usize, *rows as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate_steps(seed, field, TriPoint { col: 0, row: 0 }, &config,
                 |p: TriPoint| (p.col, p.row))
         }
@@ -622,11 +681,12 @@ pub fn generate_steps(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
                 return Err(JsValue::from_str("side must be > 0"));
             }
             let n = *side as i32;
-            let field: TriField<TriTriangle> = ShapedField::new(
-                TriTriangle { side: *side as usize },
+            let apex_col = n - 1 + n % 2;
+            let field = Field::<TriTessellation>::new(
+                tri_triangle(*side as usize),
                 &mut ids,
-            );
-            run_generate_steps(seed, field, TriPoint { col: n - 1, row: 0 }, &config,
+            ).map_err(|e| JsValue::from_str(e))?;
+            run_generate_steps(seed, field, TriPoint { col: apex_col, row: 0 }, &config,
                 |p: TriPoint| (p.col, p.row))
         }
         TessellationConfig::TriangleHexagon { radius, .. } => {
@@ -635,13 +695,33 @@ pub fn generate_steps(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             }
             let r = *radius as i32;
             let odd_base = if r % 2 == 0 { r - 1 } else { r };
-            let field: TriField<TriHexagon> = ShapedField::new(
-                TriHexagon { radius: *radius as usize },
+            let field = Field::<TriTessellation>::new(
+                tri_hexagon(*radius as usize),
                 &mut ids,
-            );
+            ).map_err(|e| JsValue::from_str(e))?;
             run_generate_steps(seed, field, TriPoint { col: odd_base, row: 0 }, &config,
                 |p: TriPoint| (p.col, p.row))
         }
+        TessellationConfig::SquareCustom { points } => {
+            let pts: Vec<SquarePoint> = points.iter().map(|&[x, y]| SquarePoint { x, y }).collect();
+            let start = pick_start(&pts, |p| (p.x, p.y));
+            let field = Field::<SquareTessellation>::new(pts, &mut ids)
+                .map_err(|e| JsValue::from_str(e))?;
+            run_generate_steps(seed, field, start, &config, |p: SquarePoint| (p.x, p.y))
+        }
+        TessellationConfig::HexCustom { points } => {
+            let pts: Vec<HexPoint> = points.iter().map(|&[q, r]| HexPoint { q, r }).collect();
+            let start = pick_start(&pts, |p| (p.q, p.r));
+            let field = Field::<HexTessellation>::new(pts, &mut ids)
+                .map_err(|e| JsValue::from_str(e))?;
+            run_generate_steps(seed, field, start, &config, |p: HexPoint| (p.q, p.r))
+        }
+        TessellationConfig::TriCustom { points } => {
+            let pts: Vec<TriPoint> = points.iter().map(|&[col, row]| TriPoint { col, row }).collect();
+            let start = pick_start(&pts, |p| (p.col, p.row));
+            let field = Field::<TriTessellation>::new(pts, &mut ids)
+                .map_err(|e| JsValue::from_str(e))?;
+            run_generate_steps(seed, field, start, &config, |p: TriPoint| (p.col, p.row))
+        }
     }
 }
-

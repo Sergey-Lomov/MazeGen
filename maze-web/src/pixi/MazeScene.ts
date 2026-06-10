@@ -5,6 +5,9 @@ import { cellCenter, mazeBounds } from "./hexGeometry";
 import { MazeGraphRenderer, NavGraphRenderer } from "./MazeRenderer";
 import { ComponentRenderer } from "./ComponentRenderer";
 import { RouteOverlay } from "./RouteOverlay";
+import { FieldEditorOverlay } from "./FieldEditorOverlay";
+import { FieldEditController } from "./FieldEditController";
+import { makeProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationConfig } from "../wasm/types";
 
@@ -22,6 +25,9 @@ export class MazeScene {
   private navRenderer: NavGraphRenderer;
   private routeOverlay: RouteOverlay;
   private routeOverlayContainer: Container;
+  private fieldEditorOverlay: FieldEditorOverlay;
+  private fieldEditorOverlayContainer: Container;
+  private fieldEditController: FieldEditController;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
@@ -37,6 +43,7 @@ export class MazeScene {
   private unsubscribeNavOverlay: (() => void) | null = null;
   private unsubscribeComponentOverlay: (() => void) | null = null;
   private unsubscribeMaze: (() => void) | null = null;
+  private unsubscribeEditField: (() => void) | null = null;
   private refitTimerId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(app: Application) {
@@ -60,7 +67,8 @@ export class MazeScene {
     this.navOverlay.addChild(navInner);
 
     this.routeOverlayContainer = new Container();
-    this.syncedLayers = [this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer];
+    this.fieldEditorOverlayContainer = new Container();
+    this.syncedLayers = [this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer, this.fieldEditorOverlayContainer];
 
     this.app.stage.addChild(this.viewport);
     for (const layer of this.syncedLayers) this.app.stage.addChild(layer);
@@ -78,6 +86,33 @@ export class MazeScene {
     this.graphRenderer = new MazeGraphRenderer(graphInner);
     this.navRenderer = new NavGraphRenderer(navInner);
     this.routeOverlay = new RouteOverlay(this.routeOverlayContainer);
+    this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
+
+    const self = this;
+    this.fieldEditController = new FieldEditController(
+      app.canvas,
+      () => {
+        const cfg = useMazeStore.getState().tessellationConfig;
+        return makeProjection(cfg);
+      },
+      () => self.viewport,
+      {
+        startPan: (x, y) => {
+          self.isDragging = true;
+          self.dragStart = { x, y };
+          self.viewportStart = { x: self.viewport.x, y: self.viewport.y };
+        },
+        movePan: (x, y) => {
+          if (!self.isDragging) return;
+          const dx = x - self.dragStart.x;
+          const dy = y - self.dragStart.y;
+          self.viewport.x = self.viewportStart.x + dx;
+          self.viewport.y = self.viewportStart.y + dy;
+          self.syncLayersToViewport();
+        },
+        endPan: () => { self.isDragging = false; },
+      },
+    );
 
     this.setupInteraction();
     this.subscribeToFit();
@@ -85,6 +120,7 @@ export class MazeScene {
     this.subscribeToNavOverlay();
     this.subscribeToComponentOverlay();
     this.subscribeToMaze();
+    this.subscribeToEditField();
   }
 
   private subscribeToOverlay(): void {
@@ -127,12 +163,26 @@ export class MazeScene {
     });
   }
 
+  private subscribeToEditField(): void {
+    let prevEditing = useMazeStore.getState().isEditingField;
+    let prevOverlay = useMazeStore.getState().showFieldOverlay;
+    this.unsubscribeEditField = useMazeStore.subscribe((state) => {
+      const editChanged = state.isEditingField !== prevEditing;
+      const overlayChanged = state.showFieldOverlay !== prevOverlay;
+      prevEditing = state.isEditingField;
+      prevOverlay = state.showFieldOverlay;
+      if ((editChanged && state.isEditingField) || (overlayChanged && state.isEditingField && state.showFieldOverlay)) {
+        this.syncLayersToViewport();
+      }
+    });
+  }
+
   private subscribeToFit(): void {
     let prevNodes = useMazeStore.getState().nodes;
     this.unsubscribeFit = useMazeStore.subscribe((state) => {
       if (state.nodes !== prevNodes) {
         prevNodes = state.nodes;
-        if (state.nodes.length > 0) {
+        if (state.nodes.length > 0 && !state.isEditingField) {
           this.app.resize();
           this.fitMaze(state.activeTessellationConfig, state.nodes);
         }
@@ -147,6 +197,13 @@ export class MazeScene {
       layer.scale.x = this.viewport.scale.x;
       layer.scale.y = this.viewport.scale.y;
     }
+    this.fieldEditorOverlay.onViewportChanged(
+      this.viewport.x,
+      this.viewport.y,
+      this.app.screen.width,
+      this.app.screen.height,
+      this.viewport.scale.x,
+    );
   }
 
   private fitMaze(cfg: TessellationConfig, nodes: { x: number; y: number; id: number }[]): void {
@@ -199,12 +256,20 @@ export class MazeScene {
     stage.hitArea = this.app.screen;
 
     stage.on("pointerdown", (e) => {
+      if (useMazeStore.getState().isEditingField) {
+        this.fieldEditController.onPointerDown(e.globalX, e.globalY, e.button);
+        return;
+      }
       this.isDragging = true;
       this.dragStart = { x: e.globalX, y: e.globalY };
       this.viewportStart = { x: this.viewport.x, y: this.viewport.y };
     });
 
     stage.on("pointermove", (e) => {
+      if (useMazeStore.getState().isEditingField) {
+        this.fieldEditController.onPointerMove(e.globalX, e.globalY);
+        return;
+      }
       if (!this.isDragging) return;
       const dx = e.globalX - this.dragStart.x;
       const dy = e.globalY - this.dragStart.y;
@@ -213,8 +278,17 @@ export class MazeScene {
       this.syncLayersToViewport();
     });
 
-    stage.on("pointerup", () => { this.isDragging = false; });
-    stage.on("pointerupoutside", () => { this.isDragging = false; });
+    stage.on("pointerup", () => {
+      if (useMazeStore.getState().isEditingField) {
+        this.fieldEditController.onPointerUp();
+        return;
+      }
+      this.isDragging = false;
+    });
+    stage.on("pointerupoutside", () => {
+      this.fieldEditController.onPointerUp();
+      this.isDragging = false;
+    });
 
     window.addEventListener("blur", this.onBlur);
 
@@ -244,11 +318,14 @@ export class MazeScene {
     this.unsubscribeNavOverlay?.();
     this.unsubscribeComponentOverlay?.();
     this.unsubscribeMaze?.();
+    this.unsubscribeEditField?.();
     this.tileRenderer.destroy();
     this.componentRenderer.destroy();
     this.graphRenderer.destroy();
     this.navRenderer.destroy();
     this.routeOverlay.destroy();
+    this.fieldEditorOverlay.destroy();
+    this.fieldEditController.destroy();
     window.removeEventListener("blur", this.onBlur);
     this.app.canvas.removeEventListener("wheel", this.onWheel);
     this.app.destroy();
