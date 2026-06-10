@@ -2,6 +2,29 @@ import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 
+export const HEX_ORIENTATION_LABELS: Record<HexOrientation, string> = {
+  flat_top: "Flat top",
+  pointy_top: "Pointy top",
+};
+
+export const HEX_ORIENTATION_KEYS: HexOrientation[] = ["flat_top", "pointy_top"];
+
+export const TRI_ORIENTATION_LABELS: Record<TriOrientation, string> = {
+  r0: "0°",
+  r90: "90°",
+  r180: "180°",
+  r270: "270°",
+};
+
+const TRI_ORIENTATION_OPTION_LABELS: Record<TriOrientation, string> = {
+  r0: "0° — base bottom",
+  r90: "90° — base left",
+  r180: "180° — base top",
+  r270: "270° — base right",
+};
+
+export const TRI_ORIENTATION_KEYS: TriOrientation[] = ["r0", "r90", "r180", "r270"];
+
 export function BasicConfigFeature() {
   const previewKind = useMazeStore((s) => s.previewKind);
   const previewHexOrientation = useMazeStore((s) => s.previewHexOrientation);
@@ -36,8 +59,9 @@ export function BasicConfigFeature() {
             value={previewHexOrientation}
             onChange={(e) => setPreviewHexOrientation(e.target.value as HexOrientation)}
           >
-            <option value="flat_top">Flat top</option>
-            <option value="pointy_top">Pointy top</option>
+            {HEX_ORIENTATION_KEYS.map((k) => (
+              <option key={k} value={k}>{HEX_ORIENTATION_LABELS[k]}</option>
+            ))}
           </select>
         </label>
       )}
@@ -49,10 +73,9 @@ export function BasicConfigFeature() {
             value={previewTriOrientation}
             onChange={(e) => setPreviewTriOrientation(e.target.value as TriOrientation)}
           >
-            <option value="r0">0° — base bottom</option>
-            <option value="r90">90° — base left</option>
-            <option value="r180">180° — base top</option>
-            <option value="r270">270° — base right</option>
+            {TRI_ORIENTATION_KEYS.map((k) => (
+              <option key={k} value={k}>{TRI_ORIENTATION_OPTION_LABELS[k]}</option>
+            ))}
           </select>
         </label>
       )}

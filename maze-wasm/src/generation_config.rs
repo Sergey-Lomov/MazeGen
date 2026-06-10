@@ -4,7 +4,6 @@ use maze_core::{
     generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
 };
-use crate::dto::{HexOrientationDto, TriangleOrientationDto};
 
 #[derive(Deserialize)]
 pub struct StrategyConfig {
@@ -17,38 +16,11 @@ pub struct StrategyConfig {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TessellationConfig {
     Square { width: u32, height: u32 },
-    HexParallelogram {
-        cols: u32,
-        rows: u32,
-        #[serde(default)]
-        #[allow(dead_code)]
-        orientation: HexOrientationDto,
-    },
-    HexHexagon {
-        radius: u32,
-        #[serde(default)]
-        #[allow(dead_code)]
-        orientation: HexOrientationDto,
-    },
-    TriangleRect {
-        cols: u32,
-        rows: u32,
-        #[serde(default)]
-        #[allow(dead_code)]
-        orientation: TriangleOrientationDto,
-    },
-    TriangleTriangle {
-        side: u32,
-        #[serde(default)]
-        #[allow(dead_code)]
-        orientation: TriangleOrientationDto,
-    },
-    TriangleHexagon {
-        radius: u32,
-        #[serde(default)]
-        #[allow(dead_code)]
-        orientation: TriangleOrientationDto,
-    },
+    HexParallelogram { cols: u32, rows: u32 },
+    HexHexagon { radius: u32 },
+    TriangleRect { cols: u32, rows: u32 },
+    TriangleTriangle { side: u32 },
+    TriangleHexagon { radius: u32 },
     SquareCustom { points: Vec<[i32; 2]> },
     HexCustom    { points: Vec<[i32; 2]> },
     TriCustom    { points: Vec<[i32; 2]> },

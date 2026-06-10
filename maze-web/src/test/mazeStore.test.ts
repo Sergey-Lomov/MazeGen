@@ -1002,3 +1002,99 @@ describe("mazeStore.setTriOrientation", () => {
     }
   });
 });
+
+describe("mazeStore preview/confirm flow", () => {
+  it("setPreviewKind does not reset orientation", () => {
+    useMazeStore.setState({ previewHexOrientation: "pointy_top", previewTriOrientation: "r90" });
+    useMazeStore.getState().setPreviewKind("hex");
+    const s = useMazeStore.getState();
+    expect(s.previewKind).toBe("hex");
+    expect(s.previewHexOrientation).toBe("pointy_top");
+    expect(s.previewTriOrientation).toBe("r90");
+  });
+
+  it("setPreviewKind updates previewTessellationConfig", () => {
+    useMazeStore.getState().setPreviewKind("triangle");
+    expect(useMazeStore.getState().previewTessellationConfig.type).toBe("triangle_rect");
+  });
+
+  it("syncPreviewToConfirmed copies all confirmed values atomically", () => {
+    useMazeStore.setState({
+      tessellationKind: "hex",
+      hexOrientation: "pointy_top",
+      triOrientation: "r180",
+      previewKind: "triangle",
+      previewHexOrientation: "flat_top",
+      previewTriOrientation: "r0",
+    });
+    useMazeStore.getState().syncPreviewToConfirmed();
+    const s = useMazeStore.getState();
+    expect(s.previewKind).toBe("hex");
+    expect(s.previewHexOrientation).toBe("pointy_top");
+    expect(s.previewTriOrientation).toBe("r180");
+    expect(s.previewTessellationConfig.type).toBe("hex_parallelogram");
+    if (s.previewTessellationConfig.type === "hex_parallelogram") {
+      expect(s.previewTessellationConfig.orientation).toBe("pointy_top");
+    }
+  });
+
+  it("confirmTessellation copies preview into confirmed", () => {
+    useMazeStore.setState({
+      previewKind: "hex",
+      previewHexOrientation: "pointy_top",
+      previewTriOrientation: "r0",
+      tessellationKind: "square",
+    });
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.tessellationKind).toBe("hex");
+    expect(s.hexOrientation).toBe("pointy_top");
+    expect(s.tessellationConfirmed).toBe(true);
+  });
+
+  it("confirmTessellation syncs preview fields to confirmed", () => {
+    useMazeStore.setState({
+      previewKind: "triangle",
+      previewHexOrientation: "flat_top",
+      previewTriOrientation: "r90",
+      tessellationKind: "square",
+    });
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.previewKind).toBe("triangle");
+    expect(s.previewTriOrientation).toBe("r90");
+    expect(s.previewTessellationConfig.type).toBe("triangle_rect");
+  });
+
+  it("confirmTessellation with same kind does not clear maze", () => {
+    useMazeStore.setState({
+      tessellationKind: "square",
+      previewKind: "square",
+      previewHexOrientation: "flat_top",
+      previewTriOrientation: "r0",
+      nodes: [{ id: 0, x: 0, y: 0 }],
+      edges: [],
+    });
+    useMazeStore.getState().confirmTessellation();
+    expect(useMazeStore.getState().nodes.length).toBe(1);
+  });
+
+  it("confirmTessellation with different kind clears maze", () => {
+    useMazeStore.setState({
+      tessellationKind: "square",
+      previewKind: "hex",
+      previewHexOrientation: "flat_top",
+      previewTriOrientation: "r0",
+      nodes: [{ id: 0, x: 0, y: 0 }],
+      edges: [{ from: 0, to: 0 }],
+      start: 0,
+      finish: 0,
+    });
+    useMazeStore.getState().confirmTessellation();
+    const s = useMazeStore.getState();
+    expect(s.nodes).toHaveLength(0);
+    expect(s.edges).toHaveLength(0);
+    expect(s.start).toBeNull();
+    expect(s.finish).toBeNull();
+  });
+});

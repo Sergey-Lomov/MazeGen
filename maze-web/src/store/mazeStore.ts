@@ -90,6 +90,7 @@ interface MazeActions {
   setPreviewTriOrientation: (orientation: TriOrientation) => void;
   // Confirm — copies preview → confirmed, triggers confirmed-dependent state
   confirmTessellation: () => void;
+  syncPreviewToConfirmed: () => void;
   // Shape actions (operate on confirmed tessellation)
   setTessellationKind: (kind: TessellationKind) => void;
   setSquareShape: (shape: SquareShape) => void;
@@ -186,6 +187,15 @@ function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triO
   return { type: "triangle_rect", cols: 10, rows: 10, orientation: triOri };
 }
 
+function buildPreviewState(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation) {
+  return {
+    previewKind: kind,
+    previewHexOrientation: hexOri,
+    previewTriOrientation: triOri,
+    previewTessellationConfig: buildPreviewConfig(kind, hexOri, triOri),
+  };
+}
+
 const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   square: new Set<number>(),
   hex: new Set<number>(),
@@ -256,12 +266,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setSeed: (seed) => set({ seed, error: null }),
 
-  setPreviewKind: (kind) => set({
+  setPreviewKind: (kind) => set((state) => ({
     previewKind: kind,
-    previewHexOrientation: DEFAULT_HEX_ORI,
-    previewTriOrientation: DEFAULT_TRI_ORI,
-    previewTessellationConfig: buildPreviewConfig(kind, DEFAULT_HEX_ORI, DEFAULT_TRI_ORI),
-  }),
+    previewTessellationConfig: buildPreviewConfig(kind, state.previewHexOrientation, state.previewTriOrientation),
+  })),
 
   setPreviewHexOrientation: (orientation) => set((state) => ({
     previewHexOrientation: orientation,
@@ -272,6 +280,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     previewTriOrientation: orientation,
     previewTessellationConfig: buildPreviewConfig(state.previewKind, state.previewHexOrientation, orientation),
   })),
+
+  syncPreviewToConfirmed: () => set((state) =>
+    buildPreviewState(state.tessellationKind, state.hexOrientation, state.triOrientation)
+  ),
 
   confirmTessellation: () => set((state) => {
     const kind = state.previewKind;
@@ -292,6 +304,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       hexOrientation,
       triOrientation,
       tessellationConfirmed: true,
+      ...buildPreviewState(kind, hexOrientation, triOrientation),
       squareShape,
       hexShape,
       triangleShape,

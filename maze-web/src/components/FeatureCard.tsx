@@ -5,7 +5,7 @@ export type FeatureStatus = "unavailable" | "default" | "set";
 export interface FeatureCardProps {
   title: string;
   status: FeatureStatus;
-  comment: string;
+  comment?: string;
   subtitle?: string;
   expanded: boolean;
   onToggle: () => void;

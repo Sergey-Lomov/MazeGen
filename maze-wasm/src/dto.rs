@@ -1,22 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum HexOrientationDto {
-    #[default]
-    FlatTop,
-    PointyTop,
-}
-
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum TriangleOrientationDto {
-    #[default]
-    R0,
-    R90,
-    R180,
-    R270,
-}
+use serde::Serialize;
 
 #[derive(Serialize)]
 pub struct NodeDto {
