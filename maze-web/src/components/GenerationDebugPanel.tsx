@@ -2,6 +2,8 @@ import { useState, useCallback } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { generateMazeSteps } from "../wasm/mazeService";
 import type { GenerationStepsSnapshot, NodeDto, EdgeDto } from "../wasm/types";
+import { sharedStyles } from "../styles/shared";
+import { colors } from "../styles/theme";
 
 interface Props {
   onClose: () => void;
@@ -101,21 +103,20 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 8,
     padding: 12,
-    borderBottom: "1px solid #333",
+    borderBottom: `1px solid ${colors.borderMid}`,
   },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  title: { fontSize: 13, fontWeight: "bold", color: "#aaa" },
-  closeBtn: { background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 14, padding: "0 2px" },
-  btn: {
-    background: "#3a6ea8", border: "none", color: "#fff",
-    padding: "5px 0", cursor: "pointer", borderRadius: 3, fontSize: 12,
-  },
-  stepLabel: { fontSize: 11, color: "#aaa" },
+  title: sharedStyles.panelTitle,
+  closeBtn: sharedStyles.closeBtn,
+  btn: sharedStyles.btnPrimary,
+  stepLabel: { fontSize: 11, color: colors.textFaint },
   slider: { width: "100%", cursor: "pointer" },
   btnRow: { display: "flex", gap: 4 },
   stepBtn: {
-    flex: 1, background: "#444", border: "none", color: "#fff",
-    padding: "4px 0", cursor: "pointer", borderRadius: 3, fontSize: 14,
+    ...sharedStyles.btnMuted,
+    flex: 1,
+    padding: "4px 0",
+    fontSize: 14,
   },
-  error: { fontSize: 11, color: "#ff6b6b", background: "#2a1a1a", padding: "4px 6px", borderRadius: 3 },
+  error: sharedStyles.errorMsg,
 };

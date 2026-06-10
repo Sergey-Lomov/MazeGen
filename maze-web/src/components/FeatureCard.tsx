@@ -1,4 +1,5 @@
 import React from "react";
+import { colors, font } from "../styles/theme";
 
 export type FeatureStatus = "unavailable" | "default" | "set";
 
@@ -13,15 +14,15 @@ export interface FeatureCardProps {
 }
 
 const STATUS_COLORS: Record<FeatureStatus, string> = {
-  unavailable: "transparent",
-  default: "#666",
-  set: "#6dbf7e",
+  unavailable: colors.featureStatusUnavailable,
+  default: colors.featureStatusDefault,
+  set: colors.featureStatusSet,
 };
 
 const STATUS_BORDER: Record<FeatureStatus, string> = {
-  unavailable: "1px solid #555",
-  default: "1px solid #666",
-  set: "1px solid #6dbf7e",
+  unavailable: `1px solid ${colors.featureStatusDefault}`,
+  default: `1px solid ${colors.featureStatusDefault}`,
+  set: `1px solid ${colors.featureStatusSet}`,
 };
 
 export function FeatureCard({ title, status, comment, subtitle, expanded, onToggle, children }: FeatureCardProps) {
@@ -63,7 +64,7 @@ export function FeatureCard({ title, status, comment, subtitle, expanded, onTogg
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
-    borderBottom: "1px solid #2a2a2a",
+    borderBottom: `1px solid ${colors.borderDim}`,
   },
   header: {
     width: "100%",
@@ -103,21 +104,21 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   title: {
-    fontSize: 13,
+    fontSize: font.lg,
     fontWeight: 600,
-    color: "#ddd",
+    color: colors.textSecondary,
   },
   comment: {
-    fontSize: 11,
-    color: "#666",
+    fontSize: font.sm,
+    color: colors.textVeryDim,
   },
   subtitle: {
-    fontSize: 11,
-    color: "#aaa",
+    fontSize: font.sm,
+    color: colors.textFaint,
   },
   chevron: {
-    fontSize: 9,
-    color: "#555",
+    fontSize: font.xs,
+    color: colors.textDisabled,
     flexShrink: 0,
   },
   body: {

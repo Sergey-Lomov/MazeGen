@@ -1,4 +1,6 @@
 import { useMazeStore } from "../store/mazeStore";
+import { sharedStyles } from "../styles/shared";
+import { colors } from "../styles/theme";
 
 function pct(count: number, total: number): string {
   if (total === 0) return "0.0%";
@@ -91,20 +93,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   empty: {
     fontSize: 11,
-    color: "#666",
+    color: colors.textVeryDim,
     padding: 8,
   },
   section: {
     marginBottom: 16,
   },
   sectionHeader: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: "#888",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    ...sharedStyles.sectionHeader,
     marginBottom: 6,
-    borderBottom: "1px solid #333",
+    borderBottom: `1px solid ${colors.borderMid}`,
     paddingBottom: 3,
   },
   row: {
@@ -112,24 +110,24 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 4,
     fontSize: 11,
-    color: "#ccc",
+    color: colors.textMuted,
     padding: "2px 0",
   },
   rowLabel: {
     flex: 1,
-    color: "#aaa",
+    color: colors.textFaint,
   },
   rowCount: {
     width: 40,
     textAlign: "right",
-    color: "#e0e0e0",
+    color: colors.textPrimary,
   },
   rowPct: {
     width: 46,
     textAlign: "right",
-    color: "#666",
+    color: colors.textVeryDim,
   },
   rowValue: {
-    color: "#e0e0e0",
+    color: colors.textPrimary,
   },
 };

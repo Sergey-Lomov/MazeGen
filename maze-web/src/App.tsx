@@ -3,6 +3,7 @@ import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
 import { FeaturesPanel } from "./components/FeaturesPanel";
 import { useMazeStore } from "./store/mazeStore";
+import { colors, font } from "./styles/theme";
 
 const PANEL_WIDTH = 260;
 
@@ -54,12 +55,12 @@ const styles: Record<string, React.CSSProperties> = {
   panel: {
     width: PANEL_WIDTH,
     minWidth: PANEL_WIDTH,
-    background: "#1e1e1e",
-    borderRight: "1px solid #333",
+    background: colors.bgPanel,
+    borderRight: `1px solid ${colors.borderMid}`,
     display: "flex",
     flexDirection: "column",
     overflowY: "auto",
   },
   canvas: { flex: 1, overflow: "hidden" },
-  loading: { padding: 12, fontSize: 11, color: "#666" },
+  loading: { padding: 12, fontSize: font.sm, color: colors.textVeryDim },
 };

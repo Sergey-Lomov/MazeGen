@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { StrategyParamsModal } from "./StrategyParamsModal";
+import { sharedStyles } from "../styles/shared";
+import { colors } from "../styles/theme";
 
 export function QualityControlPanel() {
   const availableChecks = useMazeStore((s) => s.availableChecks);
@@ -109,8 +111,8 @@ const styles: Record<string, React.CSSProperties> = {
   panel: {
     display: "flex",
     flexDirection: "row",
-    background: "#222",
-    borderRight: "1px solid #333",
+    background: colors.bgPanelAlt,
+    borderRight: `1px solid ${colors.borderMid}`,
     width: 480,
     minWidth: 480,
     overflowY: "auto",
@@ -123,18 +125,14 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   colHeader: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: "#888",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    ...sharedStyles.sectionHeader,
     marginBottom: 4,
-    borderBottom: "1px solid #333",
+    borderBottom: `1px solid ${colors.borderMid}`,
     paddingBottom: 4,
   },
   divider: {
     width: 1,
-    background: "#333",
+    background: colors.borderMid,
     margin: "8px 0",
   },
   row: {
@@ -156,25 +154,20 @@ const styles: Record<string, React.CSSProperties> = {
   },
   label: {
     fontSize: 11,
-    color: "#ccc",
+    color: colors.textMuted,
   },
   empty: {
     fontSize: 11,
-    color: "#555",
+    color: colors.textDisabled,
   },
   select: {
-    background: "#2a2a2a",
-    border: "1px solid #444",
-    color: "#e0e0e0",
-    fontSize: 11,
-    borderRadius: 3,
-    padding: "1px 4px",
+    ...sharedStyles.selectSm,
     width: "100%",
   },
   gearBtn: {
-    background: "#2a2a2a",
-    border: "1px solid #444",
-    color: "#aaa",
+    background: colors.bgInput,
+    border: `1px solid ${colors.borderStrong}`,
+    color: colors.textFaint,
     cursor: "pointer",
     fontSize: 13,
     borderRadius: 3,

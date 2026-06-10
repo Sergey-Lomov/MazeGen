@@ -5,6 +5,7 @@ import { BasicConfigFeature, HEX_ORIENTATION_LABELS, TRI_ORIENTATION_LABELS } fr
 import { FieldSetupFeature, fieldSetupSubtitle } from "./features/FieldSetupFeature";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind } from "../store/mazeStore";
+import { colors } from "../styles/theme";
 
 const KIND_LABELS: Record<TessellationKind, string> = {
   square: "Square",
@@ -90,7 +91,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     width: "100%",
     height: "100%",
-    background: "#1e1e1e",
+    background: colors.bgPanel,
     overflowY: "auto",
   },
 };

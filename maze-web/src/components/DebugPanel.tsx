@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../store/mazeStore";
+import { sharedStyles } from "../styles/shared";
+import { colors, radius } from "../styles/theme";
 
 export function DebugPanel() {
   const showNodeIds = useMazeStore((s) => s.showNodeIds);
@@ -48,22 +50,22 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
     padding: 12,
   },
-  title: { fontSize: 13, fontWeight: "bold", color: "#aaa", marginBottom: 4 },
+  title: sharedStyles.panelTitle,
   checkLabel: {
     display: "flex",
     alignItems: "center",
     gap: 6,
     fontSize: 12,
-    color: "#ccc",
+    color: colors.textMuted,
     cursor: "pointer",
   },
   info: {
     marginTop: 8,
     padding: 8,
-    background: "#2a2a2a",
-    borderRadius: 4,
+    background: colors.bgInput,
+    borderRadius: radius.md,
     fontSize: 11,
-    color: "#4a9eff",
+    color: colors.textAccent,
     lineHeight: 1.6,
   },
 };

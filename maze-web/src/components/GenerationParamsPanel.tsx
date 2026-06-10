@@ -1,5 +1,6 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { GenerationParams } from "../wasm/types";
+import { sharedStyles } from "../styles/shared";
 
 const PARAMS: { key: keyof GenerationParams; label: string }[] = [
   { key: "depth_first",     label: "Depth First" },
@@ -40,30 +41,9 @@ export function GenerationParamsPanel() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  panel: {
-    padding: "8px 10px",
-  },
-  row: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
-  },
-  label: {
-    fontSize: 11,
-    color: "#ccc",
-    width: 110,
-    flexShrink: 0,
-  },
-  slider: {
-    flex: 1,
-    accentColor: "#5a9",
-  },
-  value: {
-    fontSize: 11,
-    color: "#888",
-    width: 32,
-    textAlign: "right",
-    flexShrink: 0,
-  },
+  panel: { padding: "8px 10px" },
+  row: sharedStyles.sliderRow,
+  label: sharedStyles.sliderRowLabel,
+  slider: sharedStyles.sliderInput,
+  value: sharedStyles.sliderRowValue,
 };

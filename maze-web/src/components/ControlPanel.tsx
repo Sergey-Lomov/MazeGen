@@ -1,6 +1,8 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { HexShape, TriangleShape, TessellationKind, SquareShape, HexOrientation, TriOrientation } from "../store/mazeStore";
 import type { TessellationConfig } from "../wasm/types";
+import { sharedStyles } from "../styles/shared";
+import { colors } from "../styles/theme";
 
 interface Props {
   disabled?: boolean;
@@ -262,32 +264,17 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 8,
     padding: 12,
-    borderBottom: "1px solid #333",
+    borderBottom: `1px solid ${colors.borderMid}`,
   },
-  title: { fontSize: 13, fontWeight: "bold", color: "#aaa", marginBottom: 4 },
-  label: { display: "flex", flexDirection: "column", gap: 2, fontSize: 11, color: "#aaa" },
-  input: {
-    background: "#2a2a2a",
-    border: "1px solid #444",
-    color: "#e0e0e0",
-    padding: "3px 6px",
-    fontSize: 12,
-    borderRadius: 3,
-  },
-  btn: {
-    background: "#3a6ea8",
-    border: "none",
-    color: "#fff",
-    padding: "5px 0",
-    cursor: "pointer",
-    borderRadius: 3,
-    fontSize: 12,
-  },
-  btnSecondary: { background: "#555" },
-  btnSettings: { background: "#444" },
-  btnSettingsActive: { background: "#2a5080", outline: "1px solid #3a6ea8" },
-  btnDisabled: { opacity: 0.4, cursor: "not-allowed" },
-  freeInfo: { fontSize: 11, color: "#888", textAlign: "center" },
-  warning: { fontSize: 11, color: "#ffaa44", background: "#2a2010", padding: "4px 6px", borderRadius: 3 },
-  error: { fontSize: 11, color: "#ff6b6b", background: "#2a1a1a", padding: "4px 6px", borderRadius: 3 },
+  title: sharedStyles.panelTitle,
+  label: { ...sharedStyles.fieldLabel, gap: 2 },
+  input: sharedStyles.input,
+  btn: sharedStyles.btnPrimary,
+  btnSecondary: { background: colors.bgBtnSecondary },
+  btnSettings: { background: colors.bgBtnMuted },
+  btnSettingsActive: { background: colors.bgBtnPrimaryActive, outline: `1px solid ${colors.bgBtnPrimary}` },
+  btnDisabled: sharedStyles.btnDisabled,
+  freeInfo: { fontSize: 11, color: colors.textDim, textAlign: "center" },
+  warning: sharedStyles.warningMsg,
+  error: sharedStyles.errorMsg,
 };

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
 import type { TessellationConfig } from "../../wasm/types";
+import { sharedStyles } from "../../styles/shared";
+import { colors } from "../../styles/theme";
 
 interface SizeParamProps {
   label: string;
@@ -244,24 +246,12 @@ function configSizeLabel(cfg: TessellationConfig): string {
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 8 },
   toggleRow: { display: "flex", gap: 4 },
-  toggleBtn: {
-    flex: 1, padding: "4px 0", fontSize: 11, border: "1px solid #444",
-    background: "#2a2a2a", color: "#888", borderRadius: 3, cursor: "pointer",
-  },
-  toggleBtnActive: { background: "#3a6ea8", color: "#fff", border: "1px solid #3a6ea8" },
-  label: { display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "#aaa" },
-  select: {
-    background: "#2a2a2a", border: "1px solid #444", color: "#e0e0e0",
-    padding: "3px 6px", fontSize: 12, borderRadius: 3,
-  },
-  input: {
-    background: "#2a2a2a", border: "1px solid #444", color: "#e0e0e0",
-    padding: "3px 6px", fontSize: 12, borderRadius: 3,
-  },
-  sectionLabel: { fontSize: 11, color: "#aaa" },
+  toggleBtn: sharedStyles.toggleBtn,
+  toggleBtnActive: sharedStyles.toggleBtnActive,
+  label: sharedStyles.fieldLabel,
+  select: sharedStyles.select,
+  input: sharedStyles.input,
+  sectionLabel: { fontSize: 11, color: colors.textFaint },
   primitiveGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  primitiveBtn: {
-    padding: "4px 0", fontSize: 11, border: "1px solid #444",
-    background: "#2a2a2a", color: "#888", borderRadius: 3, cursor: "pointer",
-  },
+  primitiveBtn: { ...sharedStyles.toggleBtn, flex: undefined },
 };

@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
 import { useMazeStore } from "../store/mazeStore";
 import type { ParamDescriptor } from "../wasm/types";
+import { sharedStyles } from "../styles/shared";
+import { colors, radius } from "../styles/theme";
 
 interface Props {
   strategyId: string;
@@ -80,9 +82,9 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 1000,
   },
   modal: {
-    background: "#1e1e1e",
-    border: "1px solid #444",
-    borderRadius: 6,
+    background: colors.bgPanel,
+    border: `1px solid ${colors.borderStrong}`,
+    borderRadius: radius.lg,
     minWidth: 280,
     maxWidth: 400,
     boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
@@ -92,21 +94,14 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "10px 14px",
-    borderBottom: "1px solid #333",
+    borderBottom: `1px solid ${colors.borderMid}`,
   },
   title: {
     fontSize: 12,
     fontWeight: "bold",
-    color: "#e0e0e0",
+    color: colors.textPrimary,
   },
-  closeBtn: {
-    background: "none",
-    border: "none",
-    color: "#888",
-    cursor: "pointer",
-    fontSize: 14,
-    padding: "0 2px",
-  },
+  closeBtn: sharedStyles.closeBtn,
   body: {
     padding: "12px 14px",
     display: "flex",
@@ -121,25 +116,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   label: {
     fontSize: 11,
-    color: "#ccc",
+    color: colors.textMuted,
     flex: 1,
   },
   input: {
-    background: "#2a2a2a",
-    border: "1px solid #444",
-    color: "#e0e0e0",
-    fontSize: 11,
-    borderRadius: 3,
-    padding: "2px 6px",
+    ...sharedStyles.inputSm,
     width: 80,
   },
   select: {
-    background: "#2a2a2a",
-    border: "1px solid #444",
-    color: "#e0e0e0",
-    fontSize: 11,
-    borderRadius: 3,
-    padding: "1px 4px",
+    ...sharedStyles.selectSm,
     width: 120,
   },
 };

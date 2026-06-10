@@ -4,6 +4,8 @@ import { GenerationParamsPanel } from "./GenerationParamsPanel";
 import { EdgeBasedParamsPanel } from "./EdgeBasedParamsPanel";
 import { ElementsPanel } from "./ElementsPanel";
 import { QualityControlPanel } from "./QualityControlPanel";
+import { sharedStyles } from "../styles/shared";
+import { colors } from "../styles/theme";
 
 type MethodMeta = { label: string; component?: React.ComponentType };
 
@@ -70,15 +72,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
   },
-  section: {
-  },
+  section: {},
   sectionHeader: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: "#888",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    borderBottom: "1px solid #333",
+    ...sharedStyles.sectionHeader,
+    borderBottom: `1px solid ${colors.borderMid}`,
     padding: "8px 10px 4px",
   },
   methodRow: {
@@ -89,17 +86,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   methodLabel: {
     fontSize: 11,
-    color: "#ccc",
+    color: colors.textMuted,
     width: 110,
     flexShrink: 0,
   },
   select: {
+    ...sharedStyles.select,
     flex: 1,
-    background: "#2a2a2a",
-    color: "#ddd",
-    border: "1px solid #444",
-    borderRadius: 3,
-    padding: "3px 6px",
-    fontSize: 12,
+    color: colors.textSecondary,
   },
 };

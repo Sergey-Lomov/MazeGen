@@ -1,6 +1,7 @@
 import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
+import { sharedStyles } from "../../styles/shared";
 
 export const HEX_ORIENTATION_LABELS: Record<HexOrientation, string> = {
   flat_top: "Flat top",
@@ -92,30 +93,12 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 8,
   },
-  label: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 3,
-    fontSize: 11,
-    color: "#aaa",
-  },
-  select: {
-    background: "#2a2a2a",
-    border: "1px solid #444",
-    color: "#e0e0e0",
-    padding: "3px 6px",
-    fontSize: 12,
-    borderRadius: 3,
-  },
+  label: sharedStyles.fieldLabel,
+  select: sharedStyles.select,
   confirmBtn: {
     marginTop: 4,
-    background: "#3a6ea8",
-    border: "none",
-    color: "#fff",
+    ...sharedStyles.btnPrimary,
     padding: "6px 0",
-    cursor: "pointer",
-    borderRadius: 3,
-    fontSize: 12,
     fontWeight: 600,
   },
 };
