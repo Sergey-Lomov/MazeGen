@@ -7,6 +7,7 @@ import { ComponentRenderer } from "./ComponentRenderer";
 import { RouteOverlay } from "./RouteOverlay";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { FieldEditController } from "./FieldEditController";
+import { GridPreviewOverlay } from "./GridPreviewOverlay";
 import { makeProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationConfig } from "../wasm/types";
@@ -28,6 +29,8 @@ export class MazeScene {
   private fieldEditorOverlay: FieldEditorOverlay;
   private fieldEditorOverlayContainer: Container;
   private fieldEditController: FieldEditController;
+  private gridPreviewOverlay: GridPreviewOverlay;
+  private gridPreviewContainer: Container;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
@@ -44,6 +47,7 @@ export class MazeScene {
   private unsubscribeComponentOverlay: (() => void) | null = null;
   private unsubscribeMaze: (() => void) | null = null;
   private unsubscribeEditField: (() => void) | null = null;
+  private unsubscribePreview: (() => void) | null = null;
   private refitTimerId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(app: Application) {
@@ -68,7 +72,8 @@ export class MazeScene {
 
     this.routeOverlayContainer = new Container();
     this.fieldEditorOverlayContainer = new Container();
-    this.syncedLayers = [this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer, this.fieldEditorOverlayContainer];
+    this.gridPreviewContainer = new Container();
+    this.syncedLayers = [this.gridPreviewContainer, this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer, this.fieldEditorOverlayContainer];
 
     this.app.stage.addChild(this.viewport);
     for (const layer of this.syncedLayers) this.app.stage.addChild(layer);
@@ -87,6 +92,7 @@ export class MazeScene {
     this.navRenderer = new NavGraphRenderer(navInner);
     this.routeOverlay = new RouteOverlay(this.routeOverlayContainer);
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
+    this.gridPreviewOverlay = new GridPreviewOverlay(this.gridPreviewContainer);
 
     const self = this;
     this.fieldEditController = new FieldEditController(
@@ -121,6 +127,8 @@ export class MazeScene {
     this.subscribeToComponentOverlay();
     this.subscribeToMaze();
     this.subscribeToEditField();
+    this.subscribeToPreview();
+    this.syncLayersToViewport();
   }
 
   private subscribeToOverlay(): void {
@@ -163,6 +171,16 @@ export class MazeScene {
     });
   }
 
+  private subscribeToPreview(): void {
+    let prev = useMazeStore.getState().previewTessellationConfig;
+    this.unsubscribePreview = useMazeStore.subscribe((state) => {
+      if (state.previewTessellationConfig !== prev) {
+        prev = state.previewTessellationConfig;
+        this.syncLayersToViewport();
+      }
+    });
+  }
+
   private subscribeToEditField(): void {
     let prevEditing = useMazeStore.getState().isEditingField;
     let prevOverlay = useMazeStore.getState().showFieldOverlay;
@@ -198,6 +216,13 @@ export class MazeScene {
       layer.scale.y = this.viewport.scale.y;
     }
     this.fieldEditorOverlay.onViewportChanged(
+      this.viewport.x,
+      this.viewport.y,
+      this.app.screen.width,
+      this.app.screen.height,
+      this.viewport.scale.x,
+    );
+    this.gridPreviewOverlay.onViewportChanged(
       this.viewport.x,
       this.viewport.y,
       this.app.screen.width,
@@ -319,12 +344,14 @@ export class MazeScene {
     this.unsubscribeComponentOverlay?.();
     this.unsubscribeMaze?.();
     this.unsubscribeEditField?.();
+    this.unsubscribePreview?.();
     this.tileRenderer.destroy();
     this.componentRenderer.destroy();
     this.graphRenderer.destroy();
     this.navRenderer.destroy();
     this.routeOverlay.destroy();
     this.fieldEditorOverlay.destroy();
+    this.gridPreviewOverlay.destroy();
     this.fieldEditController.destroy();
     window.removeEventListener("blur", this.onBlur);
     this.app.canvas.removeEventListener("wheel", this.onWheel);
