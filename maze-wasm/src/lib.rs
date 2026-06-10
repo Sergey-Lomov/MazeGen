@@ -1,6 +1,7 @@
 mod dto;
 mod generation_config;
-mod dispatch;
+mod runner;
+mod tessellation_dispatch;
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -10,7 +11,7 @@ use maze_core::{
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
 use generation_config::{GenerateConfig, TessellationConfig};
-use dispatch::{dispatch_generate, dispatch_generate_steps, dispatch_expand_field_points};
+use tessellation_dispatch::{dispatch_generate, dispatch_generate_steps, dispatch_expand_field_points};
 
 #[derive(Serialize)]
 struct ParamDescriptor {
