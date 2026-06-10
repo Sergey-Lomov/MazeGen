@@ -1,10 +1,9 @@
-use std::collections::BinaryHeap;
-use std::cmp::Reverse;
 use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::graph::nav::NavGraph;
+use crate::graph::pathfinding::{dijkstra_forward, dijkstra_reverse};
 use crate::quality_control::Issue;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
@@ -74,7 +73,7 @@ impl<T: Tessellation> RepairStrategy<T> for FarthestEndpointsStrategy {
 }
 
 fn farthest_from(nav: &NavGraph, source: usize) -> NodeId {
-    let dist = dijkstra(nav, source);
+    let dist = dijkstra_forward(nav, source);
     dist.iter().enumerate()
         .filter(|&(_, &d)| d != usize::MAX)
         .max_by_key(|&(nav_id, &d)| (d, std::cmp::Reverse(nav.nodes[nav_id].node_id)))
@@ -89,44 +88,4 @@ fn farthest_to(nav: &NavGraph, target: usize) -> NodeId {
         .max_by_key(|&(nav_id, &d)| (d, std::cmp::Reverse(nav.nodes[nav_id].node_id)))
         .map(|(nav_id, _)| nav.nodes[nav_id].node_id)
         .unwrap_or(nav.nodes[target].node_id)
-}
-
-fn dijkstra(nav: &NavGraph, source: usize) -> Vec<usize> {
-    dijkstra_impl(nav, source, |nav, u| {
-        nav.outgoing_edges(u).map(|e| (e.to, e.path.len().saturating_sub(1)))
-    })
-}
-
-fn dijkstra_reverse(nav: &NavGraph, target: usize) -> Vec<usize> {
-    dijkstra_impl(nav, target, |nav, u| {
-        nav.incoming_edges(u).map(|e| (e.from, e.path.len().saturating_sub(1)))
-    })
-}
-
-fn dijkstra_impl<'a, I, F>(nav: &'a NavGraph, source: usize, neighbors: F) -> Vec<usize>
-where
-    I: Iterator<Item = (usize, usize)> + 'a,
-    F: Fn(&'a NavGraph, usize) -> I,
-{
-    let n = nav.nodes.len();
-    let mut dist = vec![usize::MAX; n];
-    let mut heap: BinaryHeap<Reverse<(usize, usize)>> = BinaryHeap::new();
-
-    dist[source] = 0;
-    heap.push(Reverse((0, source)));
-
-    while let Some(Reverse((cost, u))) = heap.pop() {
-        if dist[u] < cost {
-            continue;
-        }
-        for (v, weight) in neighbors(nav, u) {
-            let next_cost = cost + weight;
-            if next_cost < dist[v] {
-                dist[v] = next_cost;
-                heap.push(Reverse((next_cost, v)));
-            }
-        }
-    }
-
-    dist
 }

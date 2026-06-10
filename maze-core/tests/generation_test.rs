@@ -133,11 +133,102 @@ fn generated_maze_is_connected_with_all_one_way_edges() {
     }
 }
 
+fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0 } }
+
+fn assert_perfect_maze(graph: &maze_core::Graph, node_count: usize) {
+    assert_eq!(graph.edges().count(), 2 * (node_count - 1),
+        "expected perfect maze: 2*(node_count-1) directed edges");
+}
+
+fn assert_deterministic(g1: &maze_core::Graph, g2: &maze_core::Graph) {
+    let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
+    let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
+    e1.sort();
+    e2.sort();
+    assert_eq!(e1, e2, "same seed produced different graphs");
+}
+
+// --- generate_maze dispatch ---
+
+#[test]
+fn generate_maze_dispatches_all_algorithms() {
+    let algorithms = vec![
+        GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
+        GenerationAlgorithm::CustomEdgeBased(EdgeBasedParams::default()),
+        GenerationAlgorithm::RecursiveBacktracker,
+        GenerationAlgorithm::WilsonAlgorithm,
+        GenerationAlgorithm::KruskalAlgorithm,
+    ];
+    for algo in algorithms {
+        let (mut graph, field, start) = build(4, 4);
+        let node_count = graph.nodes().count();
+        let config = GenerationConfig { algorithm: algo, elements: no_one_way_elements() };
+        generate_maze(&mut graph, &field, 42, start, config);
+        assert_perfect_maze(&graph, node_count);
+    }
+}
+
+// --- RecursiveBacktracker ---
+
+#[test]
+fn recursive_backtracker_visits_all_nodes() {
+    let (mut graph, field, start) = build(5, 5);
+    let node_count = graph.nodes().count();
+    generate_maze(&mut graph, &field, 42, start, GenerationConfig {
+        algorithm: GenerationAlgorithm::RecursiveBacktracker,
+        elements: no_one_way_elements(),
+    });
+    assert_perfect_maze(&graph, node_count);
+}
+
+#[test]
+fn recursive_backtracker_is_deterministic() {
+    let (mut g1, f1, s1) = build(4, 4);
+    let (mut g2, f2, s2) = build(4, 4);
+    let config = || GenerationConfig { algorithm: GenerationAlgorithm::RecursiveBacktracker, elements: no_one_way_elements() };
+    generate_maze(&mut g1, &f1, 7, s1, config());
+    generate_maze(&mut g2, &f2, 7, s2, config());
+    assert_deterministic(&g1, &g2);
+}
+
+// --- Wilson ---
+
+#[test]
+fn wilson_visits_all_nodes() {
+    let (mut graph, field, start) = build(5, 5);
+    let node_count = graph.nodes().count();
+    generate_maze(&mut graph, &field, 42, start, GenerationConfig {
+        algorithm: GenerationAlgorithm::WilsonAlgorithm,
+        elements: no_one_way_elements(),
+    });
+    assert_perfect_maze(&graph, node_count);
+}
+
+#[test]
+fn wilson_is_deterministic() {
+    let (mut g1, f1, s1) = build(4, 4);
+    let (mut g2, f2, s2) = build(4, 4);
+    let config = || GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, elements: no_one_way_elements() };
+    generate_maze(&mut g1, &f1, 7, s1, config());
+    generate_maze(&mut g2, &f2, 7, s2, config());
+    assert_deterministic(&g1, &g2);
+}
+
+// --- Kruskal ---
+
 fn kruskal_config() -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::KruskalAlgorithm,
         elements: ElementsConfig { one_way_chance: 0.0 },
     }
+}
+
+#[test]
+fn kruskal_visits_all_nodes() {
+    let (mut graph, field, start) = build(5, 5);
+    let node_count = graph.nodes().count();
+    generate_maze(&mut graph, &field, 42, start, kruskal_config());
+    assert_perfect_maze(&graph, node_count);
 }
 
 #[test]

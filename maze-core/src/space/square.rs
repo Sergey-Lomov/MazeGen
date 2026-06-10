@@ -43,14 +43,6 @@ impl Tessellation for SquareTessellation {
         }
     }
 
-    fn opposite_face(face: SquareFace) -> Option<SquareFace> {
-        Some(match face {
-            SquareFace::N => SquareFace::S,
-            SquareFace::S => SquareFace::N,
-            SquareFace::E => SquareFace::W,
-            SquareFace::W => SquareFace::E,
-        })
-    }
 }
 
 pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {

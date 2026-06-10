@@ -97,15 +97,16 @@ pub fn generate<T: Tessellation>(
             }
         };
 
+        let connected_set: HashSet<NodeId> = connected.iter().copied().collect();
         for &dst in &connected {
             add_edge(graph, src, dst, elements, &mut rng);
             visited.insert(dst);
             in_reserve.remove(&dst);
             add_to_frontier(dst, Some(src), &mut frontier, &mut in_frontier);
         }
-        reserve.retain(|x| !connected.contains(x));
+        reserve.retain(|x| !connected_set.contains(x));
         for n in free_neighbors {
-            if !connected.contains(&n) && !in_reserve.contains(&n) && !visited.contains(&n) {
+            if !connected_set.contains(&n) && !in_reserve.contains(&n) && !visited.contains(&n) {
                 reserve.push(n);
                 in_reserve.insert(n);
             }
@@ -123,6 +124,13 @@ fn add_to_frontier(node: NodeId, parent: Option<NodeId>, frontier: &mut Vec<Fron
     }
 }
 
+/// Pick an index from a non-empty collection: last element with probability `depth_first`,
+/// random element otherwise. Biases toward recently-added items when depth_first is high.
+fn depth_first_index(len: usize, depth_first: f64, rng: &mut SmallRng) -> usize {
+    debug_assert!(len > 0);
+    if rng.random::<f64>() < depth_first { len - 1 } else { rng.random_range(0..len) }
+}
+
 fn pop_reserve(
     reserve: &mut Vec<NodeId>,
     in_reserve: &mut HashSet<NodeId>,
@@ -130,11 +138,7 @@ fn pop_reserve(
     rng: &mut SmallRng,
 ) -> Option<NodeId> {
     if reserve.is_empty() { return None; }
-    let idx = if rng.random::<f64>() < params.depth_first {
-        reserve.len() - 1
-    } else {
-        rng.random_range(0..reserve.len())
-    };
+    let idx = depth_first_index(reserve.len(), params.depth_first, rng);
     let node = reserve.swap_remove(idx);
     in_reserve.remove(&node);
     Some(node)
@@ -142,11 +146,7 @@ fn pop_reserve(
 
 fn choose_from_frontier(frontier: &[FrontierEntry], params: &GenerationParams, rng: &mut SmallRng) -> usize {
     if frontier.len() == 1 { return 0; }
-    if rng.random::<f64>() < params.depth_first {
-        frontier.len() - 1
-    } else {
-        rng.random_range(0..frontier.len())
-    }
+    depth_first_index(frontier.len(), params.depth_first, rng)
 }
 
 pub(super) fn junction_count(max: usize, params: &GenerationParams, rng: &mut SmallRng) -> usize {
@@ -206,8 +206,7 @@ fn choose_junction_candidates<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ids::IdGenerator;
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::generation::test_utils::{default_elements, make_field_and_graph};
     use rand::SeedableRng;
 
     fn rng(seed: u64) -> SmallRng { SmallRng::seed_from_u64(seed) }
@@ -252,21 +251,12 @@ mod tests {
         }
     }
 
-    fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, crate::graph::Graph) {
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(w, h), &mut ids).unwrap();
-        let mut graph = crate::graph::Graph::new();
-        field.build_nodes(&mut graph);
-        (field, graph)
-    }
-
     #[test]
     fn vertex_based_visits_all_nodes() {
         let (field, mut graph) = make_field_and_graph(5, 5);
         let node_count = graph.nodes().count();
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        let elements = ElementsConfig { one_way_chance: 0.0 };
-        generate(&mut graph, &field, 42, start, &default_params(), &elements, None);
+        generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), None);
         assert_eq!(graph.edges().count(), 2 * (node_count - 1));
     }
 
@@ -275,9 +265,8 @@ mod tests {
         let (field, mut g1) = make_field_and_graph(4, 4);
         let (_, mut g2) = make_field_and_graph(4, 4);
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        let elements = ElementsConfig { one_way_chance: 0.0 };
-        generate(&mut g1, &field, 7, start, &default_params(), &elements, None);
-        generate(&mut g2, &field, 7, start, &default_params(), &elements, None);
+        generate(&mut g1, &field, 7, start, &default_params(), &default_elements(), None);
+        generate(&mut g2, &field, 7, start, &default_params(), &default_elements(), None);
         let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
         let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
         e1.sort();

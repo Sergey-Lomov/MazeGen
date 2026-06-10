@@ -10,10 +10,9 @@ pub mod repair;
 
 pub use ids::{NodeId, IdGenerator};
 pub use graph::Graph;
-pub use graph::classify::{
-    GeometricNodeClass, GeometricNodeStats, SpatialEdgeStats, RouteInfo,
-    classify_node, compute_node_stats, compute_spatial_edge_stats, compute_route_info,
-};
+pub use graph::classify::{GeometricNodeClass, classify_node};
+pub use graph::stats::{GeometricNodeStats, SpatialEdgeStats, compute_node_stats, compute_spatial_edge_stats};
+pub use graph::routing::{RouteInfo, compute_route_info};
 pub use space::{
     Tessellation, Field,
     HexPoint, HexFace, HexTessellation, hex_parallelogram, hex_hexagon,

@@ -116,12 +116,12 @@ impl Default for GenerateConfig {
         Self {
             tessellation: TessellationConfig::default(),
             checks: vec![
-                MISSING_ENDPOINTS.to_string(),
-                UNREACHABLE_FINISH.to_string(),
+                MISSING_ENDPOINTS.as_str().to_string(),
+                UNREACHABLE_FINISH.as_str().to_string(),
             ],
             strategies: {
                 let mut m = HashMap::new();
-                m.insert(MISSING_ENDPOINTS.to_string(), StrategyConfig {
+                m.insert(MISSING_ENDPOINTS.as_str().to_string(), StrategyConfig {
                     id: "farthest_endpoints".to_string(),
                     params: HashMap::new(),
                 });

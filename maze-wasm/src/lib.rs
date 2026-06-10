@@ -6,7 +6,7 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
 use generation_config::{GenerateConfig, TessellationConfig};
@@ -40,6 +40,11 @@ struct StrategyDescriptor {
     params: Vec<ParamDescriptor>,
 }
 
+// Helper to turn IssueKind into a &'static str for JSON serialization.
+fn kind_str(k: IssueKind) -> &'static str {
+    k.as_str()
+}
+
 fn param_kind_dto(kind: &maze_core::repair::StrategyParamKind) -> ParamKindDto {
     match kind {
         maze_core::repair::StrategyParamKind::Float { default, min, max } =>
@@ -62,8 +67,8 @@ fn strategy_params_dto(params: &[maze_core::repair::StrategyParam]) -> Vec<Param
 #[wasm_bindgen]
 pub fn available_checks() -> JsValue {
     let checks = vec![
-        CheckDescriptor { id: MISSING_ENDPOINTS, issue_kinds: vec![MISSING_ENDPOINTS] },
-        CheckDescriptor { id: UNREACHABLE_FINISH, issue_kinds: vec![UNREACHABLE_FINISH] },
+        CheckDescriptor { id: kind_str(MISSING_ENDPOINTS), issue_kinds: vec![kind_str(MISSING_ENDPOINTS)] },
+        CheckDescriptor { id: kind_str(UNREACHABLE_FINISH), issue_kinds: vec![kind_str(UNREACHABLE_FINISH)] },
     ];
     serde_wasm_bindgen::to_value(&checks).unwrap()
 }
@@ -73,17 +78,17 @@ pub fn available_strategies() -> JsValue {
     let strategies: Vec<StrategyDescriptor> = vec![
         StrategyDescriptor {
             id: "random_endpoints",
-            handles: MISSING_ENDPOINTS,
+            handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<RandomEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&RandomEndpointsStrategy)),
         },
         StrategyDescriptor {
             id: "farthest_endpoints",
-            handles: MISSING_ENDPOINTS,
+            handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<FarthestEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&FarthestEndpointsStrategy)),
         },
         StrategyDescriptor {
             id: "scored_endpoints",
-            handles: MISSING_ENDPOINTS,
+            handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy)),
         },
     ];

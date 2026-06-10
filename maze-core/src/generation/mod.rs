@@ -96,6 +96,28 @@ pub struct GenerationStep {
     pub edges: Vec<GenerationEdge>,
 }
 
+fn dispatch<T: Tessellation>(
+    graph: &mut Graph,
+    field: &Field<T>,
+    seed: u64,
+    start: NodeId,
+    config: GenerationConfig,
+    on_step: Option<&mut dyn FnMut(&Graph)>,
+) {
+    match config.algorithm {
+        GenerationAlgorithm::CustomVertexBased(params) =>
+            vertex_based::generate(graph, field, seed, start, &params, &config.elements, on_step),
+        GenerationAlgorithm::CustomEdgeBased(params) =>
+            edge_based::generate(graph, field, seed, start, &params, &config.elements, on_step),
+        GenerationAlgorithm::RecursiveBacktracker =>
+            recursive_backtracker::generate(graph, field, seed, start, &config.elements, on_step),
+        GenerationAlgorithm::WilsonAlgorithm =>
+            wilson::generate(graph, field, seed, start, &config.elements, on_step),
+        GenerationAlgorithm::KruskalAlgorithm =>
+            kruskal::generate(graph, field, seed, &config.elements, on_step),
+    }
+}
+
 pub fn generate_maze<T: Tessellation>(
     graph: &mut Graph,
     field: &Field<T>,
@@ -103,18 +125,7 @@ pub fn generate_maze<T: Tessellation>(
     start: NodeId,
     config: GenerationConfig,
 ) {
-    match config.algorithm {
-        GenerationAlgorithm::CustomVertexBased(params) =>
-            vertex_based::generate(graph, field, seed, start, &params, &config.elements, None),
-        GenerationAlgorithm::CustomEdgeBased(params) =>
-            edge_based::generate(graph, field, seed, start, &params, &config.elements, None),
-        GenerationAlgorithm::RecursiveBacktracker =>
-            recursive_backtracker::generate(graph, field, seed, start, &config.elements, None),
-        GenerationAlgorithm::WilsonAlgorithm =>
-            wilson::generate(graph, field, seed, start, &config.elements, None),
-        GenerationAlgorithm::KruskalAlgorithm =>
-            kruskal::generate(graph, field, seed, &config.elements, None),
-    }
+    dispatch(graph, field, seed, start, config, None);
 }
 
 pub fn generate_maze_steps<T: Tessellation>(
@@ -129,18 +140,7 @@ pub fn generate_maze_steps<T: Tessellation>(
         let edges = g.edges().map(|e| GenerationEdge { from: e.from, to: e.to }).collect();
         steps.push(GenerationStep { edges });
     };
-    match config.algorithm {
-        GenerationAlgorithm::CustomVertexBased(params) =>
-            vertex_based::generate(graph, field, seed, start, &params, &config.elements, Some(&mut on_step)),
-        GenerationAlgorithm::CustomEdgeBased(params) =>
-            edge_based::generate(graph, field, seed, start, &params, &config.elements, Some(&mut on_step)),
-        GenerationAlgorithm::RecursiveBacktracker =>
-            recursive_backtracker::generate(graph, field, seed, start, &config.elements, Some(&mut on_step)),
-        GenerationAlgorithm::WilsonAlgorithm =>
-            wilson::generate(graph, field, seed, start, &config.elements, Some(&mut on_step)),
-        GenerationAlgorithm::KruskalAlgorithm =>
-            kruskal::generate(graph, field, seed, &config.elements, Some(&mut on_step)),
-    }
+    dispatch(graph, field, seed, start, config, Some(&mut on_step));
     steps
 }
 
@@ -160,43 +160,29 @@ pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &E
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) mod test_utils {
     use crate::graph::Graph;
     use crate::ids::IdGenerator;
     use crate::space::{Field, SquareTessellation, square_rect};
+    use super::ElementsConfig;
 
-    fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0 } }
+    pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0 } }
 
-    fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, Graph) {
+    pub fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
         let field = Field::new(square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
         field.build_nodes(&mut graph);
         (field, graph)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 
     #[test]
     fn elements_config_default_one_way_chance() {
         assert_eq!(ElementsConfig::default().one_way_chance, 0.04);
-    }
-
-    #[test]
-    fn generate_maze_dispatches_all_algorithms() {
-        let algorithms = vec![
-            GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
-            GenerationAlgorithm::CustomEdgeBased(EdgeBasedParams::default()),
-            GenerationAlgorithm::RecursiveBacktracker,
-            GenerationAlgorithm::WilsonAlgorithm,
-            GenerationAlgorithm::KruskalAlgorithm,
-        ];
-        for algo in algorithms {
-            let (field, mut graph) = make_field_and_graph(4, 4);
-            let node_count = graph.nodes().count();
-            let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-            let config = GenerationConfig { algorithm: algo, elements: default_elements() };
-            generate_maze(&mut graph, &field, 42, start, config);
-            assert_eq!(graph.edges().count(), 2 * (node_count - 1));
-        }
     }
 }

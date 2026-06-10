@@ -106,6 +106,12 @@ fn is_corridor_node(graph: &Graph, node: NodeId, pinned: &HashSet<NodeId>) -> bo
     out_set == inc_set
 }
 
+/// Advance one step along a chain: pick the outgoing neighbor of `current` that is not `prev`.
+/// Returns `None` if no such neighbor exists (dead end or all neighbors are `prev`).
+fn advance_chain(graph: &Graph, current: NodeId, prev: NodeId) -> Option<NodeId> {
+    graph.outgoing_neighbors(current).filter(|&n| n != prev).min()
+}
+
 /// Walk a directed corridor from `start` in direction `next_node`, collecting the path
 /// until we reach a non-corridor node or revisit a node (ring detection).
 /// Returns the path (inclusive of start, exclusive of the final junction or the ring-close node)
@@ -129,8 +135,7 @@ fn walk_corridor(
         }
         visited_corridor.insert(next);
         path.push(next);
-        // advance: find the outgoing neighbor of `next` that is not `current`
-        let Some(advance) = graph.outgoing_neighbors(next).filter(|&n| n != current).min() else {
+        let Some(advance) = advance_chain(graph, next, current) else {
             return (path, next);
         };
         current = next;
@@ -204,6 +209,58 @@ fn find_component_start(graph: &Graph, remaining: &HashSet<NodeId>, pinned: &Has
     }
 }
 
+fn enqueue_junction(
+    node: NodeId,
+    visited_junctions: &HashSet<NodeId>,
+    junction_stack: &mut Vec<NodeId>,
+) {
+    if !visited_junctions.contains(&node) {
+        junction_stack.push(node);
+    }
+}
+
+fn process_corridor(
+    graph: &Graph,
+    junction: NodeId,
+    next: NodeId,
+    nav: &mut NavGraph,
+    remaining: &mut HashSet<NodeId>,
+    visited_junctions: &mut HashSet<NodeId>,
+    junction_stack: &mut Vec<NodeId>,
+    pinned: &HashSet<NodeId>,
+) {
+    let mut visited_corridor: HashSet<NodeId> = HashSet::new();
+    visited_corridor.insert(junction);
+
+    let (path, terminal) = walk_corridor(graph, junction, next, &mut visited_corridor, pinned);
+
+    for &n in &path[1..] {
+        remaining.remove(&n);
+    }
+
+    let from_nav = nav.add_node(junction);
+    let to_nav   = nav.add_node(terminal);
+    nav.add_edge(from_nav, to_nav, path);
+
+    enqueue_junction(terminal, visited_junctions, junction_stack);
+}
+
+fn process_direct_edge(
+    junction: NodeId,
+    next: NodeId,
+    nav: &mut NavGraph,
+    remaining: &mut HashSet<NodeId>,
+    visited_junctions: &mut HashSet<NodeId>,
+    junction_stack: &mut Vec<NodeId>,
+) {
+    remaining.remove(&next);
+    let from_nav = nav.add_node(junction);
+    let to_nav   = nav.add_node(next);
+    nav.add_edge(from_nav, to_nav, vec![junction, next]);
+
+    enqueue_junction(next, visited_junctions, junction_stack);
+}
+
 /// DFS from a junction node, building nav edges for all reachable corridors.
 fn dfs_from_junction(
     graph: &Graph,
@@ -224,37 +281,57 @@ fn dfs_from_junction(
 
         for next in graph.outgoing_neighbors(junction).collect::<Vec<_>>() {
             if is_corridor_node(graph, next, pinned) {
-                // Walk the corridor
-                let mut visited_corridor: HashSet<NodeId> = HashSet::new();
-                visited_corridor.insert(junction);
-                remaining.remove(&next);
-
-                let (path, terminal) = walk_corridor(graph, junction, next, &mut visited_corridor, pinned);
-
-                // Remove all corridor intermediates from remaining
-                for &n in &path[1..path.len().saturating_sub(1)] {
-                    remaining.remove(&n);
-                }
-                remaining.remove(&terminal);
-
-                let from_nav = nav.add_node(junction);
-                let to_nav = nav.add_node(terminal);
-                nav.add_edge(from_nav, to_nav, path);
-
-                if !visited_junctions.contains(&terminal) {
-                    junction_stack.push(terminal);
-                }
+                process_corridor(graph, junction, next, nav, remaining, visited_junctions, &mut junction_stack, pinned);
             } else {
-                // Direct junction-to-junction edge (no corridor)
-                remaining.remove(&next);
-                let from_nav = nav.add_node(junction);
-                let to_nav = nav.add_node(next);
-                nav.add_edge(from_nav, to_nav, vec![junction, next]);
-
-                if !visited_junctions.contains(&next) {
-                    junction_stack.push(next);
-                }
+                process_direct_edge(junction, next, nav, remaining, visited_junctions, &mut junction_stack);
             }
+        }
+    }
+}
+
+/// Walk the ring from `ring_start` to find the first pinned node. Returns ring_start if none found.
+fn find_ring_anchor(graph: &Graph, ring_start: NodeId, pinned: &HashSet<NodeId>) -> NodeId {
+    let Some(first) = graph.outgoing_neighbors(ring_start).min() else {
+        return ring_start;
+    };
+    let mut walk = first;
+    let mut walk_prev = ring_start;
+    loop {
+        if pinned.contains(&walk) { return walk; }
+        match advance_chain(graph, walk, walk_prev) {
+            Some(n) if n == ring_start => return ring_start,
+            Some(n) => { walk_prev = walk; walk = n; }
+            None => return ring_start,
+        }
+    }
+}
+
+/// Walk one direction around the ring from `anchor` via `first_step`.
+/// Returns the complete path (anchor → ... → anchor) if the ring closes, else None.
+fn walk_ring_direction(
+    graph: &Graph,
+    anchor: NodeId,
+    first_step: NodeId,
+    remaining: &mut HashSet<NodeId>,
+) -> Option<Vec<NodeId>> {
+    let mut path = vec![anchor, first_step];
+    remaining.remove(&first_step);
+    let mut prev = anchor;
+    let mut current = first_step;
+
+    loop {
+        match advance_chain(graph, current, prev) {
+            Some(n) if n == anchor => {
+                path.push(anchor);
+                return Some(path);
+            }
+            Some(next) => {
+                remaining.remove(&next);
+                path.push(next);
+                prev = current;
+                current = next;
+            }
+            None => return None,
         }
     }
 }
@@ -269,65 +346,20 @@ fn build_ring(
     remaining: &mut HashSet<NodeId>,
     pinned: &HashSet<NodeId>,
 ) {
-    // If there are pinned nodes in the ring, delegate to junction DFS by treating
-    // ring_start as a corridor node — find a pinned anchor first.
-    // Simple approach: pick the first pinned node found in the ring as anchor.
-    let mut anchor = ring_start;
-    if !pinned.is_empty() {
-        if let Some(first) = graph.outgoing_neighbors(ring_start).min() {
-            let mut walk = first;
-            let mut walk_prev = ring_start;
-            loop {
-                if pinned.contains(&walk) {
-                    anchor = walk;
-                    break;
-                }
-                let next_opt = graph.outgoing_neighbors(walk).filter(|&n| n != walk_prev).min();
-                match next_opt {
-                    Some(n) if n == ring_start => break,
-                    Some(n) => { walk_prev = walk; walk = n; }
-                    None => break,
-                }
-            }
-        }
-    }
+    let anchor = if pinned.is_empty() {
+        ring_start
+    } else {
+        find_ring_anchor(graph, ring_start, pinned)
+    };
 
     let nav_id = nav.add_node(anchor);
     remaining.remove(&anchor);
-    // ring_start may differ from anchor; ensure it is not left in remaining.
-    // All other ring nodes are consumed during the outgoing walks below.
-    remaining.remove(&ring_start);
+    if ring_start != anchor {
+        remaining.remove(&ring_start);
+    }
 
-    // Walk both outgoing directions from anchor
     for first_step in graph.outgoing_neighbors(anchor).collect::<Vec<_>>() {
-        let mut path = vec![anchor, first_step];
-        remaining.remove(&first_step);
-        let mut prev = anchor;
-        let mut current = first_step;
-
-        let mut completed = false;
-        loop {
-            let next_opt = graph.outgoing_neighbors(current).filter(|&n| n != prev).min();
-
-            match next_opt {
-                Some(n) if n == anchor => {
-                    path.push(anchor);
-                    completed = true;
-                    break;
-                }
-                Some(next) => {
-                    remaining.remove(&next);
-                    path.push(next);
-                    prev = current;
-                    current = next;
-                }
-                None => {
-                    break;
-                }
-            }
-        }
-
-        if completed {
+        if let Some(path) = walk_ring_direction(graph, anchor, first_step, remaining) {
             nav.add_edge(nav_id, nav_id, path);
         }
     }

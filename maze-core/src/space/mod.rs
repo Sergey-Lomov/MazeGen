@@ -18,7 +18,6 @@ pub trait Tessellation {
     fn step(point: Self::Point, face: Self::Face) -> Self::Point;
     fn faces() -> &'static [Self::Face];
     fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
-    fn opposite_face(face: Self::Face) -> Option<Self::Face>;
 }
 
 pub struct Field<T: Tessellation> {

@@ -49,16 +49,6 @@ impl Tessellation for HexTessellation {
         }
     }
 
-    fn opposite_face(face: HexFace) -> Option<HexFace> {
-        Some(match face {
-            HexFace::E  => HexFace::W,
-            HexFace::NE => HexFace::SW,
-            HexFace::NW => HexFace::SE,
-            HexFace::W  => HexFace::E,
-            HexFace::SW => HexFace::NE,
-            HexFace::SE => HexFace::NW,
-        })
-    }
 }
 
 pub fn hex_parallelogram(cols: usize, rows: usize) -> Vec<HexPoint> {

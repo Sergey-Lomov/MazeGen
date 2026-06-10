@@ -1,6 +1,9 @@
 pub mod nav;
 pub mod scc;
 pub mod classify;
+pub mod stats;
+pub mod routing;
+pub(crate) mod pathfinding;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::ids::{NodeId, EdgeId};

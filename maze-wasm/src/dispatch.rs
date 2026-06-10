@@ -10,7 +10,7 @@ use maze_core::{
         TriTessellation, TriPoint, tri_rect, tri_triangle, tri_hexagon,
     },
     generation::{generate_maze, generate_maze_steps},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, IssueKind},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
     compute_node_stats, compute_spatial_edge_stats, compute_route_info,
 };
@@ -36,23 +36,20 @@ pub fn build_qc_and_repair<T: Tessellation>(
 ) -> Result<(QualityControlEngine<T>, RepairEngine<T>), JsValue> {
     let mut checks: Vec<Box<dyn maze_core::quality_control::Check<T>>> = Vec::new();
     for id in &config.checks {
-        match id.as_str() {
-            MISSING_ENDPOINTS => checks.push(Box::new(MissingEndpointsCheck)),
-            UNREACHABLE_FINISH => checks.push(Box::new(UnreachableFinishCheck)),
-            other => return Err(JsValue::from_str(&format!("unknown check: {other}"))),
+        match IssueKind::from_str(id.as_str()) {
+            Some(IssueKind::MissingEndpoints) => checks.push(Box::new(MissingEndpointsCheck)),
+            Some(IssueKind::UnreachableFinish) => checks.push(Box::new(UnreachableFinishCheck)),
+            None => return Err(JsValue::from_str(&format!("unknown check: {id}"))),
         }
     }
     let qc_engine = QualityControlEngine::new(checks);
 
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<T>>> = HashMap::new();
-    let mut param_overrides: HashMap<&'static str, HashMap<String, String>> = HashMap::new();
+    let mut param_overrides: HashMap<IssueKind, HashMap<String, String>> = HashMap::new();
 
-    for (issue_kind, strategy_cfg) in &config.strategies {
-        let kind: &'static str = match issue_kind.as_str() {
-            MISSING_ENDPOINTS => MISSING_ENDPOINTS,
-            UNREACHABLE_FINISH => UNREACHABLE_FINISH,
-            other => return Err(JsValue::from_str(&format!("unknown issue kind: {other}"))),
-        };
+    for (issue_kind_str, strategy_cfg) in &config.strategies {
+        let kind = IssueKind::from_str(issue_kind_str.as_str())
+            .ok_or_else(|| JsValue::from_str(&format!("unknown issue kind: {issue_kind_str}")))?;
         let strategy: Box<dyn RepairStrategy<T>> = match strategy_cfg.id.as_str() {
             "random_endpoints"   => Box::new(RandomEndpointsStrategy),
             "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
@@ -156,22 +153,18 @@ pub fn run_generate<T: Tessellation>(
         walls:         raw_edge_stats.walls,
     };
 
-    let route_score = maze.meta.route_score;
     let route_info = match (maze.meta.start, maze.meta.finish) {
         (Some(s), Some(f)) => {
             let mut pinned = std::collections::HashSet::new();
             pinned.insert(s);
             pinned.insert(f);
             let nav = maze.analysis.nav_graph_pinned(&maze.graph, &pinned);
-            compute_route_info(nav, s, f).map(|mut r| {
-                r.score = route_score;
-                RouteInfoDto {
-                    path_length:    r.path_length,
-                    junction_count: r.junction_count,
-                    one_way_count:  r.one_way_count,
-                    score:          r.score,
-                    path:           r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
-                }
+            compute_route_info(nav, s, f).map(|r| RouteInfoDto {
+                path_length:    r.path_length,
+                junction_count: r.junction_count,
+                one_way_count:  r.one_way_count,
+                score:          maze.meta.route_score,
+                path:           r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
             })
         }
         _ => None,
