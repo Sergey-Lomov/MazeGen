@@ -18,7 +18,7 @@ Two sub-modes toggled inside the card:
 
 **Custom** — free-draw mode. Left-click adds cells, right-click removes. Space or middle mouse pans the camera. Camera does not move while drawing. `isEditingField = true`, `fieldPoints` reflects the drawn set.
 
-Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card resets `fieldEditMode` to "default".
+Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
 
 ## State fields (mazeStore)
 
@@ -26,15 +26,19 @@ Switching default→custom preserves existing drawn points. Switching custom→d
 |---|---|
 | `fieldSetupOpen` | Whether the field setup card is open |
 | `fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode) |
+| `fieldPrimitive` | Active brush: `"point"` \| `"square_rect"` \| `"hex_parallelogram"` \| `"hex_hexagon"` \| `"tri_rect"` \| `"tri_triangle"` \| `"tri_hexagon"` |
 | `isEditingField` | True when active field is custom. Authoritative source for `generate()` |
 | `fieldPoints` | Active custom cell set for current kind |
 | `freeFieldPoints` | Per-kind cell sets, preserved across shape/mode switches |
 | `tessellationConfig` | Current config; predefined in default mode, custom (`*_custom`) in free-draw mode |
 | `savedConfigs` | Saved size params per predefined config type, restored on shape/mode switch |
 
+`fieldPrimitive` resets to `"point"` whenever `fieldEditMode` changes (both directions).
+
 ## Camera behavior
 
-- Card opens → camera centers on shape centroid (screen-space average of all cells)
+- Card opens in default mode → camera centers on shape centroid (screen-space average of all cells)
+- Card opens in custom mode → camera stays where it was
 - Default mode, size params change → re-center
 - Default mode, shape changes → re-center
 - Custom mode, cells added/removed → no camera movement
@@ -61,6 +65,49 @@ When centering a triangle shape, the coordinate offset `(ox, oy)` must satisfy `
 | `triangle_rect` | `cols × rows` | parity-safe offset |
 | `triangle_triangle` | `n²` | bbox center, parity-safe offset |
 | `triangle_hexagon` | sum of row widths over `2r` rows | bbox center, parity-safe offset |
+
+## Primitive brushes (custom mode)
+
+Custom mode supports two drawing modes controlled by `fieldPrimitive`:
+
+**Point** (`"point"`) — original streak mode. Each pointer move over a new cell immediately adds/removes it. No batch. Cannot be cancelled with Escape.
+
+**Shape primitives** — batch mode. Mousedown begins gesture, drag adjusts shape, mouseup commits all cells in one store update (no per-cell flicker). Escape cancels the gesture without committing.
+
+### Shape primitives
+
+| Primitive | Tessellation | Drag semantics |
+|---|---|---|
+| `square_rect` | square | corner-to-corner rectangle |
+| `hex_parallelogram` | hex | corner-to-corner parallelogram (axial coords) |
+| `hex_hexagon` | hex | center = mousedown, radius grows with drag distance |
+| `tri_rect` | triangle | corner-to-corner rectangle (all parities included) |
+| `tri_triangle` | triangle | center = mousedown, triangular shape grows with drag distance |
+| `tri_hexagon` | triangle | center = mousedown, hexagonal tri-grid shape grows with drag distance |
+
+**Corner-to-corner** shapes use `startGrid` and `endGrid` as opposite corners.
+
+**Center-radius** shapes use `startGrid` as center. `gridRadius` is computed from drag distance:
+```
+gridRadius = max(1, round(screenPixelDistance / (TILE_SIZE × viewportScale)))
+```
+Zoom-dependent by design: same pixel drag → same number of cells regardless of zoom level. Minimum radius is 1 (a click-without-drag yields the minimal shape).
+
+### Preview overlay
+
+While dragging, a semi-transparent overlay shows the pending shape:
+- Left button (add): blue `0x4488ff`, alpha 0.5
+- Right button (remove): red `0xff4444`, alpha 0.5
+
+Preview is RAF-throttled. `clear()` nulls `pendingCells` so a pending RAF frame skips the redraw if `clear()` fires first.
+
+### Gesture cancellation
+
+Escape key cancels any active shape-primitive gesture: preview clears, nothing committed. Point-streak gestures are not cancellable (cells already committed individually on each move).
+
+### Commit
+
+On mouseup: `addFieldPoints(cells)` or `removeFieldPoints(cells)` called with stored `lastPreviewCells` — never recomputed at commit time to prevent preview/commit divergence.
 
 ## Grid overlay
 

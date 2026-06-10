@@ -6,6 +6,7 @@ import type { TessellationProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
+import { triTriangleRaw, triHexagonRaw, triCenterOffset } from "./triShapeHelpers";
 import type { TessellationConfig } from "../wasm/types";
 
 const ACTIVE_CELL_COLOR = 0x666666;
@@ -190,35 +191,13 @@ function configAllCells(cfg: TessellationConfig): [number, number][] {
       return cells;
     }
     case "triangle_triangle": {
-      const n = cfg.side;
-      const shift = n % 2;
-      const raw: [number, number][] = [];
-      for (let row = 0; row < n; row++) {
-        const indent = n - 1 - row + shift;
-        for (let col = indent; col <= indent + 2 * row; col++)
-          raw.push([col, row]);
-      }
-      const cols = raw.map(c => c[0]), rows = raw.map(c => c[1]);
-      let ox = Math.round((Math.min(...cols) + Math.max(...cols)) / 2);
-      let oy = Math.round((Math.min(...rows) + Math.max(...rows)) / 2);
-      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
+      const raw = triTriangleRaw(cfg.side);
+      const { ox, oy } = triCenterOffset(raw);
       return raw.map(([x, y]) => [x - ox, y - oy]);
     }
     case "triangle_hexagon": {
-      const r = cfg.radius;
-      const odd_base = r % 2 === 0 ? r - 1 : r;
-      const raw: [number, number][] = [];
-      for (let row = 0; row < 2 * r; row++) {
-        const k = Math.min(row, 2 * r - 1 - row);
-        const indent = odd_base - k;
-        const width = 2 * (k + r) + 1;
-        for (let col = indent; col < indent + width; col++)
-          raw.push([col, row]);
-      }
-      const cols = raw.map(c => c[0]), rows = raw.map(c => c[1]);
-      let ox = Math.round((Math.min(...cols) + Math.max(...cols)) / 2);
-      let oy = Math.round((Math.min(...rows) + Math.max(...rows)) / 2);
-      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
+      const raw = triHexagonRaw(cfg.radius);
+      const { ox, oy } = triCenterOffset(raw);
       return raw.map(([x, y]) => [x - ox, y - oy]);
     }
     case "square_custom":

@@ -10,6 +10,7 @@ export type HexShape = "parallelogram" | "hexagon" | "free";
 export type TriangleShape = "rect" | "triangle" | "hexagon" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
+export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
 
 const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
 const DEFAULT_TRI_ORI: TriOrientation = "r0";
@@ -80,6 +81,7 @@ interface MazeState {
   showFieldOverlay: boolean;
   fieldSetupOpen: boolean;
   fieldEditMode: "default" | "custom";
+  fieldPrimitive: FieldPrimitive;
 }
 
 interface MazeActions {
@@ -114,9 +116,12 @@ interface MazeActions {
   setDebugState: (nodes: NodeDto[], edges: EdgeDto[], cfg: TessellationConfig) => void;
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
+  addFieldPoints: (cells: [number, number][]) => void;
+  removeFieldPoints: (cells: [number, number][]) => void;
   setShowFieldOverlay: (show: boolean) => void;
   setFieldSetupOpen: (open: boolean) => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
+  setFieldPrimitive: (p: FieldPrimitive) => void;
 }
 
 function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
@@ -263,6 +268,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   showFieldOverlay: true,
   fieldSetupOpen: false,
   fieldEditMode: "default",
+  fieldPrimitive: "point",
 
   setSeed: (seed) => set({ seed, error: null }),
 
@@ -578,20 +584,44 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
 
-  setFieldSetupOpen: (open) => set((state) => ({
-    fieldSetupOpen: open,
-    // When closing custom mode, reset to default so next open starts clean
-    fieldEditMode: open ? state.fieldEditMode : "default",
-  })),
+  setFieldSetupOpen: (open) => set({ fieldSetupOpen: open }),
 
   setFieldEditMode: (mode) => set((state) => {
     if (mode === "custom") {
       const fieldPoints = state.freeFieldPoints[state.tessellationKind];
-      return { fieldEditMode: mode, isEditingField: true, fieldPoints };
+      return { fieldEditMode: mode, isEditingField: true, fieldPoints, fieldPrimitive: "point" };
     }
     const cfg = buildPredefinedConfig(state.tessellationKind, state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg };
+    return { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point" };
   }),
+
+  addFieldPoints: (cells) => set((state) => {
+    let changed = false;
+    const fieldPoints = new Set(state.fieldPoints);
+    for (const [x, y] of cells) {
+      const key = encodePoint(x, y);
+      if (!fieldPoints.has(key)) { fieldPoints.add(key); changed = true; }
+    }
+    if (!changed) return {};
+    const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
+    const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
+    return { fieldPoints, freeFieldPoints, tessellationConfig };
+  }),
+
+  removeFieldPoints: (cells) => set((state) => {
+    let changed = false;
+    const fieldPoints = new Set(state.fieldPoints);
+    for (const [x, y] of cells) {
+      const key = encodePoint(x, y);
+      if (fieldPoints.has(key)) { fieldPoints.delete(key); changed = true; }
+    }
+    if (!changed) return {};
+    const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
+    const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
+    return { fieldPoints, freeFieldPoints, tessellationConfig };
+  }),
+
+  setFieldPrimitive: (p) => set({ fieldPrimitive: p }),
 }));
 
 function mergeOrientation(current: TessellationConfig, orientation: HexOrientation | TriOrientation): TessellationConfig {

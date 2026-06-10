@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { SquareShape, HexShape, TriangleShape, TessellationKind } from "../../store/mazeStore";
+import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
 import type { TessellationConfig } from "../../wasm/types";
 
 interface SizeParamProps {
@@ -46,11 +46,13 @@ export function FieldSetupFeature() {
   const triangleShape = useMazeStore((s) => s.triangleShape);
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
   const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
+  const fieldPrimitive = useMazeStore((s) => s.fieldPrimitive);
   const setSquareShape = useMazeStore((s) => s.setSquareShape);
   const setHexShape = useMazeStore((s) => s.setHexShape);
   const setTriangleShape = useMazeStore((s) => s.setTriangleShape);
   const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
+  const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
 
   const isHex = tessellationKind === "hex";
   const isCustom = fieldEditMode === "custom";
@@ -156,12 +158,29 @@ export function FieldSetupFeature() {
         </>
       )}
       {isCustom && (
-        <div style={styles.customHint}>
-          Click cells on canvas to add/remove. Right-click removes.
-        </div>
+        <>
+          <div style={styles.sectionLabel}>Tools</div>
+          <div style={styles.primitiveGrid}>
+          {primitivesForKind(tessellationKind).map(([p, label]) => (
+            <button
+              key={p}
+              style={{ ...styles.primitiveBtn, ...(fieldPrimitive === p ? styles.toggleBtnActive : {}) }}
+              onClick={() => setFieldPrimitive(p as FieldPrimitive)}
+            >
+              {label}
+            </button>
+          ))}
+          </div>
+        </>
       )}
     </div>
   );
+}
+
+function primitivesForKind(kind: TessellationKind): [string, string][] {
+  if (kind === "square") return [["point", "Point"], ["square_rect", "Rect"]];
+  if (kind === "hex") return [["point", "Point"], ["hex_parallelogram", "Parallelogram"], ["hex_hexagon", "Hexagon"]];
+  return [["point", "Point"], ["tri_rect", "Rect"], ["tri_triangle", "Triangle"], ["tri_hexagon", "Hexagon"]];
 }
 
 function shapeLabel(kind: TessellationKind, squareShape: SquareShape, hexShape: HexShape, triangleShape: TriangleShape): string {
@@ -239,5 +258,10 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#2a2a2a", border: "1px solid #444", color: "#e0e0e0",
     padding: "3px 6px", fontSize: 12, borderRadius: 3,
   },
-  customHint: { fontSize: 11, color: "#666", lineHeight: 1.4 },
+  sectionLabel: { fontSize: 11, color: "#aaa" },
+  primitiveGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
+  primitiveBtn: {
+    padding: "4px 0", fontSize: 11, border: "1px solid #444",
+    background: "#2a2a2a", color: "#888", borderRadius: 3, cursor: "pointer",
+  },
 };
