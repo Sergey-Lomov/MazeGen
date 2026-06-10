@@ -30,13 +30,24 @@ interface MazeState {
   squareShape: SquareShape;
   hexShape: HexShape;
   triangleShape: TriangleShape;
+  /** Saved params per predefined config type, preserved across shape/mode switches. */
+  savedConfigs: Partial<Record<TessellationConfig["type"], TessellationConfig>>;
   tessellationConfig: TessellationConfig;
   activeTessellationConfig: TessellationConfig;
   /** Per-kind free-field points, preserved when switching shapes within same kind. */
   freeFieldPoints: Record<TessellationKind, Set<number>>;
-  /** True when current shape is "free". Derived from shape fields — do not set directly. */
+  /**
+   * True when the active field is custom (free-draw). Set by:
+   * - shape actions (setSquareShape/setHexShape/setTriangleShape) when shape === "free"
+   * - setFieldEditMode("custom") / setFieldEditMode("default") for card-based editing
+   * generate() reads this directly to decide whether to use fieldPoints.
+   */
   isEditingField: boolean;
-  /** Current kind's freeFieldPoints. Derived from freeFieldPoints + tessellationKind — do not set directly. */
+  /**
+   * Active custom cell set for the current tessellation kind.
+   * Mirrors freeFieldPoints[tessellationKind] for predefined-shape flow;
+   * set directly by setFieldEditMode for card-based custom editing.
+   */
   fieldPoints: Set<number>;
   nodes: NodeDto[];
   edges: EdgeDto[];
@@ -67,6 +78,8 @@ interface MazeState {
   edgeStats: SpatialEdgeStatsDto | null;
   routeInfo: RouteInfoDto | null;
   showFieldOverlay: boolean;
+  fieldSetupOpen: boolean;
+  fieldEditMode: "default" | "custom";
 }
 
 interface MazeActions {
@@ -101,6 +114,8 @@ interface MazeActions {
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
   setShowFieldOverlay: (show: boolean) => void;
+  setFieldSetupOpen: (open: boolean) => void;
+  setFieldEditMode: (mode: "default" | "custom") => void;
 }
 
 function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
@@ -132,17 +147,30 @@ function buildPredefinedConfig(
   triangleShape: TriangleShape,
   hexOrientation: HexOrientation,
   triOrientation: TriOrientation,
+  saved?: Partial<Record<TessellationConfig["type"], TessellationConfig>>,
 ): TessellationConfig {
   if (kind === "square") {
-    return { type: "square", width: 10, height: 10 };
+    const base = saved?.["square"] as { type: "square"; width: number; height: number } | undefined;
+    return { type: "square", width: base?.width ?? 10, height: base?.height ?? 10 };
   }
   if (kind === "hex") {
-    if (hexShape === "parallelogram") return { type: "hex_parallelogram", cols: 10, rows: 10, orientation: hexOrientation };
-    return { type: "hex_hexagon", radius: 5, orientation: hexOrientation };
+    if (hexShape === "parallelogram") {
+      const base = saved?.["hex_parallelogram"] as { type: "hex_parallelogram"; cols: number; rows: number; orientation: HexOrientation } | undefined;
+      return { type: "hex_parallelogram", cols: base?.cols ?? 10, rows: base?.rows ?? 10, orientation: hexOrientation };
+    }
+    const base = saved?.["hex_hexagon"] as { type: "hex_hexagon"; radius: number; orientation: HexOrientation } | undefined;
+    return { type: "hex_hexagon", radius: base?.radius ?? 5, orientation: hexOrientation };
   }
-  if (triangleShape === "rect") return { type: "triangle_rect", cols: 10, rows: 10, orientation: triOrientation };
-  if (triangleShape === "triangle") return { type: "triangle_triangle", side: 8, orientation: triOrientation };
-  return { type: "triangle_hexagon", radius: 4, orientation: triOrientation };
+  if (triangleShape === "rect") {
+    const base = saved?.["triangle_rect"] as { type: "triangle_rect"; cols: number; rows: number; orientation: TriOrientation } | undefined;
+    return { type: "triangle_rect", cols: base?.cols ?? 10, rows: base?.rows ?? 10, orientation: triOrientation };
+  }
+  if (triangleShape === "triangle") {
+    const base = saved?.["triangle_triangle"] as { type: "triangle_triangle"; side: number; orientation: TriOrientation } | undefined;
+    return { type: "triangle_triangle", side: base?.side ?? 8, orientation: triOrientation };
+  }
+  const base = saved?.["triangle_hexagon"] as { type: "triangle_hexagon"; radius: number; orientation: TriOrientation } | undefined;
+  return { type: "triangle_hexagon", radius: base?.radius ?? 4, orientation: triOrientation };
 }
 
 function buildFreeConfig(kind: TessellationKind, pts: Set<number>, hexOrientation: HexOrientation, triOrientation: TriOrientation): TessellationConfig {
@@ -189,6 +217,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   squareShape: "rect",
   hexShape: "parallelogram",
   triangleShape: "rect",
+  savedConfigs: {},
   tessellationConfig: { type: "square", width: 10, height: 10 },
   activeTessellationConfig: { type: "square", width: 10, height: 10 },
   freeFieldPoints: emptyFreePoints(),
@@ -222,6 +251,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   edgeStats: null,
   routeInfo: null,
   showFieldOverlay: true,
+  fieldSetupOpen: false,
+  fieldEditMode: "default",
 
   setSeed: (seed) => set({ seed, error: null }),
 
@@ -249,7 +280,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const squareShape: SquareShape = "rect";
     const hexShape: HexShape = "parallelogram";
     const triangleShape: TriangleShape = "rect";
-    const cfg = buildPredefinedConfig(kind, hexShape, triangleShape, hexOrientation, triOrientation);
+    const cfg = buildPredefinedConfig(kind, hexShape, triangleShape, hexOrientation, triOrientation, state.savedConfigs);
+    const savedConfigs = { ...state.savedConfigs, [cfg.type]: cfg };
     const freeFieldPoints = kind !== state.tessellationKind
       ? { ...state.freeFieldPoints, [kind]: new Set<number>() }
       : state.freeFieldPoints;
@@ -264,6 +296,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       hexShape,
       triangleShape,
       tessellationConfig: cfg,
+      savedConfigs,
       freeFieldPoints,
       isEditingField,
       fieldPoints,
@@ -281,7 +314,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const squareShape: SquareShape = "rect";
     const hexShape: HexShape = "parallelogram";
     const triangleShape: TriangleShape = "rect";
-    const cfg = buildPredefinedConfig(kind, hexShape, triangleShape, state.hexOrientation, state.triOrientation);
+    const cfg = buildPredefinedConfig(kind, hexShape, triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
     const freeFieldPoints = { ...state.freeFieldPoints, [kind]: new Set<number>() };
     const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
     return {
@@ -298,7 +331,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const { isEditingField, fieldPoints } = deriveEditState(state.tessellationKind, shape, state.hexShape, state.triangleShape, state.freeFieldPoints);
     const cfg = isEditingField
       ? buildFreeConfig("square", fieldPoints, state.hexOrientation, state.triOrientation)
-      : buildPredefinedConfig("square", state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation);
+      : buildPredefinedConfig("square", state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
     return { squareShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null };
   }),
 
@@ -307,7 +340,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const { isEditingField, fieldPoints } = deriveEditState(state.tessellationKind, state.squareShape, shape, state.triangleShape, state.freeFieldPoints);
     const cfg = isEditingField
       ? buildFreeConfig("hex", fieldPoints, state.hexOrientation, state.triOrientation)
-      : buildPredefinedConfig("hex", shape, state.triangleShape, state.hexOrientation, state.triOrientation);
+      : buildPredefinedConfig("hex", shape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
     return { hexShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null };
   }),
 
@@ -316,36 +349,32 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const { isEditingField, fieldPoints } = deriveEditState(state.tessellationKind, state.squareShape, state.hexShape, shape, state.freeFieldPoints);
     const cfg = isEditingField
       ? buildFreeConfig("triangle", fieldPoints, state.hexOrientation, state.triOrientation)
-      : buildPredefinedConfig("triangle", state.hexShape, shape, state.hexOrientation, state.triOrientation);
+      : buildPredefinedConfig("triangle", state.hexShape, shape, state.hexOrientation, state.triOrientation, state.savedConfigs);
     return { triangleShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null };
   }),
 
   setHexOrientation: (orientation) => set((state) => {
     if (orientation === state.hexOrientation) return {};
     if (state.tessellationKind !== "hex") return { hexOrientation: orientation };
-    const { isEditingField, fieldPoints } = deriveEditState(state.tessellationKind, state.squareShape, state.hexShape, state.triangleShape, state.freeFieldPoints);
-    const cfg = isEditingField
-      ? buildFreeConfig("hex", fieldPoints, orientation, state.triOrientation)
-      : buildPredefinedConfig("hex", state.hexShape, state.triangleShape, orientation, state.triOrientation);
-    const merged = isEditingField ? cfg : mergeOrientation(state.tessellationConfig, orientation);
+    const { isEditingField } = deriveEditState(state.tessellationKind, state.squareShape, state.hexShape, state.triangleShape, state.freeFieldPoints);
+    const tessellationConfig = mergeOrientation(state.tessellationConfig, orientation);
+    const savedConfigs = isEditingField ? state.savedConfigs : { ...state.savedConfigs, [tessellationConfig.type]: tessellationConfig };
     const activeTessellationConfig = state.nodes.length > 0
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
-    return { hexOrientation: orientation, tessellationConfig: merged, activeTessellationConfig, error: null };
+    return { hexOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, error: null };
   }),
 
   setTriOrientation: (orientation) => set((state) => {
     if (orientation === state.triOrientation) return {};
     if (state.tessellationKind !== "triangle") return { triOrientation: orientation };
-    const { isEditingField, fieldPoints } = deriveEditState(state.tessellationKind, state.squareShape, state.hexShape, state.triangleShape, state.freeFieldPoints);
-    const cfg = isEditingField
-      ? buildFreeConfig("triangle", fieldPoints, state.hexOrientation, orientation)
-      : buildPredefinedConfig("triangle", state.hexShape, state.triangleShape, state.hexOrientation, orientation);
-    const merged = isEditingField ? cfg : mergeOrientation(state.tessellationConfig, orientation);
+    const { isEditingField } = deriveEditState(state.tessellationKind, state.squareShape, state.hexShape, state.triangleShape, state.freeFieldPoints);
+    const tessellationConfig = mergeOrientation(state.tessellationConfig, orientation);
+    const savedConfigs = isEditingField ? state.savedConfigs : { ...state.savedConfigs, [tessellationConfig.type]: tessellationConfig };
     const activeTessellationConfig = state.nodes.length > 0
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
-    return { triOrientation: orientation, tessellationConfig: merged, activeTessellationConfig, error: null };
+    return { triOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, error: null };
   }),
 
   setTessellationConfig: (cfg) => {
@@ -365,7 +394,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         }
       : currentFreeFieldPoints;
     const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
-    set({ tessellationConfig: cfg, tessellationKind: kind, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, error: null });
+    const savedConfigs = isCustom ? get().savedConfigs : { ...get().savedConfigs, [cfg.type]: cfg };
+    set({ tessellationConfig: cfg, tessellationKind: kind, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedConfigs, error: null });
   },
 
   loadRegistry: () => {
@@ -389,8 +419,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   },
 
   generate: () => {
-    const { seed, tessellationConfig, tessellationKind, freeFieldPoints, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, selectedChecks, selectedStrategies, strategyParams, availableStrategies, initialConfig, elementsConfig } = get();
-    const { isEditingField, fieldPoints } = deriveEditState(tessellationKind, squareShape, hexShape, triangleShape, freeFieldPoints);
+    const { seed, tessellationConfig, tessellationKind, isEditingField, fieldPoints, hexOrientation, triOrientation, selectedChecks, selectedStrategies, strategyParams, availableStrategies, initialConfig, elementsConfig } = get();
     try {
       if (isEditingField && fieldPoints.size < 2) {
         set({ error: "Free field requires at least 2 cells" });
@@ -515,10 +544,9 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   }),
 
   addFieldPoint: (x, y) => set((state) => {
-    const { fieldPoints: currentPts } = deriveEditState(state.tessellationKind, state.squareShape, state.hexShape, state.triangleShape, state.freeFieldPoints);
     const key = encodePoint(x, y);
-    if (currentPts.has(key)) return {};
-    const fieldPoints = new Set(currentPts);
+    if (state.fieldPoints.has(key)) return {};
+    const fieldPoints = new Set(state.fieldPoints);
     fieldPoints.add(key);
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
@@ -526,10 +554,9 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   }),
 
   removeFieldPoint: (x, y) => set((state) => {
-    const { fieldPoints: currentPts } = deriveEditState(state.tessellationKind, state.squareShape, state.hexShape, state.triangleShape, state.freeFieldPoints);
     const key = encodePoint(x, y);
-    if (!currentPts.has(key)) return {};
-    const fieldPoints = new Set(currentPts);
+    if (!state.fieldPoints.has(key)) return {};
+    const fieldPoints = new Set(state.fieldPoints);
     fieldPoints.delete(key);
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
@@ -537,6 +564,21 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   }),
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
+
+  setFieldSetupOpen: (open) => set((state) => ({
+    fieldSetupOpen: open,
+    // When closing custom mode, reset to default so next open starts clean
+    fieldEditMode: open ? state.fieldEditMode : "default",
+  })),
+
+  setFieldEditMode: (mode) => set((state) => {
+    if (mode === "custom") {
+      const fieldPoints = state.freeFieldPoints[state.tessellationKind];
+      return { fieldEditMode: mode, isEditingField: true, fieldPoints };
+    }
+    const cfg = buildPredefinedConfig(state.tessellationKind, state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
+    return { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg };
+  }),
 }));
 
 function mergeOrientation(current: TessellationConfig, orientation: HexOrientation | TriOrientation): TessellationConfig {

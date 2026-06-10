@@ -15,6 +15,7 @@ export class FieldEditController {
   private lastGridX = NaN;
   private lastGridY = NaN;
 
+  private canvas: HTMLCanvasElement;
   private getProjection: () => TessellationProjection | null;
   private getViewport: () => Container;
   private panCallbacks: PanCallbacks;
@@ -33,6 +34,7 @@ export class FieldEditController {
     getViewport: () => Container,
     panCallbacks: PanCallbacks,
   ) {
+    this.canvas = canvas;
     this.getProjection = getProjection;
     this.getViewport = getViewport;
     this.panCallbacks = panCallbacks;
@@ -43,7 +45,8 @@ export class FieldEditController {
   }
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
-    if (!useMazeStore.getState().isEditingField) return;
+    const s = useMazeStore.getState();
+    if (!(s.fieldSetupOpen && s.fieldEditMode === "custom")) return;
     this.gestureActive = true;
     this.gestureButton = button;
     this.lastGridX = NaN;
@@ -63,7 +66,8 @@ export class FieldEditController {
 
   onPointerMove(canvasX: number, canvasY: number): void {
     if (!this.gestureActive) return;
-    if (!useMazeStore.getState().isEditingField) return;
+    const s = useMazeStore.getState();
+    if (!(s.fieldSetupOpen && s.fieldEditMode === "custom")) return;
 
     if (this.spaceHeld || this.gestureButton === 1) {
       this.panCallbacks.movePan(canvasX, canvasY);
@@ -106,6 +110,7 @@ export class FieldEditController {
   }
 
   destroy(): void {
+    this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
   }

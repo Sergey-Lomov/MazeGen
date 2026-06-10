@@ -8,8 +8,6 @@ import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
 import type { TessellationConfig } from "../wasm/types";
 
-const GRID_LINE_COLOR = 0x444444;
-const GRID_LINE_ALPHA = 0.8;
 const ACTIVE_CELL_COLOR = 0x666666;
 const ACTIVE_CELL_ALPHA = 0.7;
 const ORIGIN_COLOR = 0xFF6600;
@@ -17,101 +15,67 @@ const ORIGIN_ALPHA = 0.9;
 
 export class FieldEditorOverlay {
   private readonly root: Container;
-  private readonly gridLayer: Graphics;
   private readonly activeLayer: Graphics;
   private readonly originLayer: Graphics;
 
   private cfg: TessellationConfig | null = null;
   private projection: TessellationProjection | null = null;
 
-  private vpX = 0;
-  private vpY = 0;
-  private vpW = 0;
-  private vpH = 0;
   private vpScale = 1;
 
   private unsubscribe: (() => void) | null = null;
 
   constructor(container: Container) {
     this.root = container;
-    this.gridLayer = new Graphics();
     this.activeLayer = new Graphics();
     this.originLayer = new Graphics();
-    this.root.addChild(this.gridLayer);
     this.root.addChild(this.activeLayer);
     this.root.addChild(this.originLayer);
 
     this.root.visible = false;
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
-      const shouldShow = state.isEditingField && state.showFieldOverlay;
-      const prevShow = prev.isEditingField && prev.showFieldOverlay;
-
-      if (shouldShow !== prevShow) {
-        this.root.visible = shouldShow;
+      if (state.fieldSetupOpen !== prev.fieldSetupOpen) {
+        this.root.visible = state.fieldSetupOpen;
       }
 
-      if (state.isEditingField && !prev.isEditingField) {
+      if (state.fieldSetupOpen && !prev.fieldSetupOpen) {
         this.cfg = state.tessellationConfig;
         this.projection = makeProjection(state.tessellationConfig);
-        this.redrawGrid();
-        this.redrawActive(state.fieldPoints);
-        this.redrawOrigin();
+        this.redrawActive(state.fieldPoints, state.fieldEditMode);
+        this.redrawOrigin(state.fieldEditMode === "custom");
       }
 
-      if (state.isEditingField && state.showFieldOverlay && !prev.showFieldOverlay) {
-        // Overlay just became visible — ensure grid is up to date.
-        this.redrawGrid();
-        this.redrawActive(state.fieldPoints);
-        this.redrawOrigin();
+      if (state.fieldSetupOpen && state.fieldPoints !== prev.fieldPoints) {
+        this.redrawActive(state.fieldPoints, state.fieldEditMode);
       }
 
-      if (state.isEditingField && state.fieldPoints !== prev.fieldPoints) {
-        this.redrawActive(state.fieldPoints);
-      }
-      if (state.isEditingField && state.tessellationConfig !== prev.tessellationConfig) {
+      if (state.fieldSetupOpen && state.tessellationConfig !== prev.tessellationConfig) {
         this.cfg = state.tessellationConfig;
         this.projection = makeProjection(state.tessellationConfig);
-        this.redrawGrid();
-        this.redrawActive(state.fieldPoints);
-        this.redrawOrigin();
+        this.redrawActive(state.fieldPoints, state.fieldEditMode);
+        this.redrawOrigin(state.fieldEditMode === "custom");
+      }
+
+      if (state.fieldSetupOpen && state.fieldEditMode !== prev.fieldEditMode) {
+        this.redrawOrigin(state.fieldEditMode === "custom");
+        this.redrawActive(state.fieldPoints, state.fieldEditMode);
       }
     });
   }
 
-  onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
-    this.vpX = x;
-    this.vpY = y;
-    this.vpW = w;
-    this.vpH = h;
+  onViewportChanged(_x: number, _y: number, _w: number, _h: number, scale: number): void {
     this.vpScale = scale;
     if (this.root.visible && this.projection) {
-      this.redrawGrid();
-      this.redrawOrigin();
+      const state = useMazeStore.getState();
+      this.redrawOrigin(state.fieldEditMode === "custom");
     }
   }
 
-  private redrawGrid(): void {
-    if (!this.projection || !this.cfg) return;
-    const g = this.gridLayer;
-    g.clear();
-
-    const bounds = this.projection.gridBounds(this.vpX, this.vpY, this.vpW, this.vpH, this.vpScale);
-    const cfg = this.cfg;
-
-    g.setStrokeStyle({ width: 1 / this.vpScale, color: GRID_LINE_COLOR, alpha: GRID_LINE_ALPHA });
-
-    for (let xi = bounds.minX; xi <= bounds.maxX; xi++) {
-      for (let yi = bounds.minY; yi <= bounds.maxY; yi++) {
-        this.drawCellOutline(g, xi, yi, cfg);
-      }
-    }
-  }
-
-  private redrawOrigin(): void {
-    if (!this.projection || !this.cfg) return;
+  private redrawOrigin(show: boolean): void {
     const g = this.originLayer;
     g.clear();
+    if (!show || !this.projection || !this.cfg) return;
 
     const { x: cx, y: cy } = this.projection.gridToScreen(0, 0);
     const arm = TILE_SIZE * 0.35 / this.vpScale;
@@ -121,24 +85,22 @@ export class FieldEditorOverlay {
     g.moveTo(cx, cy - arm).lineTo(cx, cy + arm).stroke();
   }
 
-  private redrawActive(fieldPoints: Set<number>): void {
+  private redrawActive(fieldPoints: Set<number>, fieldEditMode: "default" | "custom"): void {
     if (!this.cfg) return;
     const g = this.activeLayer;
     g.clear();
 
     const cfg = this.cfg;
-    for (const key of fieldPoints) {
-      const [x, y] = decodePoint(key);
-      this.drawCellFill(g, x, y, cfg);
+    if (fieldEditMode === "default") {
+      for (const [x, y] of configAllCells(cfg)) {
+        this.drawCellFill(g, x, y, cfg);
+      }
+    } else {
+      for (const key of fieldPoints) {
+        const [x, y] = decodePoint(key);
+        this.drawCellFill(g, x, y, cfg);
+      }
     }
-  }
-
-  private drawCellOutline(g: Graphics, x: number, y: number, cfg: TessellationConfig): void {
-    const verts = this.getCellVertices(x, y, cfg);
-    if (!verts) return;
-    g.moveTo(verts[verts.length - 1].x, verts[verts.length - 1].y);
-    for (const v of verts) g.lineTo(v.x, v.y);
-    g.stroke();
   }
 
   private drawCellFill(g: Graphics, x: number, y: number, cfg: TessellationConfig): void {
@@ -183,8 +145,97 @@ export class FieldEditorOverlay {
 
   destroy(): void {
     this.unsubscribe?.();
-    this.gridLayer.destroy();
     this.activeLayer.destroy();
     this.originLayer.destroy();
   }
+}
+
+function configAllCells(cfg: TessellationConfig): [number, number][] {
+  switch (cfg.type) {
+    case "square": {
+      const ox = Math.floor(cfg.width / 2);
+      const oy = Math.floor(cfg.height / 2);
+      const cells: [number, number][] = [];
+      for (let x = 0; x < cfg.width; x++)
+        for (let y = 0; y < cfg.height; y++)
+          cells.push([x - ox, y - oy]);
+      return cells;
+    }
+    case "hex_parallelogram": {
+      const ox = Math.floor(cfg.cols / 2);
+      const oy = Math.floor(cfg.rows / 2);
+      const cells: [number, number][] = [];
+      for (let x = 0; x < cfg.cols; x++)
+        for (let y = 0; y < cfg.rows; y++)
+          cells.push([x - ox, y - oy]);
+      return cells;
+    }
+    case "hex_hexagon": {
+      const r = cfg.radius;
+      const cells: [number, number][] = [];
+      for (let x = -r; x <= r; x++)
+        for (let y = -r; y <= r; y++)
+          if (Math.abs(x + y) <= r) cells.push([x, y]);
+      return cells;
+    }
+    case "triangle_rect": {
+      let ox = Math.floor(cfg.cols / 2);
+      let oy = Math.floor(cfg.rows / 2);
+      // preserve parity: (ox+oy) must be even so (col-ox+row-oy)%2 == (col+row)%2
+      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
+      const cells: [number, number][] = [];
+      for (let x = 0; x < cfg.cols; x++)
+        for (let y = 0; y < cfg.rows; y++)
+          cells.push([x - ox, y - oy]);
+      return cells;
+    }
+    case "triangle_triangle": {
+      const n = cfg.side;
+      const shift = n % 2;
+      const raw: [number, number][] = [];
+      for (let row = 0; row < n; row++) {
+        const indent = n - 1 - row + shift;
+        for (let col = indent; col <= indent + 2 * row; col++)
+          raw.push([col, row]);
+      }
+      const cols = raw.map(c => c[0]), rows = raw.map(c => c[1]);
+      let ox = Math.round((Math.min(...cols) + Math.max(...cols)) / 2);
+      let oy = Math.round((Math.min(...rows) + Math.max(...rows)) / 2);
+      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
+      return raw.map(([x, y]) => [x - ox, y - oy]);
+    }
+    case "triangle_hexagon": {
+      const r = cfg.radius;
+      const odd_base = r % 2 === 0 ? r - 1 : r;
+      const raw: [number, number][] = [];
+      for (let row = 0; row < 2 * r; row++) {
+        const k = Math.min(row, 2 * r - 1 - row);
+        const indent = odd_base - k;
+        const width = 2 * (k + r) + 1;
+        for (let col = indent; col < indent + width; col++)
+          raw.push([col, row]);
+      }
+      const cols = raw.map(c => c[0]), rows = raw.map(c => c[1]);
+      let ox = Math.round((Math.min(...cols) + Math.max(...cols)) / 2);
+      let oy = Math.round((Math.min(...rows) + Math.max(...rows)) / 2);
+      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
+      return raw.map(([x, y]) => [x - ox, y - oy]);
+    }
+    case "square_custom":
+    case "hex_custom":
+    case "tri_custom":
+      return cfg.points.map(([x, y]) => [x, y]);
+  }
+}
+
+export function configScreenCenter(cfg: TessellationConfig): { x: number; y: number } {
+  const cells = configAllCells(cfg);
+  if (cells.length === 0) return { x: 0, y: 0 };
+  const proj = makeProjection(cfg);
+  let sx = 0, sy = 0;
+  for (const [col, row] of cells) {
+    const { x, y } = proj.gridToScreen(col, row);
+    sx += x; sy += y;
+  }
+  return { x: sx / cells.length, y: sy / cells.length };
 }

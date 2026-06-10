@@ -10,7 +10,7 @@ import type { TessellationConfig } from "../wasm/types";
 const GRID_LINE_COLOR = 0x383838;
 const GRID_LINE_ALPHA = 1.0;
 
-export class GridPreviewOverlay {
+export class GridOverlay {
   private readonly root: Container;
   private readonly gridLayer: Graphics;
 
@@ -30,27 +30,32 @@ export class GridPreviewOverlay {
     this.gridLayer = new Graphics();
     this.root.addChild(this.gridLayer);
 
-    const initialCfg = useMazeStore.getState().previewTessellationConfig;
-    this.cfg = initialCfg;
-    this.projection = makeProjection(initialCfg);
-
-    const initialState = useMazeStore.getState();
-    this.root.visible = initialState.nodes.length === 0 && !initialState.isEditingField;
+    const state = useMazeStore.getState();
+    this.cfg = this.pickConfig(state);
+    this.projection = makeProjection(this.cfg);
+    this.root.visible = state.nodes.length === 0;
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
-      const wasVisible = prev.nodes.length === 0 && !prev.isEditingField;
-      const shouldBeVisible = state.nodes.length === 0 && !state.isEditingField;
-
-      if (shouldBeVisible !== wasVisible) {
-        this.root.visible = shouldBeVisible;
+      const visible = state.nodes.length === 0;
+      const wasVisible = prev.nodes.length === 0;
+      if (visible !== wasVisible) {
+        this.root.visible = visible;
       }
 
-      if (shouldBeVisible && state.previewTessellationConfig !== prev.previewTessellationConfig) {
-        this.cfg = state.previewTessellationConfig;
-        this.projection = makeProjection(state.previewTessellationConfig);
+      if (!visible) return;
+
+      const newCfg = this.pickConfig(state);
+      const prevCfg = this.pickConfig(prev);
+      if (newCfg !== prevCfg || state.fieldSetupOpen !== prev.fieldSetupOpen) {
+        this.cfg = newCfg;
+        this.projection = makeProjection(newCfg);
         this.redrawGrid();
       }
     });
+  }
+
+  private pickConfig(state: ReturnType<typeof useMazeStore.getState>): TessellationConfig {
+    return state.fieldSetupOpen ? state.tessellationConfig : state.previewTessellationConfig;
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {

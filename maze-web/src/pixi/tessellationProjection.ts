@@ -115,9 +115,19 @@ class TriProjection implements TessellationProjection {
     const { x: fx, y: fy } = this.unrotate(vx, vy);
     const S = TRI_TILE_SIZE;
     const H = S * Math.sqrt(3) / 2;
-    const col = Math.floor((fx - S / 4) / (S / 2));
     const row = Math.floor(-fy / H);
-    return { x: col, y: row };
+    const col0 = Math.floor(fx / (S / 2));
+    // pick nearest centroid among col0-1, col0, col0+1 (triangles have diagonal boundaries)
+    let bestCol = col0;
+    let bestDist = Infinity;
+    for (const c of [col0 - 1, col0, col0 + 1]) {
+      const pointingUp = (c + row) % 2 === 0;
+      const cx = c * S / 2 + S / 4;
+      const cy = pointingUp ? -(row * H + H / 3) : -(row * H + 2 * H / 3);
+      const d = (fx - cx) * (fx - cx) + (fy - cy) * (fy - cy);
+      if (d < bestDist) { bestDist = d; bestCol = c; }
+    }
+    return { x: bestCol, y: row };
   }
 
   gridToScreen(x: number, y: number) {

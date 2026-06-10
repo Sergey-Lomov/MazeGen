@@ -7,7 +7,8 @@ import { ComponentRenderer } from "./ComponentRenderer";
 import { RouteOverlay } from "./RouteOverlay";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { FieldEditController } from "./FieldEditController";
-import { GridPreviewOverlay } from "./GridPreviewOverlay";
+import { GridOverlay } from "./GridOverlay";
+import { configScreenCenter } from "./FieldEditorOverlay";
 import { makeProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationConfig } from "../wasm/types";
@@ -29,8 +30,8 @@ export class MazeScene {
   private fieldEditorOverlay: FieldEditorOverlay;
   private fieldEditorOverlayContainer: Container;
   private fieldEditController: FieldEditController;
-  private gridPreviewOverlay: GridPreviewOverlay;
-  private gridPreviewContainer: Container;
+  private gridOverlay: GridOverlay;
+  private gridOverlayContainer: Container;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
@@ -72,8 +73,8 @@ export class MazeScene {
 
     this.routeOverlayContainer = new Container();
     this.fieldEditorOverlayContainer = new Container();
-    this.gridPreviewContainer = new Container();
-    this.syncedLayers = [this.gridPreviewContainer, this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer, this.fieldEditorOverlayContainer];
+    this.gridOverlayContainer = new Container();
+    this.syncedLayers = [this.gridOverlayContainer, this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer, this.fieldEditorOverlayContainer];
 
     this.app.stage.addChild(this.viewport);
     for (const layer of this.syncedLayers) this.app.stage.addChild(layer);
@@ -92,7 +93,7 @@ export class MazeScene {
     this.navRenderer = new NavGraphRenderer(navInner);
     this.routeOverlay = new RouteOverlay(this.routeOverlayContainer);
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
-    this.gridPreviewOverlay = new GridPreviewOverlay(this.gridPreviewContainer);
+    this.gridOverlay = new GridOverlay(this.gridOverlayContainer);
 
     const self = this;
     this.fieldEditController = new FieldEditController(
@@ -172,27 +173,46 @@ export class MazeScene {
   }
 
   private subscribeToPreview(): void {
-    let prev = useMazeStore.getState().previewTessellationConfig;
+    let prevPreview = useMazeStore.getState().previewTessellationConfig;
+    let prevOpen = useMazeStore.getState().fieldSetupOpen;
     this.unsubscribePreview = useMazeStore.subscribe((state) => {
-      if (state.previewTessellationConfig !== prev) {
-        prev = state.previewTessellationConfig;
+      const previewChanged = state.previewTessellationConfig !== prevPreview;
+      const openChanged = state.fieldSetupOpen !== prevOpen;
+      prevPreview = state.previewTessellationConfig;
+      prevOpen = state.fieldSetupOpen;
+      if (previewChanged || openChanged) {
         this.syncLayersToViewport();
       }
     });
   }
 
   private subscribeToEditField(): void {
-    let prevEditing = useMazeStore.getState().isEditingField;
-    let prevOverlay = useMazeStore.getState().showFieldOverlay;
+    let prevOpen = useMazeStore.getState().fieldSetupOpen;
+    let prevCfg = useMazeStore.getState().tessellationConfig;
+    let prevMode = useMazeStore.getState().fieldEditMode;
     this.unsubscribeEditField = useMazeStore.subscribe((state) => {
-      const editChanged = state.isEditingField !== prevEditing;
-      const overlayChanged = state.showFieldOverlay !== prevOverlay;
-      prevEditing = state.isEditingField;
-      prevOverlay = state.showFieldOverlay;
-      if ((editChanged && state.isEditingField) || (overlayChanged && state.isEditingField && state.showFieldOverlay)) {
-        this.syncLayersToViewport();
+      const openChanged = state.fieldSetupOpen !== prevOpen;
+      const cfgChanged = state.tessellationConfig !== prevCfg;
+      const modeChanged = state.fieldEditMode !== prevMode;
+      prevOpen = state.fieldSetupOpen;
+      prevCfg = state.tessellationConfig;
+      prevMode = state.fieldEditMode;
+      if (!state.fieldSetupOpen) return;
+      if (openChanged) { this.centerOnOrigin(); return; }
+      if (state.fieldEditMode === "default" && (cfgChanged || modeChanged)) {
+        this.centerOnOrigin();
       }
     });
+  }
+
+  private centerOnOrigin(): void {
+    const cfg = useMazeStore.getState().tessellationConfig;
+    const center = configScreenCenter(cfg);
+    const w = this.app.screen.width;
+    const h = this.app.screen.height;
+    this.viewport.x = w / 2 - center.x * this.viewport.scale.x;
+    this.viewport.y = h / 2 - center.y * this.viewport.scale.y;
+    this.syncLayersToViewport();
   }
 
   private subscribeToFit(): void {
@@ -222,7 +242,7 @@ export class MazeScene {
       this.app.screen.height,
       this.viewport.scale.x,
     );
-    this.gridPreviewOverlay.onViewportChanged(
+    this.gridOverlay.onViewportChanged(
       this.viewport.x,
       this.viewport.y,
       this.app.screen.width,
@@ -281,7 +301,8 @@ export class MazeScene {
     stage.hitArea = this.app.screen;
 
     stage.on("pointerdown", (e) => {
-      if (useMazeStore.getState().isEditingField) {
+      const st = useMazeStore.getState();
+      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerDown(e.globalX, e.globalY, e.button);
         return;
       }
@@ -291,7 +312,8 @@ export class MazeScene {
     });
 
     stage.on("pointermove", (e) => {
-      if (useMazeStore.getState().isEditingField) {
+      const st = useMazeStore.getState();
+      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerMove(e.globalX, e.globalY);
         return;
       }
@@ -304,7 +326,8 @@ export class MazeScene {
     });
 
     stage.on("pointerup", () => {
-      if (useMazeStore.getState().isEditingField) {
+      const st = useMazeStore.getState();
+      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerUp();
         return;
       }
@@ -351,7 +374,7 @@ export class MazeScene {
     this.navRenderer.destroy();
     this.routeOverlay.destroy();
     this.fieldEditorOverlay.destroy();
-    this.gridPreviewOverlay.destroy();
+    this.gridOverlay.destroy();
     this.fieldEditController.destroy();
     window.removeEventListener("blur", this.onBlur);
     this.app.canvas.removeEventListener("wheel", this.onWheel);
