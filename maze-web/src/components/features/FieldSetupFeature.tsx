@@ -227,7 +227,7 @@ export function fieldSetupSubtitle(
   return size ? `${shape} · ${size}${countStr}` : `${shape}${countStr}`;
 }
 
-function configCellCount(cfg: TessellationConfig): number {
+export function configCellCount(cfg: TessellationConfig): number {
   if (cfg.type === "square") return cfg.width * cfg.height;
   if (cfg.type === "hex_parallelogram" || cfg.type === "triangle_rect") return cfg.cols * cfg.rows;
   if (cfg.type === "hex_hexagon") { const r = cfg.radius; return 3 * r * r + 3 * r + 1; }

@@ -185,6 +185,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
       };
     case "toggle":
       return {
+        flex: 1,
         padding: "4px 0",
         fontSize: font.sm,
         border: `1px solid ${colors.borderStrong}`,
@@ -195,6 +196,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
       };
     case "toggle-active":
       return {
+        flex: 1,
         padding: "4px 0",
         fontSize: font.sm,
         border: `1px solid ${colors.bgBtnPrimary}`,

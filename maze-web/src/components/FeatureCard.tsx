@@ -1,7 +1,7 @@
 import React from "react";
 import { colors, font } from "../styles/theme";
 
-export type FeatureStatus = "unavailable" | "default" | "set";
+export type FeatureStatus = "unavailable" | "available" | "set-default" | "set";
 
 export interface FeatureCardProps {
   title: string;
@@ -13,17 +13,31 @@ export interface FeatureCardProps {
   children?: React.ReactNode;
 }
 
-const STATUS_COLORS: Record<FeatureStatus, string> = {
-  unavailable: colors.featureStatusUnavailable,
-  default: colors.featureStatusDefault,
+const STATUS_FILL: Record<FeatureStatus, string> = {
+  unavailable: "transparent",
+  available: colors.featureStatusAvailable,
+  "set-default": colors.featureStatusSetDefault,
   set: colors.featureStatusSet,
 };
 
-const STATUS_BORDER: Record<FeatureStatus, string> = {
-  unavailable: `1px solid ${colors.featureStatusDefault}`,
-  default: `1px solid ${colors.featureStatusDefault}`,
-  set: `1px solid ${colors.featureStatusSet}`,
+const STATUS_BORDER_COLOR: Record<FeatureStatus, string> = {
+  unavailable: colors.featureStatusAvailable,
+  available: colors.featureStatusAvailable,
+  "set-default": colors.featureStatusSetDefault,
+  set: colors.featureStatusSet,
 };
+
+export function StatusDot({ status }: { status: FeatureStatus }) {
+  return (
+    <span
+      style={{
+        ...dotStyle,
+        background: STATUS_FILL[status],
+        border: `1px solid ${STATUS_BORDER_COLOR[status]}`,
+      }}
+    />
+  );
+}
 
 export function FeatureCard({ title, status, comment, subtitle, expanded, onToggle, children }: FeatureCardProps) {
   const canExpand = status !== "unavailable";
@@ -35,13 +49,7 @@ export function FeatureCard({ title, status, comment, subtitle, expanded, onTogg
         onClick={canExpand ? onToggle : undefined}
         disabled={!canExpand}
       >
-        <span
-          style={{
-            ...styles.dot,
-            background: STATUS_COLORS[status],
-            border: STATUS_BORDER[status],
-          }}
-        />
+        <StatusDot status={status} />
         <div style={styles.headerText}>
           <div style={styles.titleRow}>
             <span style={styles.title}>{title}</span>
@@ -61,6 +69,14 @@ export function FeatureCard({ title, status, comment, subtitle, expanded, onTogg
     </div>
   );
 }
+
+const dotStyle: React.CSSProperties = {
+  width: 10,
+  height: 10,
+  borderRadius: "50%",
+  flexShrink: 0,
+  marginTop: 3,
+};
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
@@ -82,13 +98,6 @@ const styles: Record<string, React.CSSProperties> = {
   headerDisabled: {
     cursor: "default",
     opacity: 0.5,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    flexShrink: 0,
-    marginTop: 3,
   },
   headerText: {
     display: "flex",

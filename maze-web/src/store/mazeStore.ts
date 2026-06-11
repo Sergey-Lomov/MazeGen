@@ -80,6 +80,7 @@ interface MazeState {
   routeInfo: RouteInfoDto | null;
   showFieldOverlay: boolean;
   fieldSetupOpen: boolean;
+  fieldEverOpened: boolean;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
 }
@@ -220,6 +221,7 @@ function deriveEditState(
   return { isEditingField, fieldPoints };
 }
 
+
 export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   seed: 42,
   tessellationKind: "square",
@@ -268,6 +270,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   routeInfo: null,
   showFieldOverlay: true,
   fieldSetupOpen: false,
+  fieldEverOpened: false,
   fieldEditMode: "default",
   fieldPrimitive: "point",
 
@@ -320,6 +323,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       freeFieldPoints,
       isEditingField,
       fieldPoints,
+      fieldEverOpened: false,
       ...(clearMaze ? {
         nodes: [], edges: [], start: null, finish: null,
         navNodes: [], navEdges: [], components: [],
@@ -585,7 +589,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
 
-  setFieldSetupOpen: (open) => set({ fieldSetupOpen: open }),
+  setFieldSetupOpen: (open) => set((state) => ({
+    fieldSetupOpen: open,
+    ...(open && !state.fieldEverOpened ? { fieldEverOpened: true } : {}),
+  })),
 
   setFieldEditMode: (mode) => set((state) => {
     if (mode === "custom") {

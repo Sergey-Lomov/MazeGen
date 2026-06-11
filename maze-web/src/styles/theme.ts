@@ -35,7 +35,8 @@ export const colors = {
 
   // Feature card status
   featureStatusUnavailable: "transparent",
-  featureStatusDefault: "#666",
+  featureStatusAvailable: "#666",
+  featureStatusSetDefault: "#ffaa44",
   featureStatusSet: "#6dbf7e",
 } as const;
 

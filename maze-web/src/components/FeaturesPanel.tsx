@@ -2,10 +2,24 @@ import React, { useState } from "react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
 import { BasicConfigFeature, HEX_ORIENTATION_LABELS, TRI_ORIENTATION_LABELS } from "./features/BasicConfigFeature";
-import { FieldSetupFeature, fieldSetupSubtitle } from "./features/FieldSetupFeature";
+import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind } from "../store/mazeStore";
 import { colors } from "../styles/theme";
+import type { TessellationConfig } from "../wasm/types";
+
+function computeFieldStatus(
+  tessellationConfirmed: boolean,
+  fieldEditMode: "default" | "custom",
+  fieldPoints: Set<number>,
+  tessellationConfig: TessellationConfig,
+  fieldEverOpened: boolean,
+): FeatureStatus {
+  if (!tessellationConfirmed) return "unavailable";
+  const count = fieldEditMode === "custom" ? fieldPoints.size : configCellCount(tessellationConfig);
+  if (count === 0) return "available";
+  return fieldEverOpened ? "set" : "set-default";
+}
 
 const KIND_LABELS: Record<TessellationKind, string> = {
   square: "Square",
@@ -28,6 +42,7 @@ export function FeaturesPanel() {
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
   const fieldPoints = useMazeStore((s) => s.fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
+  const fieldEverOpened = useMazeStore((s) => s.fieldEverOpened);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
   const setFieldSetupOpen = useMazeStore((s) => s.setFieldSetupOpen);
 
@@ -43,7 +58,7 @@ export function FeaturesPanel() {
     }
   }
 
-  const basicConfigStatus: FeatureStatus = tessellationConfirmed ? "set" : "default";
+  const basicConfigStatus: FeatureStatus = tessellationConfirmed ? "set" : "available";
   const basicConfigComment = tessellationConfirmed ? "Tessellation confirmed" : "Not confirmed yet";
 
   function basicConfigSubtitle(): string | undefined {
@@ -54,8 +69,10 @@ export function FeaturesPanel() {
     return label;
   }
 
-  const fieldSetupStatus: FeatureStatus = tessellationConfirmed ? "default" : "unavailable";
-  const fieldSetupComment = tessellationConfirmed ? "Configure field shape" : "Confirm tessellation first";
+  const fieldStatus = computeFieldStatus(tessellationConfirmed, fieldEditMode, fieldPoints, tessellationConfig, fieldEverOpened);
+  const fieldSetupComment = fieldStatus === "unavailable" ? "Confirm tessellation first"
+    : fieldStatus === "available" ? "Configure field shape"
+    : "Field configured";
 
   return (
     <div style={styles.panel}>
@@ -71,7 +88,7 @@ export function FeaturesPanel() {
       </FeatureCard>
       <FeatureCard
         title="Field"
-        status={fieldSetupStatus}
+        status={fieldStatus}
         comment={fieldSetupComment}
         subtitle={tessellationConfirmed
           ? fieldSetupSubtitle(tessellationKind, squareShape, hexShape, triangleShape, fieldEditMode, fieldPoints, tessellationConfig)
