@@ -83,7 +83,6 @@ interface MazeState {
   routeInfo: RouteInfoDto | null;
   showFieldOverlay: boolean;
   fieldSetupOpen: boolean;
-  fieldEverOpened: boolean;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
   presetConnectionsOpen: boolean;
@@ -288,7 +287,6 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   routeInfo: null,
   showFieldOverlay: true,
   fieldSetupOpen: false,
-  fieldEverOpened: false,
   fieldEditMode: "default",
   fieldPrimitive: "point",
   presetConnectionsOpen: false,
@@ -347,7 +345,6 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       freeFieldPoints,
       isEditingField,
       fieldPoints,
-      fieldEverOpened: false,
       ...(clearMaze ? {
         nodes: [], edges: [], start: null, finish: null,
         navNodes: [], navEdges: [], components: [],
@@ -623,10 +620,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
 
-  setFieldSetupOpen: (open) => set((state) => ({
-    fieldSetupOpen: open,
-    ...(open && !state.fieldEverOpened ? { fieldEverOpened: true } : {}),
-  })),
+  setFieldSetupOpen: (open) => set({ fieldSetupOpen: open }),
 
   setFieldEditMode: (mode) => set((state) => {
     if (mode === "custom") {

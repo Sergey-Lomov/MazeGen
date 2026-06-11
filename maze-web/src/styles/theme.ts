@@ -34,10 +34,10 @@ export const colors = {
   accentSlider: "#5a9",
 
   // Feature card status
-  featureStatusUnavailable: "transparent",
-  featureStatusAvailable: "#666",
-  featureStatusSetDefault: "#ffaa44",
+  featureStatusUnavailable: "#666",
   featureStatusSet: "#6dbf7e",
+  featureStatusWarning: "#ffaa44",
+  featureStatusCritical: "#ff6b6b",
 } as const;
 
 export const radius = {

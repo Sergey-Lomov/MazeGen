@@ -15,12 +15,11 @@ function computeFieldStatus(
   fieldEditMode: "default" | "custom",
   fieldPoints: Set<number>,
   tessellationConfig: TessellationConfig,
-  fieldEverOpened: boolean,
 ): FeatureStatus {
   if (!tessellationConfirmed) return "unavailable";
   const count = fieldEditMode === "custom" ? fieldPoints.size : configCellCount(tessellationConfig);
-  if (count === 0) return "available";
-  return fieldEverOpened ? "set" : "set-default";
+  if (count === 0) return "critical";
+  return "set";
 }
 
 const KIND_LABELS: Record<TessellationKind, string> = {
@@ -44,7 +43,6 @@ export function FeaturesPanel() {
   const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
   const fieldPoints = useMazeStore((s) => s.fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
-  const fieldEverOpened = useMazeStore((s) => s.fieldEverOpened);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
   const setFieldSetupOpen = useMazeStore((s) => s.setFieldSetupOpen);
   const presetConnections = useMazeStore((s) => s.presetConnections);
@@ -67,7 +65,7 @@ export function FeaturesPanel() {
     }
   }
 
-  const basicConfigStatus: FeatureStatus = tessellationConfirmed ? "set" : "available";
+  const basicConfigStatus: FeatureStatus = tessellationConfirmed ? "set" : "critical";
   const basicConfigComment = tessellationConfirmed ? "Tessellation confirmed" : "Not confirmed yet";
 
   function basicConfigSubtitle(): string | undefined {
@@ -78,9 +76,9 @@ export function FeaturesPanel() {
     return label;
   }
 
-  const fieldStatus = computeFieldStatus(tessellationConfirmed, fieldEditMode, fieldPoints, tessellationConfig, fieldEverOpened);
+  const fieldStatus = computeFieldStatus(tessellationConfirmed, fieldEditMode, fieldPoints, tessellationConfig);
   const fieldSetupComment = fieldStatus === "unavailable" ? "Confirm tessellation first"
-    : fieldStatus === "available" ? "Configure field shape"
+    : fieldStatus === "critical" ? "Field has no nodes"
     : "Field configured";
 
   const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
@@ -88,19 +86,17 @@ export function FeaturesPanel() {
     () => computeInvalidKeys(presetConnections, tessellationConfig, customPts),
     [presetConnections, tessellationConfig, customPts],
   );
-  const fieldReady = fieldStatus === "set" || fieldStatus === "set-default";
+  const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
   const totalPresetCount = presetConnections.size + markerCount;
-  const presetStatus: FeatureStatus = !fieldReady
+  const presetStatus: FeatureStatus = fieldBlocking
     ? "unavailable"
     : presetInvalidKeys.size > 0
     ? "warning"
-    : totalPresetCount > 0
-    ? "set"
-    : "set-default";
+    : "set";
   const presetComment = !tessellationConfirmed
     ? "Confirm tessellation first"
-    : !fieldReady
+    : fieldBlocking
     ? "Configure field first"
     : presetInvalidKeys.size > 0
     ? `${presetInvalidKeys.size} preset${presetInvalidKeys.size !== 1 ? "s" : ""} outside field`
