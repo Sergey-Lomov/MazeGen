@@ -60,7 +60,7 @@ export function FeaturesPanel() {
   return (
     <div style={styles.panel}>
       <FeatureCard
-        title="Basic configuration"
+        title="Tessellation"
         status={basicConfigStatus}
         comment={basicConfigComment}
         subtitle={basicConfigSubtitle()}
@@ -70,7 +70,7 @@ export function FeaturesPanel() {
         <BasicConfigFeature />
       </FeatureCard>
       <FeatureCard
-        title="Field setup"
+        title="Field"
         status={fieldSetupStatus}
         comment={fieldSetupComment}
         subtitle={tessellationConfirmed

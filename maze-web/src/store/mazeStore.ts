@@ -118,6 +118,7 @@ interface MazeActions {
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;
   removeFieldPoints: (cells: [number, number][]) => void;
+  clearFieldPoints: () => void;
   setShowFieldOverlay: (show: boolean) => void;
   setFieldSetupOpen: (open: boolean) => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
@@ -616,6 +617,13 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       if (fieldPoints.has(key)) { fieldPoints.delete(key); changed = true; }
     }
     if (!changed) return {};
+    const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
+    const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
+    return { fieldPoints, freeFieldPoints, tessellationConfig };
+  }),
+
+  clearFieldPoints: () => set((state) => {
+    const fieldPoints = new Set<number>();
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
     return { fieldPoints, freeFieldPoints, tessellationConfig };

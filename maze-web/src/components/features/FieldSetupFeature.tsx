@@ -55,6 +55,7 @@ export function FieldSetupFeature() {
   const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
+  const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
 
   const isHex = tessellationKind === "hex";
   const isCustom = fieldEditMode === "custom";
@@ -173,6 +174,14 @@ export function FieldSetupFeature() {
             </button>
           ))}
           </div>
+          <button
+            style={styles.clearBtn}
+            onClick={() => {
+              if (window.confirm("Clear all field cells?")) clearFieldPoints();
+            }}
+          >
+            Clear
+          </button>
         </>
       )}
     </div>
@@ -254,4 +263,5 @@ const styles: Record<string, React.CSSProperties> = {
   sectionLabel: { fontSize: 11, color: colors.textFaint },
   primitiveGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
   primitiveBtn: { ...sharedStyles.toggleBtn, flex: undefined },
+  clearBtn: { ...sharedStyles.toggleBtn, flex: undefined, width: "100%", marginTop: 4, color: colors.textError, borderColor: colors.textError },
 };
