@@ -168,3 +168,50 @@ export const sharedStyles = {
     marginBottom: 4,
   } satisfies React.CSSProperties,
 } as const;
+
+type ButtonVariant = "primary" | "toggle" | "toggle-active" | "destructive";
+
+export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
+  switch (variant) {
+    case "primary":
+      return {
+        background: colors.bgBtnPrimary,
+        border: "none",
+        color: colors.textWhite,
+        padding: "5px 0",
+        cursor: "pointer",
+        borderRadius: radius.sm,
+        fontSize: font.md,
+      };
+    case "toggle":
+      return {
+        padding: "4px 0",
+        fontSize: font.sm,
+        border: `1px solid ${colors.borderStrong}`,
+        background: colors.bgInput,
+        color: colors.textDim,
+        borderRadius: radius.sm,
+        cursor: "pointer",
+      };
+    case "toggle-active":
+      return {
+        padding: "4px 0",
+        fontSize: font.sm,
+        border: `1px solid ${colors.bgBtnPrimary}`,
+        background: colors.bgBtnPrimary,
+        color: colors.textWhite,
+        borderRadius: radius.sm,
+        cursor: "pointer",
+      };
+    case "destructive":
+      return {
+        padding: "4px 0",
+        fontSize: font.sm,
+        border: `1px solid ${colors.textError}`,
+        background: colors.bgInput,
+        color: colors.textError,
+        borderRadius: radius.sm,
+        cursor: "pointer",
+      };
+  }
+}

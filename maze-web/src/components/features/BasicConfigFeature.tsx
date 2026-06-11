@@ -1,7 +1,7 @@
 import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
-import { sharedStyles } from "../../styles/shared";
+import { sharedStyles, buttonStyle } from "../../styles/shared";
 
 export const HEX_ORIENTATION_LABELS: Record<HexOrientation, string> = {
   flat_top: "Flat top",
@@ -97,7 +97,7 @@ const styles: Record<string, React.CSSProperties> = {
   select: sharedStyles.select,
   confirmBtn: {
     marginTop: 4,
-    ...sharedStyles.btnPrimary,
+    ...buttonStyle("primary"),
     padding: "6px 0",
     fontWeight: 600,
   },

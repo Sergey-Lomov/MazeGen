@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { generateMazeSteps } from "../wasm/mazeService";
 import type { GenerationStepsSnapshot, NodeDto, EdgeDto } from "../wasm/types";
-import { sharedStyles } from "../styles/shared";
+import { sharedStyles, buttonStyle } from "../styles/shared";
 import { colors } from "../styles/theme";
 
 interface Props {
@@ -108,7 +108,7 @@ const styles: Record<string, React.CSSProperties> = {
   header: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   title: sharedStyles.panelTitle,
   closeBtn: sharedStyles.closeBtn,
-  btn: sharedStyles.btnPrimary,
+  btn: buttonStyle("primary"),
   stepLabel: { fontSize: 11, color: colors.textFaint },
   slider: { width: "100%", cursor: "pointer" },
   btnRow: { display: "flex", gap: 4 },

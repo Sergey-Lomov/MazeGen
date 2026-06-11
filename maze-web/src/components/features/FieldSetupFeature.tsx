@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
 import type { TessellationConfig } from "../../wasm/types";
-import { sharedStyles } from "../../styles/shared";
+import { sharedStyles, buttonStyle } from "../../styles/shared";
 import { colors } from "../../styles/theme";
 
 interface SizeParamProps {
@@ -142,13 +142,13 @@ export function FieldSetupFeature() {
     <div style={styles.root}>
       <div style={styles.toggleRow}>
         <button
-          style={{ ...styles.toggleBtn, ...(isCustom ? {} : styles.toggleBtnActive) }}
+          style={buttonStyle(isCustom ? "toggle" : "toggle-active")}
           onClick={() => setFieldEditMode("default")}
         >
           Default
         </button>
         <button
-          style={{ ...styles.toggleBtn, ...(isCustom ? styles.toggleBtnActive : {}) }}
+          style={buttonStyle(isCustom ? "toggle-active" : "toggle")}
           onClick={() => setFieldEditMode("custom")}
         >
           Custom
@@ -167,7 +167,7 @@ export function FieldSetupFeature() {
           {primitivesForKind(tessellationKind).map(([p, label]) => (
             <button
               key={p}
-              style={{ ...styles.primitiveBtn, ...(fieldPrimitive === p ? styles.toggleBtnActive : {}) }}
+              style={buttonStyle(fieldPrimitive === p ? "toggle-active" : "toggle")}
               onClick={() => setFieldPrimitive(p as FieldPrimitive)}
             >
               {label}
@@ -175,7 +175,7 @@ export function FieldSetupFeature() {
           ))}
           </div>
           <button
-            style={styles.clearBtn}
+            style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
             onClick={() => {
               if (window.confirm("Clear all field cells?")) clearFieldPoints();
             }}
@@ -255,13 +255,9 @@ function configSizeLabel(cfg: TessellationConfig): string {
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 8 },
   toggleRow: { display: "flex", gap: 4 },
-  toggleBtn: sharedStyles.toggleBtn,
-  toggleBtnActive: sharedStyles.toggleBtnActive,
   label: sharedStyles.fieldLabel,
   select: sharedStyles.select,
   input: sharedStyles.input,
   sectionLabel: { fontSize: 11, color: colors.textFaint },
   primitiveGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  primitiveBtn: { ...sharedStyles.toggleBtn, flex: undefined },
-  clearBtn: { ...sharedStyles.toggleBtn, flex: undefined, width: "100%", marginTop: 4, color: colors.textError, borderColor: colors.textError },
 };

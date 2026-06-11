@@ -1,7 +1,7 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { HexShape, TriangleShape, TessellationKind, SquareShape, HexOrientation, TriOrientation } from "../store/mazeStore";
 import type { TessellationConfig } from "../wasm/types";
-import { sharedStyles } from "../styles/shared";
+import { sharedStyles, buttonStyle } from "../styles/shared";
 import { colors } from "../styles/theme";
 
 interface Props {
@@ -269,7 +269,7 @@ const styles: Record<string, React.CSSProperties> = {
   title: sharedStyles.panelTitle,
   label: { ...sharedStyles.fieldLabel, gap: 2 },
   input: sharedStyles.input,
-  btn: sharedStyles.btnPrimary,
+  btn: buttonStyle("primary"),
   btnSecondary: { background: colors.bgBtnSecondary },
   btnSettings: { background: colors.bgBtnMuted },
   btnSettingsActive: { background: colors.bgBtnPrimaryActive, outline: `1px solid ${colors.bgBtnPrimary}` },
