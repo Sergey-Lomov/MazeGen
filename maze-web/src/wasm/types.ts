@@ -131,10 +131,19 @@ export type InitialGenerationConfig =
   | { method: "wilson_algorithm" }
   | { method: "kruskal_algorithm" };
 
+export type PresetConnectionState = "wall" | "passage" | "one_way_forward" | "one_way_backward";
+
+export interface PresetConnection {
+  from: [number, number];
+  to: [number, number];
+  state: PresetConnectionState;
+}
+
 export interface GenerateConfig {
   tessellation: TessellationConfig;
   checks: string[];
   strategies: Record<string, StrategyConfig>;
   initial: InitialGenerationConfig;
   elements: ElementsConfig;
+  preset_connections?: PresetConnection[];
 }

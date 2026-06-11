@@ -33,11 +33,11 @@ export class GridOverlay {
     const state = useMazeStore.getState();
     this.cfg = this.pickConfig(state);
     this.projection = makeProjection(this.cfg);
-    this.root.visible = state.nodes.length === 0;
+    this.root.visible = this.shouldBeVisible(state);
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
-      const visible = state.nodes.length === 0;
-      const wasVisible = prev.nodes.length === 0;
+      const visible = this.shouldBeVisible(state);
+      const wasVisible = this.shouldBeVisible(prev);
       if (visible !== wasVisible) {
         this.root.visible = visible;
       }
@@ -52,6 +52,10 @@ export class GridOverlay {
         this.redrawGrid();
       }
     });
+  }
+
+  private shouldBeVisible(state: ReturnType<typeof useMazeStore.getState>): boolean {
+    return state.nodes.length === 0 && !state.presetConnectionsOpen;
   }
 
   private pickConfig(state: ReturnType<typeof useMazeStore.getState>): TessellationConfig {

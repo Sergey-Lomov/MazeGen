@@ -9,6 +9,8 @@ import { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { FieldEditController } from "./FieldEditController";
 import { GridOverlay } from "./GridOverlay";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
+import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
+import { PresetConnectionsController } from "./PresetConnectionsController";
 import { configScreenCenter } from "./FieldEditorOverlay";
 import { makeProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
@@ -35,6 +37,9 @@ export class MazeScene {
   private gridOverlayContainer: Container;
   private primitivePreviewOverlay: PrimitivePreviewOverlay;
   private primitivePreviewContainer: Container;
+  private presetConnectionsRenderer: PresetConnectionsRenderer;
+  private presetConnectionsContainer: Container;
+  private presetConnectionsController: PresetConnectionsController;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
@@ -78,7 +83,8 @@ export class MazeScene {
     this.fieldEditorOverlayContainer = new Container();
     this.gridOverlayContainer = new Container();
     this.primitivePreviewContainer = new Container();
-    this.syncedLayers = [this.gridOverlayContainer, this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer, this.fieldEditorOverlayContainer, this.primitivePreviewContainer];
+    this.presetConnectionsContainer = new Container();
+    this.syncedLayers = [this.gridOverlayContainer, this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer, this.fieldEditorOverlayContainer, this.primitivePreviewContainer, this.presetConnectionsContainer];
 
     this.app.stage.addChild(this.viewport);
     for (const layer of this.syncedLayers) this.app.stage.addChild(layer);
@@ -99,8 +105,18 @@ export class MazeScene {
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.gridOverlay = new GridOverlay(this.gridOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
+    this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
 
     const self = this;
+    this.presetConnectionsController = new PresetConnectionsController(
+      () => self.viewport,
+      this.presetConnectionsRenderer,
+      (x, y) => {
+        self.viewport.x = x;
+        self.viewport.y = y;
+        self.syncLayersToViewport();
+      },
+    );
     this.fieldEditController = new FieldEditController(
       app.canvas,
       () => {
@@ -279,6 +295,13 @@ export class MazeScene {
       this.app.screen.height,
       this.viewport.scale.x,
     );
+    this.presetConnectionsRenderer.onViewportChanged(
+      this.viewport.x,
+      this.viewport.y,
+      this.app.screen.width,
+      this.app.screen.height,
+      this.viewport.scale.x,
+    );
   }
 
   private fitMaze(cfg: TessellationConfig, nodes: { x: number; y: number; id: number }[]): void {
@@ -296,6 +319,10 @@ export class MazeScene {
     this.viewport.y = screenH / 2 - scale * (minY + H / 2);
 
     this.syncLayersToViewport();
+  }
+
+  getPresetConnectionsRenderer(): PresetConnectionsRenderer {
+    return this.presetConnectionsRenderer;
   }
 
   refit(durationMs = 0): void {
@@ -336,6 +363,10 @@ export class MazeScene {
         this.fieldEditController.onPointerDown(e.globalX, e.globalY, e.button);
         return;
       }
+      if (st.presetConnectionsOpen) {
+        this.presetConnectionsController.onPointerDown(e.globalX, e.globalY, e.button);
+        return;
+      }
       this.isDragging = true;
       this.dragStart = { x: e.globalX, y: e.globalY };
       this.viewportStart = { x: this.viewport.x, y: this.viewport.y };
@@ -347,6 +378,10 @@ export class MazeScene {
         this.fieldEditController.onPointerMove(e.globalX, e.globalY);
         return;
       }
+      if (st.presetConnectionsOpen) {
+        this.presetConnectionsController.onPointerMove(e.globalX, e.globalY);
+        return;
+      }
       if (!this.isDragging) return;
       const dx = e.globalX - this.dragStart.x;
       const dy = e.globalY - this.dragStart.y;
@@ -355,10 +390,14 @@ export class MazeScene {
       this.syncLayersToViewport();
     });
 
-    stage.on("pointerup", () => {
+    stage.on("pointerup", (e) => {
       const st = useMazeStore.getState();
       if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerUp();
+        return;
+      }
+      if (st.presetConnectionsOpen) {
+        this.presetConnectionsController.onPointerUp(e.button);
         return;
       }
       this.isDragging = false;
@@ -409,6 +448,7 @@ export class MazeScene {
     this.fieldEditorOverlay.destroy();
     this.gridOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
+    this.presetConnectionsRenderer.destroy();
     this.fieldEditController.destroy();
     window.removeEventListener("blur", this.onBlur);
     this.app.canvas.removeEventListener("wheel", this.onWheel);

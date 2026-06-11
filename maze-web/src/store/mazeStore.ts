@@ -3,6 +3,9 @@ import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../was
 import { initWasm } from "../wasm/wasmLoader";
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto } from "../wasm/types";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
+import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
+import { applyTool, computeInvalidKeys } from "../pixi/presetConnectionsUtils";
+import { configAllCells } from "../pixi/tessellationCells";
 
 export type TessellationKind = "square" | "hex" | "triangle";
 export type SquareShape = "rect" | "free";
@@ -83,6 +86,12 @@ interface MazeState {
   fieldEverOpened: boolean;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
+  presetConnectionsOpen: boolean;
+  presetConnections: Map<string, PresetConnectionEntry>;
+  presetConnectionsTool: PresetConnectionTool;
+  presetStart: [number, number] | null;
+  presetFinish: [number, number] | null;
+  highlightInvalidPresets: boolean;
 }
 
 interface MazeActions {
@@ -124,6 +133,15 @@ interface MazeActions {
   setFieldSetupOpen: (open: boolean) => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
+  setPresetConnectionsOpen: (open: boolean) => void;
+  setPresetConnectionsTool: (tool: PresetConnectionTool) => void;
+  applyPresetConnectionsTool: (key: string, from: [number, number], to: [number, number]) => void;
+  applyPresetConnectionsReset: (key: string) => void;
+  clearInvalidPresetConnections: () => void;
+  resetPresetConnections: () => void;
+  setPresetStart: (cell: [number, number] | null) => void;
+  setPresetFinish: (cell: [number, number] | null) => void;
+  setHighlightInvalidPresets: (highlight: boolean) => void;
 }
 
 function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
@@ -273,6 +291,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   fieldEverOpened: false,
   fieldEditMode: "default",
   fieldPrimitive: "point",
+  presetConnectionsOpen: false,
+  presetConnections: new Map<string, PresetConnectionEntry>(),
+  presetConnectionsTool: "wall" as PresetConnectionTool,
+  presetStart: null,
+  presetFinish: null,
+  highlightInvalidPresets: false,
 
   setSeed: (seed) => set({ seed, error: null }),
 
@@ -329,6 +353,9 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         navNodes: [], navEdges: [], components: [],
         selectedNode: null, warnings: [], nodeStats: null, edgeStats: null, routeInfo: null,
         error: null,
+        presetConnections: new Map<string, PresetConnectionEntry>(),
+        presetStart: null,
+        presetFinish: null,
       } : {}),
     };
   }),
@@ -443,7 +470,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   },
 
   generate: () => {
-    const { seed, tessellationConfig, tessellationKind, isEditingField, fieldPoints, hexOrientation, triOrientation, selectedChecks, selectedStrategies, strategyParams, availableStrategies, initialConfig, elementsConfig } = get();
+    const { seed, tessellationConfig, tessellationKind, isEditingField, fieldPoints, hexOrientation, triOrientation, selectedChecks, selectedStrategies, strategyParams, availableStrategies, initialConfig, elementsConfig, presetConnections } = get();
     try {
       if (isEditingField && fieldPoints.size < 2) {
         set({ error: "Free field requires at least 2 cells" });
@@ -471,12 +498,19 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         activeTessellation = buildFreeConfig(tessellationKind, fieldPoints, hexOrientation, triOrientation);
       }
 
+      const customPts = isEditingField ? fieldPoints : undefined;
+      const invalidKeys = computeInvalidKeys(presetConnections, activeTessellation, customPts);
+      const validPresets = Array.from(presetConnections.values())
+        .filter(e => !invalidKeys.has(`${e.from[0]},${e.from[1]}-${e.to[0]},${e.to[1]}`))
+        .map(e => ({ from: e.from, to: e.to, state: e.state }));
+
       const snapshot = generateMaze(seed, {
         tessellation: activeTessellation,
         checks: selectedChecks,
         strategies,
         initial: initialConfig,
         elements: elementsConfig,
+        preset_connections: validPresets,
       });
       set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null, activeTessellationConfig: activeTessellation, nodeStats: snapshot.node_stats, edgeStats: snapshot.edge_stats, routeInfo: snapshot.route_info });
     } catch (err) {
@@ -596,8 +630,18 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setFieldEditMode: (mode) => set((state) => {
     if (mode === "custom") {
-      const fieldPoints = state.freeFieldPoints[state.tessellationKind];
-      return { fieldEditMode: mode, isEditingField: true, fieldPoints, fieldPrimitive: "point" };
+      const cfg = state.tessellationConfig;
+      const isAlreadyCustom = cfg.type === "square_custom" || cfg.type === "hex_custom" || cfg.type === "tri_custom";
+      let fieldPoints: Set<number>;
+      if (isAlreadyCustom) {
+        fieldPoints = state.freeFieldPoints[state.tessellationKind];
+      } else {
+        const cells = configAllCells(cfg);
+        fieldPoints = new Set(cells.map(([x, y]) => encodePoint(x, y)));
+      }
+      const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
+      const tessellationConfig = isAlreadyCustom ? cfg : buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
+      return { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, tessellationConfig, fieldPrimitive: "point" };
     }
     const cfg = buildPredefinedConfig(state.tessellationKind, state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
     return { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point" };
@@ -637,6 +681,35 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   }),
 
   setFieldPrimitive: (p) => set({ fieldPrimitive: p }),
+
+  setPresetConnectionsOpen: (open) => set(open ? { presetConnectionsOpen: true } : { presetConnectionsOpen: false, highlightInvalidPresets: false }),
+
+  setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool }),
+
+  applyPresetConnectionsTool: (key, from, to) => set((state) => ({
+    presetConnections: applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool),
+  })),
+
+  clearInvalidPresetConnections: () => set((state) => {
+    const customPts = state.isEditingField ? state.fieldPoints : undefined;
+    const invalidKeys = computeInvalidKeys(state.presetConnections, state.tessellationConfig, customPts);
+    const next = new Map(state.presetConnections);
+    for (const key of invalidKeys) next.delete(key);
+    return { presetConnections: next };
+  }),
+
+  resetPresetConnections: () => set({ presetConnections: new Map<string, PresetConnectionEntry>(), presetStart: null, presetFinish: null }),
+
+  applyPresetConnectionsReset: (key) => set((state) => {
+    if (!state.presetConnections.has(key)) return {};
+    const next = new Map(state.presetConnections);
+    next.delete(key);
+    return { presetConnections: next };
+  }),
+
+  setPresetStart: (cell) => set({ presetStart: cell }),
+  setPresetFinish: (cell) => set({ presetFinish: cell }),
+  setHighlightInvalidPresets: (highlight) => set({ highlightInvalidPresets: highlight }),
 }));
 
 function mergeOrientation(current: TessellationConfig, orientation: HexOrientation | TriOrientation): TessellationConfig {

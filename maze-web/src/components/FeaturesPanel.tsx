@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
 import { BasicConfigFeature, HEX_ORIENTATION_LABELS, TRI_ORIENTATION_LABELS } from "./features/BasicConfigFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
+import { PresetConnectionsFeature, presetConnectionsSubtitle } from "./features/PresetConnectionsFeature";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind } from "../store/mazeStore";
+import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
 import { colors } from "../styles/theme";
 import type { TessellationConfig } from "../wasm/types";
 
@@ -27,7 +29,7 @@ const KIND_LABELS: Record<TessellationKind, string> = {
   triangle: "Triangle",
 };
 
-type FeatureId = "basic_config" | "field_setup";
+type FeatureId = "basic_config" | "field_setup" | "preset_connections";
 
 export function FeaturesPanel() {
   const [openCard, setOpenCard] = useState<FeatureId | null>(null);
@@ -45,15 +47,22 @@ export function FeaturesPanel() {
   const fieldEverOpened = useMazeStore((s) => s.fieldEverOpened);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
   const setFieldSetupOpen = useMazeStore((s) => s.setFieldSetupOpen);
+  const presetConnections = useMazeStore((s) => s.presetConnections);
+  const presetStart = useMazeStore((s) => s.presetStart);
+  const presetFinish = useMazeStore((s) => s.presetFinish);
+  const setPresetConnectionsOpen = useMazeStore((s) => s.setPresetConnectionsOpen);
 
   function handleToggle(id: FeatureId) {
     if (openCard === id) {
       if (id === "field_setup") setFieldSetupOpen(false);
+      if (id === "preset_connections") setPresetConnectionsOpen(false);
       setOpenCard(null);
     } else {
       if (openCard === "field_setup") setFieldSetupOpen(false);
+      if (openCard === "preset_connections") setPresetConnectionsOpen(false);
       if (id === "basic_config") syncPreviewToConfirmed();
       if (id === "field_setup") setFieldSetupOpen(true);
+      if (id === "preset_connections") setPresetConnectionsOpen(true);
       setOpenCard(id);
     }
   }
@@ -73,6 +82,31 @@ export function FeaturesPanel() {
   const fieldSetupComment = fieldStatus === "unavailable" ? "Confirm tessellation first"
     : fieldStatus === "available" ? "Configure field shape"
     : "Field configured";
+
+  const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
+  const presetInvalidKeys = useMemo(
+    () => computeInvalidKeys(presetConnections, tessellationConfig, customPts),
+    [presetConnections, tessellationConfig, customPts],
+  );
+  const fieldReady = fieldStatus === "set" || fieldStatus === "set-default";
+  const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
+  const totalPresetCount = presetConnections.size + markerCount;
+  const presetStatus: FeatureStatus = !fieldReady
+    ? "unavailable"
+    : presetInvalidKeys.size > 0
+    ? "warning"
+    : totalPresetCount > 0
+    ? "set"
+    : "set-default";
+  const presetComment = !tessellationConfirmed
+    ? "Confirm tessellation first"
+    : !fieldReady
+    ? "Configure field first"
+    : presetInvalidKeys.size > 0
+    ? `${presetInvalidKeys.size} preset${presetInvalidKeys.size !== 1 ? "s" : ""} outside field`
+    : totalPresetCount > 0
+    ? "Presets configured"
+    : "No presets set";
 
   return (
     <div style={styles.panel}>
@@ -97,6 +131,18 @@ export function FeaturesPanel() {
         onToggle={() => handleToggle("field_setup")}
       >
         <FieldSetupFeature />
+      </FeatureCard>
+      <FeatureCard
+        title="Preset connections"
+        status={presetStatus}
+        comment={presetComment}
+        subtitle={tessellationConfirmed
+          ? presetConnectionsSubtitle(presetConnections, presetInvalidKeys.size, markerCount)
+          : undefined}
+        expanded={openCard === "preset_connections"}
+        onToggle={() => handleToggle("preset_connections")}
+      >
+        <PresetConnectionsFeature />
       </FeatureCard>
     </div>
   );

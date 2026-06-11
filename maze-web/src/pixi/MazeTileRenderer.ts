@@ -54,7 +54,7 @@ function tileTopLeft(node: NodeDto): Pos {
   return { x: node.x * TILE_SIZE, y: -node.y * TILE_SIZE - TILE_SIZE };
 }
 
-function drawOneWayTriangle(g: Graphics, wallCx: number, wallCy: number, pointingDx: number, pointingDy: number): void {
+export function drawOneWayTriangle(g: Graphics, wallCx: number, wallCy: number, pointingDx: number, pointingDy: number): void {
   const size = TILE_SIZE * 0.18;
   const px = -pointingDy;
   const py = pointingDx;

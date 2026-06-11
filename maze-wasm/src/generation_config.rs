@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 use maze_core::{
-    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm},
+    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
 };
 
@@ -54,6 +54,22 @@ pub struct ElementsConfigDto {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PresetConnectionStateDto {
+    Wall,
+    Passage,
+    OneWayForward,
+    OneWayBackward,
+}
+
+#[derive(Deserialize)]
+pub struct PresetConnectionDto {
+    pub from: [i32; 2],
+    pub to:   [i32; 2],
+    pub state: PresetConnectionStateDto,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
 pub enum InitialGenerationConfig {
     CustomVertexBased(GenerationParamsConfig),
@@ -81,6 +97,8 @@ pub struct GenerateConfig {
     pub initial: InitialGenerationConfig,
     #[serde(default)]
     pub elements: ElementsConfigDto,
+    #[serde(default)]
+    pub preset_connections: Vec<PresetConnectionDto>,
 }
 
 impl Default for GenerateConfig {
@@ -101,6 +119,7 @@ impl Default for GenerateConfig {
             },
             initial: InitialGenerationConfig::default(),
             elements: ElementsConfigDto::default(),
+            preset_connections: vec![],
         }
     }
 }
@@ -119,7 +138,17 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
             GenerationAlgorithm::KruskalAlgorithm,
     };
     let elements = build_elements_config(&config.elements);
-    GenerationConfig { algorithm, elements }
+    let preset_connections = config.preset_connections.iter().map(|dto| PresetConnection {
+        from: (dto.from[0], dto.from[1]),
+        to:   (dto.to[0],   dto.to[1]),
+        state: match dto.state {
+            PresetConnectionStateDto::Wall          => PresetConnectionState::Wall,
+            PresetConnectionStateDto::Passage       => PresetConnectionState::Passage,
+            PresetConnectionStateDto::OneWayForward  => PresetConnectionState::OneWayForward,
+            PresetConnectionStateDto::OneWayBackward => PresetConnectionState::OneWayBackward,
+        },
+    }).collect();
+    GenerationConfig { algorithm, elements, preset_connections }
 }
 
 fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {

@@ -3,11 +3,10 @@ import { useMazeStore } from "../store/mazeStore";
 import { decodePoint } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
 import type { TessellationProjection } from "./tessellationProjection";
+import { getCellVertices } from "./tessellationGeometry";
 import { TILE_SIZE } from "./constants";
-import { hexCenter, hexVertices } from "./hexGeometry";
-import { triVertices } from "./triGeometry";
-import { triTriangleRaw, triHexagonRaw, triCenterOffset } from "./triShapeHelpers";
 import type { TessellationConfig } from "../wasm/types";
+import { configAllCells } from "./tessellationCells";
 
 const ACTIVE_CELL_COLOR = 0x666666;
 const ACTIVE_CELL_ALPHA = 0.7;
@@ -105,105 +104,16 @@ export class FieldEditorOverlay {
   }
 
   private drawCellFill(g: Graphics, x: number, y: number, cfg: TessellationConfig): void {
-    const verts = this.getCellVertices(x, y, cfg);
+    const verts = getCellVertices(x, y, cfg);
     if (!verts) return;
     g.poly(verts.flatMap(v => [v.x, v.y]));
     g.fill({ color: ACTIVE_CELL_COLOR, alpha: ACTIVE_CELL_ALPHA });
-  }
-
-  private getCellVertices(x: number, y: number, cfg: TessellationConfig) {
-    switch (cfg.type) {
-      case "square":
-      case "square_custom": {
-        const h = TILE_SIZE / 2;
-        const cx = x * TILE_SIZE + TILE_SIZE / 2;
-        const cy = -y * TILE_SIZE - TILE_SIZE / 2;
-        return [
-          { x: cx - h, y: cy - h },
-          { x: cx + h, y: cy - h },
-          { x: cx + h, y: cy + h },
-          { x: cx - h, y: cy + h },
-        ];
-      }
-      case "hex_parallelogram":
-      case "hex_hexagon":
-      case "hex_custom": {
-        const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-        const center = hexCenter(x, y, orientation);
-        return hexVertices(center.x, center.y, orientation);
-      }
-      case "triangle_rect":
-      case "triangle_triangle":
-      case "triangle_hexagon":
-      case "tri_custom": {
-        const orientation = (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0";
-        return triVertices(x, y, orientation);
-      }
-      default:
-        return null;
-    }
   }
 
   destroy(): void {
     this.unsubscribe?.();
     this.activeLayer.destroy();
     this.originLayer.destroy();
-  }
-}
-
-function configAllCells(cfg: TessellationConfig): [number, number][] {
-  switch (cfg.type) {
-    case "square": {
-      const ox = Math.floor(cfg.width / 2);
-      const oy = Math.floor(cfg.height / 2);
-      const cells: [number, number][] = [];
-      for (let x = 0; x < cfg.width; x++)
-        for (let y = 0; y < cfg.height; y++)
-          cells.push([x - ox, y - oy]);
-      return cells;
-    }
-    case "hex_parallelogram": {
-      const ox = Math.floor(cfg.cols / 2);
-      const oy = Math.floor(cfg.rows / 2);
-      const cells: [number, number][] = [];
-      for (let x = 0; x < cfg.cols; x++)
-        for (let y = 0; y < cfg.rows; y++)
-          cells.push([x - ox, y - oy]);
-      return cells;
-    }
-    case "hex_hexagon": {
-      const r = cfg.radius;
-      const cells: [number, number][] = [];
-      for (let x = -r; x <= r; x++)
-        for (let y = -r; y <= r; y++)
-          if (Math.abs(x + y) <= r) cells.push([x, y]);
-      return cells;
-    }
-    case "triangle_rect": {
-      let ox = Math.floor(cfg.cols / 2);
-      let oy = Math.floor(cfg.rows / 2);
-      // preserve parity: (ox+oy) must be even so (col-ox+row-oy)%2 == (col+row)%2
-      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
-      const cells: [number, number][] = [];
-      for (let x = 0; x < cfg.cols; x++)
-        for (let y = 0; y < cfg.rows; y++)
-          cells.push([x - ox, y - oy]);
-      return cells;
-    }
-    case "triangle_triangle": {
-      const raw = triTriangleRaw(cfg.side);
-      const { ox, oy } = triCenterOffset(raw);
-      return raw.map(([x, y]) => [x - ox, y - oy]);
-    }
-    case "triangle_hexagon": {
-      const raw = triHexagonRaw(cfg.radius);
-      const { ox, oy } = triCenterOffset(raw);
-      return raw.map(([x, y]) => [x - ox, y - oy]);
-    }
-    case "square_custom":
-    case "hex_custom":
-    case "tri_custom":
-      return cfg.points.map(([x, y]) => [x, y]);
   }
 }
 

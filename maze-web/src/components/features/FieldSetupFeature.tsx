@@ -55,6 +55,7 @@ export function FieldSetupFeature() {
   const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
+  const fieldPoints = useMazeStore((s) => s.fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
 
   const isHex = tessellationKind === "hex";
@@ -143,7 +144,12 @@ export function FieldSetupFeature() {
       <div style={styles.toggleRow}>
         <button
           style={buttonStyle(isCustom ? "toggle" : "toggle-active")}
-          onClick={() => setFieldEditMode("default")}
+          onClick={() => {
+            if (isCustom && fieldPoints.size > 0) {
+              if (!window.confirm("Switch to standard shapes? Your custom field will be replaced.")) return;
+            }
+            setFieldEditMode("default");
+          }}
         >
           Default
         </button>

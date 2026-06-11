@@ -70,17 +70,34 @@ pub enum GenerationAlgorithm {
     KruskalAlgorithm,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum PresetConnectionState {
+    Wall,
+    Passage,
+    OneWayForward,
+    OneWayBackward,
+}
+
+#[derive(Debug, Clone)]
+pub struct PresetConnection {
+    pub from: (i32, i32),
+    pub to:   (i32, i32),
+    pub state: PresetConnectionState,
+}
+
 #[derive(Debug, Clone)]
 pub struct GenerationConfig {
-    pub algorithm: GenerationAlgorithm,
-    pub elements:  ElementsConfig,
+    pub algorithm:           GenerationAlgorithm,
+    pub elements:            ElementsConfig,
+    pub preset_connections:  Vec<PresetConnection>,
 }
 
 impl Default for GenerationConfig {
     fn default() -> Self {
         GenerationConfig {
-            algorithm: GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
-            elements:  ElementsConfig::default(),
+            algorithm:          GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
+            elements:           ElementsConfig::default(),
+            preset_connections: vec![],
         }
     }
 }

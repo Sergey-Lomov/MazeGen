@@ -1,7 +1,7 @@
 import React from "react";
 import { colors, font } from "../styles/theme";
 
-export type FeatureStatus = "unavailable" | "available" | "set-default" | "set";
+export type FeatureStatus = "unavailable" | "available" | "set-default" | "set" | "warning";
 
 export interface FeatureCardProps {
   title: string;
@@ -18,6 +18,7 @@ const STATUS_FILL: Record<FeatureStatus, string> = {
   available: colors.featureStatusAvailable,
   "set-default": colors.featureStatusSetDefault,
   set: colors.featureStatusSet,
+  warning: colors.featureStatusSetDefault,
 };
 
 const STATUS_BORDER_COLOR: Record<FeatureStatus, string> = {
@@ -25,6 +26,7 @@ const STATUS_BORDER_COLOR: Record<FeatureStatus, string> = {
   available: colors.featureStatusAvailable,
   "set-default": colors.featureStatusSetDefault,
   set: colors.featureStatusSet,
+  warning: colors.featureStatusSetDefault,
 };
 
 export function StatusDot({ status }: { status: FeatureStatus }) {
