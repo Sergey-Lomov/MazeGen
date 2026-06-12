@@ -2,7 +2,8 @@ import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { cellCenter } from "./hexGeometry";
 import { NODE_RADIUS } from "./constants";
-import type { RouteInfoDto, TessellationConfig, NodeDto } from "../wasm/types";
+import type { RouteInfoDto, NodeDto } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 const ROUTE_LINE_COLOR = 0xffdd44;
 const ROUTE_LINE_WIDTH = 3;

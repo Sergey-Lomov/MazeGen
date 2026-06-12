@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
-    generation::{generate_maze, generate_maze_steps},
+    generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, IssueKind},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
     compute_node_stats, compute_spatial_edge_stats, compute_route_info,
@@ -11,7 +11,7 @@ use maze_core::{
 use crate::generation_config::{GenerateConfig, build_generation_config};
 use crate::dto::{
     EdgeDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
-    GenerationStepDto, GenerationStepsSnapshot,
+    GenerationStepDto,
     NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, JunctionBucket,
 };
 
@@ -76,11 +76,40 @@ pub fn run_generate<T: Tessellation>(
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
     let gen_config = build_generation_config(config);
-    generate_maze(&mut graph, &field, seed, start_id, gen_config);
+    let preset_state = build_preset_state(
+        &mut graph, &field,
+        &gen_config.preset_connections,
+        &gen_config.locked_nodes,
+        |x, y| field.all_points().find(|&p| point_to_xy(p) == (x, y)).unwrap_or(start),
+    );
+    let raw_steps: Vec<GenerationStep> = if config.debug {
+        generate_maze_steps(&mut graph, &field, seed, start_id, gen_config, &preset_state)
+    } else {
+        generate_maze(&mut graph, &field, seed, start_id, gen_config, &preset_state);
+        vec![]
+    };
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<T>(config)?;
 
     let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
+
+    if let Some([fx, fy]) = config.preset_finish {
+        if let Some(finish_id) = maze.field.all_points()
+            .find(|&p| point_to_xy(p) == (fx, fy))
+            .and_then(|p| maze.field.node_at(p))
+        {
+            maze.meta.finish = Some(finish_id);
+        }
+    }
+    if let Some([sx, sy]) = config.preset_start {
+        if let Some(start_override) = maze.field.all_points()
+            .find(|&p| point_to_xy(p) == (sx, sy))
+            .and_then(|p| maze.field.node_at(p))
+        {
+            maze.meta.start = Some(start_override);
+        }
+    }
+
     let warnings: Vec<String> = issues.iter().map(|i| i.kind.to_string()).collect();
 
     let nodes: Vec<NodeDto> = maze.graph
@@ -163,52 +192,30 @@ pub fn run_generate<T: Tessellation>(
         _ => None,
     };
 
+    let debug_steps = steps_to_dto(raw_steps);
+
     let snapshot = MazeSnapshot {
         nodes, edges,
         start: meta_start, finish: meta_finish,
         warnings, nav_nodes, nav_edges, components,
         node_stats, edge_stats, route_info,
+        debug_steps,
     };
     serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-pub fn run_generate_steps<T: Tessellation>(
-    seed: u64,
-    field: Field<T>,
-    start: T::Point,
-    config: &GenerateConfig,
-    point_to_xy: impl Fn(T::Point) -> (i32, i32),
-) -> Result<JsValue, JsValue> {
-    let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-
-    let nodes: Vec<NodeDto> = graph.nodes()
-        .filter_map(|n| {
-            let id = u32::try_from(n.id).ok()?;
-            field.point_of(n.id).map(|p| {
-                let (x, y) = point_to_xy(p);
-                NodeDto { id, x, y }
-            })
-        })
-        .collect();
-
-    let start_id = field
-        .node_at(start)
-        .ok_or_else(|| JsValue::from_str("start node not found"))?;
-
-    let gen_config = build_generation_config(config);
-    let raw_steps = generate_maze_steps(&mut graph, &field, seed, start_id, gen_config);
-
-    let steps: Vec<GenerationStepDto> = raw_steps.into_iter().map(|s| {
+fn steps_to_dto(raw: Vec<GenerationStep>) -> Vec<GenerationStepDto> {
+    raw.into_iter().map(|s| {
         let edges = s.edges.into_iter().filter_map(|e| {
             Some(EdgeDto {
                 from: u32::try_from(e.from).ok()?,
                 to:   u32::try_from(e.to).ok()?,
             })
         }).collect();
-        GenerationStepDto { edges }
-    }).collect();
-
-    let snapshot = GenerationStepsSnapshot { nodes, steps };
-    serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
+        let active_nodes = s.active_nodes.into_iter()
+            .filter_map(|id| u32::try_from(id).ok())
+            .collect();
+        let current_src = u32::try_from(s.current_src).unwrap_or(0);
+        GenerationStepDto { edges, active_nodes, current_src }
+    }).collect()
 }

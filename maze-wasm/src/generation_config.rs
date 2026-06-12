@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 use maze_core::{
-    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState},
+    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, LockedNode, NodeLockKind},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
 };
 
@@ -12,23 +12,30 @@ pub struct StrategyConfig {
     pub params: HashMap<String, String>,
 }
 
+#[derive(Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TessellationType {
+    Square,
+    Hex,
+    Tri,
+}
+
 #[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum TessellationConfig {
-    Square { width: u32, height: u32 },
-    HexParallelogram { cols: u32, rows: u32 },
-    HexHexagon { radius: u32 },
-    TriangleRect { cols: u32, rows: u32 },
-    TriangleTriangle { side: u32 },
-    TriangleHexagon { radius: u32 },
-    SquareCustom { points: Vec<[i32; 2]> },
-    HexCustom    { points: Vec<[i32; 2]> },
-    TriCustom    { points: Vec<[i32; 2]> },
+pub struct TessellationConfig {
+    pub tessellation_type: TessellationType,
+    pub points: Vec<[i32; 2]>,
 }
 
 impl Default for TessellationConfig {
     fn default() -> Self {
-        TessellationConfig::Square { width: 10, height: 10 }
+        let points: Vec<[i32; 2]> = {
+            let w = 10i32;
+            let h = 10i32;
+            let ox = w / 2;
+            let oy = h / 2;
+            (0..w).flat_map(|x| (0..h).map(move |y| [x - ox, y - oy])).collect()
+        };
+        TessellationConfig { tessellation_type: TessellationType::Square, points }
     }
 }
 
@@ -44,7 +51,7 @@ pub struct GenerationParamsConfig {
 pub struct EdgeBasedParamsConfig {
     pub corridor_length: Option<f64>,
     pub branching:       Option<f64>,
-    pub locality:        Option<f64>,
+    pub depth_first:     Option<f64>,
     pub directionality:  Option<f64>,
 }
 
@@ -67,6 +74,20 @@ pub struct PresetConnectionDto {
     pub from: [i32; 2],
     pub to:   [i32; 2],
     pub state: PresetConnectionStateDto,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeLockKindDto {
+    In,
+    Out,
+    Both,
+}
+
+#[derive(Deserialize)]
+pub struct LockedNodeDto {
+    pub point: [i32; 2],
+    pub kind:  NodeLockKindDto,
 }
 
 #[derive(Deserialize)]
@@ -101,6 +122,12 @@ pub struct GenerateConfig {
     pub elements: ElementsConfigDto,
     #[serde(default)]
     pub preset_connections: Vec<PresetConnectionDto>,
+    #[serde(default)]
+    pub locked_nodes: Vec<LockedNodeDto>,
+    pub preset_start: Option<[i32; 2]>,
+    pub preset_finish: Option<[i32; 2]>,
+    #[serde(default)]
+    pub debug: bool,
 }
 
 impl Default for GenerateConfig {
@@ -123,6 +150,10 @@ impl Default for GenerateConfig {
             initial: InitialGenerationConfig::default(),
             elements: ElementsConfigDto::default(),
             preset_connections: vec![],
+            locked_nodes: vec![],
+            preset_start: None,
+            preset_finish: None,
+            debug: false,
         }
     }
 }
@@ -151,7 +182,15 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
             PresetConnectionStateDto::OneWayBackward => PresetConnectionState::OneWayBackward,
         },
     }).collect();
-    GenerationConfig { algorithm, elements, preset_connections }
+    let locked_nodes = config.locked_nodes.iter().map(|dto| LockedNode {
+        point: (dto.point[0], dto.point[1]),
+        kind: match dto.kind {
+            NodeLockKindDto::In   => NodeLockKind::In,
+            NodeLockKindDto::Out  => NodeLockKind::Out,
+            NodeLockKindDto::Both => NodeLockKind::Both,
+        },
+    }).collect();
+    GenerationConfig { algorithm, elements, preset_connections, locked_nodes }
 }
 
 fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
@@ -167,7 +206,7 @@ fn build_edge_params(cfg: &EdgeBasedParamsConfig) -> EdgeBasedParams {
     let mut p = EdgeBasedParams::default();
     if let Some(v) = cfg.corridor_length { p.corridor_length = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.locality        { p.locality        = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.depth_first     { p.depth_first     = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
     p
 }

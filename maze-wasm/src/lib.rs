@@ -10,8 +10,8 @@ use maze_core::{
     quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
-use generation_config::{GenerateConfig, TessellationConfig};
-use tessellation_dispatch::{dispatch_generate, dispatch_generate_steps, dispatch_expand_field_points};
+use generation_config::GenerateConfig;
+use tessellation_dispatch::dispatch_generate;
 
 #[derive(Serialize)]
 struct ParamDescriptor {
@@ -124,14 +124,6 @@ pub fn available_strategies() -> JsValue {
 }
 
 #[wasm_bindgen]
-pub fn expand_field_points(config: JsValue) -> Result<JsValue, JsValue> {
-    let config: TessellationConfig = serde_wasm_bindgen::from_value(config)
-        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
-    let points = dispatch_expand_field_points(&config);
-    serde_wasm_bindgen::to_value(&points).map_err(|e| JsValue::from_str(&e.to_string()))
-}
-
-#[wasm_bindgen]
 pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
     let config: GenerateConfig = if config.is_null() || config.is_undefined() {
         GenerateConfig::default()
@@ -142,13 +134,3 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
     dispatch_generate(seed, &config)
 }
 
-#[wasm_bindgen]
-pub fn generate_steps(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
-    let config: GenerateConfig = if config.is_null() || config.is_undefined() {
-        GenerateConfig::default()
-    } else {
-        serde_wasm_bindgen::from_value(config)
-            .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?
-    };
-    dispatch_generate_steps(seed, &config)
-}

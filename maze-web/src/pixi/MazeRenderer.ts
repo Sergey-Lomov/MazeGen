@@ -1,6 +1,7 @@
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, TessellationConfig } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
 import { cellCenter } from "./hexGeometry";
 
@@ -164,7 +165,8 @@ abstract class BaseGraphRenderer {
     for (const { id, pos } of renderNodes) {
       const g = new Graphics();
       const color = nodeColor(id, selectedNode, start, finish);
-      g.circle(0, 0, NODE_RADIUS);
+      const r = (id === start || id === finish) ? NODE_RADIUS * 1.5 : NODE_RADIUS;
+      g.circle(0, 0, r);
       g.fill(color);
       g.x = pos.x;
       g.y = pos.y;
@@ -175,14 +177,16 @@ abstract class BaseGraphRenderer {
         g.on("pointerover", () => {
           const s = useMazeStore.getState();
           if (s.selectedNode !== id) {
-            g.clear(); g.circle(0, 0, NODE_RADIUS);
+            const hr = (id === s.start || id === s.finish) ? NODE_RADIUS * 1.5 : NODE_RADIUS;
+            g.clear(); g.circle(0, 0, hr);
             const base = nodeColor(id, null, s.start, s.finish);
             g.fill(base !== NODE_COLOR ? base : NODE_HOVER_COLOR);
           }
         });
         g.on("pointerout", () => {
           const s = useMazeStore.getState();
-          g.clear(); g.circle(0, 0, NODE_RADIUS);
+          const or = (id === s.start || id === s.finish) ? NODE_RADIUS * 1.5 : NODE_RADIUS;
+          g.clear(); g.circle(0, 0, or);
           g.fill(nodeColor(id, s.selectedNode, s.start, s.finish));
         });
         g.on("pointerdown", (e) => {
@@ -218,18 +222,44 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
   private subscribeToStore(): void {
     let prev = useMazeStore.getState();
     this.unsubscribe = useMazeStore.subscribe((state) => {
-      const nodesChanged = state.nodes !== prev.nodes || state.edges !== prev.edges
-        || state.start !== prev.start || state.finish !== prev.finish;
+      const renderNodes = state.debugMode && state.debugSnapshot
+        ? state.debugSnapshot.nodes
+        : state.nodes;
+      const renderEdges = state.debugMode && state.debugSnapshot
+        ? (state.debugSnapshot.steps[state.debugStep]?.edges ?? [])
+        : state.edges;
+
+      const prevRenderNodes = prev.debugMode && prev.debugSnapshot
+        ? prev.debugSnapshot.nodes
+        : prev.nodes;
+      const prevRenderEdges = prev.debugMode && prev.debugSnapshot
+        ? (prev.debugSnapshot.steps[prev.debugStep]?.edges ?? [])
+        : prev.edges;
+
+      const isLastDebugStep = state.debugMode && state.debugSnapshot
+        ? state.debugStep === state.debugSnapshot.steps.length - 1
+        : true;
+      const renderStart  = (state.debugMode && state.debugSnapshot && !isLastDebugStep) ? null : state.start;
+      const renderFinish = (state.debugMode && state.debugSnapshot && !isLastDebugStep) ? null : state.finish;
+
+      const prevIsLastDebugStep = prev.debugMode && prev.debugSnapshot
+        ? prev.debugStep === prev.debugSnapshot.steps.length - 1
+        : true;
+      const prevRenderStart  = (prev.debugMode && prev.debugSnapshot && !prevIsLastDebugStep) ? null : prev.start;
+      const prevRenderFinish = (prev.debugMode && prev.debugSnapshot && !prevIsLastDebugStep) ? null : prev.finish;
+
+      const nodesChanged = renderNodes !== prevRenderNodes || renderEdges !== prevRenderEdges
+        || renderStart !== prevRenderStart || renderFinish !== prevRenderFinish;
       const debugChanged = state.showNodeIds !== prev.showNodeIds || state.showCoords !== prev.showCoords;
       const selectionChanged = state.selectedNode !== prev.selectedNode;
 
       if (!nodesChanged && !debugChanged && !selectionChanged) { prev = state; return; }
 
       if (nodesChanged) {
-        this.renderGraph(state.nodes, state.edges, state.showNodeIds, state.showCoords, state.selectedNode, state.start, state.finish, state.activeTessellationConfig);
+        this.renderGraph(renderNodes, renderEdges, state.showNodeIds, state.showCoords, state.selectedNode, renderStart, renderFinish, state.activeTessellationConfig);
       } else {
-        if (debugChanged) this.updateLabels(state.nodes, state.showNodeIds, state.showCoords);
-        if (selectionChanged) this.updateSelection(prev.selectedNode, state.selectedNode, state.start, state.finish);
+        if (debugChanged) this.updateLabels(renderNodes, state.showNodeIds, state.showCoords);
+        if (selectionChanged) this.updateSelection(prev.selectedNode, state.selectedNode, renderStart, renderFinish);
       }
       prev = state;
     });
@@ -319,11 +349,13 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
   private updateSelection(prevId: number | null, nextId: number | null, start: number | null, finish: number | null): void {
     if (prevId !== null) {
       const g = this.nodeViews.get(prevId);
-      if (g) { g.clear(); g.circle(0, 0, NODE_RADIUS); g.fill(nodeColor(prevId, null, start, finish)); }
+      const r = (prevId === start || prevId === finish) ? NODE_RADIUS * 1.5 : NODE_RADIUS;
+      if (g) { g.clear(); g.circle(0, 0, r); g.fill(nodeColor(prevId, null, start, finish)); }
     }
     if (nextId !== null) {
       const g = this.nodeViews.get(nextId);
-      if (g) { g.clear(); g.circle(0, 0, NODE_RADIUS); g.fill(NODE_SELECTED_COLOR); }
+      const r = (nextId === start || nextId === finish) ? NODE_RADIUS * 1.5 : NODE_RADIUS;
+      if (g) { g.clear(); g.circle(0, 0, r); g.fill(NODE_SELECTED_COLOR); }
     }
   }
 

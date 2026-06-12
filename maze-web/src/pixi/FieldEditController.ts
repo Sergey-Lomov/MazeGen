@@ -5,7 +5,7 @@ import { TILE_SIZE } from "./constants";
 import { primitiveCells, cfgKind } from "./primitiveGeometry";
 import type { ShapePrimitive, TessellationKind } from "./primitiveGeometry";
 import type { FieldPrimitive } from "../store/mazeStore";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 interface PanCallbacks {
   startPan: (x: number, y: number) => void;

@@ -2,7 +2,7 @@ import { squareCenter, squareVertices } from "./squareGeometry";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triCenter, triVertices } from "./triGeometry";
 import type { TriOrientation } from "./triGeometry";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 export type Pos = { x: number; y: number };
 

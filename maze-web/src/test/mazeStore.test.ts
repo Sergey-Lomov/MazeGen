@@ -27,6 +27,7 @@ const mockSnapshot = {
   node_stats: { dead_ends: 2, straight: 0, turns: 0, junctions: [] },
   edge_stats: { bidirectional: 0, one_way: 1, walls: 0 },
   route_info: null,
+  debug_steps: [],
 };
 
 const emptyFreePoints = () => ({
@@ -485,10 +486,8 @@ describe("mazeStore.generate", () => {
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
-    expect(call[1].tessellation.type).toBe("square_custom");
-    if (call[1].tessellation.type === "square_custom") {
-      expect(call[1].tessellation.points).toHaveLength(3);
-    }
+    expect(call[1].tessellation.tessellation_type).toBe("square");
+    expect(call[1].tessellation.points).toHaveLength(3);
   });
 
   it("sets error when isEditingField and fieldPoints.size < 2", () => {

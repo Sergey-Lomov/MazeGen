@@ -5,11 +5,12 @@ import { BasicConfigFeature, HEX_ORIENTATION_LABELS, TRI_ORIENTATION_LABELS } fr
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
 import { PresetConnectionsFeature, presetConnectionsSubtitle } from "./features/PresetConnectionsFeature";
 import { QualityFeature } from "./features/QualityFeature";
+import { GenerationFeature } from "./features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind } from "../store/mazeStore";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
 import { colors } from "../styles/theme";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 function computeFieldStatus(
   tessellationConfirmed: boolean,
@@ -29,7 +30,7 @@ const KIND_LABELS: Record<TessellationKind, string> = {
   triangle: "Triangle",
 };
 
-type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality";
+type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation";
 
 export function FeaturesPanel() {
   const [openCard, setOpenCard] = useState<FeatureId | null>(null);
@@ -151,6 +152,15 @@ export function FeaturesPanel() {
         onToggle={() => handleToggle("quality")}
       >
         <QualityFeature />
+      </FeatureCard>
+      <FeatureCard
+        title="Generation"
+        status={tessellationConfirmed ? "set" : "unavailable"}
+        comment={tessellationConfirmed ? "Ready to generate" : "Confirm tessellation first"}
+        expanded={openCard === "generation"}
+        onToggle={() => handleToggle("generation")}
+      >
+        <GenerationFeature canGenerate={tessellationConfirmed} />
       </FeatureCard>
     </div>
   );

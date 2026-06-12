@@ -1,7 +1,7 @@
 import { TILE_SIZE } from "./constants";
 import { INRADIUS } from "./hexGeometry";
 import { TRI_TILE_SIZE } from "./triGeometry";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 export interface TessellationProjection {
   // viewport-space coords (after viewport transform) → grid coords

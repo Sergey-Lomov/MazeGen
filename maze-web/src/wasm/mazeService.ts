@@ -1,5 +1,5 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, GenerateConfig, GenerationStepsSnapshot, TessellationConfig } from "./types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, GenerateConfig } from "./types";
 
 function isNodeDto(v: unknown): v is NodeDto {
   return typeof v === "object" && v !== null &&
@@ -62,24 +62,4 @@ export function getAvailableStrategies(): StrategyDescriptor[] {
 export function generateMaze(seed: number, config: GenerateConfig): MazeSnapshot {
   const raw = getWasm().generate(BigInt(seed), config);
   return validateSnapshot(raw);
-}
-
-export function expandFieldPoints(cfg: TessellationConfig): [number, number][] {
-  const raw = getWasm().expand_field_points(cfg);
-  if (!Array.isArray(raw)) throw new Error("expand_field_points: invalid response");
-  return raw as [number, number][];
-}
-
-export function generateMazeSteps(seed: number, config: GenerateConfig): GenerationStepsSnapshot {
-  const raw = getWasm().generate_steps(BigInt(seed), config);
-  if (typeof raw !== "object" || raw === null) throw new Error("generate_steps returned invalid data");
-  const s = raw as Record<string, unknown>;
-  if (!Array.isArray(s.nodes) || !s.nodes.every(isNodeDto))
-    throw new Error("generate_steps: invalid nodes");
-  if (!Array.isArray(s.steps) || !s.steps.every(
-    (step: unknown) => typeof step === "object" && step !== null &&
-      Array.isArray((step as Record<string, unknown>).edges) &&
-      ((step as Record<string, unknown>).edges as unknown[]).every(isEdgeDto)
-  )) throw new Error("generate_steps: invalid steps");
-  return s as unknown as GenerationStepsSnapshot;
 }

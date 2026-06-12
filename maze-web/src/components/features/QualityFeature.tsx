@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { buttonStyle } from "../../styles/shared";
 import { colors, font } from "../../styles/theme";
+import { CheckSelectDialog } from "./CheckSelectDialog";
 import { CheckDetailsDialog } from "./CheckDetailsDialog";
 
 export function QualityFeature() {
@@ -9,18 +10,8 @@ export function QualityFeature() {
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const removeCheck = useMazeStore((s) => s.removeCheck);
 
-  const [dialogMode, setDialogMode] = useState<"add" | "edit" | null>(null);
-  const [dialogCheckId, setDialogCheckId] = useState<string>("");
-
-  function openEdit(id: string) {
-    setDialogCheckId(id);
-    setDialogMode("edit");
-  }
-
-  function openAdd() {
-    setDialogMode("add");
-    setDialogCheckId("");
-  }
+  const [addOpen, setAddOpen] = useState(false);
+  const [editCheckId, setEditCheckId] = useState<string | null>(null);
 
   const activeDescriptors = selectedChecks
     .map((id) => availableChecks.find((c) => c.id === id))
@@ -36,7 +27,7 @@ export function QualityFeature() {
             <div key={check.id} style={styles.row}>
               <span style={styles.label}>{check.label}</span>
               <div style={styles.actions}>
-                <button style={styles.iconBtn} onClick={() => openEdit(check.id)} title="Details">ℹ</button>
+                <button style={styles.iconBtn} onClick={() => setEditCheckId(check.id)} title="Details">ℹ</button>
                 <button style={styles.iconBtn} onClick={() => removeCheck(check.id)} title="Remove">✕</button>
               </div>
             </div>
@@ -46,18 +37,15 @@ export function QualityFeature() {
       <div style={activeDescriptors.length > 0 ? styles.addWrap : undefined}>
         <button
           style={{ ...buttonStyle("toggle"), width: "100%" }}
-          onClick={openAdd}
+          onClick={() => setAddOpen(true)}
           disabled={!canAdd}
         >
           + Add check
         </button>
       </div>
-      {dialogMode !== null && (
-        <CheckDetailsDialog
-          mode={dialogMode}
-          initialCheckId={dialogCheckId}
-          onClose={() => setDialogMode(null)}
-        />
+      {addOpen && <CheckSelectDialog onClose={() => setAddOpen(false)} />}
+      {editCheckId !== null && (
+        <CheckDetailsDialog checkId={editCheckId} onClose={() => setEditCheckId(null)} />
       )}
     </div>
   );

@@ -28,14 +28,11 @@ pub struct NavEdgeDto {
 
 #[derive(Serialize)]
 pub struct GenerationStepDto {
-    pub edges: Vec<EdgeDto>,
+    pub edges:        Vec<EdgeDto>,
+    pub active_nodes: Vec<u32>,
+    pub current_src:  u32,
 }
 
-#[derive(Serialize)]
-pub struct GenerationStepsSnapshot {
-    pub nodes: Vec<NodeDto>,
-    pub steps: Vec<GenerationStepDto>,
-}
 
 #[derive(Serialize)]
 pub struct JunctionBucket {
@@ -81,4 +78,5 @@ pub struct MazeSnapshot {
     pub node_stats: NodeStatsDto,
     pub edge_stats: SpatialEdgeStatsDto,
     pub route_info: Option<RouteInfoDto>,
+    pub debug_steps: Vec<GenerationStepDto>,
 }

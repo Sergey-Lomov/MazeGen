@@ -57,6 +57,7 @@ export interface MazeSnapshot {
   node_stats: NodeStatsDto;
   edge_stats: SpatialEdgeStatsDto;
   route_info: RouteInfoDto | null;
+  debug_steps: GenerationStepDto[];
 }
 
 export interface CheckDescriptor {
@@ -90,16 +91,12 @@ export interface StrategyConfig {
   params: Record<string, string>;
 }
 
-export type TessellationConfig =
-  | { type: "square"; width: number; height: number }
-  | { type: "hex_parallelogram"; cols: number; rows: number; orientation?: "flat_top" | "pointy_top" }
-  | { type: "hex_hexagon"; radius: number; orientation?: "flat_top" | "pointy_top" }
-  | { type: "triangle_rect"; cols: number; rows: number; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "triangle_triangle"; side: number; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "triangle_hexagon"; radius: number; orientation?: "r0" | "r90" | "r180" | "r270" }
-  | { type: "square_custom"; points: [number, number][] }
-  | { type: "hex_custom"; points: [number, number][]; orientation?: "flat_top" | "pointy_top" }
-  | { type: "tri_custom"; points: [number, number][]; orientation?: "r0" | "r90" | "r180" | "r270" };
+export type TessellationKindWasm = "square" | "hex" | "tri";
+
+export interface WasmTessellationConfig {
+  tessellation_type: TessellationKindWasm;
+  points: [number, number][];
+}
 
 export interface GenerationParams {
   depth_first?: number;
@@ -111,7 +108,7 @@ export interface GenerationParams {
 export interface EdgeBasedParams {
   corridor_length?: number;
   branching?: number;
-  locality?: number;
+  depth_first?: number;
   directionality?: number;
 }
 
@@ -121,6 +118,8 @@ export interface ElementsConfig {
 
 export interface GenerationStepDto {
   edges: EdgeDto[];
+  active_nodes: number[];
+  current_src: number;
 }
 
 export interface GenerationStepsSnapshot {
@@ -143,12 +142,23 @@ export interface PresetConnection {
   state: PresetConnectionState;
 }
 
+export type NodeLockKind = "in" | "out" | "both";
+
+export interface LockedNodeDto {
+  point: [number, number];
+  kind: NodeLockKind;
+}
+
 export interface GenerateConfig {
-  tessellation: TessellationConfig;
+  tessellation: WasmTessellationConfig;
   checks: string[];
   strategies: Record<string, StrategyConfig>;
   check_params?: Record<string, Record<string, string>>;
   initial: InitialGenerationConfig;
   elements: ElementsConfig;
   preset_connections?: PresetConnection[];
+  locked_nodes?: LockedNodeDto[];
+  preset_start?: [number, number];
+  preset_finish?: [number, number];
+  debug?: boolean;
 }

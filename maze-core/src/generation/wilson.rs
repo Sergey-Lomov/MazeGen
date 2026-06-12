@@ -4,7 +4,7 @@ use rand::rngs::SmallRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
-use super::{ElementsConfig, add_edge};
+use super::{ElementsConfig, PresetState, try_add_edge, can_connect};
 
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
@@ -12,17 +12,19 @@ pub fn generate<T: Tessellation>(
     seed: u64,
     start: NodeId,
     elements: &ElementsConfig,
-    mut on_step: Option<&mut dyn FnMut(&Graph)>,
+    preset_state: &PresetState,
+    mut on_step: Option<&mut super::StepCallback<'_>>,
 ) {
     let all_nodes: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut rng = SmallRng::seed_from_u64(seed);
 
+    for &pc in &preset_state.preset_connected {
+        visited.insert(pc);
+    }
     visited.insert(start);
 
-    // Build list of unvisited nodes in a stable order for determinism.
-    // We pick a random index from this list each outer iteration.
-    let mut unvisited: Vec<NodeId> = all_nodes.iter().copied().filter(|&n| n != start).collect();
+    let mut unvisited: Vec<NodeId> = all_nodes.iter().copied().filter(|&n| !visited.contains(&n)).collect();
 
     while !unvisited.is_empty() {
         // Pick a random unvisited node to start a random walk from.
@@ -34,7 +36,11 @@ pub fn generate<T: Tessellation>(
         let mut next: HashMap<NodeId, NodeId> = HashMap::new();
         let mut current = walk_start;
         loop {
-            let neighbors = field.neighbors(current);
+            let neighbors: Vec<NodeId> = field.neighbors(current)
+                .into_iter()
+                .filter(|&n| can_connect(current, n, preset_state))
+                .collect();
+            if neighbors.is_empty() { break; }
             let chosen = neighbors[rng.random_range(0..neighbors.len())];
             next.insert(current, chosen);
             if visited.contains(&chosen) {
@@ -46,10 +52,10 @@ pub fn generate<T: Tessellation>(
         // Commit the loop-erased path: walk from walk_start following next[] until visited.
         let mut node = walk_start;
         while !visited.contains(&node) {
-            let dst = next[&node];
-            add_edge(graph, node, dst, elements, &mut rng);
+            let Some(&dst) = next.get(&node) else { break; };
+            try_add_edge(graph, node, dst, elements, preset_state, &mut rng);
             visited.insert(node);
-            if let Some(ref mut cb) = on_step { cb(graph); }
+            if let Some(ref mut cb) = on_step { cb(graph, node, &[]); }
             node = dst;
         }
 

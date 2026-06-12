@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use maze_core::{IdGenerator, Graph};
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
-use maze_core::generation::{generate_maze, GenerationConfig, pipeline::build_maze};
+use maze_core::generation::{generate_maze, GenerationConfig, PresetState, pipeline::build_maze};
 use maze_core::validation::is_connected;
 use maze_core::io::render_ascii;
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
@@ -14,7 +14,7 @@ fn main() {
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
-    generate_maze(&mut graph, &field, seed, start, GenerationConfig::default());
+    generate_maze(&mut graph, &field, seed, start, GenerationConfig::default(), &PresetState::empty());
     assert!(is_connected(&graph, start));
 
     let qc_engine = QualityControlEngine::new(vec![

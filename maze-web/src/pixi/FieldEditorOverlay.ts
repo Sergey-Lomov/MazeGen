@@ -5,7 +5,7 @@ import { makeProjection } from "./tessellationProjection";
 import type { TessellationProjection } from "./tessellationProjection";
 import { getCellVertices } from "./tessellationGeometry";
 import { TILE_SIZE } from "./constants";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { configAllCells } from "./tessellationCells";
 
 const ACTIVE_CELL_COLOR = 0x666666;
@@ -43,7 +43,7 @@ export class FieldEditorOverlay {
         this.cfg = state.tessellationConfig;
         this.projection = makeProjection(state.tessellationConfig);
         this.redrawActive(state.fieldPoints, state.fieldEditMode);
-        this.redrawOrigin(state.fieldEditMode === "custom");
+        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
       }
 
       if (state.fieldSetupOpen && state.fieldPoints !== prev.fieldPoints) {
@@ -54,12 +54,16 @@ export class FieldEditorOverlay {
         this.cfg = state.tessellationConfig;
         this.projection = makeProjection(state.tessellationConfig);
         this.redrawActive(state.fieldPoints, state.fieldEditMode);
-        this.redrawOrigin(state.fieldEditMode === "custom");
+        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
       }
 
       if (state.fieldSetupOpen && state.fieldEditMode !== prev.fieldEditMode) {
-        this.redrawOrigin(state.fieldEditMode === "custom");
+        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
         this.redrawActive(state.fieldPoints, state.fieldEditMode);
+      }
+
+      if (state.fieldSetupOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
+        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
       }
     });
   }
@@ -68,7 +72,7 @@ export class FieldEditorOverlay {
     this.vpScale = scale;
     if (this.root.visible && this.projection) {
       const state = useMazeStore.getState();
-      this.redrawOrigin(state.fieldEditMode === "custom");
+      this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
     }
   }
 
@@ -127,4 +131,33 @@ export function configScreenCenter(cfg: TessellationConfig): { x: number; y: num
     sx += x; sy += y;
   }
   return { x: sx / cells.length, y: sy / cells.length };
+}
+
+/** Computes viewport transform to fit all field cells into the screen with padding. */
+export function fitFieldViewport(
+  cfg: TessellationConfig,
+  screenW: number,
+  screenH: number,
+  padding = 0.85,
+): { x: number; y: number; scale: number } {
+  const cells = configAllCells(cfg);
+  if (cells.length === 0) return { x: screenW / 2, y: screenH / 2, scale: 1 };
+  const proj = makeProjection(cfg);
+  const centers = cells.map(([col, row]) => proj.gridToScreen(col, row));
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of centers) {
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  // Expand by one tile so cells at edges are not cropped
+  minX -= TILE_SIZE; minY -= TILE_SIZE; maxX += TILE_SIZE; maxY += TILE_SIZE;
+  const W = maxX - minX;
+  const H = maxY - minY;
+  if (W <= 0 || H <= 0) return { x: screenW / 2, y: screenH / 2, scale: 1 };
+  const scale = Math.min(padding * screenW / W, padding * screenH / H);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  return { x: screenW / 2 - scale * cx, y: screenH / 2 - scale * cy, scale };
 }

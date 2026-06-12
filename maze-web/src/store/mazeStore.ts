@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, TessellationConfig, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GenerationStepsSnapshot, GenerateConfig, WasmTessellationConfig, NodeLockKind } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
-import { applyTool, computeInvalidKeys } from "../pixi/presetConnectionsUtils";
+import { applyTool, computeInvalidKeys, computeAutoLockedNodes } from "../pixi/presetConnectionsUtils";
 import { configAllCells } from "../pixi/tessellationCells";
 
 export type TessellationKind = "square" | "hex" | "triangle";
@@ -94,6 +95,23 @@ interface MazeState {
   presetStart: [number, number] | null;
   presetFinish: [number, number] | null;
   highlightInvalidPresets: boolean;
+  highlightIsolatedNodes: boolean;
+  showPresetOrigin: boolean;
+  showFieldOrigin: boolean;
+  /** Locked nodes: key = "x,y", value = lock kind */
+  lockedNodes: Map<string, NodeLockKind>;
+  autoLock: boolean;
+  /** Auto-locked nodes (fully-defined cells): key = "x,y". Always lock_both. */
+  autoLockedNodes: Set<string>;
+  // Runtime generation state
+  randomSeed: boolean;
+  lastUsedSeed: number | null;
+  generationStatus: "idle" | "done" | "error";
+  // Debug state — read-only projection, does not mutate production graph
+  debugMode: boolean;
+  debugSnapshot: GenerationStepsSnapshot | null;
+  debugStep: number;
+  debugStale: boolean;
 }
 
 interface MazeActions {
@@ -146,6 +164,17 @@ interface MazeActions {
   setPresetStart: (cell: [number, number] | null) => void;
   setPresetFinish: (cell: [number, number] | null) => void;
   setHighlightInvalidPresets: (highlight: boolean) => void;
+  setHighlightIsolatedNodes: (highlight: boolean) => void;
+  setShowPresetOrigin: (show: boolean) => void;
+  setShowFieldOrigin: (show: boolean) => void;
+  setLockedNode: (x: number, y: number, kind: NodeLockKind) => void;
+  removeLockedNode: (x: number, y: number) => void;
+  clearLockedNodes: () => void;
+  setAutoLock: (v: boolean) => void;
+  setRandomSeed: (v: boolean) => void;
+  setDebugMode: (v: boolean) => void;
+  setDebugStep: (step: number) => void;
+  regenerate: () => void;
 }
 
 function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
@@ -181,7 +210,7 @@ function buildPredefinedConfig(
 ): TessellationConfig {
   if (kind === "square") {
     const base = saved?.["square"] as { type: "square"; width: number; height: number } | undefined;
-    return { type: "square", width: base?.width ?? 10, height: base?.height ?? 10 };
+    return { type: "square", width: base?.width ?? 11, height: base?.height ?? 11 };
   }
   if (kind === "hex") {
     if (hexShape === "parallelogram") {
@@ -211,7 +240,7 @@ function buildFreeConfig(kind: TessellationKind, pts: Set<number>, hexOrientatio
 }
 
 function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation): TessellationConfig {
-  if (kind === "square") return { type: "square", width: 10, height: 10 };
+  if (kind === "square") return { type: "square", width: 11, height: 11 };
   if (kind === "hex") return { type: "hex_parallelogram", cols: 10, rows: 10, orientation: hexOri };
   return { type: "triangle_rect", cols: 10, rows: 10, orientation: triOri };
 }
@@ -253,13 +282,13 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   previewKind: "square",
   previewHexOrientation: DEFAULT_HEX_ORI,
   previewTriOrientation: DEFAULT_TRI_ORI,
-  previewTessellationConfig: { type: "square", width: 10, height: 10 },
+  previewTessellationConfig: { type: "square", width: 11, height: 11 },
   squareShape: "rect",
-  hexShape: "parallelogram",
-  triangleShape: "rect",
+  hexShape: "hexagon",
+  triangleShape: "triangle",
   savedConfigs: {},
-  tessellationConfig: { type: "square", width: 10, height: 10 },
-  activeTessellationConfig: { type: "square", width: 10, height: 10 },
+  tessellationConfig: { type: "square", width: 11, height: 11 },
+  activeTessellationConfig: { type: "square", width: 11, height: 11 },
   freeFieldPoints: emptyFreePoints(),
   isEditingField: false,
   fieldPoints: new Set<number>(),
@@ -287,7 +316,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   selectedStrategies: {},
   strategyParams: {},
   checkParams: {},
-  initialConfig: { method: "custom_vertex_based" as const, depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
+  initialConfig: { method: "recursive_backtracker" as const },
   elementsConfig: { one_way_chance: 0.04 },
   nodeStats: null,
   edgeStats: null,
@@ -302,6 +331,19 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   presetStart: null,
   presetFinish: null,
   highlightInvalidPresets: false,
+  highlightIsolatedNodes: false,
+  showPresetOrigin: false,
+  showFieldOrigin: true,
+  lockedNodes: new Map<string, NodeLockKind>(),
+  autoLock: false,
+  autoLockedNodes: new Set<string>(),
+  randomSeed: false,
+  lastUsedSeed: null,
+  generationStatus: "idle" as const,
+  debugMode: false,
+  debugSnapshot: null,
+  debugStep: 0,
+  debugStale: false,
 
   setSeed: (seed) => set({ seed, error: null }),
 
@@ -329,8 +371,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const hexOrientation = state.previewHexOrientation;
     const triOrientation = state.previewTriOrientation;
     const squareShape: SquareShape = "rect";
-    const hexShape: HexShape = "parallelogram";
-    const triangleShape: TriangleShape = "rect";
+    const hexShape: HexShape = kind === "hex" ? "hexagon" : "parallelogram";
+    const triangleShape: TriangleShape = kind === "triangle" ? "triangle" : "rect";
     const cfg = buildPredefinedConfig(kind, hexShape, triangleShape, hexOrientation, triOrientation, state.savedConfigs);
     const savedConfigs = { ...state.savedConfigs, [cfg.type]: cfg };
     const freeFieldPoints = kind !== state.tessellationKind
@@ -358,6 +400,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         selectedNode: null, warnings: [], nodeStats: null, edgeStats: null, routeInfo: null,
         error: null,
         presetConnections: new Map<string, PresetConnectionEntry>(),
+        lockedNodes: new Map<string, NodeLockKind>(),
+        autoLockedNodes: new Set<string>(),
         presetStart: null,
         presetFinish: null,
         fieldEditMode: "default" as const,
@@ -368,8 +412,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setTessellationKind: (kind) => set((state) => {
     if (kind === state.tessellationKind) return {};
     const squareShape: SquareShape = "rect";
-    const hexShape: HexShape = "parallelogram";
-    const triangleShape: TriangleShape = "rect";
+    const hexShape: HexShape = kind === "hex" ? "hexagon" : "parallelogram";
+    const triangleShape: TriangleShape = kind === "triangle" ? "triangle" : "rect";
     const cfg = buildPredefinedConfig(kind, hexShape, triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
     const freeFieldPoints = { ...state.freeFieldPoints, [kind]: new Set<number>() };
     const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
@@ -485,55 +529,28 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   },
 
   generate: () => {
-    const { seed, tessellationConfig, tessellationKind, isEditingField, fieldPoints, hexOrientation, triOrientation, selectedChecks, selectedStrategies, strategyParams, availableStrategies, initialConfig, elementsConfig, presetConnections, checkParams } = get();
-    try {
-      if (isEditingField && fieldPoints.size < 2) {
-        set({ error: "Free field requires at least 2 cells" });
-        return;
-      }
-
-      const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
-      for (const [kind, strategyId] of Object.entries(selectedStrategies)) {
-        if (!strategyId) continue;
-        const descriptor = availableStrategies.find((s) => s.id === strategyId);
-        const paramOverrides = strategyParams[strategyId] ?? {};
-        const params: Record<string, string> = {};
-        if (descriptor) {
-          for (const p of descriptor.params) {
-            if (paramOverrides[p.id] !== undefined) {
-              params[p.id] = paramOverrides[p.id];
-            }
-          }
-        }
-        strategies[kind] = { id: strategyId, params };
-      }
-
-      let activeTessellation: TessellationConfig = tessellationConfig;
-      if (isEditingField) {
-        activeTessellation = buildFreeConfig(tessellationKind, fieldPoints, hexOrientation, triOrientation);
-      }
-
-      const customPts = isEditingField ? fieldPoints : undefined;
-      const invalidKeys = computeInvalidKeys(presetConnections, activeTessellation, customPts);
-      const validPresets = Array.from(presetConnections.values())
-        .filter(e => !invalidKeys.has(`${e.from[0]},${e.from[1]}-${e.to[0]},${e.to[1]}`))
-        .map(e => ({ from: e.from, to: e.to, state: e.state }));
-
-      const snapshot = generateMaze(seed, {
-        tessellation: activeTessellation,
-        checks: selectedChecks,
-        strategies,
-        check_params: checkParams,
-        initial: initialConfig,
-        elements: elementsConfig,
-        preset_connections: validPresets,
-      });
-      set({ nodes: snapshot.nodes, edges: snapshot.edges, start: snapshot.start, finish: snapshot.finish, navNodes: snapshot.nav_nodes, navEdges: snapshot.nav_edges, components: snapshot.components, selectedNode: null, warnings: snapshot.warnings, error: null, activeTessellationConfig: activeTessellation, nodeStats: snapshot.node_stats, edgeStats: snapshot.edge_stats, routeInfo: snapshot.route_info });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      set({ error: msg });
+    const state = get();
+    let usedSeed = state.seed;
+    if (state.randomSeed) {
+      usedSeed = Math.floor(Math.random() * 1_000_000);
+      set({ seed: usedSeed });
     }
+    set({ lastUsedSeed: usedSeed });
+    _generateWithSeed(usedSeed, get, set);
   },
+
+
+  regenerate: () => {
+    const state = get();
+    if (state.lastUsedSeed === null) return;
+    _generateWithSeed(state.lastUsedSeed, get, set);
+  },
+
+  setRandomSeed: (v) => set({ randomSeed: v }),
+
+  setDebugMode: (v) => set({ debugMode: v }),
+
+  setDebugStep: (step) => set({ debugStep: step }),
 
   reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null }),
 
@@ -583,18 +600,18 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setGenerationParam: (key, value) => set((state) => {
     if (state.initialConfig.method !== "custom_vertex_based") return {};
-    return { initialConfig: { ...state.initialConfig, [key]: value } };
+    return { initialConfig: { ...state.initialConfig, [key]: value }, debugStale: state.debugSnapshot !== null };
   }),
 
   setEdgeBasedParam: (key, value) => set((state) => {
     if (state.initialConfig.method !== "custom_edge_based") return {};
-    return { initialConfig: { ...state.initialConfig, [key]: value } };
+    return { initialConfig: { ...state.initialConfig, [key]: value }, debugStale: state.debugSnapshot !== null };
   }),
 
   setGenerationMethod: (method) => {
     const defaults: Record<string, InitialGenerationConfig> = {
       custom_vertex_based: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
-      custom_edge_based: { method: "custom_edge_based", corridor_length: 0.5, branching: 0.5, locality: 0.0, directionality: 0.0 },
+      custom_edge_based: { method: "custom_edge_based", corridor_length: 0.5, branching: 0.5, depth_first: 0.5, directionality: 0.0 },
       recursive_backtracker: { method: "recursive_backtracker" },
       wilson_algorithm: { method: "wilson_algorithm" },
       kruskal_algorithm: { method: "kruskal_algorithm" },
@@ -604,7 +621,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       console.error(`Unknown generation method: ${method}`);
       return;
     }
-    set({ initialConfig: next });
+    const stale = get().debugSnapshot !== null;
+    set({ initialConfig: next, debugStale: stale });
   },
 
   setElementsParam: (key, value) => set((state) => ({
@@ -717,38 +735,182 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setFieldPrimitive: (p) => set({ fieldPrimitive: p }),
 
-  setPresetConnectionsOpen: (open) => set(open ? { presetConnectionsOpen: true } : { presetConnectionsOpen: false, highlightInvalidPresets: false }),
+  setPresetConnectionsOpen: (open) => set(open ? { presetConnectionsOpen: true } : { presetConnectionsOpen: false, highlightInvalidPresets: false, highlightIsolatedNodes: false }),
 
   setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool }),
 
-  applyPresetConnectionsTool: (key, from, to) => set((state) => ({
-    presetConnections: applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool),
-  })),
+  applyPresetConnectionsTool: (key, from, to) => set((state) => {
+    const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool);
+    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }) };
+  }),
 
   clearInvalidPresetConnections: () => set((state) => {
     const customPts = state.isEditingField ? state.fieldPoints : undefined;
     const invalidKeys = computeInvalidKeys(state.presetConnections, state.tessellationConfig, customPts);
-    const next = new Map(state.presetConnections);
-    for (const key of invalidKeys) next.delete(key);
-    return { presetConnections: next };
+    const presetConnections = new Map(state.presetConnections);
+    for (const key of invalidKeys) presetConnections.delete(key);
+    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }) };
   }),
 
-  resetPresetConnections: () => set({ presetConnections: new Map<string, PresetConnectionEntry>(), presetStart: null, presetFinish: null }),
+  resetPresetConnections: () => set(() => ({
+    presetConnections: new Map<string, PresetConnectionEntry>(),
+    presetStart: null,
+    presetFinish: null,
+    lockedNodes: new Map<string, NodeLockKind>(),
+    autoLockedNodes: new Set<string>(),
+  })),
 
   applyPresetConnectionsReset: (key) => set((state) => {
     if (!state.presetConnections.has(key)) return {};
-    const next = new Map(state.presetConnections);
-    next.delete(key);
-    return { presetConnections: next };
+    const presetConnections = new Map(state.presetConnections);
+    presetConnections.delete(key);
+    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }) };
   }),
+
+  setAutoLock: (v) => set((state) => ({
+    autoLock: v,
+    autoLockedNodes: v ? _recomputeAutoLock({ ...state, autoLock: v }) : new Set<string>(),
+  })),
 
   setPresetStart: (cell) => set({ presetStart: cell }),
   setPresetFinish: (cell) => set({ presetFinish: cell }),
   setHighlightInvalidPresets: (highlight) => set({ highlightInvalidPresets: highlight }),
+  setHighlightIsolatedNodes: (highlight) => set({ highlightIsolatedNodes: highlight }),
+  setShowPresetOrigin: (show) => set({ showPresetOrigin: show }),
+  setShowFieldOrigin: (show) => set({ showFieldOrigin: show }),
+
+  setLockedNode: (x, y, kind) => set((state) => {
+    const next = new Map(state.lockedNodes);
+    next.set(`${x},${y}`, kind);
+    return { lockedNodes: next };
+  }),
+
+  removeLockedNode: (x, y) => set((state) => {
+    const key = `${x},${y}`;
+    if (!state.lockedNodes.has(key)) return {};
+    const next = new Map(state.lockedNodes);
+    next.delete(key);
+    return { lockedNodes: next };
+  }),
+
+  clearLockedNodes: () => set({ lockedNodes: new Map<string, NodeLockKind>(), autoLockedNodes: new Set<string>() }),
 }));
 
 function mergeOrientation(current: TessellationConfig, orientation: HexOrientation | TriOrientation): TessellationConfig {
   return { ...current, orientation } as TessellationConfig;
+}
+
+type StoreSet = (partial: Partial<MazeState & MazeActions> | ((s: MazeState & MazeActions) => Partial<MazeState & MazeActions>)) => void;
+type StoreGet = () => MazeState & MazeActions;
+
+function _recomputeAutoLock(state: MazeState): Set<string> {
+  if (!state.autoLock) return new Set<string>();
+  const activeTessellation: TessellationConfig = state.isEditingField
+    ? buildFreeConfig(state.tessellationKind, state.fieldPoints, state.hexOrientation, state.triOrientation)
+    : state.tessellationConfig;
+  const customPts = state.isEditingField ? state.fieldPoints : undefined;
+  return computeAutoLockedNodes(state.presetConnections, activeTessellation, customPts);
+}
+
+function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConfig {
+  const t = cfg.type;
+  const tessellation_type = t.startsWith("hex") ? "hex" as const
+    : (t.startsWith("tri") || t.startsWith("triangle")) ? "tri" as const
+    : "square" as const;
+  const points = configAllCells(cfg);
+  return { tessellation_type, points };
+}
+
+function _buildGenerateConfig(state: MazeState & MazeActions): GenerateConfig | null {
+  if (state.isEditingField && state.fieldPoints.size < 2) return null;
+  const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
+  for (const [kind, strategyId] of Object.entries(state.selectedStrategies)) {
+    if (!strategyId) continue;
+    const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
+    const paramOverrides = state.strategyParams[strategyId] ?? {};
+    const params: Record<string, string> = {};
+    if (descriptor) {
+      for (const p of descriptor.params) {
+        if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
+      }
+    }
+    strategies[kind] = { id: strategyId, params };
+  }
+  const activeTessellation: TessellationConfig = state.isEditingField
+    ? buildFreeConfig(state.tessellationKind, state.fieldPoints, state.hexOrientation, state.triOrientation)
+    : state.tessellationConfig;
+  const customPts = state.isEditingField ? state.fieldPoints : undefined;
+  const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
+  const validPresets = Array.from(state.presetConnections.values())
+    .filter(e => !invalidKeys.has(`${e.from[0]},${e.from[1]}-${e.to[0]},${e.to[1]}`))
+    .map(e => ({ from: e.from, to: e.to, state: e.state }));
+  const lockedEntries = new Map(state.lockedNodes);
+  for (const key of state.autoLockedNodes) {
+    if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
+  }
+  const locked_nodes = Array.from(lockedEntries.entries()).map(([key, kind]) => {
+    const [x, y] = key.split(",").map(Number);
+    return { point: [x, y] as [number, number], kind };
+  });
+  return {
+    tessellation: fieldConfigToWasm(activeTessellation),
+    checks: state.selectedChecks,
+    strategies,
+    check_params: state.checkParams,
+    initial: state.initialConfig,
+    elements: state.elementsConfig,
+    preset_connections: validPresets,
+    locked_nodes,
+    ...(state.presetStart ? { preset_start: state.presetStart } : {}),
+    ...(state.presetFinish ? { preset_finish: state.presetFinish } : {}),
+  };
+}
+
+function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet): void {
+  const state = get();
+  if (state.isEditingField && state.fieldPoints.size < 2) {
+    set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
+    return;
+  }
+  const activeTessellation: TessellationConfig = state.isEditingField
+    ? buildFreeConfig(state.tessellationKind, state.fieldPoints, state.hexOrientation, state.triOrientation)
+    : state.tessellationConfig;
+  const debugMode = state.debugMode;
+  const config = _buildGenerateConfig(state);
+  if (!config) return;
+  if (debugMode) config.debug = true;
+  try {
+    const snapshot = generateMaze(seed, config);
+    let debugSnapshot: GenerationStepsSnapshot | null = null;
+    if (debugMode && snapshot.debug_steps.length > 0) {
+      const steps = [{ edges: [], active_nodes: [], current_src: 0 }, ...snapshot.debug_steps];
+      debugSnapshot = { nodes: snapshot.nodes, steps };
+    }
+    const lastStep = debugSnapshot ? debugSnapshot.steps.length - 1 : 0;
+    set({
+      nodes: snapshot.nodes,
+      edges: snapshot.edges,
+      start: snapshot.start,
+      finish: snapshot.finish,
+      navNodes: snapshot.nav_nodes,
+      navEdges: snapshot.nav_edges,
+      components: snapshot.components,
+      selectedNode: null,
+      warnings: snapshot.warnings,
+      error: null,
+      activeTessellationConfig: activeTessellation,
+      nodeStats: snapshot.node_stats,
+      edgeStats: snapshot.edge_stats,
+      routeInfo: snapshot.route_info,
+      generationStatus: "done",
+      debugSnapshot,
+      debugStep: lastStep,
+      debugStale: false,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    set({ error: msg, generationStatus: "error" });
+  }
 }
 
 export { decodePoint };

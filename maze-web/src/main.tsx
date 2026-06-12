@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { initWasm } from "./wasm/wasmLoader";
 import { App } from "./App";
+import "./styles/global.css";
 
 async function bootstrap() {
   const root = document.getElementById("root")!;

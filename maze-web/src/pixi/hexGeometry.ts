@@ -1,5 +1,6 @@
 import { TILE_SIZE } from "./constants";
-import type { NodeDto, TessellationConfig } from "../wasm/types";
+import type { NodeDto } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { squareCenter } from "./squareGeometry";
 import { triCenter } from "./triGeometry";
 

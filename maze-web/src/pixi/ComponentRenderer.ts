@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import type { NodeDto, TessellationConfig } from "../wasm/types";
+import type { NodeDto } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { hexVertices, hexCenter } from "./hexGeometry";
 import { squareCenter, squareVertices } from "./squareGeometry";
 import { triVertices } from "./triGeometry";

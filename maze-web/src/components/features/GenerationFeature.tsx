@@ -1,0 +1,320 @@
+import React, { useState } from "react";
+import { useMazeStore } from "../../store/mazeStore";
+import { AlgorithmSelectDialog, ALGORITHM_LABELS } from "../dialogs/AlgorithmSelectDialog";
+import { sharedStyles } from "../../styles/shared";
+import { colors, font, radius } from "../../styles/theme";
+import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
+
+interface Props {
+  canGenerate: boolean;
+}
+
+export function GenerationFeature({ canGenerate }: Props) {
+  const seed = useMazeStore((s) => s.seed);
+  const randomSeed = useMazeStore((s) => s.randomSeed);
+  const lastUsedSeed = useMazeStore((s) => s.lastUsedSeed);
+  const generationStatus = useMazeStore((s) => s.generationStatus);
+  const debugMode = useMazeStore((s) => s.debugMode);
+  const error = useMazeStore((s) => s.error);
+  const initialConfig = useMazeStore((s) => s.initialConfig);
+
+  const setSeed = useMazeStore((s) => s.setSeed);
+  const setRandomSeed = useMazeStore((s) => s.setRandomSeed);
+  const setDebugMode = useMazeStore((s) => s.setDebugMode);
+  const setGenerationParam = useMazeStore((s) => s.setGenerationParam);
+  const setEdgeBasedParam = useMazeStore((s) => s.setEdgeBasedParam);
+  const generate = useMazeStore((s) => s.generate);
+  const regenerate = useMazeStore((s) => s.regenerate);
+
+  const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
+
+  const method = initialConfig.method;
+  const isVertexBased = method === "custom_vertex_based";
+  const isEdgeBased = method === "custom_edge_based";
+
+  const vertexParams = isVertexBased ? (initialConfig as { method: string } & GenerationParams) : null;
+  const edgeParams = isEdgeBased ? (initialConfig as { method: string } & EdgeBasedParams) : null;
+
+  function handleGenerate() {
+    generate();
+  }
+
+  function handleRegenerate() {
+    regenerate();
+  }
+
+  const canRegenerate = lastUsedSeed !== null && canGenerate;
+  const regenTooltip = lastUsedSeed !== null
+    ? `Re-generate with last seed (${lastUsedSeed})`
+    : "Generate first";
+
+  return (
+    <div style={styles.root}>
+      {/* Seed row */}
+      <div style={styles.row}>
+        <span style={styles.seedLabel}>Seed</span>
+        <input
+          type="number"
+          style={{ ...sharedStyles.input, width: 90, minWidth: 0, opacity: randomSeed ? 0.4 : 1 }}
+          value={seed}
+          readOnly={randomSeed}
+          onChange={(e) => setSeed(Number(e.target.value))}
+        />
+        <span style={{ ...styles.switchLabel, marginLeft: "auto" }}>Random</span>
+        <Switch checked={randomSeed} onChange={setRandomSeed} />
+      </div>
+
+      {/* Algorithm block */}
+      <div style={styles.algorithmBlock}>
+        <span style={styles.sectionCaption}>Generation algorithm</span>
+        <div style={styles.row}>
+          <span style={styles.algorithmLabel}>{ALGORITHM_LABELS[method] ?? method}</span>
+          <button style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)}>Edit</button>
+        </div>
+        {isVertexBased && vertexParams && (
+          <div style={styles.paramValues}>
+            <SliderParam label="Depth first" value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
+            <SliderParam label="Corridor chance" value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
+            <SliderParam label="Branching" value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
+            <SliderParam label="Directionality" value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
+          </div>
+        )}
+        {isEdgeBased && edgeParams && (
+          <div style={styles.paramValues}>
+            <SliderParam label="Corridor length" value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
+            <SliderParam label="Branching" value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
+            <SliderParam label="Depth first" value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
+            <SliderParam label="Directionality" value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
+          </div>
+        )}
+      </div>
+
+      {/* Status line */}
+      {generationStatus === "error" && error && (
+        <div style={styles.statusError}>{error}</div>
+      )}
+
+      {/* Debug toggle */}
+      <div style={styles.divider} />
+      <div style={styles.row}>
+        <span style={styles.switchLabel}>Debug mode</span>
+        <div style={styles.switchRight}>
+          <Switch checked={debugMode} onChange={setDebugMode} />
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div style={styles.btnRow}>
+        <button
+          style={{ ...styles.btnGenerate, ...(!canGenerate ? styles.btnDisabled : {}) }}
+          disabled={!canGenerate}
+          onClick={handleGenerate}
+        >
+          Generate
+        </button>
+        <button
+          style={{ ...styles.btnRegenerate, ...(!canRegenerate ? styles.btnDisabled : {}) }}
+          disabled={!canRegenerate}
+          title={regenTooltip}
+          onClick={handleRegenerate}
+        >
+          Re-Generate
+        </button>
+      </div>
+
+      {algorithmDialogOpen && (
+        <AlgorithmSelectDialog onClose={() => setAlgorithmDialogOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label style={switchStyles.wrap}>
+      <input
+        type="checkbox"
+        style={switchStyles.input}
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span style={{ ...switchStyles.track, ...(checked ? switchStyles.trackOn : {}) }}>
+        <span style={{ ...switchStyles.thumb, ...(checked ? switchStyles.thumbOn : {}) }} />
+      </span>
+    </label>
+  );
+}
+
+function SliderParam({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div style={styles.paramRow}>
+      <div style={styles.paramHeader}>
+        <span style={styles.paramLabel}>{label}</span>
+        <span style={styles.paramValue}>{value.toFixed(2)}</span>
+      </div>
+      <input
+        className="maze-slider"
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+      />
+    </div>
+  );
+}
+
+const switchStyles: Record<string, React.CSSProperties> = {
+  wrap: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  input: {
+    position: "absolute",
+    opacity: 0,
+    width: 0,
+    height: 0,
+  },
+  track: {
+    display: "inline-block",
+    width: 32,
+    height: 18,
+    background: colors.borderStrong,
+    borderRadius: 9,
+    position: "relative",
+    transition: "background 0.2s",
+  },
+  trackOn: {
+    background: colors.bgBtnPrimary,
+  },
+  thumb: {
+    position: "absolute",
+    top: 2,
+    left: 2,
+    width: 14,
+    height: 14,
+    background: colors.textWhite,
+    borderRadius: "50%",
+    transition: "left 0.2s",
+  },
+  thumbOn: {
+    left: 16,
+  },
+};
+
+const styles: Record<string, React.CSSProperties> = {
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  row: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  seedLabel: {
+    fontSize: font.sm,
+    color: colors.textMuted,
+    flexShrink: 0,
+    whiteSpace: "nowrap" as const,
+  },
+  switchLabel: {
+    fontSize: font.sm,
+    color: colors.textMuted,
+    flexShrink: 0,
+  },
+  switchRight: {
+    marginLeft: "auto",
+  },
+  algorithmBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  sectionCaption: {
+    fontSize: font.sm,
+    color: colors.textVeryDim,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
+  },
+  algorithmLabel: {
+    flex: 1,
+    fontSize: font.lg,
+    color: colors.textMuted,
+  },
+  editBtn: {
+    background: colors.bgInput,
+    border: `1px solid ${colors.borderStrong}`,
+    color: colors.textMuted,
+    padding: "2px 8px",
+    cursor: "pointer",
+    borderRadius: radius.sm,
+    fontSize: font.sm,
+    flexShrink: 0,
+  },
+  paramValues: {
+    paddingLeft: 8,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  paramRow: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+  },
+  paramHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  paramLabel: {
+    fontSize: font.sm,
+    color: colors.textVeryDim,
+  },
+  paramValue: {
+    fontSize: font.sm,
+    color: colors.textDim,
+  },
+  divider: {
+    borderTop: `1px solid ${colors.borderMid}`,
+    margin: "2px 0",
+  },
+  statusError: {
+    fontSize: font.sm,
+    color: colors.textError,
+  },
+  btnRow: {
+    display: "flex",
+    gap: 6,
+  },
+  btnGenerate: {
+    flex: 1,
+    background: colors.bgBtnPrimary,
+    border: "none",
+    color: colors.textWhite,
+    padding: "5px 0",
+    cursor: "pointer",
+    borderRadius: radius.sm,
+    fontSize: font.md,
+  },
+  btnRegenerate: {
+    flex: 1,
+    background: colors.bgInput,
+    border: `1px solid ${colors.borderStrong}`,
+    color: colors.textMuted,
+    padding: "5px 0",
+    cursor: "pointer",
+    borderRadius: radius.sm,
+    fontSize: font.md,
+  },
+  btnDisabled: {
+    opacity: 0.4,
+    cursor: "not-allowed",
+  },
+};

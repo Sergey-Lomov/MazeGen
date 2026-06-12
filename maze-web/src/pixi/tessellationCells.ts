@@ -1,5 +1,34 @@
 import { triTriangleRaw, triHexagonRaw, triCenterOffset } from "./triShapeHelpers";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+
+export function configOriginOffset(cfg: TessellationConfig): { ox: number; oy: number } {
+  switch (cfg.type) {
+    case "square":
+      return { ox: Math.floor(cfg.width / 2), oy: Math.floor(cfg.height / 2) };
+    case "hex_parallelogram":
+      return { ox: Math.floor(cfg.cols / 2), oy: Math.floor(cfg.rows / 2) };
+    case "triangle_rect": {
+      let ox = Math.floor(cfg.cols / 2);
+      let oy = Math.floor(cfg.rows / 2);
+      if ((ox + oy) % 2 !== 0) oy = Math.max(0, oy - 1);
+      return { ox, oy };
+    }
+    case "triangle_triangle": {
+      const { ox, oy } = triCenterOffset(triTriangleRaw(cfg.side));
+      return { ox, oy };
+    }
+    case "triangle_hexagon": {
+      const { ox, oy } = triCenterOffset(triHexagonRaw(cfg.radius));
+      return { ox, oy };
+    }
+    // hex_hexagon and *_custom already use centered coords
+    case "hex_hexagon":
+    case "square_custom":
+    case "hex_custom":
+    case "tri_custom":
+      return { ox: 0, oy: 0 };
+  }
+}
 
 export function configAllCells(cfg: TessellationConfig): [number, number][] {
   switch (cfg.type) {

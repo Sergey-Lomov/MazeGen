@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
-import type { TessellationConfig } from "../../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
-import { colors } from "../../styles/theme";
+import { colors, font } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 
 interface SizeParamProps {
@@ -60,6 +60,8 @@ export function FieldSetupFeature() {
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
   const fieldPoints = useMazeStore((s) => s.fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
+  const showFieldOrigin = useMazeStore((s) => s.showFieldOrigin);
+  const setShowFieldOrigin = useMazeStore((s) => s.setShowFieldOrigin);
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
 
@@ -203,6 +205,15 @@ export function FieldSetupFeature() {
             </button>
           ))}
           </div>
+          <div style={styles.originRow}>
+            <span style={styles.originLabel}>Show origin</span>
+            <label style={styles.switchWrap}>
+              <input type="checkbox" style={styles.switchInput} checked={showFieldOrigin} onChange={e => setShowFieldOrigin(e.target.checked)} />
+              <span style={{ ...styles.switchTrack, ...(showFieldOrigin ? styles.switchTrackOn : {}) }}>
+                <span style={{ ...styles.switchThumb, ...(showFieldOrigin ? styles.switchThumbOn : {}) }} />
+              </span>
+            </label>
+          </div>
           <button
             style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
             onClick={handleClearField}
@@ -294,4 +305,12 @@ const styles: Record<string, React.CSSProperties> = {
   input: sharedStyles.input,
   sectionLabel: { fontSize: 11, color: colors.textFaint },
   primitiveGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
+  originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: font.sm, color: colors.textMuted },
+  originLabel: { fontSize: font.sm, color: colors.textMuted },
+  switchWrap: { position: "relative", display: "inline-flex", alignItems: "center", cursor: "pointer", flexShrink: 0 },
+  switchInput: { position: "absolute", opacity: 0, width: 0, height: 0 },
+  switchTrack: { display: "inline-block", width: 32, height: 18, background: colors.borderStrong, borderRadius: 9, position: "relative", transition: "background 0.2s" },
+  switchTrackOn: { background: colors.bgBtnPrimary },
+  switchThumb: { position: "absolute", top: 2, left: 2, width: 14, height: 14, background: colors.textWhite, borderRadius: "50%", transition: "left 0.2s" },
+  switchThumbOn: { left: 16 },
 };

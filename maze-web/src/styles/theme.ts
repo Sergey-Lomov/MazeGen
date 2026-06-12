@@ -75,5 +75,5 @@ export const dialogSpacing = {
 export const dialogSize = {
   approve: { minWidth: 260, maxWidth: 360 },
   info: { minWidth: 280, maxWidth: 520, width: 520 },
-  complex: { minWidth: 460, maxWidth: 720, width: 720 },
+  complex: { minWidth: 460, maxWidth: 720, width: 720, height: "60vh" },
 } as const;

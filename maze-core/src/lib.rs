@@ -1,3 +1,4 @@
+pub mod math;
 pub mod ids;
 pub mod graph;
 pub mod space;
@@ -20,7 +21,7 @@ pub use space::{
     TriPoint, TriFace, TriTessellation, tri_rect, tri_triangle, tri_hexagon,
 };
 pub use meta::MazeMeta;
-pub use generation::{generate_maze, generate_maze_steps, ElementsConfig, GenerationConfig, GenerationAlgorithm, GenerationEdge, GenerationStep};
+pub use generation::{generate_maze, generate_maze_steps, build_preset_state, ElementsConfig, GenerationConfig, GenerationAlgorithm, GenerationEdge, GenerationStep, PresetConnection, PresetConnectionState, NodeLockKind, LockedNode, PresetState};
 pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
 
 pub struct MazeAnalysis {

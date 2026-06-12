@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import { TILE_SIZE } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { TessellationKind } from "./primitiveGeometry";
 
 const ADD_COLOR = 0x4488ff;

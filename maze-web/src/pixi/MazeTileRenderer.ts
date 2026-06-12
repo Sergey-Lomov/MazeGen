@@ -1,7 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import type { NodeDto, EdgeDto, TessellationConfig } from "../wasm/types";
-import { TILE_SIZE, NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
+import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { TILE_SIZE, NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR, DEBUG_ACTIVE_COLOR, DEBUG_CURRENT_SRC_COLOR, DEBUG_ACTIVE_ALPHA, DEBUG_ACTIVE_RADIUS, DEBUG_CURRENT_SRC_RADIUS } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import type { Pos } from "./hexGeometry";
 import { squareCenter, squareVertices } from "./squareGeometry";
@@ -414,6 +415,7 @@ export class MazeTileRenderer {
   private tilesContainer: Container;
   private wallsContainer: Container;
   private markersContainer: Container;
+  private debugOverlayContainer: Container;
 
   private unsubscribe: (() => void) | null = null;
 
@@ -423,9 +425,11 @@ export class MazeTileRenderer {
     this.tilesContainer = new Container();
     this.wallsContainer = new Container();
     this.markersContainer = new Container();
+    this.debugOverlayContainer = new Container();
     this.viewport.addChild(this.tilesContainer);
     this.viewport.addChild(this.wallsContainer);
     this.viewport.addChild(this.markersContainer);
+    this.viewport.addChild(this.debugOverlayContainer);
 
     this.subscribeToStore();
   }
@@ -433,12 +437,56 @@ export class MazeTileRenderer {
   private subscribeToStore(): void {
     let prev = useMazeStore.getState();
     this.unsubscribe = useMazeStore.subscribe((state) => {
-      const mazeChanged = state.nodes !== prev.nodes || state.edges !== prev.edges
-        || state.start !== prev.start || state.finish !== prev.finish
+      const renderNodes = state.debugMode && state.debugSnapshot
+        ? state.debugSnapshot.nodes
+        : state.nodes;
+      const renderEdges = state.debugMode && state.debugSnapshot
+        ? (state.debugSnapshot.steps[state.debugStep]?.edges ?? [])
+        : state.edges;
+
+      const prevRenderNodes = prev.debugMode && prev.debugSnapshot
+        ? prev.debugSnapshot.nodes
+        : prev.nodes;
+      const prevRenderEdges = prev.debugMode && prev.debugSnapshot
+        ? (prev.debugSnapshot.steps[prev.debugStep]?.edges ?? [])
+        : prev.edges;
+
+      const currentStep = state.debugMode && state.debugSnapshot
+        ? state.debugSnapshot.steps[state.debugStep]
+        : null;
+      const prevStep = prev.debugMode && prev.debugSnapshot
+        ? prev.debugSnapshot.steps[prev.debugStep]
+        : null;
+
+      const debugOverlayChanged = currentStep !== prevStep || state.debugMode !== prev.debugMode;
+
+      const isLastDebugStep = state.debugMode && state.debugSnapshot
+        ? state.debugStep === state.debugSnapshot.steps.length - 1
+        : true;
+      const renderStart  = (state.debugMode && state.debugSnapshot && !isLastDebugStep) ? null : state.start;
+      const renderFinish = (state.debugMode && state.debugSnapshot && !isLastDebugStep) ? null : state.finish;
+
+      const prevIsLastDebugStep = prev.debugMode && prev.debugSnapshot
+        ? prev.debugStep === prev.debugSnapshot.steps.length - 1
+        : true;
+      const prevRenderStart  = (prev.debugMode && prev.debugSnapshot && !prevIsLastDebugStep) ? null : prev.start;
+      const prevRenderFinish = (prev.debugMode && prev.debugSnapshot && !prevIsLastDebugStep) ? null : prev.finish;
+
+      const mazeChanged = renderNodes !== prevRenderNodes || renderEdges !== prevRenderEdges
+        || renderStart !== prevRenderStart || renderFinish !== prevRenderFinish
         || state.activeTessellationConfig !== prev.activeTessellationConfig;
 
       if (mazeChanged) {
-        this.render(state.nodes, state.edges, state.start, state.finish, state.activeTessellationConfig);
+        this.render(renderNodes, renderEdges, renderStart, renderFinish, state.activeTessellationConfig);
+      }
+      if (mazeChanged || debugOverlayChanged) {
+        this.renderDebugOverlay(
+          renderNodes,
+          currentStep?.active_nodes ?? [],
+          currentStep?.current_src ?? null,
+          state.debugMode && !!currentStep,
+          state.activeTessellationConfig,
+        );
       }
 
       prev = state;
@@ -450,6 +498,50 @@ export class MazeTileRenderer {
     }
   }
 
+  private renderDebugOverlay(
+    nodes: NodeDto[],
+    activeNodes: number[],
+    currentSrc: number | null,
+    visible: boolean,
+    cfg: TessellationConfig,
+  ): void {
+    this.debugOverlayContainer.removeChildren().forEach(c => c.destroy());
+
+    if (!visible || nodes.length === 0) return;
+
+    const nodeById = new Map<number, NodeDto>();
+    for (const n of nodes) nodeById.set(n.id, n);
+
+    const g = new Graphics();
+    const activeSet = new Set(activeNodes);
+
+    const getCenter = (node: NodeDto): { x: number; y: number } => {
+      if (cfg.type === "square" || cfg.type === "square_custom") return squareCenter(node.x, node.y);
+      if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom")
+        return hexCenter(node.x, node.y, (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top");
+      return triCenter(node.x, node.y, (cfg as { orientation?: "r0" | "r90" | "r180" | "r270" }).orientation ?? "r0");
+    };
+
+    for (const nodeId of activeSet) {
+      const node = nodeById.get(nodeId);
+      if (!node) continue;
+      const { x: cx, y: cy } = getCenter(node);
+      g.circle(cx, cy, DEBUG_ACTIVE_RADIUS)
+        .fill({ color: DEBUG_ACTIVE_COLOR, alpha: DEBUG_ACTIVE_ALPHA });
+    }
+
+    if (currentSrc !== null && activeNodes.length > 0) {
+      const srcNode = nodeById.get(currentSrc);
+      if (srcNode) {
+        const { x: cx, y: cy } = getCenter(srcNode);
+        g.circle(cx, cy, DEBUG_CURRENT_SRC_RADIUS)
+          .fill({ color: DEBUG_CURRENT_SRC_COLOR, alpha: 0.8 });
+      }
+    }
+
+    this.debugOverlayContainer.addChild(g);
+  }
+
   private render(nodes: NodeDto[], edges: EdgeDto[], start: number | null, finish: number | null, cfg: TessellationConfig): void {
     this.tilesContainer.destroy({ children: true });
     this.wallsContainer.destroy({ children: true });
@@ -457,9 +549,10 @@ export class MazeTileRenderer {
     this.tilesContainer = new Container();
     this.wallsContainer = new Container();
     this.markersContainer = new Container();
-    this.viewport.addChild(this.tilesContainer);
-    this.viewport.addChild(this.wallsContainer);
-    this.viewport.addChild(this.markersContainer);
+    this.viewport.addChildAt(this.tilesContainer, 0);
+    this.viewport.addChildAt(this.wallsContainer, 1);
+    this.viewport.addChildAt(this.markersContainer, 2);
+    // debugOverlayContainer stays at index 3 (added once in constructor, never re-created)
 
     if (nodes.length === 0) return;
 
@@ -479,5 +572,6 @@ export class MazeTileRenderer {
     this.tilesContainer.destroy({ children: true });
     this.wallsContainer.destroy({ children: true });
     this.markersContainer.destroy({ children: true });
+    this.debugOverlayContainer.destroy({ children: true });
   }
 }

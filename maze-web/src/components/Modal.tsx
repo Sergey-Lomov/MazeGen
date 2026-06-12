@@ -25,6 +25,7 @@ export function Modal({ title, size = "info", rawBody, onClose, children }: Prop
           minWidth: sizeTokens.minWidth,
           maxWidth: sizeTokens.maxWidth,
           ...("width" in sizeTokens ? { width: sizeTokens.width } : {}),
+          ...("height" in sizeTokens ? { height: (sizeTokens as { height: string | number }).height } : {}),
         }}
         onClick={(e) => e.stopPropagation()}
       >

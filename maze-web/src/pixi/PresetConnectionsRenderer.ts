@@ -1,12 +1,18 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
+import type { NodeLockKind } from "../wasm/types";
 import { drawOneWayTriangle } from "./MazeTileRenderer";
 import { canonicalize, edgeKey, computeInvalidKeysFromCells, resolveCells } from "./presetConnectionsUtils";
 import type { FieldEdge } from "./presetConnectionsUtils";
 import { encodePoint } from "./tessellationProjection";
 import { getCellVertices, getCellCenter, getNeighborData, getSharedEdgeSegment } from "./tessellationGeometry";
-import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
-import type { TessellationConfig } from "../wasm/types";
+import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR, TILE_SIZE } from "./constants";
+import { makeProjection } from "./tessellationProjection";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+
+const LOCK_IN_COLOR   = 0x888888;
+const LOCK_OUT_COLOR  = 0x888888;
+const LOCK_BOTH_COLOR = 0x888888;
 
 const WALL_THICKNESS = 3;
 const WALL_COLOR = 0xcccccc;
@@ -22,9 +28,13 @@ export class PresetConnectionsRenderer {
   private readonly presetWallsLayer: Graphics;
   private readonly oneWayLayer: Graphics;
   private readonly markersLayer: Graphics;
+  private readonly lockedNodesLayer: Graphics;
+  private readonly originLayer: Graphics;
+  private readonly isolatedHighlightLayer: Graphics;
   private readonly invalidHighlightLayer: Graphics;
   private readonly hoverLayer: Graphics;
 
+  private vpScale = 1;
   private cfg: TessellationConfig | null = null;
   private cachedCells: [number, number][] = [];
   private cachedCellSet: Set<number> = new Set();
@@ -38,13 +48,19 @@ export class PresetConnectionsRenderer {
     this.presetWallsLayer = new Graphics();
     this.oneWayLayer = new Graphics();
     this.markersLayer = new Graphics();
+    this.lockedNodesLayer = new Graphics();
+    this.originLayer = new Graphics();
+    this.isolatedHighlightLayer = new Graphics();
     this.invalidHighlightLayer = new Graphics();
     this.hoverLayer = new Graphics();
     this.root.addChild(this.floorsLayer);
     this.root.addChild(this.undecidedLayer);
     this.root.addChild(this.presetWallsLayer);
     this.root.addChild(this.oneWayLayer);
+    this.root.addChild(this.lockedNodesLayer);
     this.root.addChild(this.markersLayer);
+    this.root.addChild(this.originLayer);
+    this.root.addChild(this.isolatedHighlightLayer);
     this.root.addChild(this.invalidHighlightLayer);
     this.root.addChild(this.hoverLayer);
     this.root.visible = false;
@@ -81,13 +97,24 @@ export class PresetConnectionsRenderer {
         fieldChanged ||
         state.presetConnections !== prev.presetConnections ||
         state.presetStart !== prev.presetStart ||
-        state.presetFinish !== prev.presetFinish
+        state.presetFinish !== prev.presetFinish ||
+        state.lockedNodes !== prev.lockedNodes ||
+        state.autoLockedNodes !== prev.autoLockedNodes
       ) {
         this.redraw(state);
       }
 
+      if (state.showPresetOrigin !== prev.showPresetOrigin) {
+        this.redrawOrigin(state.showPresetOrigin);
+      }
+
       if (state.highlightInvalidPresets !== prev.highlightInvalidPresets) {
         this.redrawInvalidHighlight(state);
+      }
+
+      if (state.highlightIsolatedNodes !== prev.highlightIsolatedNodes ||
+          (state.highlightIsolatedNodes && (state.lockedNodes !== prev.lockedNodes || state.presetConnections !== prev.presetConnections))) {
+        this.redrawIsolatedHighlight(state);
       }
     });
   }
@@ -100,8 +127,12 @@ export class PresetConnectionsRenderer {
     return this.cachedCellSet;
   }
 
-  onViewportChanged(_x: number, _y: number, _w: number, _h: number, _scale: number): void {
-    // Transform synced via syncedLayers in MazeScene — no redraw needed.
+  onViewportChanged(_x: number, _y: number, _w: number, _h: number, scale: number): void {
+    this.vpScale = scale;
+    if (this.root.visible && this.cfg) {
+      const state = useMazeStore.getState();
+      this.redrawOrigin(state.showPresetOrigin);
+    }
   }
 
   updateHover(edge: FieldEdge | null): void {
@@ -123,6 +154,9 @@ export class PresetConnectionsRenderer {
     this.presetWallsLayer.clear();
     this.oneWayLayer.clear();
     this.markersLayer.clear();
+    this.lockedNodesLayer.clear();
+    this.originLayer.clear();
+    this.isolatedHighlightLayer.clear();
     this.invalidHighlightLayer.clear();
     this.hoverLayer.clear();
   }
@@ -143,6 +177,7 @@ export class PresetConnectionsRenderer {
     this.presetWallsLayer.clear();
     this.oneWayLayer.clear();
     this.markersLayer.clear();
+    this.lockedNodesLayer.clear();
     this.invalidHighlightLayer.clear();
     this.hoverLayer.clear();
 
@@ -262,17 +297,62 @@ export class PresetConnectionsRenderer {
       }
     }
 
+    // Draw lock icons BELOW markers; auto-locked nodes show as lock_both, manual takes priority
+    const lG = this.lockedNodesLayer;
+    const renderedLocks = new Map<string, NodeLockKind>(state.lockedNodes);
+    for (const key of state.autoLockedNodes) {
+      if (!renderedLocks.has(key)) renderedLocks.set(key, "both");
+    }
+    for (const [key, kind] of renderedLocks) {
+      const [x, y] = key.split(",").map(Number);
+      const c = getCellCenter(x, y, cfg);
+      drawLockIcon(lG, c.x, c.y, kind);
+    }
+
     const mG = this.markersLayer;
     if (state.presetStart) {
       const c = getCellCenter(state.presetStart[0], state.presetStart[1], cfg);
-      mG.circle(c.x, c.y, NODE_RADIUS * 2).fill(NODE_START_COLOR);
+      mG.circle(c.x, c.y, NODE_RADIUS * 1.5).fill(NODE_START_COLOR);
     }
     if (state.presetFinish) {
       const c = getCellCenter(state.presetFinish[0], state.presetFinish[1], cfg);
-      mG.circle(c.x, c.y, NODE_RADIUS * 2).fill(NODE_FINISH_COLOR);
+      mG.circle(c.x, c.y, NODE_RADIUS * 1.5).fill(NODE_FINISH_COLOR);
     }
 
+    this.redrawOrigin(state.showPresetOrigin);
     this.redrawInvalidHighlight(state);
+  }
+
+  private redrawOrigin(show: boolean): void {
+    const g = this.originLayer;
+    g.clear();
+    if (!show || !this.cfg) return;
+    const proj = makeProjection(this.cfg);
+    const { x: cx, y: cy } = proj.gridToScreen(0, 0);
+    const arm = TILE_SIZE * 0.35 / this.vpScale;
+    const w = Math.max(1.5 / this.vpScale, 1.5);
+    g.setStrokeStyle({ width: w, color: 0xFF6600, alpha: 0.9 });
+    g.moveTo(cx - arm, cy).lineTo(cx + arm, cy).stroke();
+    g.moveTo(cx, cy - arm).lineTo(cx, cy + arm).stroke();
+  }
+
+  private redrawIsolatedHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
+    const g = this.isolatedHighlightLayer;
+    g.clear();
+    if (!state.highlightIsolatedNodes || !this.cfg) return;
+    const cfg = this.cfg;
+    for (const [key, kind] of state.lockedNodes) {
+      if (kind !== "both") continue;
+      const [x, y] = key.split(",").map(Number);
+      const hasPassage = Array.from(state.presetConnections.values()).some(e => {
+        if (e.state === "wall") return false;
+        return (e.from[0] === x && e.from[1] === y) || (e.to[0] === x && e.to[1] === y);
+      });
+      if (hasPassage) continue;
+      const verts = getCellVertices(x, y, cfg);
+      if (!verts) continue;
+      g.poly(verts.flatMap(v => [v.x, v.y])).fill({ color: INVALID_COLOR, alpha: 0.35 });
+    }
   }
 
   private redrawInvalidHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
@@ -307,7 +387,49 @@ export class PresetConnectionsRenderer {
     this.presetWallsLayer.destroy();
     this.oneWayLayer.destroy();
     this.markersLayer.destroy();
+    this.lockedNodesLayer.destroy();
+    this.originLayer.destroy();
+    this.isolatedHighlightLayer.destroy();
     this.invalidHighlightLayer.destroy();
     this.hoverLayer.destroy();
+  }
+}
+
+function drawLockIcon(g: Graphics, cx: number, cy: number, kind: NodeLockKind): void {
+  const color = kind === "in" ? LOCK_IN_COLOR : kind === "out" ? LOCK_OUT_COLOR : LOCK_BOTH_COLOR;
+
+  const bw = TILE_SIZE * 0.46;
+  const bh = TILE_SIZE * 0.36;
+  const arcR = bw * 0.30;
+  const totalH = arcR + bh;
+  const bodyTop = cy - totalH / 2 + arcR;
+  const bodyCy = bodyTop + bh / 2;
+
+  g.roundRect(cx - bw / 2, bodyTop, bw, bh, bw * 0.12).fill(color);
+
+  g.setStrokeStyle({ width: bw * 0.14, color, cap: "round" as const });
+  g.moveTo(cx - arcR, bodyTop);
+  g.arc(cx, bodyTop, arcR, Math.PI, 0);
+  g.stroke();
+
+  if (kind !== "both") {
+    // Equilateral triangle: side = s, height = s * sqrt(3)/2
+    const s = bw * 0.28;
+    const h = s * Math.sqrt(3) / 2;
+    const cutColor = FLOOR_COLOR;
+    // Center of each triangle sits at ±offset from cx
+    const offset = bw * 0.22;
+
+    if (kind === "out") {
+      // Left: tip points left
+      g.poly([cx - offset, bodyCy - s / 2, cx - offset, bodyCy + s / 2, cx - offset - h, bodyCy]).fill(cutColor);
+      // Right: tip points right
+      g.poly([cx + offset, bodyCy - s / 2, cx + offset, bodyCy + s / 2, cx + offset + h, bodyCy]).fill(cutColor);
+    } else {
+      // Left: tip points right (toward center)
+      g.poly([cx - offset - h, bodyCy - s / 2, cx - offset - h, bodyCy + s / 2, cx - offset, bodyCy]).fill(cutColor);
+      // Right: tip points left (toward center)
+      g.poly([cx + offset + h, bodyCy - s / 2, cx + offset + h, bodyCy + s / 2, cx + offset, bodyCy]).fill(cutColor);
+    }
   }
 }

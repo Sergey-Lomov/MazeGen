@@ -3,7 +3,8 @@ import { TRI_TILE_SIZE } from "./triGeometry";
 import { makeProjection, encodePoint, decodePoint } from "./tessellationProjection";
 import { configAllCells } from "./tessellationCells";
 import { getCellNeighborOffsets, getSharedEdgeSegment } from "./tessellationGeometry";
-import type { TessellationConfig, PresetConnectionState } from "../wasm/types";
+import type { PresetConnectionState } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 export interface PresetConnectionEntry {
   from: [number, number];
@@ -11,7 +12,7 @@ export interface PresetConnectionEntry {
   state: PresetConnectionState;
 }
 
-export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish";
+export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "lock_both";
 
 export interface FieldEdge {
   key: string;
@@ -135,6 +136,36 @@ export function pickEdgeAtPosition(
     return { key: bestKey, from: bestFrom, to: bestTo };
   }
   return null;
+}
+
+/**
+ * Returns set of "x,y" keys for cells where all interior edges are explicitly preset.
+ * An interior edge is one shared with another cell in the field.
+ */
+export function computeAutoLockedNodes(
+  presetConnections: Map<string, PresetConnectionEntry>,
+  cfg: TessellationConfig,
+  customPoints?: Set<number>,
+): Set<string> {
+  const cells = resolveCells(cfg, customPoints);
+  const cellSet = new Set<number>();
+  for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
+
+  const result = new Set<string>();
+  for (const [x, y] of cells) {
+    const offsets = getCellNeighborOffsets(cfg, x, y);
+    let allDefined = true;
+    let hasInteriorEdge = false;
+    for (const [dx, dy] of offsets) {
+      const nx = x + dx, ny = y + dy;
+      if (!cellSet.has(encodePoint(nx, ny))) continue;
+      hasInteriorEdge = true;
+      const key = edgeKey([x, y], [nx, ny]);
+      if (!presetConnections.has(key)) { allDefined = false; break; }
+    }
+    if (hasInteriorEdge && allDefined) result.add(`${x},${y}`);
+  }
+  return result;
 }
 
 export function applyTool(

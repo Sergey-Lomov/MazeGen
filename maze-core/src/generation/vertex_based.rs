@@ -4,7 +4,7 @@ use rand::rngs::SmallRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
-use super::{ElementsConfig, GenerationParams, add_edge};
+use super::{ElementsConfig, GenerationParams, PresetState, StepCallback, try_add_edge, can_connect, gaussian_weighted_index};
 
 struct FrontierEntry {
     node:   NodeId,
@@ -18,7 +18,8 @@ pub fn generate<T: Tessellation>(
     start: NodeId,
     params: &GenerationParams,
     elements: &ElementsConfig,
-    mut on_step: Option<&mut dyn FnMut(&Graph)>,
+    preset_state: &PresetState,
+    mut on_step: Option<&mut StepCallback<'_>>,
 ) {
     let mut visited:     HashSet<NodeId> = HashSet::new();
     let mut in_frontier: HashSet<NodeId> = HashSet::new();
@@ -27,8 +28,13 @@ pub fn generate<T: Tessellation>(
     let mut in_reserve:  HashSet<NodeId> = HashSet::new();
     let mut rng = SmallRng::seed_from_u64(seed);
 
-    add_to_frontier(start, None, &mut frontier, &mut in_frontier);
+    // Seed visited from preset-connected nodes so a blocked start doesn't stall generation.
+    for &pc in &preset_state.preset_connected {
+        visited.insert(pc);
+        add_to_frontier(pc, None, &mut frontier, &mut in_frontier);
+    }
     visited.insert(start);
+    add_to_frontier(start, None, &mut frontier, &mut in_frontier);
 
     loop {
         if frontier.is_empty() {
@@ -45,7 +51,7 @@ pub fn generate<T: Tessellation>(
                 seen.insert(candidate);
                 let has_visited_neighbor = field.neighbors(candidate)
                     .into_iter()
-                    .any(|n| visited.contains(&n));
+                    .any(|n| visited.contains(&n) && can_connect(n, candidate, preset_state));
                 if has_visited_neighbor {
                     break Some(candidate);
                 }
@@ -55,13 +61,14 @@ pub fn generate<T: Tessellation>(
             let Some(src) = src else { break; };
             let visited_neighbors: Vec<NodeId> = field.neighbors(src)
                 .into_iter()
-                .filter(|n| visited.contains(n))
+                .filter(|&n| visited.contains(&n) && can_connect(n, src, preset_state))
                 .collect();
             let bridge = visited_neighbors[rng.random_range(0..visited_neighbors.len())];
-            add_edge(graph, bridge, src, elements, &mut rng);
+            try_add_edge(graph, bridge, src, elements, preset_state, &mut rng);
             visited.insert(src);
             add_to_frontier(src, Some(bridge), &mut frontier, &mut in_frontier);
-            if let Some(ref mut cb) = on_step { cb(graph); }
+            let frontier_ids: Vec<NodeId> = frontier.iter().map(|e| e.node).collect();
+            if let Some(ref mut cb) = on_step { cb(graph, src, &frontier_ids); }
             continue;
         }
 
@@ -69,12 +76,12 @@ pub fn generate<T: Tessellation>(
         let src = frontier[fi].node;
         let parent = frontier[fi].parent;
 
-        frontier.swap_remove(fi);
+        frontier.remove(fi);
         in_frontier.remove(&src);
 
         let free_neighbors: Vec<NodeId> = field.neighbors(src)
             .into_iter()
-            .filter(|n| !visited.contains(n) && !in_frontier.contains(n))
+            .filter(|&n| !visited.contains(&n) && !in_frontier.contains(&n) && can_connect(src, n, preset_state))
             .collect();
 
         let is_corridor = rng.random::<f64>() < params.corridor_chance;
@@ -99,7 +106,7 @@ pub fn generate<T: Tessellation>(
 
         let connected_set: HashSet<NodeId> = connected.iter().copied().collect();
         for &dst in &connected {
-            add_edge(graph, src, dst, elements, &mut rng);
+            try_add_edge(graph, src, dst, elements, preset_state, &mut rng);
             visited.insert(dst);
             in_reserve.remove(&dst);
             add_to_frontier(dst, Some(src), &mut frontier, &mut in_frontier);
@@ -113,7 +120,8 @@ pub fn generate<T: Tessellation>(
         }
 
         if !connected.is_empty() {
-            if let Some(ref mut cb) = on_step { cb(graph); }
+            let frontier_ids: Vec<NodeId> = frontier.iter().map(|e| e.node).collect();
+            if let Some(ref mut cb) = on_step { cb(graph, src, &frontier_ids); }
         }
     }
 }
@@ -124,13 +132,6 @@ fn add_to_frontier(node: NodeId, parent: Option<NodeId>, frontier: &mut Vec<Fron
     }
 }
 
-/// Pick an index from a non-empty collection: last element with probability `depth_first`,
-/// random element otherwise. Biases toward recently-added items when depth_first is high.
-fn depth_first_index(len: usize, depth_first: f64, rng: &mut SmallRng) -> usize {
-    debug_assert!(len > 0);
-    if rng.random::<f64>() < depth_first { len - 1 } else { rng.random_range(0..len) }
-}
-
 fn pop_reserve(
     reserve: &mut Vec<NodeId>,
     in_reserve: &mut HashSet<NodeId>,
@@ -138,15 +139,15 @@ fn pop_reserve(
     rng: &mut SmallRng,
 ) -> Option<NodeId> {
     if reserve.is_empty() { return None; }
-    let idx = depth_first_index(reserve.len(), params.depth_first, rng);
-    let node = reserve.swap_remove(idx);
+    let idx = gaussian_weighted_index(reserve.len(), params.depth_first, rng);
+    let node = reserve.remove(idx);
     in_reserve.remove(&node);
     Some(node)
 }
 
 fn choose_from_frontier(frontier: &[FrontierEntry], params: &GenerationParams, rng: &mut SmallRng) -> usize {
     if frontier.len() == 1 { return 0; }
-    depth_first_index(frontier.len(), params.depth_first, rng)
+    gaussian_weighted_index(frontier.len(), params.depth_first, rng)
 }
 
 pub(super) fn junction_count(max: usize, params: &GenerationParams, rng: &mut SmallRng) -> usize {
@@ -251,12 +252,14 @@ mod tests {
         }
     }
 
+    fn empty_presets() -> super::PresetState { super::PresetState::empty() }
+
     #[test]
     fn vertex_based_visits_all_nodes() {
         let (field, mut graph) = make_field_and_graph(5, 5);
         let node_count = graph.nodes().count();
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), None);
+        generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
         assert_eq!(graph.edges().count(), 2 * (node_count - 1));
     }
 
@@ -265,8 +268,8 @@ mod tests {
         let (field, mut g1) = make_field_and_graph(4, 4);
         let (_, mut g2) = make_field_and_graph(4, 4);
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        generate(&mut g1, &field, 7, start, &default_params(), &default_elements(), None);
-        generate(&mut g2, &field, 7, start, &default_params(), &default_elements(), None);
+        generate(&mut g1, &field, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
+        generate(&mut g2, &field, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
         let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
         let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
         e1.sort();

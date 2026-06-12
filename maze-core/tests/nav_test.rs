@@ -3,7 +3,7 @@ use maze_core::graph::nav::build_nav_graph;
 use maze_core::graph::EdgeKind;
 use maze_core::ids::IdGenerator;
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
-use maze_core::generation::{generate_maze, GenerationConfig};
+use maze_core::generation::{generate_maze, GenerationConfig, PresetState};
 
 fn bi(g: &mut Graph, a: u64, b: u64) {
     g.add_bidirectional_edge(a, b, EdgeKind::Basic);
@@ -164,7 +164,7 @@ fn nav_paths_only_contain_adjacent_maze_nodes() {
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    generate_maze(&mut graph, &field, 42, start, GenerationConfig::default());
+    generate_maze(&mut graph, &field, 42, start, GenerationConfig::default(), &PresetState::empty());
 
     let maze_nodes: std::collections::HashSet<u64> = graph.nodes().map(|n| n.id).collect();
     let nav = build_nav_graph(&graph);

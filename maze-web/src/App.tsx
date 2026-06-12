@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
 import { FeaturesPanel } from "./components/FeaturesPanel";
+import { GenerationDebugBar } from "./components/GenerationDebugBar";
 import { useMazeStore } from "./store/mazeStore";
 import { colors, font } from "./styles/theme";
 
@@ -12,6 +13,8 @@ export function App() {
   const sceneRef = useRef<MazeScene | null>(null);
   const [ready, setReady] = useState(false);
   const loadRegistry = useMazeStore((s) => s.loadRegistry);
+  const debugMode = useMazeStore((s) => s.debugMode);
+  const debugSnapshot = useMazeStore((s) => s.debugSnapshot);
 
   useEffect(() => {
     loadRegistry();
@@ -45,7 +48,10 @@ export function App() {
         {!ready && <div style={styles.loading}>Loading…</div>}
         <FeaturesPanel />
       </div>
-      <div ref={canvasRef} style={styles.canvas} />
+      <div style={styles.canvasColumn}>
+        {debugMode && debugSnapshot && <GenerationDebugBar />}
+        <div ref={canvasRef} style={styles.canvas} />
+      </div>
     </div>
   );
 }
@@ -61,6 +67,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     overflowY: "auto",
   },
+  canvasColumn: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   canvas: { flex: 1, overflow: "hidden" },
   loading: { padding: 12, fontSize: font.sm, color: colors.textVeryDim },
 };

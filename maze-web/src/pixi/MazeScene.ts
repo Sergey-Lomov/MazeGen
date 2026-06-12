@@ -11,10 +11,10 @@ import { GridOverlay } from "./GridOverlay";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
-import { configScreenCenter } from "./FieldEditorOverlay";
+import { configScreenCenter, fitFieldViewport } from "./FieldEditorOverlay";
 import { makeProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 const FIT_PADDING = 0.9;
 
@@ -57,6 +57,7 @@ export class MazeScene {
   private unsubscribeMaze: (() => void) | null = null;
   private unsubscribeEditField: (() => void) | null = null;
   private unsubscribePreview: (() => void) | null = null;
+  private unsubscribePresetOpen: (() => void) | null = null;
   private refitTimerId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(app: Application) {
@@ -163,6 +164,7 @@ export class MazeScene {
     this.subscribeToMaze();
     this.subscribeToEditField();
     this.subscribeToPreview();
+    this.subscribeToPresetOpen();
     this.syncLayersToViewport();
   }
 
@@ -220,6 +222,18 @@ export class MazeScene {
     });
   }
 
+  private subscribeToPresetOpen(): void {
+    let prevOpen = useMazeStore.getState().presetConnectionsOpen;
+    this.unsubscribePresetOpen = useMazeStore.subscribe((state) => {
+      if (state.presetConnectionsOpen !== prevOpen) {
+        prevOpen = state.presetConnectionsOpen;
+        if (state.presetConnectionsOpen) {
+          this.fitField();
+        }
+      }
+    });
+  }
+
   private subscribeToEditField(): void {
     let prevOpen = useMazeStore.getState().fieldSetupOpen;
     let prevCfg = useMazeStore.getState().tessellationConfig;
@@ -251,6 +265,16 @@ export class MazeScene {
     const h = this.app.screen.height;
     this.viewport.x = w / 2 - center.x * this.viewport.scale.x;
     this.viewport.y = h / 2 - center.y * this.viewport.scale.y;
+    this.syncLayersToViewport();
+  }
+
+  private fitField(): void {
+    this.app.resize();
+    const cfg = useMazeStore.getState().tessellationConfig;
+    const { x, y, scale } = fitFieldViewport(cfg, this.app.screen.width, this.app.screen.height);
+    this.viewport.scale.set(scale);
+    this.viewport.x = x;
+    this.viewport.y = y;
     this.syncLayersToViewport();
   }
 
@@ -317,6 +341,7 @@ export class MazeScene {
     this.viewport.scale.set(scale);
     this.viewport.x = screenW / 2 - scale * (minX + W / 2);
     this.viewport.y = screenH / 2 - scale * (minY + H / 2);
+
 
     this.syncLayersToViewport();
   }
@@ -440,6 +465,7 @@ export class MazeScene {
     this.unsubscribeMaze?.();
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();
+    this.unsubscribePresetOpen?.();
     this.tileRenderer.destroy();
     this.componentRenderer.destroy();
     this.graphRenderer.destroy();

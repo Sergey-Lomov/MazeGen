@@ -3,16 +3,33 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/presetConnectionsUtils";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { buttonStyle } from "../../styles/shared";
-import { colors } from "../../styles/theme";
+import { colors, font } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 
-const ALL_TOOLS: [PresetConnectionTool, string][] = [
+function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label style={switchStyles.wrap}>
+      <input type="checkbox" style={switchStyles.input} checked={checked} onChange={e => onChange(e.target.checked)} />
+      <span style={{ ...switchStyles.track, ...(checked ? switchStyles.trackOn : {}) }}>
+        <span style={{ ...switchStyles.thumb, ...(checked ? switchStyles.thumbOn : {}) }} />
+      </span>
+    </label>
+  );
+}
+
+const EDGE_TOOLS: [PresetConnectionTool, string][] = [
   ["wall", "Wall"],
   ["passage", "Passage"],
   ["reset", "Reset"],
   ["one_way", "One-way"],
   ["set_start", "Start"],
   ["set_finish", "Finish"],
+];
+
+const VERTEX_TOOLS: [PresetConnectionTool, string][] = [
+  ["lock_in", "Lock In"],
+  ["lock_out", "Lock Out"],
+  ["lock_both", "Lock Both"],
 ];
 
 export function PresetConnectionsFeature() {
@@ -29,8 +46,31 @@ export function PresetConnectionsFeature() {
   const clearInvalidPresetConnections = useMazeStore((s) => s.clearInvalidPresetConnections);
   const resetPresetConnections = useMazeStore((s) => s.resetPresetConnections);
   const setHighlightInvalidPresets = useMazeStore((s) => s.setHighlightInvalidPresets);
+  const lockedNodes = useMazeStore((s) => s.lockedNodes);
+  const clearLockedNodes = useMazeStore((s) => s.clearLockedNodes);
+  const setHighlightIsolatedNodes = useMazeStore((s) => s.setHighlightIsolatedNodes);
+  const showPresetOrigin = useMazeStore((s) => s.showPresetOrigin);
+  const setShowPresetOrigin = useMazeStore((s) => s.setShowPresetOrigin);
+  const autoLock = useMazeStore((s) => s.autoLock);
+  const setAutoLock = useMazeStore((s) => s.setAutoLock);
+  const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
 
   const [confirmReset, setConfirmReset] = useState(false);
+
+  // Nodes locked both in and out AND with no explicit passage preset are fully isolated
+  const isolatedNodes = useMemo(() => {
+    const result: string[] = [];
+    for (const [key, kind] of lockedNodes) {
+      if (kind !== "both") continue;
+      const [x, y] = key.split(",").map(Number);
+      const hasPassage = Array.from(presetConnections.values()).some(e => {
+        if (e.state === "wall") return false;
+        return (e.from[0] === x && e.from[1] === y) || (e.to[0] === x && e.to[1] === y);
+      });
+      if (!hasPassage) result.push(key);
+    }
+    return result;
+  }, [lockedNodes, presetConnections]);
 
   const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
   const invalidKeys = useMemo(
@@ -41,8 +81,9 @@ export function PresetConnectionsFeature() {
 
   return (
     <div style={styles.root}>
+      <span style={styles.sectionLabel}>Edges Tools</span>
       <div style={styles.toolGrid}>
-        {ALL_TOOLS.map(([t, label]) => (
+        {EDGE_TOOLS.map(([t, label]) => (
           <button
             key={t}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
@@ -52,6 +93,47 @@ export function PresetConnectionsFeature() {
           </button>
         ))}
       </div>
+      <span style={styles.sectionLabel}>Vertex Tools</span>
+      <div style={styles.vertexToolGrid}>
+        {VERTEX_TOOLS.map(([t, label]) => (
+          <button
+            key={t}
+            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            onClick={() => setTool(t)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div style={styles.autoLockRow}>
+        <div style={styles.autoLockLeft}>
+          <span style={styles.autoLockLabel}>Auto-lock</span>
+          {autoLock && autoLockedNodes.size > 0 && (
+            <span style={styles.autoLockCount}>{autoLockedNodes.size}</span>
+          )}
+        </div>
+        <Switch checked={autoLock} onChange={setAutoLock} />
+      </div>
+      <div style={styles.originRow}>
+        <span style={styles.originLabel}>Show origin</span>
+        <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
+      </div>
+      {lockedNodes.size > 0 && (
+        <div style={styles.lockedStatus}>
+          <span style={styles.lockedCount}>{lockedNodes.size} node{lockedNodes.size !== 1 ? "s" : ""} locked</span>
+          <button style={styles.clearTag} onClick={clearLockedNodes}>Clear all</button>
+        </div>
+      )}
+      {isolatedNodes.length > 0 && (
+        <div
+          style={styles.warning}
+          title={`Nodes locked both in and out will be fully isolated (unreachable): ${isolatedNodes.join(", ")}`}
+          onMouseEnter={() => setHighlightIsolatedNodes(true)}
+          onMouseLeave={() => setHighlightIsolatedNodes(false)}
+        >
+          ⚠ {isolatedNodes.length} node{isolatedNodes.length !== 1 ? "s" : ""} fully isolated
+        </div>
+      )}
       {(presetStart || presetFinish) && (
         <div style={styles.markerStatus}>
           {presetStart && (
@@ -109,7 +191,67 @@ export function presetConnectionsSubtitle(
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 8 },
+  sectionLabel: {
+    fontSize: font.sm,
+    color: colors.textVeryDim,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
+  },
   toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
+  vertexToolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 },
+  lockedStatus: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    fontSize: font.sm,
+    color: colors.textDim,
+    background: colors.bgInput,
+    borderRadius: 3,
+    padding: "3px 6px",
+  },
+  lockedCount: { fontSize: font.sm, color: colors.textDim },
+  warning: {
+    fontSize: font.sm,
+    color: "#ffaa33",
+    background: "rgba(255,170,51,0.1)",
+    borderRadius: 3,
+    padding: "3px 6px",
+    cursor: "default",
+  },
+  autoLockRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    fontSize: font.sm,
+    color: colors.textDim,
+  },
+  autoLockLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  autoLockLabel: {
+    fontSize: font.sm,
+    color: colors.textMuted,
+  },
+  autoLockCount: {
+    fontSize: 10,
+    color: colors.textVeryDim,
+    background: colors.bgInput,
+    borderRadius: 3,
+    padding: "1px 5px",
+  },
+  originRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    fontSize: font.sm,
+    color: colors.textDim,
+  },
+  originLabel: {
+    fontSize: font.sm,
+    color: colors.textMuted,
+  },
   markerStatus: { display: "flex", flexDirection: "column", gap: 3 },
   markerTag: {
     display: "flex",
@@ -130,4 +272,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     lineHeight: 1,
   },
+};
+
+const switchStyles: Record<string, React.CSSProperties> = {
+  wrap: { position: "relative", display: "inline-flex", alignItems: "center", cursor: "pointer", flexShrink: 0 },
+  input: { position: "absolute", opacity: 0, width: 0, height: 0 },
+  track: { display: "inline-block", width: 32, height: 18, background: colors.borderStrong, borderRadius: 9, position: "relative", transition: "background 0.2s" },
+  trackOn: { background: colors.bgBtnPrimary },
+  thumb: { position: "absolute", top: 2, left: 2, width: 14, height: 14, background: colors.textWhite, borderRadius: "50%", transition: "left 0.2s" },
+  thumbOn: { left: 16 },
 };

@@ -53,6 +53,9 @@ impl Graph {
     pub fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
         debug_assert!(self.outgoing.contains_key(&from), "add_edge: node {from} not in graph");
         debug_assert!(self.incoming.contains_key(&to), "add_edge: node {to} not in graph");
+        if let Some(existing) = self.edge_between(from, to) {
+            return existing;
+        }
         let id = self.edges.len();
         self.edges.push(Some(Edge { id, from, to, kind }));
         self.outgoing.entry(from).or_default().push(id);

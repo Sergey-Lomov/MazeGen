@@ -5,7 +5,7 @@ import type { TessellationProjection } from "./tessellationProjection";
 import { TILE_SIZE } from "./constants";
 import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
-import type { TessellationConfig } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 const GRID_LINE_COLOR = 0x383838;
 const GRID_LINE_ALPHA = 1.0;
@@ -55,7 +55,8 @@ export class GridOverlay {
   }
 
   private shouldBeVisible(state: ReturnType<typeof useMazeStore.getState>): boolean {
-    return state.nodes.length === 0 && !state.presetConnectionsOpen;
+    if (state.fieldSetupOpen || state.presetConnectionsOpen) return true;
+    return state.nodes.length === 0;
   }
 
   private pickConfig(state: ReturnType<typeof useMazeStore.getState>): TessellationConfig {
