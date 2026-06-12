@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
+import { ConfirmModal } from "../ConfirmModal";
 
 export const HEX_ORIENTATION_LABELS: Record<HexOrientation, string> = {
   flat_top: "Flat top",
@@ -30,13 +31,44 @@ export function BasicConfigFeature() {
   const previewKind = useMazeStore((s) => s.previewKind);
   const previewHexOrientation = useMazeStore((s) => s.previewHexOrientation);
   const previewTriOrientation = useMazeStore((s) => s.previewTriOrientation);
+  const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const presetConnections = useMazeStore((s) => s.presetConnections);
+  const presetStart = useMazeStore((s) => s.presetStart);
+  const presetFinish = useMazeStore((s) => s.presetFinish);
+  const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
+  const fieldPoints = useMazeStore((s) => s.fieldPoints);
   const setPreviewKind = useMazeStore((s) => s.setPreviewKind);
   const setPreviewHexOrientation = useMazeStore((s) => s.setPreviewHexOrientation);
   const setPreviewTriOrientation = useMazeStore((s) => s.setPreviewTriOrientation);
   const confirmTessellation = useMazeStore((s) => s.confirmTessellation);
 
+  const [showConfirm, setShowConfirm] = useState(false);
+
   const isHex = previewKind === "hex";
   const isTri = previewKind === "triangle";
+
+  const hasField = fieldEditMode === "custom" && fieldPoints.size > 0;
+  const hasPresets = presetConnections.size > 0 || presetStart !== null || presetFinish !== null;
+
+  function handleConfirmTessellation() {
+    const kindChanges = previewKind !== tessellationKind;
+    if (!kindChanges) {
+      confirmTessellation();
+      return;
+    }
+    if (hasField || hasPresets) {
+      setShowConfirm(true);
+    } else {
+      confirmTessellation();
+    }
+  }
+
+  function buildConfirmMessage(): string {
+    const parts: string[] = [];
+    if (hasField) parts.push("custom field");
+    if (hasPresets) parts.push("preset connections");
+    return `Changing tessellation type will reset: ${parts.join(" and ")}. Continue?`;
+  }
 
   return (
     <div style={styles.root}>
@@ -80,9 +112,16 @@ export function BasicConfigFeature() {
           </select>
         </label>
       )}
-      <button style={styles.confirmBtn} onClick={confirmTessellation}>
+      <button style={styles.confirmBtn} onClick={handleConfirmTessellation}>
         Confirm tessellation
       </button>
+      {showConfirm && (
+        <ConfirmModal
+          message={buildConfirmMessage()}
+          onConfirm={() => { confirmTessellation(); setShowConfirm(false); }}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
     </div>
   );
 }

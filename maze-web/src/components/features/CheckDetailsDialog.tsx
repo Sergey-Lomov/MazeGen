@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
 import { useMazeStore } from "../../store/mazeStore";
 import type { CheckDescriptor, ParamDescriptor } from "../../wasm/types";
+import { Modal } from "../Modal";
 import { sharedStyles } from "../../styles/shared";
-import { colors, font, radius } from "../../styles/theme";
+import { colors, font, radius, dialogSpacing } from "../../styles/theme";
 
 interface Props {
   mode: "add" | "edit";
@@ -101,163 +101,125 @@ export function CheckDetailsDialog({ mode, initialCheckId, onClose }: Props) {
   }
 
   const hasParams = (selectedDescriptor?.params.length ?? 0) > 0;
-
   const title = mode === "add" ? "Add check" : "Check details";
+  const size = mode === "add" ? "complex" : "info";
 
-  return createPortal(
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.header}>
-          <span style={styles.title}>{title}</span>
-          <button style={styles.closeBtn} onClick={onClose}>✕</button>
+  const isDisabled = !selectedId || selectedChecks.includes(selectedId);
+
+  const body = (
+    <div style={styles.content}>
+      {mode === "add" && (
+        <div style={styles.leftCol}>
+          {availableChecks.map((check) => {
+            const isActive = selectedChecks.includes(check.id);
+            const isSelected = check.id === selectedId;
+            return (
+              <button
+                key={check.id}
+                style={{
+                  ...styles.checkItem,
+                  ...(isSelected ? styles.checkItemSelected : {}),
+                  ...(isActive ? styles.checkItemGreyed : {}),
+                }}
+                disabled={isActive}
+                onClick={() => setSelectedId(check.id)}
+              >
+                {check.label}
+              </button>
+            );
+          })}
         </div>
-        <div style={styles.body}>
-          {mode === "add" && (
-            <div style={styles.leftCol}>
-              {availableChecks.map((check) => {
-                const isActive = selectedChecks.includes(check.id);
-                const isSelected = check.id === selectedId;
-                const greyed = isActive;
-                return (
-                  <button
-                    key={check.id}
-                    style={{
-                      ...styles.checkItem,
-                      ...(isSelected ? styles.checkItemSelected : {}),
-                      ...(greyed ? styles.checkItemGreyed : {}),
-                    }}
-                    disabled={greyed}
-                    onClick={() => setSelectedId(check.id)}
-                  >
-                    {check.label}
-                  </button>
-                );
-              })}
-            </div>
+      )}
+      <div style={styles.rightCol}>
+        <div style={styles.checkInfo}>
+          {selectedDescriptor ? (
+            <>
+              <div style={styles.checkLabel}>{selectedDescriptor.label}</div>
+              <div style={styles.checkDescription}>{selectedDescriptor.description}</div>
+              {hasParams && (
+                <>
+                  <div style={styles.paramsSeparator} />
+                  {selectedDescriptor.params.map((p) => (
+                    <div key={p.id} style={styles.paramRow}>
+                      <label style={styles.paramLabel}>{p.label}</label>
+                      {(p.kind.type === "float" || p.kind.type === "integer") && (
+                        <input
+                          type="number"
+                          style={styles.paramInput}
+                          value={localParams[p.id] ?? getDefaultValue(p)}
+                          min={p.kind.min}
+                          max={p.kind.max}
+                          step={p.kind.type === "integer" ? 1 : 0.1}
+                          onChange={(e) => setLocalParams((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        />
+                      )}
+                      {p.kind.type === "bool" && (
+                        <input
+                          type="checkbox"
+                          checked={(localParams[p.id] ?? getDefaultValue(p)) === "true"}
+                          onChange={(e) => setLocalParams((prev) => ({ ...prev, [p.id]: e.target.checked ? "true" : "false" }))}
+                        />
+                      )}
+                      {p.kind.type === "enum" && (
+                        <select
+                          style={styles.paramSelect}
+                          value={localParams[p.id] ?? getDefaultValue(p)}
+                          onChange={(e) => setLocalParams((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        >
+                          {p.kind.options.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          ) : (
+            <div style={styles.checkDescription}>No check selected.</div>
           )}
-          <div style={styles.rightCol}>
-            <div style={styles.rightContent}>
-              {selectedDescriptor ? (
-                <>
-                  <div style={styles.checkLabel}>{selectedDescriptor.label}</div>
-                  <div style={styles.checkDescription}>{selectedDescriptor.description}</div>
-                  {hasParams && (
-                    <>
-                      <div style={styles.paramsSeparator} />
-                      {selectedDescriptor.params.map((p) => (
-                        <div key={p.id} style={styles.paramRow}>
-                          <label style={styles.paramLabel}>{p.label}</label>
-                          {(p.kind.type === "float" || p.kind.type === "integer") && (
-                            <input
-                              type="number"
-                              style={styles.paramInput}
-                              value={localParams[p.id] ?? getDefaultValue(p)}
-                              min={p.kind.min}
-                              max={p.kind.max}
-                              step={p.kind.type === "integer" ? 1 : 0.1}
-                              onChange={(e) => setLocalParams((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                            />
-                          )}
-                          {p.kind.type === "bool" && (
-                            <input
-                              type="checkbox"
-                              checked={(localParams[p.id] ?? getDefaultValue(p)) === "true"}
-                              onChange={(e) => setLocalParams((prev) => ({ ...prev, [p.id]: e.target.checked ? "true" : "false" }))}
-                            />
-                          )}
-                          {p.kind.type === "enum" && (
-                            <select
-                              style={styles.paramSelect}
-                              value={localParams[p.id] ?? getDefaultValue(p)}
-                              onChange={(e) => setLocalParams((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                            >
-                              {p.kind.options.map((opt) => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </>
+        </div>
+        <div style={styles.footer}>
+          {mode === "add" ? (
+            <>
+              <button style={styles.btnSecondary} onClick={onClose}>Cancel</button>
+              <button
+                style={isDisabled ? { ...styles.btnSecondary, ...sharedStyles.btnDisabled } : styles.btnSecondary}
+                onClick={handleAddAndContinue}
+                disabled={isDisabled}
+              >
+                Add and continue
+              </button>
+              <button
+                style={isDisabled ? { ...styles.btnPrimary, ...sharedStyles.btnDisabled } : styles.btnPrimary}
+                onClick={handleAdd}
+                disabled={isDisabled}
+              >
+                Add
+              </button>
+            </>
+          ) : (
+            <>
+              <button style={styles.btnSecondary} onClick={onClose}>Cancel</button>
+              <button style={styles.btnDestructive} onClick={handleDelete}>Delete</button>
+              {hasParams ? (
+                <button style={styles.btnPrimary} onClick={handleApply}>Apply</button>
               ) : (
-                <div style={styles.checkDescription}>No check selected.</div>
+                <button style={styles.btnSecondary} onClick={onClose}>Close</button>
               )}
-            </div>
-            <div style={styles.footer}>
-              {mode === "add" ? (
-                <>
-                  <button style={styles.btnSecondary} onClick={onClose}>Cancel</button>
-                  <button
-                    style={styles.btnSecondary}
-                    onClick={handleAddAndContinue}
-                    disabled={!selectedId || selectedChecks.includes(selectedId)}
-                  >
-                    Add and continue
-                  </button>
-                  <button
-                    style={styles.btnPrimary}
-                    onClick={handleAdd}
-                    disabled={!selectedId || selectedChecks.includes(selectedId)}
-                  >
-                    Add
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button style={styles.btnSecondary} onClick={onClose}>Cancel</button>
-                  <button style={styles.btnDestructive} onClick={handleDelete}>Delete</button>
-                  {hasParams ? (
-                    <button style={styles.btnPrimary} onClick={handleApply}>Apply</button>
-                  ) : (
-                    <button style={styles.btnSecondary} onClick={onClose}>Close</button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
+
+  return <Modal title={title} size={size} rawBody={body} onClose={onClose} />;
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.6)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-  },
-  modal: {
-    background: colors.bgPanel,
-    border: `1px solid ${colors.borderStrong}`,
-    borderRadius: radius.lg,
-    maxHeight: "70vh",
-    display: "flex",
-    flexDirection: "column",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "10px 14px",
-    borderBottom: `1px solid ${colors.borderMid}`,
-    flexShrink: 0,
-  },
-  title: {
-    fontSize: font.xl,
-    fontWeight: "bold" as const,
-    color: colors.textPrimary,
-  },
-  closeBtn: sharedStyles.closeBtn,
-  body: {
+  content: {
     display: "flex",
     flex: 1,
     minHeight: 0,
@@ -277,7 +239,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "none",
     border: "none",
     textAlign: "left" as const,
-    padding: "6px 14px",
+    padding: `6px ${dialogSpacing.paddingX}px`,
     fontSize: font.lg,
     color: colors.textMuted,
     cursor: "pointer",
@@ -292,15 +254,16 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "default",
   },
   rightCol: {
-    width: 510,
-    flexShrink: 0,
+    flex: 1,
     display: "flex",
     flexDirection: "column",
+    minWidth: 0,
+    minHeight: 0,
   },
-  rightContent: {
+  checkInfo: {
     flex: 1,
     overflowY: "auto" as const,
-    padding: "12px 14px",
+    padding: `${dialogSpacing.bodyPadding}px ${dialogSpacing.paddingX}px`,
     display: "flex",
     flexDirection: "column",
     gap: 6,
@@ -343,7 +306,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "flex-end",
     gap: 6,
-    padding: "10px 14px",
+    padding: `${dialogSpacing.paddingY}px ${dialogSpacing.paddingX}px`,
     borderTop: `1px solid ${colors.borderMid}`,
     flexShrink: 0,
   },

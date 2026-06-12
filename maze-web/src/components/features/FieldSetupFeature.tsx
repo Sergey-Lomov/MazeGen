@@ -4,6 +4,7 @@ import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimi
 import type { TessellationConfig } from "../../wasm/types";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
 import { colors } from "../../styles/theme";
+import { ConfirmModal } from "../ConfirmModal";
 
 interface SizeParamProps {
   label: string;
@@ -41,6 +42,8 @@ function SizeParam({ label, value, min, max, onCommit }: SizeParamProps) {
   );
 }
 
+type ConfirmPending = "switchToDefault" | "clearField" | null;
+
 export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const squareShape = useMazeStore((s) => s.squareShape);
@@ -58,11 +61,31 @@ export function FieldSetupFeature() {
   const fieldPoints = useMazeStore((s) => s.fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
 
+  const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
+
   const isHex = tessellationKind === "hex";
   const isCustom = fieldEditMode === "custom";
 
   function setField(field: string, value: number) {
     setTessellationConfig({ ...tessellationConfig, [field]: value } as TessellationConfig);
+  }
+
+  function handleSwitchToDefault() {
+    if (isCustom && fieldPoints.size > 0) {
+      setConfirmPending("switchToDefault");
+    } else {
+      setFieldEditMode("default");
+    }
+  }
+
+  function handleClearField() {
+    setConfirmPending("clearField");
+  }
+
+  function handleConfirm() {
+    if (confirmPending === "switchToDefault") setFieldEditMode("default");
+    if (confirmPending === "clearField") clearFieldPoints();
+    setConfirmPending(null);
   }
 
   function renderShapeSelect() {
@@ -139,17 +162,17 @@ export function FieldSetupFeature() {
     return null;
   }
 
+  const confirmMessages: Record<NonNullable<ConfirmPending>, string> = {
+    switchToDefault: "Switch to standard shapes? Your custom field will be replaced.",
+    clearField: "Clear all field cells?",
+  };
+
   return (
     <div style={styles.root}>
       <div style={styles.toggleRow}>
         <button
           style={buttonStyle(isCustom ? "toggle" : "toggle-active")}
-          onClick={() => {
-            if (isCustom && fieldPoints.size > 0) {
-              if (!window.confirm("Switch to standard shapes? Your custom field will be replaced.")) return;
-            }
-            setFieldEditMode("default");
-          }}
+          onClick={handleSwitchToDefault}
         >
           Default
         </button>
@@ -182,13 +205,18 @@ export function FieldSetupFeature() {
           </div>
           <button
             style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
-            onClick={() => {
-              if (window.confirm("Clear all field cells?")) clearFieldPoints();
-            }}
+            onClick={handleClearField}
           >
             Clear
           </button>
         </>
+      )}
+      {confirmPending !== null && (
+        <ConfirmModal
+          message={confirmMessages[confirmPending]}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirmPending(null)}
+        />
       )}
     </div>
   );

@@ -360,6 +360,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         presetConnections: new Map<string, PresetConnectionEntry>(),
         presetStart: null,
         presetFinish: null,
+        fieldEditMode: "default" as const,
       } : {}),
     };
   }),

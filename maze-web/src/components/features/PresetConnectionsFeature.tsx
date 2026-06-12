@@ -1,9 +1,10 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/presetConnectionsUtils";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { buttonStyle } from "../../styles/shared";
 import { colors } from "../../styles/theme";
+import { ConfirmModal } from "../ConfirmModal";
 
 const ALL_TOOLS: [PresetConnectionTool, string][] = [
   ["wall", "Wall"],
@@ -28,6 +29,8 @@ export function PresetConnectionsFeature() {
   const clearInvalidPresetConnections = useMazeStore((s) => s.clearInvalidPresetConnections);
   const resetPresetConnections = useMazeStore((s) => s.resetPresetConnections);
   const setHighlightInvalidPresets = useMazeStore((s) => s.setHighlightInvalidPresets);
+
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
   const invalidKeys = useMemo(
@@ -77,12 +80,17 @@ export function PresetConnectionsFeature() {
       )}
       <button
         style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
-        onClick={() => {
-          if (window.confirm("Reset all preset connections?")) resetPresetConnections();
-        }}
+        onClick={() => setConfirmReset(true)}
       >
         Reset all
       </button>
+      {confirmReset && (
+        <ConfirmModal
+          message="Reset all preset connections?"
+          onConfirm={() => { resetPresetConnections(); setConfirmReset(false); }}
+          onCancel={() => setConfirmReset(false)}
+        />
+      )}
     </div>
   );
 }

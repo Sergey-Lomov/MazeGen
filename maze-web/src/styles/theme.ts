@@ -53,3 +53,27 @@ export const font = {
   lg: 13,
   xl: 14,
 } as const;
+
+export const overlay = {
+  bg: "rgba(0,0,0,0.6)",
+  zIndex: 1000,
+} as const;
+
+export const shadow = {
+  modal: "0 4px 24px rgba(0,0,0,0.5)",
+} as const;
+
+export const dialogSpacing = {
+  paddingX: 14,
+  paddingY: 10,
+  gap: 10,
+  bodyPadding: 12,
+  maxHeight: "80vh",
+} as const;
+
+// Semantic dialog widths
+export const dialogSize = {
+  approve: { minWidth: 260, maxWidth: 360 },
+  info: { minWidth: 280, maxWidth: 520, width: 520 },
+  complex: { minWidth: 460, maxWidth: 720, width: 720 },
+} as const;
