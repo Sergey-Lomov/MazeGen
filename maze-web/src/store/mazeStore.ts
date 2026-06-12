@@ -70,12 +70,15 @@ interface MazeState {
   selectedNode: number | null;
   warnings: string[];
   error: string | null;
+  registryLoaded: boolean;
   availableChecks: CheckDescriptor[];
   availableStrategies: StrategyDescriptor[];
   selectedChecks: string[];
   selectedStrategies: Record<string, string>;
   /** strategyParams[strategyId][paramId] = raw string value */
   strategyParams: Record<string, Record<string, string>>;
+  /** checkParams[checkId][paramId] = raw string value */
+  checkParams: Record<string, Record<string, string>>;
   initialConfig: InitialGenerationConfig;
   elementsConfig: ElementsConfig;
   nodeStats: NodeStatsDto | null;
@@ -115,7 +118,9 @@ interface MazeActions {
   setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze" | "showGraphOverlay" | "showNavOverlay" | "showComponents" | "showRoute", value: boolean) => void;
   selectNode: (id: number | null) => void;
   loadRegistry: () => Promise<void>;
-  toggleCheck: (id: string) => void;
+  addCheck: (id: string) => void;
+  removeCheck: (id: string) => void;
+  setCheckParam: (checkId: string, paramId: string, value: string) => void;
   setStrategy: (issueKind: string, strategyId: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
@@ -275,11 +280,13 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   selectedNode: null,
   warnings: [],
   error: null,
+  registryLoaded: false,
   availableChecks: [],
   availableStrategies: [],
   selectedChecks: [],
   selectedStrategies: {},
   strategyParams: {},
+  checkParams: {},
   initialConfig: { method: "custom_vertex_based" as const, depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
   elementsConfig: { one_way_chance: 0.04 },
   nodeStats: null,
@@ -450,15 +457,25 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     return initWasm().then(() => {
       const checks = getAvailableChecks();
       const strategies = getAvailableStrategies();
-      const selectedChecks = checks.map((c) => c.id);
-      const selectedStrategies: Record<string, string> = {};
+      const defaultSelectedChecks = checks.filter((c) => c.params.length === 0).map((c) => c.id);
+      const defaultStrategies: Record<string, string> = {};
       for (const check of checks) {
         for (const kind of check.issue_kinds) {
           const match = strategies.find((s) => s.handles === kind);
-          if (match) selectedStrategies[kind] = match.id;
+          if (match) defaultStrategies[kind] = match.id;
         }
       }
-      set({ availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies });
+      const knownIds = new Set(checks.map((c) => c.id));
+      set((state) => {
+        const selectedChecks = state.registryLoaded
+          ? state.selectedChecks.filter((id) => knownIds.has(id))
+          : defaultSelectedChecks;
+        const selectedStrategies = state.registryLoaded ? state.selectedStrategies : defaultStrategies;
+        const checkParams = Object.fromEntries(
+          Object.entries(state.checkParams).filter(([id]) => knownIds.has(id))
+        );
+        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies, checkParams };
+      });
     }).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("Failed to load WASM registry:", msg);
@@ -467,7 +484,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   },
 
   generate: () => {
-    const { seed, tessellationConfig, tessellationKind, isEditingField, fieldPoints, hexOrientation, triOrientation, selectedChecks, selectedStrategies, strategyParams, availableStrategies, initialConfig, elementsConfig, presetConnections } = get();
+    const { seed, tessellationConfig, tessellationKind, isEditingField, fieldPoints, hexOrientation, triOrientation, selectedChecks, selectedStrategies, strategyParams, availableStrategies, initialConfig, elementsConfig, presetConnections, checkParams } = get();
     try {
       if (isEditingField && fieldPoints.size < 2) {
         set({ error: "Free field requires at least 2 cells" });
@@ -505,6 +522,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         tessellation: activeTessellation,
         checks: selectedChecks,
         strategies,
+        check_params: checkParams,
         initial: initialConfig,
         elements: elementsConfig,
         preset_connections: validPresets,
@@ -522,12 +540,34 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   selectNode: (id) => set({ selectedNode: id }),
 
-  toggleCheck: (id) => set((state) => {
-    const selected = state.selectedChecks.includes(id)
-      ? state.selectedChecks.filter((c) => c !== id)
-      : [...state.selectedChecks, id];
-    return { selectedChecks: selected };
+  addCheck: (id) => set((state) => {
+    if (state.selectedChecks.includes(id)) return {};
+    const descriptor = state.availableChecks.find((c) => c.id === id);
+    if (!descriptor) return {};
+    const existing = state.checkParams[id];
+    const params = existing ?? Object.fromEntries(
+      descriptor.params.map((p) => {
+        const k = p.kind;
+        const def = k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
+        return [p.id, def];
+      })
+    );
+    return {
+      selectedChecks: [...state.selectedChecks, id],
+      checkParams: { ...state.checkParams, [id]: params },
+    };
   }),
+
+  removeCheck: (id) => set((state) => ({
+    selectedChecks: state.selectedChecks.filter((c) => c !== id),
+  })),
+
+  setCheckParam: (checkId, paramId, value) => set((state) => ({
+    checkParams: {
+      ...state.checkParams,
+      [checkId]: { ...(state.checkParams[checkId] ?? {}), [paramId]: value },
+    },
+  })),
 
   setStrategy: (issueKind, strategyId) => set((state) => ({
     selectedStrategies: { ...state.selectedStrategies, [issueKind]: strategyId },

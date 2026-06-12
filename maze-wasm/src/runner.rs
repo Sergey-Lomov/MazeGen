@@ -4,7 +4,7 @@ use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, IssueKind},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, IssueKind},
     repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
     compute_node_stats, compute_spatial_edge_stats, compute_route_info,
 };
@@ -20,10 +20,19 @@ pub fn build_qc_and_repair<T: Tessellation>(
 ) -> Result<(QualityControlEngine<T>, RepairEngine<T>), JsValue> {
     let mut checks: Vec<Box<dyn maze_core::quality_control::Check<T>>> = Vec::new();
     for id in &config.checks {
-        match IssueKind::from_str(id.as_str()) {
-            Some(IssueKind::MissingEndpoints) => checks.push(Box::new(MissingEndpointsCheck)),
-            Some(IssueKind::UnreachableFinish) => checks.push(Box::new(UnreachableFinishCheck)),
-            None => return Err(JsValue::from_str(&format!("unknown check: {id}"))),
+        match id.as_str() {
+            "missing_endpoints" => checks.push(Box::new(MissingEndpointsCheck)),
+            "unreachable_finish" => checks.push(Box::new(UnreachableFinishCheck)),
+            "min_loops_count" => {
+                let min_loops = config.check_params
+                    .get("min_loops_count")
+                    .and_then(|p| p.get("min_loops"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.max(1) as u32)
+                    .unwrap_or(MIN_LOOPS_DEFAULT);
+                checks.push(Box::new(MinLoopsCountCheck { min_loops }));
+            }
+            other => return Err(JsValue::from_str(&format!("unknown check: {other}"))),
         }
     }
     let qc_engine = QualityControlEngine::new(checks);

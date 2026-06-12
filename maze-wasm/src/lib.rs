@@ -7,7 +7,7 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
 use generation_config::{GenerateConfig, TessellationConfig};
@@ -24,6 +24,7 @@ struct ParamDescriptor {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ParamKindDto {
     Float { default: f64, min: f64, max: f64 },
+    Integer { default: i64, min: i64, max: i64 },
     Bool { default: bool },
     Enum { options: Vec<&'static str>, default: &'static str },
 }
@@ -31,7 +32,10 @@ enum ParamKindDto {
 #[derive(Serialize)]
 struct CheckDescriptor {
     id: &'static str,
+    label: &'static str,
+    description: &'static str,
     issue_kinds: Vec<&'static str>,
+    params: Vec<ParamDescriptor>,
 }
 
 #[derive(Serialize)]
@@ -68,8 +72,31 @@ fn strategy_params_dto(params: &[maze_core::repair::StrategyParam]) -> Vec<Param
 #[wasm_bindgen]
 pub fn available_checks() -> JsValue {
     let checks = vec![
-        CheckDescriptor { id: kind_str(MISSING_ENDPOINTS), issue_kinds: vec![kind_str(MISSING_ENDPOINTS)] },
-        CheckDescriptor { id: kind_str(UNREACHABLE_FINISH), issue_kinds: vec![kind_str(UNREACHABLE_FINISH)] },
+        CheckDescriptor {
+            id: "missing_endpoints",
+            label: "Missing endpoints",
+            description: "Fires if the maze has no start or no finish.",
+            issue_kinds: vec![kind_str(MISSING_ENDPOINTS)],
+            params: vec![],
+        },
+        CheckDescriptor {
+            id: "unreachable_finish",
+            label: "Unreachable finish",
+            description: "Fires if finish cannot be reached from start via directed traversal.",
+            issue_kinds: vec![kind_str(UNREACHABLE_FINISH)],
+            params: vec![],
+        },
+        CheckDescriptor {
+            id: "min_loops_count",
+            label: "Minimum loop count",
+            description: "Fires if the maze has fewer loops than the required minimum. Loop detection not yet implemented.",
+            issue_kinds: vec![kind_str(MIN_LOOPS_COUNT)],
+            params: vec![ParamDescriptor {
+                id: "min_loops",
+                label: "Min loop count",
+                kind: ParamKindDto::Integer { default: MIN_LOOPS_DEFAULT as i64, min: 1, max: 1_000_000 },
+            }],
+        },
     ];
     serde_wasm_bindgen::to_value(&checks).unwrap()
 }

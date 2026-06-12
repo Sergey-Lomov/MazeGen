@@ -4,6 +4,7 @@ import type { FeatureStatus } from "./FeatureCard";
 import { BasicConfigFeature, HEX_ORIENTATION_LABELS, TRI_ORIENTATION_LABELS } from "./features/BasicConfigFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
 import { PresetConnectionsFeature, presetConnectionsSubtitle } from "./features/PresetConnectionsFeature";
+import { QualityFeature } from "./features/QualityFeature";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind } from "../store/mazeStore";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
@@ -28,7 +29,7 @@ const KIND_LABELS: Record<TessellationKind, string> = {
   triangle: "Triangle",
 };
 
-type FeatureId = "basic_config" | "field_setup" | "preset_connections";
+type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality";
 
 export function FeaturesPanel() {
   const [openCard, setOpenCard] = useState<FeatureId | null>(null);
@@ -49,6 +50,7 @@ export function FeaturesPanel() {
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
   const setPresetConnectionsOpen = useMazeStore((s) => s.setPresetConnectionsOpen);
+  const selectedChecks = useMazeStore((s) => s.selectedChecks);
 
   function handleToggle(id: FeatureId) {
     if (openCard === id) {
@@ -139,6 +141,16 @@ export function FeaturesPanel() {
         onToggle={() => handleToggle("preset_connections")}
       >
         <PresetConnectionsFeature />
+      </FeatureCard>
+      <FeatureCard
+        title="Quality"
+        status={selectedChecks.length === 0 ? "warning" : "set"}
+        comment={selectedChecks.length === 0 ? "No checks active" : "Quality checks configured"}
+        subtitle={`${selectedChecks.length} check${selectedChecks.length !== 1 ? "s" : ""} active`}
+        expanded={openCard === "quality"}
+        onToggle={() => handleToggle("quality")}
+      >
+        <QualityFeature />
       </FeatureCard>
     </div>
   );

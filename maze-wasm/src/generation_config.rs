@@ -94,6 +94,8 @@ pub struct GenerateConfig {
     #[serde(default)]
     pub strategies: HashMap<String, StrategyConfig>,
     #[serde(default)]
+    pub check_params: HashMap<String, HashMap<String, String>>,
+    #[serde(default)]
     pub initial: InitialGenerationConfig,
     #[serde(default)]
     pub elements: ElementsConfigDto,
@@ -117,6 +119,7 @@ impl Default for GenerateConfig {
                 });
                 m
             },
+            check_params: HashMap::new(),
             initial: InitialGenerationConfig::default(),
             elements: ElementsConfigDto::default(),
             preset_connections: vec![],

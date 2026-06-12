@@ -17,7 +17,7 @@ export function StrategyParamsModal({ strategyId, params, onClose }: Props) {
   const getValue = (p: ParamDescriptor): string => {
     if (paramOverrides[p.id] !== undefined) return paramOverrides[p.id];
     const k = p.kind;
-    if (k.type === "float") return String(k.default);
+    if (k.type === "float" || k.type === "integer") return String(k.default);
     if (k.type === "bool") return k.default ? "true" : "false";
     return k.default;
   };

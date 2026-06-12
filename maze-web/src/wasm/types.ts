@@ -61,11 +61,15 @@ export interface MazeSnapshot {
 
 export interface CheckDescriptor {
   id: string;
+  label: string;
+  description: string;
   issue_kinds: string[];
+  params: ParamDescriptor[];
 }
 
 export type ParamKind =
   | { type: "float"; default: number; min: number; max: number }
+  | { type: "integer"; default: number; min: number; max: number }
   | { type: "bool"; default: boolean }
   | { type: "enum"; options: string[]; default: string };
 
@@ -143,6 +147,7 @@ export interface GenerateConfig {
   tessellation: TessellationConfig;
   checks: string[];
   strategies: Record<string, StrategyConfig>;
+  check_params?: Record<string, Record<string, string>>;
   initial: InitialGenerationConfig;
   elements: ElementsConfig;
   preset_connections?: PresetConnection[];

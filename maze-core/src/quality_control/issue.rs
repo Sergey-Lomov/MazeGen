@@ -2,16 +2,19 @@
 pub enum IssueKind {
     MissingEndpoints,
     UnreachableFinish,
+    MinLoopsCount,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
 pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
+pub const MIN_LOOPS_COUNT: IssueKind = IssueKind::MinLoopsCount;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
         match self {
             IssueKind::MissingEndpoints => "missing_endpoints",
             IssueKind::UnreachableFinish => "unreachable_finish",
+            IssueKind::MinLoopsCount => "min_loops_count",
         }
     }
 
@@ -19,6 +22,7 @@ impl IssueKind {
         match s {
             "missing_endpoints"  => Some(IssueKind::MissingEndpoints),
             "unreachable_finish" => Some(IssueKind::UnreachableFinish),
+            "min_loops_count"    => Some(IssueKind::MinLoopsCount),
             _ => None,
         }
     }

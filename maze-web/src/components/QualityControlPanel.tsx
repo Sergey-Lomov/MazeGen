@@ -9,7 +9,6 @@ export function QualityControlPanel() {
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const selectedStrategies = useMazeStore((s) => s.selectedStrategies);
-  const toggleCheck = useMazeStore((s) => s.toggleCheck);
   const setStrategy = useMazeStore((s) => s.setStrategy);
 
   const [openParams, setOpenParams] = useState<string | null>(null);
@@ -29,22 +28,6 @@ export function QualityControlPanel() {
   return (
     <>
       <div style={styles.panel}>
-        <div style={styles.column}>
-          <div style={styles.colHeader}>Checks</div>
-          {availableChecks.map((check) => (
-            <label key={check.id} style={styles.row}>
-              <input
-                type="checkbox"
-                checked={selectedChecks.includes(check.id)}
-                onChange={() => toggleCheck(check.id)}
-              />
-              <span style={styles.label}>{check.id}</span>
-            </label>
-          ))}
-        </div>
-
-        <div style={styles.divider} />
-
         <div style={styles.column}>
           <div style={styles.colHeader}>Issues</div>
           {activeIssueKinds.length === 0
@@ -134,12 +117,6 @@ const styles: Record<string, React.CSSProperties> = {
     width: 1,
     background: colors.borderMid,
     margin: "8px 0",
-  },
-  row: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    cursor: "pointer",
   },
   issueRow: {
     display: "flex",

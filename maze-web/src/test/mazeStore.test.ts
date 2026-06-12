@@ -64,6 +64,9 @@ beforeEach(() => {
     selectedChecks: [],
     selectedStrategies: {},
     strategyParams: {},
+    checkParams: {},
+    registryLoaded: false,
+    availableChecks: [],
     availableStrategies: [],
   });
   vi.mocked(generateMaze).mockReset();
@@ -416,8 +419,10 @@ describe("mazeStore.generate", () => {
       tessellation: { type: "square", width: 3, height: 4 },
       checks: [],
       strategies: {},
+      check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
+      preset_connections: [],
     });
   });
 
@@ -434,8 +439,10 @@ describe("mazeStore.generate", () => {
       tessellation: { type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" },
       checks: [],
       strategies: {},
+      check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
+      preset_connections: [],
     });
   });
 
@@ -452,8 +459,10 @@ describe("mazeStore.generate", () => {
       tessellation: { type: "hex_hexagon", radius: 3, orientation: "pointy_top" },
       checks: [],
       strategies: {},
+      check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
+      preset_connections: [],
     });
   });
 
@@ -557,8 +566,10 @@ describe("mazeStore.generate", () => {
           params: { path_weight: "2", junction_weight: "6" },
         },
       },
+      check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
+      preset_connections: [],
     });
   });
 
@@ -637,7 +648,7 @@ describe("mazeStore.selectNode", () => {
 
 describe("mazeStore.loadRegistry", () => {
   it("stores available checks and strategies", async () => {
-    const checks = [{ id: "missing_endpoints", issue_kinds: ["missing_endpoints"] }];
+    const checks = [{ id: "missing_endpoints", label: "Missing endpoints", description: "", issue_kinds: ["missing_endpoints"], params: [] }];
     const strategies = [{ id: "farthest_endpoints", handles: "missing_endpoints", params: [] }];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
@@ -646,10 +657,10 @@ describe("mazeStore.loadRegistry", () => {
     expect(useMazeStore.getState().availableStrategies).toEqual(strategies);
   });
 
-  it("auto-selects all checks", async () => {
+  it("auto-selects checks without params", async () => {
     const checks = [
-      { id: "check_a", issue_kinds: ["kind_a"] },
-      { id: "check_b", issue_kinds: ["kind_b"] },
+      { id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [] },
+      { id: "check_b", label: "Check B", description: "", issue_kinds: ["kind_b"], params: [] },
     ];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue([]);
@@ -657,8 +668,33 @@ describe("mazeStore.loadRegistry", () => {
     expect(useMazeStore.getState().selectedChecks).toEqual(["check_a", "check_b"]);
   });
 
+  it("does not auto-select checks with params", async () => {
+    const paramKind = { type: "integer" as const, default: 1, min: 1, max: 100 };
+    const checks = [
+      { id: "check_no_params", label: "No params", description: "", issue_kinds: ["kind_a"], params: [] },
+      { id: "check_with_params", label: "Has params", description: "", issue_kinds: ["kind_b"], params: [{ id: "p", label: "P", kind: paramKind }] },
+    ];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue([]);
+    await useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().selectedChecks).toEqual(["check_no_params"]);
+  });
+
+  it("preserves selectedChecks on repeated call", async () => {
+    const checks = [
+      { id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [] },
+      { id: "check_b", label: "Check B", description: "", issue_kinds: ["kind_b"], params: [] },
+    ];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue([]);
+    await useMazeStore.getState().loadRegistry();
+    useMazeStore.setState({ selectedChecks: ["check_b"] });
+    await useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().selectedChecks).toEqual(["check_b"]);
+  });
+
   it("auto-selects first matching strategy per issue kind", async () => {
-    const checks = [{ id: "check_a", issue_kinds: ["kind_a"] }];
+    const checks = [{ id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [] }];
     const strategies = [
       { id: "strategy_first", handles: "kind_a", params: [] },
       { id: "strategy_second", handles: "kind_a", params: [] },
@@ -670,7 +706,7 @@ describe("mazeStore.loadRegistry", () => {
   });
 
   it("leaves issue kind without strategy unselected", async () => {
-    const checks = [{ id: "check_a", issue_kinds: ["kind_a", "kind_b"] }];
+    const checks = [{ id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a", "kind_b"], params: [] }];
     const strategies = [{ id: "strategy_a", handles: "kind_a", params: [] }];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
@@ -788,6 +824,91 @@ describe("mazeStore.setGenerationMethod", () => {
   it("switches to kruskal_algorithm", () => {
     useMazeStore.getState().setGenerationMethod("kruskal_algorithm");
     expect(useMazeStore.getState().initialConfig.method).toBe("kruskal_algorithm");
+  });
+});
+
+describe("mazeStore.addCheck", () => {
+  const paramKind = { type: "integer" as const, default: 3, min: 1, max: 100 };
+  const descriptor = { id: "min_loops", label: "Min loops", description: "", issue_kinds: ["min_loops_count"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }] };
+
+  it("adds check id to selectedChecks", () => {
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [] });
+    useMazeStore.getState().addCheck("min_loops");
+    expect(useMazeStore.getState().selectedChecks).toContain("min_loops");
+  });
+
+  it("is idempotent — does not add duplicate", () => {
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: ["min_loops"] });
+    useMazeStore.getState().addCheck("min_loops");
+    expect(useMazeStore.getState().selectedChecks.filter((id) => id === "min_loops")).toHaveLength(1);
+  });
+
+  it("initializes checkParams from descriptor defaults when no prior entry", () => {
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], checkParams: {} });
+    useMazeStore.getState().addCheck("min_loops");
+    expect(useMazeStore.getState().checkParams["min_loops"]["min_loops"]).toBe("3");
+  });
+
+  it("preserves existing checkParams when re-adding", () => {
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], checkParams: { min_loops: { min_loops: "7" } } });
+    useMazeStore.getState().addCheck("min_loops");
+    expect(useMazeStore.getState().checkParams["min_loops"]["min_loops"]).toBe("7");
+  });
+
+  it("is no-op for unknown check id", () => {
+    useMazeStore.setState({ availableChecks: [], selectedChecks: [] });
+    useMazeStore.getState().addCheck("nonexistent");
+    expect(useMazeStore.getState().selectedChecks).toEqual([]);
+  });
+});
+
+describe("mazeStore.removeCheck", () => {
+  it("removes check id from selectedChecks", () => {
+    useMazeStore.setState({ selectedChecks: ["check_a", "check_b"] });
+    useMazeStore.getState().removeCheck("check_a");
+    expect(useMazeStore.getState().selectedChecks).toEqual(["check_b"]);
+  });
+
+  it("preserves checkParams after removal", () => {
+    useMazeStore.setState({ selectedChecks: ["check_a"], checkParams: { check_a: { p: "5" } } });
+    useMazeStore.getState().removeCheck("check_a");
+    expect(useMazeStore.getState().checkParams["check_a"]).toEqual({ p: "5" });
+  });
+
+  it("is no-op for non-selected id", () => {
+    useMazeStore.setState({ selectedChecks: ["check_b"] });
+    useMazeStore.getState().removeCheck("check_a");
+    expect(useMazeStore.getState().selectedChecks).toEqual(["check_b"]);
+  });
+});
+
+describe("mazeStore.setCheckParam", () => {
+  it("stores param value keyed by checkId", () => {
+    useMazeStore.setState({ checkParams: {} });
+    useMazeStore.getState().setCheckParam("min_loops", "min_loops", "5");
+    expect(useMazeStore.getState().checkParams["min_loops"]["min_loops"]).toBe("5");
+  });
+
+  it("merges params for same checkId", () => {
+    useMazeStore.setState({ checkParams: {} });
+    useMazeStore.getState().setCheckParam("min_loops", "param_a", "1");
+    useMazeStore.getState().setCheckParam("min_loops", "param_b", "2");
+    expect(useMazeStore.getState().checkParams["min_loops"]["param_a"]).toBe("1");
+    expect(useMazeStore.getState().checkParams["min_loops"]["param_b"]).toBe("2");
+  });
+
+  it("overrides existing param value", () => {
+    useMazeStore.setState({ checkParams: { min_loops: { min_loops: "1" } } });
+    useMazeStore.getState().setCheckParam("min_loops", "min_loops", "9");
+    expect(useMazeStore.getState().checkParams["min_loops"]["min_loops"]).toBe("9");
+  });
+
+  it("keeps params for different checkIds independent", () => {
+    useMazeStore.setState({ checkParams: {} });
+    useMazeStore.getState().setCheckParam("check_a", "p", "1");
+    useMazeStore.getState().setCheckParam("check_b", "p", "2");
+    expect(useMazeStore.getState().checkParams["check_a"]["p"]).toBe("1");
+    expect(useMazeStore.getState().checkParams["check_b"]["p"]).toBe("2");
   });
 });
 
