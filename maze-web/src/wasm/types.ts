@@ -119,7 +119,7 @@ export interface ElementsConfig {
 export interface GenerationStepDto {
   edges: EdgeDto[];
   active_nodes: number[];
-  current_src: number;
+  current_src: number | null;
 }
 
 export interface GenerationStepsSnapshot {

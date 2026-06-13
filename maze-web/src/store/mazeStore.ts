@@ -86,6 +86,7 @@ interface MazeState {
   edgeStats: SpatialEdgeStatsDto | null;
   routeInfo: RouteInfoDto | null;
   showFieldOverlay: boolean;
+  generationOpen: boolean;
   fieldSetupOpen: boolean;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
@@ -152,6 +153,7 @@ interface MazeActions {
   removeFieldPoints: (cells: [number, number][]) => void;
   clearFieldPoints: () => void;
   setShowFieldOverlay: (show: boolean) => void;
+  setGenerationOpen: (open: boolean) => void;
   setFieldSetupOpen: (open: boolean) => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
@@ -322,6 +324,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   edgeStats: null,
   routeInfo: null,
   showFieldOverlay: true,
+  generationOpen: false,
   fieldSetupOpen: false,
   fieldEditMode: "default",
   fieldPrimitive: "point",
@@ -335,7 +338,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   showPresetOrigin: false,
   showFieldOrigin: true,
   lockedNodes: new Map<string, NodeLockKind>(),
-  autoLock: false,
+  autoLock: true,
   autoLockedNodes: new Set<string>(),
   randomSeed: false,
   lastUsedSeed: null,
@@ -679,6 +682,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
 
+  setGenerationOpen: (open) => set({ generationOpen: open }),
   setFieldSetupOpen: (open) => set({ fieldSetupOpen: open }),
 
   setFieldEditMode: (mode) => set((state) => {
@@ -883,7 +887,7 @@ function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet): void {
     const snapshot = generateMaze(seed, config);
     let debugSnapshot: GenerationStepsSnapshot | null = null;
     if (debugMode && snapshot.debug_steps.length > 0) {
-      const steps = [{ edges: [], active_nodes: [], current_src: 0 }, ...snapshot.debug_steps];
+      const steps = [{ edges: [], active_nodes: [], current_src: null }, ...snapshot.debug_steps];
       debugSnapshot = { nodes: snapshot.nodes, steps };
     }
     const lastStep = debugSnapshot ? debugSnapshot.steps.length - 1 : 0;

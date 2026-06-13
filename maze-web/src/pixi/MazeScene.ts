@@ -1,13 +1,10 @@
 import { Application, Container } from "pixi.js";
-import { MazeTileRenderer } from "./MazeTileRenderer";
+import { GenerationRenderer } from "./GenerationRenderer";
+import { TessellationRenderer } from "./TessellationRenderer";
 import { TILE_SIZE } from "./constants";
 import { cellCenter, mazeBounds } from "./hexGeometry";
-import { MazeGraphRenderer, NavGraphRenderer } from "./MazeRenderer";
-import { ComponentRenderer } from "./ComponentRenderer";
-import { RouteOverlay } from "./RouteOverlay";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { FieldEditController } from "./FieldEditController";
-import { GridOverlay } from "./GridOverlay";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
@@ -24,17 +21,13 @@ export class MazeScene {
   private componentOverlay: Container;
   private graphOverlay: Container;
   private navOverlay: Container;
-  private tileRenderer: MazeTileRenderer;
-  private componentRenderer: ComponentRenderer;
-  private graphRenderer: MazeGraphRenderer;
-  private navRenderer: NavGraphRenderer;
-  private routeOverlay: RouteOverlay;
   private routeOverlayContainer: Container;
+  private generationRenderer: GenerationRenderer;
+  private tessellationRenderer: TessellationRenderer;
+  private tessellationContainer: Container;
   private fieldEditorOverlay: FieldEditorOverlay;
   private fieldEditorOverlayContainer: Container;
   private fieldEditController: FieldEditController;
-  private gridOverlay: GridOverlay;
-  private gridOverlayContainer: Container;
   private primitivePreviewOverlay: PrimitivePreviewOverlay;
   private primitivePreviewContainer: Container;
   private presetConnectionsRenderer: PresetConnectionsRenderer;
@@ -51,13 +44,10 @@ export class MazeScene {
   private onBlur = () => { this.isDragging = false; };
   private onWheel: (e: WheelEvent) => void = () => {};
   private unsubscribeFit: (() => void) | null = null;
-  private unsubscribeOverlay: (() => void) | null = null;
-  private unsubscribeNavOverlay: (() => void) | null = null;
-  private unsubscribeComponentOverlay: (() => void) | null = null;
-  private unsubscribeMaze: (() => void) | null = null;
   private unsubscribeEditField: (() => void) | null = null;
   private unsubscribePreview: (() => void) | null = null;
   private unsubscribePresetOpen: (() => void) | null = null;
+
   private refitTimerId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(app: Application) {
@@ -65,27 +55,25 @@ export class MazeScene {
 
     this.viewport = new Container();
 
-    // componentOverlay sits above viewport tiles but below graph overlays.
-    // Uses same coordinate system as viewport: tile top-left at (x*TILE_SIZE, -y*TILE_SIZE - TILE_SIZE).
     this.componentOverlay = new Container();
-    this.componentOverlay.visible = useMazeStore.getState().showComponents;
-
     this.graphOverlay = new Container();
-    this.graphOverlay.visible = useMazeStore.getState().showGraphOverlay;
-    const graphInner = new Container();
-    this.graphOverlay.addChild(graphInner);
-
     this.navOverlay = new Container();
-    this.navOverlay.visible = useMazeStore.getState().showNavOverlay;
-    const navInner = new Container();
-    this.navOverlay.addChild(navInner);
-
     this.routeOverlayContainer = new Container();
     this.fieldEditorOverlayContainer = new Container();
-    this.gridOverlayContainer = new Container();
     this.primitivePreviewContainer = new Container();
     this.presetConnectionsContainer = new Container();
-    this.syncedLayers = [this.gridOverlayContainer, this.componentOverlay, this.graphOverlay, this.navOverlay, this.routeOverlayContainer, this.fieldEditorOverlayContainer, this.primitivePreviewContainer, this.presetConnectionsContainer];
+    this.tessellationContainer = new Container();
+
+    this.syncedLayers = [
+      this.componentOverlay,
+      this.graphOverlay,
+      this.navOverlay,
+      this.routeOverlayContainer,
+      this.fieldEditorOverlayContainer,
+      this.primitivePreviewContainer,
+      this.presetConnectionsContainer,
+      this.tessellationContainer,
+    ];
 
     this.app.stage.addChild(this.viewport);
     for (const layer of this.syncedLayers) this.app.stage.addChild(layer);
@@ -96,15 +84,16 @@ export class MazeScene {
     this.viewport.y = cy;
     for (const layer of this.syncedLayers) { layer.x = cx; layer.y = cy; }
 
-    this.viewport.visible = useMazeStore.getState().showMaze;
+    this.generationRenderer = new GenerationRenderer(
+      this.viewport,
+      this.componentOverlay,
+      this.graphOverlay,
+      this.navOverlay,
+      this.routeOverlayContainer,
+    );
+    this.tessellationRenderer = new TessellationRenderer(this.tessellationContainer);
 
-    this.tileRenderer = new MazeTileRenderer(this.viewport);
-    this.componentRenderer = new ComponentRenderer(this.componentOverlay);
-    this.graphRenderer = new MazeGraphRenderer(graphInner);
-    this.navRenderer = new NavGraphRenderer(navInner);
-    this.routeOverlay = new RouteOverlay(this.routeOverlayContainer);
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
-    this.gridOverlay = new GridOverlay(this.gridOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
 
@@ -158,54 +147,10 @@ export class MazeScene {
 
     this.setupInteraction();
     this.subscribeToFit();
-    this.subscribeToOverlay();
-    this.subscribeToNavOverlay();
-    this.subscribeToComponentOverlay();
-    this.subscribeToMaze();
     this.subscribeToEditField();
     this.subscribeToPreview();
     this.subscribeToPresetOpen();
     this.syncLayersToViewport();
-  }
-
-  private subscribeToOverlay(): void {
-    let prev = useMazeStore.getState().showGraphOverlay;
-    this.unsubscribeOverlay = useMazeStore.subscribe((state) => {
-      if (state.showGraphOverlay !== prev) {
-        prev = state.showGraphOverlay;
-        this.graphOverlay.visible = state.showGraphOverlay;
-      }
-    });
-  }
-
-  private subscribeToNavOverlay(): void {
-    let prev = useMazeStore.getState().showNavOverlay;
-    this.unsubscribeNavOverlay = useMazeStore.subscribe((state) => {
-      if (state.showNavOverlay !== prev) {
-        prev = state.showNavOverlay;
-        this.navOverlay.visible = state.showNavOverlay;
-      }
-    });
-  }
-
-  private subscribeToComponentOverlay(): void {
-    let prev = useMazeStore.getState().showComponents;
-    this.unsubscribeComponentOverlay = useMazeStore.subscribe((state) => {
-      if (state.showComponents !== prev) {
-        prev = state.showComponents;
-        this.componentOverlay.visible = state.showComponents;
-      }
-    });
-  }
-
-  private subscribeToMaze(): void {
-    let prev = useMazeStore.getState().showMaze;
-    this.unsubscribeMaze = useMazeStore.subscribe((state) => {
-      if (state.showMaze !== prev) {
-        prev = state.showMaze;
-        this.viewport.visible = state.showMaze;
-      }
-    });
   }
 
   private subscribeToPreview(): void {
@@ -305,13 +250,6 @@ export class MazeScene {
       this.app.screen.height,
       this.viewport.scale.x,
     );
-    this.gridOverlay.onViewportChanged(
-      this.viewport.x,
-      this.viewport.y,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.viewport.scale.x,
-    );
     this.primitivePreviewOverlay.onViewportChanged(
       this.viewport.x,
       this.viewport.y,
@@ -320,6 +258,13 @@ export class MazeScene {
       this.viewport.scale.x,
     );
     this.presetConnectionsRenderer.onViewportChanged(
+      this.viewport.x,
+      this.viewport.y,
+      this.app.screen.width,
+      this.app.screen.height,
+      this.viewport.scale.x,
+    );
+    this.tessellationRenderer.onViewportChanged(
       this.viewport.x,
       this.viewport.y,
       this.app.screen.width,
@@ -342,13 +287,9 @@ export class MazeScene {
     this.viewport.x = screenW / 2 - scale * (minX + W / 2);
     this.viewport.y = screenH / 2 - scale * (minY + H / 2);
 
-
     this.syncLayersToViewport();
   }
 
-  getPresetConnectionsRenderer(): PresetConnectionsRenderer {
-    return this.presetConnectionsRenderer;
-  }
 
   refit(durationMs = 0): void {
     const { nodes, activeTessellationConfig } = useMazeStore.getState();
@@ -400,8 +341,14 @@ export class MazeScene {
     stage.on("pointermove", (e) => {
       const st = useMazeStore.getState();
       if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
-        this.fieldEditController.onPointerMove(e.globalX, e.globalY);
+        this.fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
+        const hoverCell = this.fieldEditController.getHoverCell(e.globalX, e.globalY);
+        this.fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
         return;
+      }
+      if (st.fieldSetupOpen) {
+        const hoverCell = this.fieldEditController.getHoverCell(e.globalX, e.globalY);
+        this.fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
       }
       if (st.presetConnectionsOpen) {
         this.presetConnectionsController.onPointerMove(e.globalX, e.globalY);
@@ -432,6 +379,9 @@ export class MazeScene {
       if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerUp();
       }
+      if (st.fieldSetupOpen) {
+        this.fieldEditorOverlay.updateHover(null, st.tessellationConfig);
+      }
       this.isDragging = false;
     });
 
@@ -459,20 +409,12 @@ export class MazeScene {
       this.refitTimerId = null;
     }
     this.unsubscribeFit?.();
-    this.unsubscribeOverlay?.();
-    this.unsubscribeNavOverlay?.();
-    this.unsubscribeComponentOverlay?.();
-    this.unsubscribeMaze?.();
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();
     this.unsubscribePresetOpen?.();
-    this.tileRenderer.destroy();
-    this.componentRenderer.destroy();
-    this.graphRenderer.destroy();
-    this.navRenderer.destroy();
-    this.routeOverlay.destroy();
+    this.generationRenderer.destroy();
+    this.tessellationRenderer.destroy();
     this.fieldEditorOverlay.destroy();
-    this.gridOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();
     this.fieldEditController.destroy();

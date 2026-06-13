@@ -111,11 +111,15 @@ On mouseup: `addFieldPoints(cells)` or `removeFieldPoints(cells)` called with st
 
 ## Grid overlay
 
-`GridOverlay` shows the tessellation grid when no maze nodes exist. Selects config via `pickConfig`:
-- `fieldSetupOpen = true` → uses `tessellationConfig`
-- `fieldSetupOpen = false` → uses `previewTessellationConfig`
+Grid rendering is embedded in each feature renderer, not in a standalone component:
 
-Redraws on viewport change, config change, or `fieldSetupOpen` toggle.
+- **`TessellationRenderer`** — shows `previewTessellationConfig` grid when no feature card is open (`!fieldSetupOpen && !presetConnectionsOpen && !generationOpen`). Hidden the moment any card opens. Redraws on viewport change or `previewTessellationConfig` change.
+- **`FieldEditorOverlay`** — renders grid using `tessellationConfig` while `fieldSetupOpen = true`. Redraws on viewport change or config change.
+- **`PresetConnectionsRenderer`** — renders grid using `tessellationConfig` while `presetConnectionsOpen = true`. Redraws on viewport change or config change.
+
+## Hover highlight (custom mode)
+
+While `fieldSetupOpen = true` and the cursor is over the canvas, the hovered cell is highlighted with a soft grey overlay (`0x888888`, alpha 0.3). Rendered by `FieldEditorOverlay.updateHover()`, called from `MazeScene` on every `pointermove`. Cleared on `pointerupoutside`.
 
 ## Hit-test
 

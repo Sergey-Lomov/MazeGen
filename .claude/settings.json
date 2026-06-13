@@ -16,7 +16,8 @@
       "mcp__code-index__get_symbol_body",
       "mcp__code-index__find_files",
       "mcp__code-index__build_deep_index",
-      "mcp__code-index__get_file_summary"
+      "mcp__code-index__get_file_summary",
+      "mcp__code-index__refresh_index"
     ],
     "additionalDirectories": [
       "C:\\Users\\user\\.cargo",

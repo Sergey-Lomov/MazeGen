@@ -2,14 +2,8 @@ import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
+import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR, NODE_COLOR, NODE_HOVER_COLOR, NODE_SELECTED_COLOR, EDGE_COLOR } from "./colorUtils";
 import { cellCenter } from "./hexGeometry";
-
-export { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR } from "./constants";
-const NODE_COLOR = 0x4a9eff;
-const NODE_HOVER_COLOR = 0xff9f4a;
-const NODE_SELECTED_COLOR = 0xff4a4a;
-const EDGE_COLOR = 0x888888;
 const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: 0xffffff });
 
 interface Pos { x: number; y: number; }
@@ -49,9 +43,7 @@ function drawArrowhead(g: Graphics, from: Pos, to: Pos, innerLen: number, color:
 }
 
 interface RenderEdge {
-  /** Full path of positions from source to target (inclusive). */
   path: Pos[];
-  /** True if there is also an edge in the reverse direction. */
   hasReverse: boolean;
 }
 
@@ -60,11 +52,6 @@ interface RenderNode {
   pos: Pos;
 }
 
-/**
- * Draws a directed edge as a polyline with:
- * - margin from the first and last point only
- * - arrowhead at the end if not bidirectional
- */
 function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
   const pts = edge.path;
   if (pts.length < 2) return;
@@ -74,7 +61,6 @@ function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
   const secondLast = pts[pts.length - 2];
   const last = pts[pts.length - 1];
 
-  // Direction vectors at endpoints
   const dxStart = second.x - first.x;
   const dyStart = second.y - first.y;
   const lenStart = Math.sqrt(dxStart * dxStart + dyStart * dyStart);
@@ -95,12 +81,10 @@ function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
     y: last.y - (dyEnd / lenEnd) * margin,
   };
 
-  // End-segment length for arrow sizing
   const endSegLen = Math.sqrt(
     (endPt.x - secondLast.x) ** 2 + (endPt.y - secondLast.y) ** 2
   );
 
-  // Build the polyline: startPt → intermediate points → endPt (or lineEnd if arrow)
   let lineEndPt = endPt;
   if (!edge.hasReverse) {
     const ah = arrowHeight(endSegLen);
@@ -127,7 +111,6 @@ abstract class BaseGraphRenderer {
   protected overlayContainer: Container;
   protected edgesContainer: Container;
   protected nodesContainer: Container;
-  protected unsubscribe: (() => void) | null = null;
 
   constructor(overlayContainer: Container) {
     this.overlayContainer = overlayContainer;
@@ -148,9 +131,7 @@ abstract class BaseGraphRenderer {
 
   protected drawEdges(edges: RenderEdge[], color: number): void {
     const g = new Graphics();
-    for (const edge of edges) {
-      drawEdge(g, edge, color);
-    }
+    for (const edge of edges) drawEdge(g, edge, color);
     this.edgesContainer.addChild(g);
   }
 
@@ -202,7 +183,6 @@ abstract class BaseGraphRenderer {
   }
 
   destroy(): void {
-    this.unsubscribe?.();
     this.edgesContainer.destroy({ children: true });
     this.nodesContainer.destroy({ children: true });
   }
@@ -210,71 +190,58 @@ abstract class BaseGraphRenderer {
 
 // ─── MazeGraphRenderer ───────────────────────────────────────────────────────
 
+export interface MazeGraphData {
+  nodes: NodeDto[];
+  edges: EdgeDto[];
+  showNodeIds: boolean;
+  showCoords: boolean;
+  selectedNode: number | null;
+  start: number | null;
+  finish: number | null;
+  cfg: TessellationConfig;
+}
+
 export class MazeGraphRenderer extends BaseGraphRenderer {
   private nodeViews: Map<number, Graphics> = new Map();
   private nodeLabels: Map<number, Text> = new Map();
+  private lastData: MazeGraphData | null = null;
 
   constructor(overlayContainer: Container) {
     super(overlayContainer);
-    this.subscribeToStore();
   }
 
-  private subscribeToStore(): void {
-    let prev = useMazeStore.getState();
-    this.unsubscribe = useMazeStore.subscribe((state) => {
-      const renderNodes = state.debugMode && state.debugSnapshot
-        ? state.debugSnapshot.nodes
-        : state.nodes;
-      const renderEdges = state.debugMode && state.debugSnapshot
-        ? (state.debugSnapshot.steps[state.debugStep]?.edges ?? [])
-        : state.edges;
+  render(data: MazeGraphData): void {
+    const prev = this.lastData;
+    this.lastData = data;
 
-      const prevRenderNodes = prev.debugMode && prev.debugSnapshot
-        ? prev.debugSnapshot.nodes
-        : prev.nodes;
-      const prevRenderEdges = prev.debugMode && prev.debugSnapshot
-        ? (prev.debugSnapshot.steps[prev.debugStep]?.edges ?? [])
-        : prev.edges;
+    const nodesChanged = !prev
+      || data.nodes !== prev.nodes
+      || data.edges !== prev.edges
+      || data.start !== prev.start
+      || data.finish !== prev.finish
+      || data.cfg !== prev.cfg;
+    const debugChanged = !prev
+      || data.showNodeIds !== prev.showNodeIds
+      || data.showCoords !== prev.showCoords;
+    const selectionChanged = !prev || data.selectedNode !== prev.selectedNode;
 
-      const isLastDebugStep = state.debugMode && state.debugSnapshot
-        ? state.debugStep === state.debugSnapshot.steps.length - 1
-        : true;
-      const renderStart  = (state.debugMode && state.debugSnapshot && !isLastDebugStep) ? null : state.start;
-      const renderFinish = (state.debugMode && state.debugSnapshot && !isLastDebugStep) ? null : state.finish;
-
-      const prevIsLastDebugStep = prev.debugMode && prev.debugSnapshot
-        ? prev.debugStep === prev.debugSnapshot.steps.length - 1
-        : true;
-      const prevRenderStart  = (prev.debugMode && prev.debugSnapshot && !prevIsLastDebugStep) ? null : prev.start;
-      const prevRenderFinish = (prev.debugMode && prev.debugSnapshot && !prevIsLastDebugStep) ? null : prev.finish;
-
-      const nodesChanged = renderNodes !== prevRenderNodes || renderEdges !== prevRenderEdges
-        || renderStart !== prevRenderStart || renderFinish !== prevRenderFinish;
-      const debugChanged = state.showNodeIds !== prev.showNodeIds || state.showCoords !== prev.showCoords;
-      const selectionChanged = state.selectedNode !== prev.selectedNode;
-
-      if (!nodesChanged && !debugChanged && !selectionChanged) { prev = state; return; }
-
-      if (nodesChanged) {
-        this.renderGraph(renderNodes, renderEdges, state.showNodeIds, state.showCoords, state.selectedNode, renderStart, renderFinish, state.activeTessellationConfig);
-      } else {
-        if (debugChanged) this.updateLabels(renderNodes, state.showNodeIds, state.showCoords);
-        if (selectionChanged) this.updateSelection(prev.selectedNode, state.selectedNode, renderStart, renderFinish);
-      }
-      prev = state;
-    });
+    if (nodesChanged) {
+      this.renderGraph(data);
+    } else {
+      if (debugChanged) this.updateLabels(data.nodes, data.showNodeIds, data.showCoords);
+      if (selectionChanged && prev) this.updateSelection(prev.selectedNode, data.selectedNode, data.start, data.finish);
+    }
   }
 
-  private renderGraph(
-    nodes: NodeDto[],
-    edges: EdgeDto[],
-    showNodeIds: boolean,
-    showCoords: boolean,
-    selectedNode: number | null,
-    start: number | null,
-    finish: number | null,
-    cfg: TessellationConfig,
-  ): void {
+  clear(): void {
+    this.nodeViews.clear();
+    this.nodeLabels.clear();
+    this.resetContainers();
+    this.lastData = null;
+  }
+
+  private renderGraph(data: MazeGraphData): void {
+    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg } = data;
     this.nodeViews.clear();
     this.nodeLabels.clear();
     this.resetContainers();
@@ -282,7 +249,6 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     const nodePos = new Map<number, Pos>();
     for (const node of nodes) nodePos.set(node.id, gridPos(node, cfg));
 
-    // Build pair flags for directedness
     type PairFlags = { loToHi: boolean; hiToLo: boolean };
     const pairs = new Map<string, PairFlags>();
     for (const edge of edges) {
@@ -368,47 +334,28 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
 
 // ─── NavGraphRenderer ────────────────────────────────────────────────────────
 
+export interface NavGraphData {
+  nodes: NodeDto[];
+  navNodes: NavNodeDto[];
+  navEdges: NavEdgeDto[];
+  start: number | null;
+  finish: number | null;
+  cfg: TessellationConfig;
+}
+
 export class NavGraphRenderer extends BaseGraphRenderer {
   constructor(overlayContainer: Container) {
     super(overlayContainer);
-    this.subscribeToStore();
   }
 
-  private subscribeToStore(): void {
-    let prev = useMazeStore.getState();
-    this.unsubscribe = useMazeStore.subscribe((state) => {
-      const changed = state.nodes !== prev.nodes
-        || state.navNodes !== prev.navNodes
-        || state.navEdges !== prev.navEdges
-        || state.start !== prev.start
-        || state.finish !== prev.finish;
-      prev = state;
-      if (changed) {
-        this.renderNav(state.nodes, state.navNodes, state.navEdges, state.start, state.finish, state.activeTessellationConfig);
-      }
-    });
-
-    const s = useMazeStore.getState();
-    if (s.nodes.length > 0) {
-      this.renderNav(s.nodes, s.navNodes, s.navEdges, s.start, s.finish, s.activeTessellationConfig);
-    }
-  }
-
-  private renderNav(
-    nodes: NodeDto[],
-    navNodes: NavNodeDto[],
-    navEdges: NavEdgeDto[],
-    start: number | null,
-    finish: number | null,
-    cfg: TessellationConfig,
-  ): void {
+  render(data: NavGraphData): void {
     this.resetContainers();
-    if (nodes.length === 0) return;
+    if (data.nodes.length === 0) return;
 
+    const { nodes, navNodes, navEdges, start, finish, cfg } = data;
     const nodePos = new Map<number, Pos>();
     for (const node of nodes) nodePos.set(node.id, gridPos(node, cfg));
 
-    // Detect reverse pairs among nav edges
     const edgeKeys = new Set<string>();
     for (const e of navEdges) {
       const fromNode = e.path[0];
@@ -428,7 +375,6 @@ export class NavGraphRenderer extends BaseGraphRenderer {
 
     this.drawEdges(renderEdges, EDGE_COLOR);
 
-    // Only render nav junction nodes (not corridor intermediates)
     const navNodeIds = new Set(navNodes.map(n => n.node_id));
     const renderNodes: RenderNode[] = [];
     for (const nid of navNodeIds) {
@@ -437,5 +383,9 @@ export class NavGraphRenderer extends BaseGraphRenderer {
     }
 
     this.drawNodes(renderNodes, null, start, finish, false);
+  }
+
+  clear(): void {
+    this.resetContainers();
   }
 }

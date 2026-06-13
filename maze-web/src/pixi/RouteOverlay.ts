@@ -1,7 +1,6 @@
 import { Container, Graphics } from "pixi.js";
-import { useMazeStore } from "../store/mazeStore";
 import { cellCenter } from "./hexGeometry";
-import { NODE_RADIUS } from "./constants";
+import { NODE_RADIUS } from "./colorUtils";
 import type { RouteInfoDto, NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
@@ -9,45 +8,24 @@ const ROUTE_LINE_COLOR = 0xffdd44;
 const ROUTE_LINE_WIDTH = 3;
 const ROUTE_DOT_RADIUS = NODE_RADIUS * 0.55;
 
+export interface RouteData {
+  routeInfo: RouteInfoDto | null;
+  nodes: NodeDto[];
+  cfg: TessellationConfig;
+}
+
 export class RouteOverlay {
   private g: Graphics;
-  private unsubscribe: (() => void) | null = null;
 
   constructor(container: Container) {
     this.g = new Graphics();
     container.addChild(this.g);
-
-    const state = useMazeStore.getState();
-    let prevRouteInfo = state.routeInfo;
-    let prevNodes = state.nodes;
-    let prevCfg = state.activeTessellationConfig;
-    let prevShowRoute = state.showRoute;
-
-    this.draw(state.routeInfo, state.nodes, state.activeTessellationConfig, state.showRoute);
-
-    this.unsubscribe = useMazeStore.subscribe((s) => {
-      if (
-        s.routeInfo === prevRouteInfo &&
-        s.nodes === prevNodes &&
-        s.activeTessellationConfig === prevCfg &&
-        s.showRoute === prevShowRoute
-      ) return;
-      prevRouteInfo = s.routeInfo;
-      prevNodes = s.nodes;
-      prevCfg = s.activeTessellationConfig;
-      prevShowRoute = s.showRoute;
-      this.draw(s.routeInfo, s.nodes, s.activeTessellationConfig, s.showRoute);
-    });
   }
 
-  private draw(
-    routeInfo: RouteInfoDto | null,
-    nodes: NodeDto[],
-    cfg: TessellationConfig,
-    showRoute: boolean,
-  ): void {
+  render(data: RouteData): void {
+    const { routeInfo, nodes, cfg } = data;
     this.g.clear();
-    if (!showRoute || !routeInfo || routeInfo.path.length < 2) return;
+    if (!routeInfo || routeInfo.path.length < 2) return;
 
     const nodeMap = new Map<number, { x: number; y: number }>();
     for (const n of nodes) nodeMap.set(n.id, cellCenter(n, cfg));
@@ -71,7 +49,6 @@ export class RouteOverlay {
   }
 
   destroy(): void {
-    this.unsubscribe?.();
     this.g.destroy();
   }
 }

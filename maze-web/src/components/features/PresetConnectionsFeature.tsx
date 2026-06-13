@@ -118,41 +118,42 @@ export function PresetConnectionsFeature() {
         <span style={styles.originLabel}>Show origin</span>
         <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
       </div>
-      {lockedNodes.size > 0 && (
-        <div style={styles.lockedStatus}>
-          <span style={styles.lockedCount}>{lockedNodes.size} node{lockedNodes.size !== 1 ? "s" : ""} locked</span>
-          <button style={styles.clearTag} onClick={clearLockedNodes}>Clear all</button>
-        </div>
-      )}
-      {isolatedNodes.length > 0 && (
-        <div
-          style={styles.warning}
-          title={`Nodes locked both in and out will be fully isolated (unreachable): ${isolatedNodes.join(", ")}`}
-          onMouseEnter={() => setHighlightIsolatedNodes(true)}
-          onMouseLeave={() => setHighlightIsolatedNodes(false)}
-        >
-          ⚠ {isolatedNodes.length} node{isolatedNodes.length !== 1 ? "s" : ""} fully isolated
-        </div>
-      )}
-      {(presetStart || presetFinish) && (
-        <div style={styles.markerStatus}>
+      {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish) && (
+        <div style={styles.statusBlock}>
+          {lockedNodes.size > 0 && (
+            <div style={styles.statusBubble}>
+              <span>{lockedNodes.size} node{lockedNodes.size !== 1 ? "s" : ""} locked</span>
+              <button style={styles.clearTag} onClick={clearLockedNodes}>Clear all</button>
+            </div>
+          )}
           {presetStart && (
-            <span style={styles.markerTag}>
-              Start: {presetStart[0]},{presetStart[1]}
+            <div style={styles.statusBubble}>
+              <span>Start: {presetStart[0]},{presetStart[1]}</span>
               <button style={styles.clearTag} onClick={() => setPresetStart(null)}>×</button>
-            </span>
+            </div>
           )}
           {presetFinish && (
-            <span style={styles.markerTag}>
-              Finish: {presetFinish[0]},{presetFinish[1]}
+            <div style={styles.statusBubble}>
+              <span>Finish: {presetFinish[0]},{presetFinish[1]}</span>
               <button style={styles.clearTag} onClick={() => setPresetFinish(null)}>×</button>
-            </span>
+            </div>
+          )}
+          {isolatedNodes.length > 0 && (
+            <div
+              style={styles.warningBubble}
+              title={`Nodes locked both in and out will be fully isolated (unreachable): ${isolatedNodes.join(", ")}`}
+              onMouseEnter={() => setHighlightIsolatedNodes(true)}
+              onMouseLeave={() => setHighlightIsolatedNodes(false)}
+            >
+              ⚠ {isolatedNodes.length} node{isolatedNodes.length !== 1 ? "s" : ""} fully isolated
+            </div>
           )}
         </div>
       )}
+
       {hasInvalid && (
         <button
-          style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
+          style={{ ...buttonStyle("destructive"), width: "100%" }}
           onClick={() => clearInvalidPresetConnections()}
           onMouseEnter={() => setHighlightInvalidPresets(true)}
           onMouseLeave={() => setHighlightInvalidPresets(false)}
@@ -161,7 +162,7 @@ export function PresetConnectionsFeature() {
         </button>
       )}
       <button
-        style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
+        style={{ ...buttonStyle("destructive"), width: "100%" }}
         onClick={() => setConfirmReset(true)}
       >
         Reset all
@@ -199,24 +200,28 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
   vertexToolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 },
-  lockedStatus: {
+  statusBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  statusBubble: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     fontSize: font.sm,
     color: colors.textDim,
     background: colors.bgInput,
-    borderRadius: 3,
-    padding: "3px 6px",
+    borderRadius: 4,
+    padding: "4px 6px",
   },
-  lockedCount: { fontSize: font.sm, color: colors.textDim },
-  warning: {
+  warningBubble: {
     fontSize: font.sm,
     color: "#ffaa33",
-    background: "rgba(255,170,51,0.1)",
-    borderRadius: 3,
-    padding: "3px 6px",
     cursor: "default",
+    background: colors.bgInput,
+    borderRadius: 4,
+    padding: "4px 6px",
   },
   autoLockRow: {
     display: "flex",
@@ -251,17 +256,6 @@ const styles: Record<string, React.CSSProperties> = {
   originLabel: {
     fontSize: font.sm,
     color: colors.textMuted,
-  },
-  markerStatus: { display: "flex", flexDirection: "column", gap: 3 },
-  markerTag: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: 11,
-    color: colors.textDim,
-    background: colors.bgInput,
-    borderRadius: 3,
-    padding: "2px 6px",
   },
   clearTag: {
     background: "none",

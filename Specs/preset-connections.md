@@ -98,13 +98,16 @@ Subtitle: `"N preset(s)"` or `"N preset(s) · ⚠ M invalid"` where N includes b
 Active when `presetConnectionsOpen = true`. Renders on top of grid; maze graph is hidden while open.
 
 Layers (bottom to top):
-1. **floorsLayer** — filled cell polygons (dark background)
-2. **undecidedLayer** — interior edges with no preset (faint stroke, alpha ~0.5)
-3. **presetWallsLayer** — `wall` and `one_way` edges (solid stroke); invalid presets drawn yellow here
-4. **oneWayLayer** — directional arrow triangles for one-way edges
-5. **markersLayer** — start/finish circles (`NODE_RADIUS * 2`)
-6. **invalidHighlightLayer** — thick yellow highlight when `highlightInvalidPresets = true`
-7. **hoverLayer** — highlighted edge under cursor (blue)
+1. **gridLayer** — tessellation grid
+2. **floorLayer** — filled cell polygons (dark background)
+3. **undecidedLayer** — interior edges with no preset (faint stroke)
+4. **presetWallsLayer** — `wall` and `one_way` edges (solid stroke); one-way arrow triangles drawn inline here; invalid presets drawn in invalid style
+5. **locksLayer** — lock icons on locked nodes
+6. **markersLayer** — start/finish circles (`NODE_RADIUS * 1.5`)
+7. **originLayer** — origin crosshair (when `showPresetOrigin = true`)
+8. **isolatedHLLayer** — cell highlight for nodes locked both-in-and-out with no passage preset
+9. **invalidHLLayer** — thick highlight when `highlightInvalidPresets = true`
+10. **hoverLayer** — highlighted edge under cursor (blue)
 
 **Exterior edges** (one endpoint outside field) are drawn as solid walls. **Interior edges** (both endpoints inside field) are drawn according to their preset state.
 

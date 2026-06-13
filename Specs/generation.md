@@ -98,6 +98,13 @@ The junction branch (`corridor_chance` roll failed) handles small neighbor count
 
 Returns the full edge list after **each step** (each node processing that produces at least one edge). Steps are full snapshots, not deltas. Intended for visual debugging only — memory cost is O(nodes × edges) for large fields.
 
+Each step carries:
+- `edges` — full edge list at this step
+- `active_nodes` — node ids currently in the frontier/active set (highlighted in blue overlay)
+- `current_src` — node id chosen as source this step, or `null` (highlighted in yellow overlay)
+
+The client prepends a synthetic first step `{ edges: [], active_nodes: [], current_src: null }` so step 0 shows the empty graph before any edges are added. Start/finish markers are hidden for all steps except the last.
+
 ## WASM Interface
 
 Parameters are passed via the `generation` field of `GenerateConfig` (all optional, fallback to defaults):

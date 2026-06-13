@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { nodeColor } from "../pixi/MazeRenderer";
+import { NODE_COLOR, NODE_SELECTED_COLOR, NODE_START_COLOR, NODE_FINISH_COLOR } from "../pixi/colorUtils";
 
 vi.mock("pixi.js", () => {
   class FakeTextStyle {}
@@ -24,11 +25,6 @@ vi.mock("pixi.js", () => {
 vi.mock("../store/mazeStore", () => ({
   useMazeStore: { getState: vi.fn(() => ({})), subscribe: vi.fn(() => () => {}) },
 }));
-
-const NODE_COLOR = 0x4a9eff;
-const NODE_SELECTED_COLOR = 0xff4a4a;
-const NODE_START_COLOR = 0x44dd88;
-const NODE_FINISH_COLOR = 0xdd4466;
 
 describe("nodeColor", () => {
   it("returns selected color when id matches selectedNode", () => {

@@ -15,6 +15,7 @@ export function App() {
   const loadRegistry = useMazeStore((s) => s.loadRegistry);
   const debugMode = useMazeStore((s) => s.debugMode);
   const debugSnapshot = useMazeStore((s) => s.debugSnapshot);
+  const generationOpen = useMazeStore((s) => s.generationOpen);
 
   useEffect(() => {
     loadRegistry();
@@ -49,7 +50,7 @@ export function App() {
         <FeaturesPanel />
       </div>
       <div style={styles.canvasColumn}>
-        {debugMode && debugSnapshot && <GenerationDebugBar />}
+        {generationOpen && debugMode && debugSnapshot && <GenerationDebugBar />}
         <div ref={canvasRef} style={styles.canvas} />
       </div>
     </div>

@@ -1,40 +1,55 @@
-import { Container, Graphics } from "pixi.js";
+import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import type { NodeLockKind } from "../wasm/types";
-import { drawOneWayTriangle } from "./MazeTileRenderer";
-import { canonicalize, edgeKey, computeInvalidKeysFromCells, resolveCells } from "./presetConnectionsUtils";
+import { resolveCells } from "./presetConnectionsUtils";
 import type { FieldEdge } from "./presetConnectionsUtils";
 import { encodePoint } from "./tessellationProjection";
-import { getCellVertices, getCellCenter, getNeighborData, getSharedEdgeSegment } from "./tessellationGeometry";
-import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR, TILE_SIZE } from "./constants";
-import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { CellFillRenderer } from "./renderers/CellFillRenderer";
+import { WallRenderer } from "./renderers/WallRenderer";
+import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
+import { LockRenderer } from "./renderers/LockRenderer";
+import { OriginRenderer } from "./renderers/OriginRenderer";
+import { GridRenderer } from "./renderers/GridRenderer";
+import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
+import {
+  buildPresetWallGroups,
+  buildPresetMarkers,
+  buildLocks,
+  buildIsolatedCellHighlights,
+  buildInvalidEdgeHighlights,
+  buildHoverEdgeHighlight,
+} from "./selectors/presetSelectors";
+import { FLOOR_COLOR, INVALID_COLOR } from "./colorUtils";
+import type { Viewport } from "./renderers/types";
 
-const LOCK_IN_COLOR   = 0x888888;
-const LOCK_OUT_COLOR  = 0x888888;
-const LOCK_BOTH_COLOR = 0x888888;
-
-const WALL_THICKNESS = 3;
-const WALL_COLOR = 0xcccccc;
-const WALL_COLOR_UNDECIDED = 0x666666;
-const FLOOR_COLOR = 0x2a2a2a;
-const INVALID_COLOR = 0xddaa00;
-const HOVER_COLOR = 0x44aaff;
+const ISOLATED_HL_ALPHA = 0.35;
 
 export class PresetConnectionsRenderer {
   private readonly root: Container;
-  private readonly floorsLayer: Graphics;
-  private readonly undecidedLayer: Graphics;
-  private readonly presetWallsLayer: Graphics;
-  private readonly oneWayLayer: Graphics;
-  private readonly markersLayer: Graphics;
-  private readonly lockedNodesLayer: Graphics;
-  private readonly originLayer: Graphics;
-  private readonly isolatedHighlightLayer: Graphics;
-  private readonly invalidHighlightLayer: Graphics;
-  private readonly hoverLayer: Graphics;
 
-  private vpScale = 1;
+  private readonly gridContainer: Container;
+  private readonly floorContainer: Container;
+  private readonly undecidedWallsContainer: Container;
+  private readonly presetWallsContainer: Container;
+  private readonly locksContainer: Container;
+  private readonly markersContainer: Container;
+  private readonly originContainer: Container;
+  private readonly isolatedHLContainer: Container;
+  private readonly invalidHLContainer: Container;
+  private readonly hoverContainer: Container;
+
+  private readonly grid: GridRenderer;
+  private readonly floor: CellFillRenderer;
+  private readonly undecidedWalls: WallRenderer;
+  private readonly presetWalls: WallRenderer;
+  private readonly locks: LockRenderer;
+  private readonly markers: WaypointsRenderer;
+  private readonly origin: OriginRenderer;
+  private readonly isolatedHL: CellFillRenderer;
+  private readonly invalidHL: EdgeHighlightRenderer;
+  private readonly hover: EdgeHighlightRenderer;
+
+  private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private cfg: TessellationConfig | null = null;
   private cachedCells: [number, number][] = [];
   private cachedCellSet: Set<number> = new Set();
@@ -43,26 +58,40 @@ export class PresetConnectionsRenderer {
 
   constructor(container: Container) {
     this.root = container;
-    this.floorsLayer = new Graphics();
-    this.undecidedLayer = new Graphics();
-    this.presetWallsLayer = new Graphics();
-    this.oneWayLayer = new Graphics();
-    this.markersLayer = new Graphics();
-    this.lockedNodesLayer = new Graphics();
-    this.originLayer = new Graphics();
-    this.isolatedHighlightLayer = new Graphics();
-    this.invalidHighlightLayer = new Graphics();
-    this.hoverLayer = new Graphics();
-    this.root.addChild(this.floorsLayer);
-    this.root.addChild(this.undecidedLayer);
-    this.root.addChild(this.presetWallsLayer);
-    this.root.addChild(this.oneWayLayer);
-    this.root.addChild(this.lockedNodesLayer);
-    this.root.addChild(this.markersLayer);
-    this.root.addChild(this.originLayer);
-    this.root.addChild(this.isolatedHighlightLayer);
-    this.root.addChild(this.invalidHighlightLayer);
-    this.root.addChild(this.hoverLayer);
+
+    this.gridContainer           = new Container();
+    this.floorContainer          = new Container();
+    this.undecidedWallsContainer = new Container();
+    this.presetWallsContainer    = new Container();
+    this.locksContainer          = new Container();
+    this.markersContainer        = new Container();
+    this.originContainer         = new Container();
+    this.isolatedHLContainer     = new Container();
+    this.invalidHLContainer      = new Container();
+    this.hoverContainer          = new Container();
+
+    this.root.addChild(this.gridContainer);
+    this.root.addChild(this.floorContainer);
+    this.root.addChild(this.undecidedWallsContainer);
+    this.root.addChild(this.presetWallsContainer);
+    this.root.addChild(this.locksContainer);
+    this.root.addChild(this.markersContainer);
+    this.root.addChild(this.originContainer);
+    this.root.addChild(this.isolatedHLContainer);
+    this.root.addChild(this.invalidHLContainer);
+    this.root.addChild(this.hoverContainer);
+
+    this.grid           = new GridRenderer(this.gridContainer);
+    this.floor          = new CellFillRenderer(this.floorContainer);
+    this.undecidedWalls = new WallRenderer(this.undecidedWallsContainer);
+    this.presetWalls    = new WallRenderer(this.presetWallsContainer);
+    this.locks          = new LockRenderer(this.locksContainer);
+    this.markers        = new WaypointsRenderer(this.markersContainer);
+    this.origin         = new OriginRenderer(this.originContainer);
+    this.isolatedHL     = new CellFillRenderer(this.isolatedHLContainer);
+    this.invalidHL      = new EdgeHighlightRenderer(this.invalidHLContainer);
+    this.hover          = new EdgeHighlightRenderer(this.hoverContainer);
+
     this.root.visible = false;
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
@@ -73,7 +102,7 @@ export class PresetConnectionsRenderer {
         if (state.presetConnectionsOpen) {
           this.cfg = state.tessellationConfig;
           this.rebuildCellCache(state);
-          this.redraw(state);
+          this.redrawAll(state);
         } else {
           this.clearAll();
         }
@@ -84,7 +113,7 @@ export class PresetConnectionsRenderer {
       if (state.tessellationConfig !== prev.tessellationConfig) {
         this.cfg = state.tessellationConfig;
         this.rebuildCellCache(state);
-        this.redraw(state);
+        this.redrawAll(state);
         return;
       }
 
@@ -101,7 +130,8 @@ export class PresetConnectionsRenderer {
         state.lockedNodes !== prev.lockedNodes ||
         state.autoLockedNodes !== prev.autoLockedNodes
       ) {
-        this.redraw(state);
+        this.redrawAll(state);
+        return;
       }
 
       if (state.showPresetOrigin !== prev.showPresetOrigin) {
@@ -109,12 +139,17 @@ export class PresetConnectionsRenderer {
       }
 
       if (state.highlightInvalidPresets !== prev.highlightInvalidPresets) {
-        this.redrawInvalidHighlight(state);
+        this.redrawInvalidHL(state);
       }
 
-      if (state.highlightIsolatedNodes !== prev.highlightIsolatedNodes ||
-          (state.highlightIsolatedNodes && (state.lockedNodes !== prev.lockedNodes || state.presetConnections !== prev.presetConnections))) {
-        this.redrawIsolatedHighlight(state);
+      if (
+        state.highlightIsolatedNodes !== prev.highlightIsolatedNodes ||
+        (state.highlightIsolatedNodes && (
+          state.lockedNodes !== prev.lockedNodes ||
+          state.presetConnections !== prev.presetConnections
+        ))
+      ) {
+        this.redrawIsolatedHL(state);
       }
     });
   }
@@ -127,309 +162,122 @@ export class PresetConnectionsRenderer {
     return this.cachedCellSet;
   }
 
-  onViewportChanged(_x: number, _y: number, _w: number, _h: number, scale: number): void {
-    this.vpScale = scale;
+  onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
+    this.viewport = { x, y, w, h, scale };
     if (this.root.visible && this.cfg) {
       const state = useMazeStore.getState();
+      this.grid.render({ viewport: this.viewport }, this.cfg);
       this.redrawOrigin(state.showPresetOrigin);
     }
   }
 
   updateHover(edge: FieldEdge | null): void {
-    const g = this.hoverLayer;
-    g.clear();
-    if (!edge || !this.cfg) return;
-
-    const seg = getSharedEdgeSegment(edge.from, edge.to, this.cfg);
-    if (!seg) return;
-
-    const w = WALL_THICKNESS * 2;
-    g.setStrokeStyle({ width: w, color: HOVER_COLOR, alpha: 1.0, cap: "round" as const });
-    g.moveTo(seg.v0.x, seg.v0.y).lineTo(seg.v1.x, seg.v1.y).stroke();
-  }
-
-  private clearAll(): void {
-    this.floorsLayer.clear();
-    this.undecidedLayer.clear();
-    this.presetWallsLayer.clear();
-    this.oneWayLayer.clear();
-    this.markersLayer.clear();
-    this.lockedNodesLayer.clear();
-    this.originLayer.clear();
-    this.isolatedHighlightLayer.clear();
-    this.invalidHighlightLayer.clear();
-    this.hoverLayer.clear();
+    if (!this.cfg) return;
+    const highlights = buildHoverEdgeHighlight(edge, this.cfg);
+    this.hover.render({ highlights });
   }
 
   private rebuildCellCache(state: ReturnType<typeof useMazeStore.getState>): void {
     if (!this.cfg) return;
     const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0
-      ? state.fieldPoints
-      : undefined;
+      ? state.fieldPoints : undefined;
     this.cachedCells = resolveCells(this.cfg, customPts);
     this.cachedCellSet = new Set(this.cachedCells.map(([x, y]) => encodePoint(x, y)));
   }
 
-  private redraw(state: ReturnType<typeof useMazeStore.getState>): void {
+  private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
     if (!this.cfg) return;
-    this.floorsLayer.clear();
-    this.undecidedLayer.clear();
-    this.presetWallsLayer.clear();
-    this.oneWayLayer.clear();
-    this.markersLayer.clear();
-    this.lockedNodesLayer.clear();
-    this.invalidHighlightLayer.clear();
-    this.hoverLayer.clear();
-
     const cfg = this.cfg;
     const cells = this.cachedCells;
-    const cellSet = this.cachedCellSet;
 
-    // Build interior edge key set from cached cells
-    const edgeKeySet = new Set<string>();
-    {
-      const seen = new Set<string>();
-      for (const [x, y] of cells) {
-        const { offsets } = getNeighborData(cfg, x, y);
-        for (const [dx, dy] of offsets) {
-          const nx = x + dx, ny = y + dy;
-          if (!cellSet.has(encodePoint(nx, ny))) continue;
-          const key = edgeKey([x, y], [nx, ny]);
-          if (!seen.has(key)) { seen.add(key); edgeKeySet.add(key); }
-        }
-      }
-    }
+    this.grid.render({ viewport: this.viewport }, cfg);
+    this.floor.render({ cells, color: FLOOR_COLOR, alpha: 1 }, cfg);
 
-    const invalidKeys = computeInvalidKeysFromCells(state.presetConnections, cells);
+    const { undecided, preset, invalidKeys } = buildPresetWallGroups(cells, state.presetConnections, cfg);
+    this.undecidedWalls.render({ edges: undecided }, cfg);
+    this.presetWalls.render({ edges: preset }, cfg);
 
-    const wallStyleSolid = { width: WALL_THICKNESS, color: WALL_COLOR, cap: "round" as const, join: "round" as const };
-    const wallStyleFaint = { width: WALL_THICKNESS, color: WALL_COLOR_UNDECIDED, cap: "round" as const, join: "round" as const };
-    const wallStyleInvalid = { width: WALL_THICKNESS, color: INVALID_COLOR, cap: "round" as const, join: "round" as const };
-    const uG = this.undecidedLayer;
-    const wG = this.presetWallsLayer;
-    const owG = this.oneWayLayer;
+    const lockEntries = buildLocks(state.lockedNodes, state.autoLockedNodes);
+    this.locks.render({ locks: lockEntries }, cfg);
 
-    for (const [x, y] of cells) {
-      const verts = getCellVertices(x, y, cfg);
-      if (!verts) continue;
-      this.floorsLayer.poly(verts.flatMap(v => [v.x, v.y])).fill(FLOOR_COLOR);
-    }
-
-    const drawnKeys = new Set<string>();
-
-    for (const [x, y] of cells) {
-      const verts = getCellVertices(x, y, cfg);
-      if (!verts) continue;
-      const { offsets, edgeVerts } = getNeighborData(cfg, x, y);
-
-      for (let i = 0; i < offsets.length; i++) {
-        const [dx, dy] = offsets[i];
-        const nx = x + dx;
-        const ny = y + dy;
-        const [vi, vj] = edgeVerts[i];
-        const v0 = verts[vi];
-        const v1 = verts[vj];
-
-        if (!cellSet.has(encodePoint(nx, ny))) {
-          wG.moveTo(v0.x, v0.y).lineTo(v1.x, v1.y).stroke(wallStyleSolid);
-          continue;
-        }
-
-        const key = edgeKey([x, y], [nx, ny]);
-        if (drawnKeys.has(key)) continue;
-        drawnKeys.add(key);
-
-        if (!edgeKeySet.has(key)) continue;
-
-        const entry = state.presetConnections.get(key);
-
-        if (!entry) {
-          uG.moveTo(v0.x, v0.y).lineTo(v1.x, v1.y).stroke(wallStyleFaint);
-          continue;
-        }
-
-        switch (entry.state) {
-          case "wall":
-            wG.moveTo(v0.x, v0.y).lineTo(v1.x, v1.y).stroke(wallStyleSolid);
-            break;
-
-          case "passage":
-            break;
-
-          case "one_way_forward":
-          case "one_way_backward": {
-            wG.moveTo(v0.x, v0.y).lineTo(v1.x, v1.y).stroke(wallStyleSolid);
-
-            const midX = (v0.x + v1.x) / 2;
-            const midY = (v0.y + v1.y) / 2;
-            const edgeDx = v1.x - v0.x;
-            const edgeDy = v1.y - v0.y;
-            let normalX = -edgeDy;
-            let normalY = edgeDx;
-
-            const [fa, fb] = canonicalize([x, y], [nx, ny]);
-            const cA = getCellCenter(fa[0], fa[1], cfg);
-            const cB = getCellCenter(fb[0], fb[1], cfg);
-            const isForward = entry.state === "one_way_forward";
-            const toDx = isForward ? cB.x - cA.x : cA.x - cB.x;
-            const toDy = isForward ? cB.y - cA.y : cA.y - cB.y;
-            if (normalX * toDx + normalY * toDy < 0) { normalX = -normalX; normalY = -normalY; }
-
-            const len = Math.sqrt(normalX * normalX + normalY * normalY);
-            if (len > 0) drawOneWayTriangle(owG, midX, midY, normalX / len, normalY / len);
-            break;
-          }
-        }
-      }
-    }
-
-    // Draw invalid preset connections as yellow segments
-    for (const key of invalidKeys) {
-      const entry = state.presetConnections.get(key);
-      if (!entry) continue;
-      const seg = getSharedEdgeSegment(entry.from, entry.to, cfg);
-      if (seg) {
-        wG.moveTo(seg.v0.x, seg.v0.y).lineTo(seg.v1.x, seg.v1.y).stroke(wallStyleInvalid);
-      } else {
-        const cA = getCellCenter(entry.from[0], entry.from[1], cfg);
-        const cB = getCellCenter(entry.to[0], entry.to[1], cfg);
-        wG.moveTo(cA.x, cA.y).lineTo(cB.x, cB.y).stroke(wallStyleInvalid);
-      }
-    }
-
-    // Draw lock icons BELOW markers; auto-locked nodes show as lock_both, manual takes priority
-    const lG = this.lockedNodesLayer;
-    const renderedLocks = new Map<string, NodeLockKind>(state.lockedNodes);
-    for (const key of state.autoLockedNodes) {
-      if (!renderedLocks.has(key)) renderedLocks.set(key, "both");
-    }
-    for (const [key, kind] of renderedLocks) {
-      const [x, y] = key.split(",").map(Number);
-      const c = getCellCenter(x, y, cfg);
-      drawLockIcon(lG, c.x, c.y, kind);
-    }
-
-    const mG = this.markersLayer;
-    if (state.presetStart) {
-      const c = getCellCenter(state.presetStart[0], state.presetStart[1], cfg);
-      mG.circle(c.x, c.y, NODE_RADIUS * 1.5).fill(NODE_START_COLOR);
-    }
-    if (state.presetFinish) {
-      const c = getCellCenter(state.presetFinish[0], state.presetFinish[1], cfg);
-      mG.circle(c.x, c.y, NODE_RADIUS * 1.5).fill(NODE_FINISH_COLOR);
-    }
+    const markerData = buildPresetMarkers(state.presetStart, state.presetFinish, cfg);
+    this.markers.render({ markers: markerData });
 
     this.redrawOrigin(state.showPresetOrigin);
-    this.redrawInvalidHighlight(state);
+    this.redrawIsolatedHL(state);
+
+    if (state.highlightInvalidPresets) {
+      const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, state.presetConnections, cfg);
+      this.invalidHL.render({ highlights: edgeHighlights });
+    } else {
+      this.invalidHL.render({ highlights: [] });
+    }
+
+    this.hover.render({ highlights: [] });
   }
 
   private redrawOrigin(show: boolean): void {
-    const g = this.originLayer;
-    g.clear();
-    if (!show || !this.cfg) return;
-    const proj = makeProjection(this.cfg);
-    const { x: cx, y: cy } = proj.gridToScreen(0, 0);
-    const arm = TILE_SIZE * 0.35 / this.vpScale;
-    const w = Math.max(1.5 / this.vpScale, 1.5);
-    g.setStrokeStyle({ width: w, color: 0xFF6600, alpha: 0.9 });
-    g.moveTo(cx - arm, cy).lineTo(cx + arm, cy).stroke();
-    g.moveTo(cx, cy - arm).lineTo(cx, cy + arm).stroke();
+    if (!this.cfg) return;
+    this.origin.render({ show, vpScale: this.viewport.scale }, this.cfg);
   }
 
-  private redrawIsolatedHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const g = this.isolatedHighlightLayer;
-    g.clear();
-    if (!state.highlightIsolatedNodes || !this.cfg) return;
-    const cfg = this.cfg;
-    for (const [key, kind] of state.lockedNodes) {
-      if (kind !== "both") continue;
-      const [x, y] = key.split(",").map(Number);
-      const hasPassage = Array.from(state.presetConnections.values()).some(e => {
-        if (e.state === "wall") return false;
-        return (e.from[0] === x && e.from[1] === y) || (e.to[0] === x && e.to[1] === y);
-      });
-      if (hasPassage) continue;
-      const verts = getCellVertices(x, y, cfg);
-      if (!verts) continue;
-      g.poly(verts.flatMap(v => [v.x, v.y])).fill({ color: INVALID_COLOR, alpha: 0.35 });
+  private redrawIsolatedHL(state: ReturnType<typeof useMazeStore.getState>): void {
+    if (!this.cfg) return;
+    if (!state.highlightIsolatedNodes) {
+      this.isolatedHL.render({ cells: [], color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+      return;
     }
+    const cells = buildIsolatedCellHighlights(state.lockedNodes, state.presetConnections);
+    this.isolatedHL.render({ cells, color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, this.cfg);
   }
 
-  private redrawInvalidHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const g = this.invalidHighlightLayer;
-    g.clear();
-    if (!state.highlightInvalidPresets || !this.cfg) return;
-    const cfg = this.cfg;
-
-    const invalidKeys = computeInvalidKeysFromCells(state.presetConnections, this.cachedCells);
-    if (invalidKeys.size === 0) return;
-
-    const highlightStyle = { width: WALL_THICKNESS * 2.5, color: INVALID_COLOR, alpha: 0.9, cap: "round" as const };
-
-    for (const key of invalidKeys) {
-      const entry = state.presetConnections.get(key);
-      if (!entry) continue;
-      const seg = getSharedEdgeSegment(entry.from, entry.to, cfg);
-      if (seg) {
-        g.moveTo(seg.v0.x, seg.v0.y).lineTo(seg.v1.x, seg.v1.y).stroke(highlightStyle);
-      } else {
-        const cA = getCellCenter(entry.from[0], entry.from[1], cfg);
-        const cB = getCellCenter(entry.to[0], entry.to[1], cfg);
-        g.moveTo(cA.x, cA.y).lineTo(cB.x, cB.y).stroke(highlightStyle);
-      }
+  private redrawInvalidHL(state: ReturnType<typeof useMazeStore.getState>): void {
+    if (!this.cfg) return;
+    if (!state.highlightInvalidPresets) {
+      this.invalidHL.render({ highlights: [] });
+      return;
     }
+    const { invalidKeys } = buildPresetWallGroups(this.cachedCells, state.presetConnections, this.cfg);
+    const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, state.presetConnections, this.cfg);
+    this.invalidHL.render({ highlights: edgeHighlights });
+  }
+
+  private clearAll(): void {
+    if (!this.cfg) return;
+    const cfg = this.cfg;
+    this.grid.render({ viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 } }, cfg);
+    this.floor.render({ cells: [], color: FLOOR_COLOR, alpha: 1 }, cfg);
+    this.undecidedWalls.render({ edges: [] }, cfg);
+    this.presetWalls.render({ edges: [] }, cfg);
+    this.locks.render({ locks: [] }, cfg);
+    this.markers.render({ markers: [] });
+    this.origin.render({ show: false, vpScale: this.viewport.scale }, cfg);
+    this.isolatedHL.render({ cells: [], color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, cfg);
+    this.invalidHL.render({ highlights: [] });
+    this.hover.render({ highlights: [] });
   }
 
   destroy(): void {
     this.unsubscribe?.();
-    this.floorsLayer.destroy();
-    this.undecidedLayer.destroy();
-    this.presetWallsLayer.destroy();
-    this.oneWayLayer.destroy();
-    this.markersLayer.destroy();
-    this.lockedNodesLayer.destroy();
-    this.originLayer.destroy();
-    this.isolatedHighlightLayer.destroy();
-    this.invalidHighlightLayer.destroy();
-    this.hoverLayer.destroy();
-  }
-}
-
-function drawLockIcon(g: Graphics, cx: number, cy: number, kind: NodeLockKind): void {
-  const color = kind === "in" ? LOCK_IN_COLOR : kind === "out" ? LOCK_OUT_COLOR : LOCK_BOTH_COLOR;
-
-  const bw = TILE_SIZE * 0.46;
-  const bh = TILE_SIZE * 0.36;
-  const arcR = bw * 0.30;
-  const totalH = arcR + bh;
-  const bodyTop = cy - totalH / 2 + arcR;
-  const bodyCy = bodyTop + bh / 2;
-
-  g.roundRect(cx - bw / 2, bodyTop, bw, bh, bw * 0.12).fill(color);
-
-  g.setStrokeStyle({ width: bw * 0.14, color, cap: "round" as const });
-  g.moveTo(cx - arcR, bodyTop);
-  g.arc(cx, bodyTop, arcR, Math.PI, 0);
-  g.stroke();
-
-  if (kind !== "both") {
-    // Equilateral triangle: side = s, height = s * sqrt(3)/2
-    const s = bw * 0.28;
-    const h = s * Math.sqrt(3) / 2;
-    const cutColor = FLOOR_COLOR;
-    // Center of each triangle sits at ±offset from cx
-    const offset = bw * 0.22;
-
-    if (kind === "out") {
-      // Left: tip points left
-      g.poly([cx - offset, bodyCy - s / 2, cx - offset, bodyCy + s / 2, cx - offset - h, bodyCy]).fill(cutColor);
-      // Right: tip points right
-      g.poly([cx + offset, bodyCy - s / 2, cx + offset, bodyCy + s / 2, cx + offset + h, bodyCy]).fill(cutColor);
-    } else {
-      // Left: tip points right (toward center)
-      g.poly([cx - offset - h, bodyCy - s / 2, cx - offset - h, bodyCy + s / 2, cx - offset, bodyCy]).fill(cutColor);
-      // Right: tip points left (toward center)
-      g.poly([cx + offset + h, bodyCy - s / 2, cx + offset + h, bodyCy + s / 2, cx + offset, bodyCy]).fill(cutColor);
-    }
+    this.grid.destroy();
+    this.floor.destroy();
+    this.undecidedWalls.destroy();
+    this.presetWalls.destroy();
+    this.locks.destroy();
+    this.markers.destroy();
+    this.origin.destroy();
+    this.isolatedHL.destroy();
+    this.invalidHL.destroy();
+    this.hover.destroy();
+    this.gridContainer.destroy();
+    this.floorContainer.destroy();
+    this.undecidedWallsContainer.destroy();
+    this.presetWallsContainer.destroy();
+    this.locksContainer.destroy();
+    this.markersContainer.destroy();
+    this.originContainer.destroy();
+    this.isolatedHLContainer.destroy();
+    this.invalidHLContainer.destroy();
+    this.hoverContainer.destroy();
   }
 }

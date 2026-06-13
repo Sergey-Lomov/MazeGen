@@ -72,6 +72,8 @@ export class FieldEditController {
     const s = useMazeStore.getState();
     if (!(s.fieldSetupOpen && s.fieldEditMode === "custom")) return;
 
+    // RMB pointerup never fires on Windows/Chrome; commit stale RMB gesture here as fallback.
+    if (this.gestureActive && this.gestureButton === 2) this.onPointerUp();
     this.gestureActive = true;
     this.gestureButton = button;
     this.activePrimitive = s.fieldPrimitive;
@@ -108,8 +110,13 @@ export class FieldEditController {
     }
   }
 
-  onPointerMove(canvasX: number, canvasY: number): void {
+  onPointerMove(canvasX: number, canvasY: number, buttons = 0xffff): void {
     if (!this.gestureActive) return;
+    // Windows/Chrome doesn't fire pointerup for RMB; detect release via buttons mask.
+    if (this.gestureButton === 2 && (buttons & 2) === 0) {
+      this.onPointerUp();
+      return;
+    }
     const s = useMazeStore.getState();
     if (!(s.fieldSetupOpen && s.fieldEditMode === "custom")) return;
 
@@ -182,6 +189,12 @@ export class FieldEditController {
     this.gestureActive = false;
     this.lastGridX = NaN;
     this.lastGridY = NaN;
+  }
+
+  getHoverCell(canvasX: number, canvasY: number): [number, number] | null {
+    const grid = this.toGrid(canvasX, canvasY);
+    if (!grid) return null;
+    return [grid.x, grid.y];
   }
 
   private toGrid(canvasX: number, canvasY: number): { x: number; y: number } | null {

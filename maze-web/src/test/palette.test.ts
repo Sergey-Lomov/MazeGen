@@ -9,7 +9,7 @@ vi.mock("../store/mazeStore", () => ({
   useMazeStore: { getState: () => ({ nodes: [], components: [] }), subscribe: () => () => {} },
 }));
 
-import { hslToRgb, buildPalette } from "../pixi/ComponentRenderer";
+import { hslToRgb, buildPalette } from "../pixi/colorUtils";
 
 describe("hslToRgb", () => {
   it("red: hsl(0, 1, 0.5) = 0xff0000", () => {

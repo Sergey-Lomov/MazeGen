@@ -1,36 +1,49 @@
-import { Container, Graphics } from "pixi.js";
+import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { decodePoint } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
-import type { TessellationProjection } from "./tessellationProjection";
-import { getCellVertices } from "./tessellationGeometry";
 import { TILE_SIZE } from "./constants";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { configAllCells } from "./tessellationCells";
+import { CellFillRenderer } from "./renderers/CellFillRenderer";
+import { OriginRenderer } from "./renderers/OriginRenderer";
+import { GridRenderer } from "./renderers/GridRenderer";
+import { buildActiveCells } from "./selectors/fieldSelectors";
+import { ACTIVE_CELL_COLOR, ACTIVE_CELL_ALPHA } from "./colorUtils";
+import type { Viewport } from "./renderers/types";
 
-const ACTIVE_CELL_COLOR = 0x666666;
-const ACTIVE_CELL_ALPHA = 0.7;
-const ORIGIN_COLOR = 0xFF6600;
-const ORIGIN_ALPHA = 0.9;
+const HOVER_COLOR = 0x888888;
+const HOVER_ALPHA = 0.3;
 
 export class FieldEditorOverlay {
   private readonly root: Container;
-  private readonly activeLayer: Graphics;
-  private readonly originLayer: Graphics;
+  private readonly gridContainer: Container;
+  private readonly floorContainer: Container;
+  private readonly originContainer: Container;
+  private readonly hoverContainer: Container;
 
-  private cfg: TessellationConfig | null = null;
-  private projection: TessellationProjection | null = null;
+  private readonly grid: GridRenderer;
+  private readonly floor: CellFillRenderer;
+  private readonly origin: OriginRenderer;
+  private readonly hover: CellFillRenderer;
 
-  private vpScale = 1;
-
+  private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
 
   constructor(container: Container) {
     this.root = container;
-    this.activeLayer = new Graphics();
-    this.originLayer = new Graphics();
-    this.root.addChild(this.activeLayer);
-    this.root.addChild(this.originLayer);
+    this.gridContainer = new Container();
+    this.floorContainer = new Container();
+    this.originContainer = new Container();
+    this.hoverContainer = new Container();
+    this.root.addChild(this.gridContainer);
+    this.root.addChild(this.floorContainer);
+    this.root.addChild(this.originContainer);
+    this.root.addChild(this.hoverContainer);
+
+    this.grid = new GridRenderer(this.gridContainer);
+    this.floor = new CellFillRenderer(this.floorContainer);
+    this.origin = new OriginRenderer(this.originContainer);
+    this.hover = new CellFillRenderer(this.hoverContainer);
 
     this.root.visible = false;
 
@@ -40,84 +53,70 @@ export class FieldEditorOverlay {
       }
 
       if (state.fieldSetupOpen && !prev.fieldSetupOpen) {
-        this.cfg = state.tessellationConfig;
-        this.projection = makeProjection(state.tessellationConfig);
-        this.redrawActive(state.fieldPoints, state.fieldEditMode);
-        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
+        this.redrawAll(state);
       }
 
       if (state.fieldSetupOpen && state.fieldPoints !== prev.fieldPoints) {
-        this.redrawActive(state.fieldPoints, state.fieldEditMode);
+        this.redrawFloor(state.fieldPoints, state.fieldEditMode, state.tessellationConfig);
       }
 
       if (state.fieldSetupOpen && state.tessellationConfig !== prev.tessellationConfig) {
-        this.cfg = state.tessellationConfig;
-        this.projection = makeProjection(state.tessellationConfig);
-        this.redrawActive(state.fieldPoints, state.fieldEditMode);
-        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
+        this.redrawAll(state);
       }
 
       if (state.fieldSetupOpen && state.fieldEditMode !== prev.fieldEditMode) {
-        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
-        this.redrawActive(state.fieldPoints, state.fieldEditMode);
+        this.redrawFloor(state.fieldPoints, state.fieldEditMode, state.tessellationConfig);
+        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
       }
 
       if (state.fieldSetupOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
-        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
+        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
       }
     });
   }
 
-  onViewportChanged(_x: number, _y: number, _w: number, _h: number, scale: number): void {
-    this.vpScale = scale;
-    if (this.root.visible && this.projection) {
-      const state = useMazeStore.getState();
-      this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin);
-    }
-  }
-
-  private redrawOrigin(show: boolean): void {
-    const g = this.originLayer;
-    g.clear();
-    if (!show || !this.projection || !this.cfg) return;
-
-    const { x: cx, y: cy } = this.projection.gridToScreen(0, 0);
-    const arm = TILE_SIZE * 0.35 / this.vpScale;
-    const w = Math.max(1.5 / this.vpScale, 1.5);
-    g.setStrokeStyle({ width: w, color: ORIGIN_COLOR, alpha: ORIGIN_ALPHA });
-    g.moveTo(cx - arm, cy).lineTo(cx + arm, cy).stroke();
-    g.moveTo(cx, cy - arm).lineTo(cx, cy + arm).stroke();
-  }
-
-  private redrawActive(fieldPoints: Set<number>, fieldEditMode: "default" | "custom"): void {
-    if (!this.cfg) return;
-    const g = this.activeLayer;
-    g.clear();
-
-    const cfg = this.cfg;
-    if (fieldEditMode === "default") {
-      for (const [x, y] of configAllCells(cfg)) {
-        this.drawCellFill(g, x, y, cfg);
-      }
+  updateHover(cell: [number, number] | null, cfg: TessellationConfig): void {
+    if (!cell) {
+      this.hover.render({ cells: [], color: HOVER_COLOR, alpha: HOVER_ALPHA }, cfg);
     } else {
-      for (const key of fieldPoints) {
-        const [x, y] = decodePoint(key);
-        this.drawCellFill(g, x, y, cfg);
-      }
+      this.hover.render({ cells: [cell], color: HOVER_COLOR, alpha: HOVER_ALPHA }, cfg);
     }
   }
 
-  private drawCellFill(g: Graphics, x: number, y: number, cfg: TessellationConfig): void {
-    const verts = getCellVertices(x, y, cfg);
-    if (!verts) return;
-    g.poly(verts.flatMap(v => [v.x, v.y]));
-    g.fill({ color: ACTIVE_CELL_COLOR, alpha: ACTIVE_CELL_ALPHA });
+  onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
+    this.viewport = { x, y, w, h, scale };
+    if (this.root.visible) {
+      const state = useMazeStore.getState();
+      this.grid.render({ viewport: this.viewport }, state.tessellationConfig);
+      this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
+    }
+  }
+
+  private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
+    this.grid.render({ viewport: this.viewport }, state.tessellationConfig);
+    this.redrawFloor(state.fieldPoints, state.fieldEditMode, state.tessellationConfig);
+    this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
+  }
+
+  private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {
+    const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg);
+    this.floor.render({ cells, color: ACTIVE_CELL_COLOR, alpha: ACTIVE_CELL_ALPHA }, cfg);
+  }
+
+  private redrawOrigin(show: boolean, cfg: TessellationConfig): void {
+    this.origin.render({ show, vpScale: this.viewport.scale }, cfg);
   }
 
   destroy(): void {
     this.unsubscribe?.();
-    this.activeLayer.destroy();
-    this.originLayer.destroy();
+    this.grid.destroy();
+    this.floor.destroy();
+    this.origin.destroy();
+    this.hover.destroy();
+    this.gridContainer.destroy();
+    this.floorContainer.destroy();
+    this.originContainer.destroy();
+    this.hoverContainer.destroy();
   }
 }
 
@@ -133,7 +132,6 @@ export function configScreenCenter(cfg: TessellationConfig): { x: number; y: num
   return { x: sx / cells.length, y: sy / cells.length };
 }
 
-/** Computes viewport transform to fit all field cells into the screen with padding. */
 export function fitFieldViewport(
   cfg: TessellationConfig,
   screenW: number,
@@ -151,7 +149,6 @@ export function fitFieldViewport(
     if (c.x > maxX) maxX = c.x;
     if (c.y > maxY) maxY = c.y;
   }
-  // Expand by one tile so cells at edges are not cropped
   minX -= TILE_SIZE; minY -= TILE_SIZE; maxX += TILE_SIZE; maxY += TILE_SIZE;
   const W = maxX - minX;
   const H = maxY - minY;
