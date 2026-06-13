@@ -146,7 +146,6 @@ interface MazeActions {
   setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;
   setGenerationMethod: (method: string) => void;
   setElementsParam: (key: keyof ElementsConfig, value: number) => void;
-  setDebugState: (nodes: NodeDto[], edges: EdgeDto[], cfg: TessellationConfig) => void;
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;
@@ -408,7 +407,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         presetStart: null,
         presetFinish: null,
         fieldEditMode: "default" as const,
-      } : {}),
+        debugSnapshot: null, debugStep: 0, debugStale: false,
+      } : { debugStale: state.debugSnapshot !== null }),
     };
   }),
 
@@ -426,6 +426,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [],
       selectedNode: null, warnings: [], nodeStats: null, edgeStats: null, routeInfo: null,
       error: null,
+      debugSnapshot: null, debugStep: 0, debugStale: false,
     };
   }),
 
@@ -435,7 +436,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const cfg = isEditingField
       ? buildFreeConfig("square", fieldPoints, state.hexOrientation, state.triOrientation)
       : buildPredefinedConfig("square", state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { squareShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null };
+    return { squareShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setHexShape: (shape) => set((state) => {
@@ -444,7 +445,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const cfg = isEditingField
       ? buildFreeConfig("hex", fieldPoints, state.hexOrientation, state.triOrientation)
       : buildPredefinedConfig("hex", shape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { hexShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null };
+    return { hexShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setTriangleShape: (shape) => set((state) => {
@@ -453,7 +454,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const cfg = isEditingField
       ? buildFreeConfig("triangle", fieldPoints, state.hexOrientation, state.triOrientation)
       : buildPredefinedConfig("triangle", state.hexShape, shape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { triangleShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null };
+    return { triangleShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setHexOrientation: (orientation) => set((state) => {
@@ -465,7 +466,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const activeTessellationConfig = state.nodes.length > 0
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
-    return { hexOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, error: null };
+    return { hexOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setTriOrientation: (orientation) => set((state) => {
@@ -477,7 +478,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const activeTessellationConfig = state.nodes.length > 0
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
-    return { triOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, error: null };
+    return { triOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setTessellationConfig: (cfg) => {
@@ -498,7 +499,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       : currentFreeFieldPoints;
     const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
     const savedConfigs = isCustom ? get().savedConfigs : { ...get().savedConfigs, [cfg.type]: cfg };
-    set({ tessellationConfig: cfg, tessellationKind: kind, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedConfigs, error: null });
+    const debugStale = get().debugSnapshot !== null;
+    set({ tessellationConfig: cfg, tessellationKind: kind, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedConfigs, error: null, debugStale });
   },
 
   loadRegistry: () => {
@@ -551,11 +553,11 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setRandomSeed: (v) => set({ randomSeed: v }),
 
-  setDebugMode: (v) => set({ debugMode: v }),
+  setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false }),
 
   setDebugStep: (step) => set({ debugStep: step }),
 
-  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null }),
+  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
@@ -576,11 +578,13 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     return {
       selectedChecks: [...state.selectedChecks, id],
       checkParams: { ...state.checkParams, [id]: params },
+      debugStale: state.debugSnapshot !== null,
     };
   }),
 
   removeCheck: (id) => set((state) => ({
     selectedChecks: state.selectedChecks.filter((c) => c !== id),
+    debugStale: state.debugSnapshot !== null,
   })),
 
   setCheckParam: (checkId, paramId, value) => set((state) => ({
@@ -588,10 +592,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       ...state.checkParams,
       [checkId]: { ...(state.checkParams[checkId] ?? {}), [paramId]: value },
     },
+    debugStale: state.debugSnapshot !== null,
   })),
 
   setStrategy: (issueKind, strategyId) => set((state) => ({
     selectedStrategies: { ...state.selectedStrategies, [issueKind]: strategyId },
+    debugStale: state.debugSnapshot !== null,
   })),
 
   setStrategyParam: (strategyId, paramId, value) => set((state) => ({
@@ -599,6 +605,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       ...state.strategyParams,
       [strategyId]: { ...(state.strategyParams[strategyId] ?? {}), [paramId]: value },
     },
+    debugStale: state.debugSnapshot !== null,
   })),
 
   setGenerationParam: (key, value) => set((state) => {
@@ -630,35 +637,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setElementsParam: (key, value) => set((state) => ({
     elementsConfig: { ...state.elementsConfig, [key]: value },
+    debugStale: state.debugSnapshot !== null,
   })),
-
-  setDebugState: (nodes, edges, cfg) => set((state) => {
-    const { kind, squareShape, hexShape, triangleShape } = kindAndShapeFromConfig(cfg);
-    const hexOrientation = (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom")
-      ? ((cfg as { orientation?: HexOrientation }).orientation ?? "flat_top")
-      : "flat_top";
-    const triOrientation = (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom")
-      ? ((cfg as { orientation?: TriOrientation }).orientation ?? "r0")
-      : "r0";
-    const isCustom = cfg.type === "square_custom" || cfg.type === "hex_custom" || cfg.type === "tri_custom";
-    const freeFieldPoints = isCustom
-      ? {
-          ...state.freeFieldPoints,
-          [kind]: new Set<number>((cfg as { points?: [number, number][] }).points?.map(([x, y]) => encodePoint(x, y)) ?? []),
-        }
-      : state.freeFieldPoints;
-    const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
-    return {
-      nodes, edges,
-      start: null, finish: null, navNodes: [], navEdges: [], components: [],
-      selectedNode: null, warnings: [], error: null,
-      nodeStats: null, edgeStats: null, routeInfo: null,
-      tessellationKind: kind, squareShape, hexShape, triangleShape,
-      hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints,
-      tessellationConfig: cfg, activeTessellationConfig: cfg,
-      showFieldOverlay: isEditingField ? true : state.showFieldOverlay,
-    };
-  }),
 
   addFieldPoint: (x, y) => set((state) => {
     const key = encodePoint(x, y);
@@ -667,7 +647,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     fieldPoints.add(key);
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
   }),
 
   removeFieldPoint: (x, y) => set((state) => {
@@ -677,7 +657,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     fieldPoints.delete(key);
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
   }),
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
@@ -698,10 +678,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       }
       const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
       const tessellationConfig = isAlreadyCustom ? cfg : buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-      return { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, tessellationConfig, fieldPrimitive: "point" };
+      return { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, tessellationConfig, fieldPrimitive: "point", debugStale: state.debugSnapshot !== null };
     }
     const cfg = buildPredefinedConfig(state.tessellationKind, state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point" };
+    return { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point", debugStale: state.debugSnapshot !== null };
   }),
 
   addFieldPoints: (cells) => set((state) => {
@@ -714,7 +694,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     if (!changed) return {};
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
   }),
 
   removeFieldPoints: (cells) => set((state) => {
@@ -727,14 +707,14 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     if (!changed) return {};
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
   }),
 
   clearFieldPoints: () => set((state) => {
     const fieldPoints = new Set<number>();
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
   }),
 
   setFieldPrimitive: (p) => set({ fieldPrimitive: p }),
@@ -745,7 +725,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   applyPresetConnectionsTool: (key, from, to) => set((state) => {
     const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool);
-    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }) };
+    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }), debugStale: state.debugSnapshot !== null };
   }),
 
   clearInvalidPresetConnections: () => set((state) => {
@@ -753,31 +733,33 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const invalidKeys = computeInvalidKeys(state.presetConnections, state.tessellationConfig, customPts);
     const presetConnections = new Map(state.presetConnections);
     for (const key of invalidKeys) presetConnections.delete(key);
-    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }) };
+    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }), debugStale: state.debugSnapshot !== null };
   }),
 
-  resetPresetConnections: () => set(() => ({
+  resetPresetConnections: () => set((state) => ({
     presetConnections: new Map<string, PresetConnectionEntry>(),
     presetStart: null,
     presetFinish: null,
     lockedNodes: new Map<string, NodeLockKind>(),
     autoLockedNodes: new Set<string>(),
+    debugStale: state.debugSnapshot !== null,
   })),
 
   applyPresetConnectionsReset: (key) => set((state) => {
     if (!state.presetConnections.has(key)) return {};
     const presetConnections = new Map(state.presetConnections);
     presetConnections.delete(key);
-    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }) };
+    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }), debugStale: state.debugSnapshot !== null };
   }),
 
   setAutoLock: (v) => set((state) => ({
     autoLock: v,
     autoLockedNodes: v ? _recomputeAutoLock({ ...state, autoLock: v }) : new Set<string>(),
+    debugStale: state.debugSnapshot !== null,
   })),
 
-  setPresetStart: (cell) => set({ presetStart: cell }),
-  setPresetFinish: (cell) => set({ presetFinish: cell }),
+  setPresetStart: (cell) => set((state) => ({ presetStart: cell, debugStale: state.debugSnapshot !== null })),
+  setPresetFinish: (cell) => set((state) => ({ presetFinish: cell, debugStale: state.debugSnapshot !== null })),
   setHighlightInvalidPresets: (highlight) => set({ highlightInvalidPresets: highlight }),
   setHighlightIsolatedNodes: (highlight) => set({ highlightIsolatedNodes: highlight }),
   setShowPresetOrigin: (show) => set({ showPresetOrigin: show }),
@@ -786,7 +768,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setLockedNode: (x, y, kind) => set((state) => {
     const next = new Map(state.lockedNodes);
     next.set(`${x},${y}`, kind);
-    return { lockedNodes: next };
+    return { lockedNodes: next, debugStale: state.debugSnapshot !== null };
   }),
 
   removeLockedNode: (x, y) => set((state) => {
@@ -794,10 +776,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     if (!state.lockedNodes.has(key)) return {};
     const next = new Map(state.lockedNodes);
     next.delete(key);
-    return { lockedNodes: next };
+    return { lockedNodes: next, debugStale: state.debugSnapshot !== null };
   }),
 
-  clearLockedNodes: () => set({ lockedNodes: new Map<string, NodeLockKind>(), autoLockedNodes: new Set<string>() }),
+  clearLockedNodes: () => set((state) => ({ lockedNodes: new Map<string, NodeLockKind>(), autoLockedNodes: new Set<string>(), debugStale: state.debugSnapshot !== null })),
 }));
 
 function mergeOrientation(current: TessellationConfig, orientation: HexOrientation | TriOrientation): TessellationConfig {
@@ -887,6 +869,7 @@ function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet): void {
     const snapshot = generateMaze(seed, config);
     let debugSnapshot: GenerationStepsSnapshot | null = null;
     if (debugMode && snapshot.debug_steps.length > 0) {
+      // Step 0 is a client-side synthetic "empty graph" state; WASM only emits steps where edges were added.
       const steps = [{ edges: [], active_nodes: [], current_src: null }, ...snapshot.debug_steps];
       debugSnapshot = { nodes: snapshot.nodes, steps };
     }

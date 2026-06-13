@@ -94,34 +94,40 @@ The junction branch (`corridor_chance` roll failed) handles small neighbor count
 - `max = 1` → `connected = [free_neighbors[0]]` unconditionally; `junction_count` not called
 - `max >= 2` → `junction_count(max, ...)` determines connection count in range `[2, max]`
 
-## Step Snapshots (`generate_maze_steps`)
+## Step Snapshots (debug mode)
 
-Returns the full edge list after **each step** (each node processing that produces at least one edge). Steps are full snapshots, not deltas. Intended for visual debugging only — memory cost is O(nodes × edges) for large fields.
+When `debug: true` is set in `GenerateConfig`, the WASM call returns a `debug_steps` array inside `MazeSnapshot`. Each entry is a full snapshot after one step (each node processing that produces at least one edge). Steps are full snapshots, not deltas. Intended for visual debugging only — memory cost is O(nodes × edges) for large fields.
 
 Each step carries:
 - `edges` — full edge list at this step
 - `active_nodes` — node ids currently in the frontier/active set (highlighted in blue overlay)
-- `current_src` — node id chosen as source this step, or `null` (highlighted in yellow overlay)
+- `current_src` — node id chosen as source this step (always a valid node id; never null for real steps)
 
 The client prepends a synthetic first step `{ edges: [], active_nodes: [], current_src: null }` so step 0 shows the empty graph before any edges are added. Start/finish markers are hidden for all steps except the last.
 
+When `debug: false` (default), `debug_steps` is an empty array and no step data is computed.
+
 ## WASM Interface
 
-Parameters are passed via the `generation` field of `GenerateConfig` (all optional, fallback to defaults):
+Algorithm parameters are passed via the `initial` field of `GenerateConfig`:
 
 ```json
 {
-  "generation": {
+  "initial": {
+    "method": "custom_vertex_based",
     "depth_first": 0.9,
     "corridor_chance": 0.7,
     "branching": 0.5,
-    "directionality": 0.0,
-    "one_way_chance": 0.04
-  }
+    "directionality": 0.0
+  },
+  "elements": { "one_way_chance": 0.04 },
+  "debug": false
 }
 ```
 
-All values are clamped to `[0.0, 1.0]` in the WASM layer before use.
+All numeric values are clamped to `[0.0, 1.0]` in the WASM layer before use.
+
+The `generate` WASM function accepts `debug: bool` (default `false`). When `true`, the response `MazeSnapshot` includes a populated `debug_steps: GenerationStepDto[]`. When `false`, `debug_steps` is empty and no step data is computed.
 
 ---
 
@@ -139,7 +145,7 @@ Produces a spanning tree of the subgraph reachable from `start`. Geometrically d
 |---|---|---|---|
 | `corridor_length` | 0.0–1.0 | 0.5 | Probability of advancing to the last-connected destination as the next `src` (chain: A→B→C→…). 0 = no chaining, 1 = always continue from last destination. |
 | `branching` | 0.0–1.0 | 0.5 | Weight boost for destinations with more unseen neighbors. Uses `sqrt` of the free-neighbor count. 0 = uniform, 1 = strongly prefer high-potential destinations. |
-| `locality` | 0.0–1.0 | 0.0 | Bias toward `src` nodes closer to start (by tree depth). 0 = uniform selection, 1 = strongly prefer shallow nodes. |
+| `locality` | 0.0–1.0 | 0.0 | Bias toward `src` nodes closer to start (by tree depth). 0 = uniform selection, 1 = strongly prefer shallow nodes. **Not yet implemented in core or UI.** |
 | `directionality` | 0.0–1.0 | 0.0 | Weight multiplier (up to 4×) for candidates geometrically straight ahead from `src`'s parent. Requires `Field::is_straight`. Has no effect when `src` has no parent or when corridor chaining fired this step. |
 
 ### Invariants
