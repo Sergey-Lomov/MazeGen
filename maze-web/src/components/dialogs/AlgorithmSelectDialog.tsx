@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "./ItemSelectDialog";
-import { sharedStyles } from "../../styles/shared";
 import { colors, font, radius } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
+import { SliderRow } from "../SliderRow";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -104,24 +104,6 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
   );
 }
 
-function SliderRow({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <div style={sharedStyles.sliderRow}>
-      <span style={sharedStyles.sliderRowLabel}>{label}</span>
-      <input
-        type="range"
-        className="maze-slider"
-        style={{ flex: 1 }}
-        min={0}
-        max={1}
-        step={0.01}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-      <span style={sharedStyles.sliderRowValue}>{value.toFixed(2)}</span>
-    </div>
-  );
-}
 
 const styles: Record<string, React.CSSProperties> = {
   description: {

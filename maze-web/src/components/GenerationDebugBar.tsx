@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { useMazeStore } from "../store/mazeStore";
-import { colors, font } from "../styles/theme";
+import { colors, font, radius } from "../styles/theme";
+import { Switch } from "./Switch";
 import * as m from "~/paraglide/messages";
 
 const DEFAULT_DELAY_MS = 500;
@@ -92,7 +93,7 @@ export function GenerationDebugBar() {
 
         {/* Frontier toggle */}
         <span style={styles.label}>{m["debug.frontier"]()}</span>
-        <MiniSwitch checked={showDebugFrontier} onChange={setShowDebugFrontier} />
+        <Switch checked={showDebugFrontier} onChange={setShowDebugFrontier} />
 
         <div style={styles.divider} />
 
@@ -119,32 +120,12 @@ export function GenerationDebugBar() {
   );
 }
 
-function MiniSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label style={sw.wrap}>
-      <input type="checkbox" style={sw.input} checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <span style={{ ...sw.track, ...(checked ? sw.trackOn : {}) }}>
-        <span style={{ ...sw.thumb, ...(checked ? sw.thumbOn : {}) }} />
-      </span>
-    </label>
-  );
-}
-
-const sw: Record<string, React.CSSProperties> = {
-  wrap:  { position: "relative", display: "inline-flex", alignItems: "center", cursor: "pointer", flexShrink: 0 },
-  input: { position: "absolute", opacity: 0, width: 0, height: 0 },
-  track: { display: "inline-block", width: 26, height: 14, background: colors.borderStrong, borderRadius: 7, position: "relative", transition: "background 0.15s" },
-  trackOn:  { background: colors.bgBtnPrimary },
-  thumb:    { position: "absolute", top: 2, left: 2, width: 10, height: 10, background: colors.textWhite, borderRadius: "50%", transition: "left 0.15s" },
-  thumbOn:  { left: 14 },
-};
-
 const styles: Record<string, React.CSSProperties> = {
   bar: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
-    padding: "4px 10px",
+    gap: 10,
+    padding: "7px 16px",
     background: colors.bgPanelAlt,
     borderBottom: `1px solid ${colors.borderMid}`,
     flexShrink: 0,
@@ -154,50 +135,70 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${colors.borderStrong}`,
     color: colors.textMuted,
     cursor: "pointer",
-    padding: "2px 7px",
-    fontSize: font.md,
+    padding: "0 10px",
+    fontSize: font.lg,
     flexShrink: 0,
-    lineHeight: 1.2,
+    height: 28,
+    boxSizing: "border-box" as const,
+    borderRadius: radius.sm,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1,
+    appearance: "none" as const,
+    paddingBottom: 2,
   },
   playBtn: {
     background: colors.bgInput,
     border: `1px solid ${colors.borderStrong}`,
     color: colors.textMuted,
     cursor: "pointer",
-    padding: "2px 9px",
-    fontSize: font.md,
+    padding: "0 12px",
+    fontSize: font.lg,
     flexShrink: 0,
-    lineHeight: 1.2,
+    height: 28,
+    boxSizing: "border-box" as const,
+    borderRadius: radius.sm,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1,
+    appearance: "none" as const,
+    paddingBottom: 2,
   },
   delayInput: {
     background: colors.bgInput,
     border: `1px solid ${colors.borderStrong}`,
     color: colors.textMuted,
-    fontSize: font.sm,
-    padding: "2px 4px",
-    width: 52,
+    fontSize: font.md,
+    padding: "0 6px",
+    width: 60,
+    height: 28,
+    boxSizing: "border-box" as const,
+    borderRadius: radius.sm,
     flexShrink: 0,
     textAlign: "right" as const,
   },
   divider: {
     width: 1,
-    height: 16,
+    height: 20,
     background: colors.borderStrong,
     flexShrink: 0,
-    margin: "0 2px",
+    margin: "0 4px",
   },
   label: {
-    fontSize: font.sm,
+    fontSize: font.md,
     color: colors.textMuted,
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
   },
   stepLabel: {
-    fontSize: font.sm,
+    fontSize: font.md,
     color: colors.textMuted,
     whiteSpace: "nowrap" as const,
     flexShrink: 0,
-    minWidth: 90,
+    width: 150,
+    overflow: "hidden" as const,
   },
   edgeCount: {
     color: colors.textVeryDim,

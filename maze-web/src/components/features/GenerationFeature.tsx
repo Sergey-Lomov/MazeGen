@@ -4,6 +4,8 @@ import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSe
 import { sharedStyles } from "../../styles/shared";
 import { colors, font, radius } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
+import { Switch } from "../Switch";
+import { SliderParam } from "../SliderParam";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -130,83 +132,6 @@ export function GenerationFeature({ canGenerate }: Props) {
   );
 }
 
-function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label style={switchStyles.wrap}>
-      <input
-        type="checkbox"
-        style={switchStyles.input}
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span style={{ ...switchStyles.track, ...(checked ? switchStyles.trackOn : {}) }}>
-        <span style={{ ...switchStyles.thumb, ...(checked ? switchStyles.thumbOn : {}) }} />
-      </span>
-    </label>
-  );
-}
-
-function SliderParam({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <div style={styles.paramRow}>
-      <div style={styles.paramHeader}>
-        <span style={styles.paramLabel}>{label}</span>
-        <span style={styles.paramValue}>{value.toFixed(2)}</span>
-      </div>
-      <input
-        className="maze-slider"
-        type="range"
-        min={0}
-        max={1}
-        step={0.01}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-      />
-    </div>
-  );
-}
-
-const switchStyles: Record<string, React.CSSProperties> = {
-  wrap: {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    cursor: "pointer",
-    flexShrink: 0,
-  },
-  input: {
-    position: "absolute",
-    opacity: 0,
-    width: 0,
-    height: 0,
-  },
-  track: {
-    display: "inline-block",
-    width: 32,
-    height: 18,
-    background: colors.borderStrong,
-    borderRadius: 9,
-    position: "relative",
-    transition: "background 0.2s",
-  },
-  trackOn: {
-    background: colors.bgBtnPrimary,
-  },
-  thumb: {
-    position: "absolute",
-    top: 2,
-    left: 2,
-    width: 14,
-    height: 14,
-    background: colors.textWhite,
-    borderRadius: "50%",
-    transition: "left 0.2s",
-  },
-  thumbOn: {
-    left: 16,
-  },
-};
-
 const styles: Record<string, React.CSSProperties> = {
   root: {
     display: "flex",
@@ -264,24 +189,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 8,
-  },
-  paramRow: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 5,
-  },
-  paramHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  paramLabel: {
-    fontSize: font.sm,
-    color: colors.textVeryDim,
-  },
-  paramValue: {
-    fontSize: font.sm,
-    color: colors.textDim,
   },
   divider: {
     borderTop: `1px solid ${colors.borderMid}`,
