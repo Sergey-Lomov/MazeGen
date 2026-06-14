@@ -43,7 +43,7 @@ export function FeatureCard({ title, status, comment, subtitle, expanded, onOpen
   const canExpand = status !== "unavailable";
 
   return (
-    <div style={styles.card}>
+    <div style={{ ...styles.card, ...(expanded && canExpand ? styles.cardExpanded : {}) }}>
       <button
         style={{ ...styles.header, ...(canExpand ? styles.headerClickable : styles.headerDisabled) }}
         onClick={canExpand ? onOpen : undefined}
@@ -78,6 +78,9 @@ const dotStyle: React.CSSProperties = {
 const styles: Record<string, React.CSSProperties> = {
   card: {
     borderBottom: `1px solid ${colors.borderDim}`,
+  },
+  cardExpanded: {
+    background: colors.bgPanelAlt,
   },
   header: {
     width: "100%",

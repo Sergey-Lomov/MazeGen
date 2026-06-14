@@ -1,7 +1,7 @@
 export const colors = {
   // Backgrounds
   bgApp: "#111111",
-  bgPanel: "#1e1e1e",
+  bgPanel: "#181818",
   bgPanelAlt: "#222",
   bgInput: "#2a2a2a",
   bgBtnPrimary: "#3a6ea8",
@@ -13,6 +13,7 @@ export const colors = {
   borderStrong: "#444",
   borderMid: "#333",
   borderDim: "#2a2a2a",
+  borderSelected: "#666",
 
   // Text
   textPrimary: "#e0e0e0",

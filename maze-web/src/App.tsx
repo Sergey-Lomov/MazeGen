@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
 import { FeaturesPanel } from "./components/FeaturesPanel";
+import { QualityCanvas } from "./components/features/QualityCanvas";
 import { GenerationDebugBar } from "./components/GenerationDebugBar";
 import { useMazeStore } from "./store/mazeStore";
 import { colors, font } from "./styles/theme";
@@ -19,6 +20,7 @@ export function App() {
   const debugMode = useMazeStore((s) => s.debugMode);
   const debugSnapshot = useMazeStore((s) => s.debugSnapshot);
   const generationOpen = useMazeStore((s) => s.generationOpen);
+  const qualityOpen = useMazeStore((s) => s.qualityOpen);
 
   useEffect(() => {
     loadRegistry();
@@ -54,7 +56,8 @@ export function App() {
       </div>
       <div style={styles.canvasColumn}>
         {generationOpen && debugMode && debugSnapshot && <GenerationDebugBar />}
-        <div ref={canvasRef} style={styles.canvas} />
+        <div ref={canvasRef} style={{ ...styles.canvas, display: qualityOpen ? "none" : undefined }} />
+        {qualityOpen && <QualityCanvas />}
       </div>
     </div>
   );

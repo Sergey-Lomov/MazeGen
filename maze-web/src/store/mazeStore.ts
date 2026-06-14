@@ -83,6 +83,7 @@ interface MazeState {
   routeInfo: RouteInfoDto | null;
   showFieldOverlay: boolean;
   generationOpen: boolean;
+  qualityOpen: boolean;
   fieldSetupOpen: boolean;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
@@ -138,6 +139,7 @@ interface MazeActions {
   removeCheck: (id: string) => void;
   setCheckParam: (checkId: string, paramId: string, value: string) => void;
   setStrategy: (issueKind: string, strategyId: string) => void;
+  clearStrategy: (issueKind: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
   setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;
@@ -150,6 +152,7 @@ interface MazeActions {
   clearFieldPoints: () => void;
   setShowFieldOverlay: (show: boolean) => void;
   setGenerationOpen: (open: boolean) => void;
+  setQualityOpen: (open: boolean) => void;
   setFieldSetupOpen: (open: boolean) => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
@@ -318,6 +321,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   routeInfo: null,
   showFieldOverlay: true,
   generationOpen: false,
+  qualityOpen: false,
   fieldSetupOpen: false,
   fieldEditMode: "default",
   fieldPrimitive: "point",
@@ -597,6 +601,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     debugStale: state.debugSnapshot !== null,
   })),
 
+  clearStrategy: (issueKind) => set((state) => {
+    const next = { ...state.selectedStrategies };
+    delete next[issueKind];
+    return { selectedStrategies: next, debugStale: state.debugSnapshot !== null };
+  }),
+
   setStrategyParam: (strategyId, paramId, value) => set((state) => ({
     strategyParams: {
       ...state.strategyParams,
@@ -660,6 +670,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
 
   setGenerationOpen: (open) => set({ generationOpen: open }),
+  setQualityOpen: (open) => set({ qualityOpen: open }),
   setFieldSetupOpen: (open) => set({ fieldSetupOpen: open }),
 
   setFieldEditMode: (mode) => set((state) => {

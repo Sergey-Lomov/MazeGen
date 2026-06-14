@@ -99,6 +99,7 @@ export function FeaturesPanel() {
   const presetFinish = useMazeStore((s) => s.presetFinish);
   const setPresetConnectionsOpen = useMazeStore((s) => s.setPresetConnectionsOpen);
   const setGenerationOpen = useMazeStore((s) => s.setGenerationOpen);
+  const setQualityOpen = useMazeStore((s) => s.setQualityOpen);
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
 
   function handleToggle(id: FeatureId) {
@@ -106,10 +107,12 @@ export function FeaturesPanel() {
     if (openCard === "field_setup") setFieldSetupOpen(false);
     if (openCard === "preset_connections") setPresetConnectionsOpen(false);
     if (openCard === "generation") setGenerationOpen(false);
+    if (openCard === "quality") setQualityOpen(false);
     if (id === "basic_config") syncPreviewToConfirmed();
     if (id === "field_setup") setFieldSetupOpen(true);
     if (id === "preset_connections") setPresetConnectionsOpen(true);
     if (id === "generation") setGenerationOpen(true);
+    if (id === "quality") setQualityOpen(true);
     setOpenCard(id);
   }
 

@@ -43,6 +43,7 @@ export class MazeScene {
   private unsubscribeEditField: (() => void) | null = null;
   private unsubscribePreview: (() => void) | null = null;
   private unsubscribePresetOpen: (() => void) | null = null;
+  private unsubscribeQualityOpen: (() => void) | null = null;
 
   private refitTimerId: ReturnType<typeof setTimeout> | null = null;
 
@@ -132,6 +133,7 @@ export class MazeScene {
     this.subscribeToEditField();
     this.subscribeToPreview();
     this.subscribeToPresetOpen();
+    this.subscribeToQualityOpen();
     this.syncLayersToViewport();
   }
 
@@ -145,6 +147,17 @@ export class MazeScene {
       prevOpen = state.fieldSetupOpen;
       if (previewChanged || openChanged) {
         this.syncLayersToViewport();
+      }
+    });
+  }
+
+  private subscribeToQualityOpen(): void {
+    let prev = useMazeStore.getState().qualityOpen;
+    this.unsubscribeQualityOpen = useMazeStore.subscribe((state) => {
+      if (state.qualityOpen !== prev) {
+        prev = state.qualityOpen;
+        if (state.qualityOpen) this.app.ticker.stop();
+        else this.app.ticker.start();
       }
     });
   }
@@ -394,6 +407,7 @@ export class MazeScene {
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();
     this.unsubscribePresetOpen?.();
+    this.unsubscribeQualityOpen?.();
     this.generationRenderer.destroy();
     this.tessellationRenderer.destroy();
     this.fieldEditorOverlay.destroy();

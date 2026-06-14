@@ -1,9 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
-import { useCheckParamsDraft, getDefaultValue } from "./useCheckParamsDraft";
-import type { ParamDescriptor } from "../../wasm/types";
-import { sharedStyles } from "../../styles/shared";
+import { resolveCheckLabel, resolveCheckDescription } from "./qualityI18n";
 import { colors, font, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -16,76 +14,45 @@ export function CheckSelectDialog({ onClose }: Props) {
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const addCheck = useMazeStore((s) => s.addCheck);
 
-  const initialId = useMemo(
-    () => availableChecks.find((c) => !selectedChecks.includes(c.id))?.id ?? availableChecks[0]?.id ?? "",
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
+  const [selectedId, setSelectedId] = useState<string>(availableChecks[0]?.id ?? "");
 
-  const [selectedId, setSelectedId] = useState<string>(initialId);
-  const draft = useCheckParamsDraft(selectedId);
-
-  const selectedDescriptor = availableChecks.find((c) => c.id === selectedId);
-  const hasParams = (selectedDescriptor?.params.length ?? 0) > 0;
-  const isDisabled = !selectedId || selectedChecks.includes(selectedId);
+  const selectedCheck = availableChecks.find((c) => c.id === selectedId);
+  const isAlreadyActive = selectedId ? selectedChecks.includes(selectedId) : false;
 
   function handleAdd() {
-    draft.commit(selectedId);
-    addCheck(selectedId);
-    onClose();
-  }
-
-  function handleAddAndContinue() {
-    draft.commit(selectedId);
-    addCheck(selectedId);
-    const updatedSelected = useMazeStore.getState().selectedChecks;
-    const next = availableChecks.find((c) => !updatedSelected.includes(c.id));
-    if (!next) {
+    if (selectedId && !isAlreadyActive) {
+      addCheck(selectedId);
       onClose();
-    } else {
-      setSelectedId(next.id);
     }
   }
 
   const items = availableChecks.map((c) => ({
     id: c.id,
-    label: c.label,
-    disabled: selectedChecks.includes(c.id),
+    label: resolveCheckLabel(c.id, c.label),
   }));
 
-  const rightPanel = (
+  const rightPanel = selectedCheck ? (
     <>
-      {selectedDescriptor ? (
-        <>
-          <div style={styles.checkLabel}>{selectedDescriptor.label}</div>
-          <div style={styles.checkDescription}>{selectedDescriptor.description}</div>
-          {hasParams && (
-            <>
-              <div style={styles.paramsSeparator} />
-              <ParamFields params={selectedDescriptor.params} localParams={draft.localParams} setParam={draft.setParam} />
-            </>
-          )}
-        </>
-      ) : (
-        <div style={styles.checkDescription}>{m["check.not_selected"]()}</div>
+      <div style={styles.description}>
+        {resolveCheckDescription(selectedCheck.id, selectedCheck.description)}
+      </div>
+      {isAlreadyActive && (
+        <div style={styles.alreadyActive}>{m["check.already_active"]()}</div>
       )}
     </>
+  ) : (
+    <div style={styles.empty}>{m["check.not_selected"]()}</div>
   );
+
+  const canAdd = !!selectedId && !isAlreadyActive;
 
   const footer = (
     <>
       <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
       <button
-        style={isDisabled ? { ...styles.btnSecondary, ...sharedStyles.btnDisabled } : styles.btnSecondary}
-        onClick={handleAddAndContinue}
-        disabled={isDisabled}
-      >
-        {m["check.add_continue"]()}
-      </button>
-      <button
-        style={isDisabled ? { ...styles.btnPrimary, ...sharedStyles.btnDisabled } : styles.btnPrimary}
+        style={{ ...styles.btnPrimary, ...(!canAdd ? styles.btnDisabled : {}) }}
+        disabled={!canAdd}
         onClick={handleAdd}
-        disabled={isDisabled}
       >
         {m["check.add"]()}
       </button>
@@ -105,85 +72,20 @@ export function CheckSelectDialog({ onClose }: Props) {
   );
 }
 
-function ParamFields({ params, localParams, setParam }: {
-  params: ParamDescriptor[];
-  localParams: Record<string, string>;
-  setParam: (id: string, v: string) => void;
-}) {
-  return (
-    <>
-      {params.map((p) => (
-        <div key={p.id} style={styles.paramRow}>
-          <label style={styles.paramLabel}>{p.label}</label>
-          {(p.kind.type === "float" || p.kind.type === "integer") && (
-            <input
-              type="number"
-              style={styles.paramInput}
-              value={localParams[p.id] ?? getDefaultValue(p)}
-              min={p.kind.min}
-              max={p.kind.max}
-              step={p.kind.type === "integer" ? 1 : 0.1}
-              onChange={(e) => setParam(p.id, e.target.value)}
-            />
-          )}
-          {p.kind.type === "bool" && (
-            <input
-              type="checkbox"
-              checked={(localParams[p.id] ?? getDefaultValue(p)) === "true"}
-              onChange={(e) => setParam(p.id, e.target.checked ? "true" : "false")}
-            />
-          )}
-          {p.kind.type === "enum" && (
-            <select
-              style={styles.paramSelect}
-              value={localParams[p.id] ?? getDefaultValue(p)}
-              onChange={(e) => setParam(p.id, e.target.value)}
-            >
-              {p.kind.options.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          )}
-        </div>
-      ))}
-    </>
-  );
-}
-
 const styles: Record<string, React.CSSProperties> = {
-  checkLabel: {
-    fontSize: font.xl,
-    fontWeight: "bold" as const,
-    color: colors.textSecondary,
-  },
-  checkDescription: {
+  description: {
     fontSize: font.lg,
     color: colors.textFaint,
-    lineHeight: 1.5,
+    lineHeight: 1.6,
   },
-  paramsSeparator: {
-    borderTop: `1px solid ${colors.borderDim}`,
+  alreadyActive: {
+    fontSize: font.md,
+    color: colors.textError,
     marginTop: 4,
-    marginBottom: 4,
   },
-  paramRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  paramLabel: {
+  empty: {
     fontSize: font.lg,
-    color: colors.textMuted,
-    flex: 1,
-  },
-  paramInput: {
-    ...sharedStyles.inputSm,
-    width: 80,
-  },
-  paramSelect: {
-    ...sharedStyles.selectSm,
-    width: 120,
+    color: colors.textVeryDim,
   },
   btnPrimary: {
     background: colors.bgBtnPrimary,
@@ -202,5 +104,9 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     borderRadius: radius.sm,
     fontSize: font.lg,
+  },
+  btnDisabled: {
+    opacity: 0.4,
+    cursor: "not-allowed",
   },
 };
