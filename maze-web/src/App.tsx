@@ -52,7 +52,7 @@ export function App() {
     <div style={styles.root}>
       <div style={styles.panel}>
         {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
-        <FeaturesPanel />
+        <FeaturesPanel onRefit={() => sceneRef.current?.refit()} />
       </div>
       <div style={styles.canvasColumn}>
         {generationOpen && debugMode && debugSnapshot && <GenerationDebugBar />}

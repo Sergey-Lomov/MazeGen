@@ -9,7 +9,7 @@ import { FieldEditController } from "./FieldEditController";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
-import { configScreenCenter, fitFieldViewport } from "./FieldEditorOverlay";
+import { fitFieldViewport } from "./FieldEditorOverlay";
 import { makeProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -48,7 +48,6 @@ export class MazeScene {
   private unsubscribePresetOpen: (() => void) | null = null;
   private unsubscribeQualityOpen: (() => void) | null = null;
 
-  private refitTimerId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(app: Application) {
     this.app = app;
@@ -169,72 +168,28 @@ export class MazeScene {
   }
 
   private subscribeToPresetOpen(): void {
-    let prevOpen = useMazeStore.getState().presetConnectionsOpen;
-    this.unsubscribePresetOpen = useMazeStore.subscribe((state) => {
-      if (state.presetConnectionsOpen !== prevOpen) {
-        prevOpen = state.presetConnectionsOpen;
-        if (state.presetConnectionsOpen) {
-          this.fitField();
-        }
-      }
-    });
+    this.unsubscribePresetOpen = useMazeStore.subscribe(() => {});
   }
 
   private subscribeToEditField(): void {
     let prevOpen = useMazeStore.getState().fieldSetupOpen;
-    let prevCfg = useMazeStore.getState().tessellationConfig;
     let prevMode = useMazeStore.getState().fieldEditMode;
     this.unsubscribeEditField = useMazeStore.subscribe((state) => {
       const openChanged = state.fieldSetupOpen !== prevOpen;
-      const cfgChanged = state.tessellationConfig !== prevCfg;
       const modeChanged = state.fieldEditMode !== prevMode;
       prevOpen = state.fieldSetupOpen;
-      prevCfg = state.tessellationConfig;
       prevMode = state.fieldEditMode;
       if (!state.fieldSetupOpen) {
         if (openChanged) this.primitivePreviewOverlay.clear();
         return;
       }
-      if (openChanged && state.fieldEditMode === "default") { this.centerOnOrigin(); return; }
       if (openChanged) return;
       if (modeChanged && state.fieldEditMode === "default") this.primitivePreviewOverlay.clear();
-      if (state.fieldEditMode === "default" && (cfgChanged || modeChanged)) {
-        this.centerOnOrigin();
-      }
     });
-  }
-
-  private centerOnOrigin(): void {
-    const cfg = useMazeStore.getState().tessellationConfig;
-    const center = configScreenCenter(cfg);
-    const w = this.app.screen.width;
-    const h = this.app.screen.height;
-    this.viewport.x = w / 2 - center.x * this.viewport.scale.x;
-    this.viewport.y = h / 2 - center.y * this.viewport.scale.y;
-    this.syncLayersToViewport();
-  }
-
-  private fitField(): void {
-    this.app.resize();
-    const cfg = useMazeStore.getState().tessellationConfig;
-    const { x, y, scale } = fitFieldViewport(cfg, this.app.screen.width, this.app.screen.height);
-    this.viewport.scale.set(scale);
-    this.viewport.x = x;
-    this.viewport.y = y;
-    this.syncLayersToViewport();
   }
 
   private subscribeToFit(): void {
-    let prevNodes = useMazeStore.getState().nodes;
-    this.unsubscribeFit = useMazeStore.subscribe((state) => {
-      if (state.nodes !== prevNodes) {
-        prevNodes = state.nodes;
-        if (state.nodes.length > 0 && !state.isEditingField) {
-          this.app.resize();
-          this.fitMaze(state.activeTessellationConfig, state.nodes);
-        }
-      }
-    });
+    this.unsubscribeFit = useMazeStore.subscribe(() => {});
   }
 
   private syncLayersToViewport(): void {
@@ -306,31 +261,18 @@ export class MazeScene {
   }
 
 
-  refit(durationMs = 0): void {
-    const { nodes, activeTessellationConfig } = useMazeStore.getState();
-    if (nodes.length === 0) return;
-    if (durationMs <= 0) {
-      this.app.resize();
+  refit(): void {
+    this.app.resize();
+    const { nodes, activeTessellationConfig, tessellationConfig } = useMazeStore.getState();
+    if (nodes.length > 0) {
       this.fitMaze(activeTessellationConfig, nodes);
-      return;
+    } else {
+      const { x, y, scale } = fitFieldViewport(tessellationConfig, this.app.screen.width, this.app.screen.height);
+      this.viewport.scale.set(scale);
+      this.viewport.x = x;
+      this.viewport.y = y;
+      this.syncLayersToViewport();
     }
-    if (this.refitTimerId !== null) {
-      clearTimeout(this.refitTimerId);
-      this.refitTimerId = null;
-    }
-    const step = 16;
-    const steps = Math.ceil(durationMs / step);
-    let i = 0;
-    const tick = () => {
-      this.app.resize();
-      this.fitMaze(activeTessellationConfig, nodes);
-      if (++i < steps) {
-        this.refitTimerId = setTimeout(tick, step);
-      } else {
-        this.refitTimerId = null;
-      }
-    };
-    tick();
   }
 
   private setupInteraction(): void {
@@ -361,7 +303,7 @@ export class MazeScene {
         this.fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
         return;
       }
-      if (st.fieldSetupOpen) {
+      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
         const hoverCell = this.fieldEditController.getHoverCell(e.globalX, e.globalY);
         this.fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
       }
@@ -419,10 +361,6 @@ export class MazeScene {
   }
 
   destroy(): void {
-    if (this.refitTimerId !== null) {
-      clearTimeout(this.refitTimerId);
-      this.refitTimerId = null;
-    }
     this.unsubscribeFit?.();
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();

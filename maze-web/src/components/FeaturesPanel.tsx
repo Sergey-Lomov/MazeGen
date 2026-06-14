@@ -80,7 +80,7 @@ function getTessellationKindLabel(kind: TessellationKind): string {
 
 type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "analytics";
 
-export function FeaturesPanel() {
+export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const [openCard, setOpenCard] = useState<FeatureId>("basic_config");
 
   const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
@@ -234,6 +234,13 @@ export function FeaturesPanel() {
       </FeatureCard>
       <div style={styles.footer}>
         <LanguageSwitcher />
+        <button
+          onClick={onRefit}
+          style={styles.refitButton}
+          title="Fit to screen"
+          onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
+          onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
+        >⛶</button>
       </div>
     </div>
   );
@@ -250,10 +257,23 @@ const styles: Record<string, React.CSSProperties> = {
   },
   footer: {
     display: "flex",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     alignItems: "center",
     padding: "6px 10px",
     borderTop: `1px solid ${colors.borderDim}`,
     marginTop: "auto",
+  },
+  refitButton: {
+    background: colors.bgInput,
+    border: `1px solid ${colors.borderStrong}`,
+    borderRadius: 3,
+    color: colors.textMuted,
+    fontSize: font.xl,
+    cursor: "pointer",
+    padding: "0px 4px",
+    lineHeight: "normal",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
 };
