@@ -19,9 +19,10 @@ export class WallRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { edges: WallEdge[] }, cfg: TessellationConfig): void {
+  render(data: { edges: WallEdge[] }, cfg?: TessellationConfig): void {
     this.g.clear();
     for (const edge of data.edges) {
+      if (!cfg) continue;
       const seg = this.getEdgeSegment(edge, cfg);
       if (!seg) continue;
 

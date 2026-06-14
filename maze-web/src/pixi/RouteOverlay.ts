@@ -9,7 +9,7 @@ const ROUTE_LINE_WIDTH = 3;
 const ROUTE_DOT_RADIUS = NODE_RADIUS * 0.55;
 
 export interface RouteData {
-  routeInfo: RouteInfoDto | null;
+  routeInfo: RouteInfoDto;
   nodes: NodeDto[];
   cfg: TessellationConfig;
 }
@@ -25,7 +25,7 @@ export class RouteOverlay {
   render(data: RouteData): void {
     const { routeInfo, nodes, cfg } = data;
     this.g.clear();
-    if (!routeInfo || routeInfo.path.length < 2) return;
+    if (routeInfo.path.length < 2) return;
 
     const nodeMap = new Map<number, { x: number; y: number }>();
     for (const n of nodes) nodeMap.set(n.id, cellCenter(n, cfg));
@@ -46,6 +46,10 @@ export class RouteOverlay {
       this.g.circle(p.x, p.y, ROUTE_DOT_RADIUS);
     }
     this.g.fill(ROUTE_LINE_COLOR);
+  }
+
+  clear(): void {
+    this.g.clear();
   }
 
   destroy(): void {

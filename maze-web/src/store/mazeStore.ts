@@ -111,6 +111,13 @@ interface MazeState {
   debugStep: number;
   debugStale: boolean;
   showDebugFrontier: boolean;
+  // Analytics state
+  analyticsOpen: boolean;
+  showMazeOverlay: boolean;
+  showComponentsOverlay: boolean;
+  showGraphOverlay: boolean;
+  showNavGraphOverlay: boolean;
+  showRouteOverlay: boolean;
 }
 
 interface MazeActions {
@@ -177,6 +184,12 @@ interface MazeActions {
   setDebugStep: (step: number) => void;
   setShowDebugFrontier: (v: boolean) => void;
   regenerate: () => void;
+  setAnalyticsOpen: (open: boolean) => void;
+  setShowMazeOverlay: (v: boolean) => void;
+  setShowComponentsOverlay: (v: boolean) => void;
+  setShowGraphOverlay: (v: boolean) => void;
+  setShowNavGraphOverlay: (v: boolean) => void;
+  setShowRouteOverlay: (v: boolean) => void;
 }
 
 function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
@@ -345,6 +358,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   debugStep: 0,
   debugStale: false,
   showDebugFrontier: true,
+  analyticsOpen: false,
+  showMazeOverlay: true,
+  showComponentsOverlay: false,
+  showGraphOverlay: false,
+  showNavGraphOverlay: false,
+  showRouteOverlay: false,
 
   setSeed: (seed) => set({ seed, error: null }),
 
@@ -557,6 +576,13 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setDebugStep: (step) => set({ debugStep: step }),
 
   setShowDebugFrontier: (v) => set({ showDebugFrontier: v }),
+
+  setAnalyticsOpen: (open) => set({ analyticsOpen: open }),
+  setShowMazeOverlay: (v) => set({ showMazeOverlay: v }),
+  setShowComponentsOverlay: (v) => set({ showComponentsOverlay: v }),
+  setShowGraphOverlay: (v) => set({ showGraphOverlay: v }),
+  setShowNavGraphOverlay: (v) => set({ showNavGraphOverlay: v }),
+  setShowRouteOverlay: (v) => set({ showRouteOverlay: v }),
 
   reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const }),
 

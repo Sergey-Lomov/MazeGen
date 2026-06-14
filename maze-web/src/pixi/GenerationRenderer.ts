@@ -3,8 +3,10 @@ import { useMazeStore } from "../store/mazeStore";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
+import { GridRenderer } from "./renderers/GridRenderer";
 import { buildMazeWalls, buildMazeMarkers } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { Viewport } from "./renderers/types";
 import {
   FLOOR_COLOR, WALL_COLOR,
   DEBUG_ACTIVE_COLOR, DEBUG_CURRENT_SRC_COLOR,
@@ -12,6 +14,7 @@ import {
 } from "./colorUtils";
 
 export class GenerationRenderer {
+  private readonly gridContainer: Container;
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
@@ -19,6 +22,7 @@ export class GenerationRenderer {
   private readonly debugActiveContainer: Container;
   private readonly debugSrcContainer: Container;
 
+  private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
@@ -26,10 +30,12 @@ export class GenerationRenderer {
   private readonly debugActive: CellFillRenderer;
   private readonly debugSrc: CellFillRenderer;
 
+  private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
   private closedCellsCache: { nodes: NodeDto[]; edges: EdgeDto[]; result: [number, number][] } | null = null;
 
   constructor(viewport: Container) {
+    this.gridContainer = new Container();
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer = new Container();
@@ -37,6 +43,7 @@ export class GenerationRenderer {
     this.debugActiveContainer = new Container();
     this.debugSrcContainer = new Container();
 
+    viewport.addChild(this.gridContainer);
     viewport.addChild(this.floorContainer);
     viewport.addChild(this.closedCellsContainer);
     viewport.addChild(this.wallsContainer);
@@ -44,6 +51,7 @@ export class GenerationRenderer {
     viewport.addChild(this.debugActiveContainer);
     viewport.addChild(this.debugSrcContainer);
 
+    this.grid = new GridRenderer(this.gridContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls = new WallRenderer(this.wallsContainer);
@@ -88,12 +96,24 @@ export class GenerationRenderer {
 
   private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
     const visible = state.generationOpen && state.showMaze;
+    this.gridContainer.visible = visible;
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
     this.wallsContainer.visible = visible;
     this.markersContainer.visible = visible;
     this.debugActiveContainer.visible = visible && state.showDebugFrontier;
     this.debugSrcContainer.visible = visible && state.showDebugFrontier;
+    if (visible) {
+      this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
+    }
+  }
+
+  onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
+    this.viewport = { x, y, w, h, scale };
+    const state = useMazeStore.getState();
+    if (state.generationOpen && state.showMaze) {
+      this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
+    }
   }
 
   private debugView(state: ReturnType<typeof useMazeStore.getState>) {
@@ -109,6 +129,7 @@ export class GenerationRenderer {
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const cfg = state.activeTessellationConfig;
+    this.grid.render({ viewport: this.viewport }, cfg);
     const view = this.debugView(state);
 
     const cells: [number, number][] = view.nodes.map(n => [n.x, n.y]);
@@ -152,12 +173,14 @@ export class GenerationRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.grid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
     this.markers.destroy();
     this.debugActive.destroy();
     this.debugSrc.destroy();
+    this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();

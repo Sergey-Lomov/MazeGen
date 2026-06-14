@@ -4,6 +4,8 @@ import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR, NODE_COLOR, NODE_HOVER_COLOR, NODE_SELECTED_COLOR, EDGE_COLOR } from "./colorUtils";
 import { cellCenter } from "./hexGeometry";
+import { drawDirectionArrow } from "./renderers/wallUtils";
+import { TILE_SIZE } from "./constants";
 const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: 0xffffff });
 
 interface Pos { x: number; y: number; }
@@ -13,33 +15,6 @@ export function nodeColor(id: number, selectedNode: number | null, start: number
   if (id === start) return NODE_START_COLOR;
   if (id === finish) return NODE_FINISH_COLOR;
   return NODE_COLOR;
-}
-
-function gridPos(node: NodeDto, cfg: TessellationConfig): Pos {
-  return cellCenter(node, cfg);
-}
-
-function arrowHeight(len: number): number {
-  const side = Math.min(0.3 * len, NODE_RADIUS * 3);
-  return side * Math.sqrt(3) / 2;
-}
-
-function drawArrowhead(g: Graphics, from: Pos, to: Pos, innerLen: number, color: number): void {
-  if (innerLen < 1) return;
-  const side = Math.min(0.3 * innerLen, NODE_RADIUS * 3);
-  const height = side * Math.sqrt(3) / 2;
-  const dx = (to.x - from.x) / innerLen;
-  const dy = (to.y - from.y) / innerLen;
-  const px = -dy;
-  const py = dx;
-  const baseCx = to.x - dx * height;
-  const baseCy = to.y - dy * height;
-  g.poly([
-    to.x, to.y,
-    baseCx + px * side / 2, baseCy + py * side / 2,
-    baseCx - px * side / 2, baseCy - py * side / 2,
-  ]);
-  g.fill(color);
 }
 
 interface RenderEdge {
@@ -81,27 +56,21 @@ function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
     y: last.y - (dyEnd / lenEnd) * margin,
   };
 
-  const endSegLen = Math.sqrt(
-    (endPt.x - secondLast.x) ** 2 + (endPt.y - secondLast.y) ** 2
-  );
-
-  let lineEndPt = endPt;
-  if (!edge.hasReverse) {
-    const ah = arrowHeight(endSegLen);
-    const ux = dxEnd / lenEnd;
-    const uy = dyEnd / lenEnd;
-    lineEndPt = { x: endPt.x - ux * ah, y: endPt.y - uy * ah };
-  }
-
   g.moveTo(startPt.x, startPt.y);
   for (let i = 1; i < pts.length - 1; i++) {
     g.lineTo(pts[i].x, pts[i].y);
   }
-  g.lineTo(lineEndPt.x, lineEndPt.y);
+  g.lineTo(endPt.x, endPt.y);
   g.stroke({ width: 2, color });
 
   if (!edge.hasReverse) {
-    drawArrowhead(g, secondLast, endPt, endSegLen, color);
+    const midX = (startPt.x + endPt.x) / 2;
+    const midY = (startPt.y + endPt.y) / 2;
+    const edgeLen = Math.sqrt((endPt.x - startPt.x) ** 2 + (endPt.y - startPt.y) ** 2);
+    if (edgeLen < 1) return;
+    const ux = (endPt.x - startPt.x) / edgeLen;
+    const uy = (endPt.y - startPt.y) / edgeLen;
+    drawDirectionArrow(g, midX, midY, ux, uy, TILE_SIZE * 0.18, color);
   }
 }
 
@@ -199,6 +168,7 @@ export interface MazeGraphData {
   start: number | null;
   finish: number | null;
   cfg: TessellationConfig;
+  interactive?: boolean;
 }
 
 export class MazeGraphRenderer extends BaseGraphRenderer {
@@ -241,13 +211,13 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
   }
 
   private renderGraph(data: MazeGraphData): void {
-    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg } = data;
+    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true } = data;
     this.nodeViews.clear();
     this.nodeLabels.clear();
     this.resetContainers();
 
     const nodePos = new Map<number, Pos>();
-    for (const node of nodes) nodePos.set(node.id, gridPos(node, cfg));
+    for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
 
     type PairFlags = { loToHi: boolean; hiToLo: boolean };
     const pairs = new Map<string, PairFlags>();
@@ -274,7 +244,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     this.drawEdges(renderEdges, EDGE_COLOR);
 
     const renderNodes: RenderNode[] = nodes.map(n => ({ id: n.id, pos: nodePos.get(n.id)! }));
-    this.nodeViews = this.drawNodes(renderNodes, selectedNode, start, finish, true);
+    this.nodeViews = this.drawNodes(renderNodes, selectedNode, start, finish, interactive);
 
     for (const node of nodes) {
       const label = this.makeLabel(node, showNodeIds, showCoords);
@@ -354,7 +324,7 @@ export class NavGraphRenderer extends BaseGraphRenderer {
 
     const { nodes, navNodes, navEdges, start, finish, cfg } = data;
     const nodePos = new Map<number, Pos>();
-    for (const node of nodes) nodePos.set(node.id, gridPos(node, cfg));
+    for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
 
     const edgeKeys = new Set<string>();
     for (const e of navEdges) {

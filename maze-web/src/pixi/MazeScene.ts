@@ -1,6 +1,7 @@
 import { Application, Container } from "pixi.js";
 import { GenerationRenderer } from "./GenerationRenderer";
 import { TessellationRenderer } from "./TessellationRenderer";
+import { AnalyticsRenderer } from "./AnalyticsRenderer";
 import { TILE_SIZE } from "./constants";
 import { cellCenter, mazeBounds } from "./hexGeometry";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
@@ -29,6 +30,8 @@ export class MazeScene {
   private presetConnectionsRenderer: PresetConnectionsRenderer;
   private presetConnectionsContainer: Container;
   private presetConnectionsController: PresetConnectionsController;
+  private analyticsRenderer: AnalyticsRenderer;
+  private analyticsContainer: Container;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
@@ -56,12 +59,14 @@ export class MazeScene {
     this.primitivePreviewContainer = new Container();
     this.presetConnectionsContainer = new Container();
     this.tessellationContainer = new Container();
+    this.analyticsContainer = new Container();
 
     this.syncedLayers = [
       this.fieldEditorOverlayContainer,
       this.primitivePreviewContainer,
       this.presetConnectionsContainer,
       this.tessellationContainer,
+      this.analyticsContainer,
     ];
 
     this.app.stage.addChild(this.viewport);
@@ -75,6 +80,7 @@ export class MazeScene {
 
     this.generationRenderer = new GenerationRenderer(this.viewport);
     this.tessellationRenderer = new TessellationRenderer(this.tessellationContainer);
+    this.analyticsRenderer = new AnalyticsRenderer(this.analyticsContainer);
 
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
@@ -238,6 +244,13 @@ export class MazeScene {
       layer.scale.x = this.viewport.scale.x;
       layer.scale.y = this.viewport.scale.y;
     }
+    this.generationRenderer.onViewportChanged(
+      this.viewport.x,
+      this.viewport.y,
+      this.app.screen.width,
+      this.app.screen.height,
+      this.viewport.scale.x,
+    );
     this.fieldEditorOverlay.onViewportChanged(
       this.viewport.x,
       this.viewport.y,
@@ -260,6 +273,13 @@ export class MazeScene {
       this.viewport.scale.x,
     );
     this.tessellationRenderer.onViewportChanged(
+      this.viewport.x,
+      this.viewport.y,
+      this.app.screen.width,
+      this.app.screen.height,
+      this.viewport.scale.x,
+    );
+    this.analyticsRenderer.onViewportChanged(
       this.viewport.x,
       this.viewport.y,
       this.app.screen.width,
@@ -410,6 +430,7 @@ export class MazeScene {
     this.unsubscribeQualityOpen?.();
     this.generationRenderer.destroy();
     this.tessellationRenderer.destroy();
+    this.analyticsRenderer.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();

@@ -6,6 +6,7 @@ import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./featur
 import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
 import { QualityFeature } from "./features/QualityFeature";
 import { GenerationFeature } from "./features/GenerationFeature";
+import { AnalyticsFeature } from "./features/AnalyticsFeature";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind } from "../store/mazeStore";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
@@ -77,7 +78,7 @@ function getTessellationKindLabel(kind: TessellationKind): string {
   return labels[kind]();
 }
 
-type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation";
+type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "analytics";
 
 export function FeaturesPanel() {
   const [openCard, setOpenCard] = useState<FeatureId>("basic_config");
@@ -100,7 +101,9 @@ export function FeaturesPanel() {
   const setPresetConnectionsOpen = useMazeStore((s) => s.setPresetConnectionsOpen);
   const setGenerationOpen = useMazeStore((s) => s.setGenerationOpen);
   const setQualityOpen = useMazeStore((s) => s.setQualityOpen);
+  const setAnalyticsOpen = useMazeStore((s) => s.setAnalyticsOpen);
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
+  const nodes = useMazeStore((s) => s.nodes);
 
   function handleToggle(id: FeatureId) {
     if (openCard === id) return;
@@ -108,11 +111,13 @@ export function FeaturesPanel() {
     if (openCard === "preset_connections") setPresetConnectionsOpen(false);
     if (openCard === "generation") setGenerationOpen(false);
     if (openCard === "quality") setQualityOpen(false);
+    if (openCard === "analytics") setAnalyticsOpen(false);
     if (id === "basic_config") syncPreviewToConfirmed();
     if (id === "field_setup") setFieldSetupOpen(true);
     if (id === "preset_connections") setPresetConnectionsOpen(true);
     if (id === "generation") setGenerationOpen(true);
     if (id === "quality") setQualityOpen(true);
+    if (id === "analytics") setAnalyticsOpen(true);
     setOpenCard(id);
   }
 
@@ -163,9 +168,6 @@ export function FeaturesPanel() {
 
   return (
     <div style={styles.panel}>
-      <div style={styles.header}>
-        <LanguageSwitcher />
-      </div>
       <FeatureCard
         title={m["tessellation.title"]()}
         status={basicConfigStatus}
@@ -221,6 +223,18 @@ export function FeaturesPanel() {
       >
         <GenerationFeature canGenerate={tessellationConfirmed} />
       </FeatureCard>
+      <FeatureCard
+        title={m["analytics.title"]()}
+        status={nodes.length > 0 ? "set" : "unavailable"}
+        comment={nodes.length > 0 ? m["status.analytics_available"]() : m["status.no_maze"]()}
+        expanded={openCard === "analytics"}
+        onOpen={() => handleToggle("analytics")}
+      >
+        <AnalyticsFeature />
+      </FeatureCard>
+      <div style={styles.footer}>
+        <LanguageSwitcher />
+      </div>
     </div>
   );
 }
@@ -234,11 +248,12 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.bgPanel,
     overflowY: "auto",
   },
-  header: {
+  footer: {
     display: "flex",
     justifyContent: "flex-end",
     alignItems: "center",
     padding: "6px 10px",
-    borderBottom: `1px solid ${colors.borderDim}`,
+    borderTop: `1px solid ${colors.borderDim}`,
+    marginTop: "auto",
   },
 };

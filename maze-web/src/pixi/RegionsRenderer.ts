@@ -5,21 +5,20 @@ import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import type { CellFillGroup } from "./renderers/CellFillRenderer";
 import { buildPalette, COMPONENT_MASK_ALPHA } from "./colorUtils";
 
-
-export interface ComponentData {
+export interface RegionsData {
   nodes: NodeDto[];
   components: number[][];
   cfg: TessellationConfig;
 }
 
-export class ComponentRenderer {
+export class RegionsRenderer {
   private readonly cells: CellFillRenderer;
 
   constructor(container: Container) {
     this.cells = new CellFillRenderer(container);
   }
 
-  render(data: ComponentData): void {
+  render(data: RegionsData): void {
     const { nodes, components, cfg } = data;
     if (nodes.length === 0 || components.length === 0) {
       this.cells.render([], cfg);

@@ -2,6 +2,31 @@ import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
 import { ONE_WAY_COLOR } from "../colorUtils";
 
+// Draws a direction arrow triangle centered at (cx, cy), pointing in (dx, dy) direction.
+// size controls the scale. Color defaults to ONE_WAY_COLOR.
+export function drawDirectionArrow(
+  g: Graphics,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+  size: number,
+  color?: number,
+): void {
+  const px = -dy;
+  const py = dx;
+  const tipX = cx + dx * size;
+  const tipY = cy + dy * size;
+  const baseX = cx - dx * size * 0.5;
+  const baseY = cy - dy * size * 0.5;
+  g.poly([
+    tipX, tipY,
+    baseX + px * size * 0.6, baseY + py * size * 0.6,
+    baseX - px * size * 0.6, baseY - py * size * 0.6,
+  ]);
+  g.fill(color ?? ONE_WAY_COLOR);
+}
+
 export function drawOneWayTriangle(
   g: Graphics,
   wallCx: number,
@@ -9,17 +34,5 @@ export function drawOneWayTriangle(
   pointingDx: number,
   pointingDy: number,
 ): void {
-  const size = TILE_SIZE * 0.18;
-  const px = -pointingDy;
-  const py = pointingDx;
-  const tipX = wallCx + pointingDx * size;
-  const tipY = wallCy + pointingDy * size;
-  const baseX = wallCx - pointingDx * size * 0.5;
-  const baseY = wallCy - pointingDy * size * 0.5;
-  g.poly([
-    tipX, tipY,
-    baseX + px * size * 0.6, baseY + py * size * 0.6,
-    baseX - px * size * 0.6, baseY - py * size * 0.6,
-  ]);
-  g.fill(ONE_WAY_COLOR);
+  drawDirectionArrow(g, wallCx, wallCy, pointingDx, pointingDy, TILE_SIZE * 0.18);
 }

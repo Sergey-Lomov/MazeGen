@@ -12,8 +12,9 @@ export class CellFillRenderer {
     container.addChild(this.g);
   }
 
-  render(data: CellFillGroup | CellFillGroup[], cfg: TessellationConfig): void {
+  render(data: CellFillGroup | CellFillGroup[], cfg?: TessellationConfig): void {
     this.g.clear();
+    if (!cfg) return;
     const groups = Array.isArray(data) ? data : [data];
     for (const group of groups) {
       for (const [x, y] of group.cells) {
