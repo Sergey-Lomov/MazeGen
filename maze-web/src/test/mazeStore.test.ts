@@ -56,7 +56,6 @@ beforeEach(() => {
     finish: null,
     showNodeIds: false,
     showCoords: false,
-    showGraphOverlay: true,
     showFieldOverlay: true,
     selectedNode: null,
     error: null,
@@ -626,9 +625,9 @@ describe("mazeStore.setDebugFlag", () => {
     expect(useMazeStore.getState().showCoords).toBe(true);
   });
 
-  it("sets showGraphOverlay", () => {
-    useMazeStore.getState().setDebugFlag("showGraphOverlay", false);
-    expect(useMazeStore.getState().showGraphOverlay).toBe(false);
+  it("sets showMaze", () => {
+    useMazeStore.getState().setDebugFlag("showMaze", false);
+    expect(useMazeStore.getState().showMaze).toBe(false);
   });
 });
 

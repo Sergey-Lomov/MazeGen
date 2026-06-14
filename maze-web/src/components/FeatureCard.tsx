@@ -9,7 +9,7 @@ export interface FeatureCardProps {
   comment?: string;
   subtitle?: string;
   expanded: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
   children?: React.ReactNode;
 }
 
@@ -39,23 +39,20 @@ export function StatusDot({ status }: { status: FeatureStatus }) {
   );
 }
 
-export function FeatureCard({ title, status, comment, subtitle, expanded, onToggle, children }: FeatureCardProps) {
+export function FeatureCard({ title, status, comment, subtitle, expanded, onOpen, children }: FeatureCardProps) {
   const canExpand = status !== "unavailable";
 
   return (
     <div style={styles.card}>
       <button
         style={{ ...styles.header, ...(canExpand ? styles.headerClickable : styles.headerDisabled) }}
-        onClick={canExpand ? onToggle : undefined}
+        onClick={canExpand ? onOpen : undefined}
         disabled={!canExpand}
       >
         <StatusDot status={status} />
         <div style={styles.headerText}>
           <div style={styles.titleRow}>
             <span style={styles.title}>{title}</span>
-            {canExpand && (
-              <span style={styles.chevron}>{expanded ? "▲" : "▼"}</span>
-            )}
           </div>
           {comment && <span style={styles.comment}>{comment}</span>}
           {subtitle && <span style={styles.subtitle}>{subtitle}</span>}
@@ -124,11 +121,6 @@ const styles: Record<string, React.CSSProperties> = {
   subtitle: {
     fontSize: font.sm,
     color: colors.textFaint,
-  },
-  chevron: {
-    fontSize: font.xs,
-    color: colors.textDisabled,
-    flexShrink: 0,
   },
   body: {
     padding: "0 12px 12px",

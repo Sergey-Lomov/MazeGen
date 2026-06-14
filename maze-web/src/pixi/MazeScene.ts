@@ -18,10 +18,6 @@ const FIT_PADDING = 0.9;
 export class MazeScene {
   private app: Application;
   private viewport: Container;
-  private componentOverlay: Container;
-  private graphOverlay: Container;
-  private navOverlay: Container;
-  private routeOverlayContainer: Container;
   private generationRenderer: GenerationRenderer;
   private tessellationRenderer: TessellationRenderer;
   private tessellationContainer: Container;
@@ -55,20 +51,12 @@ export class MazeScene {
 
     this.viewport = new Container();
 
-    this.componentOverlay = new Container();
-    this.graphOverlay = new Container();
-    this.navOverlay = new Container();
-    this.routeOverlayContainer = new Container();
     this.fieldEditorOverlayContainer = new Container();
     this.primitivePreviewContainer = new Container();
     this.presetConnectionsContainer = new Container();
     this.tessellationContainer = new Container();
 
     this.syncedLayers = [
-      this.componentOverlay,
-      this.graphOverlay,
-      this.navOverlay,
-      this.routeOverlayContainer,
       this.fieldEditorOverlayContainer,
       this.primitivePreviewContainer,
       this.presetConnectionsContainer,
@@ -84,13 +72,7 @@ export class MazeScene {
     this.viewport.y = cy;
     for (const layer of this.syncedLayers) { layer.x = cx; layer.y = cy; }
 
-    this.generationRenderer = new GenerationRenderer(
-      this.viewport,
-      this.componentOverlay,
-      this.graphOverlay,
-      this.navOverlay,
-      this.routeOverlayContainer,
-    );
+    this.generationRenderer = new GenerationRenderer(this.viewport);
     this.tessellationRenderer = new TessellationRenderer(this.tessellationContainer);
 
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);

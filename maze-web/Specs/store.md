@@ -2,42 +2,157 @@
 
 ## Purpose
 
-Single Zustand store for all application state. No local component state for anything maze-related.
+Single Zustand store (`useMazeStore`) for all application state. No local component state for maze-related data.
 
 ## State Shape
 
-```ts
-interface MazeState {
-  seed: number;        // RNG seed for generation
-  width: number;       // maze width in cells
-  height: number;      // maze height in cells
-  nodes: NodeDto[];    // current maze nodes
-  edges: EdgeDto[];    // current maze directed edges
-  showNodeIds: boolean;
-  showCoords: boolean;
-  selectedNode: number | null;
-  error: string | null;
-}
-```
+### Tessellation
 
-Defaults: `seed=42`, `width=10`, `height=10`, nodes/edges empty, all flags false.
+| Field | Type | Description |
+|-------|------|-------------|
+| `tessellationKind` | `"square" \| "hex" \| "triangle"` | Confirmed tessellation type |
+| `hexOrientation` | `"flat_top" \| "pointy_top"` | Confirmed hex orientation |
+| `triOrientation` | `"r0" \| "r90" \| "r180" \| "r270"` | Confirmed triangle orientation |
+| `tessellationConfirmed` | `boolean` | Whether tessellation has been confirmed |
+| `previewKind` | `TessellationKind` | Preview (changes on every dropdown change) |
+| `previewHexOrientation` | `HexOrientation` | Preview hex orientation |
+| `previewTriOrientation` | `TriOrientation` | Preview tri orientation |
+| `previewTessellationConfig` | `TessellationConfig` | Drives canvas grid during field setup |
+| `squareShape` | `"rect" \| "free"` | Active square shape |
+| `hexShape` | `"parallelogram" \| "hexagon" \| "free"` | Active hex shape |
+| `triangleShape` | `"rect" \| "triangle" \| "hexagon" \| "free"` | Active triangle shape |
+| `savedConfigs` | `Partial<Record<type, TessellationConfig>>` | Saved config per type, survives shape switches |
+| `tessellationConfig` | `TessellationConfig` | Active config for field setup |
+| `activeTessellationConfig` | `TessellationConfig` | Config that was active at last generation |
+
+### Field
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `freeFieldPoints` | `Record<TessellationKind, Set<number>>` | Encoded free-draw points per kind |
+| `isEditingField` | `boolean` | True when shape is "free" or fieldEditMode is "custom" |
+| `fieldPoints` | `Set<number>` | Active custom cell set (encoded points) |
+| `fieldEditMode` | `"default" \| "custom"` | Card-based edit mode |
+| `fieldPrimitive` | `FieldPrimitive` | Active draw primitive for free editing |
+| `showFieldOverlay` | `boolean` | Whether field overlay is visible |
+| `showFieldOrigin` | `boolean` | Whether field origin crosshair is shown |
+
+### Maze Data
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `nodes` | `NodeDto[]` | Generated maze nodes |
+| `edges` | `EdgeDto[]` | Generated directed edges |
+| `start` | `number \| null` | Start node id |
+| `finish` | `number \| null` | Finish node id |
+| `navNodes` | `NavNodeDto[]` | Navigation graph nodes |
+| `navEdges` | `NavEdgeDto[]` | Navigation graph edges |
+| `components` | `number[][]` | Strongly connected components (arrays of node ids) |
+| `nodeStats` | `NodeStatsDto \| null` | Node degree statistics |
+| `edgeStats` | `SpatialEdgeStatsDto \| null` | Edge pair statistics |
+| `routeInfo` | `RouteInfoDto \| null` | Route analysis result |
+
+### Generation Config
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `seed` | `number` | RNG seed |
+| `randomSeed` | `boolean` | Use random seed on each generate |
+| `lastUsedSeed` | `number \| null` | Seed from last generate (for regenerate) |
+| `generationStatus` | `"idle" \| "done" \| "error"` | Last generation result |
+| `initialConfig` | `InitialGenerationConfig` | Algorithm + params |
+| `elementsConfig` | `ElementsConfig` | One-way chance etc. |
+| `selectedChecks` | `string[]` | Active quality check ids |
+| `selectedStrategies` | `Record<string, string>` | issueKind → strategyId |
+| `strategyParams` | `Record<strategyId, Record<paramId, string>>` | Raw string param values |
+| `checkParams` | `Record<checkId, Record<paramId, string>>` | Raw string param values |
+| `registryLoaded` | `boolean` | WASM check/strategy registry loaded |
+| `availableChecks` | `CheckDescriptor[]` | All checks from WASM registry |
+| `availableStrategies` | `StrategyDescriptor[]` | All strategies from WASM registry |
+
+### Preset Connections
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `presetConnections` | `Map<string, PresetConnectionEntry>` | Key = `"x1,y1-x2,y2"` |
+| `presetConnectionsTool` | `PresetConnectionTool` | Active tool (wall/passage/one_way_*) |
+| `presetStart` | `[number, number] \| null` | Forced start cell |
+| `presetFinish` | `[number, number] \| null` | Forced finish cell |
+| `presetConnectionsOpen` | `boolean` | Preset connections panel open |
+| `highlightInvalidPresets` | `boolean` | Highlight out-of-field presets |
+| `highlightIsolatedNodes` | `boolean` | Highlight isolated nodes |
+| `showPresetOrigin` | `boolean` | Show origin marker in preset view |
+| `lockedNodes` | `Map<string, NodeLockKind>` | Key = `"x,y"`, manual locks |
+| `autoLock` | `boolean` | Auto-lock fully-constrained nodes |
+| `autoLockedNodes` | `Set<string>` | Keys of auto-locked nodes (always `lock_both`) |
+
+### UI State
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `generationOpen` | `boolean` | Generation feature card open |
+| `fieldSetupOpen` | `boolean` | Field setup feature card open |
+| `selectedNode` | `number \| null` | Currently selected node id |
+| `showNodeIds` | `boolean` | Show node id labels on graph |
+| `showCoords` | `boolean` | Show coordinate labels on graph |
+| `showMaze` | `boolean` | Show maze tile renderer |
+| `warnings` | `string[]` | Generation warnings |
+| `error` | `string \| null` | Last error message |
+
+### Debug
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `debugMode` | `boolean` | Debug mode active |
+| `debugSnapshot` | `GenerationStepsSnapshot \| null` | Step-by-step generation snapshot |
+| `debugStep` | `number` | Current snapshot step index |
+| `debugStale` | `boolean` | Snapshot is outdated (config changed since last generate) |
+| `showDebugFrontier` | `boolean` | Show active_nodes / current_src overlays |
+
+## Key Invariants
+
+- `tessellationConfig` = config driving field setup UI; `activeTessellationConfig` = config used at last generation. They diverge when user changes config after generating.
+- `fieldPoints` mirrors `freeFieldPoints[tessellationKind]` when `isEditingField`.
+- `autoLockedNodes` is recomputed whenever `presetConnections`, `tessellationConfig`, or `autoLock` change.
+- `debugStale = true` whenever any generation-relevant config changes after a snapshot exists.
+- `debugMode = false` clears `debugStale`.
+- Debug snapshot step 0 is a synthetic client-side empty state; WASM steps start at index 1.
 
 ## Actions
 
-| Action | Effect |
-|---|---|
-| `setSeed(n)` | Set seed, clear error |
-| `setWidth(n)` | Set width, clear error |
-| `setHeight(n)` | Set height, clear error |
-| `generate()` | Call WASM, update nodes/edges/error, clear selectedNode |
-| `reset()` | Clear nodes/edges/error/selectedNode |
-| `setDebugFlag(key, value)` | Toggle `showNodeIds` or `showCoords` |
-| `selectNode(id \| null)` | Set selected node |
+### Tessellation
+- `setPreviewKind/setPreviewHexOrientation/setPreviewTriOrientation` — update preview only
+- `confirmTessellation()` — copies preview → confirmed; resets maze data if kind changed
+- `syncPreviewToConfirmed()` — sync preview dropdowns to confirmed values
+- `setTessellationKind/setSquareShape/setHexShape/setTriangleShape/setHexOrientation/setTriOrientation` — update confirmed tessellation
+- `setTessellationConfig(cfg)` — full config override, derives kind/shape from config type
+
+### Generation
+- `generate()` — generates with current (possibly random) seed; sets `debugSnapshot` if `debugMode`
+- `regenerate()` — repeats generate with `lastUsedSeed`
+- `reset()` — clears maze data
+- `setDebugMode(v)` — enable/disable; disabling also clears `debugStale`
+- `setDebugStep(n)` — set current step
+- `setShowDebugFrontier(v)` — toggle frontier overlay visibility
+
+### Field
+- `addFieldPoint/removeFieldPoint/addFieldPoints/removeFieldPoints/clearFieldPoints` — mutate free-draw cell set
+- `setFieldEditMode("custom"|"default")` — switch edit mode; "custom" seeds points from predefined config
+
+### Checks & Strategies
+- `loadRegistry()` — async, loads check/strategy descriptors from WASM
+- `addCheck/removeCheck/setCheckParam` — manage selected checks
+- `setStrategy/setStrategyParam` — manage repair strategies
+
+### Preset Connections
+- `applyPresetConnectionsTool(key, from, to)` — apply active tool to a connection
+- `applyPresetConnectionsReset(key)` — delete a connection
+- `clearInvalidPresetConnections()` — remove connections outside current field
+- `resetPresetConnections()` — clear all presets, locks, start/finish
+
+### Debug Flags
+- `setDebugFlag(key, value)` — toggle `showNodeIds`, `showCoords`, or `showMaze`
 
 ## Error Handling
 
-`generate()` catches exceptions from WASM or validation and stores the message in `error`. Does not throw. `error` is cleared on successful generate or any setter call.
-
-## WASM Coupling
-
-`generate()` calls `generateMaze` from `mazeService`, which lazy-inits WASM on first call. Store does not know about WASM internals.
+`generate()` catches WASM exceptions and stores message in `error`. Does not throw. `error` is cleared on successful generate or `setSeed`.

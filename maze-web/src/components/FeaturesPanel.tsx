@@ -33,7 +33,7 @@ const KIND_LABELS: Record<TessellationKind, string> = {
 type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation";
 
 export function FeaturesPanel() {
-  const [openCard, setOpenCard] = useState<FeatureId | null>(null);
+  const [openCard, setOpenCard] = useState<FeatureId>("basic_config");
 
   const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
@@ -55,21 +55,15 @@ export function FeaturesPanel() {
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
 
   function handleToggle(id: FeatureId) {
-    if (openCard === id) {
-      if (id === "field_setup") setFieldSetupOpen(false);
-      if (id === "preset_connections") setPresetConnectionsOpen(false);
-      if (id === "generation") setGenerationOpen(false);
-      setOpenCard(null);
-    } else {
-      if (openCard === "field_setup") setFieldSetupOpen(false);
-      if (openCard === "preset_connections") setPresetConnectionsOpen(false);
-      if (openCard === "generation") setGenerationOpen(false);
-      if (id === "basic_config") syncPreviewToConfirmed();
-      if (id === "field_setup") setFieldSetupOpen(true);
-      if (id === "preset_connections") setPresetConnectionsOpen(true);
-      if (id === "generation") setGenerationOpen(true);
-      setOpenCard(id);
-    }
+    if (openCard === id) return;
+    if (openCard === "field_setup") setFieldSetupOpen(false);
+    if (openCard === "preset_connections") setPresetConnectionsOpen(false);
+    if (openCard === "generation") setGenerationOpen(false);
+    if (id === "basic_config") syncPreviewToConfirmed();
+    if (id === "field_setup") setFieldSetupOpen(true);
+    if (id === "preset_connections") setPresetConnectionsOpen(true);
+    if (id === "generation") setGenerationOpen(true);
+    setOpenCard(id);
   }
 
   const basicConfigStatus: FeatureStatus = tessellationConfirmed ? "set" : "critical";
@@ -119,7 +113,7 @@ export function FeaturesPanel() {
         comment={basicConfigComment}
         subtitle={basicConfigSubtitle()}
         expanded={openCard === "basic_config"}
-        onToggle={() => handleToggle("basic_config")}
+        onOpen={() => handleToggle("basic_config")}
       >
         <BasicConfigFeature />
       </FeatureCard>
@@ -131,7 +125,7 @@ export function FeaturesPanel() {
           ? fieldSetupSubtitle(tessellationKind, squareShape, hexShape, triangleShape, fieldEditMode, fieldPoints, tessellationConfig)
           : undefined}
         expanded={openCard === "field_setup"}
-        onToggle={() => handleToggle("field_setup")}
+        onOpen={() => handleToggle("field_setup")}
       >
         <FieldSetupFeature />
       </FeatureCard>
@@ -143,7 +137,7 @@ export function FeaturesPanel() {
           ? presetConnectionsSubtitle(presetConnections, presetInvalidKeys.size, markerCount)
           : undefined}
         expanded={openCard === "preset_connections"}
-        onToggle={() => handleToggle("preset_connections")}
+        onOpen={() => handleToggle("preset_connections")}
       >
         <PresetConnectionsFeature />
       </FeatureCard>
@@ -153,7 +147,7 @@ export function FeaturesPanel() {
         comment={selectedChecks.length === 0 ? "No checks active" : "Quality checks configured"}
         subtitle={`${selectedChecks.length} check${selectedChecks.length !== 1 ? "s" : ""} active`}
         expanded={openCard === "quality"}
-        onToggle={() => handleToggle("quality")}
+        onOpen={() => handleToggle("quality")}
       >
         <QualityFeature />
       </FeatureCard>
@@ -162,7 +156,7 @@ export function FeaturesPanel() {
         status={tessellationConfirmed ? "set" : "unavailable"}
         comment={tessellationConfirmed ? "Ready to generate" : "Confirm tessellation first"}
         expanded={openCard === "generation"}
-        onToggle={() => handleToggle("generation")}
+        onOpen={() => handleToggle("generation")}
       >
         <GenerationFeature canGenerate={tessellationConfirmed} />
       </FeatureCard>

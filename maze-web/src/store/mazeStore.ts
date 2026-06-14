@@ -64,10 +64,6 @@ interface MazeState {
   showNodeIds: boolean;
   showCoords: boolean;
   showMaze: boolean;
-  showGraphOverlay: boolean;
-  showNavOverlay: boolean;
-  showComponents: boolean;
-  showRoute: boolean;
   selectedNode: number | null;
   warnings: string[];
   error: string | null;
@@ -113,6 +109,7 @@ interface MazeState {
   debugSnapshot: GenerationStepsSnapshot | null;
   debugStep: number;
   debugStale: boolean;
+  showDebugFrontier: boolean;
 }
 
 interface MazeActions {
@@ -134,7 +131,7 @@ interface MazeActions {
   setTessellationConfig: (cfg: TessellationConfig) => void;
   generate: () => void;
   reset: () => void;
-  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze" | "showGraphOverlay" | "showNavOverlay" | "showComponents" | "showRoute", value: boolean) => void;
+  setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze", value: boolean) => void;
   selectNode: (id: number | null) => void;
   loadRegistry: () => Promise<void>;
   addCheck: (id: string) => void;
@@ -175,6 +172,7 @@ interface MazeActions {
   setRandomSeed: (v: boolean) => void;
   setDebugMode: (v: boolean) => void;
   setDebugStep: (step: number) => void;
+  setShowDebugFrontier: (v: boolean) => void;
   regenerate: () => void;
 }
 
@@ -303,10 +301,6 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   showNodeIds: false,
   showCoords: false,
   showMaze: true,
-  showGraphOverlay: true,
-  showNavOverlay: false,
-  showComponents: false,
-  showRoute: false,
   selectedNode: null,
   warnings: [],
   error: null,
@@ -346,6 +340,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   debugSnapshot: null,
   debugStep: 0,
   debugStale: false,
+  showDebugFrontier: true,
 
   setSeed: (seed) => set({ seed, error: null }),
 
@@ -556,6 +551,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false }),
 
   setDebugStep: (step) => set({ debugStep: step }),
+
+  setShowDebugFrontier: (v) => set({ showDebugFrontier: v }),
 
   reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const }),
 

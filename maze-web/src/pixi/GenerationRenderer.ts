@@ -1,45 +1,55 @@
 import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { MazeTileRenderer } from "./MazeTileRenderer";
-import { ComponentRenderer } from "./ComponentRenderer";
-import { MazeGraphRenderer, NavGraphRenderer } from "./MazeRenderer";
-import { RouteOverlay } from "./RouteOverlay";
+import { CellFillRenderer } from "./renderers/CellFillRenderer";
+import { WallRenderer } from "./renderers/WallRenderer";
+import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
+import { buildMazeWalls, buildMazeMarkers } from "./selectors/mazeSelectors";
+import type { NodeDto, EdgeDto } from "../wasm/types";
+import {
+  FLOOR_COLOR, WALL_COLOR,
+  DEBUG_ACTIVE_COLOR, DEBUG_CURRENT_SRC_COLOR,
+  DEBUG_ACTIVE_ALPHA,
+} from "./colorUtils";
 
 export class GenerationRenderer {
-  private readonly viewport: Container;
-  private readonly componentOverlay: Container;
-  private readonly graphOverlay: Container;
-  private readonly navOverlay: Container;
-  private readonly routeOverlayContainer: Container;
+  private readonly floorContainer: Container;
+  private readonly closedCellsContainer: Container;
+  private readonly wallsContainer: Container;
+  private readonly markersContainer: Container;
+  private readonly debugActiveContainer: Container;
+  private readonly debugSrcContainer: Container;
 
-  private readonly tileRenderer: MazeTileRenderer;
-  private readonly componentRenderer: ComponentRenderer;
-  private readonly graphRenderer: MazeGraphRenderer;
-  private readonly navRenderer: NavGraphRenderer;
-  private readonly routeOverlay: RouteOverlay;
+  private readonly floor: CellFillRenderer;
+  private readonly closedCells: CellFillRenderer;
+  private readonly walls: WallRenderer;
+  private readonly markers: WaypointsRenderer;
+  private readonly debugActive: CellFillRenderer;
+  private readonly debugSrc: CellFillRenderer;
 
   private unsubscribe: (() => void) | null = null;
+  private closedCellsCache: { nodes: NodeDto[]; edges: EdgeDto[]; result: [number, number][] } | null = null;
 
-  constructor(
-    viewport: Container,
-    componentOverlay: Container,
-    graphOverlay: Container,
-    navOverlay: Container,
-    routeOverlayContainer: Container,
-  ) {
-    this.viewport = viewport;
-    this.componentOverlay = componentOverlay;
-    this.graphOverlay = graphOverlay;
-    this.navOverlay = navOverlay;
-    this.routeOverlayContainer = routeOverlayContainer;
+  constructor(viewport: Container) {
+    this.floorContainer = new Container();
+    this.closedCellsContainer = new Container();
+    this.wallsContainer = new Container();
+    this.markersContainer = new Container();
+    this.debugActiveContainer = new Container();
+    this.debugSrcContainer = new Container();
 
-    this.tileRenderer = new MazeTileRenderer(this.viewport);
-    this.componentRenderer = new ComponentRenderer(this.componentOverlay);
+    viewport.addChild(this.floorContainer);
+    viewport.addChild(this.closedCellsContainer);
+    viewport.addChild(this.wallsContainer);
+    viewport.addChild(this.markersContainer);
+    viewport.addChild(this.debugActiveContainer);
+    viewport.addChild(this.debugSrcContainer);
 
-    this.graphRenderer = new MazeGraphRenderer(this.graphOverlay);
-    this.navRenderer = new NavGraphRenderer(this.navOverlay);
-
-    this.routeOverlay = new RouteOverlay(this.routeOverlayContainer);
+    this.floor = new CellFillRenderer(this.floorContainer);
+    this.closedCells = new CellFillRenderer(this.closedCellsContainer);
+    this.walls = new WallRenderer(this.wallsContainer);
+    this.markers = new WaypointsRenderer(this.markersContainer);
+    this.debugActive = new CellFillRenderer(this.debugActiveContainer);
+    this.debugSrc = new CellFillRenderer(this.debugSrcContainer);
 
     this.syncVisibility(useMazeStore.getState());
     this.renderAll(useMazeStore.getState());
@@ -52,10 +62,7 @@ export class GenerationRenderer {
       const visibilityChanged =
         state.generationOpen !== prev.generationOpen ||
         state.showMaze !== prev.showMaze ||
-        state.showComponents !== prev.showComponents ||
-        state.showGraphOverlay !== prev.showGraphOverlay ||
-        state.showNavOverlay !== prev.showNavOverlay ||
-        state.showRoute !== prev.showRoute;
+        state.showDebugFrontier !== prev.showDebugFrontier;
 
       if (visibilityChanged) {
         this.syncVisibility(state);
@@ -66,24 +73,13 @@ export class GenerationRenderer {
         state.edges !== prev.edges ||
         state.start !== prev.start ||
         state.finish !== prev.finish ||
-        state.navNodes !== prev.navNodes ||
-        state.navEdges !== prev.navEdges ||
-        state.components !== prev.components ||
-        state.routeInfo !== prev.routeInfo ||
         state.activeTessellationConfig !== prev.activeTessellationConfig ||
         state.debugMode !== prev.debugMode ||
         state.debugSnapshot !== prev.debugSnapshot ||
         state.debugStep !== prev.debugStep;
 
-      const graphDisplayChanged =
-        state.showNodeIds !== prev.showNodeIds ||
-        state.showCoords !== prev.showCoords ||
-        state.selectedNode !== prev.selectedNode;
-
       if (dataChanged) {
         this.renderAll(state);
-      } else if (graphDisplayChanged) {
-        this.renderGraph(state);
       }
 
       prev = state;
@@ -91,12 +87,13 @@ export class GenerationRenderer {
   }
 
   private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
-    const open = state.generationOpen;
-    this.viewport.visible              = open && state.showMaze;
-    this.componentOverlay.visible      = open && state.showComponents;
-    this.graphOverlay.visible          = open && state.showGraphOverlay;
-    this.navOverlay.visible            = open && state.showNavOverlay;
-    this.routeOverlayContainer.visible = open && state.showRoute;
+    const visible = state.generationOpen && state.showMaze;
+    this.floorContainer.visible = visible;
+    this.closedCellsContainer.visible = visible;
+    this.wallsContainer.visible = visible;
+    this.markersContainer.visible = visible;
+    this.debugActiveContainer.visible = visible && state.showDebugFrontier;
+    this.debugSrcContainer.visible = visible && state.showDebugFrontier;
   }
 
   private debugView(state: ReturnType<typeof useMazeStore.getState>) {
@@ -114,65 +111,67 @@ export class GenerationRenderer {
     const cfg = state.activeTessellationConfig;
     const view = this.debugView(state);
 
-    this.tileRenderer.render({
-      nodes: view.nodes,
-      edges: view.edges,
-      start: view.start,
-      finish: view.finish,
-      cfg,
-      debugVisible: state.debugMode && !!view.currentStep,
-      activeNodes: view.currentStep?.active_nodes ?? [],
-      currentSrc: view.currentStep?.current_src ?? null,
-    });
+    const cells: [number, number][] = view.nodes.map(n => [n.x, n.y]);
+    this.floor.render({ cells, color: FLOOR_COLOR, alpha: 1 }, cfg);
 
-    this.componentRenderer.render({
-      nodes: state.nodes,
-      components: state.components,
-      cfg,
-    });
+    if (!this.closedCellsCache || this.closedCellsCache.nodes !== view.nodes || this.closedCellsCache.edges !== view.edges) {
+      this.closedCellsCache = { nodes: view.nodes, edges: view.edges, result: buildClosedCells(view.nodes, view.edges) };
+    }
+    this.closedCells.render({ cells: this.closedCellsCache.result, color: WALL_COLOR, alpha: 1 }, cfg);
 
-    this.renderGraph(state, view);
+    const wallEdges = buildMazeWalls(view.nodes, view.edges, cfg);
+    this.walls.render({ edges: wallEdges }, cfg);
 
-    this.navRenderer.render({
-      nodes: state.nodes,
-      navNodes: state.navNodes,
-      navEdges: state.navEdges,
-      start: state.start,
-      finish: state.finish,
-      cfg,
-    });
+    const nodeById = new Map(view.nodes.map(n => [n.id, n]));
+    const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
+    this.markers.render({ markers: markerData });
 
-    this.routeOverlay.render({
-      routeInfo: state.routeInfo,
-      nodes: state.nodes,
-      cfg,
-    });
-  }
+    if (!state.showDebugFrontier) return;
 
-  private renderGraph(
-    state: ReturnType<typeof useMazeStore.getState>,
-    view = this.debugView(state),
-  ): void {
-    const cfg = state.activeTessellationConfig;
+    const debugVisible = state.debugMode && !!view.currentStep;
+    if (!debugVisible || view.nodes.length === 0) {
+      this.debugActive.render({ cells: [], color: DEBUG_ACTIVE_COLOR, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
+      this.debugSrc.render({ cells: [], color: DEBUG_CURRENT_SRC_COLOR, alpha: 0.8 }, cfg);
+      return;
+    }
 
-    this.graphRenderer.render({
-      nodes: view.nodes,
-      edges: view.edges,
-      showNodeIds: state.showNodeIds,
-      showCoords: state.showCoords,
-      selectedNode: state.selectedNode,
-      start: view.start,
-      finish: view.finish,
-      cfg,
-    });
+    const activeCells: [number, number][] = [];
+    for (const nodeId of view.currentStep!.active_nodes) {
+      const node = nodeById.get(nodeId);
+      if (node) activeCells.push([node.x, node.y]);
+    }
+    this.debugActive.render({ cells: activeCells, color: DEBUG_ACTIVE_COLOR, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
+
+    const srcCells: [number, number][] = [];
+    if (view.currentStep!.current_src !== null) {
+      const srcNode = nodeById.get(view.currentStep!.current_src);
+      if (srcNode) srcCells.push([srcNode.x, srcNode.y]);
+    }
+    this.debugSrc.render({ cells: srcCells, color: DEBUG_CURRENT_SRC_COLOR, alpha: 0.8 }, cfg);
   }
 
   destroy(): void {
     this.unsubscribe?.();
-    this.tileRenderer.destroy();
-    this.componentRenderer.destroy();
-    this.graphRenderer.destroy();
-    this.navRenderer.destroy();
-    this.routeOverlay.destroy();
+    this.floor.destroy();
+    this.closedCells.destroy();
+    this.walls.destroy();
+    this.markers.destroy();
+    this.debugActive.destroy();
+    this.debugSrc.destroy();
+    this.floorContainer.destroy();
+    this.closedCellsContainer.destroy();
+    this.wallsContainer.destroy();
+    this.markersContainer.destroy();
+    this.debugActiveContainer.destroy();
+    this.debugSrcContainer.destroy();
   }
+}
+
+function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[]): [number, number][] {
+  const connected = new Set<number>();
+  for (const e of edges) {
+    connected.add(e.from);
+    connected.add(e.to);
+  }
+  return nodes.filter(n => !connected.has(n.id)).map(n => [n.x, n.y]);
 }
