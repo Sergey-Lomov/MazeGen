@@ -6,7 +6,7 @@ pub(crate) mod kruskal;
 pub(crate) mod recursive_backtracker;
 pub(crate) mod edge_based;
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use rand::rngs::SmallRng;
 use rand::Rng;
 use crate::ids::NodeId;
@@ -140,7 +140,7 @@ pub struct PresetState {
     /// Nodes the algorithm must not add incoming edges to.
     pub locked_in:  HashSet<NodeId>,
     /// Nodes already connected by preset Passage/OneWay edges — treated as visited at generation start.
-    pub preset_connected: HashSet<NodeId>,
+    pub preset_connected: BTreeSet<NodeId>,
 }
 
 impl PresetState {
@@ -149,7 +149,7 @@ impl PresetState {
             blocked:         HashSet::new(),
             locked_out:      HashSet::new(),
             locked_in:       HashSet::new(),
-            preset_connected: HashSet::new(),
+            preset_connected: BTreeSet::new(),
         }
     }
 }
@@ -165,7 +165,7 @@ pub fn build_preset_state<T: Tessellation>(
     let mut blocked:          HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut locked_out:       HashSet<NodeId> = HashSet::new();
     let mut locked_in:        HashSet<NodeId> = HashSet::new();
-    let mut preset_connected: HashSet<NodeId> = HashSet::new();
+    let mut preset_connected: BTreeSet<NodeId> = BTreeSet::new();
 
     for preset in preset_connections {
         let from_pt = xy_to_point(preset.from.0, preset.from.1);
