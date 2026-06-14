@@ -5,6 +5,7 @@ import { useCheckParamsDraft, getDefaultValue } from "./useCheckParamsDraft";
 import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
 import { colors, font, radius } from "../../styles/theme";
+import * as m from "~/paraglide/messages";
 
 interface Props {
   onClose: () => void;
@@ -66,34 +67,34 @@ export function CheckSelectDialog({ onClose }: Props) {
           )}
         </>
       ) : (
-        <div style={styles.checkDescription}>No check selected.</div>
+        <div style={styles.checkDescription}>{m["check.not_selected"]()}</div>
       )}
     </>
   );
 
   const footer = (
     <>
-      <button style={styles.btnSecondary} onClick={onClose}>Cancel</button>
+      <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
       <button
         style={isDisabled ? { ...styles.btnSecondary, ...sharedStyles.btnDisabled } : styles.btnSecondary}
         onClick={handleAddAndContinue}
         disabled={isDisabled}
       >
-        Add and continue
+        {m["check.add_continue"]()}
       </button>
       <button
         style={isDisabled ? { ...styles.btnPrimary, ...sharedStyles.btnDisabled } : styles.btnPrimary}
         onClick={handleAdd}
         disabled={isDisabled}
       >
-        Add
+        {m["check.add"]()}
       </button>
     </>
   );
 
   return (
     <ItemSelectDialog
-      title="Add check"
+      title={m["check.add_title"]()}
       items={items}
       selectedId={selectedId}
       onSelectId={setSelectedId}

@@ -1,6 +1,7 @@
 import React from "react";
 import { Modal } from "./Modal";
 import { colors, font, radius, dialogSpacing } from "../styles/theme";
+import * as m from "~/paraglide/messages";
 
 interface Props {
   message: string;
@@ -10,11 +11,11 @@ interface Props {
 
 export function ConfirmModal({ message, onConfirm, onCancel }: Props) {
   return (
-    <Modal title="Confirm" size="approve" onClose={onCancel}>
+    <Modal title={m["common.confirm"]()} size="approve" onClose={onCancel}>
       <div style={styles.message}>{message}</div>
       <div style={styles.footer}>
-        <button style={styles.btnCancel} onClick={onCancel}>Cancel</button>
-        <button style={styles.btnOk} onClick={onConfirm}>Ok</button>
+        <button style={styles.btnCancel} onClick={onCancel}>{m["common.cancel"]()}</button>
+        <button style={styles.btnOk} onClick={onConfirm}>{m["common.ok"]()}</button>
       </div>
     </Modal>
   );

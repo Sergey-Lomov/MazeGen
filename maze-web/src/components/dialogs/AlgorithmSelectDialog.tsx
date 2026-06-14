@@ -4,47 +4,25 @@ import { ItemSelectDialog } from "./ItemSelectDialog";
 import { sharedStyles } from "../../styles/shared";
 import { colors, font, radius } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
+import * as m from "~/paraglide/messages";
 
 interface Props {
   onClose: () => void;
 }
 
-const ALGORITHMS: { id: string; label: string; description: string }[] = [
-  {
-    id: "custom_vertex_based",
-    label: "Custom Vertex-Based",
-    description:
-      "A configurable algorithm that builds mazes by traversing vertices. Supports depth-first exploration, corridor chance, branching factor, and directional bias. Produces a wide variety of maze styles depending on parameters.",
-  },
-  {
-    id: "custom_edge_based",
-    label: "Custom Edge-Based",
-    description:
-      "A configurable algorithm that operates on edges rather than vertices. Controls corridor length, branching, locality (how clustered the passages are), and directionality. Good for producing organic-looking mazes.",
-  },
-  {
-    id: "recursive_backtracker",
-    label: "Recursive Backtracker",
-    description:
-      "Classic depth-first search maze generator. Produces mazes with long winding corridors and low branching. Guaranteed perfect maze (single solution). No configurable parameters.",
-  },
-  {
-    id: "wilson_algorithm",
-    label: "Wilson's Algorithm",
-    description:
-      "Generates a uniformly random spanning tree using loop-erased random walks. Every possible perfect maze is equally likely. Slower on large fields but produces statistically unbiased results. No configurable parameters.",
-  },
-  {
-    id: "kruskal_algorithm",
-    label: "Kruskal's Algorithm",
-    description:
-      "Generates a minimum spanning tree by randomly merging disjoint sets. Produces mazes with many short passages and high branching. No configurable parameters.",
-  },
-];
+function getAlgorithms() {
+  return [
+    { id: "custom_vertex_based",   label: m["algorithm.custom_vertex_based"](),   description: m["algorithm.desc.custom_vertex_based"]() },
+    { id: "custom_edge_based",     label: m["algorithm.custom_edge_based"](),     description: m["algorithm.desc.custom_edge_based"]() },
+    { id: "recursive_backtracker", label: m["algorithm.recursive_backtracker"](), description: m["algorithm.desc.recursive_backtracker"]() },
+    { id: "wilson_algorithm",      label: m["algorithm.wilson_algorithm"](),      description: m["algorithm.desc.wilson_algorithm"]() },
+    { id: "kruskal_algorithm",     label: m["algorithm.kruskal_algorithm"](),     description: m["algorithm.desc.kruskal_algorithm"]() },
+  ];
+}
 
-export const ALGORITHM_LABELS: Record<string, string> = Object.fromEntries(
-  ALGORITHMS.map((a) => [a.id, a.label])
-);
+export function getAlgorithmLabel(id: string): string {
+  return getAlgorithms().find((a) => a.id === id)?.label ?? id;
+}
 
 export function AlgorithmSelectDialog({ onClose }: Props) {
   const initialConfig = useMazeStore((s) => s.initialConfig);
@@ -54,7 +32,8 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
 
   const [selectedId, setSelectedId] = useState<string>(initialConfig.method);
 
-  const selectedAlgorithm = ALGORITHMS.find((a) => a.id === selectedId);
+  const algorithms = getAlgorithms();
+  const selectedAlgorithm = algorithms.find((a) => a.id === selectedId);
 
   const isVertexBased = selectedId === "custom_vertex_based";
   const isEdgeBased = selectedId === "custom_edge_based";
@@ -75,7 +54,7 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
     onClose();
   }
 
-  const items = ALGORITHMS.map((a) => ({ id: a.id, label: a.label }));
+  const items = algorithms.map((a) => ({ id: a.id, label: a.label }));
 
   const rightPanel = (
     <>
@@ -87,19 +66,19 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
       {isVertexBased && vertexParams && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
-          <SliderRow label="Depth first" value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
-          <SliderRow label="Corridor chance" value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
-          <SliderRow label="Branching" value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
-          <SliderRow label="Directionality" value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
+          <SliderRow label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
+          <SliderRow label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
+          <SliderRow label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
+          <SliderRow label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
         </div>
       )}
       {isEdgeBased && edgeParams && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
-          <SliderRow label="Corridor length" value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
-          <SliderRow label="Branching" value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
-          <SliderRow label="Depth first" value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
-          <SliderRow label="Directionality" value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
+          <SliderRow label={m["generation.corridor_length"]()} value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
+          <SliderRow label={m["generation.branching"]()} value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
+          <SliderRow label={m["generation.depth_first"]()} value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
+          <SliderRow label={m["generation.directionality"]()} value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
         </div>
       )}
     </>
@@ -107,14 +86,14 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
 
   const footer = (
     <>
-      <button style={styles.btnSecondary} onClick={onClose}>Cancel</button>
-      <button style={styles.btnPrimary} onClick={handleSelect}>Select</button>
+      <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
+      <button style={styles.btnPrimary} onClick={handleSelect}>{m["common.select"]()}</button>
     </>
   );
 
   return (
     <ItemSelectDialog
-      title="Select Algorithm"
+      title={m["generation.select_algorithm"]()}
       items={items}
       selectedId={selectedId}
       onSelectId={handleSelectId}

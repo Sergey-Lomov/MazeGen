@@ -5,6 +5,7 @@ import { useCheckParamsDraft, getDefaultValue } from "./useCheckParamsDraft";
 import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
 import { colors, font, radius, dialogSpacing } from "../../styles/theme";
+import * as m from "~/paraglide/messages";
 
 interface Props {
   checkId: string;
@@ -30,7 +31,7 @@ export function CheckDetailsDialog({ checkId, onClose }: Props) {
   }
 
   return (
-    <Modal title="Check details" size="info" onClose={onClose}>
+    <Modal title={m["check.details_title"]()} size="info" onClose={onClose}>
       {descriptor ? (
         <>
           <div style={styles.checkLabel}>{descriptor.label}</div>
@@ -45,15 +46,15 @@ export function CheckDetailsDialog({ checkId, onClose }: Props) {
           )}
         </>
       ) : (
-        <div style={styles.checkDescription}>Check not found.</div>
+        <div style={styles.checkDescription}>{m["check.not_found"]()}</div>
       )}
       <div style={styles.footer}>
-        <button style={styles.btnSecondary} onClick={onClose}>Cancel</button>
-        <button style={styles.btnDestructive} onClick={handleDelete}>Delete</button>
+        <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
+        <button style={styles.btnDestructive} onClick={handleDelete}>{m["check.delete"]()}</button>
         {hasParams ? (
-          <button style={styles.btnPrimary} onClick={handleApply}>Apply</button>
+          <button style={styles.btnPrimary} onClick={handleApply}>{m["check.apply"]()}</button>
         ) : (
-          <button style={styles.btnSecondary} onClick={onClose}>Close</button>
+          <button style={styles.btnSecondary} onClick={onClose}>{m["check.close"]()}</button>
         )}
       </div>
     </Modal>

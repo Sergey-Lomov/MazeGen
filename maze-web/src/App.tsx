@@ -5,10 +5,13 @@ import { FeaturesPanel } from "./components/FeaturesPanel";
 import { GenerationDebugBar } from "./components/GenerationDebugBar";
 import { useMazeStore } from "./store/mazeStore";
 import { colors, font } from "./styles/theme";
+import { useLocale } from "./i18n/useLocale";
+import * as m from "~/paraglide/messages";
 
 const PANEL_WIDTH = 260;
 
 export function App() {
+  useLocale(); // re-render entire tree on locale change
   const canvasRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<MazeScene | null>(null);
   const [ready, setReady] = useState(false);
@@ -46,7 +49,7 @@ export function App() {
   return (
     <div style={styles.root}>
       <div style={styles.panel}>
-        {!ready && <div style={styles.loading}>Loading…</div>}
+        {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
         <FeaturesPanel />
       </div>
       <div style={styles.canvasColumn}>

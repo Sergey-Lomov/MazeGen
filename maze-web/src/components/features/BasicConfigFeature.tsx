@@ -3,29 +3,21 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
 import { ConfirmModal } from "../ConfirmModal";
+import * as m from "~/paraglide/messages";
 
-export const HEX_ORIENTATION_LABELS: Record<HexOrientation, string> = {
-  flat_top: "Flat top",
-  pointy_top: "Pointy top",
-};
+export function getHexOrientationLabel(o: HexOrientation): string {
+  return o === "flat_top" ? m["tessellation.flat_top"]() : m["tessellation.pointy_top"]();
+}
 
-export const HEX_ORIENTATION_KEYS: HexOrientation[] = ["flat_top", "pointy_top"];
-
-export const TRI_ORIENTATION_LABELS: Record<TriOrientation, string> = {
-  r0: "0°",
-  r90: "90°",
-  r180: "180°",
-  r270: "270°",
-};
-
-const TRI_ORIENTATION_OPTION_LABELS: Record<TriOrientation, string> = {
-  r0: "0° — base bottom",
-  r90: "90° — base left",
-  r180: "180° — base top",
-  r270: "270° — base right",
-};
-
-export const TRI_ORIENTATION_KEYS: TriOrientation[] = ["r0", "r90", "r180", "r270"];
+export function getTriOrientationLabel(o: TriOrientation): string {
+  const labels: Record<TriOrientation, () => string> = {
+    r0: m["tessellation.r0"],
+    r90: m["tessellation.r90"],
+    r180: m["tessellation.r180"],
+    r270: m["tessellation.r270"],
+  };
+  return labels[o]();
+}
 
 export function BasicConfigFeature() {
   const previewKind = useMazeStore((s) => s.previewKind);
@@ -67,53 +59,53 @@ export function BasicConfigFeature() {
     const parts: string[] = [];
     if (hasField) parts.push("custom field");
     if (hasPresets) parts.push("preset connections");
-    return `Changing tessellation type will reset: ${parts.join(" and ")}. Continue?`;
+    return m["tessellation.reset_warning"]({ parts: parts.join(" and ") });
   }
 
   return (
     <div style={styles.root}>
       <label style={styles.label}>
-        Tessellation
+        {m["tessellation.title"]()}
         <select
           style={styles.select}
           value={previewKind}
           onChange={(e) => setPreviewKind(e.target.value as TessellationKind)}
         >
-          <option value="square">Square</option>
-          <option value="hex">Hex</option>
-          <option value="triangle">Triangle</option>
+          <option value="square">{m["tessellation.square"]()}</option>
+          <option value="hex">{m["tessellation.hex"]()}</option>
+          <option value="triangle">{m["tessellation.triangle"]()}</option>
         </select>
       </label>
       {isHex && (
         <label style={styles.label}>
-          Orientation
+          {m["tessellation.orientation"]()}
           <select
             style={styles.select}
             value={previewHexOrientation}
             onChange={(e) => setPreviewHexOrientation(e.target.value as HexOrientation)}
           >
-            {HEX_ORIENTATION_KEYS.map((k) => (
-              <option key={k} value={k}>{HEX_ORIENTATION_LABELS[k]}</option>
-            ))}
+            <option value="flat_top">{m["tessellation.flat_top"]()}</option>
+            <option value="pointy_top">{m["tessellation.pointy_top"]()}</option>
           </select>
         </label>
       )}
       {isTri && (
         <label style={styles.label}>
-          Orientation
+          {m["tessellation.orientation"]()}
           <select
             style={styles.select}
             value={previewTriOrientation}
             onChange={(e) => setPreviewTriOrientation(e.target.value as TriOrientation)}
           >
-            {TRI_ORIENTATION_KEYS.map((k) => (
-              <option key={k} value={k}>{TRI_ORIENTATION_OPTION_LABELS[k]}</option>
-            ))}
+            <option value="r0">{m["tessellation.r0_full"]()}</option>
+            <option value="r90">{m["tessellation.r90_full"]()}</option>
+            <option value="r180">{m["tessellation.r180_full"]()}</option>
+            <option value="r270">{m["tessellation.r270_full"]()}</option>
           </select>
         </label>
       )}
       <button style={styles.confirmBtn} onClick={handleConfirmTessellation}>
-        Confirm tessellation
+        {m["tessellation.confirm_btn"]()}
       </button>
       {showConfirm && (
         <ConfirmModal

@@ -4,6 +4,7 @@ import { buttonStyle } from "../../styles/shared";
 import { colors, font } from "../../styles/theme";
 import { CheckSelectDialog } from "./CheckSelectDialog";
 import { CheckDetailsDialog } from "./CheckDetailsDialog";
+import * as m from "~/paraglide/messages";
 
 export function QualityFeature() {
   const availableChecks = useMazeStore((s) => s.availableChecks);
@@ -27,8 +28,8 @@ export function QualityFeature() {
             <div key={check.id} style={styles.row}>
               <span style={styles.label}>{check.label}</span>
               <div style={styles.actions}>
-                <button style={styles.iconBtn} onClick={() => setEditCheckId(check.id)} title="Details">ℹ</button>
-                <button style={styles.iconBtn} onClick={() => removeCheck(check.id)} title="Remove">✕</button>
+                <button style={styles.iconBtn} onClick={() => setEditCheckId(check.id)} title={m["quality.details"]()}>ℹ</button>
+                <button style={styles.iconBtn} onClick={() => removeCheck(check.id)} title={m["quality.remove"]()}>✕</button>
               </div>
             </div>
           ))}
@@ -40,7 +41,7 @@ export function QualityFeature() {
           onClick={() => setAddOpen(true)}
           disabled={!canAdd}
         >
-          + Add check
+          {m["quality.add_check"]()}
         </button>
       </div>
       {addOpen && <CheckSelectDialog onClose={() => setAddOpen(false)} />}

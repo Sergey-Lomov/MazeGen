@@ -5,6 +5,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
 import { colors, font } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
+import * as m from "~/paraglide/messages";
 
 interface SizeParamProps {
   label: string;
@@ -94,10 +95,10 @@ export function FieldSetupFeature() {
     if (tessellationKind === "square") {
       return (
         <label style={styles.label}>
-          Shape
+          {m["field.shape"]()}
           <select style={styles.select} value={squareShape}
             onChange={(e) => setSquareShape(e.target.value as SquareShape)}>
-            <option value="rect">Rect</option>
+            <option value="rect">{m["field.shape.rect"]()}</option>
           </select>
         </label>
       );
@@ -105,23 +106,23 @@ export function FieldSetupFeature() {
     if (isHex) {
       return (
         <label style={styles.label}>
-          Shape
+          {m["field.shape"]()}
           <select style={styles.select} value={hexShape}
             onChange={(e) => setHexShape(e.target.value as HexShape)}>
-            <option value="parallelogram">Parallelogram</option>
-            <option value="hexagon">Hexagon</option>
+            <option value="parallelogram">{m["field.shape.parallelogram"]()}</option>
+            <option value="hexagon">{m["field.shape.hexagon"]()}</option>
           </select>
         </label>
       );
     }
     return (
       <label style={styles.label}>
-        Shape
+        {m["field.shape"]()}
         <select style={styles.select} value={triangleShape}
           onChange={(e) => setTriangleShape(e.target.value as TriangleShape)}>
-          <option value="rect">Rect</option>
-          <option value="triangle">Triangle</option>
-          <option value="hexagon">Hexagon</option>
+          <option value="rect">{m["field.shape.rect"]()}</option>
+          <option value="triangle">{m["field.shape.triangle"]()}</option>
+          <option value="hexagon">{m["field.shape.hexagon"]()}</option>
         </select>
       </label>
     );
@@ -131,42 +132,42 @@ export function FieldSetupFeature() {
     if (tessellationConfig.type === "square") {
       return (
         <>
-          <SizeParam label="Width" value={tessellationConfig.width} min={1} max={200} onCommit={(v) => setField("width", v)} />
-          <SizeParam label="Height" value={tessellationConfig.height} min={1} max={200} onCommit={(v) => setField("height", v)} />
+          <SizeParam label={m["field.width"]()} value={tessellationConfig.width} min={1} max={200} onCommit={(v) => setField("width", v)} />
+          <SizeParam label={m["field.height"]()} value={tessellationConfig.height} min={1} max={200} onCommit={(v) => setField("height", v)} />
         </>
       );
     }
     if (tessellationConfig.type === "hex_parallelogram") {
       return (
         <>
-          <SizeParam label="Cols" value={tessellationConfig.cols} min={1} max={200} onCommit={(v) => setField("cols", v)} />
-          <SizeParam label="Rows" value={tessellationConfig.rows} min={1} max={200} onCommit={(v) => setField("rows", v)} />
+          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} onCommit={(v) => setField("cols", v)} />
+          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} onCommit={(v) => setField("rows", v)} />
         </>
       );
     }
     if (tessellationConfig.type === "hex_hexagon") {
-      return <SizeParam label="Radius" value={tessellationConfig.radius} min={1} max={50} onCommit={(v) => setField("radius", v)} />;
+      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={50} onCommit={(v) => setField("radius", v)} />;
     }
     if (tessellationConfig.type === "triangle_rect") {
       return (
         <>
-          <SizeParam label="Cols" value={tessellationConfig.cols} min={1} max={200} onCommit={(v) => setField("cols", v)} />
-          <SizeParam label="Rows" value={tessellationConfig.rows} min={1} max={200} onCommit={(v) => setField("rows", v)} />
+          <SizeParam label={m["field.cols"]()} value={tessellationConfig.cols} min={1} max={200} onCommit={(v) => setField("cols", v)} />
+          <SizeParam label={m["field.rows"]()} value={tessellationConfig.rows} min={1} max={200} onCommit={(v) => setField("rows", v)} />
         </>
       );
     }
     if (tessellationConfig.type === "triangle_triangle") {
-      return <SizeParam label="Side" value={tessellationConfig.side} min={1} max={30} onCommit={(v) => setField("side", v)} />;
+      return <SizeParam label={m["field.side"]()} value={tessellationConfig.side} min={1} max={30} onCommit={(v) => setField("side", v)} />;
     }
     if (tessellationConfig.type === "triangle_hexagon") {
-      return <SizeParam label="Radius" value={tessellationConfig.radius} min={1} max={15} onCommit={(v) => setField("radius", v)} />;
+      return <SizeParam label={m["field.radius"]()} value={tessellationConfig.radius} min={1} max={15} onCommit={(v) => setField("radius", v)} />;
     }
     return null;
   }
 
   const confirmMessages: Record<NonNullable<ConfirmPending>, string> = {
-    switchToDefault: "Switch to standard shapes? Your custom field will be replaced.",
-    clearField: "Clear all field cells?",
+    switchToDefault: m["field.confirm_switch_to_default"](),
+    clearField: m["field.confirm_clear"](),
   };
 
   return (
@@ -176,13 +177,13 @@ export function FieldSetupFeature() {
           style={buttonStyle(isCustom ? "toggle" : "toggle-active")}
           onClick={handleSwitchToDefault}
         >
-          Default
+          {m["field.default"]()}
         </button>
         <button
           style={buttonStyle(isCustom ? "toggle-active" : "toggle")}
           onClick={() => setFieldEditMode("custom")}
         >
-          Custom
+          {m["field.custom"]()}
         </button>
       </div>
       {!isCustom && (
@@ -193,7 +194,7 @@ export function FieldSetupFeature() {
       )}
       {isCustom && (
         <>
-          <div style={styles.sectionLabel}>Tools</div>
+          <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
           <div style={styles.primitiveGrid}>
           {primitivesForKind(tessellationKind).map(([p, label]) => (
             <button
@@ -206,7 +207,7 @@ export function FieldSetupFeature() {
           ))}
           </div>
           <div style={styles.originRow}>
-            <span style={styles.originLabel}>Show origin</span>
+            <span style={styles.originLabel}>{m["field.show_origin"]()}</span>
             <label style={styles.switchWrap}>
               <input type="checkbox" style={styles.switchInput} checked={showFieldOrigin} onChange={e => setShowFieldOrigin(e.target.checked)} />
               <span style={{ ...styles.switchTrack, ...(showFieldOrigin ? styles.switchTrackOn : {}) }}>
@@ -218,7 +219,7 @@ export function FieldSetupFeature() {
             style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
             onClick={handleClearField}
           >
-            Clear
+            {m["field.clear"]()}
           </button>
         </>
       )}
@@ -240,16 +241,20 @@ function primitivesForKind(kind: TessellationKind): [string, string][] {
 }
 
 function shapeLabel(kind: TessellationKind, squareShape: SquareShape, hexShape: HexShape, triangleShape: TriangleShape): string {
-  if (kind === "square") return squareShape === "rect" ? "Rect" : "Free";
+  if (kind === "square") return squareShape === "rect" ? m["field.shape.rect"]() : "Free";
   if (kind === "hex") {
-    if (hexShape === "parallelogram") return "Parallelogram";
-    if (hexShape === "hexagon") return "Hexagon";
+    if (hexShape === "parallelogram") return m["field.shape.parallelogram"]();
+    if (hexShape === "hexagon") return m["field.shape.hexagon"]();
     return "Free";
   }
-  if (triangleShape === "rect") return "Rect";
-  if (triangleShape === "triangle") return "Triangle";
-  if (triangleShape === "hexagon") return "Hexagon";
+  if (triangleShape === "rect") return m["field.shape.rect"]();
+  if (triangleShape === "triangle") return m["field.shape.triangle"]();
+  if (triangleShape === "hexagon") return m["field.shape.hexagon"]();
   return "Free";
+}
+
+function cellsLabel(count: number): string {
+  return count === 1 ? m["field.cell"]({ count }) : m["field.cells"]({ count });
 }
 
 export function fieldSetupSubtitle(
@@ -263,12 +268,12 @@ export function fieldSetupSubtitle(
 ): string {
   if (fieldEditMode === "custom") {
     const n = fieldPoints.size;
-    return `Custom · ${n} cell${n !== 1 ? "s" : ""}`;
+    return `${m["field.custom"]()} · ${cellsLabel(n)}`;
   }
   const shape = shapeLabel(kind, squareShape, hexShape, triangleShape);
   const size = configSizeLabel(tessellationConfig);
   const count = configCellCount(tessellationConfig);
-  const countStr = count > 0 ? ` · ${count} cell${count !== 1 ? "s" : ""}` : "";
+  const countStr = count > 0 ? ` · ${cellsLabel(count)}` : "";
   return size ? `${shape} · ${size}${countStr}` : `${shape}${countStr}`;
 }
 

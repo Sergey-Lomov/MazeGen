@@ -5,6 +5,7 @@ import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { buttonStyle } from "../../styles/shared";
 import { colors, font } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
+import * as m from "~/paraglide/messages";
 
 function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -17,20 +18,24 @@ function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
-const EDGE_TOOLS: [PresetConnectionTool, string][] = [
-  ["wall", "Wall"],
-  ["passage", "Passage"],
-  ["reset", "Reset"],
-  ["one_way", "One-way"],
-  ["set_start", "Start"],
-  ["set_finish", "Finish"],
-];
+function getEdgeTools(): [PresetConnectionTool, string][] {
+  return [
+    ["wall", m["preset.wall"]()],
+    ["passage", m["preset.passage"]()],
+    ["reset", m["preset.reset"]()],
+    ["one_way", m["preset.one_way"]()],
+    ["set_start", m["preset.start"]()],
+    ["set_finish", m["preset.finish"]()],
+  ];
+}
 
-const VERTEX_TOOLS: [PresetConnectionTool, string][] = [
-  ["lock_in", "Lock In"],
-  ["lock_out", "Lock Out"],
-  ["lock_both", "Lock Both"],
-];
+function getVertexTools(): [PresetConnectionTool, string][] {
+  return [
+    ["lock_in", m["preset.lock_in"]()],
+    ["lock_out", m["preset.lock_out"]()],
+    ["lock_both", m["preset.lock_both"]()],
+  ];
+}
 
 export function PresetConnectionsFeature() {
   const tool = useMazeStore((s) => s.presetConnectionsTool);
@@ -81,9 +86,9 @@ export function PresetConnectionsFeature() {
 
   return (
     <div style={styles.root}>
-      <span style={styles.sectionLabel}>Edges Tools</span>
+      <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
       <div style={styles.toolGrid}>
-        {EDGE_TOOLS.map(([t, label]) => (
+        {getEdgeTools().map(([t, label]) => (
           <button
             key={t}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
@@ -93,9 +98,9 @@ export function PresetConnectionsFeature() {
           </button>
         ))}
       </div>
-      <span style={styles.sectionLabel}>Vertex Tools</span>
+      <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
       <div style={styles.vertexToolGrid}>
-        {VERTEX_TOOLS.map(([t, label]) => (
+        {getVertexTools().map(([t, label]) => (
           <button
             key={t}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
@@ -107,7 +112,7 @@ export function PresetConnectionsFeature() {
       </div>
       <div style={styles.autoLockRow}>
         <div style={styles.autoLockLeft}>
-          <span style={styles.autoLockLabel}>Auto-lock</span>
+          <span style={styles.autoLockLabel}>{m["preset.auto_lock"]()}</span>
           {autoLock && autoLockedNodes.size > 0 && (
             <span style={styles.autoLockCount}>{autoLockedNodes.size}</span>
           )}
@@ -115,26 +120,28 @@ export function PresetConnectionsFeature() {
         <Switch checked={autoLock} onChange={setAutoLock} />
       </div>
       <div style={styles.originRow}>
-        <span style={styles.originLabel}>Show origin</span>
+        <span style={styles.originLabel}>{m["preset.show_origin"]()}</span>
         <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
       </div>
       {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish) && (
         <div style={styles.statusBlock}>
           {lockedNodes.size > 0 && (
             <div style={styles.statusBubble}>
-              <span>{lockedNodes.size} node{lockedNodes.size !== 1 ? "s" : ""} locked</span>
-              <button style={styles.clearTag} onClick={clearLockedNodes}>Clear all</button>
+              <span>{lockedNodes.size === 1
+                ? m["preset.nodes_locked"]({ count: lockedNodes.size })
+                : m["preset.nodes_locked_plural"]({ count: lockedNodes.size })}</span>
+              <button style={styles.clearTag} onClick={clearLockedNodes}>{m["common.clear_all"]()}</button>
             </div>
           )}
           {presetStart && (
             <div style={styles.statusBubble}>
-              <span>Start: {presetStart[0]},{presetStart[1]}</span>
+              <span>{m["preset.start"]()}: {presetStart[0]},{presetStart[1]}</span>
               <button style={styles.clearTag} onClick={() => setPresetStart(null)}>×</button>
             </div>
           )}
           {presetFinish && (
             <div style={styles.statusBubble}>
-              <span>Finish: {presetFinish[0]},{presetFinish[1]}</span>
+              <span>{m["preset.finish"]()}: {presetFinish[0]},{presetFinish[1]}</span>
               <button style={styles.clearTag} onClick={() => setPresetFinish(null)}>×</button>
             </div>
           )}
@@ -145,7 +152,9 @@ export function PresetConnectionsFeature() {
               onMouseEnter={() => setHighlightIsolatedNodes(true)}
               onMouseLeave={() => setHighlightIsolatedNodes(false)}
             >
-              ⚠ {isolatedNodes.length} node{isolatedNodes.length !== 1 ? "s" : ""} fully isolated
+              ⚠ {isolatedNodes.length === 1
+                ? m["preset.nodes_isolated"]({ count: isolatedNodes.length })
+                : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
             </div>
           )}
         </div>
@@ -158,18 +167,18 @@ export function PresetConnectionsFeature() {
           onMouseEnter={() => setHighlightInvalidPresets(true)}
           onMouseLeave={() => setHighlightInvalidPresets(false)}
         >
-          Clear invalid ({invalidKeys.size})
+          {m["preset.clear_invalid"]({ count: invalidKeys.size })}
         </button>
       )}
       <button
         style={{ ...buttonStyle("destructive"), width: "100%" }}
         onClick={() => setConfirmReset(true)}
       >
-        Reset all
+        {m["common.reset_all"]()}
       </button>
       {confirmReset && (
         <ConfirmModal
-          message="Reset all preset connections?"
+          message={m["common.reset_all"]() + "?"}
           onConfirm={() => { resetPresetConnections(); setConfirmReset(false); }}
           onCancel={() => setConfirmReset(false)}
         />
@@ -178,17 +187,6 @@ export function PresetConnectionsFeature() {
   );
 }
 
-export function presetConnectionsSubtitle(
-  presetConnections: Map<string, unknown>,
-  invalidCount: number,
-  markerCount: number,
-): string {
-  const n = presetConnections.size + markerCount;
-  if (n === 0) return "No presets";
-  const base = `${n} preset${n !== 1 ? "s" : ""}`;
-  if (invalidCount > 0) return `${base} · ⚠ ${invalidCount} invalid`;
-  return base;
-}
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 8 },

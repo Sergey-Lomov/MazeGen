@@ -1,16 +1,46 @@
 import React, { useState, useMemo } from "react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
-import { BasicConfigFeature, HEX_ORIENTATION_LABELS, TRI_ORIENTATION_LABELS } from "./features/BasicConfigFeature";
+import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
-import { PresetConnectionsFeature, presetConnectionsSubtitle } from "./features/PresetConnectionsFeature";
+import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
 import { QualityFeature } from "./features/QualityFeature";
 import { GenerationFeature } from "./features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind } from "../store/mazeStore";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
-import { colors } from "../styles/theme";
+import { colors, font } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { useLocale } from "../i18n/useLocale";
+import type { Locale } from "../i18n/useLocale";
+import * as m from "~/paraglide/messages";
+
+function LanguageSwitcher() {
+  const { locale, setLocale, availableLocales } = useLocale();
+  return (
+    <select
+      value={locale}
+      onChange={(e) => setLocale(e.target.value as Locale)}
+      style={langSwitcherStyles.select}
+    >
+      {availableLocales.map((lang) => (
+        <option key={lang} value={lang}>{lang.toUpperCase()}</option>
+      ))}
+    </select>
+  );
+}
+
+const langSwitcherStyles: Record<string, React.CSSProperties> = {
+  select: {
+    background: colors.bgInput,
+    border: `1px solid ${colors.borderStrong}`,
+    color: colors.textMuted,
+    fontSize: font.sm,
+    padding: "2px 4px",
+    borderRadius: 3,
+    cursor: "pointer",
+  },
+};
 
 function computeFieldStatus(
   tessellationConfirmed: boolean,
@@ -24,11 +54,28 @@ function computeFieldStatus(
   return "set";
 }
 
-const KIND_LABELS: Record<TessellationKind, string> = {
-  square: "Square",
-  hex: "Hex",
-  triangle: "Triangle",
-};
+function presetConnectionsSubtitle(
+  presetConnections: Map<string, unknown>,
+  invalidCount: number,
+  markerCount: number,
+): string {
+  const n = presetConnections.size + markerCount;
+  if (n === 0) return m["preset.subtitle_none"]();
+  const base = n === 1
+    ? m["preset.subtitle_count"]({ count: n })
+    : m["preset.subtitle_count_plural"]({ count: n });
+  if (invalidCount > 0) return `${base} · ${m["preset.subtitle_invalid"]({ count: invalidCount })}`;
+  return base;
+}
+
+function getTessellationKindLabel(kind: TessellationKind): string {
+  const labels: Record<TessellationKind, () => string> = {
+    square: m["tessellation.square"],
+    hex: m["tessellation.hex"],
+    triangle: m["tessellation.triangle"],
+  };
+  return labels[kind]();
+}
 
 type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation";
 
@@ -67,20 +114,24 @@ export function FeaturesPanel() {
   }
 
   const basicConfigStatus: FeatureStatus = tessellationConfirmed ? "set" : "critical";
-  const basicConfigComment = tessellationConfirmed ? "Tessellation confirmed" : "Not confirmed yet";
+  const basicConfigComment = tessellationConfirmed
+    ? m["status.tessellation_confirmed"]()
+    : m["status.not_confirmed"]();
 
   function basicConfigSubtitle(): string | undefined {
     if (!tessellationConfirmed) return undefined;
-    const label = KIND_LABELS[tessellationKind];
-    if (tessellationKind === "hex") return `${label} · ${HEX_ORIENTATION_LABELS[hexOrientation]}`;
-    if (tessellationKind === "triangle") return `${label} · ${TRI_ORIENTATION_LABELS[triOrientation]}`;
+    const label = getTessellationKindLabel(tessellationKind);
+    if (tessellationKind === "hex") return `${label} · ${getHexOrientationLabel(hexOrientation)}`;
+    if (tessellationKind === "triangle") return `${label} · ${getTriOrientationLabel(triOrientation)}`;
     return label;
   }
 
   const fieldStatus = computeFieldStatus(tessellationConfirmed, fieldEditMode, fieldPoints, tessellationConfig);
-  const fieldSetupComment = fieldStatus === "unavailable" ? "Confirm tessellation first"
-    : fieldStatus === "critical" ? "Field has no nodes"
-    : "Field configured";
+  const fieldSetupComment = fieldStatus === "unavailable"
+    ? m["status.confirm_tessellation_first"]()
+    : fieldStatus === "critical"
+    ? m["status.field_no_nodes"]()
+    : m["status.field_configured"]();
 
   const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
   const presetInvalidKeys = useMemo(
@@ -96,19 +147,24 @@ export function FeaturesPanel() {
     ? "warning"
     : "set";
   const presetComment = !tessellationConfirmed
-    ? "Confirm tessellation first"
+    ? m["status.confirm_tessellation_first"]()
     : fieldBlocking
-    ? "Configure field first"
+    ? m["status.configure_field_first"]()
     : presetInvalidKeys.size > 0
-    ? `${presetInvalidKeys.size} preset${presetInvalidKeys.size !== 1 ? "s" : ""} outside field`
+    ? (presetInvalidKeys.size === 1
+        ? m["status.presets_outside_field"]({ count: presetInvalidKeys.size })
+        : m["status.presets_outside_field_plural"]({ count: presetInvalidKeys.size }))
     : totalPresetCount > 0
-    ? "Presets configured"
-    : "No presets set";
+    ? m["status.presets_configured"]()
+    : m["status.no_presets"]();
 
   return (
     <div style={styles.panel}>
+      <div style={styles.header}>
+        <LanguageSwitcher />
+      </div>
       <FeatureCard
-        title="Tessellation"
+        title={m["tessellation.title"]()}
         status={basicConfigStatus}
         comment={basicConfigComment}
         subtitle={basicConfigSubtitle()}
@@ -118,7 +174,7 @@ export function FeaturesPanel() {
         <BasicConfigFeature />
       </FeatureCard>
       <FeatureCard
-        title="Field"
+        title={m["field.title"]()}
         status={fieldStatus}
         comment={fieldSetupComment}
         subtitle={tessellationConfirmed
@@ -130,7 +186,7 @@ export function FeaturesPanel() {
         <FieldSetupFeature />
       </FeatureCard>
       <FeatureCard
-        title="Preset connections"
+        title={m["preset.title"]()}
         status={presetStatus}
         comment={presetComment}
         subtitle={tessellationConfirmed
@@ -142,19 +198,21 @@ export function FeaturesPanel() {
         <PresetConnectionsFeature />
       </FeatureCard>
       <FeatureCard
-        title="Quality"
+        title={m["quality.title"]()}
         status={selectedChecks.length === 0 ? "warning" : "set"}
-        comment={selectedChecks.length === 0 ? "No checks active" : "Quality checks configured"}
-        subtitle={`${selectedChecks.length} check${selectedChecks.length !== 1 ? "s" : ""} active`}
+        comment={selectedChecks.length === 0 ? m["status.no_checks"]() : m["status.quality_configured"]()}
+        subtitle={selectedChecks.length === 1
+          ? m["quality.checks_active"]({ count: selectedChecks.length })
+          : m["quality.checks_active_plural"]({ count: selectedChecks.length })}
         expanded={openCard === "quality"}
         onOpen={() => handleToggle("quality")}
       >
         <QualityFeature />
       </FeatureCard>
       <FeatureCard
-        title="Generation"
+        title={m["generation.title"]()}
         status={tessellationConfirmed ? "set" : "unavailable"}
-        comment={tessellationConfirmed ? "Ready to generate" : "Confirm tessellation first"}
+        comment={tessellationConfirmed ? m["status.ready_to_generate"]() : m["status.confirm_tessellation_first"]()}
         expanded={openCard === "generation"}
         onOpen={() => handleToggle("generation")}
       >
@@ -172,5 +230,12 @@ const styles: Record<string, React.CSSProperties> = {
     height: "100%",
     background: colors.bgPanel,
     overflowY: "auto",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    padding: "6px 10px",
+    borderBottom: `1px solid ${colors.borderDim}`,
   },
 };

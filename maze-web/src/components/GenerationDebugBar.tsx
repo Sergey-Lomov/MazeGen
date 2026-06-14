@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { colors, font } from "../styles/theme";
+import * as m from "~/paraglide/messages";
 
 const DEFAULT_DELAY_MS = 500;
 
@@ -53,18 +54,18 @@ export function GenerationDebugBar() {
   return (
     <>
       {debugStale && (
-        <div style={styles.staleAlert}>Debug snapshot is outdated — re-generate to update</div>
+        <div style={styles.staleAlert}>{m["debug.outdated_warning"]()}</div>
       )}
       <div style={styles.bar}>
         {/* Step buttons */}
-        <button style={styles.iconBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title="Previous step">◀</button>
-        <button style={styles.iconBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title="Next step">▶</button>
+        <button style={styles.iconBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>◀</button>
+        <button style={styles.iconBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>▶</button>
 
         {/* Autoplay */}
         <button
           style={styles.playBtn}
           onClick={() => setPlaying(p => !p)}
-          title={playing ? "Pause" : "Play"}
+          title={playing ? m["debug.pause"]() : m["debug.play"]()}
         >
           {playing ? "⏸" : "▷"}
         </button>
@@ -74,7 +75,7 @@ export function GenerationDebugBar() {
           type="text"
           style={styles.delayInput}
           value={delayDraft}
-          title="Autoplay delay (ms)"
+          title={m["debug.delay_ms"]()}
           onChange={(e) => setDelayDraft(e.target.value)}
           onBlur={() => {
             const v = Math.max(50, Math.min(9999, parseInt(delayDraft, 10) || DEFAULT_DELAY_MS));
@@ -90,7 +91,7 @@ export function GenerationDebugBar() {
         <div style={styles.divider} />
 
         {/* Frontier toggle */}
-        <span style={styles.label}>Frontier</span>
+        <span style={styles.label}>{m["debug.frontier"]()}</span>
         <MiniSwitch checked={showDebugFrontier} onChange={setShowDebugFrontier} />
 
         <div style={styles.divider} />
@@ -112,7 +113,7 @@ export function GenerationDebugBar() {
         />
 
         {/* Close */}
-        <button style={styles.closeBtn} onClick={handleClose} title="Exit debug mode">×</button>
+        <button style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}>×</button>
       </div>
     </>
   );

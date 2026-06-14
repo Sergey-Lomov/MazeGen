@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { AlgorithmSelectDialog, ALGORITHM_LABELS } from "../dialogs/AlgorithmSelectDialog";
+import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { sharedStyles } from "../../styles/shared";
 import { colors, font, radius } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
+import * as m from "~/paraglide/messages";
 
 interface Props {
   canGenerate: boolean;
@@ -45,14 +46,14 @@ export function GenerationFeature({ canGenerate }: Props) {
 
   const canRegenerate = lastUsedSeed !== null && canGenerate;
   const regenTooltip = lastUsedSeed !== null
-    ? `Re-generate with last seed (${lastUsedSeed})`
-    : "Generate first";
+    ? m["generation.regenerate_tooltip"]({ seed: lastUsedSeed })
+    : m["generation.generate_first"]();
 
   return (
     <div style={styles.root}>
       {/* Seed row */}
       <div style={styles.row}>
-        <span style={styles.seedLabel}>Seed</span>
+        <span style={styles.seedLabel}>{m["generation.seed"]()}</span>
         <input
           type="number"
           style={{ ...sharedStyles.input, width: 90, minWidth: 0, opacity: randomSeed ? 0.4 : 1 }}
@@ -60,31 +61,31 @@ export function GenerationFeature({ canGenerate }: Props) {
           readOnly={randomSeed}
           onChange={(e) => setSeed(Number(e.target.value))}
         />
-        <span style={{ ...styles.switchLabel, marginLeft: "auto" }}>Random</span>
+        <span style={{ ...styles.switchLabel, marginLeft: "auto" }}>{m["generation.random"]()}</span>
         <Switch checked={randomSeed} onChange={setRandomSeed} />
       </div>
 
       {/* Algorithm block */}
       <div style={styles.algorithmBlock}>
-        <span style={styles.sectionCaption}>Generation algorithm</span>
+        <span style={styles.sectionCaption}>{m["generation.algorithm"]()}</span>
         <div style={styles.row}>
-          <span style={styles.algorithmLabel}>{ALGORITHM_LABELS[method] ?? method}</span>
-          <button style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)}>Edit</button>
+          <span style={styles.algorithmLabel}>{getAlgorithmLabel(method)}</span>
+          <button style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
         </div>
         {isVertexBased && vertexParams && (
           <div style={styles.paramValues}>
-            <SliderParam label="Depth first" value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
-            <SliderParam label="Corridor chance" value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
-            <SliderParam label="Branching" value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
-            <SliderParam label="Directionality" value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
+            <SliderParam label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
+            <SliderParam label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
+            <SliderParam label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
+            <SliderParam label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
           </div>
         )}
         {isEdgeBased && edgeParams && (
           <div style={styles.paramValues}>
-            <SliderParam label="Corridor length" value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
-            <SliderParam label="Branching" value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
-            <SliderParam label="Depth first" value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
-            <SliderParam label="Directionality" value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
+            <SliderParam label={m["generation.corridor_length"]()} value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
+            <SliderParam label={m["generation.branching"]()} value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
+            <SliderParam label={m["generation.depth_first"]()} value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
+            <SliderParam label={m["generation.directionality"]()} value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
           </div>
         )}
       </div>
@@ -97,7 +98,7 @@ export function GenerationFeature({ canGenerate }: Props) {
       {/* Debug toggle */}
       <div style={styles.divider} />
       <div style={styles.row}>
-        <span style={styles.switchLabel}>Debug mode</span>
+        <span style={styles.switchLabel}>{m["generation.debug_mode"]()}</span>
         <div style={styles.switchRight}>
           <Switch checked={debugMode} onChange={setDebugMode} />
         </div>
@@ -110,7 +111,7 @@ export function GenerationFeature({ canGenerate }: Props) {
           disabled={!canGenerate}
           onClick={handleGenerate}
         >
-          Generate
+          {m["generation.generate"]()}
         </button>
         <button
           style={{ ...styles.btnRegenerate, ...(!canRegenerate ? styles.btnDisabled : {}) }}
@@ -118,7 +119,7 @@ export function GenerationFeature({ canGenerate }: Props) {
           title={regenTooltip}
           onClick={handleRegenerate}
         >
-          Re-Generate
+          {m["generation.regenerate"]()}
         </button>
       </div>
 
@@ -248,14 +249,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
   },
   editBtn: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textMuted,
-    padding: "2px 8px",
+    background: "none",
+    border: "none",
+    color: colors.textDim,
+    padding: "0 2px",
     cursor: "pointer",
-    borderRadius: radius.sm,
-    fontSize: font.sm,
+    fontSize: 16,
+    lineHeight: 1,
     flexShrink: 0,
+    opacity: 0.7,
   },
   paramValues: {
     paddingLeft: 8,
