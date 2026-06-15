@@ -7,6 +7,7 @@ import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
 import { applyTool, computeInvalidKeys, computeAutoLockedNodes } from "../pixi/presetConnectionsUtils";
 import { configAllCells } from "../pixi/tessellationCells";
+import { buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool } from "../pixi/postEditUtils";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
@@ -654,51 +655,16 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   applyPostEditTool: (edgeKey, from_, to_) => {
     set((state) => {
       if (state.postEditDraftEdges === null) return {};
-      const next = { ...state.postEditDraftEdges };
-
-      const tool = state.postEditTool;
-      if (tool === "reset") {
-        // Restore original state for this edge pair regardless of click direction.
-        // state.edges only contains forward directions (one_way stored as single directed edge).
-        const origAB = state.edges.some(e => e.from === from_ && e.to === to_);
-        const origBA = state.edges.some(e => e.from === to_ && e.to === from_);
-        const fwdKey = edgeKey;
-        const bwdKey = `${to_}-${from_}`;
-        delete next[fwdKey];
-        delete next[bwdKey];
-        if (origAB && origBA) {
-          next[fwdKey] = { from: from_, to: to_, kind: "basic" };
-          next[bwdKey] = { from: to_, to: from_, kind: "basic" };
-        } else if (origAB) {
-          next[fwdKey] = { from: from_, to: to_, kind: "one_way_forward" };
-        } else if (origBA) {
-          next[bwdKey] = { from: to_, to: from_, kind: "one_way_forward" };
-        }
-        // else: wall in original — both deleted above
-      } else if (tool === "wall") {
-        // Wall: remove both directions
-        delete next[edgeKey];
-        delete next[`${to_}-${from_}`];
-      } else if (tool === "passage") {
-        // Passage: ensure both directions exist
-        next[edgeKey] = { from: from_, to: to_, kind: "basic" };
-        next[`${to_}-${from_}`] = { from: to_, to: from_, kind: "basic" };
-      } else if (tool === "one_way") {
-        // Toggle direction: fwd ↔ bwd. Wall/passage handled by their own tools.
-        const fwdKey = edgeKey;
-        const bwdKey = `${to_}-${from_}`;
-        if (next[fwdKey] !== undefined) {
-          // fwd → bwd
-          delete next[fwdKey];
-          next[bwdKey] = { from: to_, to: from_, kind: "one_way_backward" };
-        } else {
-          // bwd → fwd (or no edge → fwd)
-          delete next[bwdKey];
-          next[fwdKey] = { from: from_, to: to_, kind: "one_way_forward" };
-        }
-      }
-
-      return { postEditDraftEdges: next };
+      return {
+        postEditDraftEdges: applyPostEditEdgeTool(
+          state.postEditDraftEdges,
+          state.postEditTool,
+          edgeKey,
+          from_,
+          to_,
+          state.edges,
+        ),
+      };
     });
   },
 
@@ -1034,19 +1000,6 @@ function _recomputeAutoLock(state: MazeState): Set<string> {
   return computeAutoLockedNodes(state.presetConnections, activeTessellation, customPts);
 }
 
-function buildPostEditDraftEdgesFromGenerated(edges: EdgeDto[]): Record<string, PostEditEdge> {
-  const edgeSet = new Set(edges.map(e => `${e.from}-${e.to}`));
-  const result: Record<string, PostEditEdge> = {};
-  for (const e of edges) {
-    const hasReverse = edgeSet.has(`${e.to}-${e.from}`);
-    result[`${e.from}-${e.to}`] = {
-      from: e.from,
-      to: e.to,
-      kind: hasReverse ? "basic" : "one_way_forward",
-    };
-  }
-  return result;
-}
 
 function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConfig {
   const t = cfg.type;
