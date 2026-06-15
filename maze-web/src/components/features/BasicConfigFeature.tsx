@@ -23,12 +23,7 @@ export function BasicConfigFeature() {
   const previewKind = useMazeStore((s) => s.previewKind);
   const previewHexOrientation = useMazeStore((s) => s.previewHexOrientation);
   const previewTriOrientation = useMazeStore((s) => s.previewTriOrientation);
-  const tessellationKind = useMazeStore((s) => s.tessellationKind);
-  const presetConnections = useMazeStore((s) => s.presetConnections);
-  const presetStart = useMazeStore((s) => s.presetStart);
-  const presetFinish = useMazeStore((s) => s.presetFinish);
-  const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
-  const fieldPoints = useMazeStore((s) => s.fieldPoints);
+  const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const setPreviewKind = useMazeStore((s) => s.setPreviewKind);
   const setPreviewHexOrientation = useMazeStore((s) => s.setPreviewHexOrientation);
   const setPreviewTriOrientation = useMazeStore((s) => s.setPreviewTriOrientation);
@@ -39,27 +34,12 @@ export function BasicConfigFeature() {
   const isHex = previewKind === "hex";
   const isTri = previewKind === "triangle";
 
-  const hasField = fieldEditMode === "custom" && fieldPoints.size > 0;
-  const hasPresets = presetConnections.size > 0 || presetStart !== null || presetFinish !== null;
-
   function handleConfirmTessellation() {
-    const kindChanges = previewKind !== tessellationKind;
-    if (!kindChanges) {
-      confirmTessellation();
-      return;
-    }
-    if (hasField || hasPresets) {
+    if (tessellationConfirmed) {
       setShowConfirm(true);
     } else {
       confirmTessellation();
     }
-  }
-
-  function buildConfirmMessage(): string {
-    const parts: string[] = [];
-    if (hasField) parts.push("custom field");
-    if (hasPresets) parts.push("preset connections");
-    return m["tessellation.reset_warning"]({ parts: parts.join(" and ") });
   }
 
   return (
@@ -109,7 +89,7 @@ export function BasicConfigFeature() {
       </button>
       {showConfirm && (
         <ConfirmModal
-          message={buildConfirmMessage()}
+          message={m["tessellation.reset_warning"]()}
           onConfirm={() => { confirmTessellation(); setShowConfirm(false); }}
           onCancel={() => setShowConfirm(false)}
         />

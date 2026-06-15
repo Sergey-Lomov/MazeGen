@@ -22,7 +22,7 @@
   "tessellation.r180_full": "180° — base top",
   "tessellation.r270_full": "270° — base right",
   "tessellation.confirm_btn": "Confirm tessellation",
-  "tessellation.reset_warning": "Changing tessellation type will reset: {parts}. Continue?",
+  "tessellation.reset_warning": "Changing tessellation will reset most settings and generation results. Continue?",
   "field.title": "Field",
   "preset.title": "Preset connections",
   "preset.edges_tools": "Edges Tools",

@@ -23,7 +23,7 @@
   "tessellation.r180_full": "180° — основание сверху",
   "tessellation.r270_full": "270° — основание справа",
   "tessellation.confirm_btn": "Подтвердить тесселяцию",
-  "tessellation.reset_warning": "Изменение типа тесселяции сбросит: {parts}. Продолжить?",
+  "tessellation.reset_warning": "Изменение тесселяции приведёт к потере большинства настроек и результатов генерации. Продолжить?",
 
   "field.title": "Поле",
 
