@@ -1,8 +1,42 @@
-import React from "react";
+import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { colors, font } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
+import { Modal } from "../Modal";
 import * as m from "~/paraglide/messages";
+
+type IssueInfo = { label: string; description: string };
+
+const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
+  missing_endpoints: () => ({ label: m["issue.missing_endpoints.label"](), description: m["issue.missing_endpoints.description"]() }),
+  unreachable_finish: () => ({ label: m["issue.unreachable_finish.label"](), description: m["issue.unreachable_finish.description"]() }),
+  min_loops_count: () => ({ label: m["issue.min_loops_count.label"](), description: m["issue.min_loops_count.description"]() }),
+};
+
+function resolveIssue(kind: string): IssueInfo {
+  return KNOWN_ISSUES[kind]?.() ?? { label: kind, description: "" };
+}
+
+function IssueBubble({ kind }: { kind: string }) {
+  const [open, setOpen] = useState(false);
+  const { label, description } = resolveIssue(kind);
+  return (
+    <>
+      <div
+        style={{ ...issueStyles.bubble, ...(description ? issueStyles.bubbleClickable : {}) }}
+        onClick={description ? () => setOpen(true) : undefined}
+      >
+        <span style={issueStyles.label}>{label}</span>
+        {description && <span style={issueStyles.infoIcon}>ℹ</span>}
+      </div>
+      {open && (
+        <Modal title={label} onClose={() => setOpen(false)}>
+          <p style={issueStyles.description}>{description}</p>
+        </Modal>
+      )}
+    </>
+  );
+}
 
 function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -70,7 +104,7 @@ export function AnalyticsFeature() {
           <SectionHeader label={m["analytics.issues"]()} />
           <div style={styles.issueBlock}>
             {warnings.map((w, i) => (
-              <div key={i} style={styles.issueRow}>{w}</div>
+              <IssueBubble key={i} kind={w} />
             ))}
           </div>
           <div style={styles.divider} />
@@ -161,10 +195,25 @@ const switchStyles: Record<string, React.CSSProperties> = {
   thumbOn: { left: 16 },
 };
 
+const issueStyles: Record<string, React.CSSProperties> = {
+  bubble: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    background: colors.bgWarning,
+    border: `1px solid ${colors.textWarning}`,
+    borderRadius: 6,
+    padding: "4px 8px",
+  },
+  bubbleClickable: { cursor: "pointer" },
+  label: { flex: 1, fontSize: font.sm, color: colors.textWarning, lineHeight: 1.4 },
+  infoIcon: { color: colors.textWarning, fontSize: font.md, flexShrink: 0, lineHeight: 1 },
+  description: { fontSize: font.sm, color: colors.textMuted, lineHeight: 1.6, margin: 0 },
+};
+
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 6 },
   issueBlock: { display: "flex", flexDirection: "column", gap: 4 },
-  issueRow: { fontSize: font.sm, color: colors.textWarning, lineHeight: 1.4 },
   statBlock: { display: "flex", flexDirection: "column", gap: 3 },
   statRow: { display: "flex", alignItems: "center", gap: 6 },
   statLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },
