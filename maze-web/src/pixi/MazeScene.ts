@@ -9,6 +9,8 @@ import { FieldEditController } from "./FieldEditController";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
 import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
+import { PostEditRenderer } from "./PostEditRenderer";
+import { PostEditController } from "./PostEditController";
 import { fitFieldViewport } from "./FieldEditorOverlay";
 import { makeProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
@@ -30,6 +32,9 @@ export class MazeScene {
   private presetConnectionsRenderer: PresetConnectionsRenderer;
   private presetConnectionsContainer: Container;
   private presetConnectionsController: PresetConnectionsController;
+  private postEditRenderer: PostEditRenderer;
+  private postEditContainer: Container;
+  private postEditController: PostEditController;
   private analyticsRenderer: AnalyticsRenderer;
   private analyticsContainer: Container;
 
@@ -40,7 +45,12 @@ export class MazeScene {
   private dragStart = { x: 0, y: 0 };
   private viewportStart = { x: 0, y: 0 };
 
-  private onBlur = () => { this.isDragging = false; };
+  private onBlur = () => {
+    this.isDragging = false;
+    const st = useMazeStore.getState();
+    if (st.presetConnectionsOpen) this.presetConnectionsController.clearHover();
+    if (st.postEditOpen) this.postEditController.clearHover();
+  };
   private onWheel: (e: WheelEvent) => void = () => {};
   private unsubscribeFit: (() => void) | null = null;
   private unsubscribeEditField: (() => void) | null = null;
@@ -57,6 +67,7 @@ export class MazeScene {
     this.fieldEditorOverlayContainer = new Container();
     this.primitivePreviewContainer = new Container();
     this.presetConnectionsContainer = new Container();
+    this.postEditContainer = new Container();
     this.tessellationContainer = new Container();
     this.analyticsContainer = new Container();
 
@@ -64,6 +75,7 @@ export class MazeScene {
       this.fieldEditorOverlayContainer,
       this.primitivePreviewContainer,
       this.presetConnectionsContainer,
+      this.postEditContainer,
       this.tessellationContainer,
       this.analyticsContainer,
     ];
@@ -84,11 +96,21 @@ export class MazeScene {
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
+    this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
 
     const self = this;
     this.presetConnectionsController = new PresetConnectionsController(
       () => self.viewport,
       this.presetConnectionsRenderer,
+      (x, y) => {
+        self.viewport.x = x;
+        self.viewport.y = y;
+        self.syncLayersToViewport();
+      },
+    );
+    this.postEditController = new PostEditController(
+      () => self.viewport,
+      this.postEditRenderer,
       (x, y) => {
         self.viewport.x = x;
         self.viewport.y = y;
@@ -227,6 +249,13 @@ export class MazeScene {
       this.app.screen.height,
       this.viewport.scale.x,
     );
+    this.postEditRenderer.onViewportChanged(
+      this.viewport.x,
+      this.viewport.y,
+      this.app.screen.width,
+      this.app.screen.height,
+      this.viewport.scale.x,
+    );
     this.tessellationRenderer.onViewportChanged(
       this.viewport.x,
       this.viewport.y,
@@ -290,6 +319,10 @@ export class MazeScene {
         this.presetConnectionsController.onPointerDown(e.globalX, e.globalY, e.button);
         return;
       }
+      if (st.postEditOpen) {
+        this.postEditController.onPointerDown(e.globalX, e.globalY, e.button);
+        return;
+      }
       this.isDragging = true;
       this.dragStart = { x: e.globalX, y: e.globalY };
       this.viewportStart = { x: this.viewport.x, y: this.viewport.y };
@@ -303,12 +336,12 @@ export class MazeScene {
         this.fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
         return;
       }
-      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
-        const hoverCell = this.fieldEditController.getHoverCell(e.globalX, e.globalY);
-        this.fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
-      }
       if (st.presetConnectionsOpen) {
         this.presetConnectionsController.onPointerMove(e.globalX, e.globalY);
+        return;
+      }
+      if (st.postEditOpen) {
+        this.postEditController.onPointerMove(e.globalX, e.globalY);
         return;
       }
       if (!this.isDragging) return;
@@ -329,6 +362,10 @@ export class MazeScene {
         this.presetConnectionsController.onPointerUp(e.button);
         return;
       }
+      if (st.postEditOpen) {
+        this.postEditController.onPointerUp(e.button);
+        return;
+      }
       this.isDragging = false;
     });
     stage.on("pointerupoutside", () => {
@@ -338,6 +375,14 @@ export class MazeScene {
       }
       if (st.fieldSetupOpen) {
         this.fieldEditorOverlay.updateHover(null, st.tessellationConfig);
+      }
+      if (st.presetConnectionsOpen) {
+        this.presetConnectionsController.onPointerUp(1);
+        this.presetConnectionsController.clearHover();
+      }
+      if (st.postEditOpen) {
+        this.postEditController.onPointerUp(1);
+        this.postEditController.clearHover();
       }
       this.isDragging = false;
     });
@@ -372,6 +417,8 @@ export class MazeScene {
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();
+    this.postEditRenderer.destroy();
+    this.postEditController.destroy();
     this.fieldEditController.destroy();
     window.removeEventListener("blur", this.onBlur);
     this.app.canvas.removeEventListener("wheel", this.onWheel);

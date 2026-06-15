@@ -2,16 +2,23 @@ mod dto;
 mod generation_config;
 mod runner;
 mod tessellation_dispatch;
+mod analytics;
 
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
-    space::SquareTessellation,
+    space::{SquareTessellation, Field, Tessellation},
+    space::{SquarePoint, HexPoint, TriPoint},
+    ids::IdGenerator,
+    graph::{Graph, EdgeKind},
+    Maze,
     quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
 };
-use generation_config::GenerateConfig;
+use generation_config::{GenerateConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
+use dto::ComputeAnalyticsConfig;
+use analytics::build_analytics_snapshot;
 
 #[derive(Serialize)]
 struct ParamDescriptor {
@@ -132,5 +139,87 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
             .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?
     };
     dispatch_generate(seed, &config)
+}
+
+#[wasm_bindgen]
+pub fn compute_analytics(config: JsValue) -> Result<JsValue, JsValue> {
+    let cfg: ComputeAnalyticsConfig = serde_wasm_bindgen::from_value(config)
+        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
+    dispatch_compute_analytics(cfg)
+}
+
+fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, JsValue> {
+    match cfg.tessellation.tessellation_type {
+        TessellationType::Square => {
+            let pts: Vec<SquarePoint> = cfg.tessellation.points.iter()
+                .map(|&[x, y]| SquarePoint { x, y }).collect();
+            run_compute_analytics::<maze_core::space::SquareTessellation>(cfg, pts, |p: SquarePoint| (p.x, p.y))
+        }
+        TessellationType::Hex => {
+            let pts: Vec<HexPoint> = cfg.tessellation.points.iter()
+                .map(|&[q, r]| HexPoint { q, r }).collect();
+            run_compute_analytics::<maze_core::space::HexTessellation>(cfg, pts, |p: HexPoint| (p.q, p.r))
+        }
+        TessellationType::Tri => {
+            let pts: Vec<TriPoint> = cfg.tessellation.points.iter()
+                .map(|&[col, row]| TriPoint { col, row }).collect();
+            run_compute_analytics::<maze_core::space::TriTessellation>(cfg, pts, |p: TriPoint| (p.col, p.row))
+        }
+    }
+}
+
+fn run_compute_analytics<T: Tessellation>(
+    cfg: ComputeAnalyticsConfig,
+    pts: Vec<T::Point>,
+    point_to_xy: impl Fn(T::Point) -> (i32, i32),
+) -> Result<JsValue, JsValue>
+where
+    T::Point: Copy,
+{
+    if pts.is_empty() {
+        return Err(JsValue::from_str("tessellation points must not be empty"));
+    }
+
+    let mut ids = IdGenerator::new();
+    let field = Field::<T>::new(pts, &mut ids)
+        .map_err(|e| JsValue::from_str(e))?;
+
+    let mut graph = Graph::new();
+    field.build_nodes(&mut graph);
+
+    // Build graph from post-edit edges (passages only; walls = absence of edge)
+    for e in &cfg.edges {
+        let from_id = e.from as u64;
+        let to_id   = e.to   as u64;
+        match e.kind.as_str() {
+            "basic" => {
+                graph.add_edge(from_id, to_id, EdgeKind::Basic);
+                graph.add_edge(to_id, from_id, EdgeKind::Basic);
+            }
+            "one_way" => {
+                // Direction already normalized: from→to is the actual passage direction
+                graph.add_edge(from_id, to_id, EdgeKind::Basic);
+            }
+            other => return Err(JsValue::from_str(&format!("unknown edge kind: {other}"))),
+        }
+    }
+
+    let mut maze = Maze::<T>::new(field, graph);
+    maze.meta.start  = cfg.start.map(|id| id as u64);
+    maze.meta.finish = cfg.finish.map(|id| id as u64);
+
+    // Build QC engine from config (no repair)
+    let qc_config = GenerateConfig {
+        tessellation: cfg.tessellation,
+        checks: cfg.checks,
+        check_params: cfg.check_params,
+        ..GenerateConfig::default()
+    };
+    let (qc_engine, _) = runner::build_qc_and_repair::<T>(&qc_config)?;
+
+    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, point_to_xy)
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 

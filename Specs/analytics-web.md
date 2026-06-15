@@ -19,6 +19,25 @@ Block order (top to bottom):
 4. **Nodes**
 5. **Edges**
 
+## Data Source: Post-Edit Integration
+
+Analytics always operates on the post-edited graph, not the raw generated graph. All data is sourced from `postEditAnalytics` (computed by `confirmPostEdit`) with fallback to generated fields when `postEditAnalytics` is null/undefined:
+
+| Data | Source |
+|---|---|
+| `nodeStats` | `postEditAnalytics?.nodeStats ?? state.nodeStats` |
+| `edgeStats` | `postEditAnalytics?.edgeStats ?? state.edgeStats` |
+| `warnings` | `postEditAnalytics?.warnings ?? state.warnings` |
+| `routeInfo` | `postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo` |
+| `components` | `postEditAnalytics?.components ?? state.components` |
+| `navNodes/navEdges` | `postEditAnalytics?.navNodes/navEdges ?? state.navNodes/navEdges` |
+| `edges` (canvas) | `postEditEdgesToDto(state.postEditEdges)` — confirmed post-edit edges snapshot |
+| `start/finish` (canvas) | `postEditMeta?.start/finish ?? state.start/finish` — confirmed post-edit meta snapshot |
+
+`routeInfo` uses strict `!= null` (not `??`) because `null` is a meaningful value meaning "no path exists" and must not fall back to generated `routeInfo`.
+
+The Route overlay toggle is disabled when `routeInfo == null`. `showRouteOverlay` is auto-reset to `false` when `confirmPostEdit` produces `route_info == null`.
+
 ### Issues Block
 
 Displays `warnings: string[]` from the store (generation warnings reported by WASM). Each warning is one row styled in `textWarning` color.
@@ -81,18 +100,19 @@ Owns all analytics canvas layers. Lives in `analyticsContainer` which is a synce
 |---|---|---|---|
 | 1 | `gridContainer` | `GridRenderer` | `analyticsOpen && showMazeOverlay && nodes.length > 0` |
 | 2 | `floorContainer` | `CellFillRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 3 | `regionsContainer` | `RegionsRenderer` | `analyticsOpen && showComponentsOverlay && components.length > 0` |
-| 4 | `wallsContainer` | `WallRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 5 | `markersContainer` | `WaypointsRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 6 | `graphContainer` | `MazeGraphRenderer` | `analyticsOpen && showGraphOverlay && nodes.length > 0` |
-| 7 | `navGraphContainer` | `NavGraphRenderer` | `analyticsOpen && showNavGraphOverlay && navNodes.length > 0` |
-| 8 | `routeContainer` | `RouteOverlay` | `analyticsOpen && showRouteOverlay && routeInfo != null` |
+| 3 | `closedCellsContainer` | `CellFillRenderer` (via `MazeOverlayRenderer`) | same as grid |
+| 4 | `regionsContainer` | `RegionsRenderer` | `analyticsOpen && showComponentsOverlay && components.length > 0` |
+| 5 | `wallsContainer` | `WallRenderer` (via `MazeOverlayRenderer`) | same as grid |
+| 6 | `markersContainer` | `WaypointsRenderer` (via `MazeOverlayRenderer`) | same as grid |
+| 7 | `graphContainer` | `MazeGraphRenderer` | `analyticsOpen && showGraphOverlay && nodes.length > 0` |
+| 8 | `navGraphContainer` | `NavGraphRenderer` | `analyticsOpen && showNavGraphOverlay && navNodes.length > 0` |
+| 9 | `routeContainer` | `RouteOverlay` | `analyticsOpen && showRouteOverlay && routeInfo != null` |
 
-Regions (layer 3) sits between floor and walls so region colors show through wall rendering — intentional.
+`closedCells` (layer 3) renders nodes with no edges in `WALL_COLOR` — isolated cells that are completely walled off. Regions (layer 4) sits between closedCells and walls so region colors show through wall rendering — intentional.
 
 ### MazeOverlayRenderer
 
-Utility class (not a feature-renderer). Accepts `{ floor, walls, markers }` containers from the caller so `AnalyticsRenderer` can control z-order. Does not create its own containers.
+Utility class (not a feature-renderer). Accepts `{ floor, closedCells, walls, markers }` containers from the caller so `AnalyticsRenderer` can control z-order. Does not create its own containers.
 
 ### RegionsRenderer
 

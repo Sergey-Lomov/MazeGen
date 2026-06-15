@@ -198,5 +198,21 @@
   "analytics.layer_nav_graph": "Навигационный граф",
   "analytics.layer_route": "Маршрут",
   "status.no_maze": "Сначала сгенерируйте лабиринт",
-  "status.analytics_available": "Аналитика доступна"
+  "status.analytics_available": "Аналитика доступна",
+  "post_edit.title": "Постобработка",
+  "post_edit.wall": "Стена",
+  "post_edit.passage": "Проход",
+  "post_edit.reset": "Сброс",
+  "post_edit.one_way": "Одностороннее",
+  "post_edit.confirm": "Подтвердить изменения",
+  "post_edit.auto_confirm": "Авто-подтверждение",
+  "post_edit.auto_confirm_hint": "может вызывать проблемы с производительностью",
+  "post_edit.reset_to_generation": "Сбросить к генерации",
+  "post_edit.confirm_reset": "Изменения постобработки будут отменены. Продолжить?",
+  "post_edit.confirm_regenerate": "Изменения постобработки будут сброшены при повторной генерации. Продолжить?",
+  "status.post_edit_unavailable": "Сначала сгенерируйте лабиринт",
+  "status.post_edit_ready": "Готово к редактированию",
+  "status.post_edit_has_issues": "Обнаружены проблемы",
+  "status.analytics_issues": "{count} проблема",
+  "status.analytics_issues_plural": "{count} проблемы"
 }

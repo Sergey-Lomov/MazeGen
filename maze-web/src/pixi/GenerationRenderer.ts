@@ -4,7 +4,7 @@ import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
-import { buildMazeWalls, buildMazeMarkers } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildClosedCells } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport } from "./renderers/types";
 import {
@@ -81,6 +81,7 @@ export class GenerationRenderer {
         state.edges !== prev.edges ||
         state.start !== prev.start ||
         state.finish !== prev.finish ||
+        state.tessellationConfig !== prev.tessellationConfig ||
         state.activeTessellationConfig !== prev.activeTessellationConfig ||
         state.debugMode !== prev.debugMode ||
         state.debugSnapshot !== prev.debugSnapshot ||
@@ -104,7 +105,8 @@ export class GenerationRenderer {
     this.debugActiveContainer.visible = visible && state.showDebugFrontier;
     this.debugSrcContainer.visible = visible && state.showDebugFrontier;
     if (visible) {
-      this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
+      const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
+      this.grid.render({ viewport: this.viewport }, cfg);
     }
   }
 
@@ -112,7 +114,8 @@ export class GenerationRenderer {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
     if (state.generationOpen && state.showMaze) {
-      this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
+      const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
+      this.grid.render({ viewport: this.viewport }, cfg);
     }
   }
 
@@ -128,7 +131,7 @@ export class GenerationRenderer {
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const cfg = state.activeTessellationConfig;
+    const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
     this.grid.render({ viewport: this.viewport }, cfg);
     const view = this.debugView(state);
 
@@ -190,11 +193,4 @@ export class GenerationRenderer {
   }
 }
 
-function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[]): [number, number][] {
-  const connected = new Set<number>();
-  for (const e of edges) {
-    connected.add(e.from);
-    connected.add(e.to);
-  }
-  return nodes.filter(n => !connected.has(n.id)).map(n => [n.x, n.y]);
-}
+

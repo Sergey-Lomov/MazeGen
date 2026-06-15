@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
+import { ConfirmModal } from "../ConfirmModal";
 import { sharedStyles } from "../../styles/shared";
 import { colors, font, radius } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
@@ -28,8 +29,10 @@ export function GenerationFeature({ canGenerate }: Props) {
   const setEdgeBasedParam = useMazeStore((s) => s.setEdgeBasedParam);
   const generate = useMazeStore((s) => s.generate);
   const regenerate = useMazeStore((s) => s.regenerate);
+  const postEditDraftEdges = useMazeStore((s) => s.postEditDraftEdges);
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"generate" | "regenerate" | null>(null);
 
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
@@ -39,11 +42,19 @@ export function GenerationFeature({ canGenerate }: Props) {
   const edgeParams = isEdgeBased ? (initialConfig as { method: string } & EdgeBasedParams) : null;
 
   function handleGenerate() {
+    if (postEditDraftEdges !== null) { setPendingAction("generate"); return; }
     generate();
   }
 
   function handleRegenerate() {
+    if (postEditDraftEdges !== null) { setPendingAction("regenerate"); return; }
     regenerate();
+  }
+
+  function confirmPending() {
+    if (pendingAction === "generate") generate();
+    else if (pendingAction === "regenerate") regenerate();
+    setPendingAction(null);
   }
 
   const canRegenerate = lastUsedSeed !== null && canGenerate;
@@ -127,6 +138,13 @@ export function GenerationFeature({ canGenerate }: Props) {
 
       {algorithmDialogOpen && (
         <AlgorithmSelectDialog onClose={() => setAlgorithmDialogOpen(false)} />
+      )}
+      {pendingAction !== null && (
+        <ConfirmModal
+          message={m["post_edit.confirm_regenerate"]()}
+          onConfirm={confirmPending}
+          onCancel={() => setPendingAction(null)}
+        />
       )}
     </div>
   );

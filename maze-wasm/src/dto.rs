@@ -1,4 +1,6 @@
-use serde::Serialize;
+use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
+use crate::generation_config::TessellationConfig;
 
 #[derive(Serialize)]
 pub struct NodeDto {
@@ -62,6 +64,30 @@ pub struct RouteInfoDto {
     pub one_way_count: usize,
     pub score: Option<f64>,
     pub path: Vec<u32>,
+}
+
+#[derive(Deserialize)]
+pub struct PostEditEdgeDto {
+    pub from: u32,
+    pub to: u32,
+    /// "basic" | "one_way" — direction already normalized: from→to is the actual passage direction.
+    pub kind: String,
+}
+
+#[derive(Deserialize)]
+pub struct ComputeAnalyticsConfig {
+    pub tessellation: TessellationConfig,
+    /// Node coordinates — included for API clarity; field is reconstructed from tessellation.points.
+    #[allow(dead_code)]
+    pub nodes: Vec<[i32; 2]>,
+    /// Actual edges (passages only — walls are absence of edge).
+    pub edges: Vec<PostEditEdgeDto>,
+    pub start: Option<u32>,
+    pub finish: Option<u32>,
+    #[serde(default)]
+    pub checks: Vec<String>,
+    #[serde(default)]
+    pub check_params: HashMap<String, HashMap<String, String>>,
 }
 
 #[derive(Serialize)]

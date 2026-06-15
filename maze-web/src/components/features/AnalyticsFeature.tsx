@@ -1,42 +1,9 @@
-import React, { useState } from "react";
+import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { colors, font } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
-import { Modal } from "../Modal";
+import { IssuesBlock } from "../IssuesBlock";
 import * as m from "~/paraglide/messages";
-
-type IssueInfo = { label: string; description: string };
-
-const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
-  missing_endpoints: () => ({ label: m["issue.missing_endpoints.label"](), description: m["issue.missing_endpoints.description"]() }),
-  unreachable_finish: () => ({ label: m["issue.unreachable_finish.label"](), description: m["issue.unreachable_finish.description"]() }),
-  min_loops_count: () => ({ label: m["issue.min_loops_count.label"](), description: m["issue.min_loops_count.description"]() }),
-};
-
-function resolveIssue(kind: string): IssueInfo {
-  return KNOWN_ISSUES[kind]?.() ?? { label: kind, description: "" };
-}
-
-function IssueBubble({ kind }: { kind: string }) {
-  const [open, setOpen] = useState(false);
-  const { label, description } = resolveIssue(kind);
-  return (
-    <>
-      <div
-        style={{ ...issueStyles.bubble, ...(description ? issueStyles.bubbleClickable : {}) }}
-        onClick={description ? () => setOpen(true) : undefined}
-      >
-        <span style={issueStyles.label}>{label}</span>
-        {description && <span style={issueStyles.infoIcon}>ℹ</span>}
-      </div>
-      {open && (
-        <Modal title={label} onClose={() => setOpen(false)}>
-          <p style={issueStyles.description}>{description}</p>
-        </Modal>
-      )}
-    </>
-  );
-}
 
 function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -68,20 +35,26 @@ function StatRow({ label, count, pct }: { label: string; count: number; pct?: nu
   );
 }
 
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function ToggleRow({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <div style={styles.toggleRow}>
-      <span style={styles.toggleLabel}>{label}</span>
-      <Switch checked={checked} onChange={onChange} />
+      <span style={{ ...styles.toggleLabel, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
+      <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} />
     </div>
   );
 }
 
 export function AnalyticsFeature() {
-  const nodeStats = useMazeStore((s) => s.nodeStats);
-  const edgeStats = useMazeStore((s) => s.edgeStats);
-  const routeInfo = useMazeStore((s) => s.routeInfo);
-  const warnings = useMazeStore((s) => s.warnings);
+  const generatedNodeStats = useMazeStore((s) => s.nodeStats);
+  const generatedEdgeStats = useMazeStore((s) => s.edgeStats);
+  const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
+  const generatedWarnings = useMazeStore((s) => s.warnings);
+  const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
+
+  const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
+  const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
+  const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
+  const warnings = postEditAnalytics?.warnings ?? generatedWarnings;
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
@@ -98,18 +71,7 @@ export function AnalyticsFeature() {
   return (
     <div style={styles.root}>
 
-      {/* Issues block — hidden when no warnings */}
-      {warnings.length > 0 && (
-        <>
-          <SectionHeader label={m["analytics.issues"]()} />
-          <div style={styles.issueBlock}>
-            {warnings.map((w, i) => (
-              <IssueBubble key={i} kind={w} />
-            ))}
-          </div>
-          <div style={styles.divider} />
-        </>
-      )}
+      <IssuesBlock warnings={warnings} />
 
       {/* Layers block */}
       <SectionHeader label={m["analytics.layers"]()} />
@@ -118,7 +80,7 @@ export function AnalyticsFeature() {
         <ToggleRow label={m["analytics.layer_components"]()} checked={showComponentsOverlay} onChange={setShowComponentsOverlay} />
         <ToggleRow label={m["analytics.layer_graph"]()} checked={showGraphOverlay} onChange={setShowGraphOverlay} />
         <ToggleRow label={m["analytics.layer_nav_graph"]()} checked={showNavGraphOverlay} onChange={setShowNavGraphOverlay} />
-        <ToggleRow label={m["analytics.layer_route"]()} checked={showRouteOverlay} onChange={setShowRouteOverlay} />
+        <ToggleRow label={m["analytics.layer_route"]()} checked={showRouteOverlay} onChange={setShowRouteOverlay} disabled={routeInfo == null} />
       </div>
 
       <div style={styles.divider} />
@@ -195,25 +157,8 @@ const switchStyles: Record<string, React.CSSProperties> = {
   thumbOn: { left: 16 },
 };
 
-const issueStyles: Record<string, React.CSSProperties> = {
-  bubble: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: colors.bgWarning,
-    border: `1px solid ${colors.textWarning}`,
-    borderRadius: 6,
-    padding: "4px 8px",
-  },
-  bubbleClickable: { cursor: "pointer" },
-  label: { flex: 1, fontSize: font.sm, color: colors.textWarning, lineHeight: 1.4 },
-  infoIcon: { color: colors.textWarning, fontSize: font.md, flexShrink: 0, lineHeight: 1 },
-  description: { fontSize: font.sm, color: colors.textMuted, lineHeight: 1.6, margin: 0 },
-};
-
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 6 },
-  issueBlock: { display: "flex", flexDirection: "column", gap: 4 },
   statBlock: { display: "flex", flexDirection: "column", gap: 3 },
   statRow: { display: "flex", alignItems: "center", gap: 6 },
   statLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },

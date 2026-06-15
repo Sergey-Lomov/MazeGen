@@ -1,4 +1,4 @@
-import { Container } from "pixi.js";
+﻿import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { RegionsRenderer } from "./RegionsRenderer";
 import { MazeOverlayRenderer } from "./MazeOverlayRenderer";
@@ -6,11 +6,13 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { MazeGraphRenderer } from "./MazeRenderer";
 import { NavGraphRenderer } from "./MazeRenderer";
 import { RouteOverlay } from "./RouteOverlay";
+import { postEditEdgesToDto } from "./selectors/mazeSelectors";
 import type { Viewport } from "./renderers/types";
 
 export class AnalyticsRenderer {
   private readonly gridContainer: Container;
   private readonly floorContainer: Container;
+  private readonly closedCellsContainer: Container;
   private readonly regionsContainer: Container;
   private readonly wallsContainer: Container;
   private readonly markersContainer: Container;
@@ -29,17 +31,19 @@ export class AnalyticsRenderer {
   private unsubscribe: (() => void) | null = null;
 
   constructor(container: Container) {
-    this.gridContainer = new Container();
-    this.floorContainer = new Container();
-    this.regionsContainer = new Container();
-    this.wallsContainer = new Container();
-    this.markersContainer = new Container();
-    this.graphContainer = new Container();
-    this.navGraphContainer = new Container();
-    this.routeContainer = new Container();
+    this.gridContainer        = new Container();
+    this.floorContainer       = new Container();
+    this.closedCellsContainer = new Container();
+    this.regionsContainer     = new Container();
+    this.wallsContainer       = new Container();
+    this.markersContainer     = new Container();
+    this.graphContainer       = new Container();
+    this.navGraphContainer    = new Container();
+    this.routeContainer       = new Container();
 
     container.addChild(this.gridContainer);
     container.addChild(this.floorContainer);
+    container.addChild(this.closedCellsContainer);
     container.addChild(this.regionsContainer);
     container.addChild(this.wallsContainer);
     container.addChild(this.markersContainer);
@@ -50,6 +54,7 @@ export class AnalyticsRenderer {
     this.grid = new GridRenderer(this.gridContainer);
     this.mazeOverlay = new MazeOverlayRenderer({
       floor: this.floorContainer,
+      closedCells: this.closedCellsContainer,
       walls: this.wallsContainer,
       markers: this.markersContainer,
     });
@@ -82,7 +87,10 @@ export class AnalyticsRenderer {
         state.routeInfo !== prev.routeInfo ||
         state.start !== prev.start ||
         state.finish !== prev.finish ||
-        state.activeTessellationConfig !== prev.activeTessellationConfig;
+        state.activeTessellationConfig !== prev.activeTessellationConfig ||
+        state.postEditAnalytics !== prev.postEditAnalytics ||
+        state.postEditEdges !== prev.postEditEdges ||
+        state.postEditMeta !== prev.postEditMeta;
 
       if (visibilityChanged || dataChanged) {
         this.syncAll(state);
@@ -93,16 +101,25 @@ export class AnalyticsRenderer {
   }
 
   private syncAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { analyticsOpen, nodes, edges, components, navNodes, navEdges, routeInfo,
-      start, finish, activeTessellationConfig: cfg,
-      showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay, showRouteOverlay } = state;
+    const { analyticsOpen, nodes, activeTessellationConfig: cfg,
+      showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay, showRouteOverlay,
+      postEditAnalytics } = state;
+
+    const components = postEditAnalytics?.components ?? state.components;
+    const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
+    const navEdges   = postEditAnalytics?.navEdges   ?? state.navEdges;
+    const routeInfo  = postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo;
+    const edges  = postEditEdgesToDto(state.postEditEdges);
+    const start  = state.postEditMeta != null ? state.postEditMeta.start : state.start;
+    const finish = state.postEditMeta != null ? state.postEditMeta.finish : state.finish;
 
     // Maze overlay (grid + floor + walls + markers)
     const showMaze = analyticsOpen && showMazeOverlay && nodes.length > 0;
-    this.gridContainer.visible = showMaze;
-    this.floorContainer.visible = showMaze;
-    this.wallsContainer.visible = showMaze;
-    this.markersContainer.visible = showMaze;
+    this.gridContainer.visible        = showMaze;
+    this.floorContainer.visible       = showMaze;
+    this.closedCellsContainer.visible = showMaze;
+    this.wallsContainer.visible       = showMaze;
+    this.markersContainer.visible     = showMaze;
     if (showMaze) {
       this.grid.render({ viewport: this.viewport }, cfg);
       this.mazeOverlay.render({ nodes, edges, start, finish, cfg });

@@ -1,12 +1,37 @@
-import { create } from "zustand";
-import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
+﻿import { create } from "zustand";
+import { generateMaze, getAvailableChecks, getAvailableStrategies, computeAnalytics } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GenerationStepsSnapshot, GenerateConfig, WasmTessellationConfig, NodeLockKind } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GenerationStepsSnapshot, GenerateConfig, WasmTessellationConfig, NodeLockKind, PostEditEdgeWasmDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
 import { applyTool, computeInvalidKeys, computeAutoLockedNodes } from "../pixi/presetConnectionsUtils";
 import { configAllCells } from "../pixi/tessellationCells";
+
+export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
+
+export type PostEditTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish";
+
+export interface PostEditEdge {
+  from: number;
+  to: number;
+  kind: PostEditEdgeKind;
+}
+
+export interface PostEditMeta {
+  start: number | null;
+  finish: number | null;
+}
+
+export interface PostEditAnalytics {
+  nodeStats: NodeStatsDto;
+  edgeStats: SpatialEdgeStatsDto;
+  routeInfo: RouteInfoDto | null;
+  navNodes: NavNodeDto[];
+  navEdges: NavEdgeDto[];
+  components: number[][];
+  warnings: string[];
+}
 
 export type TessellationKind = "square" | "hex" | "triangle";
 export type SquareShape = "rect" | "free";
@@ -118,6 +143,25 @@ interface MazeState {
   showGraphOverlay: boolean;
   showNavGraphOverlay: boolean;
   showRouteOverlay: boolean;
+  // Post-edit state
+  postEditOpen: boolean;
+  postEditAutoConfirm: boolean;
+  postEditTool: PostEditTool;
+  /** Working copy — updated on every tool click. Read by PostEditRenderer. */
+  postEditDraftEdges: Record<string, PostEditEdge> | null;
+  /** Working copy — updated on endpoint changes. Read by PostEditRenderer. */
+  postEditDraftMeta: PostEditMeta | null;
+  /** Confirmed snapshot of postEditDraftEdges. Read by AnalyticsRenderer. */
+  postEditEdges: Record<string, PostEditEdge> | null;
+  /** Confirmed snapshot of postEditDraftMeta. Read by AnalyticsRenderer. */
+  postEditMeta: PostEditMeta | null;
+  /** Analytics over confirmed graph. null until first confirmPostEdit completes. */
+  postEditAnalytics: PostEditAnalytics | null;
+  /** Incremented on each confirmPostEdit call; stale async results are discarded. */
+  _postEditRequestId: number;
+  /** start/finish as generated — restored on resetPostEdit. */
+  _generatedStart: number | null;
+  _generatedFinish: number | null;
 }
 
 interface MazeActions {
@@ -190,6 +234,14 @@ interface MazeActions {
   setShowGraphOverlay: (v: boolean) => void;
   setShowNavGraphOverlay: (v: boolean) => void;
   setShowRouteOverlay: (v: boolean) => void;
+  setPostEditOpen: (open: boolean) => void;
+  setPostEditAutoConfirm: (v: boolean) => void;
+  setPostEditTool: (tool: PostEditTool) => void;
+  applyPostEditTool: (edgeKey: string, from: number, to: number) => void;
+  setPostEditEndpoint: (kind: "start" | "finish", nodeId: number) => void;
+  clearPostEditEndpoint: (kind: "start" | "finish") => void;
+  confirmPostEdit: () => Promise<void>;
+  resetPostEdit: () => void;
 }
 
 function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
@@ -364,6 +416,17 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   showGraphOverlay: false,
   showNavGraphOverlay: false,
   showRouteOverlay: false,
+  postEditOpen: false,
+  postEditAutoConfirm: true,
+  postEditTool: "wall" as PostEditTool,
+  postEditDraftEdges: null,
+  postEditDraftMeta: null,
+  postEditEdges: null,
+  postEditMeta: null,
+  postEditAnalytics: null,
+  _postEditRequestId: 0,
+  _generatedStart: null,
+  _generatedFinish: null,
 
   setSeed: (seed) => set({ seed, error: null }),
 
@@ -584,7 +647,146 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setShowNavGraphOverlay: (v) => set({ showNavGraphOverlay: v }),
   setShowRouteOverlay: (v) => set({ showRouteOverlay: v }),
 
-  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const }),
+  setPostEditOpen: (open) => set({ postEditOpen: open }),
+  setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
+  setPostEditTool: (tool) => set({ postEditTool: tool }),
+
+  applyPostEditTool: (edgeKey, from_, to_) => {
+    set((state) => {
+      if (state.postEditDraftEdges === null) return {};
+      const next = { ...state.postEditDraftEdges };
+
+      const tool = state.postEditTool;
+      if (tool === "reset") {
+        // Restore original state for this edge pair regardless of click direction.
+        // state.edges only contains forward directions (one_way stored as single directed edge).
+        const origAB = state.edges.some(e => e.from === from_ && e.to === to_);
+        const origBA = state.edges.some(e => e.from === to_ && e.to === from_);
+        const fwdKey = edgeKey;
+        const bwdKey = `${to_}-${from_}`;
+        delete next[fwdKey];
+        delete next[bwdKey];
+        if (origAB && origBA) {
+          next[fwdKey] = { from: from_, to: to_, kind: "basic" };
+          next[bwdKey] = { from: to_, to: from_, kind: "basic" };
+        } else if (origAB) {
+          next[fwdKey] = { from: from_, to: to_, kind: "one_way_forward" };
+        } else if (origBA) {
+          next[bwdKey] = { from: to_, to: from_, kind: "one_way_forward" };
+        }
+        // else: wall in original — both deleted above
+      } else if (tool === "wall") {
+        // Wall: remove both directions
+        delete next[edgeKey];
+        delete next[`${to_}-${from_}`];
+      } else if (tool === "passage") {
+        // Passage: ensure both directions exist
+        next[edgeKey] = { from: from_, to: to_, kind: "basic" };
+        next[`${to_}-${from_}`] = { from: to_, to: from_, kind: "basic" };
+      } else if (tool === "one_way") {
+        // Toggle direction: fwd ↔ bwd. Wall/passage handled by their own tools.
+        const fwdKey = edgeKey;
+        const bwdKey = `${to_}-${from_}`;
+        if (next[fwdKey] !== undefined) {
+          // fwd → bwd
+          delete next[fwdKey];
+          next[bwdKey] = { from: to_, to: from_, kind: "one_way_backward" };
+        } else {
+          // bwd → fwd (or no edge → fwd)
+          delete next[bwdKey];
+          next[fwdKey] = { from: from_, to: to_, kind: "one_way_forward" };
+        }
+      }
+
+      return { postEditDraftEdges: next };
+    });
+  },
+
+  confirmPostEdit: async () => {
+    const requestId = useMazeStore.getState()._postEditRequestId + 1;
+    set({ _postEditRequestId: requestId });
+
+    const state = useMazeStore.getState();
+    const { postEditDraftEdges, postEditDraftMeta, activeTessellationConfig, nodes, start, finish, selectedChecks, checkParams } = state;
+    if (postEditDraftEdges === null) return;
+    const edgesSnapshot = postEditDraftEdges;
+    const metaSnapshot = postEditDraftMeta;
+
+    const effectiveStart = postEditDraftMeta != null ? postEditDraftMeta.start : start;
+    const effectiveFinish = postEditDraftMeta != null ? postEditDraftMeta.finish : finish;
+
+    const wasmEdges: PostEditEdgeWasmDto[] = Object.values(postEditDraftEdges)
+      .filter(e => e.kind !== "wall")
+      .map(e => ({
+        from: e.from,
+        to: e.to,
+        kind: e.kind === "basic" ? "basic" as const : "one_way" as const,
+      }));
+
+    const config = {
+      tessellation: fieldConfigToWasm(activeTessellationConfig),
+      nodes: nodes.map(n => [n.x, n.y] as [number, number]),
+      edges: wasmEdges,
+      start: effectiveStart ?? null,
+      finish: effectiveFinish ?? null,
+      checks: selectedChecks,
+      check_params: checkParams,
+    };
+
+    try {
+      const snapshot = computeAnalytics(config);
+      if (useMazeStore.getState()._postEditRequestId !== requestId) return;
+      set((state) => ({
+        postEditAnalytics: {
+          nodeStats: snapshot.node_stats,
+          edgeStats: snapshot.edge_stats,
+          routeInfo: snapshot.route_info,
+          navNodes: snapshot.nav_nodes,
+          navEdges: snapshot.nav_edges,
+          components: snapshot.components,
+          warnings: snapshot.warnings,
+        },
+        postEditEdges: edgesSnapshot,
+        postEditMeta: metaSnapshot,
+        showRouteOverlay: snapshot.route_info != null ? state.showRouteOverlay : false,
+      }));
+    } catch (err) {
+      if (useMazeStore.getState()._postEditRequestId !== requestId) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ error: msg });
+    }
+  },
+
+  resetPostEdit: () => {
+    set((state) => ({
+      postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state.edges),
+      postEditEdges: null,
+      postEditMeta: null,
+      postEditAnalytics: null,
+      postEditDraftMeta: { start: state._generatedStart, finish: state._generatedFinish },
+      postEditTool: "wall" as PostEditTool,
+    }));
+    void useMazeStore.getState().confirmPostEdit();
+  },
+
+  setPostEditEndpoint: (kind, nodeId) => {
+    set((state) => ({
+      postEditDraftMeta: { ...(state.postEditDraftMeta ?? { start: state.start, finish: state.finish }), [kind]: nodeId },
+    }));
+    if (useMazeStore.getState().postEditAutoConfirm) {
+      void useMazeStore.getState().confirmPostEdit();
+    }
+  },
+  clearPostEditEndpoint: (kind) => {
+    set((state) => ({
+      postEditDraftMeta: { ...(state.postEditDraftMeta ?? { start: state.start, finish: state.finish }), [kind]: null },
+    }));
+    if (useMazeStore.getState().postEditAutoConfirm) {
+      void useMazeStore.getState().confirmPostEdit();
+    }
+  },
+
+  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftMeta: null, postEditEdges: null, postEditMeta: null, postEditAnalytics: null }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
@@ -832,6 +1034,20 @@ function _recomputeAutoLock(state: MazeState): Set<string> {
   return computeAutoLockedNodes(state.presetConnections, activeTessellation, customPts);
 }
 
+function buildPostEditDraftEdgesFromGenerated(edges: EdgeDto[]): Record<string, PostEditEdge> {
+  const edgeSet = new Set(edges.map(e => `${e.from}-${e.to}`));
+  const result: Record<string, PostEditEdge> = {};
+  for (const e of edges) {
+    const hasReverse = edgeSet.has(`${e.to}-${e.from}`);
+    result[`${e.from}-${e.to}`] = {
+      from: e.from,
+      to: e.to,
+      kind: hasReverse ? "basic" : "one_way_forward",
+    };
+  }
+  return result;
+}
+
 function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConfig {
   const t = cfg.type;
   const tessellation_type = t.startsWith("hex") ? "hex" as const
@@ -927,7 +1143,16 @@ function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet): void {
       debugSnapshot,
       debugStep: lastStep,
       debugStale: false,
+      postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(snapshot.edges),
+      postEditEdges: null,
+      postEditMeta: null,
+      postEditAnalytics: null,
+      postEditDraftMeta: { start: snapshot.start, finish: snapshot.finish },
+      postEditTool: "wall" as PostEditTool,
+      _generatedStart: snapshot.start,
+      _generatedFinish: snapshot.finish,
     });
+    void useMazeStore.getState().confirmPostEdit();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     set({ error: msg, generationStatus: "error" });

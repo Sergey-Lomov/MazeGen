@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+﻿import React, { useState, useMemo } from "react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
@@ -6,6 +6,7 @@ import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./featur
 import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
 import { QualityFeature } from "./features/QualityFeature";
 import { GenerationFeature } from "./features/GenerationFeature";
+import { PostEditFeature } from "./features/PostEditFeature";
 import { AnalyticsFeature } from "./features/AnalyticsFeature";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind } from "../store/mazeStore";
@@ -78,7 +79,7 @@ function getTessellationKindLabel(kind: TessellationKind): string {
   return labels[kind]();
 }
 
-type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "analytics";
+type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics";
 
 export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const [openCard, setOpenCard] = useState<FeatureId>("basic_config");
@@ -102,8 +103,12 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const setGenerationOpen = useMazeStore((s) => s.setGenerationOpen);
   const setQualityOpen = useMazeStore((s) => s.setQualityOpen);
   const setAnalyticsOpen = useMazeStore((s) => s.setAnalyticsOpen);
+  const setPostEditOpen = useMazeStore((s) => s.setPostEditOpen);
+
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const nodes = useMazeStore((s) => s.nodes);
+  const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
+  const generatedWarnings = useMazeStore((s) => s.warnings);
 
   function handleToggle(id: FeatureId) {
     if (openCard === id) return;
@@ -112,12 +117,16 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     if (openCard === "generation") setGenerationOpen(false);
     if (openCard === "quality") setQualityOpen(false);
     if (openCard === "analytics") setAnalyticsOpen(false);
+    if (openCard === "post_edit") setPostEditOpen(false);
     if (id === "basic_config") syncPreviewToConfirmed();
     if (id === "field_setup") setFieldSetupOpen(true);
     if (id === "preset_connections") setPresetConnectionsOpen(true);
     if (id === "generation") setGenerationOpen(true);
     if (id === "quality") setQualityOpen(true);
     if (id === "analytics") setAnalyticsOpen(true);
+    if (id === "post_edit") {
+      setPostEditOpen(true);
+    }
     setOpenCard(id);
   }
 
@@ -224,14 +233,38 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
         <GenerationFeature canGenerate={tessellationConfirmed} />
       </FeatureCard>
       <FeatureCard
-        title={m["analytics.title"]()}
-        status={nodes.length > 0 ? "set" : "unavailable"}
-        comment={nodes.length > 0 ? m["status.analytics_available"]() : m["status.no_maze"]()}
-        expanded={openCard === "analytics"}
-        onOpen={() => handleToggle("analytics")}
+        title={m["post_edit.title"]()}
+        status={nodes.length === 0 ? "unavailable" : "set"}
+        comment={nodes.length === 0 ? m["status.post_edit_unavailable"]() : m["status.post_edit_ready"]()}
+        expanded={openCard === "post_edit"}
+        onOpen={() => handleToggle("post_edit")}
       >
-        <AnalyticsFeature />
+        <PostEditFeature />
       </FeatureCard>
+      {(() => {
+        const activeWarnings = postEditAnalytics?.warnings ?? generatedWarnings;
+        const wCount = activeWarnings.length;
+        const analyticsStatus: FeatureStatus = nodes.length === 0 ? "unavailable" : wCount > 0 ? "warning" : "set";
+        const analyticsComment = nodes.length === 0
+          ? m["status.no_maze"]()
+          : wCount > 0 ? m["status.post_edit_has_issues"]()
+          : m["status.analytics_available"]();
+        const analyticsSubtitle = wCount > 0
+          ? (wCount === 1 ? m["status.analytics_issues"]({ count: wCount }) : m["status.analytics_issues_plural"]({ count: wCount }))
+          : undefined;
+        return (
+          <FeatureCard
+            title={m["analytics.title"]()}
+            status={analyticsStatus}
+            comment={analyticsComment}
+            subtitle={analyticsSubtitle}
+            expanded={openCard === "analytics"}
+            onOpen={() => handleToggle("analytics")}
+          >
+            <AnalyticsFeature />
+          </FeatureCard>
+        );
+      })()}
       <div style={styles.footer}>
         <LanguageSwitcher />
         <button

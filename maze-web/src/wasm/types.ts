@@ -162,3 +162,24 @@ export interface GenerateConfig {
   preset_finish?: [number, number];
   debug?: boolean;
 }
+
+export type PostEditEdgeKind = "basic" | "one_way";
+
+export interface PostEditEdgeWasmDto {
+  from: number;
+  to: number;
+  /** Direction already normalized: from→to is the actual passage direction. */
+  kind: PostEditEdgeKind;
+}
+
+export interface ComputeAnalyticsConfig {
+  tessellation: WasmTessellationConfig;
+  /** Node coordinates — mirrors tessellation.points for API clarity. */
+  nodes: ReadonlyArray<[number, number]>;
+  /** Passage edges only (walls = absence of edge). */
+  edges: PostEditEdgeWasmDto[];
+  start: number | null;
+  finish: number | null;
+  checks: string[];
+  check_params: Record<string, Record<string, string>>;
+}

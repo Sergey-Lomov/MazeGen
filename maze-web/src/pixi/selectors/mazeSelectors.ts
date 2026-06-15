@@ -1,9 +1,23 @@
-import type { NodeDto, EdgeDto } from "../../wasm/types";
+﻿import type { NodeDto, EdgeDto } from "../../wasm/types";
+import type { PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, PassageKind } from "../renderers/types";
 import { getCellCenter, getNeighborData } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_START_COLOR, NODE_FINISH_COLOR, NODE_RADIUS } from "../colorUtils";
+
+export function postEditEdgesToDto(postEditEdges: Record<string, PostEditEdge> | null): EdgeDto[] {
+  if (postEditEdges === null) return [];
+  return Object.values(postEditEdges)
+    .filter(e => e.kind !== "wall")
+    .map(e => ({ from: e.from, to: e.to }));
+}
+
+export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[]): [number, number][] {
+  const connected = new Set<number>();
+  for (const e of edges) { connected.add(e.from); connected.add(e.to); }
+  return nodes.filter(n => !connected.has(n.id)).map(n => [n.x, n.y]);
+}
 
 export function buildMazeWalls(
   nodes: NodeDto[],

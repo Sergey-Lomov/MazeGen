@@ -22,9 +22,10 @@ export class TessellationRenderer {
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
       const openChanged = state.fieldSetupOpen !== prev.fieldSetupOpen
         || state.presetConnectionsOpen !== prev.presetConnectionsOpen
-        || state.generationOpen !== prev.generationOpen;
+        || state.generationOpen !== prev.generationOpen
+        || state.postEditOpen !== prev.postEditOpen;
 
-      const shouldShow = !state.fieldSetupOpen && !state.presetConnectionsOpen && !state.generationOpen;
+      const shouldShow = !state.fieldSetupOpen && !state.presetConnectionsOpen && !state.generationOpen && !state.postEditOpen;
       if (openChanged) {
         this.root.visible = shouldShow;
         if (shouldShow) this.redraw(state.previewTessellationConfig);
@@ -36,7 +37,7 @@ export class TessellationRenderer {
     });
 
     const s = useMazeStore.getState();
-    const shouldShow = !s.fieldSetupOpen && !s.presetConnectionsOpen && !s.generationOpen;
+    const shouldShow = !s.fieldSetupOpen && !s.presetConnectionsOpen && !s.generationOpen && !s.postEditOpen;
     this.root.visible = shouldShow;
     // Viewport not yet set; onViewportChanged will trigger first real draw.
   }

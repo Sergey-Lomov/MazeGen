@@ -4,33 +4,22 @@ import type { Container } from "pixi.js";
 import { pickEdgeAtPosition } from "./presetConnectionsUtils";
 import { makeProjection } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
+import { BaseController } from "./BaseController";
 
-export class PresetConnectionsController {
-  private getViewport: () => Container;
+export class PresetConnectionsController extends BaseController {
   private renderer: PresetConnectionsRenderer;
-
-  private isPanning = false;
-  private panStart = { x: 0, y: 0 };
-  private vpStart = { x: 0, y: 0 };
-  private onViewportPan: (dx: number, dy: number) => void;
 
   constructor(
     getViewport: () => Container,
     renderer: PresetConnectionsRenderer,
     onViewportPan: (dx: number, dy: number) => void,
   ) {
-    this.getViewport = getViewport;
+    super(getViewport, onViewportPan);
     this.renderer = renderer;
-    this.onViewportPan = onViewportPan;
   }
 
   onPointerMove(canvasX: number, canvasY: number): void {
-    if (this.isPanning) {
-      const dx = canvasX - this.panStart.x;
-      const dy = canvasY - this.panStart.y;
-      this.onViewportPan(this.vpStart.x + dx, this.vpStart.y + dy);
-      return;
-    }
+    if (this.handlePanMove(canvasX, canvasY)) return;
 
     const state = useMazeStore.getState();
     if (!state.presetConnectionsOpen) return;
@@ -44,13 +33,7 @@ export class PresetConnectionsController {
     const state = useMazeStore.getState();
     if (!state.presetConnectionsOpen) return;
 
-    if (button === 1) {
-      const vp = this.getViewport();
-      this.isPanning = true;
-      this.panStart = { x: canvasX, y: canvasY };
-      this.vpStart = { x: vp.x, y: vp.y };
-      return;
-    }
+    if (this.tryStartPan(canvasX, canvasY, button)) return;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const tool = state.presetConnectionsTool;
@@ -96,21 +79,7 @@ export class PresetConnectionsController {
     this.renderer.updateHover(edge);
   }
 
-  onPointerUp(button: number): void {
-    if (button === 1) {
-      this.isPanning = false;
-    }
-  }
-
   clearHover(): void {
     this.renderer.updateHover(null);
-  }
-
-  private toViewport(canvasX: number, canvasY: number): { x: number; y: number } {
-    const vp = this.getViewport();
-    return {
-      x: (canvasX - vp.x) / vp.scale.x,
-      y: (canvasY - vp.y) / vp.scale.y,
-    };
   }
 }
