@@ -69,6 +69,7 @@
   "generation.branching": "Branching",
   "generation.directionality": "Directionality",
   "generation.corridor_length": "Corridor length",
+  "generation.cyclicity": "Cyclicity",
   "debug.outdated_warning": "Debug snapshot is outdated — re-generate to update",
   "debug.prev_step": "Previous step",
   "debug.next_step": "Next step",

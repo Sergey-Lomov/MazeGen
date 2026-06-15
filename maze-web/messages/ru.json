@@ -74,6 +74,7 @@
   "generation.branching": "Разветвление",
   "generation.directionality": "Направленность",
   "generation.corridor_length": "Длина коридора",
+  "generation.cyclicity": "Цикличность",
 
   "debug.outdated_warning": "Снимок отладки устарел — пересгенерируйте для обновления",
   "debug.prev_step": "Предыдущий шаг",

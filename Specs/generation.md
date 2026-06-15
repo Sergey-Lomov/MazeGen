@@ -12,6 +12,7 @@ Maze generation produces a spanning tree (or near-spanning tree with optional on
 | `corridor_chance` | 0.0–1.0 | 0.7 | Probability that a chosen node makes exactly one connection. 1.0 = pure corridors, 0.0 = always a junction. |
 | `branching` | 0.0–1.0 | 0.5 | Controls junction width via binomial distribution. 0 = always 2 connections, 1 = always maximum possible connections. Each additional connection beyond 2 is added independently with probability `branching`. |
 | `directionality` | 0.0–1.0 | 0.0 | Probability of preferring a straight-ahead neighbor (aligned with the incoming direction) when making the **first** connection from a node. Applies to both corridor and junction nodes — for junctions, only the first candidate uses directionality; remaining candidates are random. Requires `Field::is_straight`. Has no effect when there is no parent. |
+| `cyclicity` | 0.0–1.0 | 0.0 | Per-node probability of adding an extra edge to an already-visited neighbor, creating a cycle. Evaluated independently of the normal corridor/junction selection. If triggered, one visited neighbor is chosen at random and connected; this happens regardless of whether `free_neighbors` is empty. The normal free-neighbor connections still proceed as usual after the cyclic edge is added. |
 | `one_way_chance` | 0.0–1.0 | 0.04 | Probability that any given edge is directed (one-way) rather than bidirectional. Direction (src→dst or dst→src) is chosen with equal probability. |
 
 ## Algorithm
@@ -47,6 +48,13 @@ loop:
 
   free_neighbors = neighbors(src) that are not visited and not in_frontier
 
+  cyclic_added = false
+  if rand < cyclicity:
+    cyclic_candidates = visited neighbors of src with no existing edge to/from src
+    if cyclic_candidates not empty:
+      add_edge(src, random cyclic_candidates)
+      cyclic_added = true
+
   if rand < corridor_chance:
     connected = [choose_candidate(free_neighbors, parent, src)]  // directionality applied
   else:
@@ -62,7 +70,7 @@ loop:
   for n in free_neighbors not in connected:
     add n to reserve if not already there
 
-  if connected is not empty: on_step callback
+  if connected is not empty or cyclic_added: on_step callback
 ```
 
 ### Reserve
@@ -118,7 +126,8 @@ Algorithm parameters are passed via the `initial` field of `GenerateConfig`:
     "depth_first": 0.9,
     "corridor_chance": 0.7,
     "branching": 0.5,
-    "directionality": 0.0
+    "directionality": 0.0,
+    "cyclicity": 0.0
   },
   "elements": { "one_way_chance": 0.04 },
   "debug": false
@@ -135,7 +144,7 @@ The `generate` WASM function accepts `debug: bool` (default `false`). When `true
 
 ### Overview
 
-Edge-first growth model. A node is selected from the active set, then a neighbor is chosen via weighted sampling. One edge is added per step. No explicit degree constraints — structure emerges from stochastic decisions.
+Edge-first growth model. A node is selected from the active set, then a neighbor is chosen via weighted sampling. Normally one edge is added per step; when `cyclicity` triggers, an additional edge to a visited neighbor may also be added. No explicit degree constraints — structure emerges from stochastic decisions.
 
 Produces a spanning tree of the subgraph reachable from `start`. Geometrically disconnected clusters remain unconnected.
 
@@ -147,6 +156,7 @@ Produces a spanning tree of the subgraph reachable from `start`. Geometrically d
 | `branching` | 0.0–1.0 | 0.5 | Weight boost for destinations with more unseen neighbors. Uses `sqrt` of the free-neighbor count. 0 = uniform, 1 = strongly prefer high-potential destinations. |
 | `locality` | 0.0–1.0 | 0.0 | Bias toward `src` nodes closer to start (by tree depth). 0 = uniform selection, 1 = strongly prefer shallow nodes. **Not yet implemented in core or UI.** |
 | `directionality` | 0.0–1.0 | 0.0 | Weight multiplier (up to 4×) for candidates geometrically straight ahead from `src`'s parent. Requires `Field::is_straight`. Has no effect when `src` has no parent or when corridor chaining fired this step. |
+| `cyclicity` | 0.0–1.0 | 0.0 | Per-step probability of adding an extra edge to an already-visited neighbor, independent of the normal dst selection. If triggered and a visited neighbor exists, one is chosen at random and connected; `last_dst` is not updated (visited node cannot seed a corridor chain). The normal unseen-neighbor dst selection still proceeds as usual. |
 
 ### Invariants
 
@@ -189,7 +199,8 @@ This differs from `CustomVertexBased`, which bridges isolated clusters back to t
   "corridor_length": 0.5,
   "branching": 0.5,
   "locality": 0.0,
-  "directionality": 0.0
+  "directionality": 0.0,
+  "cyclicity": 0.0
 }
 ```
 

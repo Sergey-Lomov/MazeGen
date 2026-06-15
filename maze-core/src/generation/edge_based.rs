@@ -70,6 +70,20 @@ pub fn generate<T: Tessellation>(
             continue;
         }
 
+        // Cyclic roll: independent of normal dst selection, adds an extra edge to a visited neighbor.
+        if rng.random::<f64>() < params.cyclicity {
+            let visited_neighbors: Vec<NodeId> = field.neighbors(src).into_iter()
+                .filter(|&n| nodes.get(&n).map_or(false, |e| e.state == NodeState::Visited)
+                    && can_connect(src, n, preset_state)
+                    && graph.edge_between(src, n).is_none() && graph.edge_between(n, src).is_none())
+                .collect();
+            if !visited_neighbors.is_empty() {
+                let cyclic_dst = visited_neighbors[rng.random_range(0..visited_neighbors.len())];
+                try_add_edge(graph, src, cyclic_dst, elements, preset_state, &mut rng);
+                // last_dst not updated: visited node cannot seed a corridor chain
+            }
+        }
+
         let weights: Vec<f64> = candidates.iter().map(|&dst| {
             let free = field.neighbors(dst).iter()
                 .filter(|n| nodes.get(n).map_or(false, |e| e.state == NodeState::Unseen))
@@ -174,7 +188,7 @@ mod tests {
         nodes.insert(neighbor, NodeEntry { state: NodeState::Active, parent: Some(center),  tree_depth: 1 });
 
         let active = vec![center, neighbor];
-        let params = EdgeBasedParams { corridor_length: 1.0, depth_first: 0.5, branching: 0.0, directionality: 0.0 };
+        let params = EdgeBasedParams { corridor_length: 1.0, depth_first: 0.5, branching: 0.0, directionality: 0.0, cyclicity: 0.0 };
 
         // last_dst = neighbor, corridor_length = 1.0 → must return neighbor (has unseen neighbors)
         for seed in 0..20 {
@@ -199,7 +213,7 @@ mod tests {
         nodes.insert(b, NodeEntry { state: NodeState::Active, parent: Some(a), tree_depth: 1 });
 
         let active = vec![a, b];
-        let params = EdgeBasedParams { corridor_length: 0.0, depth_first: 0.5, branching: 0.0, directionality: 0.0 };
+        let params = EdgeBasedParams { corridor_length: 0.0, depth_first: 0.5, branching: 0.0, directionality: 0.0, cyclicity: 0.0 };
 
         // corridor_length=0.0 → corridor never fires; depth_first=0.5 → uniform → both nodes appear
         let results: Vec<_> = (0..50).map(|seed| {
@@ -225,7 +239,7 @@ mod tests {
         nodes.insert(newest, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 1 });
 
         let active = vec![oldest, newest];
-        let params = EdgeBasedParams { corridor_length: 0.0, depth_first: 1.0, branching: 0.0, directionality: 0.0 };
+        let params = EdgeBasedParams { corridor_length: 0.0, depth_first: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 0.0 };
 
         let newest_wins = (0..100).filter(|&seed| {
             choose_src(&active, None, &nodes, &params, &empty_presets(), &field, &mut rng(seed)) == newest

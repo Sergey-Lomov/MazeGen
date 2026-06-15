@@ -30,6 +30,7 @@ pub struct GenerationParams {
     pub corridor_chance: f64,
     pub branching:       f64,
     pub directionality:  f64,
+    pub cyclicity:       f64,
 }
 
 impl Default for GenerationParams {
@@ -39,6 +40,7 @@ impl Default for GenerationParams {
             corridor_chance: 0.7,
             branching:       0.5,
             directionality:  0.0,
+            cyclicity:       0.0,
         }
     }
 }
@@ -49,6 +51,7 @@ pub struct EdgeBasedParams {
     pub branching:       f64,
     pub depth_first:     f64,
     pub directionality:  f64,
+    pub cyclicity:       f64,
 }
 
 impl Default for EdgeBasedParams {
@@ -58,6 +61,7 @@ impl Default for EdgeBasedParams {
             branching:       0.5,
             depth_first:     0.5,
             directionality:  0.0,
+            cyclicity:       0.0,
         }
     }
 }

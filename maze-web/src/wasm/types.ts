@@ -103,6 +103,7 @@ export interface GenerationParams {
   corridor_chance?: number;
   branching?: number;
   directionality?: number;
+  cyclicity?: number;
 }
 
 export interface EdgeBasedParams {
@@ -110,6 +111,7 @@ export interface EdgeBasedParams {
   branching?: number;
   depth_first?: number;
   directionality?: number;
+  cyclicity?: number;
 }
 
 export interface ElementsConfig {

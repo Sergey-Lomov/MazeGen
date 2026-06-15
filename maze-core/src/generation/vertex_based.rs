@@ -84,6 +84,23 @@ pub fn generate<T: Tessellation>(
             .filter(|&n| !visited.contains(&n) && !in_frontier.contains(&n) && can_connect(src, n, preset_state))
             .collect();
 
+        // Cyclic roll: if triggered, pick one visited neighbor and add a cycle edge.
+        // This happens regardless of free_neighbors availability.
+        let cyclic_dst: Option<NodeId> = if rng.random::<f64>() < params.cyclicity {
+            let visited_neighbors: Vec<NodeId> = field.neighbors(src)
+                .into_iter()
+                .filter(|&n| visited.contains(&n) && can_connect(src, n, preset_state)
+                    && graph.edge_between(src, n).is_none() && graph.edge_between(n, src).is_none())
+                .collect();
+            if visited_neighbors.is_empty() {
+                None
+            } else {
+                Some(visited_neighbors[rng.random_range(0..visited_neighbors.len())])
+            }
+        } else {
+            None
+        };
+
         let is_corridor = rng.random::<f64>() < params.corridor_chance;
 
         let connected: Vec<NodeId> = if is_corridor {
@@ -104,6 +121,13 @@ pub fn generate<T: Tessellation>(
             }
         };
 
+        let cyclic_added = if let Some(cyclic) = cyclic_dst {
+            try_add_edge(graph, src, cyclic, elements, preset_state, &mut rng);
+            true
+        } else {
+            false
+        };
+
         let connected_set: HashSet<NodeId> = connected.iter().copied().collect();
         for &dst in &connected {
             try_add_edge(graph, src, dst, elements, preset_state, &mut rng);
@@ -119,7 +143,7 @@ pub fn generate<T: Tessellation>(
             }
         }
 
-        if !connected.is_empty() {
+        if !connected.is_empty() || cyclic_added {
             let frontier_ids: Vec<NodeId> = frontier.iter().map(|e| e.node).collect();
             if let Some(ref mut cb) = on_step { cb(graph, src, &frontier_ids); }
         }

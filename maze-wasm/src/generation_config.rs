@@ -45,6 +45,7 @@ pub struct GenerationParamsConfig {
     pub corridor_chance: Option<f64>,
     pub branching:       Option<f64>,
     pub directionality:  Option<f64>,
+    pub cyclicity:       Option<f64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -53,6 +54,7 @@ pub struct EdgeBasedParamsConfig {
     pub branching:       Option<f64>,
     pub depth_first:     Option<f64>,
     pub directionality:  Option<f64>,
+    pub cyclicity:       Option<f64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -199,6 +201,7 @@ fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
     if let Some(v) = cfg.corridor_chance { p.corridor_chance = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.cyclicity       { p.cyclicity       = v.clamp(0.0, 1.0); }
     p
 }
 
@@ -208,6 +211,7 @@ fn build_edge_params(cfg: &EdgeBasedParamsConfig) -> EdgeBasedParams {
     if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.depth_first     { p.depth_first     = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
+    if let Some(v) = cfg.cyclicity       { p.cyclicity       = v.clamp(0.0, 1.0); }
     p
 }
 

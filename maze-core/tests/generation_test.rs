@@ -86,12 +86,14 @@ fn generate_maze_with_extreme_params_is_connected() {
         corridor_chance: 1.0,
         branching:       1.0,
         directionality:  1.0,
+        cyclicity:       1.0,
     };
     let all_min = GenerationParams {
         depth_first:     0.0,
         corridor_chance: 0.0,
         branching:       0.0,
         directionality:  0.0,
+        cyclicity:       0.0,
     };
     let (mut g1, f1, start1) = build(10, 10);
     let (mut g2, f2, start2) = build(10, 10);
@@ -108,12 +110,14 @@ fn generate_maze_params_affect_structure() {
         corridor_chance: 0.0,
         branching:       1.0,
         directionality:  0.0,
+        cyclicity:       0.0,
     };
     let low_branching = GenerationParams {
         depth_first:     0.0,
         corridor_chance: 1.0,
         branching:       0.0,
         directionality:  0.0,
+        cyclicity:       0.0,
     };
     let (mut g1, f1, start1) = build(10, 10);
     let (mut g2, f2, start2) = build(10, 10);
@@ -305,8 +309,8 @@ fn edge_based_is_connected() {
 
 #[test]
 fn edge_based_params_affect_structure() {
-    let high_corridor = EdgeBasedParams { corridor_length: 1.0, branching: 0.0, depth_first: 0.0, directionality: 0.0 };
-    let low_corridor  = EdgeBasedParams { corridor_length: 0.0, branching: 0.0, depth_first: 0.0, directionality: 0.0 };
+    let high_corridor = EdgeBasedParams { corridor_length: 1.0, branching: 0.0, depth_first: 0.0, directionality: 0.0, cyclicity: 0.0 };
+    let low_corridor  = EdgeBasedParams { corridor_length: 0.0, branching: 0.0, depth_first: 0.0, directionality: 0.0, cyclicity: 0.0 };
     let (mut g1, f1, start1) = build(10, 10);
     let (mut g2, f2, start2) = build(10, 10);
     generate_maze(&mut g1, &f1, 42, start1, edge_based_config(high_corridor), &empty_preset());
@@ -323,12 +327,14 @@ fn edge_based_extreme_params_is_connected() {
         branching:       1.0,
         depth_first:        1.0,
         directionality:  1.0,
+        cyclicity:       1.0,
     };
     let all_min = EdgeBasedParams {
         corridor_length: 0.0,
         branching:       0.0,
         depth_first:        0.0,
         directionality:  0.0,
+        cyclicity:       0.0,
     };
     for seed in [1, 42, 99] {
         let (mut g1, f1, start1) = build(10, 10);
@@ -338,4 +344,31 @@ fn edge_based_extreme_params_is_connected() {
         assert!(is_connected(&g1, start1), "seed={seed}: all_max not connected");
         assert!(is_connected(&g2, start2), "seed={seed}: all_min not connected");
     }
+}
+
+#[test]
+fn vertex_based_cyclicity_creates_extra_edges() {
+    let (mut graph, field, start) = build(6, 6);
+    let node_count = graph.nodes().count();
+    let params = GenerationParams { cyclicity: 1.0, ..GenerationParams::default() };
+    generate_maze(&mut graph, &field, 42, start, config_with_params(params), &empty_preset());
+    // spanning tree = 2*(N-1) directed edges; cyclicity=1.0 must add extra edges
+    assert!(
+        graph.edges().count() > 2 * (node_count - 1),
+        "cyclicity=1.0 produced no extra edges: edge_count={}",
+        graph.edges().count()
+    );
+}
+
+#[test]
+fn edge_based_cyclicity_creates_extra_edges() {
+    let (mut graph, field, start) = build(6, 6);
+    let node_count = graph.nodes().count();
+    let params = EdgeBasedParams { cyclicity: 1.0, ..EdgeBasedParams::default() };
+    generate_maze(&mut graph, &field, 42, start, edge_based_config(params), &empty_preset());
+    assert!(
+        graph.edges().count() > 2 * (node_count - 1),
+        "cyclicity=1.0 produced no extra edges: edge_count={}",
+        graph.edges().count()
+    );
 }
