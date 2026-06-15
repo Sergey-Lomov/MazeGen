@@ -37,7 +37,7 @@ export function buildPresetWallGroups(
       if (!ownedKeys.has(key)) continue;
 
       const entry = connections.get(key);
-      if (!entry) {
+      if (!entry || entry.state === "undefined") {
         undecided.push({ a: [x, y], b: [nx, ny], kind: "none", style: "faint" });
         continue;
       }
@@ -102,14 +102,22 @@ export function buildLocks(
 
 export function buildIsolatedCellHighlights(
   lockedNodes: Map<string, NodeLockKind>,
+  autoLockedNodes: Set<string>,
   connections: Map<string, PresetConnectionEntry>,
 ): [number, number][] {
-  const result: [number, number][] = [];
+  const allBothLocked = new Set<string>();
   for (const [key, kind] of lockedNodes) {
-    if (kind !== "both") continue;
+    if (kind === "both") allBothLocked.add(key);
+  }
+  for (const key of autoLockedNodes) {
+    allBothLocked.add(key);
+  }
+
+  const result: [number, number][] = [];
+  for (const key of allBothLocked) {
     const [x, y] = key.split(",").map(Number);
     const hasPassage = Array.from(connections.values()).some(e => {
-      if (e.state === "wall") return false;
+      if (e.state === "wall" || e.state === "undefined") return false;
       return (e.from[0] === x && e.from[1] === y) || (e.to[0] === x && e.to[1] === y);
     });
     if (hasPassage) continue;

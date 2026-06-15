@@ -9,6 +9,7 @@ import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { LockRenderer } from "./renderers/LockRenderer";
 import { OriginRenderer } from "./renderers/OriginRenderer";
+import { GenSourceRenderer } from "./renderers/GenSourceRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import {
@@ -34,6 +35,7 @@ export class PresetConnectionsRenderer {
   private readonly locksContainer: Container;
   private readonly markersContainer: Container;
   private readonly originContainer: Container;
+  private readonly genSourceContainer: Container;
   private readonly isolatedHLContainer: Container;
   private readonly invalidHLContainer: Container;
   private readonly hoverContainer: Container;
@@ -45,6 +47,7 @@ export class PresetConnectionsRenderer {
   private readonly locks: LockRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly origin: OriginRenderer;
+  private readonly genSource: GenSourceRenderer;
   private readonly isolatedHL: CellFillRenderer;
   private readonly invalidHL: EdgeHighlightRenderer;
   private readonly hover: EdgeHighlightRenderer;
@@ -66,6 +69,7 @@ export class PresetConnectionsRenderer {
     this.locksContainer          = new Container();
     this.markersContainer        = new Container();
     this.originContainer         = new Container();
+    this.genSourceContainer      = new Container();
     this.isolatedHLContainer     = new Container();
     this.invalidHLContainer      = new Container();
     this.hoverContainer          = new Container();
@@ -77,6 +81,7 @@ export class PresetConnectionsRenderer {
     this.root.addChild(this.locksContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.originContainer);
+    this.root.addChild(this.genSourceContainer);
     this.root.addChild(this.isolatedHLContainer);
     this.root.addChild(this.invalidHLContainer);
     this.root.addChild(this.hoverContainer);
@@ -88,6 +93,7 @@ export class PresetConnectionsRenderer {
     this.locks          = new LockRenderer(this.locksContainer);
     this.markers        = new WaypointsRenderer(this.markersContainer);
     this.origin         = new OriginRenderer(this.originContainer);
+    this.genSource      = new GenSourceRenderer(this.genSourceContainer);
     this.isolatedHL     = new CellFillRenderer(this.isolatedHLContainer);
     this.invalidHL      = new EdgeHighlightRenderer(this.invalidHLContainer);
     this.hover          = new EdgeHighlightRenderer(this.hoverContainer);
@@ -127,6 +133,7 @@ export class PresetConnectionsRenderer {
         state.presetConnections !== prev.presetConnections ||
         state.presetStart !== prev.presetStart ||
         state.presetFinish !== prev.presetFinish ||
+        state.presetGenSource !== prev.presetGenSource ||
         state.lockedNodes !== prev.lockedNodes ||
         state.autoLockedNodes !== prev.autoLockedNodes
       ) {
@@ -168,6 +175,7 @@ export class PresetConnectionsRenderer {
       const state = useMazeStore.getState();
       this.grid.render({ viewport: this.viewport }, this.cfg);
       this.redrawOrigin(state.showPresetOrigin);
+      this.redrawGenSource(state.presetGenSource);
     }
   }
 
@@ -204,6 +212,7 @@ export class PresetConnectionsRenderer {
     this.markers.render({ markers: markerData });
 
     this.redrawOrigin(state.showPresetOrigin);
+    this.redrawGenSource(state.presetGenSource);
     this.redrawIsolatedHL(state);
 
     if (state.highlightInvalidPresets) {
@@ -221,13 +230,18 @@ export class PresetConnectionsRenderer {
     this.origin.render({ show, vpScale: this.viewport.scale }, this.cfg);
   }
 
+  private redrawGenSource(source: [number, number] | null): void {
+    if (!this.cfg) return;
+    this.genSource.render({ source, vpScale: this.viewport.scale }, this.cfg);
+  }
+
   private redrawIsolatedHL(state: ReturnType<typeof useMazeStore.getState>): void {
     if (!this.cfg) return;
     if (!state.highlightIsolatedNodes) {
       this.isolatedHL.render({ cells: [], color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, this.cfg);
       return;
     }
-    const cells = buildIsolatedCellHighlights(state.lockedNodes, state.presetConnections);
+    const cells = buildIsolatedCellHighlights(state.lockedNodes, state.autoLockedNodes, state.presetConnections);
     this.isolatedHL.render({ cells, color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, this.cfg);
   }
 
@@ -252,6 +266,7 @@ export class PresetConnectionsRenderer {
     this.locks.render({ locks: [] }, cfg);
     this.markers.render({ markers: [] });
     this.origin.render({ show: false, vpScale: this.viewport.scale }, cfg);
+    this.genSource.render({ source: null, vpScale: this.viewport.scale }, cfg);
     this.isolatedHL.render({ cells: [], color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, cfg);
     this.invalidHL.render({ highlights: [] });
     this.hover.render({ highlights: [] });
@@ -266,6 +281,7 @@ export class PresetConnectionsRenderer {
     this.locks.destroy();
     this.markers.destroy();
     this.origin.destroy();
+    this.genSource.destroy();
     this.isolatedHL.destroy();
     this.invalidHL.destroy();
     this.hover.destroy();
@@ -276,6 +292,7 @@ export class PresetConnectionsRenderer {
     this.locksContainer.destroy();
     this.markersContainer.destroy();
     this.originContainer.destroy();
+    this.genSourceContainer.destroy();
     this.isolatedHLContainer.destroy();
     this.invalidHLContainer.destroy();
     this.hoverContainer.destroy();

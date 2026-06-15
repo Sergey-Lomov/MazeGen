@@ -6,12 +6,17 @@ import type { PostEditRenderer } from "./PostEditRenderer";
 import type { NodeDto } from "../wasm/types";
 import { BaseController } from "./BaseController";
 
+const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
+
 export class PostEditController extends BaseController {
   private renderer: PostEditRenderer;
 
   private confirmDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private nodeMap: Map<string, number> = new Map();
   private nodeMapNodes: NodeDto[] | null = null;
+  private dragActive = false;
+  private dragVisited = new Set<string>();
+  private dragDidApply = false;
 
   constructor(
     getViewport: () => Container,
@@ -39,6 +44,16 @@ export class PostEditController extends BaseController {
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     this.renderer.updateHover(edge);
+
+    if (this.dragActive && edge && !this.dragVisited.has(edge.key)) {
+      this.dragVisited.add(edge.key);
+      const nodeMap = this.getNodeMap(state.nodes);
+      const nodeKey = cellEdgeToNodeKey(edge.from, edge.to, nodeMap);
+      if (nodeKey) {
+        useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
+        this.dragDidApply = true;
+      }
+    }
   }
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
@@ -68,11 +83,26 @@ export class PostEditController extends BaseController {
     const nodeKey = cellEdgeToNodeKey(edge.from, edge.to, nodeMap);
     if (nodeKey) {
       useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
+      if (button === 0 && DRAG_EDGE_TOOLS.has(tool)) {
+        this.dragActive = true;
+        this.dragVisited = new Set([edge.key]);
+        this.dragDidApply = true;
+      } else if (state.postEditAutoConfirm) {
+        this.scheduleConfirm();
+      }
     }
     this.renderer.updateHover(edge);
+  }
 
-    if (state.postEditAutoConfirm) {
-      this.scheduleConfirm();
+  onPointerUp(button: number): void {
+    super.onPointerUp(button);
+    if (button === 0 && this.dragActive) {
+      this.dragActive = false;
+      this.dragVisited.clear();
+      if (this.dragDidApply && useMazeStore.getState().postEditAutoConfirm) {
+        this.scheduleConfirm();
+      }
+      this.dragDidApply = false;
     }
   }
 

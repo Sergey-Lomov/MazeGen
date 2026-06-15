@@ -6,13 +6,16 @@ import { getCellNeighborOffsets, getSharedEdgeSegment } from "./tessellationGeom
 import type { PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
+export type PresetConnectionClientState = PresetConnectionState | "undefined";
+
 export interface PresetConnectionEntry {
   from: [number, number];
   to: [number, number];
-  state: PresetConnectionState;
+  state: PresetConnectionClientState;
+  source: "user" | "default";
 }
 
-export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "lock_both";
+export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source";
 
 export interface FieldEdge {
   key: string;
@@ -161,7 +164,8 @@ export function computeAutoLockedNodes(
       if (!cellSet.has(encodePoint(nx, ny))) continue;
       hasInteriorEdge = true;
       const key = edgeKey([x, y], [nx, ny]);
-      if (!presetConnections.has(key)) { allDefined = false; break; }
+      const entry = presetConnections.get(key);
+      if (!entry || entry.state === "undefined") { allDefined = false; break; }
     }
     if (hasInteriorEdge && allDefined) result.add(`${x},${y}`);
   }
@@ -175,21 +179,21 @@ export function applyTool(
 ): Map<string, PresetConnectionEntry> {
   const next = new Map(connections);
   if (tool === "reset") {
-    next.delete(edge.key);
+    next.set(edge.key, { from: edge.from, to: edge.to, state: "undefined", source: "user" });
     return next;
   }
   if (tool === "one_way") {
     const current = connections.get(edge.key);
     if (current?.state === "one_way_forward") {
-      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_backward" });
+      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_backward", source: "user" });
     } else if (current?.state === "one_way_backward") {
-      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_forward" });
+      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_forward", source: "user" });
     } else {
-      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_forward" });
+      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_forward", source: "user" });
     }
     return next;
   }
   const state: PresetConnectionState = tool === "wall" ? "wall" : "passage";
-  next.set(edge.key, { from: edge.from, to: edge.to, state });
+  next.set(edge.key, { from: edge.from, to: edge.to, state, source: "user" });
   return next;
 }

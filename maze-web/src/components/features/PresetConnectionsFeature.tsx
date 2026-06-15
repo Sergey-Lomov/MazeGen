@@ -14,16 +14,22 @@ function getEdgeTools(): [PresetConnectionTool, string][] {
     ["passage", m["preset.passage"]()],
     ["reset", m["preset.reset"]()],
     ["one_way", m["preset.one_way"]()],
-    ["set_start", m["preset.start"]()],
-    ["set_finish", m["preset.finish"]()],
   ];
 }
 
 function getVertexTools(): [PresetConnectionTool, string][] {
   return [
+    ["set_start", m["preset.start"]()],
+    ["set_finish", m["preset.finish"]()],
+  ];
+}
+
+function getGenerationTools(): [PresetConnectionTool, string][] {
+  return [
     ["lock_in", m["preset.lock_in"]()],
     ["lock_out", m["preset.lock_out"]()],
-    ["lock_both", m["preset.lock_both"]()],
+    ["full_lock", m["preset.full_lock"]()],
+    ["gen_source", m["preset.gen_source"]()],
   ];
 }
 
@@ -36,8 +42,10 @@ export function PresetConnectionsFeature() {
   const fieldPoints = useMazeStore((s) => s.fieldPoints);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
+  const presetGenSource = useMazeStore((s) => s.presetGenSource);
   const setPresetStart = useMazeStore((s) => s.setPresetStart);
   const setPresetFinish = useMazeStore((s) => s.setPresetFinish);
+  const setPresetGenSource = useMazeStore((s) => s.setPresetGenSource);
   const clearInvalidPresetConnections = useMazeStore((s) => s.clearInvalidPresetConnections);
   const resetPresetConnections = useMazeStore((s) => s.resetPresetConnections);
   const setHighlightInvalidPresets = useMazeStore((s) => s.setHighlightInvalidPresets);
@@ -49,23 +57,31 @@ export function PresetConnectionsFeature() {
   const autoLock = useMazeStore((s) => s.autoLock);
   const setAutoLock = useMazeStore((s) => s.setAutoLock);
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
+  const defaultEdgeState = useMazeStore((s) => s.defaultEdgeState);
+  const setDefaultEdgeState = useMazeStore((s) => s.setDefaultEdgeState);
 
   const [confirmReset, setConfirmReset] = useState(false);
 
   // Nodes locked both in and out AND with no explicit passage preset are fully isolated
   const isolatedNodes = useMemo(() => {
-    const result: string[] = [];
+    const allBothLocked = new Set<string>();
     for (const [key, kind] of lockedNodes) {
-      if (kind !== "both") continue;
+      if (kind === "both") allBothLocked.add(key);
+    }
+    for (const key of autoLockedNodes) {
+      allBothLocked.add(key);
+    }
+    const result: string[] = [];
+    for (const key of allBothLocked) {
       const [x, y] = key.split(",").map(Number);
       const hasPassage = Array.from(presetConnections.values()).some(e => {
-        if (e.state === "wall") return false;
+        if (e.state === "wall" || e.state === "undefined") return false;
         return (e.from[0] === x && e.from[1] === y) || (e.to[0] === x && e.to[1] === y);
       });
       if (!hasPassage) result.push(key);
     }
     return result;
-  }, [lockedNodes, presetConnections]);
+  }, [lockedNodes, autoLockedNodes, presetConnections]);
 
   const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
   const invalidKeys = useMemo(
@@ -88,8 +104,9 @@ export function PresetConnectionsFeature() {
           </button>
         ))}
       </div>
+
       <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
-      <div style={styles.vertexToolGrid}>
+      <div style={styles.toolGrid}>
         {getVertexTools().map(([t, label]) => (
           <button
             key={t}
@@ -100,6 +117,33 @@ export function PresetConnectionsFeature() {
           </button>
         ))}
       </div>
+
+      <span style={styles.sectionLabel}>{m["preset.generation_tools"]()}</span>
+      <div style={styles.generationToolGrid}>
+        {getGenerationTools().map(([t, label]) => (
+          <button
+            key={t}
+            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            onClick={() => setTool(t)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <span style={styles.sectionLabel}>{m["preset.default_edge"]()}</span>
+      <div style={styles.triGrid}>
+        {(["undefined", "wall", "passage"] as const).map((s) => (
+          <button
+            key={s}
+            style={buttonStyle(defaultEdgeState === s ? "toggle-active" : "toggle")}
+            onClick={() => setDefaultEdgeState(s)}
+          >
+            {m[`preset.default_${s}` as "preset.default_undefined" | "preset.default_wall" | "preset.default_passage"]()}
+          </button>
+        ))}
+      </div>
+
       <div style={styles.autoLockRow}>
         <div style={styles.autoLockLeft}>
           <span style={styles.autoLockLabel}>{m["preset.auto_lock"]()}</span>
@@ -113,7 +157,8 @@ export function PresetConnectionsFeature() {
         <span style={styles.originLabel}>{m["preset.show_origin"]()}</span>
         <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
       </div>
-      {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish) && (
+
+      {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish || presetGenSource) && (
         <div style={styles.statusBlock}>
           {lockedNodes.size > 0 && (
             <div style={styles.statusBubble}>
@@ -133,6 +178,12 @@ export function PresetConnectionsFeature() {
             <div style={styles.statusBubble}>
               <span>{m["preset.finish"]()}: {presetFinish[0]},{presetFinish[1]}</span>
               <button style={styles.clearTag} onClick={() => setPresetFinish(null)}>×</button>
+            </div>
+          )}
+          {presetGenSource && (
+            <div style={styles.statusBubble}>
+              <span>{m["preset.gen_source"]()}: {presetGenSource[0]},{presetGenSource[1]}</span>
+              <button style={styles.clearTag} onClick={() => setPresetGenSource(null)}>×</button>
             </div>
           )}
           {isolatedNodes.length > 0 && (
@@ -187,7 +238,8 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: 0.5,
   },
   toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  vertexToolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 },
+  generationToolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
+  triGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 },
   statusBlock: {
     display: "flex",
     flexDirection: "column",
@@ -255,4 +307,3 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1,
   },
 };
-

@@ -5,7 +5,9 @@ import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, Strateg
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
-import { applyTool, computeInvalidKeys, computeAutoLockedNodes } from "../pixi/presetConnectionsUtils";
+import { applyTool, computeInvalidKeys, computeAutoLockedNodes, resolveCells, edgeKey, canonicalize } from "../pixi/presetConnectionsUtils";
+import { buildCellSet } from "../pixi/selectors/sharedSelectors";
+import { getNeighborData } from "../pixi/tessellationGeometry";
 import { configAllCells } from "../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool } from "../pixi/postEditUtils";
 
@@ -116,8 +118,10 @@ interface MazeState {
   presetConnectionsOpen: boolean;
   presetConnections: Map<string, PresetConnectionEntry>;
   presetConnectionsTool: PresetConnectionTool;
+  defaultEdgeState: "undefined" | "wall" | "passage";
   presetStart: [number, number] | null;
   presetFinish: [number, number] | null;
+  presetGenSource: [number, number] | null;
   highlightInvalidPresets: boolean;
   highlightIsolatedNodes: boolean;
   showPresetOrigin: boolean;
@@ -216,6 +220,8 @@ interface MazeActions {
   resetPresetConnections: () => void;
   setPresetStart: (cell: [number, number] | null) => void;
   setPresetFinish: (cell: [number, number] | null) => void;
+  setPresetGenSource: (cell: [number, number] | null) => void;
+  setDefaultEdgeState: (s: "undefined" | "wall" | "passage") => void;
   setHighlightInvalidPresets: (highlight: boolean) => void;
   setHighlightIsolatedNodes: (highlight: boolean) => void;
   setShowPresetOrigin: (show: boolean) => void;
@@ -394,8 +400,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   presetConnectionsOpen: false,
   presetConnections: new Map<string, PresetConnectionEntry>(),
   presetConnectionsTool: "wall" as PresetConnectionTool,
+  defaultEdgeState: "undefined" as const,
   presetStart: null,
   presetFinish: null,
+  presetGenSource: null,
   highlightInvalidPresets: false,
   highlightIsolatedNodes: false,
   showPresetOrigin: false,
@@ -488,6 +496,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         autoLockedNodes: new Set<string>(),
         presetStart: null,
         presetFinish: null,
+        presetGenSource: null,
+        defaultEdgeState: "undefined" as const,
         fieldEditMode: "default" as const,
         debugSnapshot: null, debugStep: 0, debugStale: false,
       } : { debugStale: state.debugSnapshot !== null }),
@@ -940,17 +950,20 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   resetPresetConnections: () => set((state) => ({
     presetConnections: new Map<string, PresetConnectionEntry>(),
+    defaultEdgeState: "undefined" as const,
     presetStart: null,
     presetFinish: null,
+    presetGenSource: null,
     lockedNodes: new Map<string, NodeLockKind>(),
     autoLockedNodes: new Set<string>(),
     debugStale: state.debugSnapshot !== null,
   })),
 
   applyPresetConnectionsReset: (key) => set((state) => {
-    if (!state.presetConnections.has(key)) return {};
+    const existing = state.presetConnections.get(key);
+    if (!existing) return {};
     const presetConnections = new Map(state.presetConnections);
-    presetConnections.delete(key);
+    presetConnections.set(key, { from: existing.from, to: existing.to, state: "undefined", source: "user" });
     return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }), debugStale: state.debugSnapshot !== null };
   }),
 
@@ -962,6 +975,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setPresetStart: (cell) => set((state) => ({ presetStart: cell, debugStale: state.debugSnapshot !== null })),
   setPresetFinish: (cell) => set((state) => ({ presetFinish: cell, debugStale: state.debugSnapshot !== null })),
+  setPresetGenSource: (cell) => set((state) => ({ presetGenSource: cell, debugStale: state.debugSnapshot !== null })),
+
+  setDefaultEdgeState: (s) => set((state) => {
+    const presetConnections = _applyDefaultEdgeState(state, s);
+    return { defaultEdgeState: s, presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }), debugStale: state.debugSnapshot !== null };
+  }),
   setHighlightInvalidPresets: (highlight) => set({ highlightInvalidPresets: highlight }),
   setHighlightIsolatedNodes: (highlight) => set({ highlightIsolatedNodes: highlight }),
   setShowPresetOrigin: (show) => set({ showPresetOrigin: show }),
@@ -1031,8 +1050,8 @@ function _buildGenerateConfig(state: MazeState & MazeActions): GenerateConfig | 
   const customPts = state.isEditingField ? state.fieldPoints : undefined;
   const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
   const validPresets = Array.from(state.presetConnections.values())
-    .filter(e => !invalidKeys.has(`${e.from[0]},${e.from[1]}-${e.to[0]},${e.to[1]}`))
-    .map(e => ({ from: e.from, to: e.to, state: e.state }));
+    .filter(e => e.state !== "undefined" && !invalidKeys.has(`${e.from[0]},${e.from[1]}-${e.to[0]},${e.to[1]}`))
+    .map(e => ({ from: e.from, to: e.to, state: e.state as import("../wasm/types").PresetConnectionState }));
   const lockedEntries = new Map(state.lockedNodes);
   for (const key of state.autoLockedNodes) {
     if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
@@ -1050,7 +1069,7 @@ function _buildGenerateConfig(state: MazeState & MazeActions): GenerateConfig | 
     elements: state.elementsConfig,
     preset_connections: validPresets,
     locked_nodes,
-    ...(state.presetStart ? { preset_start: state.presetStart } : {}),
+    ...(state.presetGenSource ? { preset_start: state.presetGenSource } : state.presetStart ? { preset_start: state.presetStart } : {}),
     ...(state.presetFinish ? { preset_finish: state.presetFinish } : {}),
   };
 }
@@ -1113,3 +1132,38 @@ function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet): void {
 }
 
 export { decodePoint };
+
+type StoreState = ReturnType<typeof useMazeStore.getState>;
+
+function _applyDefaultEdgeState(
+  state: StoreState,
+  newDefault: "undefined" | "wall" | "passage",
+): Map<string, PresetConnectionEntry> {
+  const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
+  const cells = resolveCells(state.tessellationConfig, customPts);
+  const cellSet = buildCellSet(cells);
+
+  // Remove all existing default entries, then add new ones if needed
+  const presetConnections = new Map(state.presetConnections);
+  for (const [key, entry] of presetConnections) {
+    if (entry.source === "default") presetConnections.delete(key);
+  }
+
+  if (newDefault === "undefined") return presetConnections;
+
+  for (const [x, y] of cells) {
+    const { offsets } = getNeighborData(state.tessellationConfig, x, y);
+    for (const [dx, dy] of offsets) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!cellSet.has(`${nx},${ny}`)) continue;
+      const [from, to] = canonicalize([x, y], [nx, ny]);
+      if (from[0] !== x || from[1] !== y) continue; // only process edge once (owner = canonical-lesser cell)
+      const key = edgeKey(from, to);
+      if (!presetConnections.has(key)) {
+        presetConnections.set(key, { from, to, state: newDefault, source: "default" });
+      }
+    }
+  }
+  return presetConnections;
+}

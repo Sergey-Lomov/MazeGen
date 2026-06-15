@@ -19,9 +19,9 @@ export class OriginRenderer {
     const proj = makeProjection(cfg);
     const { x: cx, y: cy } = proj.gridToScreen(0, 0);
     const arm = TILE_SIZE * 0.35 / data.vpScale;
-    const w = Math.max(1.5 / data.vpScale, 1.5);
+    const w = Math.max(3 / data.vpScale, 2.5);
 
-    this.g.setStrokeStyle({ width: w, color: ORIGIN_COLOR, alpha: ORIGIN_ALPHA });
+    this.g.setStrokeStyle({ width: w, color: ORIGIN_COLOR, alpha: ORIGIN_ALPHA, cap: "round" });
     this.g.moveTo(cx - arm, cy).lineTo(cx + arm, cy).stroke();
     this.g.moveTo(cx, cy - arm).lineTo(cx, cy + arm).stroke();
   }
