@@ -91,6 +91,21 @@ pub struct ComputeAnalyticsConfig {
 }
 
 #[derive(Serialize)]
+pub struct GraphAnalyticsDto {
+    pub node_count: usize,
+    pub edge_count: usize,
+    pub component_count: usize,
+    /// Number of independent cycles (E - V + C on cyclic core subgraph).
+    pub cycle_count: usize,
+    /// Number of connected cyclic regions (WCC on cyclic core).
+    pub cycle_region_count: usize,
+    /// maze node id → component_id. Covers junction nodes and corridor nodes.
+    pub node_component: HashMap<u32, usize>,
+    /// maze node ids in the cyclic core. For cyclic core overlay.
+    pub cyclic_node_ids: Vec<u32>,
+}
+
+#[derive(Serialize)]
 pub struct MazeSnapshot {
     pub nodes: Vec<NodeDto>,
     pub edges: Vec<EdgeDto>,
@@ -99,10 +114,9 @@ pub struct MazeSnapshot {
     pub warnings: Vec<String>,
     pub nav_nodes: Vec<NavNodeDto>,
     pub nav_edges: Vec<NavEdgeDto>,
-    /// Strongly connected components. Each entry is a sorted list of NodeIds.
-    pub components: Vec<Vec<u32>>,
     pub node_stats: NodeStatsDto,
     pub edge_stats: SpatialEdgeStatsDto,
     pub route_info: Option<RouteInfoDto>,
+    pub graph_analytics: GraphAnalyticsDto,
     pub debug_steps: Vec<GenerationStepDto>,
 }

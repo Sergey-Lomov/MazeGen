@@ -44,29 +44,43 @@ function ToggleRow({ label, checked, onChange, disabled }: { label: string; chec
   );
 }
 
+
+function FloatRow({ label, value }: { label: string; value: number | null | undefined }) {
+  return (
+    <div style={styles.statRow}>
+      <span style={styles.statLabel}>{label}</span>
+      <span style={styles.statCount}>{value != null ? value.toFixed(2) : "—"}</span>
+    </div>
+  );
+}
+
 export function AnalyticsFeature() {
   const generatedNodeStats = useMazeStore((s) => s.nodeStats);
   const generatedEdgeStats = useMazeStore((s) => s.edgeStats);
   const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
   const generatedWarnings = useMazeStore((s) => s.warnings);
+  const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
 
   const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
   const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
   const warnings = postEditAnalytics?.warnings ?? generatedWarnings;
+  const graphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
   const showGraphOverlay = useMazeStore((s) => s.showGraphOverlay);
   const showNavGraphOverlay = useMazeStore((s) => s.showNavGraphOverlay);
   const showRouteOverlay = useMazeStore((s) => s.showRouteOverlay);
+  const showCyclicCoreOverlay = useMazeStore((s) => s.showCyclicCoreOverlay);
 
   const setShowMazeOverlay = useMazeStore((s) => s.setShowMazeOverlay);
   const setShowComponentsOverlay = useMazeStore((s) => s.setShowComponentsOverlay);
   const setShowGraphOverlay = useMazeStore((s) => s.setShowGraphOverlay);
   const setShowNavGraphOverlay = useMazeStore((s) => s.setShowNavGraphOverlay);
   const setShowRouteOverlay = useMazeStore((s) => s.setShowRouteOverlay);
+  const setShowCyclicCoreOverlay = useMazeStore((s) => s.setShowCyclicCoreOverlay);
 
   return (
     <div style={styles.root}>
@@ -80,6 +94,7 @@ export function AnalyticsFeature() {
         <ToggleRow label={m["analytics.layer_components"]()} checked={showComponentsOverlay} onChange={setShowComponentsOverlay} />
         <ToggleRow label={m["analytics.layer_graph"]()} checked={showGraphOverlay} onChange={setShowGraphOverlay} />
         <ToggleRow label={m["analytics.layer_nav_graph"]()} checked={showNavGraphOverlay} onChange={setShowNavGraphOverlay} />
+        <ToggleRow label={m["analytics.layer_cyclic_core"]()} checked={showCyclicCoreOverlay} onChange={setShowCyclicCoreOverlay} />
         <ToggleRow label={m["analytics.layer_route"]()} checked={showRouteOverlay} onChange={setShowRouteOverlay} disabled={routeInfo == null} />
       </div>
 
@@ -144,6 +159,21 @@ export function AnalyticsFeature() {
         );
       })() : null}
 
+      {/* Graph analytics block */}
+      {graphAnalytics != null && (
+        <>
+          <div style={styles.divider} />
+          <SectionHeader label={m["analytics.graph"]()} />
+          <div style={styles.statBlock}>
+            <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
+            <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
+            <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
+            <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
+            <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
+          </div>
+        </>
+      )}
+
     </div>
   );
 }
@@ -169,4 +199,6 @@ const styles: Record<string, React.CSSProperties> = {
   toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },
   toggleRow: { display: "flex", alignItems: "center", gap: 8 },
   toggleLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },
+  componentBlock: { display: "flex", flexDirection: "column", gap: 3, marginBottom: 6 },
+  componentHeader: { fontSize: font.sm, color: colors.textDim, fontWeight: 600, marginBottom: 2 },
 };

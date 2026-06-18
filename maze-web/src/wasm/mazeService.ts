@@ -40,9 +40,6 @@ function validateSnapshot(raw: unknown): MazeSnapshot {
     throw new Error("WASM snapshot: invalid nav_nodes");
   if (!Array.isArray(s.nav_edges) || !s.nav_edges.every(isNavEdgeDto))
     throw new Error("WASM snapshot: invalid nav_edges");
-  if (!Array.isArray(s.components) || !s.components.every(
-    (c: unknown) => Array.isArray(c) && (c as unknown[]).every(n => typeof n === "number")
-  )) throw new Error("WASM snapshot: invalid components");
   const nodeIds = new Set<number>((s.nodes as NodeDto[]).map(n => n.id));
   for (const e of s.edges as EdgeDto[]) {
     if (!nodeIds.has(e.from)) throw new Error(`WASM snapshot: edge.from ${e.from} not in nodes`);
@@ -70,6 +67,7 @@ export function generateMaze(seed: number, config: GenerateConfig): MazeSnapshot
 }
 
 export function computeAnalytics(config: ComputeAnalyticsConfig): MazeSnapshot {
-  const raw = getWasm().compute_analytics(config);
+  const json = JSON.stringify(config);
+  const raw = getWasm().compute_analytics(json);
   return validateSnapshot(raw);
 }

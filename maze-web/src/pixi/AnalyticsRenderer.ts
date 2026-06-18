@@ -1,4 +1,4 @@
-﻿import { Container } from "pixi.js";
+import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { RegionsRenderer } from "./RegionsRenderer";
 import { MazeOverlayRenderer } from "./MazeOverlayRenderer";
@@ -6,6 +6,7 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { MazeGraphRenderer } from "./MazeRenderer";
 import { NavGraphRenderer } from "./MazeRenderer";
 import { RouteOverlay } from "./RouteOverlay";
+import { CyclicCoreOverlay } from "./CyclicCoreOverlay";
 import { postEditEdgesToDto } from "./selectors/mazeSelectors";
 import type { Viewport } from "./renderers/types";
 
@@ -18,6 +19,7 @@ export class AnalyticsRenderer {
   private readonly markersContainer: Container;
   private readonly graphContainer: Container;
   private readonly navGraphContainer: Container;
+  private readonly cyclicCoreContainer: Container;
   private readonly routeContainer: Container;
 
   private readonly grid: GridRenderer;
@@ -25,6 +27,7 @@ export class AnalyticsRenderer {
   private readonly regionsRenderer: RegionsRenderer;
   private readonly graphRenderer: MazeGraphRenderer;
   private readonly navGraphRenderer: NavGraphRenderer;
+  private readonly cyclicCoreRenderer: CyclicCoreOverlay;
   private readonly routeRenderer: RouteOverlay;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
@@ -39,6 +42,7 @@ export class AnalyticsRenderer {
     this.markersContainer     = new Container();
     this.graphContainer       = new Container();
     this.navGraphContainer    = new Container();
+    this.cyclicCoreContainer  = new Container();
     this.routeContainer       = new Container();
 
     container.addChild(this.gridContainer);
@@ -49,6 +53,7 @@ export class AnalyticsRenderer {
     container.addChild(this.markersContainer);
     container.addChild(this.graphContainer);
     container.addChild(this.navGraphContainer);
+    container.addChild(this.cyclicCoreContainer);
     container.addChild(this.routeContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
@@ -61,6 +66,7 @@ export class AnalyticsRenderer {
     this.regionsRenderer = new RegionsRenderer(this.regionsContainer);
     this.graphRenderer = new MazeGraphRenderer(this.graphContainer);
     this.navGraphRenderer = new NavGraphRenderer(this.navGraphContainer);
+    this.cyclicCoreRenderer = new CyclicCoreOverlay(this.cyclicCoreContainer);
     this.routeRenderer = new RouteOverlay(this.routeContainer);
 
     this.syncAll(useMazeStore.getState());
@@ -76,12 +82,12 @@ export class AnalyticsRenderer {
         state.showComponentsOverlay !== prev.showComponentsOverlay ||
         state.showGraphOverlay !== prev.showGraphOverlay ||
         state.showNavGraphOverlay !== prev.showNavGraphOverlay ||
+        state.showCyclicCoreOverlay !== prev.showCyclicCoreOverlay ||
         state.showRouteOverlay !== prev.showRouteOverlay;
 
       const dataChanged =
         state.nodes !== prev.nodes ||
         state.edges !== prev.edges ||
-        state.components !== prev.components ||
         state.navNodes !== prev.navNodes ||
         state.navEdges !== prev.navEdges ||
         state.routeInfo !== prev.routeInfo ||
@@ -90,7 +96,8 @@ export class AnalyticsRenderer {
         state.activeTessellationConfig !== prev.activeTessellationConfig ||
         state.postEditAnalytics !== prev.postEditAnalytics ||
         state.postEditEdges !== prev.postEditEdges ||
-        state.postEditMeta !== prev.postEditMeta;
+        state.postEditMeta !== prev.postEditMeta ||
+        state.graphAnalytics !== prev.graphAnalytics;
 
       if (visibilityChanged || dataChanged) {
         this.syncAll(state);
@@ -102,13 +109,14 @@ export class AnalyticsRenderer {
 
   private syncAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const { analyticsOpen, nodes, activeTessellationConfig: cfg,
-      showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay, showRouteOverlay,
+      showMazeOverlay, showComponentsOverlay, showGraphOverlay,
+      showNavGraphOverlay, showCyclicCoreOverlay, showRouteOverlay,
       postEditAnalytics } = state;
 
-    const components = postEditAnalytics?.components ?? state.components;
-    const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
-    const navEdges   = postEditAnalytics?.navEdges   ?? state.navEdges;
-    const routeInfo  = postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo;
+    const graphAnalytics = postEditAnalytics?.graphAnalytics ?? state.graphAnalytics;
+    const navNodes      = postEditAnalytics?.navNodes   ?? state.navNodes;
+    const navEdges      = postEditAnalytics?.navEdges   ?? state.navEdges;
+    const routeInfo     = postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo;
     const edges  = postEditEdgesToDto(state.postEditEdges);
     const start  = state.postEditMeta != null ? state.postEditMeta.start : state.start;
     const finish = state.postEditMeta != null ? state.postEditMeta.finish : state.finish;
@@ -125,10 +133,19 @@ export class AnalyticsRenderer {
       this.mazeOverlay.render({ nodes, edges, start, finish, cfg });
     }
 
-    // Regions overlay
-    const showRegions = analyticsOpen && showComponentsOverlay && components.length > 0;
+    // Regions overlay — build components list from node_component map
+    const rawNc = graphAnalytics?.node_component as Map<number, number> | undefined;
+    const componentCount = graphAnalytics?.component_count ?? 0;
+    const showRegions = analyticsOpen && showComponentsOverlay && componentCount > 0;
     this.regionsContainer.visible = showRegions;
     if (showRegions) {
+      const components: number[][] = Array.from({ length: componentCount }, () => []);
+      if (rawNc instanceof Map) {
+        for (const [nodeId, compId] of rawNc) {
+          if (compId < componentCount) components[compId].push(nodeId);
+        }
+      }
+      console.log("[DIAG] components sizes=", components.map(c => c.length)); // DIAG
       this.regionsRenderer.render({ nodes, components, cfg });
     }
 
@@ -151,6 +168,16 @@ export class AnalyticsRenderer {
     this.navGraphContainer.visible = showNavGraph;
     if (showNavGraph) {
       this.navGraphRenderer.render({ nodes, navNodes, navEdges, start, finish, cfg });
+    }
+
+    // Cyclic core overlay
+    const cyclicNodeIds = new Set<number>(graphAnalytics?.cyclic_node_ids ?? []);
+    const showCyclicCore = analyticsOpen && showCyclicCoreOverlay && navNodes.length > 0;
+    this.cyclicCoreContainer.visible = showCyclicCore;
+    if (showCyclicCore) {
+      this.cyclicCoreRenderer.render({ nodes, navNodes, navEdges, cyclicNodeIds, cfg });
+    } else {
+      this.cyclicCoreRenderer.clear();
     }
 
     // Route overlay
@@ -178,6 +205,7 @@ export class AnalyticsRenderer {
     this.regionsRenderer.destroy();
     this.graphRenderer.destroy();
     this.navGraphRenderer.destroy();
+    this.cyclicCoreRenderer.destroy();
     this.routeRenderer.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
@@ -186,6 +214,7 @@ export class AnalyticsRenderer {
     this.markersContainer.destroy();
     this.graphContainer.destroy();
     this.navGraphContainer.destroy();
+    this.cyclicCoreContainer.destroy();
     this.routeContainer.destroy();
   }
 }

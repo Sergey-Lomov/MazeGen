@@ -142,8 +142,10 @@ pub fn generate(seed: u64, config: JsValue) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn compute_analytics(config: JsValue) -> Result<JsValue, JsValue> {
-    let cfg: ComputeAnalyticsConfig = serde_wasm_bindgen::from_value(config)
+pub fn compute_analytics(config: String) -> Result<JsValue, JsValue> {
+    // wasm_bindgen JSON-encodes JS strings when crossing the boundary.
+    let json: String = serde_json::from_str::<String>(&config).unwrap_or(config);
+    let cfg: ComputeAnalyticsConfig = serde_json::from_str(&json)
         .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
     dispatch_compute_analytics(cfg)
 }
@@ -183,7 +185,6 @@ where
     let mut ids = IdGenerator::new();
     let field = Field::<T>::new(pts, &mut ids)
         .map_err(|e| JsValue::from_str(e))?;
-
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
 

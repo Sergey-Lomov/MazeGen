@@ -8,7 +8,7 @@ $webPkg  = "$root\maze-web\src\wasm\pkg"
 
 Write-Host "Building WASM..." -ForegroundColor Cyan
 wasm-pack build "$root\maze-wasm" --target web
-if (-not $?) { Write-Host "wasm-pack failed" -ForegroundColor Red; exit 1 }
+if ($LASTEXITCODE -ne 0) { Write-Host "wasm-pack failed" -ForegroundColor Red; exit 1 }
 
 Write-Host "Copying artifacts to $webPkg..." -ForegroundColor Cyan
 Copy-Item "$wasmPkg\maze_wasm_bg.wasm"      "$webPkg\maze_wasm_bg.wasm"      -Force

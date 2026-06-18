@@ -14,6 +14,8 @@ pub use graph::Graph;
 pub use graph::classify::{GeometricNodeClass, classify_node};
 pub use graph::stats::{GeometricNodeStats, SpatialEdgeStats, compute_node_stats, compute_spatial_edge_stats};
 pub use graph::routing::{RouteInfo, compute_route_info};
+pub use graph::undirected_cc::{UndirectedComponents, build_undirected_cc};
+pub use graph::graph_analytics::{GraphAnalytics, NavUndirectedCc, compute_graph_analytics};
 pub use space::{
     Tessellation, Field,
     HexPoint, HexFace, HexTessellation, hex_parallelogram, hex_hexagon,
