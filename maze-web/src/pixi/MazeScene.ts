@@ -206,7 +206,10 @@ export class MazeScene {
         return;
       }
       if (openChanged) return;
-      if (modeChanged && state.fieldEditMode === "default") this.primitivePreviewOverlay.clear();
+      if (modeChanged && state.fieldEditMode === "default") {
+        this.primitivePreviewOverlay.clear();
+        this.fieldEditorOverlay.updateHover(null, state.tessellationConfig);
+      }
     });
   }
 
@@ -385,6 +388,13 @@ export class MazeScene {
         this.postEditController.clearHover();
       }
       this.isDragging = false;
+    });
+
+    stage.on("pointerleave", () => {
+      const st = useMazeStore.getState();
+      if (st.fieldSetupOpen) {
+        this.fieldEditorOverlay.updateHover(null, st.tessellationConfig);
+      }
     });
 
     window.addEventListener("blur", this.onBlur);
