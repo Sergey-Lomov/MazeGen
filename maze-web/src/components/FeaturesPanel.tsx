@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from "react";
+﻿import React, { useMemo, useRef } from "react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
@@ -9,7 +9,8 @@ import { GenerationFeature } from "./features/GenerationFeature";
 import { PostEditFeature } from "./features/PostEditFeature";
 import { AnalyticsFeature } from "./features/AnalyticsFeature";
 import { useMazeStore } from "../store/mazeStore";
-import type { TessellationKind } from "../store/mazeStore";
+import type { TessellationKind, FeatureId } from "../store/mazeStore";
+import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
 import { colors, font } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -79,10 +80,9 @@ function getTessellationKindLabel(kind: TessellationKind): string {
   return labels[kind]();
 }
 
-type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics";
-
 export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
-  const [openCard, setOpenCard] = useState<FeatureId>("basic_config");
+  const openCard = useMazeStore((s) => s.openCard);
+  const setOpenCard = useMazeStore((s) => s.setOpenCard);
 
   const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
@@ -109,6 +109,46 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const nodes = useMazeStore((s) => s.nodes);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
   const generatedWarnings = useMazeStore((s) => s.warnings);
+  const loadProject = useMazeStore((s) => s.loadProject);
+  const setError = useMazeStore((s) => s.setError);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleSave() {
+    const state = useMazeStore.getState();
+    if (!state.tessellationConfirmed) return;
+    downloadProjectFile(state);
+  }
+
+  function handleLoadClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onerror = () => setError(m["project.load_error_io"]());
+    reader.onload = (ev) => {
+      try {
+        const text = ev.target?.result as string;
+        let json: unknown;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          setError(m["project.load_error_json"]());
+          return;
+        }
+        const projectFile = parseAndValidate(json);
+        loadProject(projectFile);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(m["project.load_error"]({ message }));
+      }
+    };
+    reader.readAsText(file);
+  }
 
   function handleToggle(id: FeatureId) {
     if (openCard === id) return;
@@ -267,13 +307,36 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
       })()}
       <div style={styles.footer}>
         <LanguageSwitcher />
-        <button
-          onClick={onRefit}
-          style={styles.refitButton}
-          title="Fit to screen"
-          onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
-          onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
-        >⛶</button>
+        <div style={styles.footerRight}>
+          <button
+            onClick={handleSave}
+            style={styles.refitButton}
+            title={m["project.save"]()}
+            onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
+            onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
+          >↓</button>
+          <button
+            onClick={handleLoadClick}
+            style={styles.refitButton}
+            title={m["project.load"]()}
+            onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
+            onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
+          >↑</button>
+          <button
+            onClick={onRefit}
+            style={styles.refitButton}
+            title="Fit to screen"
+            onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
+            onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
+          >⛶</button>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          style={{ display: "none" }}
+          onChange={handleFileChange}
+        />
       </div>
     </div>
   );
@@ -295,6 +358,11 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "6px 10px",
     borderTop: `1px solid ${colors.borderDim}`,
     marginTop: "auto",
+  },
+  footerRight: {
+    display: "flex",
+    gap: 4,
+    alignItems: "center",
   },
   refitButton: {
     background: colors.bgInput,

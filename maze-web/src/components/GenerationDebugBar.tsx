@@ -4,20 +4,19 @@ import { colors, font, radius } from "../styles/theme";
 import { Switch } from "./Switch";
 import * as m from "~/paraglide/messages";
 
-const DEFAULT_DELAY_MS = 500;
-
 export function GenerationDebugBar() {
-  const debugSnapshot     = useMazeStore((s) => s.debugSnapshot);
-  const debugStep         = useMazeStore((s) => s.debugStep);
-  const debugStale        = useMazeStore((s) => s.debugStale);
-  const showDebugFrontier = useMazeStore((s) => s.showDebugFrontier);
-  const setDebugStep      = useMazeStore((s) => s.setDebugStep);
-  const setDebugMode      = useMazeStore((s) => s.setDebugMode);
+  const debugSnapshot        = useMazeStore((s) => s.debugSnapshot);
+  const debugStep            = useMazeStore((s) => s.debugStep);
+  const debugStale           = useMazeStore((s) => s.debugStale);
+  const showDebugFrontier    = useMazeStore((s) => s.showDebugFrontier);
+  const delayMs              = useMazeStore((s) => s.debugAutoPlayDelay);
+  const setDebugStep         = useMazeStore((s) => s.setDebugStep);
+  const setDebugMode         = useMazeStore((s) => s.setDebugMode);
   const setShowDebugFrontier = useMazeStore((s) => s.setShowDebugFrontier);
+  const setDelayMs           = useMazeStore((s) => s.setDebugAutoPlayDelay);
 
   const [playing, setPlaying] = React.useState(false);
-  const [delayMs, setDelayMs] = React.useState(DEFAULT_DELAY_MS);
-  const [delayDraft, setDelayDraft] = React.useState(String(DEFAULT_DELAY_MS));
+  const [delayDraft, setDelayDraft] = React.useState(String(delayMs));
   const total = debugSnapshot?.steps.length ?? 0;
   const currentEdges = debugSnapshot?.steps[debugStep]?.edges.length ?? 0;
 
@@ -79,7 +78,7 @@ export function GenerationDebugBar() {
           title={m["debug.delay_ms"]()}
           onChange={(e) => setDelayDraft(e.target.value)}
           onBlur={() => {
-            const v = Math.max(50, Math.min(9999, parseInt(delayDraft, 10) || DEFAULT_DELAY_MS));
+            const v = Math.max(50, Math.min(9999, parseInt(delayDraft, 10) || delayMs));
             setDelayMs(v);
             setDelayDraft(String(v));
           }}

@@ -105,8 +105,7 @@ export class GenerationRenderer {
     this.debugActiveContainer.visible = visible && state.showDebugFrontier;
     this.debugSrcContainer.visible = visible && state.showDebugFrontier;
     if (visible) {
-      const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
-      this.grid.render({ viewport: this.viewport }, cfg);
+      this.renderAll(state);
     }
   }
 

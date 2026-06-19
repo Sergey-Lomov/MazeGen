@@ -211,5 +211,10 @@
   "status.post_edit_ready": "Ready to edit",
   "status.post_edit_has_issues": "Issues detected",
   "status.analytics_issues": "{count} issue",
-  "status.analytics_issues_plural": "{count} issues"
+  "status.analytics_issues_plural": "{count} issues",
+  "project.save": "Save project",
+  "project.load": "Load project",
+  "project.load_error": "Failed to load project: {message}",
+  "project.load_error_io": "Failed to read file",
+  "project.load_error_json": "Invalid file format (not valid JSON)"
 }

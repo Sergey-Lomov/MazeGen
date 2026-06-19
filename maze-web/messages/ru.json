@@ -221,5 +221,10 @@
   "status.post_edit_ready": "Готово к редактированию",
   "status.post_edit_has_issues": "Обнаружены проблемы",
   "status.analytics_issues": "{count} проблема",
-  "status.analytics_issues_plural": "{count} проблемы"
+  "status.analytics_issues_plural": "{count} проблемы",
+  "project.save": "Сохранить проект",
+  "project.load": "Загрузить проект",
+  "project.load_error": "Ошибка загрузки проекта: {message}",
+  "project.load_error_io": "Не удалось прочитать файл",
+  "project.load_error_json": "Неверный формат файла (не валидный JSON)"
 }

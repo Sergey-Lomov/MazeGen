@@ -43,11 +43,12 @@ export type TriangleShape = "rect" | "triangle" | "hexagon" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
+export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics";
 
 const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
 const DEFAULT_TRI_ORI: TriOrientation = "r0";
 
-interface MazeState {
+export interface MazeState {
   seed: number;
   // Confirmed tessellation — set only on confirmTessellation()
   tessellationKind: TessellationKind;
@@ -135,8 +136,11 @@ interface MazeState {
   randomSeed: boolean;
   lastUsedSeed: number | null;
   generationStatus: "idle" | "done" | "error";
+  // Active feature card
+  openCard: FeatureId;
   // Debug state — read-only projection, does not mutate production graph
   debugMode: boolean;
+  debugAutoPlayDelay: number;
   debugSnapshot: GenerationStepsSnapshot | null;
   debugStep: number;
   debugStale: boolean;
@@ -231,8 +235,10 @@ interface MazeActions {
   clearLockedNodes: () => void;
   setAutoLock: (v: boolean) => void;
   setRandomSeed: (v: boolean) => void;
+  setOpenCard: (card: FeatureId) => void;
   setDebugMode: (v: boolean) => void;
   setDebugStep: (step: number) => void;
+  setDebugAutoPlayDelay: (ms: number) => void;
   setShowDebugFrontier: (v: boolean) => void;
   regenerate: () => void;
   setAnalyticsOpen: (open: boolean) => void;
@@ -247,8 +253,10 @@ interface MazeActions {
   applyPostEditTool: (edgeKey: string, from: number, to: number) => void;
   setPostEditEndpoint: (kind: "start" | "finish", nodeId: number) => void;
   clearPostEditEndpoint: (kind: "start" | "finish") => void;
+  setError: (msg: string | null) => void;
   confirmPostEdit: () => Promise<void>;
   resetPostEdit: () => void;
+  loadProject: (file: import("./projectExport").ProjectFile) => void;
 }
 
 function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
@@ -414,7 +422,9 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   randomSeed: false,
   lastUsedSeed: null,
   generationStatus: "idle" as const,
+  openCard: "basic_config" as FeatureId,
   debugMode: false,
+  debugAutoPlayDelay: 200,
   debugSnapshot: null,
   debugStep: 0,
   debugStale: false,
@@ -645,9 +655,13 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setRandomSeed: (v) => set({ randomSeed: v }),
 
+  setOpenCard: (card) => set({ openCard: card }),
+
   setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false }),
 
   setDebugStep: (step) => set({ debugStep: step }),
+
+  setDebugAutoPlayDelay: (ms) => set({ debugAutoPlayDelay: ms }),
 
   setShowDebugFrontier: (v) => set({ showDebugFrontier: v }),
 
@@ -1001,6 +1015,168 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   }),
 
   clearLockedNodes: () => set((state) => ({ lockedNodes: new Map<string, NodeLockKind>(), autoLockedNodes: new Set<string>(), debugStale: state.debugSnapshot !== null })),
+
+  setError: (msg) => set({ error: msg }),
+
+  loadProject: (file) => {
+    const cfg = file.tessellation.config;
+
+    // Derive all tessellation fields (same logic as setTessellationConfig)
+    const { kind, squareShape, hexShape, triangleShape } = kindAndShapeFromConfig(cfg);
+    const hexOrientation = (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom")
+      ? ((cfg as { orientation?: HexOrientation }).orientation ?? DEFAULT_HEX_ORI)
+      : get().hexOrientation;
+    const triOrientation = (cfg.type === "triangle_rect" || cfg.type === "triangle_triangle" || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom")
+      ? ((cfg as { orientation?: TriOrientation }).orientation ?? DEFAULT_TRI_ORI)
+      : get().triOrientation;
+    const isCustomConfig = cfg.type === "square_custom" || cfg.type === "hex_custom" || cfg.type === "tri_custom";
+    const currentFreeFieldPoints = get().freeFieldPoints;
+    const freeFieldPoints = isCustomConfig
+      ? {
+          ...currentFreeFieldPoints,
+          [kind]: new Set<number>((cfg as { points?: [number, number][] }).points?.map(([x, y]) => encodePoint(x, y)) ?? []),
+        }
+      : currentFreeFieldPoints;
+    const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
+    const restoredSavedConfigs: Partial<Record<TessellationConfig["type"], TessellationConfig>> =
+      Object.fromEntries(file.tessellation.savedConfigs.map(c => [c.type, c]));
+    const savedConfigs = isCustomConfig ? restoredSavedConfigs : { ...restoredSavedConfigs, [cfg.type]: cfg };
+    const previewState = buildPreviewState(kind, hexOrientation, triOrientation);
+
+    // Recompute auto-locked nodes
+    const restoredPresetConnections = new Map(file.presets.connections);
+    const autoLockedNodes = _recomputeAutoLock({
+      autoLock: file.presets.autoLock,
+      isEditingField,
+      tessellationKind: kind,
+      fieldPoints,
+      hexOrientation,
+      triOrientation,
+      tessellationConfig: cfg,
+      presetConnections: restoredPresetConnections,
+    } as MazeState);
+
+    // Single atomic set of all non-maze state
+    set({
+      // tessellation
+      tessellationConfig: cfg,
+      tessellationKind: kind,
+      squareShape,
+      hexShape,
+      triangleShape,
+      hexOrientation,
+      triOrientation,
+      freeFieldPoints,
+      isEditingField,
+      fieldPoints,
+      savedConfigs,
+      activeTessellationConfig: cfg,
+      tessellationConfirmed: true,
+      fieldEditMode: isCustomConfig ? "custom" : "default",
+      fieldPrimitive: "point",
+      ...previewState,
+      // generation settings (seed used below for generate call)
+      seed: file.generation.seed,
+      randomSeed: file.generation.randomSeed,
+      initialConfig: file.generation.initial,
+      elementsConfig: file.generation.elements,
+      // quality
+      selectedChecks: file.quality.selectedChecks,
+      selectedStrategies: file.quality.selectedStrategies,
+      checkParams: file.quality.checkParams,
+      strategyParams: file.quality.strategyParams,
+      // presets
+      presetConnections: restoredPresetConnections,
+      lockedNodes: new Map(file.presets.lockedNodes),
+      defaultEdgeState: file.presets.defaultEdgeState,
+      autoLock: file.presets.autoLock,
+      autoLockedNodes,
+      presetStart: file.presets.start,
+      presetFinish: file.presets.finish,
+      presetGenSource: file.presets.genSource,
+      // reset maze state — will be populated by generate below
+      nodes: [],
+      edges: [],
+      start: null,
+      finish: null,
+      navNodes: [],
+      navEdges: [],
+      components: [],
+      warnings: [],
+      nodeStats: null,
+      edgeStats: null,
+      routeInfo: null,
+      selectedNode: null,
+      generationStatus: "idle" as const,
+      postEditAutoConfirm: file.ui.postEditAutoConfirm,
+      postEditDraftEdges: null,
+      postEditDraftMeta: null,
+      postEditEdges: null,
+      postEditMeta: null,
+      postEditAnalytics: null,
+      postEditTool: "wall" as PostEditTool,
+      _generatedStart: null,
+      _generatedFinish: null,
+      _postEditRequestId: 0,
+      showMaze: true,
+      // analytics overlays
+      showMazeOverlay: file.analytics.showMazeOverlay,
+      showComponentsOverlay: file.analytics.showComponentsOverlay,
+      showGraphOverlay: file.analytics.showGraphOverlay,
+      showNavGraphOverlay: file.analytics.showNavGraphOverlay,
+      showRouteOverlay: file.analytics.showRouteOverlay,
+      // debug settings
+      debugMode: file.debug.debugMode,
+      showDebugFrontier: file.debug.showDebugFrontier,
+      debugAutoPlayDelay: file.debug.debugAutoPlayDelay,
+      debugSnapshot: null,
+      debugStep: 0,
+      debugStale: false,
+      // ui
+      showPresetOrigin: file.ui.showPresetOrigin,
+      showFieldOrigin: file.ui.showFieldOrigin,
+      openCard: file.ui.openCard,
+      fieldSetupOpen: file.ui.openCard === "field_setup",
+      presetConnectionsOpen: file.ui.openCard === "preset_connections",
+      generationOpen: file.ui.openCard === "generation",
+      qualityOpen: file.ui.openCard === "quality",
+      analyticsOpen: file.ui.openCard === "analytics",
+      postEditOpen: file.ui.openCard === "post_edit",
+      // clear transient UI flags
+      highlightInvalidPresets: false,
+      highlightIsolatedNodes: false,
+      error: null,
+    });
+
+    // Generate maze with saved seed (deterministic) — _generateWithSeed reads debugMode from store
+    // skipConfirmPostEdit=true to avoid double confirmPostEdit (we call it ourselves below)
+    set({ lastUsedSeed: file.generation.seed });
+    _generateWithSeed(file.generation.seed, get, set, true);
+
+    // Only proceed with post-edit and analytics if generation succeeded
+    if (get().generationStatus !== "done") return;
+
+    // After generation: if postEdit was saved, restore it over the generated draft
+    if (file.postEdit !== null) {
+      set({
+        postEditDraftEdges: Object.fromEntries(file.postEdit.edges),
+        postEditDraftMeta: file.postEdit.meta,
+        postEditEdges: null,
+        postEditMeta: null,
+        postEditAnalytics: null,
+      });
+    }
+
+    // confirmPostEdit to compute analytics over restored state
+    void get().confirmPostEdit();
+
+    // If debug mode: restore the saved step clamped to actual snapshot length
+    if (file.debug.debugMode) {
+      const snap = get().debugSnapshot;
+      const maxStep = snap ? snap.steps.length - 1 : 0;
+      set({ debugStep: Math.min(file.debug.debugStep, maxStep) });
+    }
+  },
 }));
 
 function mergeOrientation(current: TessellationConfig, orientation: HexOrientation | TriOrientation): TessellationConfig {
@@ -1074,7 +1250,7 @@ function _buildGenerateConfig(state: MazeState & MazeActions): GenerateConfig | 
   };
 }
 
-function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet): void {
+function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet, skipConfirmPostEdit = false): void {
   const state = get();
   if (state.isEditingField && state.fieldPoints.size < 2) {
     set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
@@ -1124,7 +1300,7 @@ function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet): void {
       _generatedStart: snapshot.start,
       _generatedFinish: snapshot.finish,
     });
-    void useMazeStore.getState().confirmPostEdit();
+    if (!skipConfirmPostEdit) void useMazeStore.getState().confirmPostEdit();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     set({ error: msg, generationStatus: "error" });
