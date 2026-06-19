@@ -42,6 +42,7 @@ const entry = (fx: number, fy: number, tx: number, ty: number): PresetConnection
   from: [fx, fy],
   to: [tx, ty],
   state: "passage",
+  source: "user",
 });
 
 describe("computeInvalidKeysFromCells", () => {
@@ -128,7 +129,7 @@ describe("applyTool — one_way", () => {
   it("one_way_forward → one_way_backward", () => {
     const connections = new Map([[
       edgeKey([0, 0], [1, 0]),
-      { from: [0, 0] as [number, number], to: [1, 0] as [number, number], state: "one_way_forward" as const },
+      { from: [0, 0] as [number, number], to: [1, 0] as [number, number], state: "one_way_forward" as const, source: "user" as const },
     ]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "one_way");
     expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_backward");
@@ -137,7 +138,7 @@ describe("applyTool — one_way", () => {
   it("one_way_backward → one_way_forward", () => {
     const connections = new Map([[
       edgeKey([0, 0], [1, 0]),
-      { from: [0, 0] as [number, number], to: [1, 0] as [number, number], state: "one_way_backward" as const },
+      { from: [0, 0] as [number, number], to: [1, 0] as [number, number], state: "one_way_backward" as const, source: "user" as const },
     ]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "one_way");
     expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_forward");

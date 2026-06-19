@@ -1,4 +1,3 @@
-import React from "react";
 import { sharedStyles } from "../styles/shared";
 
 interface Props {

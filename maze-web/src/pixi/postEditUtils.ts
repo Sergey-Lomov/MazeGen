@@ -1,5 +1,5 @@
 import type { EdgeDto } from "../wasm/types";
-import type { PostEditEdge, PostEditEdgeKind, PostEditTool } from "../store/mazeStore";
+import type { PostEditEdge, PostEditTool } from "../store/mazeStore";
 
 export function buildPostEditDraftEdgesFromGenerated(edges: EdgeDto[]): Record<string, PostEditEdge> {
   const edgeSet = new Set(edges.map(e => `${e.from}-${e.to}`));
