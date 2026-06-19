@@ -1245,7 +1245,8 @@ function _buildGenerateConfig(state: MazeState & MazeActions): GenerateConfig | 
     elements: state.elementsConfig,
     preset_connections: validPresets,
     locked_nodes,
-    ...(state.presetGenSource ? { preset_start: state.presetGenSource } : state.presetStart ? { preset_start: state.presetStart } : {}),
+    ...(state.presetStart ? { preset_start: state.presetStart } : {}),
+    ...(state.presetGenSource ? { preset_gen_source: state.presetGenSource } : {}),
     ...(state.presetFinish ? { preset_finish: state.presetFinish } : {}),
   };
 }

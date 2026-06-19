@@ -128,6 +128,7 @@ pub struct GenerateConfig {
     pub locked_nodes: Vec<LockedNodeDto>,
     pub preset_start: Option<[i32; 2]>,
     pub preset_finish: Option<[i32; 2]>,
+    pub preset_gen_source: Option<[i32; 2]>,
     #[serde(default)]
     pub debug: bool,
 }
@@ -155,6 +156,7 @@ impl Default for GenerateConfig {
             locked_nodes: vec![],
             preset_start: None,
             preset_finish: None,
+            preset_gen_source: None,
             debug: false,
         }
     }

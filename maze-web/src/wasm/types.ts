@@ -162,6 +162,7 @@ export interface GenerateConfig {
   locked_nodes?: LockedNodeDto[];
   preset_start?: [number, number];
   preset_finish?: [number, number];
+  preset_gen_source?: [number, number];
   debug?: boolean;
 }
 

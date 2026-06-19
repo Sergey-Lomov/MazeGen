@@ -47,7 +47,7 @@ Clicking a one-way tool on an undecided or non-one-way edge sets `one_way_forwar
 
 `presetStart`, `presetFinish`, and `presetGenSource` each store a single cell coordinate (`[number, number] | null`). These are independent of the edge connection map. All three markers count toward the preset subtitle total and status logic.
 
-`presetGenSource` takes priority over `presetStart` when building the WASM generation config (`preset_start` field).
+`presetGenSource` sets where the generation algorithm starts (`preset_gen_source` field). `presetStart` sets the maze start endpoint shown after generation (`preset_start` field). The two are independent: if both are set, generation seeds from `presetGenSource` and the start marker is placed at `presetStart`. If neither is set, generation seeds from the center-nearest node and the start endpoint is assigned by the repair strategy.
 
 ## Default edge state
 
@@ -196,8 +196,9 @@ Accepts an optional pre-built `cellSet` to avoid rebuilding on every pointer eve
 
 ```ts
 preset_connections: Array<{ from: [number,number], to: [number,number], state: PresetConnectionState }>
-preset_start?: [number, number]   // presetGenSource takes priority over presetStart
+preset_start?: [number, number]      // explicit start endpoint (presetStart)
 preset_finish?: [number, number]
+preset_gen_source?: [number, number] // generation algorithm seed (presetGenSource)
 locked_nodes: Array<{ point: [number,number], kind: NodeLockKind }>
 ```
 
