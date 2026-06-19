@@ -67,11 +67,13 @@ export class PostEditRenderer {
     this.root.visible = false;
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
-      const openChanged = state.postEditOpen !== prev.postEditOpen;
+      const isOpen = state.openCard === "post_edit";
+      const openChanged = state.openCard !== prev.openCard
+        && (isOpen || prev.openCard === "post_edit");
 
       if (openChanged) {
-        this.root.visible = state.postEditOpen;
-        if (state.postEditOpen) {
+        this.root.visible = isOpen;
+        if (isOpen) {
           this.cfg = state.activeTessellationConfig;
           this.rebuildCellCache(state);
           this.redrawAll(state);
@@ -80,7 +82,7 @@ export class PostEditRenderer {
         }
       }
 
-      if (!state.postEditOpen) return;
+      if (!isOpen) return;
 
       if (state.activeTessellationConfig !== prev.activeTessellationConfig) {
         this.cfg = state.activeTessellationConfig;
@@ -109,7 +111,7 @@ export class PostEditRenderer {
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
-    if (this.root.visible && this.cfg) {
+    if (useMazeStore.getState().openCard === "post_edit" && this.cfg) {
       this.grid.render({ viewport: this.viewport }, this.cfg);
     }
   }

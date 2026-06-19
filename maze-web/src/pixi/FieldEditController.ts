@@ -70,7 +70,7 @@ export class FieldEditController {
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
     const s = useMazeStore.getState();
-    if (!(s.fieldSetupOpen && s.fieldEditMode === "custom")) return;
+    if (!(s.openCard === "field_setup" && s.fieldEditMode === "custom")) return;
 
     // RMB pointerup never fires on Windows/Chrome; commit stale RMB gesture here as fallback.
     if (this.gestureActive && this.gestureButton === 2) this.onPointerUp();
@@ -118,7 +118,7 @@ export class FieldEditController {
       return;
     }
     const s = useMazeStore.getState();
-    if (!(s.fieldSetupOpen && s.fieldEditMode === "custom")) return;
+    if (!(s.openCard === "field_setup" && s.fieldEditMode === "custom")) return;
 
     if (this.spaceHeld || this.gestureButton === 1) {
       this.panCallbacks.movePan(canvasX, canvasY);

@@ -39,7 +39,7 @@ export class PostEditController extends BaseController {
     if (this.handlePanMove(canvasX, canvasY)) return;
 
     const state = useMazeStore.getState();
-    if (!state.postEditOpen) return;
+    if (state.openCard !== "post_edit") return;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
@@ -58,7 +58,7 @@ export class PostEditController extends BaseController {
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
     const state = useMazeStore.getState();
-    if (!state.postEditOpen) return;
+    if (state.openCard !== "post_edit") return;
 
     if (this.tryStartPan(canvasX, canvasY, button)) return;
 

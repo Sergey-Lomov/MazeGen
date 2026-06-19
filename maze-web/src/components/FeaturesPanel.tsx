@@ -95,15 +95,9 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const fieldPoints = useMazeStore((s) => s.fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
-  const setFieldSetupOpen = useMazeStore((s) => s.setFieldSetupOpen);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
-  const setPresetConnectionsOpen = useMazeStore((s) => s.setPresetConnectionsOpen);
-  const setGenerationOpen = useMazeStore((s) => s.setGenerationOpen);
-  const setQualityOpen = useMazeStore((s) => s.setQualityOpen);
-  const setAnalyticsOpen = useMazeStore((s) => s.setAnalyticsOpen);
-  const setPostEditOpen = useMazeStore((s) => s.setPostEditOpen);
 
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const nodes = useMazeStore((s) => s.nodes);
@@ -152,21 +146,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
 
   function handleToggle(id: FeatureId) {
     if (openCard === id) return;
-    if (openCard === "field_setup") setFieldSetupOpen(false);
-    if (openCard === "preset_connections") setPresetConnectionsOpen(false);
-    if (openCard === "generation") setGenerationOpen(false);
-    if (openCard === "quality") setQualityOpen(false);
-    if (openCard === "analytics") setAnalyticsOpen(false);
-    if (openCard === "post_edit") setPostEditOpen(false);
     if (id === "basic_config") syncPreviewToConfirmed();
-    if (id === "field_setup") setFieldSetupOpen(true);
-    if (id === "preset_connections") setPresetConnectionsOpen(true);
-    if (id === "generation") setGenerationOpen(true);
-    if (id === "quality") setQualityOpen(true);
-    if (id === "analytics") setAnalyticsOpen(true);
-    if (id === "post_edit") {
-      setPostEditOpen(true);
-    }
     setOpenCard(id);
   }
 

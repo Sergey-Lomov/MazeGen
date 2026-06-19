@@ -71,7 +71,7 @@ export class AnalyticsRenderer {
     let prev = useMazeStore.getState();
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const visibilityChanged =
-        state.analyticsOpen !== prev.analyticsOpen ||
+        state.openCard !== prev.openCard ||
         state.showMazeOverlay !== prev.showMazeOverlay ||
         state.showComponentsOverlay !== prev.showComponentsOverlay ||
         state.showGraphOverlay !== prev.showGraphOverlay ||
@@ -101,7 +101,8 @@ export class AnalyticsRenderer {
   }
 
   private syncAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { analyticsOpen, nodes, activeTessellationConfig: cfg,
+    const analyticsOpen = state.openCard === "analytics";
+    const { nodes, activeTessellationConfig: cfg,
       showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay, showRouteOverlay,
       postEditAnalytics } = state;
 
@@ -166,7 +167,7 @@ export class AnalyticsRenderer {
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
-    if (state.analyticsOpen && state.showMazeOverlay && state.nodes.length > 0) {
+    if (state.openCard === "analytics" && state.showMazeOverlay && state.nodes.length > 0) {
       this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
     }
   }

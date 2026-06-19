@@ -48,8 +48,8 @@ export class MazeScene {
   private onBlur = () => {
     this.isDragging = false;
     const st = useMazeStore.getState();
-    if (st.presetConnectionsOpen) this.presetConnectionsController.clearHover();
-    if (st.postEditOpen) this.postEditController.clearHover();
+    if (st.openCard === "preset_connections") this.presetConnectionsController.clearHover();
+    if (st.openCard === "post_edit") this.postEditController.clearHover();
   };
   private onWheel: (e: WheelEvent) => void = () => {};
   private unsubscribeFit: (() => void) | null = null;
@@ -166,12 +166,12 @@ export class MazeScene {
 
   private subscribeToPreview(): void {
     let prevPreview = useMazeStore.getState().previewTessellationConfig;
-    let prevOpen = useMazeStore.getState().fieldSetupOpen;
+    let prevCard = useMazeStore.getState().openCard;
     this.unsubscribePreview = useMazeStore.subscribe((state) => {
       const previewChanged = state.previewTessellationConfig !== prevPreview;
-      const openChanged = state.fieldSetupOpen !== prevOpen;
+      const openChanged = state.openCard !== prevCard;
       prevPreview = state.previewTessellationConfig;
-      prevOpen = state.fieldSetupOpen;
+      prevCard = state.openCard;
       if (previewChanged || openChanged) {
         this.syncLayersToViewport();
       }
@@ -179,12 +179,14 @@ export class MazeScene {
   }
 
   private subscribeToQualityOpen(): void {
-    let prev = useMazeStore.getState().qualityOpen;
+    let prevCard = useMazeStore.getState().openCard;
     this.unsubscribeQualityOpen = useMazeStore.subscribe((state) => {
-      if (state.qualityOpen !== prev) {
-        prev = state.qualityOpen;
-        if (state.qualityOpen) this.app.ticker.stop();
-        else this.app.ticker.start();
+      if (state.openCard !== prevCard) {
+        const wasQuality = prevCard === "quality";
+        const isQuality = state.openCard === "quality";
+        prevCard = state.openCard;
+        if (isQuality) this.app.ticker.stop();
+        else if (wasQuality) this.app.ticker.start();
       }
     });
   }
@@ -194,14 +196,15 @@ export class MazeScene {
   }
 
   private subscribeToEditField(): void {
-    let prevOpen = useMazeStore.getState().fieldSetupOpen;
+    let prevCard = useMazeStore.getState().openCard;
     let prevMode = useMazeStore.getState().fieldEditMode;
     this.unsubscribeEditField = useMazeStore.subscribe((state) => {
-      const openChanged = state.fieldSetupOpen !== prevOpen;
+      const isFieldSetup = state.openCard === "field_setup";
+      const openChanged = state.openCard !== prevCard;
       const modeChanged = state.fieldEditMode !== prevMode;
-      prevOpen = state.fieldSetupOpen;
+      prevCard = state.openCard;
       prevMode = state.fieldEditMode;
-      if (!state.fieldSetupOpen) {
+      if (!isFieldSetup) {
         if (openChanged) this.primitivePreviewOverlay.clear();
         return;
       }
@@ -314,15 +317,15 @@ export class MazeScene {
 
     stage.on("pointerdown", (e) => {
       const st = useMazeStore.getState();
-      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
+      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerDown(e.globalX, e.globalY, e.button);
         return;
       }
-      if (st.presetConnectionsOpen) {
+      if (st.openCard === "preset_connections") {
         this.presetConnectionsController.onPointerDown(e.globalX, e.globalY, e.button);
         return;
       }
-      if (st.postEditOpen) {
+      if (st.openCard === "post_edit") {
         this.postEditController.onPointerDown(e.globalX, e.globalY, e.button);
         return;
       }
@@ -333,17 +336,17 @@ export class MazeScene {
 
     stage.on("pointermove", (e) => {
       const st = useMazeStore.getState();
-      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
+      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
         const hoverCell = this.fieldEditController.getHoverCell(e.globalX, e.globalY);
         this.fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
         return;
       }
-      if (st.presetConnectionsOpen) {
+      if (st.openCard === "preset_connections") {
         this.presetConnectionsController.onPointerMove(e.globalX, e.globalY);
         return;
       }
-      if (st.postEditOpen) {
+      if (st.openCard === "post_edit") {
         this.postEditController.onPointerMove(e.globalX, e.globalY);
         return;
       }
@@ -357,15 +360,15 @@ export class MazeScene {
 
     stage.on("pointerup", (e) => {
       const st = useMazeStore.getState();
-      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
+      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerUp();
         return;
       }
-      if (st.presetConnectionsOpen) {
+      if (st.openCard === "preset_connections") {
         this.presetConnectionsController.onPointerUp(e.button);
         return;
       }
-      if (st.postEditOpen) {
+      if (st.openCard === "post_edit") {
         this.postEditController.onPointerUp(e.button);
         return;
       }
@@ -373,17 +376,17 @@ export class MazeScene {
     });
     stage.on("pointerupoutside", () => {
       const st = useMazeStore.getState();
-      if (st.fieldSetupOpen && st.fieldEditMode === "custom") {
+      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
         this.fieldEditController.onPointerUp();
       }
-      if (st.fieldSetupOpen) {
+      if (st.openCard === "field_setup") {
         this.fieldEditorOverlay.updateHover(null, st.tessellationConfig);
       }
-      if (st.presetConnectionsOpen) {
+      if (st.openCard === "preset_connections") {
         this.presetConnectionsController.onPointerUp(1);
         this.presetConnectionsController.clearHover();
       }
-      if (st.postEditOpen) {
+      if (st.openCard === "post_edit") {
         this.postEditController.onPointerUp(1);
         this.postEditController.clearHover();
       }
@@ -392,7 +395,7 @@ export class MazeScene {
 
     stage.on("pointerleave", () => {
       const st = useMazeStore.getState();
-      if (st.fieldSetupOpen) {
+      if (st.openCard === "field_setup") {
         this.fieldEditorOverlay.updateHover(null, st.tessellationConfig);
       }
     });

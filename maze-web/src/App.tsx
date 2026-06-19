@@ -19,8 +19,9 @@ export function App() {
   const loadRegistry = useMazeStore((s) => s.loadRegistry);
   const debugMode = useMazeStore((s) => s.debugMode);
   const debugSnapshot = useMazeStore((s) => s.debugSnapshot);
-  const generationOpen = useMazeStore((s) => s.generationOpen);
-  const qualityOpen = useMazeStore((s) => s.qualityOpen);
+  const openCard = useMazeStore((s) => s.openCard);
+  const generationOpen = openCard === "generation";
+  const qualityOpen = openCard === "quality";
 
   useEffect(() => {
     loadRegistry();

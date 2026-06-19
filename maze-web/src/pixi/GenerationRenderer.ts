@@ -68,7 +68,7 @@ export class GenerationRenderer {
     let prev = useMazeStore.getState();
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const visibilityChanged =
-        state.generationOpen !== prev.generationOpen ||
+        state.openCard !== prev.openCard ||
         state.showMaze !== prev.showMaze ||
         state.showDebugFrontier !== prev.showDebugFrontier;
 
@@ -96,7 +96,7 @@ export class GenerationRenderer {
   }
 
   private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
-    const visible = state.generationOpen && state.showMaze;
+    const visible = state.openCard === "generation" && state.showMaze;
     this.gridContainer.visible = visible;
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
@@ -112,7 +112,7 @@ export class GenerationRenderer {
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
-    if (state.generationOpen && state.showMaze) {
+    if (state.openCard === "generation" && state.showMaze) {
       const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
       this.grid.render({ viewport: this.viewport }, cfg);
     }

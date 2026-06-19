@@ -101,11 +101,13 @@ export class PresetConnectionsRenderer {
     this.root.visible = false;
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
-      const openChanged = state.presetConnectionsOpen !== prev.presetConnectionsOpen;
+      const isOpen = state.openCard === "preset_connections";
+      const openChanged = state.openCard !== prev.openCard
+        && (isOpen || prev.openCard === "preset_connections");
 
       if (openChanged) {
-        this.root.visible = state.presetConnectionsOpen;
-        if (state.presetConnectionsOpen) {
+        this.root.visible = isOpen;
+        if (isOpen) {
           this.cfg = state.tessellationConfig;
           this.rebuildCellCache(state);
           this.redrawAll(state);
@@ -114,7 +116,7 @@ export class PresetConnectionsRenderer {
         }
       }
 
-      if (!state.presetConnectionsOpen) return;
+      if (!isOpen) return;
 
       if (state.tessellationConfig !== prev.tessellationConfig) {
         this.cfg = state.tessellationConfig;

@@ -5,9 +5,9 @@ import * as m from "~/paraglide/messages";
 
 export function QualityFeature() {
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
-  const qualityOpen = useMazeStore((s) => s.qualityOpen);
+  const openCard = useMazeStore((s) => s.openCard);
 
-  if (qualityOpen) return null;
+  if (openCard === "quality") return null;
 
   return (
     <div style={styles.root}>

@@ -111,12 +111,8 @@ export interface MazeState {
   edgeStats: SpatialEdgeStatsDto | null;
   routeInfo: RouteInfoDto | null;
   showFieldOverlay: boolean;
-  generationOpen: boolean;
-  qualityOpen: boolean;
-  fieldSetupOpen: boolean;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
-  presetConnectionsOpen: boolean;
   presetConnections: Map<string, PresetConnectionEntry>;
   presetConnectionsTool: PresetConnectionTool;
   defaultEdgeState: "undefined" | "wall" | "passage";
@@ -146,14 +142,12 @@ export interface MazeState {
   debugStale: boolean;
   showDebugFrontier: boolean;
   // Analytics state
-  analyticsOpen: boolean;
   showMazeOverlay: boolean;
   showComponentsOverlay: boolean;
   showGraphOverlay: boolean;
   showNavGraphOverlay: boolean;
   showRouteOverlay: boolean;
   // Post-edit state
-  postEditOpen: boolean;
   postEditAutoConfirm: boolean;
   postEditTool: PostEditTool;
   /** Working copy — updated on every tool click. Read by PostEditRenderer. */
@@ -211,12 +205,8 @@ interface MazeActions {
   removeFieldPoints: (cells: [number, number][]) => void;
   clearFieldPoints: () => void;
   setShowFieldOverlay: (show: boolean) => void;
-  setGenerationOpen: (open: boolean) => void;
-  setQualityOpen: (open: boolean) => void;
-  setFieldSetupOpen: (open: boolean) => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
-  setPresetConnectionsOpen: (open: boolean) => void;
   setPresetConnectionsTool: (tool: PresetConnectionTool) => void;
   applyPresetConnectionsTool: (key: string, from: [number, number], to: [number, number]) => void;
   applyPresetConnectionsReset: (key: string) => void;
@@ -241,13 +231,11 @@ interface MazeActions {
   setDebugAutoPlayDelay: (ms: number) => void;
   setShowDebugFrontier: (v: boolean) => void;
   regenerate: () => void;
-  setAnalyticsOpen: (open: boolean) => void;
   setShowMazeOverlay: (v: boolean) => void;
   setShowComponentsOverlay: (v: boolean) => void;
   setShowGraphOverlay: (v: boolean) => void;
   setShowNavGraphOverlay: (v: boolean) => void;
   setShowRouteOverlay: (v: boolean) => void;
-  setPostEditOpen: (open: boolean) => void;
   setPostEditAutoConfirm: (v: boolean) => void;
   setPostEditTool: (tool: PostEditTool) => void;
   applyPostEditTool: (edgeKey: string, from: number, to: number) => void;
@@ -400,12 +388,8 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   edgeStats: null,
   routeInfo: null,
   showFieldOverlay: true,
-  generationOpen: false,
-  qualityOpen: false,
-  fieldSetupOpen: false,
   fieldEditMode: "default",
   fieldPrimitive: "point",
-  presetConnectionsOpen: false,
   presetConnections: new Map<string, PresetConnectionEntry>(),
   presetConnectionsTool: "wall" as PresetConnectionTool,
   defaultEdgeState: "undefined" as const,
@@ -429,13 +413,11 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   debugStep: 0,
   debugStale: false,
   showDebugFrontier: true,
-  analyticsOpen: false,
   showMazeOverlay: true,
   showComponentsOverlay: false,
   showGraphOverlay: false,
   showNavGraphOverlay: false,
   showRouteOverlay: false,
-  postEditOpen: false,
   postEditAutoConfirm: true,
   postEditTool: "wall" as PostEditTool,
   postEditDraftEdges: null,
@@ -655,7 +637,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setRandomSeed: (v) => set({ randomSeed: v }),
 
-  setOpenCard: (card) => set({ openCard: card }),
+  setOpenCard: (card) => set((state) => ({
+    openCard: card,
+    ...(state.openCard === "preset_connections" && card !== "preset_connections"
+      ? { highlightInvalidPresets: false, highlightIsolatedNodes: false }
+      : {}),
+  })),
 
   setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false }),
 
@@ -665,14 +652,12 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setShowDebugFrontier: (v) => set({ showDebugFrontier: v }),
 
-  setAnalyticsOpen: (open) => set({ analyticsOpen: open }),
   setShowMazeOverlay: (v) => set({ showMazeOverlay: v }),
   setShowComponentsOverlay: (v) => set({ showComponentsOverlay: v }),
   setShowGraphOverlay: (v) => set({ showGraphOverlay: v }),
   setShowNavGraphOverlay: (v) => set({ showNavGraphOverlay: v }),
   setShowRouteOverlay: (v) => set({ showRouteOverlay: v }),
 
-  setPostEditOpen: (open) => set({ postEditOpen: open }),
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
   setPostEditTool: (tool) => set({ postEditTool: tool }),
 
@@ -887,10 +872,6 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
 
-  setGenerationOpen: (open) => set({ generationOpen: open }),
-  setQualityOpen: (open) => set({ qualityOpen: open }),
-  setFieldSetupOpen: (open) => set({ fieldSetupOpen: open }),
-
   setFieldEditMode: (mode) => set((state) => {
     if (mode === "custom") {
       const cfg = state.tessellationConfig;
@@ -944,8 +925,6 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   }),
 
   setFieldPrimitive: (p) => set({ fieldPrimitive: p }),
-
-  setPresetConnectionsOpen: (open) => set(open ? { presetConnectionsOpen: true } : { presetConnectionsOpen: false, highlightInvalidPresets: false, highlightIsolatedNodes: false }),
 
   setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool }),
 
@@ -1136,12 +1115,6 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       showPresetOrigin: file.ui.showPresetOrigin,
       showFieldOrigin: file.ui.showFieldOrigin,
       openCard: file.ui.openCard,
-      fieldSetupOpen: file.ui.openCard === "field_setup",
-      presetConnectionsOpen: file.ui.openCard === "preset_connections",
-      generationOpen: file.ui.openCard === "generation",
-      qualityOpen: file.ui.openCard === "quality",
-      analyticsOpen: file.ui.openCard === "analytics",
-      postEditOpen: file.ui.openCard === "post_edit",
       // clear transient UI flags
       highlightInvalidPresets: false,
       highlightIsolatedNodes: false,

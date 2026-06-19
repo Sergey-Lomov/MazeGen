@@ -26,7 +26,7 @@ export class PresetConnectionsController extends BaseController {
     if (this.handlePanMove(canvasX, canvasY)) return;
 
     const state = useMazeStore.getState();
-    if (!state.presetConnectionsOpen) return;
+    if (state.openCard !== "preset_connections") return;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const edge = pickEdgeAtPosition(vpX, vpY, state.tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
@@ -40,7 +40,7 @@ export class PresetConnectionsController extends BaseController {
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
     const state = useMazeStore.getState();
-    if (!state.presetConnectionsOpen) return;
+    if (state.openCard !== "preset_connections") return;
 
     if (this.tryStartPan(canvasX, canvasY, button)) return;
 

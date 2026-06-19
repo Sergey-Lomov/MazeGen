@@ -48,28 +48,30 @@ export class FieldEditorOverlay {
     this.root.visible = false;
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
-      if (state.fieldSetupOpen !== prev.fieldSetupOpen) {
-        this.root.visible = state.fieldSetupOpen;
+      const isOpen = state.openCard === "field_setup";
+      const wasOpen = prev.openCard === "field_setup";
+      if (isOpen !== wasOpen) {
+        this.root.visible = isOpen;
       }
 
-      if (state.fieldSetupOpen && !prev.fieldSetupOpen) {
+      if (isOpen && !wasOpen) {
         this.redrawAll(state);
       }
 
-      if (state.fieldSetupOpen && state.fieldPoints !== prev.fieldPoints) {
+      if (isOpen && state.fieldPoints !== prev.fieldPoints) {
         this.redrawFloor(state.fieldPoints, state.fieldEditMode, state.tessellationConfig);
       }
 
-      if (state.fieldSetupOpen && state.tessellationConfig !== prev.tessellationConfig) {
+      if (isOpen && state.tessellationConfig !== prev.tessellationConfig) {
         this.redrawAll(state);
       }
 
-      if (state.fieldSetupOpen && state.fieldEditMode !== prev.fieldEditMode) {
+      if (isOpen && state.fieldEditMode !== prev.fieldEditMode) {
         this.redrawFloor(state.fieldPoints, state.fieldEditMode, state.tessellationConfig);
         this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
       }
 
-      if (state.fieldSetupOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
+      if (isOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
         this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
       }
     });
