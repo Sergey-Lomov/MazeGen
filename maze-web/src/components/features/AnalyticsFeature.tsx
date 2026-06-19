@@ -3,23 +3,8 @@ import { useMazeStore } from "../../store/mazeStore";
 import { colors, font } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { IssuesBlock } from "../IssuesBlock";
+import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
-
-function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label style={switchStyles.wrap}>
-      <input
-        type="checkbox"
-        style={switchStyles.input}
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span style={{ ...switchStyles.track, ...(checked ? switchStyles.trackOn : {}) }}>
-        <span style={{ ...switchStyles.thumb, ...(checked ? switchStyles.thumbOn : {}) }} />
-      </span>
-    </label>
-  );
-}
 
 function SectionHeader({ label }: { label: string }) {
   return <div style={sharedStyles.sectionHeader}>{label}</div>;
@@ -147,15 +132,6 @@ export function AnalyticsFeature() {
     </div>
   );
 }
-
-const switchStyles: Record<string, React.CSSProperties> = {
-  wrap: { position: "relative", display: "inline-flex", alignItems: "center", cursor: "pointer", flexShrink: 0 },
-  input: { position: "absolute", opacity: 0, width: 0, height: 0 },
-  track: { display: "inline-block", width: 32, height: 18, background: colors.borderStrong, borderRadius: 9, position: "relative", transition: "background 0.2s" },
-  trackOn: { background: colors.bgBtnPrimary },
-  thumb: { position: "absolute", top: 2, left: 2, width: 14, height: 14, background: colors.textWhite, borderRadius: "50%", transition: "left 0.2s" },
-  thumbOn: { left: 16 },
-};
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 6 },

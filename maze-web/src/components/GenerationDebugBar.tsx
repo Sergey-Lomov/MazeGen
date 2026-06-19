@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { useMazeStore } from "../store/mazeStore";
 import { colors, font, radius } from "../styles/theme";
 import { Switch } from "./Switch";
+import { StepSlider } from "./StepSlider";
 import * as m from "~/paraglide/messages";
 
 export function GenerationDebugBar() {
@@ -102,14 +103,11 @@ export function GenerationDebugBar() {
         </span>
 
         {/* Slider */}
-        <input
-          type="range"
-          className="maze-slider"
-          style={styles.slider}
-          min={0}
-          max={Math.max(0, total - 1)}
+        <StepSlider
           value={debugStep}
-          onChange={(e) => { setPlaying(false); setDebugStep(Number(e.target.value)); }}
+          max={total - 1}
+          style={styles.slider}
+          onChange={(v) => { setPlaying(false); setDebugStep(v); }}
         />
 
         {/* Close */}
