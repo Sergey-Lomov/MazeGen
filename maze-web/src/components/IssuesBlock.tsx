@@ -72,7 +72,7 @@ const issueStyles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   label: { flex: 1, fontSize: font.sm, color: colors.textWarning, lineHeight: 1.4 },
-  infoIcon: { color: colors.textWarning, fontSize: font.md, flexShrink: 0, lineHeight: 1 },
+  infoIcon: { color: colors.textWarning, fontSize: font.xl, flexShrink: 0, lineHeight: 1 },
   description: {
     margin: 0,
     fontSize: font.md,

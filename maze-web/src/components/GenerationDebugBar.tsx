@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { X } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import { colors, font, radius } from "../styles/theme";
 import { Switch } from "./Switch";
@@ -111,7 +112,7 @@ export function GenerationDebugBar() {
         />
 
         {/* Close */}
-        <button style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}>×</button>
+        <button style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}><X size={16} /></button>
       </div>
     </>
   );

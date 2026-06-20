@@ -1,4 +1,5 @@
 import React from "react";
+import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { colors, font, radius, overlay, shadow, dialogSpacing, dialogSize } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
@@ -31,7 +32,7 @@ export function Modal({ title, size = "info", rawBody, onClose, children }: Prop
       >
         <div style={styles.header}>
           <span style={styles.title}>{title}</span>
-          <button style={styles.closeBtn} onClick={onClose}>✕</button>
+          <button style={styles.closeBtn} onClick={onClose}><X size={16} /></button>
         </div>
         {rawBody !== undefined ? (
           <div style={styles.bodyRaw}>{rawBody}</div>

@@ -1,4 +1,5 @@
 ﻿import { useState, useMemo } from "react";
+import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { buttonStyle } from "../../styles/shared";
@@ -81,13 +82,13 @@ export function PostEditFeature() {
           {startNode && (
             <div style={styles.statusBubble}>
               <span>{m["preset.start"]()}: {startNode.x},{startNode.y}</span>
-              <button style={styles.clearTag} onClick={() => clearPostEditEndpoint("start")}>×</button>
+              <button style={styles.clearTag} onClick={() => clearPostEditEndpoint("start")}><X size={16} /></button>
             </div>
           )}
           {finishNode && (
             <div style={styles.statusBubble}>
               <span>{m["preset.finish"]()}: {finishNode.x},{finishNode.y}</span>
-              <button style={styles.clearTag} onClick={() => clearPostEditEndpoint("finish")}>×</button>
+              <button style={styles.clearTag} onClick={() => clearPostEditEndpoint("finish")}><X size={16} /></button>
             </div>
           )}
         </div>
@@ -163,15 +164,16 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textDim,
     background: colors.bgInput,
     borderRadius: 4,
-    padding: "4px 6px",
+    padding: "6px 8px",
   },
   clearTag: {
     background: "none",
     border: "none",
-    color: colors.textVeryDim,
+    color: colors.textDim,
     cursor: "pointer",
     fontSize: font.md,
     padding: "0 2px",
     lineHeight: 1,
+    display: "flex",
   },
 };

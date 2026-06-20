@@ -1,4 +1,5 @@
 ﻿import React, { useMemo, useRef } from "react";
+import { Save, FolderOpen, Maximize2 } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
@@ -39,9 +40,10 @@ const langSwitcherStyles: Record<string, React.CSSProperties> = {
     border: `1px solid ${colors.borderStrong}`,
     color: colors.textMuted,
     fontSize: font.sm,
-    padding: "2px 4px",
+    padding: "4px 6px",
     borderRadius: 3,
     cursor: "pointer",
+    alignSelf: "stretch",
   },
 };
 
@@ -294,21 +296,21 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
             title={m["project.save"]()}
             onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
             onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
-          >↓</button>
+          ><Save size={16} /></button>
           <button
             onClick={handleLoadClick}
             style={styles.refitButton}
             title={m["project.load"]()}
             onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
             onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
-          >↑</button>
+          ><FolderOpen size={16} /></button>
           <button
             onClick={onRefit}
             style={styles.refitButton}
             title="Fit to screen"
             onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
             onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
-          >⛶</button>
+          ><Maximize2 size={16} /></button>
         </div>
         <input
           ref={fileInputRef}
@@ -335,7 +337,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "6px 10px",
+    padding: "8px 10px",
     borderTop: `1px solid ${colors.borderDim}`,
     marginTop: "auto",
   },
@@ -351,7 +353,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
     fontSize: font.xl,
     cursor: "pointer",
-    padding: "0px 4px",
+    padding: "4px 6px",
     lineHeight: "normal",
     display: "flex",
     alignItems: "center",

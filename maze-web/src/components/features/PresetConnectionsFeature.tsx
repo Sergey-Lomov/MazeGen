@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/presetConnectionsUtils";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
@@ -171,19 +172,19 @@ export function PresetConnectionsFeature() {
           {presetStart && (
             <div style={styles.statusBubble}>
               <span>{m["preset.start"]()}: {presetStart[0]},{presetStart[1]}</span>
-              <button style={styles.clearTag} onClick={() => setPresetStart(null)}>×</button>
+              <button style={styles.clearTag} onClick={() => setPresetStart(null)}><X size={16} /></button>
             </div>
           )}
           {presetFinish && (
             <div style={styles.statusBubble}>
               <span>{m["preset.finish"]()}: {presetFinish[0]},{presetFinish[1]}</span>
-              <button style={styles.clearTag} onClick={() => setPresetFinish(null)}>×</button>
+              <button style={styles.clearTag} onClick={() => setPresetFinish(null)}><X size={16} /></button>
             </div>
           )}
           {presetGenSource && (
             <div style={styles.statusBubble}>
               <span>{m["preset.gen_source"]()}: {presetGenSource[0]},{presetGenSource[1]}</span>
-              <button style={styles.clearTag} onClick={() => setPresetGenSource(null)}>×</button>
+              <button style={styles.clearTag} onClick={() => setPresetGenSource(null)}><X size={16} /></button>
             </div>
           )}
           {isolatedNodes.length > 0 && (
@@ -253,7 +254,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textDim,
     background: colors.bgInput,
     borderRadius: 4,
-    padding: "4px 6px",
+    padding: "6px 8px",
   },
   warningBubble: {
     fontSize: font.sm,
@@ -300,10 +301,11 @@ const styles: Record<string, React.CSSProperties> = {
   clearTag: {
     background: "none",
     border: "none",
-    color: colors.textFaint,
+    color: colors.textDim,
     cursor: "pointer",
     padding: "0 0 0 4px",
     fontSize: 13,
     lineHeight: 1,
+    display: "flex",
   },
 };

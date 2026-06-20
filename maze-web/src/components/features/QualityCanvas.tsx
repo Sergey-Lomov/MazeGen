@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { useQualityViewModel } from "./useQualityViewModel";
 import { useParamEditor } from "./useParamEditor";
@@ -289,9 +290,7 @@ function StrategyDetail({ strategy, flushRef }: {
 }
 
 function TrashIcon() {
-  return (
-    <span style={{ fontSize: 13, lineHeight: 1, display: "block", color: colors.textDim }}>✖</span>
-  );
+  return <X size={16} color={colors.textDim} />;
 }
 
 const styles: Record<string, React.CSSProperties> = {
