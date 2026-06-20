@@ -96,12 +96,12 @@ pub fn build_nav_graph_pinned(graph: &Graph, pinned: &HashSet<NodeId>) -> NavGra
 
 1. Collect all maze nodes into a `remaining` pool.
 2. While `remaining` is non-empty:
-   a. Walk from the smallest-id node in `remaining` to find the first junction (non-passage node). If the walk loops back to the start, the component is a pure ring.
+   a. Pick `seed = remaining.iter().min()`. If seed is a junction, use it directly. Otherwise walk forward along the passage chain using `advance_chain` (always picks the minimum-id outgoing neighbor that is not the previous node, to avoid back-tracking). Track visited nodes in a `visited` set; if the walk returns to `seed`, the component is a pure ring; if it reaches a node already in `visited` (but not `seed`), that node is the ring anchor. If the walk reaches a junction, use that junction as the component start.
    b. **Junction component**: DFS from the junction. For each outgoing edge:
       - If the neighbor is a passage node: walk the passage until the next junction, consuming all intermediate nodes from `remaining`. Emit one `NavEdge`.
       - If the neighbor is a junction: emit a direct `NavEdge` with `path = [from, to]`.
-   c. **Ring component**: pick the start node as the single `NavNode`. Walk both outgoing directions until the path closes, emitting two self-edges.
-3. Determinism is guaranteed by always selecting `remaining.iter().min()` as the component seed, and by always following the minimum-id neighbor at each step of the passage and ring walks.
+   c. **Ring component**: pick the anchor node as the single `NavNode`. Walk both outgoing directions from the anchor using `advance_chain` until the path closes back to the anchor, emitting two self-edges. Remove all visited nodes (including the anchor and any `ring_start` discovered during seed walk) from `remaining`.
+3. Determinism is guaranteed by always selecting `remaining.iter().min()` as the component seed, and by always following the minimum-id neighbor via `advance_chain` at each step.
 
 ### Corner case: pure ring
 

@@ -182,15 +182,26 @@ fn find_component_start(graph: &Graph, remaining: &HashSet<NodeId>, pinned: &Has
         return ComponentStart::Junction(seed);
     }
 
-    // Walk forward looking for a junction
+    // Walk forward looking for a junction, using advance_chain to avoid going back.
+    // seed has no meaningful "prev", so pick its min outgoing neighbor as first step.
+    let first_opt = graph.outgoing_neighbors(seed).min();
+    let Some(first) = first_opt else {
+        // Isolated node with no edges — treat as junction
+        return ComponentStart::Junction(seed);
+    };
+    if !is_corridor_node(graph, first, pinned) {
+        return ComponentStart::Junction(first);
+    }
+
+    let mut prev = seed;
+    let mut current = first;
     let mut visited = HashSet::new();
     visited.insert(seed);
-    let mut current = seed;
+    visited.insert(first);
 
     loop {
-        let next_opt = graph.outgoing_neighbors(current).min();
+        let next_opt = advance_chain(graph, current, prev);
         let Some(next) = next_opt else {
-            // Dead end with no outgoing — treat as junction
             return ComponentStart::Junction(current);
         };
 
@@ -198,13 +209,13 @@ fn find_component_start(graph: &Graph, remaining: &HashSet<NodeId>, pinned: &Has
             return ComponentStart::Ring(seed);
         }
         if visited.contains(&next) {
-            // Loop that doesn't pass through seed — pick the repeated node as ring anchor
             return ComponentStart::Ring(next);
         }
         if !is_corridor_node(graph, next, pinned) {
             return ComponentStart::Junction(next);
         }
         visited.insert(next);
+        prev = current;
         current = next;
     }
 }
@@ -290,24 +301,27 @@ fn dfs_from_junction(
 }
 
 /// Walk the ring from `ring_start` to find the first pinned node. Returns ring_start if none found.
-fn find_ring_anchor(graph: &Graph, ring_start: NodeId, pinned: &HashSet<NodeId>) -> NodeId {
-    let Some(first) = graph.outgoing_neighbors(ring_start).min() else {
+/// Only walks through nodes in `remaining` to stay within the current ring component.
+fn find_ring_anchor(graph: &Graph, ring_start: NodeId, pinned: &HashSet<NodeId>, remaining: &HashSet<NodeId>) -> NodeId {
+    let Some(first) = graph.outgoing_neighbors(ring_start).filter(|n| remaining.contains(n) || *n == ring_start).min() else {
         return ring_start;
     };
+    if first == ring_start { return ring_start; }
     let mut walk = first;
     let mut walk_prev = ring_start;
     loop {
         if pinned.contains(&walk) { return walk; }
         match advance_chain(graph, walk, walk_prev) {
             Some(n) if n == ring_start => return ring_start,
-            Some(n) => { walk_prev = walk; walk = n; }
-            None => return ring_start,
+            Some(n) if remaining.contains(&n) => { walk_prev = walk; walk = n; }
+            _ => return ring_start,
         }
     }
 }
 
 /// Walk one direction around the ring from `anchor` via `first_step`.
 /// Returns the complete path (anchor → ... → anchor) if the ring closes, else None.
+/// Always removes all visited nodes from `remaining`, whether or not the ring closes.
 fn walk_ring_direction(
     graph: &Graph,
     anchor: NodeId,
@@ -318,6 +332,9 @@ fn walk_ring_direction(
     remaining.remove(&first_step);
     let mut prev = anchor;
     let mut current = first_step;
+    let mut visited: HashSet<NodeId> = HashSet::new();
+    visited.insert(anchor);
+    visited.insert(first_step);
 
     loop {
         match advance_chain(graph, current, prev) {
@@ -327,6 +344,11 @@ fn walk_ring_direction(
             }
             Some(next) => {
                 remaining.remove(&next);
+                if visited.contains(&next) {
+                    // cycle without closing on anchor — dead end for ring purposes
+                    return None;
+                }
+                visited.insert(next);
                 path.push(next);
                 prev = current;
                 current = next;
@@ -349,7 +371,7 @@ fn build_ring(
     let anchor = if pinned.is_empty() {
         ring_start
     } else {
-        find_ring_anchor(graph, ring_start, pinned)
+        find_ring_anchor(graph, ring_start, pinned, remaining)
     };
 
     let nav_id = nav.add_node(anchor);
@@ -362,5 +384,113 @@ fn build_ring(
         if let Some(path) = walk_ring_direction(graph, anchor, first_step, remaining) {
             nav.add_edge(nav_id, nav_id, path);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{Graph, EdgeKind};
+
+    fn add_bidir(g: &mut Graph, a: NodeId, b: NodeId) {
+        g.add_edge(a, b, EdgeKind::Basic);
+        g.add_edge(b, a, EdgeKind::Basic);
+    }
+
+    // Simple ring A⇄B⇄C⇄A — no pinned.
+    // All three are corridor nodes → one NavNode, two self-edges.
+    #[test]
+    fn test_simple_ring() {
+        let mut g = Graph::new();
+        for id in [1u64, 2, 3] { g.add_node(id); }
+        add_bidir(&mut g, 1, 2);
+        add_bidir(&mut g, 2, 3);
+        add_bidir(&mut g, 3, 1);
+
+        let nav = build_nav_graph(&g);
+        assert_eq!(nav.nodes.len(), 1, "pure ring → 1 nav node");
+        assert_eq!(nav.edges().count(), 2, "pure ring → 2 self-edges");
+    }
+
+    // Ring A⇄B⇄C⇄A, plus junction J⇄A (J has 1 neighbor = dead-end).
+    // A: out={B,C,J} in={B,C,J} — junction (3 neighbors). B,C: corridor.
+    // Nav nodes: J, A, plus B/C should be absorbed.
+    #[test]
+    fn test_ring_with_extra_junction_neighbor() {
+        let mut g = Graph::new();
+        for id in [1u64, 2, 3, 10] { g.add_node(id); }
+        // ring 1⇄2⇄3⇄1
+        add_bidir(&mut g, 1, 2);
+        add_bidir(&mut g, 2, 3);
+        add_bidir(&mut g, 3, 1);
+        // extra junction 10⇄1
+        add_bidir(&mut g, 10, 1);
+
+        let nav = build_nav_graph(&g);
+        // node 1: out={2,3,10}, in={2,3,10} → junction
+        // node 10: out={1}, in={1} → dead-end junction
+        // nodes 2,3: each has 2 symmetric bidir neighbors → corridor
+        // Expected: nav nodes = {1, 10}, edges = 10→1, 1→10, 1→1(CW), 1→1(CCW)
+        let node_ids: Vec<NodeId> = nav.nodes.iter().map(|n| n.node_id).collect();
+        assert!(!node_ids.contains(&2), "node 2 should be corridor (absorbed)");
+        assert!(!node_ids.contains(&3), "node 3 should be corridor (absorbed)");
+        assert!(node_ids.contains(&1), "node 1 should be junction (nav node)");
+        assert!(node_ids.contains(&10), "node 10 should be junction (nav node)");
+    }
+
+    // Ring A⇄B⇄C⇄A, pinned={A}.
+    // A pinned → junction. B,C corridor.
+    // build_ring finds ring_start=B (min corridor), anchor=A (pinned).
+    // A has outgoing {B, C} (both in ring) → both walks should succeed.
+    #[test]
+    fn test_ring_with_pinned_node() {
+        let mut g = Graph::new();
+        for id in [1u64, 2, 3] { g.add_node(id); }
+        add_bidir(&mut g, 1, 2);
+        add_bidir(&mut g, 2, 3);
+        add_bidir(&mut g, 3, 1);
+
+        let mut pinned = HashSet::new();
+        pinned.insert(1u64);
+
+        let nav = build_nav_graph_pinned(&g, &pinned);
+        assert_eq!(nav.nodes.len(), 1, "pinned ring → 1 nav node (the pinned anchor)");
+        assert_eq!(nav.edges().count(), 2, "pinned ring → 2 self-edges");
+        assert_eq!(nav.nodes[0].node_id, 1, "anchor should be pinned node 1");
+    }
+
+    // Ring A⇄B⇄C⇄A, pinned={A}, plus separate ring D⇄E⇄F⇄D connected to A via A⇄D.
+    // A: out={B,C,D}, in={B,C,D} → junction (3 neighbors).
+    // B,C: corridor in ring1. D,E,F: D has extra neighbor A → junction; E,F corridor.
+    // This is the topology suspected to cause the freeze.
+    #[test]
+    fn test_ring_pinned_with_extra_ring_neighbor() {
+        let mut g = Graph::new();
+        for id in [1u64, 2, 3, 4, 5, 6] { g.add_node(id); }
+        // ring1: 1⇄2⇄3⇄1
+        add_bidir(&mut g, 1, 2);
+        add_bidir(&mut g, 2, 3);
+        add_bidir(&mut g, 3, 1);
+        // ring2: 4⇄5⇄6⇄4
+        add_bidir(&mut g, 4, 5);
+        add_bidir(&mut g, 5, 6);
+        add_bidir(&mut g, 6, 4);
+        // bridge: 1⇄4
+        add_bidir(&mut g, 1, 4);
+
+        let mut pinned = HashSet::new();
+        pinned.insert(1u64);
+
+        // Should terminate without hanging
+        let nav = build_nav_graph_pinned(&g, &pinned);
+        // All nodes should be accounted for in nav (no remaining)
+        let nav_node_ids: HashSet<NodeId> = nav.nodes.iter().map(|n| n.node_id).collect();
+        // corridor nodes 2,3 absorbed into edges from node 1
+        // node 4: out={1,5,6} in={1,5,6} → junction
+        // nodes 5,6: corridor (neighbors {4,6} and {4,5} — symmetric bidir)
+        assert!(!nav_node_ids.contains(&2), "node 2 absorbed");
+        assert!(!nav_node_ids.contains(&3), "node 3 absorbed");
+        assert!(nav_node_ids.contains(&1), "node 1 is junction");
+        assert!(nav_node_ids.contains(&4), "node 4 is junction");
     }
 }
