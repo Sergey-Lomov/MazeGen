@@ -1114,10 +1114,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       postEditMeta: null,
       postEditAnalytics: null,
       postEditTool: "wall" as PostEditTool,
-      postEditDirty: false,
-      fieldDirty: false,
-      presetsDirty: false,
-      mazeDirty: false,
+      postEditDirty: file.dirtyFlags.postEdit,
+      fieldDirty: file.dirtyFlags.field,
+      presetsDirty: file.dirtyFlags.presets,
+      mazeDirty: file.dirtyFlags.maze,
       _generatedStart: null,
       _generatedFinish: null,
       _postEditRequestId: 0,
@@ -1163,6 +1163,14 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         postEditAnalytics: null,
       });
     }
+
+    // Restore dirty flags — _generateWithSeed resets them, but saved values take precedence
+    set({
+      postEditDirty: file.dirtyFlags.postEdit,
+      fieldDirty: file.dirtyFlags.field,
+      presetsDirty: file.dirtyFlags.presets,
+      mazeDirty: file.dirtyFlags.maze,
+    });
 
     // confirmPostEdit to compute analytics over restored state
     void get().confirmPostEdit();

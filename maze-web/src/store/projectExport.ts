@@ -2,6 +2,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig } from "../wasm/types";
 import type { PresetConnectionEntry } from "../pixi/presetConnectionsUtils";
 import type { PostEditEdge, PostEditMeta, MazeState, FeatureId } from "./mazeStore";
+import { selectPostEditDirty } from "../pixi/selectors/mazeSelectors";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,13 @@ export interface ProjectFileUi {
   postEditAutoConfirm: boolean;
 }
 
+export interface ProjectFileDirtyFlags {
+  postEdit: boolean;
+  field: boolean;
+  presets: boolean;
+  maze: boolean;
+}
+
 export interface ProjectFile {
   version: number;
   tessellation: { config: TessellationConfig; savedConfigs: TessellationConfig[] };
@@ -57,6 +65,7 @@ export interface ProjectFile {
     genSource: [number, number] | null;
   };
   postEdit: ProjectFilePostEdit | null;
+  dirtyFlags: ProjectFileDirtyFlags;
   analytics: ProjectFileAnalytics;
   debug: ProjectFileDebug;
   ui: ProjectFileUi;
@@ -300,6 +309,15 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     ? null
     : validatePostEdit(migrated.postEdit);
 
+  // dirtyFlags (optional section — defaults false for old files)
+  const dirtyFlagsObj = migrated.dirtyFlags != null ? assertObject(migrated.dirtyFlags, "dirtyFlags") : null;
+  const dirtyFlags: ProjectFileDirtyFlags = {
+    postEdit: dirtyFlagsObj != null && typeof dirtyFlagsObj.postEdit === "boolean" ? dirtyFlagsObj.postEdit : false,
+    field: dirtyFlagsObj != null && typeof dirtyFlagsObj.field === "boolean" ? dirtyFlagsObj.field : false,
+    presets: dirtyFlagsObj != null && typeof dirtyFlagsObj.presets === "boolean" ? dirtyFlagsObj.presets : false,
+    maze: dirtyFlagsObj != null && typeof dirtyFlagsObj.maze === "boolean" ? dirtyFlagsObj.maze : false,
+  };
+
   // analytics
   const analyticsObj = assertObject(migrated.analytics, "analytics");
   const analytics: ProjectFileAnalytics = {
@@ -344,6 +362,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
       genSource,
     },
     postEdit,
+    dirtyFlags,
     analytics,
     debug,
     ui,
@@ -353,10 +372,9 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 // ─── Serializer ──────────────────────────────────────────────────────────────
 
 export function serializeProject(state: MazeState): ProjectFile {
-  // Save draft (unconfirmed edits) — postEditDraftEdges is always the authoritative working copy
-  const postEdit: ProjectFilePostEdit | null = state.postEditDraftEdges !== null
+  const postEdit: ProjectFilePostEdit | null = selectPostEditDirty(state)
     ? {
-        edges: Object.entries(state.postEditDraftEdges) as [string, PostEditEdge][],
+        edges: Object.entries(state.postEditDraftEdges ?? {}) as [string, PostEditEdge][],
         meta: state.postEditDraftMeta,
       }
     : null;
@@ -389,6 +407,12 @@ export function serializeProject(state: MazeState): ProjectFile {
       genSource: state.presetGenSource,
     },
     postEdit,
+    dirtyFlags: {
+      postEdit: state.postEditDirty,
+      field: state.fieldDirty,
+      presets: state.presetsDirty,
+      maze: state.mazeDirty,
+    },
     analytics: {
       showMazeOverlay: state.showMazeOverlay,
       showComponentsOverlay: state.showComponentsOverlay,
