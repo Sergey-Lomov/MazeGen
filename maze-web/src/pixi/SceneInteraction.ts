@@ -1,0 +1,126 @@
+import type { Application } from "pixi.js";
+import type { Container } from "pixi.js";
+import { useMazeStore } from "../store/mazeStore";
+import type { FieldEditController } from "./FieldEditController";
+import type { FieldEditorOverlay } from "./FieldEditorOverlay";
+import type { PointerHandler } from "./sceneTypes";
+import { PanState } from "./sceneTypes";
+
+interface SceneInteractionDeps {
+  app: Application;
+  viewport: Container;
+  getFieldEditController: () => FieldEditController;
+  fieldEditorOverlay: FieldEditorOverlay;
+  getController: (st: ReturnType<typeof useMazeStore.getState>) => PointerHandler | null;
+  onViewportChanged: () => void;
+}
+
+/** Wires pointer/wheel DOM events to the active feature controller, or to default viewport pan when none is active. */
+export class SceneInteraction {
+  private deps: SceneInteractionDeps;
+  defaultPan: PanState;
+  private onWheel: (e: WheelEvent) => void = () => {};
+
+  private onBlur = () => {
+    this.defaultPan.end();
+    const st = useMazeStore.getState();
+    this.deps.getController(st)?.clearHover?.();
+  };
+
+  constructor(deps: SceneInteractionDeps) {
+    this.deps = deps;
+    const { viewport, onViewportChanged } = deps;
+    this.defaultPan = new PanState(
+      () => ({ x: viewport.x, y: viewport.y }),
+      (x, y) => {
+        viewport.x = x;
+        viewport.y = y;
+        onViewportChanged();
+      },
+    );
+    this.setup();
+  }
+
+  private setup(): void {
+    const { app, viewport, getFieldEditController, fieldEditorOverlay, getController, onViewportChanged } = this.deps;
+    const stage = app.stage;
+    stage.interactive = true;
+    stage.hitArea = app.screen;
+
+    stage.on("pointerdown", (e) => {
+      const st = useMazeStore.getState();
+      const controller = getController(st);
+      if (controller) {
+        controller.onPointerDown(e.globalX, e.globalY, e.button);
+        return;
+      }
+      this.defaultPan.begin(e.globalX, e.globalY);
+    });
+
+    stage.on("pointermove", (e) => {
+      const st = useMazeStore.getState();
+      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
+        const fieldEditController = getFieldEditController();
+        fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
+        const hoverCell = fieldEditController.getHoverCell(e.globalX, e.globalY);
+        fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
+        return;
+      }
+      const controller = getController(st);
+      if (controller) {
+        controller.onPointerMove(e.globalX, e.globalY);
+        return;
+      }
+      this.defaultPan.move(e.globalX, e.globalY);
+    });
+
+    stage.on("pointerup", (e) => {
+      const st = useMazeStore.getState();
+      const controller = getController(st);
+      if (controller) {
+        controller.onPointerUp(e.button);
+        return;
+      }
+      this.defaultPan.end();
+    });
+    stage.on("pointerupoutside", () => {
+      const st = useMazeStore.getState();
+      const controller = getController(st);
+      controller?.onPointerUp(1);
+      controller?.clearHover?.();
+      if (st.openCard === "field_setup") {
+        fieldEditorOverlay.updateHover(null, st.tessellationConfig);
+      }
+      this.defaultPan.end();
+    });
+
+    stage.on("pointerleave", () => {
+      const st = useMazeStore.getState();
+      if (st.openCard === "field_setup") {
+        fieldEditorOverlay.updateHover(null, st.tessellationConfig);
+      }
+    });
+
+    window.addEventListener("blur", this.onBlur);
+
+    this.onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const rect = app.canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      viewport.x = mouseX + (viewport.x - mouseX) * factor;
+      viewport.y = mouseY + (viewport.y - mouseY) * factor;
+      viewport.scale.x *= factor;
+      viewport.scale.y *= factor;
+      onViewportChanged();
+    };
+    app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
+  }
+
+  destroy(): void {
+    window.removeEventListener("blur", this.onBlur);
+    this.deps.app.canvas.removeEventListener("wheel", this.onWheel);
+  }
+}

@@ -2,8 +2,6 @@ import { Application, Container } from "pixi.js";
 import { GenerationRenderer } from "./GenerationRenderer";
 import { TessellationRenderer } from "./TessellationRenderer";
 import { AnalyticsRenderer } from "./AnalyticsRenderer";
-import { TILE_SIZE } from "./constants";
-import { cellCenter, mazeBounds } from "./hexGeometry";
 import { FieldEditorOverlay } from "./FieldEditorOverlay";
 import { FieldEditController } from "./FieldEditController";
 import { PrimitivePreviewOverlay } from "./PrimitivePreviewOverlay";
@@ -12,11 +10,11 @@ import { PresetConnectionsController } from "./PresetConnectionsController";
 import { PostEditRenderer } from "./PostEditRenderer";
 import { PostEditController } from "./PostEditController";
 import { fitFieldViewport } from "./FieldEditorOverlay";
+import { fitMazeViewport } from "./viewportFit";
 import { makeProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-
-const FIT_PADDING = 0.9;
+import type { ViewportListener, PointerHandler } from "./sceneTypes";
+import { SceneInteraction } from "./SceneInteraction";
 
 export class MazeScene {
   private app: Application;
@@ -37,27 +35,16 @@ export class MazeScene {
   private postEditController: PostEditController;
   private analyticsRenderer: AnalyticsRenderer;
   private analyticsContainer: Container;
+  private interaction: SceneInteraction;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
+  // All renderers/overlays that must be notified when the viewport changes.
+  private viewportListeners: ViewportListener[] = [];
 
-  private isDragging = false;
-  private dragStart = { x: 0, y: 0 };
-  private viewportStart = { x: 0, y: 0 };
-
-  private onBlur = () => {
-    this.isDragging = false;
-    const st = useMazeStore.getState();
-    if (st.openCard === "preset_connections") this.presetConnectionsController.clearHover();
-    if (st.openCard === "post_edit") this.postEditController.clearHover();
-  };
-  private onWheel: (e: WheelEvent) => void = () => {};
-  private unsubscribeFit: (() => void) | null = null;
   private unsubscribeEditField: (() => void) | null = null;
   private unsubscribePreview: (() => void) | null = null;
-  private unsubscribePresetOpen: (() => void) | null = null;
   private unsubscribeQualityOpen: (() => void) | null = null;
-
 
   constructor(app: Application) {
     this.app = app;
@@ -98,54 +85,54 @@ export class MazeScene {
     this.presetConnectionsRenderer = new PresetConnectionsRenderer(this.presetConnectionsContainer);
     this.postEditRenderer = new PostEditRenderer(this.postEditContainer);
 
-    const self = this;
-    this.presetConnectionsController = new PresetConnectionsController(
-      () => self.viewport,
+    this.viewportListeners = [
+      this.generationRenderer,
+      this.fieldEditorOverlay,
+      this.primitivePreviewOverlay,
       this.presetConnectionsRenderer,
-      (x, y) => {
-        self.viewport.x = x;
-        self.viewport.y = y;
-        self.syncLayersToViewport();
-      },
+      this.postEditRenderer,
+      this.tessellationRenderer,
+      this.analyticsRenderer,
+    ];
+
+    this.presetConnectionsController = new PresetConnectionsController(
+      () => this.viewport,
+      this.presetConnectionsRenderer,
+      (x, y) => { this.viewport.x = x; this.viewport.y = y; this.syncLayersToViewport(); },
     );
     this.postEditController = new PostEditController(
-      () => self.viewport,
+      () => this.viewport,
       this.postEditRenderer,
-      (x, y) => {
-        self.viewport.x = x;
-        self.viewport.y = y;
-        self.syncLayersToViewport();
-      },
+      (x, y) => { this.viewport.x = x; this.viewport.y = y; this.syncLayersToViewport(); },
     );
+
+    this.interaction = new SceneInteraction({
+      app: this.app,
+      viewport: this.viewport,
+      getFieldEditController: () => this.fieldEditController,
+      fieldEditorOverlay: this.fieldEditorOverlay,
+      getController: (st) => this.getController(st),
+      onViewportChanged: () => this.syncLayersToViewport(),
+    });
+
     this.fieldEditController = new FieldEditController(
       app.canvas,
       () => {
         const cfg = useMazeStore.getState().tessellationConfig;
         return makeProjection(cfg);
       },
-      () => self.viewport,
+      () => this.viewport,
       {
-        startPan: (x, y) => {
-          self.isDragging = true;
-          self.dragStart = { x, y };
-          self.viewportStart = { x: self.viewport.x, y: self.viewport.y };
-        },
-        movePan: (x, y) => {
-          if (!self.isDragging) return;
-          const dx = x - self.dragStart.x;
-          const dy = y - self.dragStart.y;
-          self.viewport.x = self.viewportStart.x + dx;
-          self.viewport.y = self.viewportStart.y + dy;
-          self.syncLayersToViewport();
-        },
-        endPan: () => { self.isDragging = false; },
+        startPan: (x, y) => this.interaction.defaultPan.begin(x, y),
+        movePan: (x, y) => this.interaction.defaultPan.move(x, y),
+        endPan: () => this.interaction.defaultPan.end(),
       },
       {
         onPreviewUpdate: (cells, btn, kind, cfg) => {
-          self.primitivePreviewOverlay.update(cells, btn, kind, cfg);
+          this.primitivePreviewOverlay.update(cells, btn, kind, cfg);
         },
         onPreviewClear: () => {
-          self.primitivePreviewOverlay.clear();
+          this.primitivePreviewOverlay.clear();
         },
         onPrimitiveCommit: (cells, btn) => {
           const store = useMazeStore.getState();
@@ -155,13 +142,18 @@ export class MazeScene {
       },
     );
 
-    this.setupInteraction();
-    this.subscribeToFit();
     this.subscribeToEditField();
     this.subscribeToPreview();
-    this.subscribeToPresetOpen();
     this.subscribeToQualityOpen();
     this.syncLayersToViewport();
+  }
+
+  /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
+  private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
+    if (st.openCard === "field_setup" && st.fieldEditMode === "custom") return this.fieldEditController;
+    if (st.openCard === "preset_connections") return this.presetConnectionsController;
+    if (st.openCard === "post_edit") return this.postEditController;
+    return null;
   }
 
   private subscribeToPreview(): void {
@@ -191,10 +183,6 @@ export class MazeScene {
     });
   }
 
-  private subscribeToPresetOpen(): void {
-    this.unsubscribePresetOpen = useMazeStore.subscribe(() => {});
-  }
-
   private subscribeToEditField(): void {
     let prevCard = useMazeStore.getState().openCard;
     let prevMode = useMazeStore.getState().fieldEditMode;
@@ -216,10 +204,6 @@ export class MazeScene {
     });
   }
 
-  private subscribeToFit(): void {
-    this.unsubscribeFit = useMazeStore.subscribe(() => {});
-  }
-
   private syncLayersToViewport(): void {
     for (const layer of this.syncedLayers) {
       layer.x = this.viewport.x;
@@ -227,202 +211,32 @@ export class MazeScene {
       layer.scale.x = this.viewport.scale.x;
       layer.scale.y = this.viewport.scale.y;
     }
-    this.generationRenderer.onViewportChanged(
-      this.viewport.x,
-      this.viewport.y,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.viewport.scale.x,
-    );
-    this.fieldEditorOverlay.onViewportChanged(
-      this.viewport.x,
-      this.viewport.y,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.viewport.scale.x,
-    );
-    this.primitivePreviewOverlay.onViewportChanged(
-      this.viewport.x,
-      this.viewport.y,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.viewport.scale.x,
-    );
-    this.presetConnectionsRenderer.onViewportChanged(
-      this.viewport.x,
-      this.viewport.y,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.viewport.scale.x,
-    );
-    this.postEditRenderer.onViewportChanged(
-      this.viewport.x,
-      this.viewport.y,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.viewport.scale.x,
-    );
-    this.tessellationRenderer.onViewportChanged(
-      this.viewport.x,
-      this.viewport.y,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.viewport.scale.x,
-    );
-    this.analyticsRenderer.onViewportChanged(
-      this.viewport.x,
-      this.viewport.y,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.viewport.scale.x,
-    );
+    for (const listener of this.viewportListeners) {
+      listener.onViewportChanged(
+        this.viewport.x,
+        this.viewport.y,
+        this.app.screen.width,
+        this.app.screen.height,
+        this.viewport.scale.x,
+      );
+    }
   }
-
-  private fitMaze(cfg: TessellationConfig, nodes: { x: number; y: number; id: number }[]): void {
-    const centers = nodes.map(n => cellCenter(n, cfg));
-    const halfTile = TILE_SIZE;
-    const { minX, minY, maxX, maxY } = mazeBounds(centers, halfTile);
-    const W = maxX - minX;
-    const H = maxY - minY;
-    const screenW = this.app.screen.width;
-    const screenH = this.app.screen.height;
-    const scale = Math.min(FIT_PADDING * screenW / W, FIT_PADDING * screenH / H);
-
-    this.viewport.scale.set(scale);
-    this.viewport.x = screenW / 2 - scale * (minX + W / 2);
-    this.viewport.y = screenH / 2 - scale * (minY + H / 2);
-
-    this.syncLayersToViewport();
-  }
-
 
   refit(): void {
     this.app.resize();
     const { nodes, activeTessellationConfig, tessellationConfig } = useMazeStore.getState();
-    if (nodes.length > 0) {
-      this.fitMaze(activeTessellationConfig, nodes);
-    } else {
-      const { x, y, scale } = fitFieldViewport(tessellationConfig, this.app.screen.width, this.app.screen.height);
-      this.viewport.scale.set(scale);
-      this.viewport.x = x;
-      this.viewport.y = y;
-      this.syncLayersToViewport();
-    }
-  }
-
-  private setupInteraction(): void {
-    const stage = this.app.stage;
-    stage.interactive = true;
-    stage.hitArea = this.app.screen;
-
-    stage.on("pointerdown", (e) => {
-      const st = useMazeStore.getState();
-      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
-        this.fieldEditController.onPointerDown(e.globalX, e.globalY, e.button);
-        return;
-      }
-      if (st.openCard === "preset_connections") {
-        this.presetConnectionsController.onPointerDown(e.globalX, e.globalY, e.button);
-        return;
-      }
-      if (st.openCard === "post_edit") {
-        this.postEditController.onPointerDown(e.globalX, e.globalY, e.button);
-        return;
-      }
-      this.isDragging = true;
-      this.dragStart = { x: e.globalX, y: e.globalY };
-      this.viewportStart = { x: this.viewport.x, y: this.viewport.y };
-    });
-
-    stage.on("pointermove", (e) => {
-      const st = useMazeStore.getState();
-      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
-        this.fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
-        const hoverCell = this.fieldEditController.getHoverCell(e.globalX, e.globalY);
-        this.fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
-        return;
-      }
-      if (st.openCard === "preset_connections") {
-        this.presetConnectionsController.onPointerMove(e.globalX, e.globalY);
-        return;
-      }
-      if (st.openCard === "post_edit") {
-        this.postEditController.onPointerMove(e.globalX, e.globalY);
-        return;
-      }
-      if (!this.isDragging) return;
-      const dx = e.globalX - this.dragStart.x;
-      const dy = e.globalY - this.dragStart.y;
-      this.viewport.x = this.viewportStart.x + dx;
-      this.viewport.y = this.viewportStart.y + dy;
-      this.syncLayersToViewport();
-    });
-
-    stage.on("pointerup", (e) => {
-      const st = useMazeStore.getState();
-      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
-        this.fieldEditController.onPointerUp();
-        return;
-      }
-      if (st.openCard === "preset_connections") {
-        this.presetConnectionsController.onPointerUp(e.button);
-        return;
-      }
-      if (st.openCard === "post_edit") {
-        this.postEditController.onPointerUp(e.button);
-        return;
-      }
-      this.isDragging = false;
-    });
-    stage.on("pointerupoutside", () => {
-      const st = useMazeStore.getState();
-      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
-        this.fieldEditController.onPointerUp();
-      }
-      if (st.openCard === "field_setup") {
-        this.fieldEditorOverlay.updateHover(null, st.tessellationConfig);
-      }
-      if (st.openCard === "preset_connections") {
-        this.presetConnectionsController.onPointerUp(1);
-        this.presetConnectionsController.clearHover();
-      }
-      if (st.openCard === "post_edit") {
-        this.postEditController.onPointerUp(1);
-        this.postEditController.clearHover();
-      }
-      this.isDragging = false;
-    });
-
-    stage.on("pointerleave", () => {
-      const st = useMazeStore.getState();
-      if (st.openCard === "field_setup") {
-        this.fieldEditorOverlay.updateHover(null, st.tessellationConfig);
-      }
-    });
-
-    window.addEventListener("blur", this.onBlur);
-
-    this.onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      const rect = this.app.canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      this.viewport.x = mouseX + (this.viewport.x - mouseX) * factor;
-      this.viewport.y = mouseY + (this.viewport.y - mouseY) * factor;
-      this.viewport.scale.x *= factor;
-      this.viewport.scale.y *= factor;
-      this.syncLayersToViewport();
-    };
-    this.app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    const { x, y, scale } = nodes.length > 0
+      ? fitMazeViewport(activeTessellationConfig, nodes, this.app.screen.width, this.app.screen.height)
+      : fitFieldViewport(tessellationConfig, this.app.screen.width, this.app.screen.height);
+    this.viewport.scale.set(scale);
+    this.viewport.x = x;
+    this.viewport.y = y;
+    this.syncLayersToViewport();
   }
 
   destroy(): void {
-    this.unsubscribeFit?.();
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();
-    this.unsubscribePresetOpen?.();
     this.unsubscribeQualityOpen?.();
     this.generationRenderer.destroy();
     this.tessellationRenderer.destroy();
@@ -433,8 +247,7 @@ export class MazeScene {
     this.postEditRenderer.destroy();
     this.postEditController.destroy();
     this.fieldEditController.destroy();
-    window.removeEventListener("blur", this.onBlur);
-    this.app.canvas.removeEventListener("wheel", this.onWheel);
+    this.interaction.destroy();
     this.app.destroy();
   }
 }
