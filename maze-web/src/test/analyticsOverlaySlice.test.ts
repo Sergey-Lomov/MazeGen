@@ -1,0 +1,36 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { useMazeStore } from "../store/mazeStore";
+import { baseStoreState } from "./storeTestHelpers";
+
+vi.mock("../wasm/mazeService", () => ({
+  generateMaze: vi.fn(),
+  computeAnalytics: vi.fn(),
+  getAvailableChecks: vi.fn(() => []),
+  getAvailableStrategies: vi.fn(() => []),
+}));
+vi.mock("../wasm/wasmLoader", () => ({
+  initWasm: vi.fn(() => Promise.resolve()),
+}));
+
+beforeEach(() => {
+  useMazeStore.setState(baseStoreState());
+});
+
+describe("mazeStore analytics overlays", () => {
+  it("each overlay setter toggles its own flag independently", () => {
+    const s0 = useMazeStore.getState();
+    s0.setShowMazeOverlay(false);
+    s0.setShowComponentsOverlay(true);
+    s0.setShowGraphOverlay(true);
+    s0.setShowNavGraphOverlay(true);
+    s0.setShowPureCyclesOverlay(true);
+    s0.setShowRouteOverlay(true);
+    const s = useMazeStore.getState();
+    expect(s.showMazeOverlay).toBe(false);
+    expect(s.showComponentsOverlay).toBe(true);
+    expect(s.showGraphOverlay).toBe(true);
+    expect(s.showNavGraphOverlay).toBe(true);
+    expect(s.showPureCyclesOverlay).toBe(true);
+    expect(s.showRouteOverlay).toBe(true);
+  });
+});
