@@ -1,77 +1,17 @@
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import type { NodeLockKind, InitialGenerationConfig, ElementsConfig } from "../wasm/types";
-import type { PresetConnectionEntry } from "../pixi/presetConnectionsUtils";
-import type { PostEditEdge, PostEditMeta, MazeState, FeatureId } from "./mazeStore";
-import { selectPostEditDirty } from "../pixi/selectors/mazeSelectors";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export interface ProjectFilePostEdit {
-  edges: [string, PostEditEdge][];
-  meta: PostEditMeta | null;
-}
-
-export interface ProjectFileAnalytics {
-  showMazeOverlay: boolean;
-  showComponentsOverlay: boolean;
-  showGraphOverlay: boolean;
-  showNavGraphOverlay: boolean;
-  showRouteOverlay: boolean;
-}
-
-export interface ProjectFileDebug {
-  debugMode: boolean;
-  showDebugFrontier: boolean;
-  debugStep: number;
-  debugAutoPlayDelay: number;
-}
-
-export interface ProjectFileUi {
-  showPresetOrigin: boolean;
-  showFieldOrigin: boolean;
-  openCard: FeatureId;
-  postEditAutoConfirm: boolean;
-}
-
-export interface ProjectFileDirtyFlags {
-  postEdit: boolean;
-  field: boolean;
-  presets: boolean;
-  maze: boolean;
-}
-
-export interface ProjectFile {
-  version: number;
-  tessellation: { config: TessellationConfig; savedConfigs: TessellationConfig[] };
-  generation: {
-    seed: number;
-    randomSeed: boolean;
-    initial: InitialGenerationConfig;
-    elements: ElementsConfig;
-  };
-  quality: {
-    selectedChecks: string[];
-    selectedStrategies: Record<string, string>;
-    checkParams: Record<string, Record<string, string>>;
-    strategyParams: Record<string, Record<string, string>>;
-  };
-  presets: {
-    connections: [string, PresetConnectionEntry][];
-    lockedNodes: [string, NodeLockKind][];
-    defaultEdgeState: "undefined" | "wall" | "passage";
-    autoLock: boolean;
-    start: [number, number] | null;
-    finish: [number, number] | null;
-    genSource: [number, number] | null;
-  };
-  postEdit: ProjectFilePostEdit | null;
-  dirtyFlags: ProjectFileDirtyFlags;
-  analytics: ProjectFileAnalytics;
-  debug: ProjectFileDebug;
-  ui: ProjectFileUi;
-}
-
-const CURRENT_VERSION = 1;
+import type { NodeLockKind } from "../../wasm/types";
+import type { PresetConnectionEntry } from "../../pixi/presetConnectionsUtils";
+import type { PostEditEdge, FeatureId } from "../mazeStore";
+import {
+  CURRENT_VERSION,
+  type ProjectFile,
+  type ProjectFilePostEdit,
+  type ProjectFileDirtyFlags,
+  type ProjectFileAnalytics,
+  type ProjectFileDebug,
+  type ProjectFileUi,
+} from "./types";
+import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 
 // ─── Migrations ──────────────────────────────────────────────────────────────
 
@@ -89,7 +29,7 @@ function migrateToLatest(data: unknown, fromVersion: number): unknown {
   return result;
 }
 
-// ─── Validator ───────────────────────────────────────────────────────────────
+// ─── Primitive asserts ───────────────────────────────────────────────────────
 
 function assertString(v: unknown, path: string): string {
   if (typeof v !== "string") throw new Error(`Expected string at ${path}, got ${typeof v}`);
@@ -144,6 +84,41 @@ function assertTriOrientation(v: unknown, path: string): void {
   if (s !== "r0" && s !== "r90" && s !== "r180" && s !== "r270")
     throw new Error(`Invalid triangle orientation at ${path}: ${s}`);
 }
+
+// ─── Optional-field helpers (sections with defaults for old files) ──────────
+
+function optBool(obj: Record<string, unknown> | null, key: string, fallback: boolean): boolean {
+  return obj != null && typeof obj[key] === "boolean" ? (obj[key] as boolean) : fallback;
+}
+
+function optNumber(obj: Record<string, unknown> | null, key: string, fallback: number): number {
+  return obj != null && typeof obj[key] === "number" ? (obj[key] as number) : fallback;
+}
+
+function optSection(parent: Record<string, unknown>, key: string, path: string): Record<string, unknown> | null {
+  return parent[key] != null ? assertObject(parent[key], path) : null;
+}
+
+function optCoordPair(v: unknown, path: string): [number, number] | null {
+  return v === null || v === undefined ? null : validateCoordPair(v, path);
+}
+
+function validatePairArray<T>(
+  v: unknown,
+  path: string,
+  validateValue: (value: unknown, path: string) => T,
+): [string, T][] {
+  const arr = assertArray(v, path);
+  return arr.map((entry, i) => {
+    const pair = assertArray(entry, `${path}[${i}]`);
+    return [
+      assertString(pair[0], `${path}[${i}][0]`),
+      validateValue(pair[1], `${path}[${i}][1]`),
+    ] as [string, T];
+  });
+}
+
+// ─── Section validators ──────────────────────────────────────────────────────
 
 function validateTessellationConfig(v: unknown, path = "tessellation.config"): TessellationConfig {
   const obj = assertObject(v, path);
@@ -205,15 +180,8 @@ function validatePostEditEdge(v: unknown, path: string): PostEditEdge {
 
 function validatePostEdit(v: unknown): ProjectFilePostEdit {
   const obj = assertObject(v, "postEdit");
-  const edgesArr = assertArray(obj.edges, "postEdit.edges");
-  const edges: [string, PostEditEdge][] = edgesArr.map((entry, i) => {
-    const pair = assertArray(entry, `postEdit.edges[${i}]`);
-    return [
-      assertString(pair[0], `postEdit.edges[${i}][0]`),
-      validatePostEditEdge(pair[1], `postEdit.edges[${i}][1]`),
-    ];
-  });
-  let meta: PostEditMeta | null = null;
+  const edges = validatePairArray(obj.edges, "postEdit.edges", validatePostEditEdge);
+  let meta: ProjectFilePostEdit["meta"] = null;
   if (obj.meta !== null && obj.meta !== undefined) {
     const m = assertObject(obj.meta, "postEdit.meta");
     meta = {
@@ -246,6 +214,15 @@ function validatePresetConnectionEntry(v: unknown, path: string): PresetConnecti
     source: source as "user" | "default",
   };
 }
+
+function validateNodeLockKind(v: unknown, path: string): NodeLockKind {
+  const kind = assertString(v, path);
+  if (kind !== "in" && kind !== "out" && kind !== "both")
+    throw new Error(`Invalid NodeLockKind at ${path}: ${kind}`);
+  return kind;
+}
+
+// ─── Top-level parse ─────────────────────────────────────────────────────────
 
 export function parseAndValidate(raw: unknown): ProjectFile {
   const obj = assertObject(raw, "root");
@@ -280,29 +257,15 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   // presets
   const presetsObj = assertObject(migrated.presets, "presets");
-  const connectionsArr = assertArray(presetsObj.connections, "presets.connections");
-  const connections: [string, PresetConnectionEntry][] = connectionsArr.map((entry, i) => {
-    const pair = assertArray(entry, `presets.connections[${i}]`);
-    return [
-      assertString(pair[0], `presets.connections[${i}][0]`),
-      validatePresetConnectionEntry(pair[1], `presets.connections[${i}][1]`),
-    ];
-  });
-  const lockedNodesArr = assertArray(presetsObj.lockedNodes, "presets.lockedNodes");
-  const lockedNodes: [string, NodeLockKind][] = lockedNodesArr.map((entry, i) => {
-    const pair = assertArray(entry, `presets.lockedNodes[${i}]`);
-    const kind = assertString(pair[1], `presets.lockedNodes[${i}][1]`);
-    if (kind !== "in" && kind !== "out" && kind !== "both")
-      throw new Error(`Invalid NodeLockKind at presets.lockedNodes[${i}][1]: ${kind}`);
-    return [assertString(pair[0], `presets.lockedNodes[${i}][0]`), kind as NodeLockKind];
-  });
+  const connections = validatePairArray(presetsObj.connections, "presets.connections", validatePresetConnectionEntry);
+  const lockedNodes = validatePairArray(presetsObj.lockedNodes, "presets.lockedNodes", validateNodeLockKind);
   const defaultEdgeState = assertString(presetsObj.defaultEdgeState, "presets.defaultEdgeState");
   if (defaultEdgeState !== "undefined" && defaultEdgeState !== "wall" && defaultEdgeState !== "passage")
     throw new Error(`Invalid defaultEdgeState: ${defaultEdgeState}`);
   const autoLock = assertBoolean(presetsObj.autoLock, "presets.autoLock");
-  const presetStart = presetsObj.start === null || presetsObj.start === undefined ? null : validateCoordPair(presetsObj.start, "presets.start");
-  const presetFinish = presetsObj.finish === null || presetsObj.finish === undefined ? null : validateCoordPair(presetsObj.finish, "presets.finish");
-  const genSource = presetsObj.genSource === null || presetsObj.genSource === undefined ? null : validateCoordPair(presetsObj.genSource, "presets.genSource");
+  const presetStart = optCoordPair(presetsObj.start, "presets.start");
+  const presetFinish = optCoordPair(presetsObj.finish, "presets.finish");
+  const genSource = optCoordPair(presetsObj.genSource, "presets.genSource");
 
   // postEdit
   const postEdit = migrated.postEdit === null || migrated.postEdit === undefined
@@ -310,12 +273,12 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     : validatePostEdit(migrated.postEdit);
 
   // dirtyFlags (optional section — defaults false for old files)
-  const dirtyFlagsObj = migrated.dirtyFlags != null ? assertObject(migrated.dirtyFlags, "dirtyFlags") : null;
+  const dirtyFlagsObj = optSection(migrated, "dirtyFlags", "dirtyFlags");
   const dirtyFlags: ProjectFileDirtyFlags = {
-    postEdit: dirtyFlagsObj != null && typeof dirtyFlagsObj.postEdit === "boolean" ? dirtyFlagsObj.postEdit : false,
-    field: dirtyFlagsObj != null && typeof dirtyFlagsObj.field === "boolean" ? dirtyFlagsObj.field : false,
-    presets: dirtyFlagsObj != null && typeof dirtyFlagsObj.presets === "boolean" ? dirtyFlagsObj.presets : false,
-    maze: dirtyFlagsObj != null && typeof dirtyFlagsObj.maze === "boolean" ? dirtyFlagsObj.maze : false,
+    postEdit: optBool(dirtyFlagsObj, "postEdit", false),
+    field: optBool(dirtyFlagsObj, "field", false),
+    presets: optBool(dirtyFlagsObj, "presets", false),
+    maze: optBool(dirtyFlagsObj, "maze", false),
   };
 
   // analytics
@@ -329,22 +292,22 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   };
 
   // debug (optional section — defaults for old files)
-  const debugObj = migrated.debug != null ? assertObject(migrated.debug, "debug") : null;
+  const debugObj = optSection(migrated, "debug", "debug");
   const debug: ProjectFileDebug = {
-    debugMode: debugObj != null && typeof debugObj.debugMode === "boolean" ? debugObj.debugMode : false,
-    showDebugFrontier: debugObj != null && typeof debugObj.showDebugFrontier === "boolean" ? debugObj.showDebugFrontier : true,
-    debugStep: debugObj != null && typeof debugObj.debugStep === "number" ? debugObj.debugStep : 0,
-    debugAutoPlayDelay: debugObj != null && typeof debugObj.debugAutoPlayDelay === "number" ? debugObj.debugAutoPlayDelay : 200,
+    debugMode: optBool(debugObj, "debugMode", false),
+    showDebugFrontier: optBool(debugObj, "showDebugFrontier", true),
+    debugStep: optNumber(debugObj, "debugStep", 0),
+    debugAutoPlayDelay: optNumber(debugObj, "debugAutoPlayDelay", 200),
   };
 
   // ui (optional section — defaults for old files)
-  const uiObj = migrated.ui != null ? assertObject(migrated.ui, "ui") : null;
+  const uiObj = optSection(migrated, "ui", "ui");
   const validFeatureIds: FeatureId[] = ["basic_config", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics"];
   const ui: ProjectFileUi = {
-    showPresetOrigin: uiObj != null && typeof uiObj.showPresetOrigin === "boolean" ? uiObj.showPresetOrigin : false,
-    showFieldOrigin: uiObj != null && typeof uiObj.showFieldOrigin === "boolean" ? uiObj.showFieldOrigin : true,
+    showPresetOrigin: optBool(uiObj, "showPresetOrigin", false),
+    showFieldOrigin: optBool(uiObj, "showFieldOrigin", true),
     openCard: uiObj != null && typeof uiObj.openCard === "string" && validFeatureIds.includes(uiObj.openCard as FeatureId) ? uiObj.openCard as FeatureId : "basic_config",
-    postEditAutoConfirm: uiObj != null && typeof uiObj.postEditAutoConfirm === "boolean" ? uiObj.postEditAutoConfirm : true,
+    postEditAutoConfirm: optBool(uiObj, "postEditAutoConfirm", true),
   };
 
   return {
@@ -367,85 +330,4 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     debug,
     ui,
   };
-}
-
-// ─── Serializer ──────────────────────────────────────────────────────────────
-
-export function serializeProject(state: MazeState): ProjectFile {
-  const postEdit: ProjectFilePostEdit | null = selectPostEditDirty(state)
-    ? {
-        edges: Object.entries(state.postEditDraftEdges ?? {}) as [string, PostEditEdge][],
-        meta: state.postEditDraftMeta,
-      }
-    : null;
-
-  return {
-    version: CURRENT_VERSION,
-    tessellation: {
-      config: state.tessellationConfig,
-      savedConfigs: Object.values(state.savedConfigs) as TessellationConfig[],
-    },
-    generation: {
-      seed: state.seed,
-      randomSeed: state.randomSeed,
-      initial: state.initialConfig,
-      elements: state.elementsConfig,
-    },
-    quality: {
-      selectedChecks: state.selectedChecks,
-      selectedStrategies: state.selectedStrategies,
-      checkParams: state.checkParams,
-      strategyParams: state.strategyParams,
-    },
-    presets: {
-      connections: Array.from(state.presetConnections.entries()),
-      lockedNodes: Array.from(state.lockedNodes.entries()),
-      defaultEdgeState: state.defaultEdgeState,
-      autoLock: state.autoLock,
-      start: state.presetStart,
-      finish: state.presetFinish,
-      genSource: state.presetGenSource,
-    },
-    postEdit,
-    dirtyFlags: {
-      postEdit: state.postEditDirty,
-      field: state.fieldDirty,
-      presets: state.presetsDirty,
-      maze: state.mazeDirty,
-    },
-    analytics: {
-      showMazeOverlay: state.showMazeOverlay,
-      showComponentsOverlay: state.showComponentsOverlay,
-      showGraphOverlay: state.showGraphOverlay,
-      showNavGraphOverlay: state.showNavGraphOverlay,
-      showRouteOverlay: state.showRouteOverlay,
-    },
-    debug: {
-      debugMode: state.debugMode,
-      showDebugFrontier: state.showDebugFrontier,
-      debugStep: state.debugStep,
-      debugAutoPlayDelay: state.debugAutoPlayDelay,
-    },
-    ui: {
-      showPresetOrigin: state.showPresetOrigin,
-      showFieldOrigin: state.showFieldOrigin,
-      openCard: state.openCard,
-      postEditAutoConfirm: state.postEditAutoConfirm,
-    },
-  };
-}
-
-// ─── Download helper ─────────────────────────────────────────────────────────
-
-export function downloadProjectFile(state: MazeState): void {
-  const data = serializeProject(state);
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "maze-project.json";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
