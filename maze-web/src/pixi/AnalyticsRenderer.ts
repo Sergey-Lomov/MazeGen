@@ -6,6 +6,7 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { MazeGraphRenderer } from "./MazeRenderer";
 import { NavGraphRenderer } from "./MazeRenderer";
 import { RouteOverlay } from "./RouteOverlay";
+import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { postEditEdgesToDto } from "./selectors/mazeSelectors";
 import type { Viewport } from "./renderers/types";
 
@@ -18,6 +19,7 @@ export class AnalyticsRenderer {
   private readonly markersContainer: Container;
   private readonly graphContainer: Container;
   private readonly navGraphContainer: Container;
+  private readonly pureCyclesContainer: Container;
   private readonly routeContainer: Container;
 
   private readonly grid: GridRenderer;
@@ -25,6 +27,7 @@ export class AnalyticsRenderer {
   private readonly regionsRenderer: RegionsRenderer;
   private readonly graphRenderer: MazeGraphRenderer;
   private readonly navGraphRenderer: NavGraphRenderer;
+  private readonly pureCyclesRenderer: PureCyclesOverlay;
   private readonly routeRenderer: RouteOverlay;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
@@ -39,6 +42,7 @@ export class AnalyticsRenderer {
     this.markersContainer     = new Container();
     this.graphContainer       = new Container();
     this.navGraphContainer    = new Container();
+    this.pureCyclesContainer  = new Container();
     this.routeContainer       = new Container();
 
     container.addChild(this.gridContainer);
@@ -49,6 +53,7 @@ export class AnalyticsRenderer {
     container.addChild(this.markersContainer);
     container.addChild(this.graphContainer);
     container.addChild(this.navGraphContainer);
+    container.addChild(this.pureCyclesContainer);
     container.addChild(this.routeContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
@@ -61,6 +66,7 @@ export class AnalyticsRenderer {
     this.regionsRenderer = new RegionsRenderer(this.regionsContainer);
     this.graphRenderer = new MazeGraphRenderer(this.graphContainer);
     this.navGraphRenderer = new NavGraphRenderer(this.navGraphContainer);
+    this.pureCyclesRenderer = new PureCyclesOverlay(this.pureCyclesContainer);
     this.routeRenderer = new RouteOverlay(this.routeContainer);
 
     this.syncAll(useMazeStore.getState());
@@ -76,12 +82,13 @@ export class AnalyticsRenderer {
         state.showComponentsOverlay !== prev.showComponentsOverlay ||
         state.showGraphOverlay !== prev.showGraphOverlay ||
         state.showNavGraphOverlay !== prev.showNavGraphOverlay ||
+        state.showPureCyclesOverlay !== prev.showPureCyclesOverlay ||
         state.showRouteOverlay !== prev.showRouteOverlay;
 
       const dataChanged =
         state.nodes !== prev.nodes ||
         state.edges !== prev.edges ||
-        state.components !== prev.components ||
+        state.graphAnalytics !== prev.graphAnalytics ||
         state.navNodes !== prev.navNodes ||
         state.navEdges !== prev.navEdges ||
         state.routeInfo !== prev.routeInfo ||
@@ -103,10 +110,10 @@ export class AnalyticsRenderer {
   private syncAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const analyticsOpen = state.openCard === "analytics";
     const { nodes, activeTessellationConfig: cfg,
-      showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay, showRouteOverlay,
-      postEditAnalytics } = state;
+      showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
+      showPureCyclesOverlay, showRouteOverlay, postEditAnalytics } = state;
 
-    const components = postEditAnalytics?.components ?? state.components;
+    const graphAnalytics = postEditAnalytics?.graphAnalytics ?? state.graphAnalytics;
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
     const navEdges   = postEditAnalytics?.navEdges   ?? state.navEdges;
     const routeInfo  = postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo;
@@ -126,10 +133,23 @@ export class AnalyticsRenderer {
       this.mazeOverlay.render({ nodes, edges, start, finish, cfg });
     }
 
-    // Regions overlay
-    const showRegions = analyticsOpen && showComponentsOverlay && components.length > 0;
+    // Regions overlay — build components list from node_component map
+    const componentCount = graphAnalytics?.component_count ?? 0;
+    const showRegions = analyticsOpen && showComponentsOverlay && componentCount > 0;
     this.regionsContainer.visible = showRegions;
     if (showRegions) {
+      const components: number[][] = Array.from({ length: componentCount }, () => []);
+      const rawNc = graphAnalytics?.node_component as Map<number, number> | Record<number, number> | undefined;
+      if (rawNc instanceof Map) {
+        for (const [nodeId, compId] of rawNc) {
+          if (compId < componentCount) components[compId].push(nodeId);
+        }
+      } else if (rawNc != null) {
+        for (const [nodeId, compId] of Object.entries(rawNc)) {
+          const cid = compId as number;
+          if (cid < componentCount) components[cid].push(Number(nodeId));
+        }
+      }
       this.regionsRenderer.render({ nodes, components, cfg });
     }
 
@@ -152,6 +172,19 @@ export class AnalyticsRenderer {
     this.navGraphContainer.visible = showNavGraph;
     if (showNavGraph) {
       this.navGraphRenderer.render({ nodes, navNodes, navEdges, start, finish, cfg });
+    }
+
+    // Pure cycles overlay
+    const pureCycleNodeIds = new Set<number>(graphAnalytics?.pure_cycle_node_ids ?? []);
+    const pureCycleEdgeKeys = new Set<string>(
+      (graphAnalytics?.pure_cycle_edge_pairs ?? []).map(([f, t]) => `${f},${t}`)
+    );
+    const showPureCycles = analyticsOpen && showPureCyclesOverlay && navNodes.length > 0;
+    this.pureCyclesContainer.visible = showPureCycles;
+    if (showPureCycles) {
+      this.pureCyclesRenderer.render({ nodes, navEdges, pureCycleNodeIds, pureCycleEdgeKeys, cfg });
+    } else {
+      this.pureCyclesRenderer.clear();
     }
 
     // Route overlay
@@ -179,6 +212,7 @@ export class AnalyticsRenderer {
     this.regionsRenderer.destroy();
     this.graphRenderer.destroy();
     this.navGraphRenderer.destroy();
+    this.pureCyclesRenderer.destroy();
     this.routeRenderer.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
@@ -187,6 +221,7 @@ export class AnalyticsRenderer {
     this.markersContainer.destroy();
     this.graphContainer.destroy();
     this.navGraphContainer.destroy();
+    this.pureCyclesContainer.destroy();
     this.routeContainer.destroy();
   }
 }

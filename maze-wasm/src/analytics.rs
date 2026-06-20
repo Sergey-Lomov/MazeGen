@@ -1,12 +1,13 @@
+use std::collections::HashMap;
 use maze_core::{
     space::Tessellation,
     quality_control::QualityControlEngine,
-    compute_node_stats, compute_spatial_edge_stats, compute_route_info,
+    compute_node_stats, compute_spatial_edge_stats, compute_route_info, compute_graph_analytics,
     Maze,
 };
 use crate::dto::{
     EdgeDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
-    NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, JunctionBucket,
+    NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
 };
 
 /// Compute analytics snapshot from a fully-built maze (GraphInput).
@@ -51,27 +52,63 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let meta_start  = maze.meta.start.and_then(|id| u32::try_from(id).ok());
     let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
 
-    let nav = maze.analysis.nav_graph(&maze.graph);
+    let graph_analytics = compute_graph_analytics(maze.analysis.nav_graph(&maze.graph));
 
-    let nav_nodes: Vec<NavNodeDto> = nav.nodes.iter()
-        .filter_map(|n| u32::try_from(n.node_id).ok().map(|node_id| NavNodeDto { node_id }))
+    let nav_nodes: Vec<NavNodeDto> = maze.analysis.nav_graph(&maze.graph).nodes.iter()
+        .filter_map(|n| u32::try_from(n.node_id).ok().map(|id| NavNodeDto { node_id: id }))
         .collect();
 
-    let nav_edges: Vec<NavEdgeDto> = nav.edges()
+    let nav_edges: Vec<NavEdgeDto> = maze.analysis.nav_graph(&maze.graph).edges()
         .filter_map(|e| {
             let from = u32::try_from(e.from).ok()?;
             let to   = u32::try_from(e.to).ok()?;
-            let path: Option<Vec<u32>> = e.path.iter()
-                .map(|&nid| u32::try_from(nid).ok())
-                .collect();
-            Some(NavEdgeDto { from, to, path: path? })
+            let path = e.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
+            Some(NavEdgeDto { from, to, path })
         })
         .collect();
 
+    let pure_cycle_node_ids: Vec<u32> = {
+        let nav = maze.analysis.nav_graph(&maze.graph);
+        graph_analytics.pure_cycle_nav_nodes.iter()
+            .filter_map(|&nav_id| nav.nodes.get(nav_id))
+            .filter_map(|n| u32::try_from(n.node_id).ok())
+            .collect()
+    };
+
+    let pure_cycle_edge_pairs: Vec<[u32; 2]> = {
+        let nav = maze.analysis.nav_graph(&maze.graph);
+        graph_analytics.pure_cycle_edge_indices.iter()
+            .filter_map(|&idx| {
+                let edge = nav.edge_by_idx(idx);
+                let from_node = nav.nodes.get(edge.from)?.node_id;
+                let to_node   = nav.nodes.get(edge.to)?.node_id;
+                let from = u32::try_from(from_node).ok()?;
+                let to   = u32::try_from(to_node).ok()?;
+                Some([from, to])
+            })
+            .collect()
+    };
+
     let scc = maze.analysis.scc(&maze.graph);
-    let components: Vec<Vec<u32>> = scc.components.iter()
-        .map(|comp| comp.iter().filter_map(|&id| u32::try_from(id).ok()).collect())
+    let node_component: HashMap<u32, usize> = scc.components.iter()
+        .enumerate()
+        .flat_map(|(comp_id, comp)| {
+            comp.iter().filter_map(move |&node_id| {
+                u32::try_from(node_id).ok().map(|id| (id, comp_id))
+            })
+        })
         .collect();
+
+    let graph_analytics_dto = GraphAnalyticsDto {
+        node_count:        graph_analytics.node_count,
+        edge_count:        graph_analytics.edge_count,
+        component_count:   scc.components.len(),
+        cycle_count:       graph_analytics.cycle_count,
+        cycle_region_count: graph_analytics.cycle_region_count,
+        node_component,
+        pure_cycle_node_ids,
+        pure_cycle_edge_pairs,
+    };
 
     let raw_node_stats = compute_node_stats(&maze.graph, &maze.field);
     let node_stats = NodeStatsDto {
@@ -115,10 +152,10 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         warnings,
         nav_nodes,
         nav_edges,
-        components,
         node_stats,
         edge_stats,
         route_info,
+        graph_analytics: graph_analytics_dto,
         debug_steps: vec![],
     })
 }

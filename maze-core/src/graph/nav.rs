@@ -21,6 +21,8 @@ pub struct NavEdge {
     pub to: NavNodeId,
     /// All maze NodeIds along this corridor, inclusive of both endpoints.
     pub path: Vec<NodeId>,
+    /// Index of the reverse edge (same corridor, opposite direction), if it exists.
+    pub reverse_edge: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,7 +68,7 @@ impl NavGraph {
         for &corridor_node in path[1..path.len().saturating_sub(1)].iter() {
             self.corridor_index.entry(corridor_node).or_insert(to_nav);
         }
-        self.edges.push(NavEdge { from: from_nav, to: to_nav, path });
+        self.edges.push(NavEdge { from: from_nav, to: to_nav, path, reverse_edge: None });
         self.outgoing[from_nav].push(edge_idx);
         self.incoming[to_nav].push(edge_idx);
     }
@@ -87,6 +89,28 @@ impl NavGraph {
     /// Panics if `node` is not a valid NavNodeId for this graph.
     pub fn incoming_edges(&self, node: NavNodeId) -> impl Iterator<Item = &NavEdge> {
         self.incoming[node].iter().map(|&i| &self.edges[i])
+    }
+
+    pub fn edge_by_idx(&self, idx: usize) -> &NavEdge {
+        &self.edges[idx]
+    }
+
+    /// For each edge, find its reverse (same path reversed) and link them via `reverse_edge`.
+    fn link_reverse_edges(&mut self) {
+        let mut path_to_idx: HashMap<Vec<NodeId>, usize> = HashMap::new();
+        for (i, edge) in self.edges.iter().enumerate() {
+            path_to_idx.insert(edge.path.clone(), i);
+        }
+        for i in 0..self.edges.len() {
+            if self.edges[i].reverse_edge.is_some() { continue; }
+            let rev_path: Vec<NodeId> = self.edges[i].path.iter().rev().copied().collect();
+            if let Some(&j) = path_to_idx.get(&rev_path) {
+                if i != j {
+                    self.edges[i].reverse_edge = Some(j);
+                    self.edges[j].reverse_edge = Some(i);
+                }
+            }
+        }
     }
 }
 
@@ -165,6 +189,7 @@ pub fn build_nav_graph_pinned(graph: &Graph, pinned: &HashSet<NodeId>) -> NavGra
         }
     }
 
+    nav.link_reverse_edges();
     nav
 }
 

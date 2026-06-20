@@ -14,6 +14,7 @@ pub use graph::Graph;
 pub use graph::classify::{GeometricNodeClass, classify_node};
 pub use graph::stats::{GeometricNodeStats, SpatialEdgeStats, compute_node_stats, compute_spatial_edge_stats};
 pub use graph::routing::{RouteInfo, compute_route_info};
+pub use graph::graph_analytics::{GraphAnalytics, compute_graph_analytics};
 pub use space::{
     Tessellation, Field,
     HexPoint, HexFace, HexTessellation, hex_parallelogram, hex_hexagon,
@@ -43,8 +44,11 @@ impl MazeAnalysis {
         self.nav_graph.as_ref().unwrap()
     }
 
+    /// Always rebuilds and overwrites the cache `nav_graph()` memoizes into, even if already
+    /// populated — pinned set may differ from whatever built the cached graph. Call this last
+    /// if a pass also needs the plain `nav_graph()` result; calling `nav_graph()` afterward
+    /// returns the pinned graph, not a fresh plain one.
     pub fn nav_graph_pinned<'a>(&'a mut self, graph: &Graph, pinned: &std::collections::HashSet<ids::NodeId>) -> &'a graph::nav::NavGraph {
-        // Always rebuild when pinned nodes are specified — pinned set may differ from cached build.
         self.nav_graph = Some(graph::nav::build_nav_graph_pinned(graph, pinned));
         self.nav_graph.as_ref().unwrap()
     }

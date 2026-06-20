@@ -33,24 +33,28 @@ export function AnalyticsFeature() {
   const generatedNodeStats = useMazeStore((s) => s.nodeStats);
   const generatedEdgeStats = useMazeStore((s) => s.edgeStats);
   const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
+  const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
   const generatedWarnings = useMazeStore((s) => s.warnings);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
 
   const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
   const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
+  const graphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
   const warnings = postEditAnalytics?.warnings ?? generatedWarnings;
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
   const showGraphOverlay = useMazeStore((s) => s.showGraphOverlay);
   const showNavGraphOverlay = useMazeStore((s) => s.showNavGraphOverlay);
+  const showPureCyclesOverlay = useMazeStore((s) => s.showPureCyclesOverlay);
   const showRouteOverlay = useMazeStore((s) => s.showRouteOverlay);
 
   const setShowMazeOverlay = useMazeStore((s) => s.setShowMazeOverlay);
   const setShowComponentsOverlay = useMazeStore((s) => s.setShowComponentsOverlay);
   const setShowGraphOverlay = useMazeStore((s) => s.setShowGraphOverlay);
   const setShowNavGraphOverlay = useMazeStore((s) => s.setShowNavGraphOverlay);
+  const setShowPureCyclesOverlay = useMazeStore((s) => s.setShowPureCyclesOverlay);
   const setShowRouteOverlay = useMazeStore((s) => s.setShowRouteOverlay);
 
   return (
@@ -65,6 +69,7 @@ export function AnalyticsFeature() {
         <ToggleRow label={m["analytics.layer_components"]()} checked={showComponentsOverlay} onChange={setShowComponentsOverlay} />
         <ToggleRow label={m["analytics.layer_graph"]()} checked={showGraphOverlay} onChange={setShowGraphOverlay} />
         <ToggleRow label={m["analytics.layer_nav_graph"]()} checked={showNavGraphOverlay} onChange={setShowNavGraphOverlay} />
+        <ToggleRow label={m["analytics.layer_pure_cycles"]()} checked={showPureCyclesOverlay} onChange={setShowPureCyclesOverlay} disabled={(graphAnalytics?.cycle_count ?? 0) === 0} />
         <ToggleRow label={m["analytics.layer_route"]()} checked={showRouteOverlay} onChange={setShowRouteOverlay} disabled={routeInfo == null} />
       </div>
 
@@ -128,6 +133,21 @@ export function AnalyticsFeature() {
           </div>
         );
       })() : null}
+
+      {/* Graph analytics block */}
+      {graphAnalytics != null && (
+        <>
+          <div style={styles.divider} />
+          <SectionHeader label={m["analytics.graph"]()} />
+          <div style={styles.statBlock}>
+            <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
+            <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
+            <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
+            <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
+            <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
+          </div>
+        </>
+      )}
 
     </div>
   );

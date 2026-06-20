@@ -66,6 +66,24 @@ pub struct RouteInfoDto {
     pub path: Vec<u32>,
 }
 
+#[derive(Serialize)]
+pub struct GraphAnalyticsDto {
+    pub node_count: usize,
+    pub edge_count: usize,
+    /// Number of base-graph SCCs (matches `node_component`'s id range — for RegionsRenderer).
+    pub component_count: usize,
+    /// Number of independent cycles (E - V + C on the pure-cycle core).
+    pub cycle_count: usize,
+    /// Number of connected cyclic regions (WCC on the pure-cycle core).
+    pub cycle_region_count: usize,
+    /// maze node id → component_id. Covers junction nodes and corridor nodes.
+    pub node_component: HashMap<u32, usize>,
+    /// maze node ids in the pure-cycle core (real cycles only, no bridges).
+    pub pure_cycle_node_ids: Vec<u32>,
+    /// nav-edge pairs [from_maze_id, to_maze_id] in the pure-cycle core.
+    pub pure_cycle_edge_pairs: Vec<[u32; 2]>,
+}
+
 #[derive(Deserialize)]
 pub struct PostEditEdgeDto {
     pub from: u32,
@@ -99,10 +117,9 @@ pub struct MazeSnapshot {
     pub warnings: Vec<String>,
     pub nav_nodes: Vec<NavNodeDto>,
     pub nav_edges: Vec<NavEdgeDto>,
-    /// Strongly connected components. Each entry is a sorted list of NodeIds.
-    pub components: Vec<Vec<u32>>,
     pub node_stats: NodeStatsDto,
     pub edge_stats: SpatialEdgeStatsDto,
     pub route_info: Option<RouteInfoDto>,
+    pub graph_analytics: GraphAnalyticsDto,
     pub debug_steps: Vec<GenerationStepDto>,
 }

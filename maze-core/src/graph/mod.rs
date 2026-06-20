@@ -3,6 +3,7 @@ pub mod scc;
 pub mod classify;
 pub mod stats;
 pub mod routing;
+pub mod graph_analytics;
 pub(crate) mod pathfinding;
 
 use std::collections::{HashMap, HashSet, VecDeque};

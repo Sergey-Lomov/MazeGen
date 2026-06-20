@@ -1,7 +1,7 @@
 ﻿import { create } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies, computeAnalytics } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GenerationStepsSnapshot, GenerateConfig, WasmTessellationConfig, NodeLockKind, PostEditEdgeWasmDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, GenerationStepsSnapshot, GenerateConfig, WasmTessellationConfig, NodeLockKind, PostEditEdgeWasmDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
@@ -32,7 +32,7 @@ export interface PostEditAnalytics {
   routeInfo: RouteInfoDto | null;
   navNodes: NavNodeDto[];
   navEdges: NavEdgeDto[];
-  components: number[][];
+  graphAnalytics: GraphAnalyticsDto;
   warnings: string[];
 }
 
@@ -89,7 +89,7 @@ export interface MazeState {
   finish: number | null;
   navNodes: NavNodeDto[];
   navEdges: NavEdgeDto[];
-  components: number[][];
+  graphAnalytics: GraphAnalyticsDto | null;
   showNodeIds: boolean;
   showCoords: boolean;
   showMaze: boolean;
@@ -146,6 +146,7 @@ export interface MazeState {
   showComponentsOverlay: boolean;
   showGraphOverlay: boolean;
   showNavGraphOverlay: boolean;
+  showPureCyclesOverlay: boolean;
   showRouteOverlay: boolean;
   // Post-edit state
   postEditAutoConfirm: boolean;
@@ -243,6 +244,7 @@ interface MazeActions {
   setShowComponentsOverlay: (v: boolean) => void;
   setShowGraphOverlay: (v: boolean) => void;
   setShowNavGraphOverlay: (v: boolean) => void;
+  setShowPureCyclesOverlay: (v: boolean) => void;
   setShowRouteOverlay: (v: boolean) => void;
   setPostEditAutoConfirm: (v: boolean) => void;
   setPostEditTool: (tool: PostEditTool) => void;
@@ -376,7 +378,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   finish: null,
   navNodes: [],
   navEdges: [],
-  components: [],
+  graphAnalytics: null,
   showNodeIds: false,
   showCoords: false,
   showMaze: true,
@@ -425,6 +427,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   showComponentsOverlay: false,
   showGraphOverlay: false,
   showNavGraphOverlay: false,
+  showPureCyclesOverlay: false,
   showRouteOverlay: false,
   postEditAutoConfirm: true,
   postEditTool: "wall" as PostEditTool,
@@ -492,7 +495,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       fieldPoints,
       ...(clearMaze ? {
         nodes: [], edges: [], start: null, finish: null,
-        navNodes: [], navEdges: [], components: [],
+        navNodes: [], navEdges: [], graphAnalytics: null,
         selectedNode: null, warnings: [], nodeStats: null, edgeStats: null, routeInfo: null,
         error: null,
         presetConnections: new Map<string, PresetConnectionEntry>(),
@@ -523,7 +526,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     return {
       tessellationKind: kind, squareShape, hexShape, triangleShape,
       tessellationConfig: cfg, isEditingField, fieldPoints, freeFieldPoints,
-      nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [],
+      nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], graphAnalytics: null,
       selectedNode: null, warnings: [], nodeStats: null, edgeStats: null, routeInfo: null,
       error: null,
       debugSnapshot: null, debugStep: 0, debugStale: false,
@@ -672,6 +675,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setShowComponentsOverlay: (v) => set({ showComponentsOverlay: v }),
   setShowGraphOverlay: (v) => set({ showGraphOverlay: v }),
   setShowNavGraphOverlay: (v) => set({ showNavGraphOverlay: v }),
+  setShowPureCyclesOverlay: (v) => set({ showPureCyclesOverlay: v }),
   setShowRouteOverlay: (v) => set({ showRouteOverlay: v }),
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
@@ -735,7 +739,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
           routeInfo: snapshot.route_info,
           navNodes: snapshot.nav_nodes,
           navEdges: snapshot.nav_edges,
-          components: snapshot.components,
+          graphAnalytics: snapshot.graph_analytics,
           warnings: snapshot.warnings,
         },
         postEditEdges: edgesSnapshot,
@@ -781,7 +785,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     }
   },
 
-  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftMeta: null, postEditEdges: null, postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
+  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], graphAnalytics: null, selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftMeta: null, postEditEdges: null, postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
@@ -1100,7 +1104,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       finish: null,
       navNodes: [],
       navEdges: [],
-      components: [],
+      graphAnalytics: null,
       warnings: [],
       nodeStats: null,
       edgeStats: null,
@@ -1285,7 +1289,7 @@ function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet, skipConfi
       finish: snapshot.finish,
       navNodes: snapshot.nav_nodes,
       navEdges: snapshot.nav_edges,
-      components: snapshot.components,
+      graphAnalytics: snapshot.graph_analytics,
       selectedNode: null,
       warnings: snapshot.warnings,
       error: null,

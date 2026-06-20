@@ -45,6 +45,22 @@ export interface RouteInfoDto {
   path: number[];
 }
 
+export interface GraphAnalyticsDto {
+  node_count: number;
+  edge_count: number;
+  component_count: number;
+  /** Number of independent cycles (E - V + C on the pure-cycle core). */
+  cycle_count: number;
+  /** Number of connected cyclic regions. */
+  cycle_region_count: number;
+  /** maze node id → component_id. Covers junctions and corridor nodes. */
+  node_component: Map<number, number> | Record<number, number>;
+  /** maze node ids in the pure-cycle core (real cycles only, no bridges). */
+  pure_cycle_node_ids: number[];
+  /** nav-edge pairs [from_maze_id, to_maze_id] in the pure-cycle core. */
+  pure_cycle_edge_pairs: [number, number][];
+}
+
 export interface MazeSnapshot {
   nodes: NodeDto[];
   edges: EdgeDto[];
@@ -53,10 +69,10 @@ export interface MazeSnapshot {
   warnings: string[];
   nav_nodes: NavNodeDto[];
   nav_edges: NavEdgeDto[];
-  components: number[][];
   node_stats: NodeStatsDto;
   edge_stats: SpatialEdgeStatsDto;
   route_info: RouteInfoDto | null;
+  graph_analytics: GraphAnalyticsDto;
   debug_steps: GenerationStepDto[];
 }
 

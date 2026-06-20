@@ -23,7 +23,7 @@ const mockSnapshot = {
   warnings: [],
   nav_nodes: [],
   nav_edges: [],
-  components: [],
+  graph_analytics: { node_count: 0, edge_count: 0, component_count: 0, cycle_count: 0, cycle_region_count: 0, node_component: {}, pure_cycle_node_ids: [], pure_cycle_edge_pairs: [] },
   node_stats: { dead_ends: 2, straight: 0, turns: 0, junctions: [] },
   edge_stats: { bidirectional: 0, one_way: 1, walls: 0 },
   route_info: null,

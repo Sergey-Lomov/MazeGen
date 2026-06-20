@@ -18,6 +18,7 @@ Block order (top to bottom):
 3. **Path** — hidden when `routeInfo == null` (loose check — WASM may return `undefined`)
 4. **Nodes**
 5. **Edges**
+6. **Graph** — hidden when `graphAnalytics == null`
 
 ## Data Source: Post-Edit Integration
 
@@ -29,6 +30,7 @@ Analytics always operates on the post-edited graph, not the raw generated graph.
 | `edgeStats` | `postEditAnalytics?.edgeStats ?? state.edgeStats` |
 | `warnings` | `postEditAnalytics?.warnings ?? state.warnings` |
 | `routeInfo` | `postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo` |
+| `graphAnalytics` | `postEditAnalytics?.graphAnalytics ?? state.graphAnalytics` |
 | `components` | `postEditAnalytics?.components ?? state.components` |
 | `navNodes/navEdges` | `postEditAnalytics?.navNodes/navEdges ?? state.navNodes/navEdges` |
 | `edges` (canvas) | `postEditEdgesToDto(state.postEditEdges)` — confirmed post-edit edges snapshot |
@@ -46,13 +48,13 @@ Displays `warnings: string[]` from the store (generation warnings reported by WA
 
 Five toggles, each backed by a store boolean:
 
-| Toggle label | Store field | Default |
-|---|---|---|
-| Maze | `showMazeOverlay` | `true` |
-| Connectivity regions | `showComponentsOverlay` | `false` |
-| Graph | `showGraphOverlay` | `false` |
-| Navigation graph | `showNavGraphOverlay` | `false` |
-| Route | `showRouteOverlay` | `false` |
+| Toggle label | Store field | Default | Disabled when |
+|---|---|---|---|
+| Maze | `showMazeOverlay` | `true` | — |
+| Connectivity regions | `showComponentsOverlay` | `false` | — |
+| Graph | `showGraphOverlay` | `false` | — |
+| Navigation graph | `showNavGraphOverlay` | `false` | — |
+| Route | `showRouteOverlay` | `false` | `routeInfo == null` |
 
 Toggle state persists when the card is closed and reopened. It resets only on full store reset.
 
@@ -89,6 +91,19 @@ Statistics from `edgeStats: EdgeStatsDto`. Denominator = `bidirectional + one_wa
 | Walls | `edgeStats.walls` |
 
 Each row shows count and percentage.
+
+### Graph Block
+
+Shown only when `graphAnalytics != null`. Statistics from `graphAnalytics: GraphAnalyticsDto`.
+
+| Row | Value |
+|---|---|
+| Nav nodes | `node_count` |
+| Nav edges | `edge_count` |
+| Components | `component_count` |
+| Cycle rank (β₁) | `cycle_rank` |
+| Min cycle length | `min_cycle_length` — hidden when null |
+| Max cycle density | `max_cycle_density` (2 decimal places) — shown as "—" when null |
 
 ## Canvas Renderer — AnalyticsRenderer
 
