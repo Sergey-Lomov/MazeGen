@@ -4,6 +4,7 @@ import { encodePoint } from "../pixi/tessellationProjection";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
+  computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
 }));
@@ -12,7 +13,7 @@ vi.mock("../wasm/wasmLoader", () => ({
   initWasm: vi.fn(() => Promise.resolve()),
 }));
 
-import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
+import { generateMaze, computeAnalytics, getAvailableChecks, getAvailableStrategies } from "../wasm/mazeService";
 import { initWasm } from "../wasm/wasmLoader";
 
 const mockSnapshot = {
@@ -70,6 +71,8 @@ beforeEach(() => {
     availableStrategies: [],
   });
   vi.mocked(generateMaze).mockReset();
+  vi.mocked(computeAnalytics).mockReset();
+  vi.mocked(computeAnalytics).mockReturnValue(mockSnapshot);
   vi.mocked(initWasm).mockResolvedValue(undefined);
 });
 
@@ -1215,5 +1218,522 @@ describe("mazeStore preview/confirm flow", () => {
     expect(s.edges).toHaveLength(0);
     expect(s.start).toBeNull();
     expect(s.finish).toBeNull();
+  });
+});
+
+describe("mazeStore tessellation misc actions", () => {
+  it("setPreviewHexOrientation updates preview config", () => {
+    useMazeStore.setState({ previewKind: "hex" });
+    useMazeStore.getState().setPreviewHexOrientation("pointy_top");
+    const s = useMazeStore.getState();
+    expect(s.previewHexOrientation).toBe("pointy_top");
+    expect(s.previewTessellationConfig.type).toBe("hex_parallelogram");
+    if (s.previewTessellationConfig.type === "hex_parallelogram") {
+      expect(s.previewTessellationConfig.orientation).toBe("pointy_top");
+    }
+  });
+
+  it("setPreviewTriOrientation updates preview config", () => {
+    useMazeStore.setState({ previewKind: "triangle" });
+    useMazeStore.getState().setPreviewTriOrientation("r270");
+    const s = useMazeStore.getState();
+    expect(s.previewTriOrientation).toBe("r270");
+    expect(s.previewTessellationConfig.type).toBe("triangle_rect");
+    if (s.previewTessellationConfig.type === "triangle_rect") {
+      expect(s.previewTessellationConfig.orientation).toBe("r270");
+    }
+  });
+
+  it("addFieldPoints adds multiple cells and marks fieldDirty", () => {
+    useMazeStore.setState({ tessellationKind: "square", fieldPoints: new Set<number>(), freeFieldPoints: emptyFreePoints() });
+    useMazeStore.getState().addFieldPoints([[0, 0], [1, 0], [0, 1]]);
+    const s = useMazeStore.getState();
+    expect(s.fieldPoints.size).toBe(3);
+    expect(s.fieldDirty).toBe(true);
+  });
+
+  it("addFieldPoints is no-op when all cells already present", () => {
+    const pts = new Set([encodePoint(0, 0)]);
+    useMazeStore.setState({ tessellationKind: "square", fieldPoints: pts, freeFieldPoints: { ...emptyFreePoints(), square: pts }, fieldDirty: false });
+    useMazeStore.getState().addFieldPoints([[0, 0]]);
+    expect(useMazeStore.getState().fieldDirty).toBe(false);
+  });
+
+  it("removeFieldPoints removes multiple cells", () => {
+    const pts = new Set([encodePoint(0, 0), encodePoint(1, 0), encodePoint(0, 1)]);
+    useMazeStore.setState({ tessellationKind: "square", fieldPoints: pts, freeFieldPoints: { ...emptyFreePoints(), square: pts } });
+    useMazeStore.getState().removeFieldPoints([[0, 0], [1, 0]]);
+    expect(useMazeStore.getState().fieldPoints.size).toBe(1);
+  });
+
+  it("clearFieldPoints empties the set", () => {
+    const pts = new Set([encodePoint(0, 0), encodePoint(1, 0)]);
+    useMazeStore.setState({ tessellationKind: "square", fieldPoints: pts, freeFieldPoints: { ...emptyFreePoints(), square: pts } });
+    useMazeStore.getState().clearFieldPoints();
+    expect(useMazeStore.getState().fieldPoints.size).toBe(0);
+  });
+
+  it("clearFieldPoints is no-op on already-empty set", () => {
+    useMazeStore.setState({ fieldPoints: new Set<number>(), fieldDirty: false });
+    useMazeStore.getState().clearFieldPoints();
+    expect(useMazeStore.getState().fieldDirty).toBe(false);
+  });
+
+  it("setShowFieldOverlay toggles flag", () => {
+    useMazeStore.getState().setShowFieldOverlay(false);
+    expect(useMazeStore.getState().showFieldOverlay).toBe(false);
+  });
+
+  it("setShowFieldOrigin toggles flag", () => {
+    useMazeStore.getState().setShowFieldOrigin(false);
+    expect(useMazeStore.getState().showFieldOrigin).toBe(false);
+  });
+
+  it("setFieldPrimitive updates primitive", () => {
+    useMazeStore.getState().setFieldPrimitive("hex_hexagon");
+    expect(useMazeStore.getState().fieldPrimitive).toBe("hex_hexagon");
+  });
+
+  it("setFieldEditMode('custom') derives fieldPoints from predefined config cells", () => {
+    useMazeStore.setState({
+      tessellationKind: "square",
+      tessellationConfig: { type: "square", width: 3, height: 3 },
+      freeFieldPoints: emptyFreePoints(),
+    });
+    useMazeStore.getState().setFieldEditMode("custom");
+    const s = useMazeStore.getState();
+    expect(s.fieldEditMode).toBe("custom");
+    expect(s.isEditingField).toBe(true);
+    expect(s.fieldPoints.size).toBe(9);
+    expect(s.tessellationConfig.type).toBe("square_custom");
+  });
+
+  it("setFieldEditMode('default') rebuilds predefined config", () => {
+    useMazeStore.setState({
+      tessellationKind: "square",
+      squareShape: "rect",
+      hexShape: "parallelogram",
+      triangleShape: "rect",
+      fieldEditMode: "custom",
+      savedConfigs: {},
+    });
+    useMazeStore.getState().setFieldEditMode("default");
+    const s = useMazeStore.getState();
+    expect(s.fieldEditMode).toBe("default");
+    expect(s.isEditingField).toBe(false);
+    expect(s.tessellationConfig.type).toBe("square");
+  });
+});
+
+describe("mazeStore preset connections", () => {
+  beforeEach(() => {
+    useMazeStore.setState({
+      tessellationKind: "square",
+      tessellationConfig: { type: "square", width: 3, height: 3 },
+      isEditingField: false,
+      fieldPoints: new Set<number>(),
+      presetConnections: new Map(),
+      lockedNodes: new Map(),
+      autoLockedNodes: new Set(),
+      autoLock: true,
+    });
+  });
+
+  it("setPresetConnectionsTool updates tool", () => {
+    useMazeStore.getState().setPresetConnectionsTool("passage");
+    expect(useMazeStore.getState().presetConnectionsTool).toBe("passage");
+  });
+
+  it("applyPresetConnectionsTool('wall') sets a wall entry and marks presetsDirty", () => {
+    useMazeStore.setState({ presetConnectionsTool: "wall" });
+    useMazeStore.getState().applyPresetConnectionsTool("0,0-1,0", [0, 0], [1, 0]);
+    const s = useMazeStore.getState();
+    expect(s.presetConnections.get("0,0-1,0")?.state).toBe("wall");
+    expect(s.presetsDirty).toBe(true);
+  });
+
+  it("applyPresetConnectionsTool('passage') sets a passage entry", () => {
+    useMazeStore.setState({ presetConnectionsTool: "passage" });
+    useMazeStore.getState().applyPresetConnectionsTool("0,0-1,0", [0, 0], [1, 0]);
+    expect(useMazeStore.getState().presetConnections.get("0,0-1,0")?.state).toBe("passage");
+  });
+
+  it("applyPresetConnectionsTool recomputes autoLockedNodes when fully surrounding a cell", () => {
+    // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 2, height: 1 },
+      presetConnectionsTool: "wall",
+    });
+    useMazeStore.getState().applyPresetConnectionsTool("-1,0-0,0", [-1, 0], [0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.autoLockedNodes.has("-1,0")).toBe(true);
+    expect(s.autoLockedNodes.has("0,0")).toBe(true);
+  });
+
+  it("applyPresetConnectionsReset resets an existing entry to undefined", () => {
+    useMazeStore.setState({
+      presetConnections: new Map([["0,0-1,0", { from: [0, 0], to: [1, 0], state: "wall", source: "user" }]]),
+    });
+    useMazeStore.getState().applyPresetConnectionsReset("0,0-1,0");
+    expect(useMazeStore.getState().presetConnections.get("0,0-1,0")?.state).toBe("undefined");
+  });
+
+  it("applyPresetConnectionsReset is no-op for missing key", () => {
+    useMazeStore.getState().applyPresetConnectionsReset("9,9-9,8");
+    expect(useMazeStore.getState().presetConnections.size).toBe(0);
+  });
+
+  it("clearInvalidPresetConnections removes entries outside the field", () => {
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 1, height: 1 },
+      presetConnections: new Map([["5,5-6,5", { from: [5, 5], to: [6, 5], state: "wall", source: "user" }]]),
+    });
+    useMazeStore.getState().clearInvalidPresetConnections();
+    expect(useMazeStore.getState().presetConnections.size).toBe(0);
+  });
+
+  it("resetPresetConnections clears all preset state", () => {
+    useMazeStore.setState({
+      presetConnections: new Map([["0,0-1,0", { from: [0, 0], to: [1, 0], state: "wall", source: "user" }]]),
+      defaultEdgeState: "wall",
+      presetStart: [0, 0],
+      presetFinish: [1, 1],
+      presetGenSource: [2, 2],
+      lockedNodes: new Map([["0,0", "both"]]),
+      autoLockedNodes: new Set(["0,0"]),
+    });
+    useMazeStore.getState().resetPresetConnections();
+    const s = useMazeStore.getState();
+    expect(s.presetConnections.size).toBe(0);
+    expect(s.defaultEdgeState).toBe("undefined");
+    expect(s.presetStart).toBeNull();
+    expect(s.presetFinish).toBeNull();
+    expect(s.presetGenSource).toBeNull();
+    expect(s.lockedNodes.size).toBe(0);
+    expect(s.autoLockedNodes.size).toBe(0);
+  });
+
+  it("setPresetStart/Finish/GenSource update respective cells", () => {
+    useMazeStore.getState().setPresetStart([1, 1]);
+    useMazeStore.getState().setPresetFinish([2, 2]);
+    useMazeStore.getState().setPresetGenSource([3, 3]);
+    const s = useMazeStore.getState();
+    expect(s.presetStart).toEqual([1, 1]);
+    expect(s.presetFinish).toEqual([2, 2]);
+    expect(s.presetGenSource).toEqual([3, 3]);
+  });
+
+  it("setDefaultEdgeState('wall') fills all interior edges as walls", () => {
+    // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
+    useMazeStore.setState({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    useMazeStore.getState().setDefaultEdgeState("wall");
+    const s = useMazeStore.getState();
+    expect(s.defaultEdgeState).toBe("wall");
+    expect(s.presetConnections.get("-1,0-0,0")?.state).toBe("wall");
+    expect(s.presetConnections.get("-1,0-0,0")?.source).toBe("default");
+  });
+
+  it("setDefaultEdgeState('undefined') removes default-sourced entries", () => {
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 2, height: 1 },
+      presetConnections: new Map([["-1,0-0,0", { from: [-1, 0], to: [0, 0], state: "wall", source: "default" }]]),
+    });
+    useMazeStore.getState().setDefaultEdgeState("undefined");
+    expect(useMazeStore.getState().presetConnections.size).toBe(0);
+  });
+
+  it("setHighlightInvalidPresets / setHighlightIsolatedNodes toggle flags", () => {
+    useMazeStore.getState().setHighlightInvalidPresets(true);
+    useMazeStore.getState().setHighlightIsolatedNodes(true);
+    const s = useMazeStore.getState();
+    expect(s.highlightInvalidPresets).toBe(true);
+    expect(s.highlightIsolatedNodes).toBe(true);
+  });
+
+  it("setShowPresetOrigin toggles flag", () => {
+    useMazeStore.getState().setShowPresetOrigin(true);
+    expect(useMazeStore.getState().showPresetOrigin).toBe(true);
+  });
+
+  it("setLockedNode adds a lock entry", () => {
+    useMazeStore.getState().setLockedNode(2, 3, "both");
+    expect(useMazeStore.getState().lockedNodes.get("2,3")).toBe("both");
+  });
+
+  it("removeLockedNode removes an existing entry", () => {
+    useMazeStore.setState({ lockedNodes: new Map([["2,3", "both"]]) });
+    useMazeStore.getState().removeLockedNode(2, 3);
+    expect(useMazeStore.getState().lockedNodes.has("2,3")).toBe(false);
+  });
+
+  it("removeLockedNode is no-op for missing key", () => {
+    useMazeStore.getState().removeLockedNode(9, 9);
+    expect(useMazeStore.getState().lockedNodes.size).toBe(0);
+  });
+
+  it("clearLockedNodes empties locks and autoLocks", () => {
+    useMazeStore.setState({ lockedNodes: new Map([["0,0", "both"]]), autoLockedNodes: new Set(["0,0"]) });
+    useMazeStore.getState().clearLockedNodes();
+    const s = useMazeStore.getState();
+    expect(s.lockedNodes.size).toBe(0);
+    expect(s.autoLockedNodes.size).toBe(0);
+  });
+
+  it("setAutoLock(false) clears autoLockedNodes", () => {
+    useMazeStore.setState({ autoLock: true, autoLockedNodes: new Set(["0,0"]) });
+    useMazeStore.getState().setAutoLock(false);
+    const s = useMazeStore.getState();
+    expect(s.autoLock).toBe(false);
+    expect(s.autoLockedNodes.size).toBe(0);
+  });
+
+  it("setAutoLock(true) recomputes autoLockedNodes", () => {
+    // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 2, height: 1 },
+      presetConnections: new Map([["-1,0-0,0", { from: [-1, 0], to: [0, 0], state: "wall", source: "user" }]]),
+      autoLock: false,
+      autoLockedNodes: new Set(),
+    });
+    useMazeStore.getState().setAutoLock(true);
+    const s = useMazeStore.getState();
+    expect(s.autoLock).toBe(true);
+    expect(s.autoLockedNodes.has("-1,0")).toBe(true);
+  });
+});
+
+describe("mazeStore analytics overlays", () => {
+  it("each overlay setter toggles its own flag independently", () => {
+    const s0 = useMazeStore.getState();
+    s0.setShowMazeOverlay(false);
+    s0.setShowComponentsOverlay(true);
+    s0.setShowGraphOverlay(true);
+    s0.setShowNavGraphOverlay(true);
+    s0.setShowPureCyclesOverlay(true);
+    s0.setShowRouteOverlay(true);
+    const s = useMazeStore.getState();
+    expect(s.showMazeOverlay).toBe(false);
+    expect(s.showComponentsOverlay).toBe(true);
+    expect(s.showGraphOverlay).toBe(true);
+    expect(s.showNavGraphOverlay).toBe(true);
+    expect(s.showPureCyclesOverlay).toBe(true);
+    expect(s.showRouteOverlay).toBe(true);
+  });
+});
+
+describe("mazeStore generation misc actions", () => {
+  it("setStrategy sets a strategy for an issue kind", () => {
+    useMazeStore.getState().setStrategy("missing_endpoints", "scored_endpoints");
+    expect(useMazeStore.getState().selectedStrategies.missing_endpoints).toBe("scored_endpoints");
+  });
+
+  it("clearStrategy removes a strategy for an issue kind", () => {
+    useMazeStore.setState({ selectedStrategies: { missing_endpoints: "scored_endpoints" } });
+    useMazeStore.getState().clearStrategy("missing_endpoints");
+    expect(useMazeStore.getState().selectedStrategies).not.toHaveProperty("missing_endpoints");
+  });
+
+  it("setEdgeBasedParam updates param when method is custom_edge_based", () => {
+    useMazeStore.setState({ initialConfig: { method: "custom_edge_based", corridor_length: 0.5, branching: 0.5, depth_first: 0.5, directionality: 0, cyclicity: 0 } });
+    useMazeStore.getState().setEdgeBasedParam("corridor_length", 0.9);
+    const cfg = useMazeStore.getState().initialConfig;
+    expect(cfg.method).toBe("custom_edge_based");
+    if (cfg.method === "custom_edge_based") expect(cfg.corridor_length).toBe(0.9);
+  });
+
+  it("setEdgeBasedParam is no-op when method is not custom_edge_based", () => {
+    useMazeStore.setState({ initialConfig: { method: "recursive_backtracker" } });
+    useMazeStore.getState().setEdgeBasedParam("corridor_length", 0.9);
+    expect(useMazeStore.getState().initialConfig.method).toBe("recursive_backtracker");
+  });
+
+  it("setRandomSeed toggles flag", () => {
+    useMazeStore.getState().setRandomSeed(true);
+    expect(useMazeStore.getState().randomSeed).toBe(true);
+  });
+
+  it("setOpenCard switches card and clears preset highlights when leaving preset_connections", () => {
+    useMazeStore.setState({ openCard: "preset_connections", highlightInvalidPresets: true, highlightIsolatedNodes: true });
+    useMazeStore.getState().setOpenCard("generation");
+    const s = useMazeStore.getState();
+    expect(s.openCard).toBe("generation");
+    expect(s.highlightInvalidPresets).toBe(false);
+    expect(s.highlightIsolatedNodes).toBe(false);
+  });
+
+  it("setOpenCard keeps highlights when not leaving preset_connections", () => {
+    useMazeStore.setState({ openCard: "generation", highlightInvalidPresets: true });
+    useMazeStore.getState().setOpenCard("quality");
+    expect(useMazeStore.getState().highlightInvalidPresets).toBe(true);
+  });
+
+  it("setDebugMode(false) clears debugStale", () => {
+    useMazeStore.setState({ debugMode: true, debugStale: true });
+    useMazeStore.getState().setDebugMode(false);
+    const s = useMazeStore.getState();
+    expect(s.debugMode).toBe(false);
+    expect(s.debugStale).toBe(false);
+  });
+
+  it("setDebugMode(true) does not touch debugStale", () => {
+    useMazeStore.setState({ debugMode: false, debugStale: true });
+    useMazeStore.getState().setDebugMode(true);
+    expect(useMazeStore.getState().debugStale).toBe(true);
+  });
+
+  it("setDebugStep / setDebugAutoPlayDelay / setShowDebugFrontier update their fields", () => {
+    useMazeStore.getState().setDebugStep(3);
+    useMazeStore.getState().setDebugAutoPlayDelay(500);
+    useMazeStore.getState().setShowDebugFrontier(false);
+    const s = useMazeStore.getState();
+    expect(s.debugStep).toBe(3);
+    expect(s.debugAutoPlayDelay).toBe(500);
+    expect(s.showDebugFrontier).toBe(false);
+  });
+
+  it("regenerate is a no-op when lastUsedSeed is null", () => {
+    useMazeStore.setState({ lastUsedSeed: null });
+    useMazeStore.getState().regenerate();
+    expect(generateMaze).not.toHaveBeenCalled();
+  });
+
+  it("regenerate calls generateMaze with the last used seed", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({ lastUsedSeed: 123, selectedChecks: [], selectedStrategies: {} });
+    useMazeStore.getState().regenerate();
+    expect(generateMaze).toHaveBeenCalledWith(123, expect.anything());
+  });
+
+  it("setError sets and clears the error message", () => {
+    useMazeStore.getState().setError("boom");
+    expect(useMazeStore.getState().error).toBe("boom");
+    useMazeStore.getState().setError(null);
+    expect(useMazeStore.getState().error).toBeNull();
+  });
+});
+
+describe("mazeStore post-edit actions", () => {
+  beforeEach(() => {
+    useMazeStore.setState({
+      edges: [{ from: 0, to: 1 }],
+      nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }],
+      start: 0,
+      finish: 1,
+      activeTessellationConfig: { type: "square", width: 2, height: 1 },
+      selectedChecks: [],
+      checkParams: {},
+      postEditDraftEdges: { "0-1": { from: 0, to: 1, kind: "basic" } },
+      postEditDraftMeta: { start: 0, finish: 1 },
+      postEditEdges: null,
+      postEditMeta: null,
+      postEditAnalytics: null,
+      postEditDirty: false,
+      postEditAutoConfirm: false,
+      _generatedStart: 0,
+      _generatedFinish: 1,
+    });
+  });
+
+  it("setPostEditAutoConfirm / setPostEditTool update their fields", () => {
+    useMazeStore.getState().setPostEditAutoConfirm(true);
+    useMazeStore.getState().setPostEditTool("passage");
+    const s = useMazeStore.getState();
+    expect(s.postEditAutoConfirm).toBe(true);
+    expect(s.postEditTool).toBe("passage");
+  });
+
+  it("applyPostEditTool('wall') deletes the draft edge entry and marks postEditDirty", () => {
+    useMazeStore.setState({ postEditTool: "wall" });
+    useMazeStore.getState().applyPostEditTool("0-1", 0, 1);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftEdges?.["0-1"]).toBeUndefined();
+    expect(s.postEditDirty).toBe(true);
+  });
+
+  it("applyPostEditTool('passage') sets a basic edge entry", () => {
+    useMazeStore.setState({ postEditTool: "passage", postEditDraftEdges: {} });
+    useMazeStore.getState().applyPostEditTool("0-1", 0, 1);
+    expect(useMazeStore.getState().postEditDraftEdges?.["0-1"]?.kind).toBe("basic");
+  });
+
+  it("applyPostEditTool is no-op when there is no draft yet", () => {
+    useMazeStore.setState({ postEditDraftEdges: null, postEditDirty: false });
+    useMazeStore.getState().applyPostEditTool("0-1", 0, 1);
+    expect(useMazeStore.getState().postEditDirty).toBe(false);
+  });
+
+  it("confirmPostEdit computes analytics from the current draft and stores a snapshot", async () => {
+    await useMazeStore.getState().confirmPostEdit();
+    const s = useMazeStore.getState();
+    expect(computeAnalytics).toHaveBeenCalled();
+    expect(s.postEditAnalytics).not.toBeNull();
+    expect(s.postEditEdges).toEqual({ "0-1": { from: 0, to: 1, kind: "basic" } });
+    expect(s.postEditMeta).toEqual({ start: 0, finish: 1 });
+  });
+
+  it("confirmPostEdit passes non-wall edges and excludes wall edges to computeAnalytics", async () => {
+    useMazeStore.setState({
+      postEditDraftEdges: {
+        "0-1": { from: 0, to: 1, kind: "basic" },
+        "1-2": { from: 1, to: 2, kind: "wall" },
+      },
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.edges).toEqual([{ from: 0, to: 1, kind: "basic" }]);
+  });
+
+  it("confirmPostEdit is no-op when there is no draft", async () => {
+    useMazeStore.setState({ postEditDraftEdges: null });
+    await useMazeStore.getState().confirmPostEdit();
+    expect(computeAnalytics).not.toHaveBeenCalled();
+  });
+
+  it("confirmPostEdit stores error message when computeAnalytics throws", async () => {
+    vi.mocked(computeAnalytics).mockImplementation(() => { throw new Error("analytics failed"); });
+    await useMazeStore.getState().confirmPostEdit();
+    expect(useMazeStore.getState().error).toBe("analytics failed");
+  });
+
+  it("confirmPostEdit increments the request id on every call", async () => {
+    vi.mocked(computeAnalytics).mockReturnValue(mockSnapshot);
+    const before = useMazeStore.getState()._postEditRequestId;
+    await useMazeStore.getState().confirmPostEdit();
+    await useMazeStore.getState().confirmPostEdit();
+    expect(useMazeStore.getState()._postEditRequestId).toBe(before + 2);
+  });
+
+  it("resetPostEdit rebuilds draft from generated edges and restores generated endpoints", () => {
+    useMazeStore.setState({
+      postEditDraftEdges: { "0-1": { from: 0, to: 1, kind: "wall" } },
+      postEditDirty: true,
+    });
+    useMazeStore.getState().resetPostEdit();
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftMeta).toEqual({ start: 0, finish: 1 });
+    expect(s.postEditDirty).toBe(false);
+  });
+
+  it("setPostEditEndpoint updates draft meta and marks dirty", () => {
+    useMazeStore.setState({ postEditAutoConfirm: false });
+    useMazeStore.getState().setPostEditEndpoint("start", 5);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftMeta?.start).toBe(5);
+    expect(s.postEditDirty).toBe(true);
+  });
+
+  it("setPostEditEndpoint triggers confirmPostEdit when postEditAutoConfirm is true", () => {
+    useMazeStore.setState({ postEditAutoConfirm: true });
+    useMazeStore.getState().setPostEditEndpoint("finish", 7);
+    expect(computeAnalytics).toHaveBeenCalled();
+  });
+
+  it("clearPostEditEndpoint sets the endpoint to null and marks dirty", () => {
+    useMazeStore.setState({ postEditAutoConfirm: false });
+    useMazeStore.getState().clearPostEditEndpoint("finish");
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftMeta?.finish).toBeNull();
+    expect(s.postEditDirty).toBe(true);
   });
 });
