@@ -8,3 +8,7 @@ rand = { version = "0.9", features = ["small_rng"] }
 
 [[example]]
 name = "print_maze"
+
+[[test]]
+name = "generation"
+path = "tests/generation/mod.rs"
