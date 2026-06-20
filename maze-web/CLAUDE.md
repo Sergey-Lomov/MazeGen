@@ -19,3 +19,19 @@ If `AnalyticsRenderer` and `GenerationRenderer` share rendering patterns, extrac
 - `TessellationRenderer` wraps `GridRenderer` for the Tessellation feature. It manages its own visibility (shows grid when no feature card is open). It is the **only** feature-renderer for the tessellation feature.
 - All other feature-renderers (GenerationRenderer, AnalyticsRenderer, etc.) **include their own `GridRenderer` instance as the bottom-most layer** directly inside themselves — `new GridRenderer(container)`. NOT via `TessellationRenderer`.
 - `TessellationRenderer` is **never used** inside other feature-renderers. No exceptions.
+
+## Data-loss confirmation dialogs
+
+Confirmation dialogs that warn about data loss are driven by predicates in `src/pixi/selectors/mazeSelectors.ts` (`selectPostEditDirty`, `selectTessellationWouldLoseData`, etc.).
+
+Current dirty flags in `MazeState` (all reset on `confirmTessellation` and project load):
+- `fieldDirty` — field setup changed (shape, size, custom points, orientation)
+- `presetsDirty` — preset connections changed
+- `mazeDirty` — maze generated
+- `postEditDirty` — manual post-edit changes made
+
+**When adding a new feature that produces user data** (not read-only like analytics/debug overlays):
+1. Add a `myFeatureDirty: boolean` flag to `MazeState` in `mazeStore.ts`.
+2. Set it `true` on any user edit action, `false` on generate/reset/load and `confirmTessellation`.
+3. Add it to the relevant predicate(s) in `mazeSelectors.ts` (`selectTessellationWouldLoseData`, `selectPostEditDirty`, or a new one).
+4. Wire the predicate into the relevant confirmation dialog component.

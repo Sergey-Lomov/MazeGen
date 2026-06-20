@@ -1,5 +1,5 @@
 ﻿import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { PostEditEdge } from "../../store/mazeStore";
+import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, PassageKind } from "../renderers/types";
 import { getCellCenter, getNeighborData } from "../tessellationGeometry";
@@ -91,6 +91,23 @@ export function buildMazeWalls(
   }
 
   return result;
+}
+
+// --- Loss-detection predicates ---
+// When adding a new feature that produces user data (not analytics/read-only),
+// add a predicate here and wire it into the relevant confirmation dialogs.
+
+/** True when the user has made manual post-edit changes since the last generate/reset. */
+export function selectPostEditDirty(s: Pick<MazeState, "postEditDirty">): boolean {
+  return s.postEditDirty;
+}
+
+/** True when confirming tessellation would destroy data the user has entered. */
+export function selectTessellationWouldLoseData(s: Pick<MazeState,
+  "previewKind" | "tessellationKind" | "fieldDirty" | "presetsDirty" | "mazeDirty" | "postEditDirty"
+>): boolean {
+  if (s.previewKind === s.tessellationKind) return false;
+  return s.fieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty;
 }
 
 export function buildMazeMarkers(

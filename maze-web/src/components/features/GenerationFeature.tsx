@@ -7,6 +7,7 @@ import { colors, font, radius } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
 import { Switch } from "../Switch";
 import { SliderParam } from "../SliderParam";
+import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -29,7 +30,7 @@ export function GenerationFeature({ canGenerate }: Props) {
   const setEdgeBasedParam = useMazeStore((s) => s.setEdgeBasedParam);
   const generate = useMazeStore((s) => s.generate);
   const regenerate = useMazeStore((s) => s.regenerate);
-  const postEditDraftEdges = useMazeStore((s) => s.postEditDraftEdges);
+  const postEditDirty = useMazeStore(selectPostEditDirty);
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"generate" | "regenerate" | null>(null);
@@ -42,12 +43,12 @@ export function GenerationFeature({ canGenerate }: Props) {
   const edgeParams = isEdgeBased ? (initialConfig as { method: string } & EdgeBasedParams) : null;
 
   function handleGenerate() {
-    if (postEditDraftEdges !== null) { setPendingAction("generate"); return; }
+    if (postEditDirty) { setPendingAction("generate"); return; }
     generate();
   }
 
   function handleRegenerate() {
-    if (postEditDraftEdges !== null) { setPendingAction("regenerate"); return; }
+    if (postEditDirty) { setPendingAction("regenerate"); return; }
     regenerate();
   }
 

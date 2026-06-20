@@ -3,6 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
 import { ConfirmModal } from "../ConfirmModal";
+import { selectTessellationWouldLoseData } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
 export function getHexOrientationLabel(o: HexOrientation): string {
@@ -23,11 +24,11 @@ export function BasicConfigFeature() {
   const previewKind = useMazeStore((s) => s.previewKind);
   const previewHexOrientation = useMazeStore((s) => s.previewHexOrientation);
   const previewTriOrientation = useMazeStore((s) => s.previewTriOrientation);
-  const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const setPreviewKind = useMazeStore((s) => s.setPreviewKind);
   const setPreviewHexOrientation = useMazeStore((s) => s.setPreviewHexOrientation);
   const setPreviewTriOrientation = useMazeStore((s) => s.setPreviewTriOrientation);
   const confirmTessellation = useMazeStore((s) => s.confirmTessellation);
+  const wouldLoseData = useMazeStore(selectTessellationWouldLoseData);
 
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -35,7 +36,7 @@ export function BasicConfigFeature() {
   const isTri = previewKind === "triangle";
 
   function handleConfirmTessellation() {
-    if (tessellationConfirmed) {
+    if (wouldLoseData) {
       setShowConfirm(true);
     } else {
       confirmTessellation();

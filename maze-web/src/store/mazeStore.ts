@@ -165,6 +165,14 @@ export interface MazeState {
   /** start/finish as generated — restored on resetPostEdit. */
   _generatedStart: number | null;
   _generatedFinish: number | null;
+  /** True after any manual post-edit change since the last generate/reset. */
+  postEditDirty: boolean;
+  /** True after any field setup change since the last confirmTessellation. */
+  fieldDirty: boolean;
+  /** True after any preset connection change since the last confirmTessellation. */
+  presetsDirty: boolean;
+  /** True after the maze has been generated since the last confirmTessellation. */
+  mazeDirty: boolean;
 }
 
 interface MazeActions {
@@ -428,6 +436,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   _postEditRequestId: 0,
   _generatedStart: null,
   _generatedFinish: null,
+  postEditDirty: false,
+  fieldDirty: false,
+  presetsDirty: false,
+  mazeDirty: false,
 
   setSeed: (seed) => set({ seed, error: null }),
 
@@ -493,6 +505,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
         fieldEditMode: "default" as const,
         debugSnapshot: null, debugStep: 0, debugStale: false,
       } : { debugStale: state.debugSnapshot !== null }),
+      fieldDirty: false,
+      presetsDirty: false,
+      mazeDirty: false,
+      postEditDirty: false,
     };
   }),
 
@@ -520,7 +536,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const cfg = isEditingField
       ? buildFreeConfig("square", fieldPoints, state.hexOrientation, state.triOrientation)
       : buildPredefinedConfig("square", state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { squareShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null, debugStale: state.debugSnapshot !== null };
+    return { squareShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, fieldDirty: true, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setHexShape: (shape) => set((state) => {
@@ -529,7 +545,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const cfg = isEditingField
       ? buildFreeConfig("hex", fieldPoints, state.hexOrientation, state.triOrientation)
       : buildPredefinedConfig("hex", shape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { hexShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null, debugStale: state.debugSnapshot !== null };
+    return { hexShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, fieldDirty: true, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setTriangleShape: (shape) => set((state) => {
@@ -538,7 +554,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const cfg = isEditingField
       ? buildFreeConfig("triangle", fieldPoints, state.hexOrientation, state.triOrientation)
       : buildPredefinedConfig("triangle", state.hexShape, shape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { triangleShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, error: null, debugStale: state.debugSnapshot !== null };
+    return { triangleShape: shape, tessellationConfig: cfg, isEditingField, fieldPoints, fieldDirty: true, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setHexOrientation: (orientation) => set((state) => {
@@ -550,7 +566,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const activeTessellationConfig = state.nodes.length > 0
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
-    return { hexOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, error: null, debugStale: state.debugSnapshot !== null };
+    return { hexOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, fieldDirty: true, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setTriOrientation: (orientation) => set((state) => {
@@ -562,7 +578,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const activeTessellationConfig = state.nodes.length > 0
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
-    return { triOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, error: null, debugStale: state.debugSnapshot !== null };
+    return { triOrientation: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, fieldDirty: true, error: null, debugStale: state.debugSnapshot !== null };
   }),
 
   setTessellationConfig: (cfg) => {
@@ -584,7 +600,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
     const savedConfigs = isCustom ? get().savedConfigs : { ...get().savedConfigs, [cfg.type]: cfg };
     const debugStale = get().debugSnapshot !== null;
-    set({ tessellationConfig: cfg, tessellationKind: kind, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedConfigs, error: null, debugStale });
+    set({ tessellationConfig: cfg, tessellationKind: kind, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedConfigs, fieldDirty: true, error: null, debugStale });
   },
 
   loadRegistry: () => {
@@ -673,6 +689,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
           to_,
           state.edges,
         ),
+        postEditDirty: true,
       };
     });
   },
@@ -740,6 +757,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       postEditAnalytics: null,
       postEditDraftMeta: { start: state._generatedStart, finish: state._generatedFinish },
       postEditTool: "wall" as PostEditTool,
+      postEditDirty: false,
     }));
     void useMazeStore.getState().confirmPostEdit();
   },
@@ -747,6 +765,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   setPostEditEndpoint: (kind, nodeId) => {
     set((state) => ({
       postEditDraftMeta: { ...(state.postEditDraftMeta ?? { start: state.start, finish: state.finish }), [kind]: nodeId },
+      postEditDirty: true,
     }));
     if (useMazeStore.getState().postEditAutoConfirm) {
       void useMazeStore.getState().confirmPostEdit();
@@ -755,13 +774,14 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
   clearPostEditEndpoint: (kind) => {
     set((state) => ({
       postEditDraftMeta: { ...(state.postEditDraftMeta ?? { start: state.start, finish: state.finish }), [kind]: null },
+      postEditDirty: true,
     }));
     if (useMazeStore.getState().postEditAutoConfirm) {
       void useMazeStore.getState().confirmPostEdit();
     }
   },
 
-  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftMeta: null, postEditEdges: null, postEditMeta: null, postEditAnalytics: null }),
+  reset: () => set({ nodes: [], edges: [], start: null, finish: null, navNodes: [], navEdges: [], components: [], selectedNode: null, warnings: [], error: null, nodeStats: null, edgeStats: null, routeInfo: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftMeta: null, postEditEdges: null, postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
@@ -857,7 +877,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     fieldPoints.add(key);
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, fieldDirty: true, debugStale: state.debugSnapshot !== null };
   }),
 
   removeFieldPoint: (x, y) => set((state) => {
@@ -867,7 +887,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     fieldPoints.delete(key);
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, fieldDirty: true, debugStale: state.debugSnapshot !== null };
   }),
 
   setShowFieldOverlay: (show) => set({ showFieldOverlay: show }),
@@ -885,10 +905,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       }
       const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
       const tessellationConfig = isAlreadyCustom ? cfg : buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-      return { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, tessellationConfig, fieldPrimitive: "point", debugStale: state.debugSnapshot !== null };
+      return { fieldEditMode: mode, isEditingField: true, fieldPoints, freeFieldPoints, tessellationConfig, fieldPrimitive: "point", fieldDirty: true, debugStale: state.debugSnapshot !== null };
     }
     const cfg = buildPredefinedConfig(state.tessellationKind, state.hexShape, state.triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point", debugStale: state.debugSnapshot !== null };
+    return { fieldEditMode: mode, isEditingField: false, tessellationConfig: cfg, fieldPrimitive: "point", fieldDirty: true, debugStale: state.debugSnapshot !== null };
   }),
 
   addFieldPoints: (cells) => set((state) => {
@@ -901,7 +921,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     if (!changed) return {};
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, fieldDirty: true, debugStale: state.debugSnapshot !== null };
   }),
 
   removeFieldPoints: (cells) => set((state) => {
@@ -914,14 +934,14 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
     if (!changed) return {};
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, fieldDirty: true, debugStale: state.debugSnapshot !== null };
   }),
 
   clearFieldPoints: () => set((state) => {
     const fieldPoints = new Set<number>();
     const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
     const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-    return { fieldPoints, freeFieldPoints, tessellationConfig, debugStale: state.debugSnapshot !== null };
+    return { fieldPoints, freeFieldPoints, tessellationConfig, fieldDirty: true, debugStale: state.debugSnapshot !== null };
   }),
 
   setFieldPrimitive: (p) => set({ fieldPrimitive: p }),
@@ -930,7 +950,7 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
 
   applyPresetConnectionsTool: (key, from, to) => set((state) => {
     const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool);
-    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }), debugStale: state.debugSnapshot !== null };
+    return { presetConnections, autoLockedNodes: _recomputeAutoLock({ ...state, presetConnections }), presetsDirty: true, debugStale: state.debugSnapshot !== null };
   }),
 
   clearInvalidPresetConnections: () => set((state) => {
@@ -1094,6 +1114,10 @@ export const useMazeStore = create<MazeState & MazeActions>((set, get) => ({
       postEditMeta: null,
       postEditAnalytics: null,
       postEditTool: "wall" as PostEditTool,
+      postEditDirty: false,
+      fieldDirty: false,
+      presetsDirty: false,
+      mazeDirty: false,
       _generatedStart: null,
       _generatedFinish: null,
       _postEditRequestId: 0,
@@ -1271,6 +1295,8 @@ function _generateWithSeed(seed: number, get: StoreGet, set: StoreSet, skipConfi
       postEditAnalytics: null,
       postEditDraftMeta: { start: snapshot.start, finish: snapshot.finish },
       postEditTool: "wall" as PostEditTool,
+      postEditDirty: false,
+      mazeDirty: true,
       _generatedStart: snapshot.start,
       _generatedFinish: snapshot.finish,
     });
