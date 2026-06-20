@@ -4,6 +4,7 @@ use rand::rngs::SmallRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
+use crate::dsu::Dsu;
 use super::{ElementsConfig, PresetState, try_add_edge, can_connect};
 
 pub fn generate<T: Tessellation>(
@@ -33,17 +34,13 @@ pub fn generate<T: Tessellation>(
         edges.swap(i, j);
     }
 
-    // Union-Find: parent map, path-compressed find.
-    let mut parent: HashMap<NodeId, NodeId> = graph.nodes().map(|n| (n.id, n.id)).collect();
-
-    fn find(parent: &mut HashMap<NodeId, NodeId>, mut x: NodeId) -> NodeId {
-        while parent[&x] != x {
-            let gp = parent[&parent[&x]];
-            *parent.get_mut(&x).unwrap() = gp;
-            x = gp;
-        }
-        x
-    }
+    // Union-Find over a dense 0..n index, since NodeId (u64) need not be contiguous.
+    // Indices are assigned in NodeId order so `union_by_min` on indices matches the
+    // original "lowest NodeId wins as root" determinism.
+    let mut sorted_ids: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
+    sorted_ids.sort_unstable();
+    let node_index: HashMap<NodeId, usize> = sorted_ids.iter().enumerate().map(|(i, &id)| (id, i)).collect();
+    let mut dsu = Dsu::new(node_index.len());
 
     // Pre-union nodes already connected by preset edges so Kruskal doesn't add duplicate edges.
     let preset_edges: Vec<(NodeId, NodeId)> = graph.edges()
@@ -52,21 +49,14 @@ pub fn generate<T: Tessellation>(
         .into_iter()
         .collect();
     for (a, b) in preset_edges {
-        let ra = find(&mut parent, a);
-        let rb = find(&mut parent, b);
-        if ra != rb {
-            if ra < rb { *parent.get_mut(&rb).unwrap() = ra; }
-            else       { *parent.get_mut(&ra).unwrap() = rb; }
-        }
+        dsu.union_by_min(node_index[&a], node_index[&b]);
     }
 
     for (a, b) in edges {
-        let ra = find(&mut parent, a);
-        let rb = find(&mut parent, b);
+        let ra = dsu.find(node_index[&a]);
+        let rb = dsu.find(node_index[&b]);
         if ra != rb {
-            // Merge smaller into larger (union by id — deterministic).
-            if ra < rb { *parent.get_mut(&rb).unwrap() = ra; }
-            else       { *parent.get_mut(&ra).unwrap() = rb; }
+            dsu.union_by_min(ra, rb);
             try_add_edge(graph, a, b, elements, preset_state, &mut rng);
             if let Some(ref mut cb) = on_step { cb(graph, a, &[]); }
         }
