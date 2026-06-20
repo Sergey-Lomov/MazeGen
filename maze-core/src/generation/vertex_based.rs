@@ -28,11 +28,11 @@ pub fn generate<T: Tessellation>(
     let mut in_reserve:  HashSet<NodeId> = HashSet::new();
     let mut rng = SmallRng::seed_from_u64(seed);
 
-    // Seed visited from preset-connected nodes so a blocked start doesn't stall generation.
-    for &pc in &preset_state.preset_connected {
-        visited.insert(pc);
-        add_to_frontier(pc, None, &mut frontier, &mut in_frontier);
-    }
+    // preset_connected nodes are NOT added to visited upfront — this keeps them visible
+    // as connection targets for free_neighbors. Exception: start itself may be preset_connected
+    // (e.g. gen_source inside a preset cluster) — it must enter the frontier regardless.
+    let preset_connected = &preset_state.preset_connected;
+
     visited.insert(start);
     add_to_frontier(start, None, &mut frontier, &mut in_frontier);
 
@@ -79,10 +79,15 @@ pub fn generate<T: Tessellation>(
         frontier.remove(fi);
         in_frontier.remove(&src);
 
-        let free_neighbors: Vec<NodeId> = field.neighbors(src)
+        // free_regular: unvisited, non-frontier, non-preset neighbors — become frontier/reserve.
+        // free_preset: preset-connected neighbors not yet visited — connect to them but skip frontier.
+        let all_free: Vec<NodeId> = field.neighbors(src)
             .into_iter()
-            .filter(|&n| !visited.contains(&n) && !in_frontier.contains(&n) && can_connect(src, n, preset_state))
+            .filter(|&n| !visited.contains(&n) && !in_frontier.contains(&n)
+                && (preset_connected.contains(&src) && preset_connected.contains(&n) || can_connect(src, n, preset_state)))
             .collect();
+        let (free_preset, free_regular): (Vec<NodeId>, Vec<NodeId>) =
+            all_free.into_iter().partition(|n| preset_connected.contains(n));
 
         // Cyclic roll: if triggered, pick one visited neighbor and add a cycle edge.
         // This happens regardless of free_neighbors availability.
@@ -104,20 +109,20 @@ pub fn generate<T: Tessellation>(
         let is_corridor = rng.random::<f64>() < params.corridor_chance;
 
         let connected: Vec<NodeId> = if is_corridor {
-            if free_neighbors.is_empty() {
+            if free_regular.is_empty() {
                 vec![]
             } else {
-                vec![choose_candidate(&free_neighbors, parent, src, params, &mut rng, field)]
+                vec![choose_candidate(&free_regular, parent, src, params, &mut rng, field)]
             }
         } else {
-            let max = free_neighbors.len();
+            let max = free_regular.len();
             if max == 0 {
                 vec![]
             } else if max == 1 {
-                vec![free_neighbors[0]]
+                vec![free_regular[0]]
             } else {
                 let count = junction_count(max, params, &mut rng);
-                choose_junction_candidates(&free_neighbors, parent, src, count, params, &mut rng, field)
+                choose_junction_candidates(&free_regular, parent, src, count, params, &mut rng, field)
             }
         };
 
@@ -128,6 +133,15 @@ pub fn generate<T: Tessellation>(
             false
         };
 
+        // Preset neighbors: already connected by preset edges, so skip try_add_edge.
+        // Just mark visited and push to frontier so the algorithm traverses through them.
+        for &dst in &free_preset {
+            visited.insert(dst);
+            in_reserve.remove(&dst);
+            add_to_frontier(dst, Some(src), &mut frontier, &mut in_frontier);
+        }
+        reserve.retain(|x| !free_preset.contains(x));
+
         let connected_set: HashSet<NodeId> = connected.iter().copied().collect();
         for &dst in &connected {
             try_add_edge(graph, src, dst, elements, preset_state, &mut rng);
@@ -136,14 +150,14 @@ pub fn generate<T: Tessellation>(
             add_to_frontier(dst, Some(src), &mut frontier, &mut in_frontier);
         }
         reserve.retain(|x| !connected_set.contains(x));
-        for n in free_neighbors {
+        for n in free_regular {
             if !connected_set.contains(&n) && !in_reserve.contains(&n) && !visited.contains(&n) {
                 reserve.push(n);
                 in_reserve.insert(n);
             }
         }
 
-        if !connected.is_empty() || cyclic_added {
+        if !connected.is_empty() || !free_preset.is_empty() || cyclic_added {
             let frontier_ids: Vec<NodeId> = frontier.iter().map(|e| e.node).collect();
             if let Some(ref mut cb) = on_step { cb(graph, src, &frontier_ids); }
         }

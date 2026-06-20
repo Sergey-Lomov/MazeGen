@@ -40,14 +40,11 @@ pub fn generate<T: Tessellation>(
     let mut active: Vec<NodeId> = Vec::new();
     let mut last_dst: Option<NodeId> = None;
 
-    // Mark preset-connected nodes as Active so they seed the frontier.
-    for &pc in &preset_state.preset_connected {
-        if nodes.contains_key(&pc) {
-            nodes.insert(pc, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 0 });
-            active.push(pc);
-        }
-    }
-    // Ensure start is also Active (may already be set above).
+    // preset_connected nodes stay Unseen so they remain visible as connection targets.
+    // When an active node connects to one, it is marked Visited but NOT pushed to active.
+    let preset_connected = &preset_state.preset_connected;
+
+    // Ensure start is Active.
     if nodes.get(&start).map_or(true, |e| e.state == NodeState::Unseen) {
         nodes.insert(start, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 0 });
         active.push(start);
@@ -61,7 +58,8 @@ pub fn generate<T: Tessellation>(
         let corridor_fired = prev_last_dst == Some(src);
 
         let candidates: Vec<NodeId> = field.neighbors(src).into_iter()
-            .filter(|&n| nodes.get(&n).map_or(false, |e| e.state == NodeState::Unseen) && can_connect(src, n, preset_state))
+            .filter(|&n| nodes.get(&n).map_or(false, |e| e.state == NodeState::Unseen)
+                && (preset_connected.contains(&src) && preset_connected.contains(&n) || can_connect(src, n, preset_state)))
             .collect();
 
         if candidates.is_empty() {
@@ -103,8 +101,11 @@ pub fn generate<T: Tessellation>(
 
         let dst = candidates[weighted_sample_index(&weights, &mut rng)];
 
-        try_add_edge(graph, src, dst, elements, preset_state, &mut rng);
-        last_dst = Some(dst);
+        // Preset nodes already have their edge in the graph — skip try_add_edge to avoid duplicates.
+        if !preset_connected.contains(&dst) {
+            try_add_edge(graph, src, dst, elements, preset_state, &mut rng);
+            last_dst = Some(dst);
+        }
 
         let depth = nodes.get(&src).map(|e| e.tree_depth + 1).unwrap_or(1);
         nodes.insert(dst, NodeEntry { state: NodeState::Active, parent: Some(src), tree_depth: depth });
@@ -113,7 +114,8 @@ pub fn generate<T: Tessellation>(
         if let Some(ref mut cb) = on_step { cb(graph, src, &active); }
 
         let src_exhausted = field.neighbors(src).into_iter()
-            .all(|n| nodes.get(&n).map_or(true, |e| e.state != NodeState::Unseen) || !can_connect(src, n, preset_state));
+            .all(|n| nodes.get(&n).map_or(true, |e| e.state != NodeState::Unseen)
+                || !(preset_connected.contains(&src) && preset_connected.contains(&n) || can_connect(src, n, preset_state)));
         if src_exhausted {
             remove_from_active(src, &mut active, &mut nodes);
             if last_dst == Some(src) { last_dst = None; }

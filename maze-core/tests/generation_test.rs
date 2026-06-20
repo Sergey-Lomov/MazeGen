@@ -1,6 +1,6 @@
 ﻿use maze_core::{Graph, IdGenerator};
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
-use maze_core::generation::{generate_maze, GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetState};
+use maze_core::generation::{generate_maze, generate_maze_steps, GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetState, PresetConnection, PresetConnectionState, build_preset_state};
 
 fn empty_preset() -> PresetState { PresetState::empty() }
 use maze_core::validation::is_connected;
@@ -344,6 +344,46 @@ fn edge_based_extreme_params_is_connected() {
         assert!(is_connected(&g1, start1), "seed={seed}: all_max not connected");
         assert!(is_connected(&g2, start2), "seed={seed}: all_min not connected");
     }
+}
+
+// --- preset_connected start ---
+
+fn make_preset_state_with_center_cluster(field: &Field<SquareTessellation>, graph: &mut Graph) -> (PresetState, maze_core::NodeId) {
+    // Build a cross: center (0,0) connected to all 4 neighbors via preset passages.
+    // start = center (0,0), which is inside preset_connected.
+    let presets = vec![
+        PresetConnection { from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage },
+        PresetConnection { from: (0, 0), to: (-1, 0), state: PresetConnectionState::Passage },
+        PresetConnection { from: (0, 0), to: (0, 1), state: PresetConnectionState::Passage },
+        PresetConnection { from: (0, 0), to: (0, -1), state: PresetConnectionState::Passage },
+    ];
+    let preset_state = build_preset_state(graph, field, &presets, &[], |x, y| SquarePoint { x, y });
+    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    (preset_state, start)
+}
+
+#[test]
+fn edge_based_start_in_preset_cluster_produces_debug_steps() {
+    let mut ids = IdGenerator::new();
+    let field = Field::new(square_rect(7, 7), &mut ids).unwrap();
+    let mut graph = Graph::new();
+    field.build_nodes(&mut graph);
+    let (preset_state, start) = make_preset_state_with_center_cluster(&field, &mut graph);
+    let config = edge_based_config(EdgeBasedParams::default());
+    let steps = generate_maze_steps(&mut graph, &field, 42, start, config, &preset_state);
+    assert!(!steps.is_empty(), "no debug steps produced when start is inside preset cluster");
+}
+
+#[test]
+fn vertex_based_start_in_preset_cluster_produces_debug_steps() {
+    let mut ids = IdGenerator::new();
+    let field = Field::new(square_rect(7, 7), &mut ids).unwrap();
+    let mut graph = Graph::new();
+    field.build_nodes(&mut graph);
+    let (preset_state, start) = make_preset_state_with_center_cluster(&field, &mut graph);
+    let config = GenerationConfig { elements: no_one_way_elements(), ..GenerationConfig::default() };
+    let steps = generate_maze_steps(&mut graph, &field, 42, start, config, &preset_state);
+    assert!(!steps.is_empty(), "no debug steps produced when start is inside preset cluster");
 }
 
 #[test]
