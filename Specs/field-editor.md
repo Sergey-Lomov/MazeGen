@@ -20,6 +20,16 @@ Two sub-modes toggled inside the card:
 
 Switching default→custom preserves existing drawn points. Switching custom→default restores the predefined config with saved size params. Closing the card does **not** reset `fieldEditMode` — when the card reopens, it restores whichever mode was active.
 
+## Default shape per kind
+
+When `setTessellationKind` or `confirmTessellation` runs without an explicit shape choice, the default shape is the kind's "full" shape:
+
+| Kind | Default shape | Config type |
+|---|---|---|
+| `square` | `rect` | `square` |
+| `hex` | `hexagon` | `hex_hexagon` |
+| `triangle` | `triangle` | `triangle_triangle` |
+
 ## State fields (mazeStore)
 
 | Field | Description |

@@ -113,10 +113,10 @@ describe("applyTool — passage", () => {
 });
 
 describe("applyTool — reset", () => {
-  it("removes edge from connections", () => {
+  it("sets edge to undefined state with user source", () => {
     const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "reset");
-    expect(result.has(edgeKey([0, 0], [1, 0]))).toBe(false);
+    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "undefined", source: "user" });
   });
 });
 

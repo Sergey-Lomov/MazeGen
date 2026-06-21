@@ -11,23 +11,23 @@ import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "./storeTypes";
 export function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
   switch (cfg.type) {
     case "square":
-      return { kind: "square", squareShape: "rect", hexShape: "parallelogram", triangleShape: "rect" };
+      return { kind: "square", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle" };
     case "hex_parallelogram":
-      return { kind: "hex", squareShape: "rect", hexShape: "parallelogram", triangleShape: "rect" };
+      return { kind: "hex", squareShape: "rect", hexShape: "parallelogram", triangleShape: "triangle" };
     case "hex_hexagon":
-      return { kind: "hex", squareShape: "rect", hexShape: "hexagon", triangleShape: "rect" };
+      return { kind: "hex", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle" };
     case "triangle_rect":
-      return { kind: "triangle", squareShape: "rect", hexShape: "parallelogram", triangleShape: "rect" };
+      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "rect" };
     case "triangle_triangle":
-      return { kind: "triangle", squareShape: "rect", hexShape: "parallelogram", triangleShape: "triangle" };
+      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "triangle" };
     case "triangle_hexagon":
-      return { kind: "triangle", squareShape: "rect", hexShape: "parallelogram", triangleShape: "hexagon" };
+      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "hexagon" };
     case "square_custom":
-      return { kind: "square", squareShape: "free", hexShape: "parallelogram", triangleShape: "rect" };
+      return { kind: "square", squareShape: "free", hexShape: "hexagon", triangleShape: "triangle" };
     case "hex_custom":
-      return { kind: "hex", squareShape: "rect", hexShape: "free", triangleShape: "rect" };
+      return { kind: "hex", squareShape: "rect", hexShape: "free", triangleShape: "triangle" };
     case "tri_custom":
-      return { kind: "triangle", squareShape: "rect", hexShape: "parallelogram", triangleShape: "free" };
+      return { kind: "triangle", squareShape: "rect", hexShape: "hexagon", triangleShape: "free" };
   }
 }
 

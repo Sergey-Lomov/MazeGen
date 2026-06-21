@@ -71,14 +71,14 @@ describe("mazeStore tessellation kind/shape actions", () => {
     useMazeStore.getState().setTessellationKind("hex");
     const s = useMazeStore.getState();
     expect(s.tessellationKind).toBe("hex");
-    expect(s.tessellationConfig.type).toBe("hex_parallelogram");
+    expect(s.tessellationConfig.type).toBe("hex_hexagon");
   });
 
   it("setTessellationKind to triangle sets tessellationKind and triangle config type", () => {
     useMazeStore.getState().setTessellationKind("triangle");
     const s = useMazeStore.getState();
     expect(s.tessellationKind).toBe("triangle");
-    expect(s.tessellationConfig.type).toBe("triangle_rect");
+    expect(s.tessellationConfig.type).toBe("triangle_triangle");
   });
 
   it("setTessellationKind to square sets tessellationKind and square config type", () => {
@@ -216,7 +216,7 @@ describe("mazeStore tessellation kind/shape actions", () => {
       tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
     });
     useMazeStore.getState().setTessellationKind("triangle");
-    expect(useMazeStore.getState().tessellationConfig).toMatchObject({ type: "triangle_rect", orientation: "r0" });
+    expect(useMazeStore.getState().tessellationConfig).toMatchObject({ type: "triangle_triangle", orientation: "r0" });
   });
 });
 

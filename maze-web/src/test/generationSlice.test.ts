@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
+import { fieldConfigToWasm } from "../store/slices/generationSlice";
 import { baseStoreState, emptyFreePoints, mockSnapshot, resetGenerationMocks } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -44,13 +45,14 @@ describe("mazeStore.generate", () => {
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
-      tessellation: { type: "square", width: 3, height: 4 },
+      tessellation: fieldConfigToWasm({ type: "square", width: 3, height: 4 }),
       checks: [],
       strategies: {},
       check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
       preset_connections: [],
+      locked_nodes: [],
     });
   });
 
@@ -64,13 +66,14 @@ describe("mazeStore.generate", () => {
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
-      tessellation: { type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" },
+      tessellation: fieldConfigToWasm({ type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" }),
       checks: [],
       strategies: {},
       check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
       preset_connections: [],
+      locked_nodes: [],
     });
   });
 
@@ -84,13 +87,14 @@ describe("mazeStore.generate", () => {
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
-      tessellation: { type: "hex_hexagon", radius: 3, orientation: "pointy_top" },
+      tessellation: fieldConfigToWasm({ type: "hex_hexagon", radius: 3, orientation: "pointy_top" }),
       checks: [],
       strategies: {},
       check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
       preset_connections: [],
+      locked_nodes: [],
     });
   });
 
@@ -184,7 +188,7 @@ describe("mazeStore.generate", () => {
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(42, {
-      tessellation: { type: "square", width: 10, height: 10 },
+      tessellation: fieldConfigToWasm({ type: "square", width: 10, height: 10 }),
       checks: ["missing_endpoints"],
       strategies: {
         missing_endpoints: {
@@ -196,6 +200,7 @@ describe("mazeStore.generate", () => {
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
       preset_connections: [],
+      locked_nodes: [],
     });
   });
 

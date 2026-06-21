@@ -30,7 +30,7 @@ describe("buildMazeWalls passage kinds", () => {
     const walls = buildMazeWalls(nodes, [], squareCfg);
     expect(kindOf(walls, 0, 0, 1, 0)).toBe("none");
     expect(kindOf(walls, 0, 0, 0, 1)).toBe("none");
-    expect(kindOf(walls, 1, 0, 2, 0)).toBe(null); // (2,0) not in nodes
+    expect(kindOf(walls, 1, 0, 2, 0)).toBe("none"); // (2,0) not in nodes => boundary wall
     expect(kindOf(walls, 1, 0, 1, 1)).toBe("none");
   });
 
