@@ -3,6 +3,14 @@ use crate::graph::{Graph, EdgeKind};
 use crate::graph::nav::{build_nav_graph, build_nav_graph_pinned};
 use crate::ids::NodeId;
 
+fn analyze(g: &Graph) -> GraphAnalytics {
+    compute_graph_analytics(&build_nav_graph(g))
+}
+
+fn analyze_pinned(g: &Graph, pinned: &HashSet<NodeId>) -> GraphAnalytics {
+    compute_graph_analytics(&build_nav_graph_pinned(g, pinned))
+}
+
 /// Two isolated bowtie clusters, each made of two directed triangles sharing one edge.
 /// Cluster 1: A=0,B=1,C=2,D=3 — cycle A->B->C->A, cycle B->D->C->B (shared edge B-C).
 /// Cluster 2: E=4,F=5,G=6,H=7 — same shape, disconnected from cluster 1.
@@ -31,8 +39,7 @@ fn two_bowtie_clusters() -> Graph {
 #[test]
 fn two_disjoint_bowtie_clusters_have_two_cycle_regions() {
     let g = two_bowtie_clusters();
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.node_count, 8, "8 distinct nav-nodes, no compression in two bowties");
     assert_eq!(analytics.edge_count, 10, "6 directed edges per cluster, but B<->C is a paired reverse (counts once) — 5 corridors per cluster");
@@ -90,9 +97,7 @@ fn user_reported_merged_two_cycle_graph() -> (Graph, HashSet<NodeId>) {
 #[test]
 fn real_maze_merged_cycles_have_two_cycles_in_one_region() {
     let (g, pinned) = user_reported_merged_two_cycle_graph();
-    let nav = build_nav_graph_pinned(&g, &pinned);
-    let analytics = compute_graph_analytics(&nav);
-
+    let analytics = analyze_pinned(&g, &pinned);
 
     assert_eq!(analytics.cycle_region_count, 1, "the two cycles now share nodes — one region");
     assert_eq!(analytics.cycle_count, 2, "still two independent cycles (beta_1 = E - V + C)");
@@ -101,8 +106,7 @@ fn real_maze_merged_cycles_have_two_cycles_in_one_region() {
 #[test]
 fn real_maze_two_disjoint_simple_cycles_have_two_cycle_regions() {
     let (g, pinned) = user_reported_two_cycle_graph();
-    let nav = build_nav_graph_pinned(&g, &pinned);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze_pinned(&g, &pinned);
 
     assert_eq!(analytics.cycle_count, 2, "two independent simple cycles");
     assert_eq!(analytics.cycle_region_count, 2, "the two cycles share no node — must be 2 regions");
@@ -111,8 +115,7 @@ fn real_maze_two_disjoint_simple_cycles_have_two_cycle_regions() {
 #[test]
 fn two_disjoint_bowtie_clusters_have_nonempty_pure_cycle_core() {
     let g = two_bowtie_clusters();
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     // No bridges: every node has degree >= 2 inside its bowtie, shared edge is on two cycles.
     assert_eq!(analytics.pure_cycle_nav_nodes.len(), 8, "no bridges in a bowtie — all nodes are pure-cycle");
@@ -177,8 +180,7 @@ fn cycle_through_a_single_one_way_edge_is_pure() {
     g.add_bidirectional_edge(0, 3, EdgeKind::Basic);
     g.add_bidirectional_edge(1, 4, EdgeKind::Basic);
     g.add_bidirectional_edge(2, 5, EdgeKind::Basic);
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.pure_cycle_nav_nodes.len(), 3, "all 3 ring nodes lie on the cycle");
     assert_eq!(analytics.cycle_count, 1, "single ring = one independent cycle");
@@ -193,8 +195,7 @@ fn cycle_through_two_one_way_edges_sharing_a_node_is_pure() {
     g.add_edge(0, 1, EdgeKind::Basic); // one-way
     g.add_bidirectional_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 0, EdgeKind::Basic); // one-way
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.pure_cycle_nav_nodes.len(), 3, "all 3 nodes lie on the ring");
     assert_eq!(analytics.cycle_count, 1, "single ring = one independent cycle");
@@ -215,8 +216,7 @@ fn cycle_through_two_nonadjacent_one_way_edges_is_pure() {
     for (ring_node, branch) in (0..5).zip(5..10) {
         g.add_bidirectional_edge(ring_node, branch, EdgeKind::Basic);
     }
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.pure_cycle_nav_nodes.len(), 5, "all 5 ring nodes lie on the cycle");
     assert_eq!(analytics.cycle_count, 1, "single ring = one independent cycle");
@@ -232,8 +232,7 @@ fn opposite_one_ways_converging_on_one_node_form_no_cycle() {
     g.add_edge(2, 1, EdgeKind::Basic); // A3->A2 one-way
     g.add_bidirectional_edge(2, 3, EdgeKind::Basic); // A3<->A4
     g.add_bidirectional_edge(3, 0, EdgeKind::Basic); // A4<->A1
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert!(analytics.pure_cycle_nav_nodes.is_empty(), "convergent one-ways form no cycle");
     assert_eq!(analytics.cycle_count, 0);
@@ -249,8 +248,7 @@ fn opposite_one_ways_into_a_connected_pair_form_no_cycle() {
     g.add_bidirectional_edge(1, 2, EdgeKind::Basic); // A2<->A3
     g.add_edge(4, 3, EdgeKind::Basic); // A5->A4 one-way
     g.add_bidirectional_edge(0, 4, EdgeKind::Basic); // A1<->A5
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert!(analytics.pure_cycle_nav_nodes.is_empty(), "convergent one-ways form no cycle");
     assert_eq!(analytics.cycle_count, 0);
@@ -272,8 +270,7 @@ fn parallel_corridors_between_same_junction_pair_compress_to_two_nav_edges() {
     g.add_bidirectional_edge(5, 1, EdgeKind::Basic); // A<->B via detour 4,5
     g.add_bidirectional_edge(0, 2, EdgeKind::Basic); // branch off A
     g.add_bidirectional_edge(1, 3, EdgeKind::Basic); // branch off B
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.node_count, 4, "detour nodes 4,5 compress away, A,B,branchA,branchB survive");
     assert_eq!(analytics.edge_count, 4, "A-B direct, A-B detour, A-branchA, B-branchB are 4 distinct corridors");
@@ -284,8 +281,7 @@ fn parallel_corridors_between_same_junction_pair_compress_to_two_nav_edges() {
 #[test]
 fn empty_graph_yields_empty_analytics() {
     let g = Graph::new();
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.node_count, 0);
     assert_eq!(analytics.edge_count, 0);
@@ -311,8 +307,7 @@ fn graph_analytics_empty_constructor_yields_all_zero_defaults() {
 fn single_isolated_node_has_no_edges_and_no_cycle() {
     let mut g = Graph::new();
     g.add_node(0);
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.node_count, 1);
     assert_eq!(analytics.edge_count, 0);
@@ -331,8 +326,7 @@ fn self_loop_is_ignored_by_edge_count_and_cycle_metrics() {
     g.add_edge(0, 1, EdgeKind::Basic);
     g.add_edge(1, 2, EdgeKind::Basic);
     g.add_edge(2, 0, EdgeKind::Basic);
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.edge_count, 3, "self-loop must not be counted as a corridor");
     assert_eq!(analytics.cycle_count, 1, "only the real 0->1->2->0 ring counts");
@@ -349,8 +343,7 @@ fn three_disjoint_simple_cycles_have_three_cycle_regions() {
         g.add_edge(base + 1, base + 2, EdgeKind::Basic);
         g.add_edge(base + 2, base, EdgeKind::Basic);
     }
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.cycle_count, 3, "three independent simple cycles");
     assert_eq!(analytics.cycle_region_count, 3, "three disjoint regions, no shared nodes");
@@ -402,8 +395,7 @@ fn two_independent_return_paths_from_a_junction_count_as_two_cycles() {
     g.add_edge(2, 0, EdgeKind::Basic); // C->A
     g.add_edge(1, 3, EdgeKind::Basic); // B->D
     g.add_edge(3, 0, EdgeKind::Basic); // D->A
-    let nav = build_nav_graph(&g);
-    let analytics = compute_graph_analytics(&nav);
+    let analytics = analyze(&g);
 
     assert_eq!(analytics.cycle_count, 2, "two distinct return corridors = two independent cycles");
 }

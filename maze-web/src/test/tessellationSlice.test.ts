@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
-import { baseStoreState, emptyFreePoints, freeFieldEditState } from "./storeTestHelpers";
+import { baseStoreState, emptyFreePoints, freeFieldEditState, hexPredefinedState, trianglePredefinedState } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -290,15 +290,9 @@ describe("mazeStore.setHexOrientation", () => {
   });
 
   it("updates tessellationConfig orientation in predefined mode", () => {
-    useMazeStore.setState({
-      tessellationKind: "hex",
-      hexShape: "parallelogram",
-      squareShape: "rect",
-      triangleShape: "rect",
-      hexOrientation: "flat_top",
+    useMazeStore.setState(hexPredefinedState({
       tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
-      freeFieldPoints: emptyFreePoints(),
-    });
+    }));
     useMazeStore.getState().setHexOrientation("pointy_top");
     const s = useMazeStore.getState();
     expect(s.hexOrientation).toBe("pointy_top");
@@ -325,33 +319,21 @@ describe("mazeStore.setHexOrientation", () => {
   });
 
   it("updates activeTessellationConfig orientation when nodes exist", () => {
-    useMazeStore.setState({
-      tessellationKind: "hex",
-      hexShape: "parallelogram",
-      squareShape: "rect",
-      triangleShape: "rect",
-      hexOrientation: "flat_top",
+    useMazeStore.setState(hexPredefinedState({
       tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
       activeTessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
       nodes: [{ id: 0, x: 0, y: 0 }],
-      freeFieldPoints: emptyFreePoints(),
-    });
+    }));
     useMazeStore.getState().setHexOrientation("pointy_top");
     expect(useMazeStore.getState().activeTessellationConfig).toMatchObject({ type: "hex_parallelogram", orientation: "pointy_top", cols: 8 });
   });
 
   it("does not update activeTessellationConfig when no nodes", () => {
-    useMazeStore.setState({
-      tessellationKind: "hex",
-      hexShape: "parallelogram",
-      squareShape: "rect",
-      triangleShape: "rect",
-      hexOrientation: "flat_top",
+    useMazeStore.setState(hexPredefinedState({
       tessellationConfig: { type: "hex_parallelogram", cols: 5, rows: 5, orientation: "flat_top" },
       activeTessellationConfig: { type: "hex_parallelogram", cols: 5, rows: 5, orientation: "flat_top" },
       nodes: [],
-      freeFieldPoints: emptyFreePoints(),
-    });
+    }));
     const activeBefore = useMazeStore.getState().activeTessellationConfig;
     useMazeStore.getState().setHexOrientation("pointy_top");
     expect(useMazeStore.getState().activeTessellationConfig).toBe(activeBefore);
@@ -379,15 +361,9 @@ describe("mazeStore.setTriOrientation", () => {
   });
 
   it("updates tessellationConfig orientation in predefined mode", () => {
-    useMazeStore.setState({
-      tessellationKind: "triangle",
-      triangleShape: "rect",
-      hexShape: "parallelogram",
-      squareShape: "rect",
-      triOrientation: "r0",
+    useMazeStore.setState(trianglePredefinedState({
       tessellationConfig: { type: "triangle_rect", cols: 10, rows: 10, orientation: "r0" },
-      freeFieldPoints: emptyFreePoints(),
-    });
+    }));
     useMazeStore.getState().setTriOrientation("r180");
     const s = useMazeStore.getState();
     expect(s.triOrientation).toBe("r180");
@@ -415,17 +391,11 @@ describe("mazeStore.setTriOrientation", () => {
   });
 
   it("updates activeTessellationConfig orientation when nodes exist", () => {
-    useMazeStore.setState({
-      tessellationKind: "triangle",
-      triangleShape: "rect",
-      hexShape: "parallelogram",
-      squareShape: "rect",
-      triOrientation: "r0",
+    useMazeStore.setState(trianglePredefinedState({
       tessellationConfig: { type: "triangle_rect", cols: 6, rows: 4, orientation: "r0" },
       activeTessellationConfig: { type: "triangle_rect", cols: 6, rows: 4, orientation: "r0" },
       nodes: [{ id: 0, x: 0, y: 0 }],
-      freeFieldPoints: emptyFreePoints(),
-    });
+    }));
     useMazeStore.getState().setTriOrientation("r90");
     expect(useMazeStore.getState().activeTessellationConfig).toMatchObject({ type: "triangle_rect", orientation: "r90", cols: 6 });
   });

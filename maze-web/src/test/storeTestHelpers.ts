@@ -69,3 +69,41 @@ export function freeFieldEditState(kind: "square" | "hex" | "triangle", pts: Set
     triOrientation: "r0" as const,
   };
 }
+
+/** State for hex-predefined-mode orientation tests: hexShape=parallelogram, other shapes=rect. */
+export function hexPredefinedState(extra?: Record<string, unknown>) {
+  return {
+    tessellationKind: "hex" as const,
+    hexShape: "parallelogram" as const,
+    squareShape: "rect" as const,
+    triangleShape: "rect" as const,
+    hexOrientation: "flat_top" as const,
+    freeFieldPoints: emptyFreePoints(),
+    ...extra,
+  };
+}
+
+/** State for triangle-predefined-mode orientation tests: triangleShape=rect, other shapes=rect/parallelogram. */
+export function trianglePredefinedState(extra?: Record<string, unknown>) {
+  return {
+    tessellationKind: "triangle" as const,
+    triangleShape: "rect" as const,
+    hexShape: "parallelogram" as const,
+    squareShape: "rect" as const,
+    triOrientation: "r0" as const,
+    freeFieldPoints: emptyFreePoints(),
+    ...extra,
+  };
+}
+
+/** Resets generateMaze/computeAnalytics/initWasm mocks to their default working state. Call in beforeEach. */
+export function resetGenerationMocks<TGenerate extends { mockReset: () => void }, TAnalytics extends { mockReset: () => void; mockReturnValue: (v: typeof mockSnapshot) => unknown }, TWasm extends { mockResolvedValue: (v: undefined) => unknown }>(
+  generateMaze: TGenerate,
+  computeAnalytics: TAnalytics,
+  initWasm: TWasm,
+) {
+  generateMaze.mockReset();
+  computeAnalytics.mockReset();
+  computeAnalytics.mockReturnValue(mockSnapshot);
+  initWasm.mockResolvedValue(undefined);
+}

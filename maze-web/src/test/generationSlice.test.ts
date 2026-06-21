@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
-import { baseStoreState, emptyFreePoints, mockSnapshot } from "./storeTestHelpers";
+import { baseStoreState, emptyFreePoints, mockSnapshot, resetGenerationMocks } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -18,10 +18,7 @@ import { initWasm } from "../wasm/wasmLoader";
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
-  vi.mocked(generateMaze).mockReset();
-  vi.mocked(computeAnalytics).mockReset();
-  vi.mocked(computeAnalytics).mockReturnValue(mockSnapshot);
-  vi.mocked(initWasm).mockResolvedValue(undefined);
+  resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
 });
 
 describe("mazeStore.generate", () => {
