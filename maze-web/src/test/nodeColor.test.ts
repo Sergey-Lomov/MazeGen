@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { nodeColor } from "../pixi/MazeRenderer";
+import { nodeColor } from "../pixi/BaseGraphRenderer";
 import { NODE_COLOR, NODE_SELECTED_COLOR, NODE_START_COLOR, NODE_FINISH_COLOR } from "../pixi/colorUtils";
 
 vi.mock("pixi.js", () => {
