@@ -2,6 +2,8 @@
 import { Save, FolderOpen, Maximize2 } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { HoverIconButton } from "./HoverIconButton";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
 import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
@@ -13,41 +15,11 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
-import { colors, font } from "../styles/theme";
+import { colors } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { useLocale } from "../i18n/useLocale";
-import type { Locale } from "../i18n/useLocale";
 import * as m from "~/paraglide/messages";
 
-function LanguageSwitcher() {
-  const { locale, setLocale, availableLocales } = useLocale();
-  return (
-    <select
-      value={locale}
-      onChange={(e) => setLocale(e.target.value as Locale)}
-      style={langSwitcherStyles.select}
-    >
-      {availableLocales.map((lang) => (
-        <option key={lang} value={lang}>{lang.toUpperCase()}</option>
-      ))}
-    </select>
-  );
-}
-
-const langSwitcherStyles: Record<string, React.CSSProperties> = {
-  select: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textMuted,
-    fontSize: font.sm,
-    padding: "4px 6px",
-    borderRadius: 3,
-    cursor: "pointer",
-    alignSelf: "stretch",
-  },
-};
-
-function computeFieldStatus(
+export function computeFieldStatus(
   tessellationConfirmed: boolean,
   fieldEditMode: "default" | "custom",
   fieldPoints: Set<number>,
@@ -59,7 +31,7 @@ function computeFieldStatus(
   return "set";
 }
 
-function presetConnectionsSubtitle(
+export function presetConnectionsSubtitle(
   presetConnections: Map<string, unknown>,
   invalidCount: number,
   markerCount: number,
@@ -73,13 +45,33 @@ function presetConnectionsSubtitle(
   return base;
 }
 
-function getTessellationKindLabel(kind: TessellationKind): string {
+export function getTessellationKindLabel(kind: TessellationKind): string {
   const labels: Record<TessellationKind, () => string> = {
     square: m["tessellation.square"],
     hex: m["tessellation.hex"],
     triangle: m["tessellation.triangle"],
   };
   return labels[kind]();
+}
+
+export interface AnalyticsCardData {
+  status: FeatureStatus;
+  comment: string;
+  subtitle?: string;
+}
+
+export function computeAnalyticsCard(hasNodes: boolean, warningsCount: number): AnalyticsCardData {
+  if (!hasNodes) return { status: "unavailable", comment: m["status.no_maze"]() };
+  if (warningsCount > 0) {
+    return {
+      status: "warning",
+      comment: m["status.post_edit_has_issues"](),
+      subtitle: warningsCount === 1
+        ? m["status.analytics_issues"]({ count: warningsCount })
+        : m["status.analytics_issues_plural"]({ count: warningsCount }),
+    };
+  }
+  return { status: "set", comment: m["status.analytics_available"]() };
 }
 
 export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
@@ -197,6 +189,8 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     ? m["status.presets_configured"]()
     : m["status.no_presets"]();
 
+  const analyticsCard = computeAnalyticsCard(nodes.length > 0, (postEditAnalytics?.warnings ?? generatedWarnings).length);
+
   return (
     <div style={styles.panel}>
       <FeatureCard
@@ -263,54 +257,22 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
       >
         <PostEditFeature />
       </FeatureCard>
-      {(() => {
-        const activeWarnings = postEditAnalytics?.warnings ?? generatedWarnings;
-        const wCount = activeWarnings.length;
-        const analyticsStatus: FeatureStatus = nodes.length === 0 ? "unavailable" : wCount > 0 ? "warning" : "set";
-        const analyticsComment = nodes.length === 0
-          ? m["status.no_maze"]()
-          : wCount > 0 ? m["status.post_edit_has_issues"]()
-          : m["status.analytics_available"]();
-        const analyticsSubtitle = wCount > 0
-          ? (wCount === 1 ? m["status.analytics_issues"]({ count: wCount }) : m["status.analytics_issues_plural"]({ count: wCount }))
-          : undefined;
-        return (
-          <FeatureCard
-            title={m["analytics.title"]()}
-            status={analyticsStatus}
-            comment={analyticsComment}
-            subtitle={analyticsSubtitle}
-            expanded={openCard === "analytics"}
-            onOpen={() => handleToggle("analytics")}
-          >
-            <AnalyticsFeature />
-          </FeatureCard>
-        );
-      })()}
+      <FeatureCard
+        title={m["analytics.title"]()}
+        status={analyticsCard.status}
+        comment={analyticsCard.comment}
+        subtitle={analyticsCard.subtitle}
+        expanded={openCard === "analytics"}
+        onOpen={() => handleToggle("analytics")}
+      >
+        <AnalyticsFeature />
+      </FeatureCard>
       <div style={styles.footer}>
         <LanguageSwitcher />
         <div style={styles.footerRight}>
-          <button
-            onClick={handleSave}
-            style={styles.refitButton}
-            title={m["project.save"]()}
-            onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
-            onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
-          ><Save size={16} /></button>
-          <button
-            onClick={handleLoadClick}
-            style={styles.refitButton}
-            title={m["project.load"]()}
-            onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
-            onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
-          ><FolderOpen size={16} /></button>
-          <button
-            onClick={onRefit}
-            style={styles.refitButton}
-            title="Fit to screen"
-            onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
-            onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
-          ><Maximize2 size={16} /></button>
+          <HoverIconButton onClick={handleSave} title={m["project.save"]()}><Save size={16} /></HoverIconButton>
+          <HoverIconButton onClick={handleLoadClick} title={m["project.load"]()}><FolderOpen size={16} /></HoverIconButton>
+          <HoverIconButton onClick={onRefit} title="Fit to screen"><Maximize2 size={16} /></HoverIconButton>
         </div>
         <input
           ref={fileInputRef}
@@ -345,18 +307,5 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: 4,
     alignItems: "center",
-  },
-  refitButton: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    borderRadius: 3,
-    color: colors.textMuted,
-    fontSize: font.xl,
-    cursor: "pointer",
-    padding: "4px 6px",
-    lineHeight: "normal",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
   },
 };
