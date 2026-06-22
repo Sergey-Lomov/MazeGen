@@ -14,6 +14,8 @@ pub struct PresetState {
     pub locked_in:  HashSet<NodeId>,
     /// Nodes already connected by preset Passage/OneWay edges — treated as visited at generation start.
     pub preset_connected: BTreeSet<NodeId>,
+    /// Directed edges established by preset Passage/OneWay connections — must not be removed by repair.
+    pub preset_edges: HashSet<(NodeId, NodeId)>,
 }
 
 impl PresetState {
@@ -23,6 +25,7 @@ impl PresetState {
             locked_out:      HashSet::new(),
             locked_in:       HashSet::new(),
             preset_connected: BTreeSet::new(),
+            preset_edges:    HashSet::new(),
         }
     }
 }
@@ -39,6 +42,7 @@ pub fn build_preset_state<T: Tessellation>(
     let mut locked_out:       HashSet<NodeId> = HashSet::new();
     let mut locked_in:        HashSet<NodeId> = HashSet::new();
     let mut preset_connected: BTreeSet<NodeId> = BTreeSet::new();
+    let mut preset_edges: HashSet<(NodeId, NodeId)> = HashSet::new();
 
     for preset in preset_connections {
         let from_pt = xy_to_point(preset.from.0, preset.from.1);
@@ -56,18 +60,22 @@ pub fn build_preset_state<T: Tessellation>(
                 graph.add_edge(to_id, from_id, EdgeKind::Basic);
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
+                preset_edges.insert((from_id, to_id));
+                preset_edges.insert((to_id, from_id));
             }
             PresetConnectionState::OneWayForward => {
                 graph.add_edge(from_id, to_id, EdgeKind::Basic);
                 blocked.insert((to_id, from_id));
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
+                preset_edges.insert((from_id, to_id));
             }
             PresetConnectionState::OneWayBackward => {
                 graph.add_edge(to_id, from_id, EdgeKind::Basic);
                 blocked.insert((from_id, to_id));
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
+                preset_edges.insert((to_id, from_id));
             }
         }
     }
@@ -82,7 +90,7 @@ pub fn build_preset_state<T: Tessellation>(
         }
     }
 
-    PresetState { blocked, locked_out, locked_in, preset_connected }
+    PresetState { blocked, locked_out, locked_in, preset_connected, preset_edges }
 }
 
 #[cfg(test)]

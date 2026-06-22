@@ -51,9 +51,11 @@ pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
 ```rust
 pub trait RepairStrategy<F: Field> {
     fn params(&self) -> &'static [StrategyParam] { &[] }
-    fn apply(&self, issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, params: &StrategyParams) -> RepairResult;
+    fn apply(&self, issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState) -> RepairResult;
 }
 ```
+
+- `preset_state` carries the same `PresetState` built before generation (`blocked`, `locked_out`, `locked_in`, `preset_connected`, `preset_edges`). Strategies that mutate edges must not remove a directed edge present in `preset_state.preset_edges` — those are Passage/OneWay connections the user placed explicitly. Strategies that don't touch edges (e.g. the endpoint strategies) ignore this parameter.
 
 - `params()` returns the descriptor slice for this strategy's configurable parameters. Default impl returns empty slice.
 - Receives `rng` from the caller — must not create its own RNG instances.
@@ -81,6 +83,7 @@ impl<F: Field> RepairEngine<F> {
         issues: &[Issue],
         maze: &mut Maze<F>,
         rng: &mut impl RngCore,
+        preset_state: &PresetState,
     ) -> Vec<(IssueKind, RepairResult)>;
 }
 ```
@@ -151,7 +154,8 @@ Handles `MIN_LOOP_LENGTH`. Breaks each simple cycle found by `MinLoopLengthCheck
 
 - If `issue.data` is `Some(IssueData::ShortLoops(cycles))`: cuts directly from the resolved `Vec<Vec<EdgeId>>`. An empty outer `Vec` is valid — nothing to break, returns `Fixed` immediately.
 - If `data` is missing or the wrong variant: this is a malformed call (should never happen in a normal pipeline run, where the check always attaches data) — returns `Failed`, not "already fixed".
-- For each cycle: filters candidates to edges still present in the graph (`Graph::edge(id).is_some()` — an earlier cut in the same `apply` may have already broken a cycle sharing an edge with this one), then removes one random survivor plus its reverse (`Graph::edge_between(to, from)`), if any.
+- For each cycle: filters candidates to edges still present in the graph (`Graph::edge(id).is_some()` — an earlier cut in the same `apply` may have already broken a cycle sharing an edge with this one) **and not in `preset_state.preset_edges`** — preset Passage/OneWay connections are never removed, filtered out upfront so the random pick never wastes a sample on a protected edge.
+- Picks one random survivor from the filtered candidates and removes it via `try_remove_edge` (which re-checks `preset_state` as a final guard) plus its reverse (`Graph::edge_between(to, from)`, also via `try_remove_edge`), if any. If `try_remove_edge` ever refuses (defensive — shouldn't happen given the upfront filter), the candidate is dropped and another is picked at random; this repeats until either a cut succeeds or no candidates remain for that cycle.
 - **Accepted imprecision, not fully solved**: removing an edge can invalidate another cycle in the same batch through subtler graph changes than a shared `EdgeId` (e.g. corridor re-compression). The existence check only catches the shared-edge case; it does not re-validate every remaining cycle entry. Acceptable for a `Random` strategy — a smarter variant that recomputes between cuts is a separate future task if needed.
 - **Does not guard connectivity or bridge status**: a cut may disconnect the maze, surfacing as `UnreachableFinish`/`MissingEndpoints` on the next QC pass. Deliberately not handled here — the pipeline's fixpoint loop (`build_maze`, up to `MAX_REPAIR_ITERATIONS`) already exists for exactly this kind of cascading repair, via the already-registered endpoint strategies.
 - **No candidate weighting** (segment length, multi-cycle membership, etc.) — the name `Random` is deliberate. A smarter strategy on the same issue kind (à la `RandomEndpointsStrategy` vs `ScoredEndpointsStrategy`) is a separate future task.
@@ -170,6 +174,7 @@ pub fn build_maze<F: Field>(
     seed: u64,
     qc_engine: QualityControlEngine<F>,
     repair_engine: RepairEngine<F>,
+    preset_state: &PresetState,
 ) -> (Maze<F>, Vec<Issue>)
 ```
 
@@ -190,7 +195,7 @@ Logic:
    - If no active issues: break (all resolved).
    - Compute fingerprint: sorted list of active `IssueKind` values.
    - If fingerprint equals previous: break (no progress possible).
-   - Run repair on active issues.
+   - Run repair on active issues, passing through `preset_state`.
    - Add `Failed` results to `failed` set.
 6. Final QC: return `(maze, remaining_issues)`.
 

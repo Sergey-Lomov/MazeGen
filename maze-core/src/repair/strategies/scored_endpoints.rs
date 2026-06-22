@@ -8,6 +8,7 @@ use crate::quality_control::Issue;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
+use crate::generation::PresetState;
 
 pub const PARAM_PATH_WEIGHT: &str = "path_weight";
 pub const PARAM_JUNCTION_WEIGHT: &str = "junction_weight";
@@ -44,6 +45,7 @@ impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
         maze: &mut Maze<T>,
         _rng: &mut dyn RngCore,
         params: &StrategyParams,
+        _preset_state: &PresetState,
     ) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
             return RepairResult::Fixed { score: None };

@@ -5,6 +5,7 @@ use crate::{Graph, Maze};
 use crate::space::{Field, Tessellation};
 use crate::quality_control::{IssueKind, QualityControlEngine};
 use crate::repair::{RepairEngine, RepairResult};
+use super::PresetState;
 
 pub const MAX_REPAIR_ITERATIONS: usize = 8;
 
@@ -14,6 +15,7 @@ pub fn build_maze<T: Tessellation>(
     seed: u64,
     qc_engine: QualityControlEngine<T>,
     repair_engine: RepairEngine<T>,
+    preset_state: &PresetState,
 ) -> (Maze<T>, Vec<crate::quality_control::Issue>) {
     let mut maze = Maze::new(field, graph);
     let mut rng = SmallRng::seed_from_u64(seed);
@@ -41,7 +43,7 @@ pub fn build_maze<T: Tessellation>(
         }
         previous_fingerprint = Some(fingerprint);
 
-        let results = repair_engine.run(&active, &mut maze, &mut rng);
+        let results = repair_engine.run(&active, &mut maze, &mut rng, preset_state);
         for (kind, result) in &results {
             match result {
                 RepairResult::Failed => { failed.insert(*kind); }

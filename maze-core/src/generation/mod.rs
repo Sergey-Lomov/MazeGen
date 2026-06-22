@@ -252,6 +252,22 @@ pub(crate) fn try_add_edge(
     }
 }
 
+/// try_remove_edge: respects PresetState before removing a directed edge.
+/// Returns true if the edge was removed, false if it is protected by a preset connection.
+pub(crate) fn try_remove_edge(
+    graph: &mut Graph,
+    from: NodeId,
+    to: NodeId,
+    preset_state: &PresetState,
+) -> bool {
+    if preset_state.preset_edges.contains(&(from, to)) {
+        return false;
+    }
+    let Some(id) = graph.edge_between(from, to) else { return false; };
+    graph.remove_edge(id);
+    true
+}
+
 #[cfg(test)]
 pub(crate) mod test_utils {
     use crate::graph::Graph;

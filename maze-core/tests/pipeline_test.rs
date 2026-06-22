@@ -33,7 +33,7 @@ fn make_generated_graph(seed: u64) -> (Field<SquareTessellation>, Graph) {
 fn pipeline_assigns_start_and_finish() {
     let (field, graph) = make_generated_graph(42);
     let (qc, repair) = make_engines();
-    let (maze, warnings) = build_maze(field, graph, 42, qc, repair);
+    let (maze, warnings) = build_maze(field, graph, 42, qc, repair, &PresetState::empty());
     assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
@@ -46,7 +46,7 @@ fn pipeline_deterministic() {
     let run = || {
         let (field, graph) = make_generated_graph(seed);
         let (qc, repair) = make_engines();
-        let (maze, _) = build_maze(field, graph, seed, qc, repair);
+        let (maze, _) = build_maze(field, graph, seed, qc, repair, &PresetState::empty());
         (maze.meta.start, maze.meta.finish)
     };
     let (s1, f1) = run();
@@ -60,7 +60,7 @@ fn pipeline_warns_when_no_strategy_for_issue() {
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck)]);
     let repair: RepairEngine<SquareTessellation> = RepairEngine::new(HashMap::new(), HashMap::new());
-    let (_, warnings) = build_maze(field, graph, 1, qc, repair);
+    let (_, warnings) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
     assert!(!warnings.is_empty());
 }
 
@@ -73,7 +73,7 @@ fn pipeline_warns_when_strategy_always_fails() {
 
     struct AlwaysFail;
     impl RepairStrategy<SquareTessellation> for AlwaysFail {
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &StrategyParams) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
             RepairResult::Failed
         }
     }
@@ -83,7 +83,7 @@ fn pipeline_warns_when_strategy_always_fails() {
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(AlwaysFail));
     let repair = RepairEngine::new(strategies, HashMap::new());
-    let (_, warnings) = build_maze(field, graph, 1, qc, repair);
+    let (_, warnings) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
     assert!(!warnings.is_empty());
 }
 
@@ -100,7 +100,7 @@ fn pipeline_deduplicates_issues_from_duplicate_checks() {
         count: Arc<AtomicUsize>,
     }
     impl RepairStrategy<SquareTessellation> for CountingStrategy {
-        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &StrategyParams) -> RepairResult {
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
             self.count.fetch_add(1, Ordering::SeqCst);
             let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
             nodes.sort_unstable();
@@ -119,7 +119,7 @@ fn pipeline_deduplicates_issues_from_duplicate_checks() {
     strategies.insert(MISSING_ENDPOINTS, Box::new(CountingStrategy { count: Arc::clone(&call_count) }));
     let repair = RepairEngine::new(strategies, HashMap::new());
 
-    let (_, warnings) = build_maze(field, graph, 1, qc, repair);
+    let (_, warnings) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
     assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     assert_eq!(call_count.load(Ordering::SeqCst), 1, "strategy called more than once for duplicate issue");
 }
@@ -145,7 +145,7 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
     strategies.insert(MIN_LOOP_LENGTH, Box::new(MinLoopLengthRandomStrategy));
     let repair = RepairEngine::new(strategies, HashMap::new());
 
-    let (_, remaining) = build_maze(field, graph, 1, qc, repair);
+    let (_, remaining) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
     assert!(!remaining.iter().any(|i| i.kind == MIN_LOOP_LENGTH),
         "short loop must be resolved by the pipeline: {:?}", remaining);
 }

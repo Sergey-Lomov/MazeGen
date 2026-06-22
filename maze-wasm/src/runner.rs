@@ -97,7 +97,7 @@ pub fn run_generate<T: Tessellation>(
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<T>(config)?;
 
-    let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine);
+    let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state);
 
     if let Some([fx, fy]) = config.preset_finish {
         if let Some(finish_id) = maze.field.all_points()

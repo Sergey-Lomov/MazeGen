@@ -3,6 +3,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::issue::{Issue, IssueKind};
+use crate::generation::PresetState;
 use super::params::{build_params, StrategyParams};
 use super::result::RepairResult;
 use super::strategy::RepairStrategy;
@@ -25,13 +26,14 @@ impl<T: Tessellation> RepairEngine<T> {
         issues: &[Issue],
         maze: &mut Maze<T>,
         rng: &mut impl RngCore,
+        preset_state: &PresetState,
     ) -> Vec<(IssueKind, RepairResult)> {
         let mut results = Vec::new();
         for issue in issues {
             if let Some(strategy) = self.strategies.get(&issue.kind) {
                 let overrides = self.param_overrides.get(&issue.kind);
                 let params: StrategyParams = build_params(strategy.params(), overrides);
-                let result = strategy.apply(issue, maze, rng, &params);
+                let result = strategy.apply(issue, maze, rng, &params, preset_state);
                 results.push((issue.kind, result));
             }
         }

@@ -25,7 +25,7 @@ fn main() {
     strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
     let repair_engine = RepairEngine::new(strategies, HashMap::new());
 
-    let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine);
+    let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine, &PresetState::empty());
     if !warnings.is_empty() {
         eprintln!("warnings: {:?}", warnings.iter().map(|i| i.kind).collect::<Vec<_>>());
     }
