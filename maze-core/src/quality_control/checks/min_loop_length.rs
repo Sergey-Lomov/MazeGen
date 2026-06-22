@@ -14,6 +14,7 @@ pub struct MinLoopLengthCheck {
 impl<T: Tessellation> Check<T> for MinLoopLengthCheck {
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+        let nav = &nav;
         let cycles = find_all_simple_cycles(nav);
         let cycles = dedup_bidirectional_pairs(nav, cycles);
 

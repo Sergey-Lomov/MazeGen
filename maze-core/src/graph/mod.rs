@@ -34,6 +34,7 @@ pub struct Graph {
     edges: Vec<Option<Edge>>,
     outgoing: HashMap<NodeId, Vec<EdgeId>>,
     incoming: HashMap<NodeId, Vec<EdgeId>>,
+    version: u64,
 }
 
 impl Graph {
@@ -43,7 +44,16 @@ impl Graph {
             edges: Vec::new(),
             outgoing: HashMap::new(),
             incoming: HashMap::new(),
+            version: 0,
         }
+    }
+
+    /// Bumped on every edge insertion/removal that actually changes the edge set. Lets cache
+    /// layers (`MazeAnalysis`) detect that previously cached derived data is stale, instead of
+    /// relying on callers to remember to invalidate by hand. Node additions don't bump it —
+    /// they can't make a cached cycle/nav-graph result wrong, only edges can.
+    pub fn version(&self) -> u64 {
+        self.version
     }
 
     pub fn add_node(&mut self, id: NodeId) {
@@ -62,6 +72,7 @@ impl Graph {
         self.edges.push(Some(Edge { id, from, to, kind }));
         self.outgoing.entry(from).or_default().push(id);
         self.incoming.entry(to).or_default().push(id);
+        self.version += 1;
         id
     }
 
@@ -75,6 +86,7 @@ impl Graph {
         if let Some(edge) = self.edges[id].take() {
             self.outgoing.entry(edge.from).and_modify(|v| v.retain(|&e| e != id));
             self.incoming.entry(edge.to).and_modify(|v| v.retain(|&e| e != id));
+            self.version += 1;
         }
     }
 

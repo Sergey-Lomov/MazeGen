@@ -1,6 +1,7 @@
 pub mod random_endpoints;
 pub mod farthest_endpoints;
 pub mod scored_endpoints;
+mod cycle_cut_set;
 pub mod min_loop_length_random;
 pub mod min_loop_length_scored;
 

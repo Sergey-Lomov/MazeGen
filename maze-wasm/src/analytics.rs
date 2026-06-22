@@ -69,13 +69,14 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let meta_start  = maze.meta.start.and_then(|id| u32::try_from(id).ok());
     let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
 
-    let graph_analytics = compute_graph_analytics(maze.analysis.nav_graph(&maze.graph, &maze.meta));
+    let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+    let graph_analytics = compute_graph_analytics(&nav);
 
-    let nav_nodes: Vec<NavNodeDto> = maze.analysis.nav_graph(&maze.graph, &maze.meta).nodes.iter()
+    let nav_nodes: Vec<NavNodeDto> = nav.nodes.iter()
         .filter_map(|n| u32::try_from(n.node_id).ok().map(|id| NavNodeDto { node_id: id }))
         .collect();
 
-    let nav_edges: Vec<NavEdgeDto> = maze.analysis.nav_graph(&maze.graph, &maze.meta).edges()
+    let nav_edges: Vec<NavEdgeDto> = nav.edges()
         .filter_map(|e| {
             let from = u32::try_from(e.from).ok()?;
             let to   = u32::try_from(e.to).ok()?;
@@ -84,27 +85,21 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         })
         .collect();
 
-    let pure_cycle_node_ids: Vec<u32> = {
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        graph_analytics.pure_cycle_nav_nodes.iter()
-            .filter_map(|&nav_id| nav.nodes.get(nav_id))
-            .filter_map(|n| u32::try_from(n.node_id).ok())
-            .collect()
-    };
+    let pure_cycle_node_ids: Vec<u32> = graph_analytics.pure_cycle_nav_nodes.iter()
+        .filter_map(|&nav_id| nav.nodes.get(nav_id))
+        .filter_map(|n| u32::try_from(n.node_id).ok())
+        .collect();
 
-    let pure_cycle_edge_pairs: Vec<[u32; 2]> = {
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        graph_analytics.pure_cycle_edge_indices.iter()
-            .filter_map(|&idx| {
-                let edge = nav.edge_by_idx(idx);
-                let from_node = nav.nodes.get(edge.from)?.node_id;
-                let to_node   = nav.nodes.get(edge.to)?.node_id;
-                let from = u32::try_from(from_node).ok()?;
-                let to   = u32::try_from(to_node).ok()?;
-                Some([from, to])
-            })
-            .collect()
-    };
+    let pure_cycle_edge_pairs: Vec<[u32; 2]> = graph_analytics.pure_cycle_edge_indices.iter()
+        .filter_map(|&idx| {
+            let edge = nav.edge_by_idx(idx);
+            let from_node = nav.nodes.get(edge.from)?.node_id;
+            let to_node   = nav.nodes.get(edge.to)?.node_id;
+            let from = u32::try_from(from_node).ok()?;
+            let to   = u32::try_from(to_node).ok()?;
+            Some([from, to])
+        })
+        .collect();
 
     let scc = maze.analysis.scc(&maze.graph);
     let node_component: HashMap<u32, usize> = scc.components.iter()

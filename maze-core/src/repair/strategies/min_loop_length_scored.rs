@@ -8,6 +8,7 @@ use crate::generation::{PresetState, try_remove_edge};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
+use super::cycle_cut_set::{edge_to_cycles_map, discard_cycles_with_edge, candidate_edges};
 
 pub const PARAM_SHORT_OVERLAP_WEIGHT: &str = "short_overlap_weight";
 pub const PARAM_OTHER_OVERLAP_WEIGHT: &str = "other_overlap_weight";
@@ -73,9 +74,14 @@ impl<T: Tessellation> RepairStrategy<T> for MinLoopLengthScoredStrategy {
             }
         }
 
-        for &cycle_idx in short {
-            let Some(cycle) = all.get(cycle_idx) else { continue };
-            apply_cut(cycle, &overlap, short_overlap_weight, other_overlap_weight, maze, rng, preset_state);
+        let owners = edge_to_cycles_map(all);
+        let mut pending: Vec<usize> = short.to_vec();
+
+        while let Some(idx) = pending.pop() {
+            let Some(cycle) = all.get(idx) else { continue };
+            if let Some(cut) = apply_cut(cycle, &overlap, short_overlap_weight, other_overlap_weight, maze, rng, preset_state) {
+                discard_cycles_with_edge(&mut pending, &owners, cut);
+            }
         }
 
         RepairResult::Fixed { score: None }
@@ -89,6 +95,8 @@ fn score(short_overlap: u32, other_overlap: u32, short_overlap_weight: f64, othe
     short_overlap as f64 * short_overlap_weight - other_overlap as f64 * other_overlap_weight
 }
 
+/// Returns the cut edge's id on success, so the caller can drop any other pending cycle that
+/// shares it (see `discard_cycles_with_edge`) — `None` means every candidate was protected.
 fn apply_cut<T: Tessellation>(
     cycle: &[EdgeId],
     overlap: &HashMap<EdgeId, (u32, u32)>,
@@ -97,15 +105,9 @@ fn apply_cut<T: Tessellation>(
     maze: &mut Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
-) {
+) -> Option<EdgeId> {
     // Drop preset-protected and already-cut edges upfront, same as MinLoopLengthRandomStrategy.
-    let mut candidates: Vec<EdgeId> = cycle.iter().copied()
-        .filter(|&id| maze.graph.edge(id).is_some())
-        .filter(|&id| {
-            let edge = maze.graph.edge(id).expect("checked above");
-            !preset_state.preset_edges.contains(&(edge.from, edge.to))
-        })
-        .collect();
+    let mut candidates = candidate_edges(cycle, maze, preset_state);
 
     while !candidates.is_empty() {
         // This cycle's own membership counts toward `short_overlap`/`other_overlap` too — it's
@@ -133,11 +135,12 @@ fn apply_cut<T: Tessellation>(
         };
         if try_remove_edge(&mut maze.graph, from, to, preset_state) {
             try_remove_edge(&mut maze.graph, to, from, preset_state);
-            return;
+            return Some(cut);
         }
         // Protected after all (shouldn't happen given the upfront filter, but stay defensive).
         candidates.swap_remove(pick);
     }
+    None
 }
 
 #[cfg(test)]
@@ -216,6 +219,31 @@ mod tests {
 
             let fresh = Maze::<SquareTessellation>::new(maze_try.field, maze_try.graph);
             assert!(!check_finds_short_loop(&fresh), "seed {seed}: both triangles must be broken by one cut");
+        }
+    }
+
+    #[test]
+    fn cutting_a_shared_edge_spares_the_other_cycle_from_a_second_cut() {
+        // Same bowtie as above: node D has exactly two edges (B->D, D->A), both belonging only
+        // to the second triangle. Cutting the shared A->B already breaks both triangles, so the
+        // second triangle must be dropped from the pending set rather than also losing one of
+        // D's two edges — that would leave D with degree 0, fully cut off from the graph.
+        let maze = maze_with_shared_edge_triangles();
+        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let mut issues = Vec::new();
+        check.check(&maze, &mut issues);
+        let issue = issues.into_iter().next().unwrap();
+
+        let nodes = shared_edge_triangle_nodes(&maze.field);
+        let d = nodes[3];
+
+        for seed in 0..20 {
+            let mut maze_try = maze_with_shared_edge_triangles();
+            let mut rng = SmallRng::seed_from_u64(seed);
+            let result = MinLoopLengthScoredStrategy.apply(&issue, &mut maze_try, &mut rng, &no_params(), &PresetState::empty());
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+            let d_degree = maze_try.graph.edges().filter(|e| e.from == d || e.to == d).count();
+            assert!(d_degree > 0, "seed {seed}: D must keep at least one edge — it must not be fully cut off");
         }
     }
 

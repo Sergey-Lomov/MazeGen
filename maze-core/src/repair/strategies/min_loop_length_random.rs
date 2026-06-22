@@ -7,6 +7,7 @@ use crate::generation::{PresetState, try_remove_edge};
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
+use super::cycle_cut_set::{edge_to_cycles_map, discard_cycles_with_edge, candidate_edges};
 
 pub struct MinLoopLengthRandomStrategy;
 
@@ -27,40 +28,43 @@ impl<T: Tessellation> RepairStrategy<T> for MinLoopLengthRandomStrategy {
         let Some(IssueData::ShortLoops { all, short }) = &issue.data else {
             return RepairResult::Failed;
         };
-        let cycles: Vec<&Vec<EdgeId>> = short.iter().filter_map(|&idx| all.get(idx)).collect();
-        apply_cuts(&cycles, maze, rng, preset_state)
+        apply_cuts(all, short, maze, rng, preset_state)
     }
 }
 
 fn apply_cuts<T: Tessellation>(
-    cycles: &[&Vec<EdgeId>],
+    all: &[Vec<EdgeId>],
+    short: &[usize],
     maze: &mut Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
 ) -> RepairResult {
-    for cycle in cycles {
-        // Drop preset-protected edges upfront so the random pick never wastes a sample on them.
-        let mut candidates: Vec<EdgeId> = cycle.iter().copied()
-            .filter(|&id| maze.graph.edge(id).is_some()) // already broken by an earlier cut in this apply?
-            .filter(|&id| {
-                let edge = maze.graph.edge(id).expect("checked above");
-                !preset_state.preset_edges.contains(&(edge.from, edge.to))
-            })
-            .collect();
+    let owners = edge_to_cycles_map(all);
+    let mut pending: Vec<usize> = short.to_vec();
+
+    while let Some(idx) = pending.pop() {
+        let Some(cycle) = all.get(idx) else { continue };
+        // Drop preset-protected and already-cut edges upfront so the random pick never wastes a sample on them.
+        let mut candidates = candidate_edges(cycle, maze, preset_state);
 
         while !candidates.is_empty() {
-            let idx = rng.random_range(0..candidates.len());
-            let cut = candidates[idx];
+            let pick = rng.random_range(0..candidates.len());
+            let cut = candidates[pick];
             let (from, to) = {
                 let edge = maze.graph.edge(cut).expect("checked above");
                 (edge.from, edge.to)
             };
             if try_remove_edge(&mut maze.graph, from, to, preset_state) {
+                let reverse = maze.graph.edge_between(to, from);
                 try_remove_edge(&mut maze.graph, to, from, preset_state);
+                discard_cycles_with_edge(&mut pending, &owners, cut);
+                if let Some(reverse_id) = reverse {
+                    discard_cycles_with_edge(&mut pending, &owners, reverse_id);
+                }
                 break;
             }
             // Protected after all (shouldn't happen given the upfront filter, but stay defensive) — retry with another edge.
-            candidates.swap_remove(idx);
+            candidates.swap_remove(pick);
         }
     }
     RepairResult::Fixed { score: None }
@@ -192,6 +196,50 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(99);
         let result = MinLoopLengthRandomStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
+    }
+
+    #[test]
+    fn cutting_a_shared_edge_spares_the_other_cycle_from_a_second_cut() {
+        // Bowtie sharing edge A->B between two triangles: A->B->C->A and A->B->D->A. Node D has
+        // exactly two edges total (B->D in, D->A out), both belonging only to the second
+        // triangle. Without the fix, both triangles are processed independently and each cuts
+        // one edge of its own cycle — if the first triangle's cut happens to land on A->B (shared)
+        // and the second triangle is *also* processed (not yet discarded), it would cut one of
+        // D's two edges too, even though A->B alone already broke both cycles. Two cuts touching
+        // D's only two edges across both triangles would leave D with degree 0 — fully cut off
+        // from the graph. The fix must ensure the second triangle is dropped from the pending set
+        // once A->B is cut, so D keeps at least one of its two edges.
+        fn build() -> Maze<SquareTessellation> {
+            let mut ids = IdGenerator::new();
+            let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+            let mut g = Graph::new();
+            field.build_nodes(&mut g);
+            let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+            g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared)
+            g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C
+            g.add_edge(nodes[2], nodes[0], EdgeKind::Basic); // C->A
+            g.add_edge(nodes[1], nodes[3], EdgeKind::Basic); // B->D
+            g.add_edge(nodes[3], nodes[0], EdgeKind::Basic); // D->A
+            Maze::new(field, g)
+        }
+
+        let maze = build();
+        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let mut issues = Vec::new();
+        check.check(&maze, &mut issues);
+        let issue = issues.into_iter().next().unwrap();
+
+        let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+        let d = nodes[3];
+
+        for seed in 0..20 {
+            let mut maze_try = build();
+            let mut rng = SmallRng::seed_from_u64(seed);
+            let result = MinLoopLengthRandomStrategy.apply(&issue, &mut maze_try, &mut rng, &no_params(), &PresetState::empty());
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+            let d_degree = maze_try.graph.edges().filter(|e| e.from == d || e.to == d).count();
+            assert!(d_degree > 0, "seed {seed}: D must keep at least one edge — it must not be fully cut off");
+        }
     }
 
     #[test]

@@ -1,46 +1,49 @@
 # MazeAnalysis
 
-Cached derived data attached to a `Maze`. Computed lazily on first access and reused until the maze is rebuilt.
+Cached derived data attached to a `Maze`. Computed lazily on first access; cache entries are invalidated automatically when the underlying `Graph` is mutated (or, for `nav_graph`, when `meta.start`/`meta.finish` change), keyed on `Graph::version()`.
 
 ## Structure
 
 ```rust
 pub struct MazeAnalysis {
-    nav_graph: OnceCell<graph::nav::NavGraph>,
-    scc: OnceCell<graph::scc::ConnectedComponents>,
-    route_info: RefCell<Option<(NodeId, NodeId, Option<graph::routing::RouteInfo>)>>,
+    nav_graph: RefCell<Option<(u64, Option<NodeId>, Option<NodeId>, graph::nav::NavGraph)>>,
+    scc: RefCell<Option<(u64, graph::scc::ConnectedComponents)>>,
+    route_info: RefCell<Option<(u64, NodeId, NodeId, Option<graph::routing::RouteInfo>)>>,
 }
 ```
+
+The `u64` in each tuple is the `Graph::version()` value the cached entry was built from.
 
 ## Access
 
 ```rust
 impl MazeAnalysis {
-    pub fn nav_graph(&self, graph: &Graph, meta: &MazeMeta) -> &NavGraph;
-    pub fn scc(&self, graph: &Graph) -> &ConnectedComponents;
+    pub fn nav_graph(&self, graph: &Graph, meta: &MazeMeta) -> NavGraph;
+    pub fn scc(&self, graph: &Graph) -> ConnectedComponents;
     pub fn route_info(&self, graph: &Graph, start: NodeId, finish: NodeId) -> Option<RouteInfo>;
 }
 ```
 
-- `nav_graph`: builds once and caches. **Always pins `meta.start`/`meta.finish`** (whichever are `Some`) — once a route endpoint is set, it is forced to be a `NavNode` everywhere this method is the source of the nav graph, instead of risking being silently collapsed into a passage's interior the moment its local degree happens to look like one. This is the single, project-wide pinning policy: `MinLoopLengthCheck`, `FarthestEndpointsStrategy`, `ScoredEndpointsStrategy`, and the WASM analytics layer all call this method and all observe the same pinned topology. **This is not opt-in per caller** — any future `Check` or `RepairStrategy` that calls `maze.analysis.nav_graph(...)` automatically inherits the pinned topology with no separate decision to make; there is no unpinned variant to fall back to from this method.
-- `scc`: builds once and caches; independent of pinning.
-- `route_info`: computes a route between two specific nodes, pinning exactly that `(start, finish)` pair — independent of `nav_graph`'s own cache, since a caller may want to probe a candidate pair before committing it to `meta` (or the pair may differ from `meta.start`/`meta.finish` entirely). Cached per `(start, finish)` key; a different pair triggers a rebuild.
-- Takes `&self` — internally uses `OnceCell`/`RefCell` so callers don't need `&mut Maze` just to populate the cache. `nav_graph`/`scc` populate once and never rebuild from then on; `route_info` rebuilds whenever the `(start, finish)` key changes.
+All three return owned values (cloned out of the cache), not references — `RefCell` borrow guards can't outlive the call, and `NavGraph`/`ConnectedComponents`/`RouteInfo` are all cheap-ish to clone relative to rebuilding them. Callers that need the value multiple times in one scope should bind it once (`let nav = maze.analysis.nav_graph(...)`) rather than calling repeatedly.
 
-## Known limitation: no graph-mutation invalidation
+- `nav_graph`: keyed on `(graph.version(), meta.start, meta.finish)`. **Always pins `meta.start`/`meta.finish`** (whichever are `Some`) — once a route endpoint is set, it is forced to be a `NavNode` everywhere this method is the source of the nav graph, instead of risking being silently collapsed into a passage's interior the moment its local degree happens to look like one. This is the single, project-wide pinning policy: `MinLoopLengthCheck`, `FarthestEndpointsStrategy`, `ScoredEndpointsStrategy`, and the WASM analytics layer all call this method and all observe the same pinned topology. **This is not opt-in per caller** — any future `Check` or `RepairStrategy` that calls `maze.analysis.nav_graph(...)` automatically inherits the pinned topology with no separate decision to make; there is no unpinned variant to fall back to from this method.
+- `scc`: keyed on `graph.version()`; independent of pinning.
+- `route_info`: computes a route between two specific nodes, pinning exactly that `(start, finish)` pair — independent of `nav_graph`'s own cache, since a caller may want to probe a candidate pair before committing it to `meta` (or the pair may differ from `meta.start`/`meta.finish` entirely). Keyed on `(graph.version(), start, finish)`; single-slot — a different key (including a graph mutation with the same pair) triggers a rebuild, and probing alternating pairs in a loop defeats the cache entirely.
+- Takes `&self` — internally uses `RefCell` so callers don't need `&mut Maze` just to populate or refresh the cache.
 
-**There is currently no invalidation when the underlying `Graph` is mutated** (e.g. a repair strategy cutting an edge) after `nav_graph`/`scc` have been cached. Only `route_info`'s `(start, finish)` key is checked; nothing re-validates against the graph's actual edge set. A `Maze` whose `analysis` cache was populated, then had its `graph` mutated, then has `analysis` queried again will silently return stale results.
+## Graph versioning
 
-This is tracked as [issue #20](https://github.com/Sergey-Lomov/MazeGen/issues/20) — the planned fix adds a `Graph` version counter and keys the caches on `(graph_version, start, finish)`. Until that lands:
-- Within `generation::pipeline::build_maze`, any repair iteration that mutates the graph after an earlier `nav_graph()` call in the same `Maze` instance risks operating on stale data. The pipeline test exercising this (`pipeline_breaks_short_loop_via_min_loop_length`) is currently `#[ignore]`d for this reason.
-- Code paths that need correctness across a graph mutation must construct a fresh `Maze` (and therefore a fresh `MazeAnalysis`) rather than reusing the cache.
+`Graph` carries a `version: u64` counter, bumped by `add_edge`/`remove_edge` whenever they actually change the edge set (a no-op `add_edge` on an existing pair, or `remove_edge` on an already-removed id, does not bump it). `add_node` does not bump it either — adding a node in isolation can't make a cached cycle/nav-graph/SCC result wrong, only edge changes can.
+
+This closes [issue #20](https://github.com/Sergey-Lomov/MazeGen/issues/20): previously, a repair strategy cutting an edge after an earlier `nav_graph()`/`scc()` call in the same `build_maze` run would silently leave the cache stale, and `MinLoopLengthCheck` (which reads `nav_graph()`) could hand a loop-breaking strategy cycle data describing edges that no longer matched the graph's actual topology — leading to cuts that fully disconnected a node, since the strategy had no way to know a previous repair iteration had already changed the relevant tile's degree.
 
 ## Invariants
 
 - `MazeAnalysis` is created via `Default::default()` inside `Maze::new` — all cache cells start empty.
 - QC checks may read `maze.analysis` (calling `nav_graph`/`scc`/`route_info` is permitted — they manage their own interior-mutable cache and don't require `&mut Maze`).
 - Repair strategies may read `maze.analysis` the same way; must not write maze data (`meta`, `graph`) via analysis.
+- Across repair iterations within `generation::pipeline::build_maze`, every `nav_graph()`/`scc()`/`route_info()` call sees a topology consistent with the graph's current state — no caller needs to construct a fresh `Maze` to force a rebuild.
 
 ## Future Extension
 
-New derived values (shortest paths, reachability matrices, etc.) follow the same lazy-cache pattern. Once issue #20 lands, new derived values should key their cache on whatever subset of `(graph_version, start, finish, ...)` they actually depend on, rather than inventing ad hoc invalidation per value.
+New derived values (shortest paths, reachability matrices, etc.) follow the same lazy-cache pattern: key the cache on whatever subset of `(graph.version(), start, finish, ...)` the value actually depends on, rather than inventing ad hoc invalidation per value.

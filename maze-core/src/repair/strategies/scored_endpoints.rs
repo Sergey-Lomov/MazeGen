@@ -56,6 +56,7 @@ impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
         let oneway_weight  = params.get(PARAM_ONEWAY_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+        let nav = &nav;
 
         if nav.nodes.is_empty() {
             return RepairResult::Failed;
