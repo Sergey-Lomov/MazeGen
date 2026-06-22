@@ -155,6 +155,13 @@ fn johnson_circuit(
     found_cycle
 }
 
+/// Recursive, unlike `strongly_connected_components` (explicitly iterative to avoid stack
+/// overflow). Recursion depth here is bounded by the length of the `block_map` dependency
+/// chain, which cannot exceed `V` (nav-node count) — on realistic maze sizes (hundreds to a
+/// few thousand nav-nodes) this is far below Rust's default stack limit. `johnson_circuit`'s
+/// own recursion is bounded the same way, by simple-cycle length (also `<= V`). Left
+/// recursive rather than rewritten iteratively to avoid risking the blocking invariant on a
+/// theoretical-only risk — see issue #24 if pathologically deep graphs ever become a concern.
 fn unblock(
     node: NavNodeId,
     blocked: &mut HashSet<NavNodeId>,
@@ -192,6 +199,11 @@ fn strongly_connected_components(
     let mut sorted_nodes: Vec<NavNodeId> = nodes.iter().copied().collect();
     sorted_nodes.sort_unstable();
 
+    // Filtered neighbor list per node, computed once on first visit and reused for every
+    // subsequent `ni` step into that node — `adjacency[v]` is scanned once per node, not
+    // once per (node, step) pair (was O(degree) work repeated `degree` times per node).
+    let mut neighbor_cache: std::collections::HashMap<NavNodeId, Vec<NavNodeId>> = std::collections::HashMap::new();
+
     for &root in &sorted_nodes {
         if state.contains_key(&root) {
             continue;
@@ -204,10 +216,12 @@ fn strongly_connected_components(
 
         while !work.is_empty() {
             let (v, ni) = *work.last().unwrap();
-            let neighbors: Vec<NavNodeId> = adjacency[v].iter()
-                .map(|&(_, to)| to)
-                .filter(|to| nodes.contains(to))
-                .collect();
+            let neighbors = neighbor_cache.entry(v).or_insert_with(|| {
+                adjacency[v].iter()
+                    .map(|&(_, to)| to)
+                    .filter(|to| nodes.contains(to))
+                    .collect()
+            });
 
             if ni < neighbors.len() {
                 work.last_mut().unwrap().1 += 1;

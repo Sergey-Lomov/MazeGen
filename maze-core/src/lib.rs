@@ -27,38 +27,60 @@ pub use generation::{generate_maze, generate_maze_steps, build_preset_state, Ele
 pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
 
 pub struct MazeAnalysis {
-    nav_graph: Option<graph::nav::NavGraph>,
-    scc: Option<graph::scc::ConnectedComponents>,
+    nav_graph: std::cell::OnceCell<graph::nav::NavGraph>,
+    scc: std::cell::OnceCell<graph::scc::ConnectedComponents>,
+    route_info: std::cell::RefCell<Option<(ids::NodeId, ids::NodeId, Option<graph::routing::RouteInfo>)>>,
 }
 
 impl Default for MazeAnalysis {
     fn default() -> Self {
-        Self { nav_graph: None, scc: None }
+        Self {
+            nav_graph: std::cell::OnceCell::new(),
+            scc: std::cell::OnceCell::new(),
+            route_info: std::cell::RefCell::new(None),
+        }
     }
 }
 
 impl MazeAnalysis {
-    pub fn nav_graph<'a>(&'a mut self, graph: &Graph) -> &'a graph::nav::NavGraph {
-        if self.nav_graph.is_none() {
-            self.nav_graph = Some(graph::nav::build_nav_graph(graph));
-        }
-        self.nav_graph.as_ref().unwrap()
+    /// Builds (once) and caches the nav graph, pinning `meta.start`/`meta.finish` if set so
+    /// those maze nodes are always nav nodes, never compressed into a passage's interior —
+    /// every consumer (cycle search, SCC, repair strategies) then sees endpoints consistently
+    /// as junctions, regardless of their local passage-like degree.
+    pub fn nav_graph(&self, graph: &Graph, meta: &MazeMeta) -> &graph::nav::NavGraph {
+        self.nav_graph.get_or_init(|| {
+            let mut pinned = std::collections::HashSet::new();
+            if let Some(s) = meta.start { pinned.insert(s); }
+            if let Some(f) = meta.finish { pinned.insert(f); }
+            graph::nav::build_nav_graph_pinned(graph, &pinned)
+        })
     }
 
-    /// Always rebuilds and overwrites the cache `nav_graph()` memoizes into, even if already
-    /// populated — pinned set may differ from whatever built the cached graph. Call this last
-    /// if a pass also needs the plain `nav_graph()` result; calling `nav_graph()` afterward
-    /// returns the pinned graph, not a fresh plain one.
-    pub fn nav_graph_pinned<'a>(&'a mut self, graph: &Graph, pinned: &std::collections::HashSet<ids::NodeId>) -> &'a graph::nav::NavGraph {
-        self.nav_graph = Some(graph::nav::build_nav_graph_pinned(graph, pinned));
-        self.nav_graph.as_ref().unwrap()
+    pub fn scc(&self, graph: &Graph) -> &graph::scc::ConnectedComponents {
+        self.scc.get_or_init(|| graph::scc::build_scc(graph))
     }
 
-    pub fn scc<'a>(&'a mut self, graph: &Graph) -> &'a graph::scc::ConnectedComponents {
-        if self.scc.is_none() {
-            self.scc = Some(graph::scc::build_scc(graph));
+    /// Computes (and caches per `(start, finish)` pair) the route between two maze nodes,
+    /// pinning exactly those two nodes — independent of `nav_graph()`'s own pinned cache,
+    /// since the route's pinned set may differ from `meta.start`/`meta.finish` (e.g. a
+    /// strategy probing a candidate pair before committing it to `meta`).
+    ///
+    /// Single-slot cache: only the most recently requested `(start, finish)` pair is kept.
+    /// Calling this with alternating pairs (e.g. probing several candidates in a loop) defeats
+    /// the cache entirely — every call rebuilds. Fine for the current single-pair use (route
+    /// display), but a caller comparing many candidate pairs should build its own nav graph
+    /// once rather than calling this in a loop.
+    pub fn route_info(&self, graph: &Graph, start: ids::NodeId, finish: ids::NodeId) -> Option<graph::routing::RouteInfo> {
+        let mut cache = self.route_info.borrow_mut();
+        if !matches!(&*cache, Some((s, f, _)) if *s == start && *f == finish) {
+            let mut pinned = std::collections::HashSet::new();
+            pinned.insert(start);
+            pinned.insert(finish);
+            let nav = graph::nav::build_nav_graph_pinned(graph, &pinned);
+            let info = graph::routing::compute_route_info(&nav, start, finish);
+            *cache = Some((start, finish, info));
         }
-        self.scc.as_ref().unwrap()
+        cache.as_ref().unwrap().2.clone()
     }
 }
 

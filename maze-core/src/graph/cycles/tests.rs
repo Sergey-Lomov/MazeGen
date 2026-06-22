@@ -157,6 +157,59 @@ fn bidirectional_self_loop_ring_cw_ccw_dedups_to_one_cycle() {
 }
 
 #[test]
+fn is_trivial_reverse_pair_true_for_an_edge_immediately_followed_by_its_own_reverse() {
+    // A<->B bidirectional corridor with junctions at both ends — each of A, B gets a second
+    // spur so they have 3 distinct neighbors (not the symmetric 2-in/2-out a passage node
+    // needs), forcing A->B/B->A to stay as their own direct nav-edges instead of being
+    // absorbed into a longer corridor through the spurs.
+    let mut g = Graph::new();
+    for id in 0..6u64 { g.add_node(id); }
+    g.add_bidirectional_edge(0, 1, EdgeKind::Basic); // A<->B
+    g.add_bidirectional_edge(0, 2, EdgeKind::Basic); // spur at A
+    g.add_bidirectional_edge(0, 3, EdgeKind::Basic); // second spur at A
+    g.add_bidirectional_edge(1, 4, EdgeKind::Basic); // spur at B
+    g.add_bidirectional_edge(1, 5, EdgeKind::Basic); // second spur at B
+
+    let nav = build_nav_graph(&g);
+    let edges: Vec<_> = nav.edges().collect();
+    let a_to_b = edges.iter().position(|e| e.path == vec![0, 1]).expect("A->B nav-edge");
+    let b_to_a = edges.iter().position(|e| e.path == vec![1, 0]).expect("B->A nav-edge");
+
+    assert!(is_trivial_reverse_pair(&edges, &[a_to_b, b_to_a]), "A->B->A is just walking the corridor back and forth");
+    assert!(is_trivial_reverse_pair(&edges, &[b_to_a, a_to_b]), "B->A->B is the same kind of walk-back, the other direction");
+}
+
+#[test]
+fn is_trivial_reverse_pair_false_for_a_self_loop() {
+    // Pure ring, no junctions — compresses to one nav-node with two self-loop nav-edges
+    // (CW/CCW), linked via reverse_edge. A self-loop is a length-1 cycle, never length-2,
+    // so it must never be misclassified as a trivial reverse pair.
+    let mut g = Graph::new();
+    for id in 0..3u64 { g.add_node(id); }
+    g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
+    g.add_bidirectional_edge(1, 2, EdgeKind::Basic);
+    g.add_bidirectional_edge(2, 0, EdgeKind::Basic);
+
+    let nav = build_nav_graph(&g);
+    let edges: Vec<_> = nav.edges().collect();
+    assert_eq!(edges.len(), 2, "CW + CCW self-loops");
+
+    assert!(!is_trivial_reverse_pair(&edges, &[0]), "length-1 cycle (self-loop) is never a trivial reverse pair");
+}
+
+#[test]
+fn is_trivial_reverse_pair_false_for_a_genuine_longer_cycle() {
+    // A->B->C->A triangle: a 3-edge cycle, length != 2, must never be flagged trivial
+    // regardless of any reverse_edge linkage among its edges.
+    let g = triangle(0, 1, 2);
+    let nav = build_nav_graph(&g);
+    let edges: Vec<_> = nav.edges().collect();
+    assert_eq!(edges.len(), 3);
+
+    assert!(!is_trivial_reverse_pair(&edges, &[0, 1, 2]), "length-3 cycle is never a trivial reverse pair");
+}
+
+#[test]
 fn empty_graph_yields_no_cycles() {
     let g = Graph::new();
     let cycles = all_cycles(&g);
@@ -202,6 +255,10 @@ fn dense_grid_completes_quickly_and_reports_observed_cycle_count() {
         "dense 5x5 grid: {} distinct simple cycles found in {:?}",
         cycles.len(), elapsed
     );
-    assert!(!cycles.is_empty(), "a grid has cycles");
-    assert!(elapsed.as_secs() < 5, "5x5 grid must not take more than a few seconds");
+    // Exact count, not a wall-clock budget: a wall-clock assertion is flaky on slow CI and
+    // insensitive to a moderate regression (e.g. a 2x slowdown wouldn't trip a 5s timeout on
+    // this small a grid). The cycle count is deterministic for this fixed graph — any change
+    // signals either a correctness regression or a deliberate algorithm change, either of
+    // which should be investigated explicitly rather than silently passing under a timeout.
+    assert_eq!(cycles.len(), 9349, "deterministic count for this fixed 5x5 grid — investigate any change");
 }

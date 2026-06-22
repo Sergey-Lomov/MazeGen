@@ -13,7 +13,7 @@ use maze_core::{
     graph::{Graph, EdgeKind},
     Maze,
     quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, MIN_LOOP_LENGTH, MIN_LOOP_LENGTH_DEFAULT},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy, MinLoopLengthScoredStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
@@ -141,6 +141,11 @@ pub fn available_strategies() -> JsValue {
             id: "min_loop_length_random",
             handles: kind_str(MIN_LOOP_LENGTH),
             params: strategy_params_dto(<MinLoopLengthRandomStrategy as RepairStrategy<SquareTessellation>>::params(&MinLoopLengthRandomStrategy)),
+        },
+        StrategyDescriptor {
+            id: "min_loop_length_scored",
+            handles: kind_str(MIN_LOOP_LENGTH),
+            params: strategy_params_dto(<MinLoopLengthScoredStrategy as RepairStrategy<SquareTessellation>>::params(&MinLoopLengthScoredStrategy)),
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()

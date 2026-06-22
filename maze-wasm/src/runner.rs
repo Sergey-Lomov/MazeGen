@@ -5,7 +5,7 @@ use maze_core::{
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, IssueKind},
-    repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy},
+    repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy, MinLoopLengthScoredStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config};
 use crate::dto::{EdgeDto, GenerationStepDto};
@@ -53,6 +53,7 @@ pub fn build_qc_and_repair<T: Tessellation>(
             "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
             "scored_endpoints"   => Box::new(ScoredEndpointsStrategy),
             "min_loop_length_random" => Box::new(MinLoopLengthRandomStrategy),
+            "min_loop_length_scored" => Box::new(MinLoopLengthScoredStrategy),
             other => return Err(JsValue::from_str(&format!("unknown strategy: {other}"))),
         };
         strategies.insert(kind, strategy);

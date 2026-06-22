@@ -1,6 +1,5 @@
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::graph::nav::build_nav_graph;
 use crate::graph::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, resolve_to_edge_ids};
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, MIN_LOOP_LENGTH};
@@ -14,18 +13,21 @@ pub struct MinLoopLengthCheck {
 
 impl<T: Tessellation> Check<T> for MinLoopLengthCheck {
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
-        let nav = build_nav_graph(&maze.graph);
-        let cycles = find_all_simple_cycles(&nav);
-        let cycles = dedup_bidirectional_pairs(&nav, cycles);
+        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+        let cycles = find_all_simple_cycles(nav);
+        let cycles = dedup_bidirectional_pairs(nav, cycles);
 
-        let short_nav_cycles: Vec<Vec<usize>> = cycles.into_iter()
-            .filter(|cycle| tile_length(&nav, cycle) < self.min_loop_length)
+        let short: Vec<usize> = cycles.iter().enumerate()
+            .filter(|(_, cycle)| tile_length(nav, cycle) < self.min_loop_length)
+            .map(|(idx, _)| idx)
             .collect();
-        if short_nav_cycles.is_empty() {
+        if short.is_empty() {
             return;
         }
-        let short_cycles = resolve_to_edge_ids(&nav, &short_nav_cycles, &maze.graph);
-        issues.push(Issue::with_data(MIN_LOOP_LENGTH, IssueData::ShortLoops(short_cycles)));
+        let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
+        debug_assert!(short.iter().all(|&idx| idx < all.len()),
+            "short must only contain valid indices into all — built from the same `cycles` it resolves");
+        issues.push(Issue::with_data(MIN_LOOP_LENGTH, IssueData::ShortLoops { all, short }));
     }
 }
 
@@ -65,7 +67,7 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, MIN_LOOP_LENGTH);
         match &issues[0].data {
-            Some(IssueData::ShortLoops(cycles)) => assert_eq!(cycles.len(), 1),
+            Some(IssueData::ShortLoops { short, .. }) => assert_eq!(short.len(), 1),
             other => panic!("expected ShortLoops, got {other:?}"),
         }
     }

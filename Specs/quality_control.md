@@ -59,7 +59,10 @@ impl Issue {
 #[derive(Debug, Clone, PartialEq)]
 pub enum IssueData {
     TestPayload(Vec<u64>),       // temporary infra-only variant, see below
-    ShortLoops(Vec<Vec<EdgeId>>), // produced by MinLoopLengthCheck, see below
+    ShortLoops {                 // produced by MinLoopLengthCheck, see below
+        all: Vec<Vec<EdgeId>>,
+        short: Vec<usize>,
+    },
 }
 ```
 
@@ -69,7 +72,8 @@ pub enum IssueData {
 - **Lifecycle**: `IssueData` is valid only for the Check → Strategy pair within a single QC pass. It is never carried across pipeline iterations and must not be retained by a strategy after `apply` returns — the maze may have mutated since.
 - **Kind↔data invariant** (documentation-only, not runtime-checked — consistent with other contracts in this module): each `IssueKind` is expected to use a specific, fixed set of `IssueData` variants. It is the responsibility of the `Check`/`RepairStrategy` author to keep kind and data variant in sync.
 - **`TestPayload`**: a temporary, infra-only variant not tied to any real `IssueKind`, used to exercise `Clone`/equality on a non-trivial owned payload. Marked `// TODO` in code for removal once a first real variant lands.
-- **`ShortLoops(Vec<Vec<EdgeId>>)`**: produced by `MinLoopLengthCheck` (paired with `MIN_LOOP_LENGTH`) — **mandatory** for this kind, see `MinLoopLengthRandomStrategy` in `repair.md`. Each inner `Vec<EdgeId>` is the **set** of base-`Graph` edges forming one simple cycle shorter than the configured threshold — element order carries no meaning beyond membership, only used as a convenient container. An empty outer `Vec` is valid and means the check found nothing short enough to break. `EdgeId` values never repeat within one cycle. Length is measured in **base-graph tile-hops**, not nav-edges (one nav-edge may compress several tiles).
+- **`ShortLoops { all, short }`**: produced by `MinLoopLengthCheck` (paired with `MIN_LOOP_LENGTH`) — **mandatory** for this kind, see `MinLoopLengthRandomStrategy`/`MinLoopLengthScoredStrategy` in `repair.md`. `all` holds **every** simple cycle found in the maze, short and long alike, each as the **set** of base-`Graph` edges forming it — element order carries no meaning beyond membership, only used as a convenient container, and `EdgeId` values never repeat within one cycle. `short` is the subset of indices into `all` whose tile-length is below the configured threshold — the cycles a repair strategy must actually break. An empty `short` is valid and means the check found nothing short enough to break (`all` may still be non-empty in that case). Length is measured in **base-graph tile-hops**, not nav-edges (one nav-edge may compress several tiles).
+- Keeping the long, valid cycles in `all` (not just the short ones) lets a strategy avoid cutting an edge that is also part of a cycle the maze is meant to keep — see `MinLoopLengthScoredStrategy` in `repair.md`.
 - **Not exposed over WASM**: the WASM layer only serializes `IssueKind` (via `as_str()`/`Display`), never the `Issue` struct or its `data`. No serde derive is needed unless that changes.
 - **Dedup interaction**: see `repair.md` — QC dedup keeps at most one `Issue` per `IssueKind` per pass, which means a second issue of the same kind (and its `data`) is silently dropped. A `debug_assert!` in the pipeline's dedup filter catches this in development builds.
 
@@ -137,13 +141,13 @@ pub struct MinLoopLengthCheck {
 }
 ```
 
-A separate, unrelated check from `MinLoopsCountCheck` (that one counts total loops; this one checks individual loop *length*). Builds a fresh `NavGraph` via `build_nav_graph(&maze.graph)` directly (not through `maze.analysis` — `Check::check` only receives `&Maze`), then uses `find_all_simple_cycles` (`maze-core/src/graph/cycles.rs`, Johnson's algorithm — see `graph-analytics.md` for the full description of this shared, single-source-of-truth cycle enumeration), `dedup_bidirectional_pairs` (collapses each visual loop walked in either direction to one entry, drops trivial reverse-pair turn-arounds), then filters the result to cycles whose tile-length is below `min_loop_length`.
+A separate, unrelated check from `MinLoopsCountCheck` (that one counts total loops; this one checks individual loop *length*). Uses `maze.analysis.nav_graph(&maze.graph, &maze.meta)` (the shared, pinned-by-`meta` cache — see `analysis.md`), then `find_all_simple_cycles` (`maze-core/src/graph/cycles.rs`, Johnson's algorithm — see `graph-analytics.md` for the full description of this shared, single-source-of-truth cycle enumeration), `dedup_bidirectional_pairs` (collapses each visual loop walked in either direction to one entry, drops trivial reverse-pair turn-arounds). Every resulting cycle (short and long alike) is resolved to base-`Graph` `EdgeId`s and stored in `IssueData::ShortLoops.all`; the subset whose tile-length is below `min_loop_length` becomes `short` (indices into `all`).
 
 Not a fundamental cycle basis — a basis only yields β₁ cycles relative to one spanning tree and can miss short cycles that are the symmetric difference of two longer fundamental cycles (unacceptable false negatives for a health check). `find_all_simple_cycles` enumerates ALL simple directed cycles with no length bound; this check filters the already-complete result by tile-length afterward, rather than embedding a bound into the search itself (kept uniform with the other consumers of `find_all_simple_cycles` — see `graph-analytics.md`).
 
 Self-loop nav-edges (junction-free rings) are included — previously a known gap (a ring with at most one junction compresses into a self-loop `NavEdge` that the old `build_cyclic_core` unconditionally excluded, making such loops invisible to this check). Fixed by `find_all_simple_cycles` treating self-loops as first-class cycles.
 
-If any cycles below the threshold are found, fires a single `Issue::with_data(MIN_LOOP_LENGTH, IssueData::ShortLoops(...))` carrying **all** of them (QC dedup allows at most one issue per kind per pass — see the invariant above).
+If any cycles below the threshold are found (`short` non-empty), fires a single `Issue::with_data(MIN_LOOP_LENGTH, IssueData::ShortLoops { all, short })` (QC dedup allows at most one issue per kind per pass — see the invariant above). No issue is fired if `short` is empty, even if `all` is not.
 
 ## WASM Interface
 

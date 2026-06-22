@@ -3,6 +3,7 @@ use crate::ids::NodeId;
 use crate::graph::nav::{NavGraph, NavNodeId};
 use super::pathfinding::{dijkstra_with_prev, build_outgoing_index};
 
+#[derive(Clone)]
 pub struct RouteInfo {
     pub path_length: usize,    // node count including start and finish
     pub junction_count: usize, // nav-nodes with degree >= 3 on the path

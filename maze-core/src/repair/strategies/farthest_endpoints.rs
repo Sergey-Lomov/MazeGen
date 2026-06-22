@@ -18,7 +18,7 @@ impl<T: Tessellation> RepairStrategy<T> for FarthestEndpointsStrategy {
             return RepairResult::Fixed { score: None };
         }
 
-        let nav = maze.analysis.nav_graph(&maze.graph);
+        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
 
         if nav.nodes.is_empty() {
             return RepairResult::Failed;

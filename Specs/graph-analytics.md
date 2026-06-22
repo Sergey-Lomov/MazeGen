@@ -62,7 +62,7 @@ Maze-id translation happens in `build_analytics_snapshot` (maze-wasm/src/analyti
 
 ### Complexity
 
-- `find_all_simple_cycles`: `O((V+E)·(C+1))` where `C` is the number of simple cycles found (Johnson's algorithm) — proportional to the actual result size, not wasted on exhausted branches. `C` itself can grow large on dense graphs (see above).
+- `find_all_simple_cycles`: the blocking DFS itself (`johnson_circuit`) is `O((V+E)·(C+1))` where `C` is the number of simple cycles found — proportional to the actual result size, not wasted on exhausted branches. `C` itself can grow large on dense graphs (see above). **This excludes SCC recomputation**: the outer loop in `find_all_simple_cycles` reruns `strongly_connected_components` (full Tarjan's, `O(V+E)`) from scratch on every iteration, removing exactly one start-vertex each time — up to `V` full SCC recomputations in the worst case, adding a separate `O(V·(V+E))` term on top of the DFS cost. On dense graphs this SCC-recompute term can be significant; see [issue #25](https://github.com/Sergey-Lomov/MazeGen/issues/25) for a proposed incremental-SCC optimization.
 - Cycle metrics (`count_core_edges`/`count_core_regions`): linear in core size once the core is known.
 
 ## NavGraph Domain

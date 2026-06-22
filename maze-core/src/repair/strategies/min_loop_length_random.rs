@@ -24,15 +24,16 @@ impl<T: Tessellation> RepairStrategy<T> for MinLoopLengthRandomStrategy {
         // here the way it is for some other issue kinds. Missing/wrong-type data means
         // this was called outside the normal pipeline (malformed) — Failed, not "already
         // fixed". An empty cycle list, by contrast, means the check found nothing to break.
-        let Some(IssueData::ShortLoops(cycles)) = &issue.data else {
+        let Some(IssueData::ShortLoops { all, short }) = &issue.data else {
             return RepairResult::Failed;
         };
-        apply_cuts(cycles, maze, rng, preset_state)
+        let cycles: Vec<&Vec<EdgeId>> = short.iter().filter_map(|&idx| all.get(idx)).collect();
+        apply_cuts(&cycles, maze, rng, preset_state)
     }
 }
 
 fn apply_cuts<T: Tessellation>(
-    cycles: &[Vec<EdgeId>],
+    cycles: &[&Vec<EdgeId>],
     maze: &mut Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
@@ -115,7 +116,11 @@ mod tests {
         let result = MinLoopLengthRandomStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(!check_finds_short_loop(&maze), "cycle must be broken after apply");
+        // Fresh Maze/MazeAnalysis: `maze`'s cached nav_graph (built by the check above,
+        // before `apply` cut an edge) would otherwise be stale — analysis has no
+        // invalidation on graph mutation by design (see analysis.md).
+        let fresh_maze = Maze::<SquareTessellation>::new(maze.field, maze.graph);
+        assert!(!check_finds_short_loop(&fresh_maze), "cycle must be broken after apply");
     }
 
     #[test]
@@ -133,7 +138,7 @@ mod tests {
     fn apply_succeeds_on_empty_cycle_list() {
         // An empty ShortLoops list means the check found nothing to break — already fixed.
         let mut maze = maze_with_triangle();
-        let issue = Issue::with_data(crate::quality_control::issue::MIN_LOOP_LENGTH, IssueData::ShortLoops(vec![]));
+        let issue = Issue::with_data(crate::quality_control::issue::MIN_LOOP_LENGTH, IssueData::ShortLoops { all: vec![], short: vec![] });
         let mut rng = SmallRng::seed_from_u64(7);
         let result = MinLoopLengthRandomStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -200,8 +205,8 @@ mod tests {
         check.check(&maze, &mut issues);
         let issue = issues.into_iter().next().unwrap();
 
-        let IssueData::ShortLoops(cycles) = issue.data.as_ref().unwrap() else { panic!() };
-        let cycle = cycles[0].clone();
+        let IssueData::ShortLoops { all, short } = issue.data.as_ref().unwrap() else { panic!() };
+        let cycle = all[short[0]].clone();
         // Protect all but the last edge in the cycle from removal.
         let mut preset_state = PresetState::empty();
         for &edge_id in &cycle[..cycle.len() - 1] {

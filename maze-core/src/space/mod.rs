@@ -86,8 +86,13 @@ impl<T: Tessellation> Field<T> {
         face_in == face_out
     }
 
+    /// Deterministic order: sorted by `NodeId`, not raw `HashMap` iteration order (which
+    /// varies between process runs and would make any caller relying on `all_points()`'s
+    /// order — tests building a graph from `nodes[i]`, generation, etc. — silently flaky).
     pub fn all_points(&self) -> impl Iterator<Item = T::Point> + '_ {
-        self.point_to_node.keys().copied()
+        let mut ids: Vec<NodeId> = self.node_to_point.keys().copied().collect();
+        ids.sort_unstable();
+        ids.into_iter().map(move |id| self.node_to_point[&id])
     }
 
     pub fn contains(&self, point: T::Point) -> bool {

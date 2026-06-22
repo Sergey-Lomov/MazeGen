@@ -6,8 +6,9 @@ Cached derived data attached to a `Maze`. Computed lazily on first access and re
 
 ```rust
 pub struct MazeAnalysis {
-    nav_graph: Option<graph::nav::NavGraph>,
-    scc: Option<graph::scc::ConnectedComponents>,
+    nav_graph: OnceCell<graph::nav::NavGraph>,
+    scc: OnceCell<graph::scc::ConnectedComponents>,
+    route_info: RefCell<Option<(NodeId, NodeId, Option<graph::routing::RouteInfo>)>>,
 }
 ```
 
@@ -15,24 +16,31 @@ pub struct MazeAnalysis {
 
 ```rust
 impl MazeAnalysis {
-    pub fn nav_graph(&mut self, graph: &Graph) -> &NavGraph;
-    pub fn nav_graph_pinned(&mut self, graph: &Graph, pinned: &HashSet<NodeId>) -> &NavGraph;
-    pub fn scc(&mut self, graph: &Graph) -> &ConnectedComponents;
+    pub fn nav_graph(&self, graph: &Graph, meta: &MazeMeta) -> &NavGraph;
+    pub fn scc(&self, graph: &Graph) -> &ConnectedComponents;
+    pub fn route_info(&self, graph: &Graph, start: NodeId, finish: NodeId) -> Option<RouteInfo>;
 }
 ```
 
-- `nav_graph`: builds once and caches. Returns the cached value on subsequent calls.
-- `nav_graph_pinned`: **always rebuilds** and overwrites the shared `nav_graph` cache. The pinned set may differ between calls, so no cache reuse is possible. **Ordering rule:** always call `nav_graph` (unpinned) before `nav_graph_pinned` within a single build step. After `nav_graph_pinned` runs, any subsequent `nav_graph` call returns the pinned version silently. In `maze-wasm/src/lib.rs` the unpinned nav graph (for overlay DTO) is built first, then `nav_graph_pinned` is called for routing — this order must be preserved. If independent results are needed simultaneously, store them before the pinned call.
-- Takes `&mut self` because it may populate the cache.
+- `nav_graph`: builds once and caches. **Always pins `meta.start`/`meta.finish`** (whichever are `Some`) — once a route endpoint is set, it is forced to be a `NavNode` everywhere this method is the source of the nav graph, instead of risking being silently collapsed into a passage's interior the moment its local degree happens to look like one. This is the single, project-wide pinning policy: `MinLoopLengthCheck`, `FarthestEndpointsStrategy`, `ScoredEndpointsStrategy`, and the WASM analytics layer all call this method and all observe the same pinned topology. **This is not opt-in per caller** — any future `Check` or `RepairStrategy` that calls `maze.analysis.nav_graph(...)` automatically inherits the pinned topology with no separate decision to make; there is no unpinned variant to fall back to from this method.
+- `scc`: builds once and caches; independent of pinning.
+- `route_info`: computes a route between two specific nodes, pinning exactly that `(start, finish)` pair — independent of `nav_graph`'s own cache, since a caller may want to probe a candidate pair before committing it to `meta` (or the pair may differ from `meta.start`/`meta.finish` entirely). Cached per `(start, finish)` key; a different pair triggers a rebuild.
+- Takes `&self` — internally uses `OnceCell`/`RefCell` so callers don't need `&mut Maze` just to populate the cache. `nav_graph`/`scc` populate once and never rebuild from then on; `route_info` rebuilds whenever the `(start, finish)` key changes.
+
+## Known limitation: no graph-mutation invalidation
+
+**There is currently no invalidation when the underlying `Graph` is mutated** (e.g. a repair strategy cutting an edge) after `nav_graph`/`scc` have been cached. Only `route_info`'s `(start, finish)` key is checked; nothing re-validates against the graph's actual edge set. A `Maze` whose `analysis` cache was populated, then had its `graph` mutated, then has `analysis` queried again will silently return stale results.
+
+This is tracked as [issue #20](https://github.com/Sergey-Lomov/MazeGen/issues/20) — the planned fix adds a `Graph` version counter and keys the caches on `(graph_version, start, finish)`. Until that lands:
+- Within `generation::pipeline::build_maze`, any repair iteration that mutates the graph after an earlier `nav_graph()` call in the same `Maze` instance risks operating on stale data. The pipeline test exercising this (`pipeline_breaks_short_loop_via_min_loop_length`) is currently `#[ignore]`d for this reason.
+- Code paths that need correctness across a graph mutation must construct a fresh `Maze` (and therefore a fresh `MazeAnalysis`) rather than reusing the cache.
 
 ## Invariants
 
-- `MazeAnalysis` is created via `Default::default()` inside `Maze::new` — all fields start as `None`.
-- QC checks may read `maze.analysis` but must not write to it (per the QC architectural contract).
-- Repair strategies may read `maze.analysis` but must not write maze data (`meta`, `graph`) via analysis. Calling a lazy accessor such as `nav_graph` is permitted — it manages its own cache and is transparent to the caller.
-- Only code with `&mut Maze` access may call `&mut self` accessors on `MazeAnalysis`.
-- The cache becomes stale if the underlying graph is mutated after `nav_graph` was first accessed. No invalidation mechanism exists — callers must not mutate the graph after analysis is cached.
+- `MazeAnalysis` is created via `Default::default()` inside `Maze::new` — all cache cells start empty.
+- QC checks may read `maze.analysis` (calling `nav_graph`/`scc`/`route_info` is permitted — they manage their own interior-mutable cache and don't require `&mut Maze`).
+- Repair strategies may read `maze.analysis` the same way; must not write maze data (`meta`, `graph`) via analysis.
 
 ## Future Extension
 
-New derived values (shortest paths, reachability matrices, etc.) follow the same `Option<T>` pattern: `None` until first access, then cached.
+New derived values (shortest paths, reachability matrices, etc.) follow the same lazy-cache pattern. Once issue #20 lands, new derived values should key their cache on whatever subset of `(graph_version, start, finish, ...)` they actually depend on, rather than inventing ad hoc invalidation per value.

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use maze_core::{
     space::Tessellation,
     quality_control::{QualityControlEngine, Issue, IssueData},
-    compute_node_stats, compute_spatial_edge_stats, compute_route_info, compute_graph_analytics,
+    compute_node_stats, compute_spatial_edge_stats, compute_graph_analytics,
     Maze,
 };
 use crate::dto::{
@@ -30,8 +30,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         let short_loop_edges = match &issue.data {
-            Some(IssueData::ShortLoops(loops)) => Some(
-                loops.iter().map(|loop_edges| {
+            Some(IssueData::ShortLoops { all, short }) => Some(
+                short.iter().filter_map(|&idx| all.get(idx)).map(|loop_edges| {
                     loop_edges.iter().filter_map(|&eid| {
                         let edge = maze.graph.edge(eid)?;
                         let from = u32::try_from(edge.from).ok()?;
@@ -69,13 +69,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let meta_start  = maze.meta.start.and_then(|id| u32::try_from(id).ok());
     let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
 
-    let graph_analytics = compute_graph_analytics(maze.analysis.nav_graph(&maze.graph));
+    let graph_analytics = compute_graph_analytics(maze.analysis.nav_graph(&maze.graph, &maze.meta));
 
-    let nav_nodes: Vec<NavNodeDto> = maze.analysis.nav_graph(&maze.graph).nodes.iter()
+    let nav_nodes: Vec<NavNodeDto> = maze.analysis.nav_graph(&maze.graph, &maze.meta).nodes.iter()
         .filter_map(|n| u32::try_from(n.node_id).ok().map(|id| NavNodeDto { node_id: id }))
         .collect();
 
-    let nav_edges: Vec<NavEdgeDto> = maze.analysis.nav_graph(&maze.graph).edges()
+    let nav_edges: Vec<NavEdgeDto> = maze.analysis.nav_graph(&maze.graph, &maze.meta).edges()
         .filter_map(|e| {
             let from = u32::try_from(e.from).ok()?;
             let to   = u32::try_from(e.to).ok()?;
@@ -85,7 +85,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         .collect();
 
     let pure_cycle_node_ids: Vec<u32> = {
-        let nav = maze.analysis.nav_graph(&maze.graph);
+        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         graph_analytics.pure_cycle_nav_nodes.iter()
             .filter_map(|&nav_id| nav.nodes.get(nav_id))
             .filter_map(|n| u32::try_from(n.node_id).ok())
@@ -93,7 +93,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     };
 
     let pure_cycle_edge_pairs: Vec<[u32; 2]> = {
-        let nav = maze.analysis.nav_graph(&maze.graph);
+        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         graph_analytics.pure_cycle_edge_indices.iter()
             .filter_map(|&idx| {
                 let edge = nav.edge_by_idx(idx);
@@ -146,11 +146,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let route_info = match (maze.meta.start, maze.meta.finish) {
         (Some(s), Some(f)) => {
-            let mut pinned = std::collections::HashSet::new();
-            pinned.insert(s);
-            pinned.insert(f);
-            let nav = maze.analysis.nav_graph_pinned(&maze.graph, &pinned);
-            compute_route_info(nav, s, f).map(|r| RouteInfoDto {
+            maze.analysis.route_info(&maze.graph, s, f).map(|r| RouteInfoDto {
                 path_length:    r.path_length,
                 junction_count: r.junction_count,
                 one_way_count:  r.one_way_count,

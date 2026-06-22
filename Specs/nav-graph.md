@@ -92,6 +92,8 @@ pub fn build_nav_graph_pinned(graph: &Graph, pinned: &HashSet<NodeId>) -> NavGra
 
 `build_nav_graph_pinned` accepts a set of **pinned** maze nodes that must become `NavNode` entries regardless of their passage status. This is used to force route endpoints to be nav nodes so that pathfinding can start and end exactly at those nodes rather than at some arbitrary nav node within the same passage.
 
+`MazeAnalysis::nav_graph` (see `analysis.md`) always calls this with `meta.start`/`meta.finish` (whichever are set) as the pinned set — this is the project-wide policy, not a per-caller choice. `MazeAnalysis::route_info` separately pins its own `(start, finish)` pair, independent of `meta`.
+
 ### Algorithm: DFS with passage compression
 
 1. Collect all maze nodes into a `remaining` pool.
@@ -121,4 +123,4 @@ If a pure ring component contains a pinned node, the pinned node is promoted to 
 
 ## Caching
 
-`NavGraph` is stored lazily in `MazeAnalysis`. See `analysis.md`.
+`NavGraph` is stored lazily in `MazeAnalysis`. See `analysis.md` for the caching contract and its current limitation (no invalidation on graph mutation — issue #20).
