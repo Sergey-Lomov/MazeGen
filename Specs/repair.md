@@ -61,6 +61,7 @@ pub trait RepairStrategy<F: Field> {
 - Must not depend on external or global state.
 - May read `maze.analysis` but must not write to it.
 - **Idempotency**: if the relevant meta field is already set, return `Fixed` immediately without modifying state or consuming `rng`. This ensures safe re-invocation.
+- May read `issue.data` (see `quality_control.md`) — findings the matching `Check` already computed during detection. Whether `data` is optional (cheap to recompute, so `None` falls back gracefully) or effectively required (the data *is* the expensive result, with no other channel to get it) is a **per-`IssueKind` decision**, documented by each strategy for its own kind — there is no blanket rule across all strategies.
 
 ### RepairEngine
 
@@ -142,6 +143,20 @@ Behavior per case:
 - **Only finish set**: fixes finish, searches for best start.
 - No reachable path found: returns `Failed`.
 
+### MinLoopLengthRandomStrategy
+
+Handles `MIN_LOOP_LENGTH`. Breaks each simple cycle found by `MinLoopLengthCheck` shorter than the threshold by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters.
+
+**`issue.data` is mandatory for this kind**, not an optional optimization: `MinLoopLengthCheck` already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply. This is a per-kind decision (see `quality_control.md`), not a general rule for all strategies.
+
+- If `issue.data` is `Some(IssueData::ShortLoops(cycles))`: cuts directly from the resolved `Vec<Vec<EdgeId>>`. An empty outer `Vec` is valid — nothing to break, returns `Fixed` immediately.
+- If `data` is missing or the wrong variant: this is a malformed call (should never happen in a normal pipeline run, where the check always attaches data) — returns `Failed`, not "already fixed".
+- For each cycle: filters candidates to edges still present in the graph (`Graph::edge(id).is_some()` — an earlier cut in the same `apply` may have already broken a cycle sharing an edge with this one), then removes one random survivor plus its reverse (`Graph::edge_between(to, from)`), if any.
+- **Accepted imprecision, not fully solved**: removing an edge can invalidate another cycle in the same batch through subtler graph changes than a shared `EdgeId` (e.g. corridor re-compression). The existence check only catches the shared-edge case; it does not re-validate every remaining cycle entry. Acceptable for a `Random` strategy — a smarter variant that recomputes between cuts is a separate future task if needed.
+- **Does not guard connectivity or bridge status**: a cut may disconnect the maze, surfacing as `UnreachableFinish`/`MissingEndpoints` on the next QC pass. Deliberately not handled here — the pipeline's fixpoint loop (`build_maze`, up to `MAX_REPAIR_ITERATIONS`) already exists for exactly this kind of cascading repair, via the already-registered endpoint strategies.
+- **No candidate weighting** (segment length, multi-cycle membership, etc.) — the name `Random` is deliberate. A smarter strategy on the same issue kind (à la `RandomEndpointsStrategy` vs `ScoredEndpointsStrategy`) is a separate future task.
+- Returns `Fixed { score: None }`.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.
@@ -167,6 +182,7 @@ Logic:
 1. Construct `Maze` via `Maze::new(field, graph)` — sets `MazeMeta::empty()` and `MazeAnalysis::default()`.
 2. Create `rng = SmallRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations for cross-iteration determinism.
 3. Track `failed: HashSet<IssueKind>` — issues whose strategy returned `Failed`.
+   - **Note**: QC dedup keeps at most one `Issue` per `IssueKind` per pass (first occurrence wins). If multiple issues of the same kind carry different `data`, only the first's payload survives — a `debug_assert!` flags this in development builds.
 4. Track `previous_fingerprint: Option<Vec<IssueKind>>` for progress detection.
 5. Loop up to `MAX_REPAIR_ITERATIONS`:
    - Run QC.

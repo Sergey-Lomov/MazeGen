@@ -12,8 +12,8 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, MIN_LOOP_LENGTH, MIN_LOOP_LENGTH_DEFAULT},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
@@ -104,6 +104,17 @@ pub fn available_checks() -> JsValue {
                 kind: ParamKindDto::Integer { default: MIN_LOOPS_DEFAULT as i64, min: 1, max: 1_000_000 },
             }],
         },
+        CheckDescriptor {
+            id: "min_loop_length",
+            label: "Minimum loop length",
+            description: "Fires if the maze has simple loops shorter than the required minimum tile length.",
+            issue_kinds: vec![kind_str(MIN_LOOP_LENGTH)],
+            params: vec![ParamDescriptor {
+                id: "min_loop_length",
+                label: "Min loop length",
+                kind: ParamKindDto::Integer { default: MIN_LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
+            }],
+        },
     ];
     serde_wasm_bindgen::to_value(&checks).unwrap()
 }
@@ -125,6 +136,11 @@ pub fn available_strategies() -> JsValue {
             id: "scored_endpoints",
             handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy)),
+        },
+        StrategyDescriptor {
+            id: "min_loop_length_random",
+            handles: kind_str(MIN_LOOP_LENGTH),
+            params: strategy_params_dto(<MinLoopLengthRandomStrategy as RepairStrategy<SquareTessellation>>::params(&MinLoopLengthRandomStrategy)),
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()

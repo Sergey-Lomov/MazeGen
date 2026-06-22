@@ -5,6 +5,7 @@ pub mod stats;
 pub mod routing;
 pub mod graph_analytics;
 pub(crate) mod pathfinding;
+pub(crate) mod cycles;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::ids::{NodeId, EdgeId};
@@ -95,6 +96,10 @@ impl Graph {
             .filter_map(move |&eid| {
                 self.edges[eid].as_ref().map(|e| e.from)
             })
+    }
+
+    pub fn edge(&self, id: EdgeId) -> Option<&Edge> {
+        self.edges.get(id).and_then(Option::as_ref)
     }
 
     pub fn edge_between(&self, from: NodeId, to: NodeId) -> Option<EdgeId> {

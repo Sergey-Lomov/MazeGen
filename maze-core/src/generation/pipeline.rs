@@ -24,7 +24,12 @@ pub fn build_maze<T: Tessellation>(
         let issues = qc_engine.run(&maze);
         let mut seen_kinds: HashSet<IssueKind> = HashSet::new();
         let active: Vec<_> = issues.into_iter()
-            .filter(|i| seen_kinds.insert(i.kind) && !failed.contains(&i.kind))
+            .filter(|i| {
+                let is_new = seen_kinds.insert(i.kind);
+                debug_assert!(is_new || i.data.is_none(),
+                    "dropping Issue::data for duplicate kind {:?} in QC dedup", i.kind);
+                is_new && !failed.contains(&i.kind)
+            })
             .collect();
         if active.is_empty() {
             break;

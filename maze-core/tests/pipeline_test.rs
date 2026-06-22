@@ -4,8 +4,9 @@ use std::sync::Arc;
 use maze_core::{Graph, IdGenerator};
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationConfig, PresetState, pipeline::build_maze};
-use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
-use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, StrategyParams};
+use maze_core::graph::EdgeKind;
+use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck, MISSING_ENDPOINTS, MIN_LOOP_LENGTH};
+use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, MinLoopLengthRandomStrategy, StrategyParams};
 
 fn make_engines() -> (QualityControlEngine<SquareTessellation>, RepairEngine<SquareTessellation>) {
     let qc = QualityControlEngine::new(vec![
@@ -121,4 +122,30 @@ fn pipeline_deduplicates_issues_from_duplicate_checks() {
     let (_, warnings) = build_maze(field, graph, 1, qc, repair);
     assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     assert_eq!(call_count.load(Ordering::SeqCst), 1, "strategy called more than once for duplicate issue");
+}
+
+#[test]
+fn pipeline_breaks_short_loop_via_min_loop_length() {
+    let mut ids = IdGenerator::new();
+    let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut graph = Graph::new();
+    field.build_nodes(&mut graph);
+    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    graph.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    graph.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingEndpointsCheck),
+        Box::new(UnreachableFinishCheck),
+        Box::new(MinLoopLengthCheck { min_loop_length: 10 }),
+    ]);
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
+    strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
+    strategies.insert(MIN_LOOP_LENGTH, Box::new(MinLoopLengthRandomStrategy));
+    let repair = RepairEngine::new(strategies, HashMap::new());
+
+    let (_, remaining) = build_maze(field, graph, 1, qc, repair);
+    assert!(!remaining.iter().any(|i| i.kind == MIN_LOOP_LENGTH),
+        "short loop must be resolved by the pipeline: {:?}", remaining);
 }

@@ -1,0 +1,207 @@
+use super::*;
+use crate::graph::{Graph, EdgeKind};
+use crate::graph::nav::build_nav_graph;
+
+fn triangle(a: u64, b: u64, c: u64) -> Graph {
+    let mut g = Graph::new();
+    for id in [a, b, c] { g.add_node(id); }
+    g.add_edge(a, b, EdgeKind::Basic);
+    g.add_edge(b, c, EdgeKind::Basic);
+    g.add_edge(c, a, EdgeKind::Basic);
+    g
+}
+
+fn all_cycles(g: &Graph) -> Vec<Vec<usize>> {
+    let nav = build_nav_graph(g);
+    let cycles = find_all_simple_cycles(&nav);
+    dedup_bidirectional_pairs(&nav, cycles)
+}
+
+#[test]
+fn finds_simple_cycle() {
+    let g = triangle(0, 1, 2);
+    let nav = build_nav_graph(&g);
+    let cycles = all_cycles(&g);
+    assert_eq!(cycles.len(), 1);
+
+    let edge_ids = resolve_to_edge_ids(&nav, &cycles, &g);
+    assert_eq!(edge_ids.len(), 1);
+    assert_eq!(edge_ids[0].len(), 3);
+    let unique: HashSet<_> = edge_ids[0].iter().collect();
+    assert_eq!(unique.len(), 3, "no duplicate EdgeId within one cycle");
+}
+
+#[test]
+fn same_cycle_found_from_different_starting_edges_dedups_to_one() {
+    // Square cycle 0->1->2->3->0 — Johnson's naturally finds it once regardless of which
+    // node ends up as the SCC's chosen start.
+    let mut g = Graph::new();
+    for id in 0..4u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(2, 3, EdgeKind::Basic);
+    g.add_edge(3, 0, EdgeKind::Basic);
+
+    let cycles = all_cycles(&g);
+    assert_eq!(cycles.len(), 1);
+    assert_eq!(cycles[0].len(), 4);
+}
+
+#[test]
+fn two_independent_cycles_both_found_without_duplicates() {
+    let mut g = Graph::new();
+    for id in 0..6u64 { g.add_node(id); }
+    for &(a, b) in &[(0,1),(1,2),(2,0)] { g.add_edge(a, b, EdgeKind::Basic); }
+    for &(a, b) in &[(3,4),(4,5),(5,3)] { g.add_edge(a, b, EdgeKind::Basic); }
+
+    let cycles = all_cycles(&g);
+    assert_eq!(cycles.len(), 2);
+}
+
+#[test]
+fn bowtie_graph_finds_all_distinct_simple_cycles() {
+    // Bowtie: A->B->C->A and B->D->C->B, sharing the B<->C reverse pair.
+    let mut g = Graph::new();
+    for id in 0..4u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic); // A->B
+    g.add_edge(1, 2, EdgeKind::Basic); // B->C
+    g.add_edge(2, 0, EdgeKind::Basic); // C->A
+    g.add_edge(1, 3, EdgeKind::Basic); // B->D
+    g.add_edge(3, 2, EdgeKind::Basic); // D->C
+    g.add_edge(2, 1, EdgeKind::Basic); // C->B
+
+    let nav = build_nav_graph(&g);
+    let cycles = all_cycles(&g);
+    // 3 real loops exist in this bowtie: A->B->C->A, B->D->C->B, and the longer
+    // A->B->D->C->A route. The B<->C reverse pair on its own is just walking the
+    // same corridor back and forth, not a real loop — excluded by dedup.
+    assert_eq!(cycles.len(), 3);
+
+    let edge_ids = resolve_to_edge_ids(&nav, &cycles, &g);
+    for cycle in &edge_ids {
+        let unique: HashSet<_> = cycle.iter().collect();
+        assert_eq!(unique.len(), cycle.len(), "no duplicate EdgeId within one cycle");
+    }
+}
+
+#[test]
+fn bidirectional_cycle_walked_both_ways_collapses_to_one_entry() {
+    // Square loop where all four corners (0,1,2,3) are junctions (each has a spur
+    // to a leaf node). Forward and backward traversal of the loop are the same visual
+    // loop and must not be reported as two separate cycles.
+    let mut g = Graph::new();
+    for id in 0..8u64 { g.add_node(id); }
+    g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
+    g.add_bidirectional_edge(1, 2, EdgeKind::Basic);
+    g.add_bidirectional_edge(2, 3, EdgeKind::Basic);
+    g.add_bidirectional_edge(3, 0, EdgeKind::Basic);
+    g.add_bidirectional_edge(0, 4, EdgeKind::Basic);
+    g.add_bidirectional_edge(1, 5, EdgeKind::Basic);
+    g.add_bidirectional_edge(2, 6, EdgeKind::Basic);
+    g.add_bidirectional_edge(3, 7, EdgeKind::Basic);
+
+    let cycles = all_cycles(&g);
+    assert_eq!(cycles.len(), 1, "forward and backward traversal of an all-bidirectional loop must dedup to one entry");
+}
+
+#[test]
+fn finds_cycle_of_length_8_with_junction() {
+    // Reproduces the original bug report shape: octagon loop with two junctions
+    // (spurs at node 0 and node 4) splitting it into two 4-tile corridor segments.
+    let mut g = Graph::new();
+    for id in 0..10u64 { g.add_node(id); }
+    for i in 0..8u64 {
+        g.add_bidirectional_edge(i, (i + 1) % 8, EdgeKind::Basic);
+    }
+    g.add_bidirectional_edge(0, 8, EdgeKind::Basic);
+    g.add_bidirectional_edge(4, 9, EdgeKind::Basic);
+
+    let cycles = all_cycles(&g);
+    assert_eq!(cycles.len(), 1);
+}
+
+#[test]
+fn finds_cycle_of_length_8_with_single_junction_self_loop_ring() {
+    // Same octagon, but with only ONE junction (spur at node 0) — the whole ring
+    // compresses into a single self-loop NavEdge. This is the original bug: such
+    // rings used to be invisible to cycle detection entirely.
+    let mut g = Graph::new();
+    for id in 0..9u64 { g.add_node(id); }
+    for i in 0..8u64 {
+        g.add_bidirectional_edge(i, (i + 1) % 8, EdgeKind::Basic);
+    }
+    g.add_bidirectional_edge(0, 8, EdgeKind::Basic);
+
+    let cycles = all_cycles(&g);
+    assert_eq!(cycles.len(), 1, "single-junction ring (self-loop nav-edge) must be found as a cycle");
+}
+
+#[test]
+fn bidirectional_self_loop_ring_cw_ccw_dedups_to_one_cycle() {
+    // Pure ring, no junctions, all edges bidirectional — compresses to a single nav-node
+    // with two self-loop nav-edges (CW and CCW), linked via reverse_edge. Must dedup to 1.
+    let mut g = Graph::new();
+    for id in 0..3u64 { g.add_node(id); }
+    g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
+    g.add_bidirectional_edge(1, 2, EdgeKind::Basic);
+    g.add_bidirectional_edge(2, 0, EdgeKind::Basic);
+
+    let nav = build_nav_graph(&g);
+    assert_eq!(nav.nodes.len(), 1, "pure bidirectional ring with no junction compresses to one nav-node");
+
+    let cycles = find_all_simple_cycles(&nav);
+    assert_eq!(cycles.len(), 2, "Johnson's correctly finds both CW and CCW self-loops as distinct directed cycles");
+
+    let deduped = dedup_bidirectional_pairs(&nav, cycles);
+    assert_eq!(deduped.len(), 1, "CW/CCW self-loop pair on the same ring is one visual loop");
+}
+
+#[test]
+fn empty_graph_yields_no_cycles() {
+    let g = Graph::new();
+    let cycles = all_cycles(&g);
+    assert!(cycles.is_empty());
+}
+
+#[test]
+fn linear_chain_has_no_cycles() {
+    let mut g = Graph::new();
+    for id in 0..3u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    let cycles = all_cycles(&g);
+    assert!(cycles.is_empty());
+}
+
+#[test]
+fn dense_grid_completes_quickly_and_reports_observed_cycle_count() {
+    // A 5x5 grid, all edges bidirectional — every junction has up to 4 neighbors. Dense
+    // enough that the number of simple cycles grows quickly with grid size; this test
+    // exists to observe the actual magnitude on a realistic-ish maze topology before it
+    // surfaces as a surprise on a real dense maze config, not to assert a specific count.
+    const SIDE: u64 = 5;
+    let mut g = Graph::new();
+    for id in 0..(SIDE * SIDE) { g.add_node(id); }
+    for row in 0..SIDE {
+        for col in 0..SIDE {
+            let id = row * SIDE + col;
+            if col + 1 < SIDE {
+                g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic);
+            }
+            if row + 1 < SIDE {
+                g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic);
+            }
+        }
+    }
+
+    let start = std::time::Instant::now();
+    let cycles = all_cycles(&g);
+    let elapsed = start.elapsed();
+
+    println!(
+        "dense 5x5 grid: {} distinct simple cycles found in {:?}",
+        cycles.len(), elapsed
+    );
+    assert!(!cycles.is_empty(), "a grid has cycles");
+    assert!(elapsed.as_secs() < 5, "5x5 grid must not take more than a few seconds");
+}

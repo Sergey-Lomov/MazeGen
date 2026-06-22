@@ -317,9 +317,9 @@ fn single_isolated_node_has_no_edges_and_no_cycle() {
 }
 
 #[test]
-fn self_loop_is_ignored_by_edge_count_and_cycle_metrics() {
-    // 0 -> 0 self-loop, plus a real cycle 0->1->2->0. The self-loop must not
-    // inflate edge_count or be mistaken for a real cycle on its own.
+fn self_loop_counts_as_its_own_cycle() {
+    // 0 -> 0 self-loop, plus a real cycle 0->1->2->0. The self-loop is now a first-class
+    // cycle: it adds 1 to edge_count and 1 to cycle_count (β1) on top of the 0->1->2->0 ring.
     let mut g = Graph::new();
     for id in 0..3 { g.add_node(id); }
     g.add_edge(0, 0, EdgeKind::Basic); // self-loop
@@ -328,9 +328,9 @@ fn self_loop_is_ignored_by_edge_count_and_cycle_metrics() {
     g.add_edge(2, 0, EdgeKind::Basic);
     let analytics = analyze(&g);
 
-    assert_eq!(analytics.edge_count, 3, "self-loop must not be counted as a corridor");
-    assert_eq!(analytics.cycle_count, 1, "only the real 0->1->2->0 ring counts");
-    assert_eq!(analytics.pure_cycle_nav_nodes.len(), 3, "self-loop node is on the real cycle too, but contributes no extra cyclic node");
+    assert_eq!(analytics.edge_count, 4, "self-loop counts as its own corridor");
+    assert_eq!(analytics.cycle_count, 2, "self-loop ring + 0->1->2->0 ring = two independent cycles");
+    assert_eq!(analytics.pure_cycle_nav_nodes.len(), 3, "self-loop node is also on the real cycle — no extra cyclic node");
 }
 
 #[test]

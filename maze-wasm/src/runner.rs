@@ -4,8 +4,8 @@ use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, IssueKind},
-    repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, IssueKind},
+    repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config};
 use crate::dto::{EdgeDto, GenerationStepDto};
@@ -28,6 +28,15 @@ pub fn build_qc_and_repair<T: Tessellation>(
                     .unwrap_or(MIN_LOOPS_DEFAULT);
                 checks.push(Box::new(MinLoopsCountCheck { min_loops }));
             }
+            "min_loop_length" => {
+                let min_loop_length = config.check_params
+                    .get("min_loop_length")
+                    .and_then(|p| p.get("min_loop_length"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.max(1) as u32)
+                    .unwrap_or(MIN_LOOP_LENGTH_DEFAULT);
+                checks.push(Box::new(MinLoopLengthCheck { min_loop_length }));
+            }
             other => return Err(JsValue::from_str(&format!("unknown check: {other}"))),
         }
     }
@@ -43,6 +52,7 @@ pub fn build_qc_and_repair<T: Tessellation>(
             "random_endpoints"   => Box::new(RandomEndpointsStrategy),
             "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
             "scored_endpoints"   => Box::new(ScoredEndpointsStrategy),
+            "min_loop_length_random" => Box::new(MinLoopLengthRandomStrategy),
             other => return Err(JsValue::from_str(&format!("unknown strategy: {other}"))),
         };
         strategies.insert(kind, strategy);

@@ -1,18 +1,23 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
+#[cfg(test)]
+use std::collections::VecDeque;
 use super::nav::{NavEdge, NavGraph, NavNodeId};
+use super::cycles::{find_all_simple_cycles, drop_trivial_reverse_pairs};
 use crate::dsu::Dsu;
 
 /// Iterate distinct *undirected* nav-edges: an edge and its `reverse_edge` are the same
 /// physical corridor and are yielded once (via the lower edge index); edges with no reverse
-/// (one-way corridors) are yielded individually. Self-loops are skipped. `filter` restricts
-/// to a subset of edge indices (e.g. the pure-cycle core) — pass `|_| true` for no restriction.
+/// (one-way corridors) are yielded individually. Self-loop edges count too — a self-loop's
+/// `reverse_edge` (if any, e.g. a CW/CCW ring pair) dedups via the same mechanism as ordinary
+/// corridors. `filter` restricts to a subset of edge indices (e.g. the pure-cycle core) —
+/// pass `|_| true` for no restriction.
 fn distinct_undirected_edges<'a>(
     nav: &'a NavGraph,
     filter: impl Fn(usize) -> bool + 'a,
 ) -> impl Iterator<Item = (usize, &'a NavEdge)> {
     let mut seen: HashSet<usize> = HashSet::new();
     nav.edges().enumerate().filter_map(move |(idx, edge)| {
-        if edge.from == edge.to || !filter(idx) || seen.contains(&idx) {
+        if !filter(idx) || seen.contains(&idx) {
             return None;
         }
         seen.insert(idx);
@@ -32,7 +37,8 @@ fn distinct_undirected_edges<'a>(
 /// into a new dead end, so this repeats until stable (leaf-pruning a tree, but direction-
 /// and multi-edge-safe: it only ever strips nodes topologically incapable of being on a
 /// cycle, regardless of edge direction or one-way edges).
-/// Returns, per nav-node id, whether it survives trimming — candidates for `build_cyclic_core`.
+/// Returns, per nav-node id, whether it survives trimming.
+#[cfg(test)]
 fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
     let n = nav.nodes.len();
 
@@ -65,69 +71,45 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
 }
 
 /// Find nav-nodes and nav-edges participating in real directed cycles.
-/// An edge (u -> v) lies on a real cycle iff there is a directed path from v back to u
-/// that does not reuse this edge or its reverse (reusing the reverse would just be
-/// walking the same corridor back and forth, not a real cycle).
-/// Returns (cyclic nav-node ids, cyclic nav-edge indices).
-fn build_cyclic_core(nav: &NavGraph) -> (HashSet<NavNodeId>, HashSet<usize>) {
-    let n = nav.nodes.len();
+/// Union of every nav-node/nav-edge appearing in any cycle found by `find_all_simple_cycles`
+/// (the single source of truth shared with overlay, metrics, and `MinLoopLengthCheck`) —
+/// not a separate BFS pass. Self-loops are included: they are first-class cycles there.
+///
+/// Two deliberate departures from a plain "union the deduped cycle list" approach, both
+/// needed for `compute_cycle_metrics`'s Euler formula (`E - V + C`) to produce correct
+/// results — confirmed by regressions when either was skipped:
+///
+/// 1. **Drops only trivial reverse-pair 2-cycles** (`drop_trivial_reverse_pairs`), not the
+///    full canonical-index dedup (`dedup_bidirectional_pairs`). A dead-end spur (a single
+///    bidirectional edge to a leaf with no other connection) only ever appears in the cycle
+///    list as its own trivial walk-out-and-back pair — dropping trivial pairs correctly
+///    excludes it from the core (it's not on any real cycle). But two genuinely different
+///    routes between the same junction pair (e.g. a direct corridor plus a detour) also
+///    produce trivial pairs (each route walked back on itself) ALONGSIDE the real cycle
+///    (route A forward + route B backward) — only the trivial pairs are dropped, the real
+///    cycle's edges remain.
+/// 2. **Keeps both directions of every surviving cycle's edges**, not just the one walking
+///    direction recorded in the cycle (which `dedup_bidirectional_pairs` would reduce to).
+///    `count_core_edges`/`count_core_regions` pair an edge with its `reverse_edge` to count
+///    one physical corridor once — if only one direction is present in `core_edges`, the
+///    pairing fails and miscounts E, producing a wrong cycle_count (confirmed on the
+///    parallel-corridors fixture: cycle_count came out 0 instead of 1 without this).
+fn cycle_core(nav: &NavGraph) -> (HashSet<NavNodeId>, HashSet<usize>) {
     let edges: Vec<&NavEdge> = nav.edges().collect();
-
-    // Dead-end nodes can never be on a cycle — exclude them before the expensive BFS pass.
-    let survivors = trim_dead_ends(nav);
-
-    // Adjacency: node -> list of (edge_idx, to). Restricted to surviving nodes.
-    let mut adj: Vec<Vec<(usize, NavNodeId)>> = vec![Vec::new(); n];
-    for (idx, edge) in edges.iter().enumerate() {
-        if edge.from == edge.to { continue; } // self-loop, skip
-        if !survivors[edge.from] || !survivors[edge.to] { continue; }
-        adj[edge.from].push((idx, edge.to));
-    }
+    let cycles = find_all_simple_cycles(nav);
+    let cycles = drop_trivial_reverse_pairs(nav, cycles);
 
     let mut cyclic_nodes: HashSet<NavNodeId> = HashSet::new();
     let mut cyclic_edges: HashSet<usize> = HashSet::new();
 
-    for (idx, edge) in edges.iter().enumerate() {
-        if edge.from == edge.to { continue; }
-        if !survivors[edge.from] || !survivors[edge.to] { continue; }
-        if cyclic_edges.contains(&idx) { continue; } // already proven cyclic
-        let u = edge.from;
-        let v = edge.to;
-        let excluded_reverse = edge.reverse_edge;
-
-        // BFS from v to u, forbidding this edge and its reverse.
-        let mut visited = vec![false; n];
-        let mut parent_edge: Vec<Option<usize>> = vec![None; n];
-        visited[v] = true;
-        let mut queue: VecDeque<NavNodeId> = VecDeque::new();
-        queue.push_back(v);
-        let mut found = v == u;
-
-        while let Some(node) = queue.pop_front() {
-            if node == u { found = true; break; }
-            for &(e_idx, to) in &adj[node] {
-                if e_idx == idx || Some(e_idx) == excluded_reverse { continue; }
-                if visited[to] { continue; }
-                visited[to] = true;
-                parent_edge[to] = Some(e_idx);
-                queue.push_back(to);
+    for cycle in &cycles {
+        for &idx in cycle {
+            cyclic_edges.insert(idx);
+            cyclic_nodes.insert(edges[idx].from);
+            cyclic_nodes.insert(edges[idx].to);
+            if let Some(rev) = edges[idx].reverse_edge {
+                cyclic_edges.insert(rev);
             }
-        }
-
-        if !found { continue; }
-
-        // Reconstruct the path v -> u and mark all its edges + this edge as cyclic.
-        cyclic_edges.insert(idx);
-        cyclic_nodes.insert(u);
-        cyclic_nodes.insert(v);
-        let mut cur = u;
-        while cur != v {
-            let e_idx = parent_edge[cur].expect("BFS path must have a parent edge");
-            cyclic_edges.insert(e_idx);
-            let e = edges[e_idx];
-            cyclic_nodes.insert(e.from);
-            cyclic_nodes.insert(e.to);
-            cur = e.from;
         }
     }
 
@@ -210,7 +192,7 @@ fn compute_cycle_metrics(nav: &NavGraph, core_nodes: &HashSet<NavNodeId>, core_e
 }
 
 /// Compute graph analytics on the nav-graph.
-/// Cycle metrics are based on the pure-cycle core (see `build_cyclic_core`), not raw SCCs.
+/// Cycle metrics are based on the pure-cycle core (see `cycle_core`), not raw SCCs.
 pub fn compute_graph_analytics(nav: &NavGraph) -> GraphAnalytics {
     let n = nav.nodes.len();
     if n == 0 {
@@ -224,7 +206,7 @@ pub fn compute_graph_analytics(nav: &NavGraph) -> GraphAnalytics {
     let edge_count = distinct_undirected_edges(nav, |_| true).count();
 
     // Pure-cycle core — nodes/edges participating in real directed cycles (no bridges).
-    let (pure_cycle_nav_nodes, pure_cycle_edge_indices) = build_cyclic_core(nav);
+    let (pure_cycle_nav_nodes, pure_cycle_edge_indices) = cycle_core(nav);
     let (cycle_count, cycle_region_count) =
         compute_cycle_metrics(nav, &pure_cycle_nav_nodes, &pure_cycle_edge_indices);
 

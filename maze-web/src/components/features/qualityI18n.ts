@@ -15,6 +15,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.min_loops_count.label"] as MessageFn,
     description: m["check.min_loops_count.description"] as MessageFn,
   },
+  min_loop_length: {
+    label: m["check.min_loop_length.label"] as MessageFn,
+    description: m["check.min_loop_length.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -29,6 +33,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   min_loops_count: {
     label: m["issue.min_loops_count.label"] as MessageFn,
     description: m["issue.min_loops_count.description"] as MessageFn,
+  },
+  min_loop_length: {
+    label: m["issue.min_loop_length.label"] as MessageFn,
+    description: m["issue.min_loop_length.description"] as MessageFn,
   },
 };
 
@@ -51,10 +59,15 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.scored_endpoints.label"] as MessageFn,
     description: m["strategy.scored_endpoints.description"] as MessageFn,
   },
+  min_loop_length_random: {
+    label: m["strategy.min_loop_length_random.label"] as MessageFn,
+    description: m["strategy.min_loop_length_random.description"] as MessageFn,
+  },
 };
 
 export const paramI18n: Record<string, MessageFn> = {
   min_loops: m["param.min_loops.label"] as MessageFn,
+  min_loop_length: m["param.min_loop_length.label"] as MessageFn,
   path_weight: m["param.path_weight.label"] as MessageFn,
   junction_weight: m["param.junction_weight.label"] as MessageFn,
   oneway_weight: m["param.oneway_weight.label"] as MessageFn,
