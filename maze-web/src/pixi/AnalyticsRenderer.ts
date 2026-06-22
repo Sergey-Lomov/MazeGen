@@ -7,6 +7,7 @@ import { MazeGraphRenderer } from "./MazeGraphRenderer";
 import { NavGraphRenderer } from "./NavGraphRenderer";
 import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
+import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { postEditEdgesToDto } from "./selectors/mazeSelectors";
 import type { Viewport } from "./renderers/types";
 
@@ -21,6 +22,7 @@ export class AnalyticsRenderer {
   private readonly navGraphContainer: Container;
   private readonly pureCyclesContainer: Container;
   private readonly routeContainer: Container;
+  private readonly issueHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly mazeOverlay: MazeOverlayRenderer;
@@ -29,6 +31,7 @@ export class AnalyticsRenderer {
   private readonly navGraphRenderer: NavGraphRenderer;
   private readonly pureCyclesRenderer: PureCyclesOverlay;
   private readonly routeRenderer: RouteOverlay;
+  private readonly issueHighlightRenderer: IssueHighlightOverlay;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
@@ -44,6 +47,7 @@ export class AnalyticsRenderer {
     this.navGraphContainer    = new Container();
     this.pureCyclesContainer  = new Container();
     this.routeContainer       = new Container();
+    this.issueHighlightContainer = new Container();
 
     container.addChild(this.gridContainer);
     container.addChild(this.floorContainer);
@@ -55,6 +59,7 @@ export class AnalyticsRenderer {
     container.addChild(this.navGraphContainer);
     container.addChild(this.pureCyclesContainer);
     container.addChild(this.routeContainer);
+    container.addChild(this.issueHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
     this.mazeOverlay = new MazeOverlayRenderer({
@@ -68,6 +73,7 @@ export class AnalyticsRenderer {
     this.navGraphRenderer = new NavGraphRenderer(this.navGraphContainer);
     this.pureCyclesRenderer = new PureCyclesOverlay(this.pureCyclesContainer);
     this.routeRenderer = new RouteOverlay(this.routeContainer);
+    this.issueHighlightRenderer = new IssueHighlightOverlay(this.issueHighlightContainer);
 
     this.syncAll(useMazeStore.getState());
     this.subscribe();
@@ -83,7 +89,8 @@ export class AnalyticsRenderer {
         state.showGraphOverlay !== prev.showGraphOverlay ||
         state.showNavGraphOverlay !== prev.showNavGraphOverlay ||
         state.showPureCyclesOverlay !== prev.showPureCyclesOverlay ||
-        state.showRouteOverlay !== prev.showRouteOverlay;
+        state.showRouteOverlay !== prev.showRouteOverlay ||
+        state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges;
 
       const dataChanged =
         state.nodes !== prev.nodes ||
@@ -111,7 +118,7 @@ export class AnalyticsRenderer {
     const analyticsOpen = state.openCard === "analytics";
     const { nodes, activeTessellationConfig: cfg,
       showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
-      showPureCyclesOverlay, showRouteOverlay, postEditAnalytics } = state;
+      showPureCyclesOverlay, showRouteOverlay, postEditAnalytics, hoveredIssueLoopEdges } = state;
 
     const graphAnalytics = postEditAnalytics?.graphAnalytics ?? state.graphAnalytics;
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
@@ -195,6 +202,15 @@ export class AnalyticsRenderer {
     } else {
       this.routeRenderer.clear();
     }
+
+    // Issue highlight overlay — hovered issue's loop edges
+    const showIssueHighlight = analyticsOpen && hoveredIssueLoopEdges != null && hoveredIssueLoopEdges.length > 0;
+    this.issueHighlightContainer.visible = showIssueHighlight;
+    if (showIssueHighlight) {
+      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, cfg });
+    } else {
+      this.issueHighlightRenderer.clear();
+    }
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
@@ -214,6 +230,7 @@ export class AnalyticsRenderer {
     this.navGraphRenderer.destroy();
     this.pureCyclesRenderer.destroy();
     this.routeRenderer.destroy();
+    this.issueHighlightRenderer.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.regionsContainer.destroy();
@@ -223,5 +240,6 @@ export class AnalyticsRenderer {
     this.navGraphContainer.destroy();
     this.pureCyclesContainer.destroy();
     this.routeContainer.destroy();
+    this.issueHighlightContainer.destroy();
   }
 }

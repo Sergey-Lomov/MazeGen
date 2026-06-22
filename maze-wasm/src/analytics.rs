@@ -1,32 +1,49 @@
 use std::collections::HashMap;
 use maze_core::{
     space::Tessellation,
-    quality_control::QualityControlEngine,
+    quality_control::{QualityControlEngine, Issue, IssueData},
     compute_node_stats, compute_spatial_edge_stats, compute_route_info, compute_graph_analytics,
     Maze,
 };
 use crate::dto::{
-    EdgeDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
+    EdgeDto, IssueDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
     NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
 };
 
 /// Compute analytics snapshot from a fully-built maze (GraphInput).
 /// Independent of the generation pipeline — accepts any Maze<T> with a populated graph.
 /// `qc_engine`: used to run quality checks (no repair). Pass None to skip QC (e.g. when
-/// caller already has authoritative warnings from a repair cycle).
+/// caller already has authoritative issues from a repair cycle).
 pub fn build_analytics_snapshot<T: Tessellation>(
     maze: &mut Maze<T>,
     qc_engine: Option<&QualityControlEngine<T>>,
-    warnings_override: Option<Vec<String>>,
+    issues_override: Option<Vec<Issue>>,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
 ) -> Result<MazeSnapshot, String> {
-    let warnings: Vec<String> = if let Some(w) = warnings_override {
-        w
+    let raw_issues: Vec<Issue> = if let Some(i) = issues_override {
+        i
     } else if let Some(engine) = qc_engine {
-        engine.run(maze).into_iter().map(|i| i.kind.to_string()).collect()
+        engine.run(maze)
     } else {
         vec![]
     };
+
+    let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
+        let short_loop_edges = match &issue.data {
+            Some(IssueData::ShortLoops(loops)) => Some(
+                loops.iter().map(|loop_edges| {
+                    loop_edges.iter().filter_map(|&eid| {
+                        let edge = maze.graph.edge(eid)?;
+                        let from = u32::try_from(edge.from).ok()?;
+                        let to = u32::try_from(edge.to).ok()?;
+                        Some([from, to])
+                    }).collect()
+                }).collect()
+            ),
+            _ => None,
+        };
+        IssueDto { kind: issue.kind.to_string(), short_loop_edges }
+    }).collect();
 
     let nodes: Vec<NodeDto> = maze.graph
         .nodes()
@@ -149,7 +166,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         edges,
         start: meta_start,
         finish: meta_finish,
-        warnings,
+        issues,
         nav_nodes,
         nav_edges,
         node_stats,

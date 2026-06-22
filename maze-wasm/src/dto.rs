@@ -29,6 +29,14 @@ pub struct NavEdgeDto {
 }
 
 #[derive(Serialize)]
+pub struct IssueDto {
+    pub kind: String,
+    /// Present only for `min_loop_length` issues — each inner Vec is one short cycle,
+    /// expressed as base-graph [from, to] maze node-id pairs for highlight rendering.
+    pub short_loop_edges: Option<Vec<Vec<[u32; 2]>>>,
+}
+
+#[derive(Serialize)]
 pub struct GenerationStepDto {
     pub edges:        Vec<EdgeDto>,
     pub active_nodes: Vec<u32>,
@@ -114,7 +122,7 @@ pub struct MazeSnapshot {
     pub edges: Vec<EdgeDto>,
     pub start: Option<u32>,
     pub finish: Option<u32>,
-    pub warnings: Vec<String>,
+    pub issues: Vec<IssueDto>,
     pub nav_nodes: Vec<NavNodeDto>,
     pub nav_edges: Vec<NavEdgeDto>,
     pub node_stats: NodeStatsDto,

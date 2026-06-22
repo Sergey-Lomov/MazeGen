@@ -80,7 +80,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           navNodes: snapshot.nav_nodes,
           navEdges: snapshot.nav_edges,
           graphAnalytics: snapshot.graph_analytics,
-          warnings: snapshot.warnings,
+          issues: snapshot.issues,
         },
         postEditEdges: edgesSnapshot,
         postEditMeta: metaSnapshot,

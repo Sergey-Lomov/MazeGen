@@ -34,14 +34,14 @@ export function AnalyticsFeature() {
   const generatedEdgeStats = useMazeStore((s) => s.edgeStats);
   const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
   const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
-  const generatedWarnings = useMazeStore((s) => s.warnings);
+  const generatedIssues = useMazeStore((s) => s.issues);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
 
   const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
   const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
   const graphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
-  const warnings = postEditAnalytics?.warnings ?? generatedWarnings;
+  const issues = postEditAnalytics?.issues ?? generatedIssues;
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
@@ -60,7 +60,7 @@ export function AnalyticsFeature() {
   return (
     <div style={styles.root}>
 
-      <IssuesBlock warnings={warnings} />
+      <IssuesBlock issues={issues} />
 
       {/* Layers block */}
       <SectionHeader label={m["analytics.layers"]()} />

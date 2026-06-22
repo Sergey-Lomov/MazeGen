@@ -7,7 +7,7 @@ export const mockSnapshot = {
   edges: [{ from: 0, to: 1 }],
   start: 0,
   finish: 1,
-  warnings: [],
+  issues: [],
   nav_nodes: [],
   nav_edges: [],
   graph_analytics: { node_count: 0, edge_count: 0, component_count: 0, cycle_count: 0, cycle_region_count: 0, node_component: {}, pure_cycle_node_ids: [], pure_cycle_edge_pairs: [] },

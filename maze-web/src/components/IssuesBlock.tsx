@@ -2,8 +2,10 @@ import { useState } from "react";
 import { colors, font } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { Modal } from "./Modal";
+import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
 import type React from "react";
+import type { IssueDto } from "../wasm/types";
 
 type IssueInfo = { label: string; description: string };
 
@@ -17,14 +19,26 @@ function resolveIssue(kind: string): IssueInfo {
   return KNOWN_ISSUES[kind]?.() ?? { label: kind, description: "" };
 }
 
-export function IssueBubble({ kind }: { kind: string }) {
+export function IssueBubble({ issue }: { issue: IssueDto }) {
   const [open, setOpen] = useState(false);
-  const { label, description } = resolveIssue(kind);
+  const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
+  const { label, description } = resolveIssue(issue.kind);
+  const loopEdges = issue.short_loop_edges;
+
+  const handleMouseEnter = loopEdges != null
+    ? () => setHoveredIssueLoopEdges(loopEdges.flat())
+    : undefined;
+  const handleMouseLeave = loopEdges != null
+    ? () => setHoveredIssueLoopEdges(null)
+    : undefined;
+
   return (
     <>
       <div
         style={{ ...issueStyles.bubble, ...(description ? issueStyles.bubbleClickable : {}) }}
         onClick={description ? () => setOpen(true) : undefined}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <span style={issueStyles.label}>{label}</span>
         {description && <span style={issueStyles.infoIcon}>ℹ</span>}
@@ -38,14 +52,14 @@ export function IssueBubble({ kind }: { kind: string }) {
   );
 }
 
-export function IssuesBlock({ warnings }: { warnings: string[] }) {
-  if (warnings.length === 0) return null;
+export function IssuesBlock({ issues }: { issues: IssueDto[] }) {
+  if (issues.length === 0) return null;
   return (
     <>
       <div style={sharedStyles.sectionHeader}>{m["analytics.issues"]()}</div>
       <div style={issueStyles.block}>
-        {warnings.map((w, i) => (
-          <IssueBubble key={i} kind={w} />
+        {issues.map((issue, i) => (
+          <IssueBubble key={i} issue={issue} />
         ))}
       </div>
       <div style={issueStyles.divider} />

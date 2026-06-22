@@ -1,5 +1,5 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, GenerateConfig, ComputeAnalyticsConfig } from "./types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, GenerateConfig, ComputeAnalyticsConfig } from "./types";
 
 function isNodeDto(v: unknown): v is NodeDto {
   return typeof v === "object" && v !== null &&
@@ -27,6 +27,11 @@ function isNavEdgeDto(v: unknown): v is NavEdgeDto {
     (v as NavEdgeDto).path.every((n: unknown) => typeof n === "number");
 }
 
+function isIssueDto(v: unknown): v is IssueDto {
+  return typeof v === "object" && v !== null &&
+    typeof (v as IssueDto).kind === "string";
+}
+
 function validateSnapshot(raw: unknown): MazeSnapshot {
   if (typeof raw !== "object" || raw === null) throw new Error("WASM returned invalid snapshot");
   const s = raw as Record<string, unknown>;
@@ -34,8 +39,8 @@ function validateSnapshot(raw: unknown): MazeSnapshot {
     throw new Error("WASM snapshot: invalid nodes");
   if (!Array.isArray(s.edges) || !s.edges.every(isEdgeDto))
     throw new Error("WASM snapshot: invalid edges");
-  if (!Array.isArray(s.warnings) || !s.warnings.every(w => typeof w === "string"))
-    throw new Error("WASM snapshot: invalid warnings");
+  if (!Array.isArray(s.issues) || !s.issues.every(isIssueDto))
+    throw new Error("WASM snapshot: invalid issues");
   if (!Array.isArray(s.nav_nodes) || !s.nav_nodes.every(isNavNodeDto))
     throw new Error("WASM snapshot: invalid nav_nodes");
   if (!Array.isArray(s.nav_edges) || !s.nav_edges.every(isNavEdgeDto))

@@ -116,10 +116,9 @@ pub fn run_generate<T: Tessellation>(
         }
     }
 
-    let warnings: Vec<String> = issues.iter().map(|i| i.kind.to_string()).collect();
     let debug_steps = steps_to_dto(raw_steps);
 
-    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(warnings), point_to_xy)
+    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), point_to_xy)
         .map_err(|e| JsValue::from_str(&e))?;
     snapshot.debug_steps = debug_steps;
 

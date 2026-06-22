@@ -61,12 +61,19 @@ export interface GraphAnalyticsDto {
   pure_cycle_edge_pairs: [number, number][];
 }
 
+export interface IssueDto {
+  kind: string;
+  /** Present only for `min_loop_length` issues — each entry is one short cycle's
+   * base-graph edges as [from, to] maze node-id pairs, for highlight rendering. */
+  short_loop_edges: [number, number][][] | null;
+}
+
 export interface MazeSnapshot {
   nodes: NodeDto[];
   edges: EdgeDto[];
   start: number | null;
   finish: number | null;
-  warnings: string[];
+  issues: IssueDto[];
   nav_nodes: NavNodeDto[];
   nav_edges: NavEdgeDto[];
   node_stats: NodeStatsDto;

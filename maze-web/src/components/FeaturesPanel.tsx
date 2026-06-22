@@ -96,7 +96,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const nodes = useMazeStore((s) => s.nodes);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
-  const generatedWarnings = useMazeStore((s) => s.warnings);
+  const generatedIssues = useMazeStore((s) => s.issues);
   const loadProject = useMazeStore((s) => s.loadProject);
   const setError = useMazeStore((s) => s.setError);
 
@@ -189,7 +189,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     ? m["status.presets_configured"]()
     : m["status.no_presets"]();
 
-  const analyticsCard = computeAnalyticsCard(nodes.length > 0, (postEditAnalytics?.warnings ?? generatedWarnings).length);
+  const analyticsCard = computeAnalyticsCard(nodes.length > 0, (postEditAnalytics?.issues ?? generatedIssues).length);
 
   return (
     <div style={styles.panel}>

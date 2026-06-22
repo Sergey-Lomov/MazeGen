@@ -8,6 +8,7 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   showNavGraphOverlay: false,
   showPureCyclesOverlay: false,
   showRouteOverlay: false,
+  hoveredIssueLoopEdges: null,
 
   setShowMazeOverlay: (v) => set({ showMazeOverlay: v }),
   setShowComponentsOverlay: (v) => set({ showComponentsOverlay: v }),
@@ -15,4 +16,5 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   setShowNavGraphOverlay: (v) => set({ showNavGraphOverlay: v }),
   setShowPureCyclesOverlay: (v) => set({ showPureCyclesOverlay: v }),
   setShowRouteOverlay: (v) => set({ showRouteOverlay: v }),
+  setHoveredIssueLoopEdges: (edges) => set({ hoveredIssueLoopEdges: edges }),
 });

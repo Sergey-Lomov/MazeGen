@@ -51,7 +51,7 @@ export function PostEditFeature() {
 
   return (
     <div style={styles.root}>
-      {postEditAnalytics && <IssuesBlock warnings={postEditAnalytics.warnings} />}
+      {postEditAnalytics && <IssuesBlock issues={postEditAnalytics.issues} />}
       <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
       <div style={styles.toolGrid}>
         {getEdgeTools().map(([t, label]) => (

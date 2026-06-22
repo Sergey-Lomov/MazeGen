@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, GenerationStepsSnapshot, NodeLockKind } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, GenerationStepsSnapshot, NodeLockKind, IssueDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
 
@@ -24,7 +24,7 @@ export interface PostEditAnalytics {
   navNodes: NavNodeDto[];
   navEdges: NavEdgeDto[];
   graphAnalytics: GraphAnalyticsDto;
-  warnings: string[];
+  issues: IssueDto[];
 }
 
 export type TessellationKind = "square" | "hex" | "triangle";
@@ -160,7 +160,7 @@ export interface GenerationState {
   showCoords: boolean;
   showMaze: boolean;
   selectedNode: number | null;
-  warnings: string[];
+  issues: IssueDto[];
   error: string | null;
   registryLoaded: boolean;
   availableChecks: CheckDescriptor[];
@@ -226,6 +226,8 @@ export interface AnalyticsOverlayState {
   showNavGraphOverlay: boolean;
   showPureCyclesOverlay: boolean;
   showRouteOverlay: boolean;
+  /** Base-graph [from, to] edges of the issue loops currently hovered in IssuesBlock. */
+  hoveredIssueLoopEdges: [number, number][] | null;
 }
 
 export interface AnalyticsOverlayActions {
@@ -235,6 +237,7 @@ export interface AnalyticsOverlayActions {
   setShowNavGraphOverlay: (v: boolean) => void;
   setShowPureCyclesOverlay: (v: boolean) => void;
   setShowRouteOverlay: (v: boolean) => void;
+  setHoveredIssueLoopEdges: (edges: [number, number][] | null) => void;
 }
 
 export interface PostEditState {

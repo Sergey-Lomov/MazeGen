@@ -42,7 +42,9 @@ The Route overlay toggle is disabled when `routeInfo == null`. `showRouteOverlay
 
 ### Issues Block
 
-Displays `warnings: string[]` from the store (generation warnings reported by WASM). Each warning is one row styled in `textWarning` color.
+Displays `issues: IssueDto[]` from the store (QC issues reported by WASM). Each issue is one row styled in `textWarning` color. `IssueDto = { kind: string, short_loop_edges: [number, number][][] | null }`.
+
+`min_loop_length` issues carry `short_loop_edges` — one entry per short cycle, each a list of base-graph `[from, to]` maze node-id pairs. Hovering the issue bubble calls `setHoveredIssueLoopEdges(short_loop_edges.flat())`; leaving clears it back to `null`. This lets a maze-wide issue (e.g. a short loop entirely protected by a user preset, which the repair pass cannot fix) be visually located on the canvas instead of only reported by kind.
 
 ### Overlay Layers Block
 
@@ -122,8 +124,13 @@ Owns all analytics canvas layers. Lives in `analyticsContainer` which is a synce
 | 7 | `graphContainer` | `MazeGraphRenderer` | `analyticsOpen && showGraphOverlay && nodes.length > 0` |
 | 8 | `navGraphContainer` | `NavGraphRenderer` | `analyticsOpen && showNavGraphOverlay && navNodes.length > 0` |
 | 9 | `routeContainer` | `RouteOverlay` | `analyticsOpen && showRouteOverlay && routeInfo != null` |
+| 10 | `issueHighlightContainer` | `IssueHighlightOverlay` | `analyticsOpen && hoveredIssueLoopEdges != null && hoveredIssueLoopEdges.length > 0` |
 
 `closedCells` (layer 3) renders nodes with no edges in `WALL_COLOR` — isolated cells that are completely walled off. Regions (layer 4) sits between closedCells and walls so region colors show through wall rendering — intentional.
+
+### IssueHighlightOverlay
+
+Draws straight lines directly between base-graph node centers for `hoveredIssueLoopEdges` (red, `0xff4444`) — no path compression needed since these are base-graph edges, not nav-edges. Visibility is independent of `showGraphOverlay`; it activates purely from `hoveredIssueLoopEdges` set by hovering an `IssueBubble` in `IssuesBlock`.
 
 ### MazeOverlayRenderer
 
