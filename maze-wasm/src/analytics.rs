@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use maze_core::{
     space::Tessellation,
     quality_control::{QualityControlEngine, Issue, IssueData},
-    compute_node_stats, compute_spatial_edge_stats, compute_graph_analytics,
+    compute_node_stats, compute_spatial_edge_stats,
     Maze,
 };
 use crate::dto::{
@@ -70,7 +70,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
 
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-    let graph_analytics = compute_graph_analytics(&nav);
+    let graph_analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
 
     let nav_nodes: Vec<NavNodeDto> = nav.nodes.iter()
         .filter_map(|n| u32::try_from(n.node_id).ok().map(|id| NavNodeDto { node_id: id }))
@@ -120,6 +120,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         node_component,
         pure_cycle_node_ids,
         pure_cycle_edge_pairs,
+        cycle_analysis_overflowed: graph_analytics.cycle_analysis_overflowed,
     };
 
     let raw_node_stats = compute_node_stats(&maze.graph, &maze.field);

@@ -60,8 +60,11 @@ export interface AnalyticsCardData {
   subtitle?: string;
 }
 
-export function computeAnalyticsCard(hasNodes: boolean, warningsCount: number): AnalyticsCardData {
+export function computeAnalyticsCard(hasNodes: boolean, warningsCount: number, cycleAnalysisOverflowed: boolean): AnalyticsCardData {
   if (!hasNodes) return { status: "unavailable", comment: m["status.no_maze"]() };
+  if (cycleAnalysisOverflowed) {
+    return { status: "critical", comment: m["analytics.cycle_analysis_overflowed"]() };
+  }
   if (warningsCount > 0) {
     return {
       status: "warning",
@@ -97,6 +100,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const nodes = useMazeStore((s) => s.nodes);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
   const generatedIssues = useMazeStore((s) => s.issues);
+  const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
   const loadProject = useMazeStore((s) => s.loadProject);
   const setError = useMazeStore((s) => s.setError);
 
@@ -189,7 +193,12 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     ? m["status.presets_configured"]()
     : m["status.no_presets"]();
 
-  const analyticsCard = computeAnalyticsCard(nodes.length > 0, (postEditAnalytics?.issues ?? generatedIssues).length);
+  const analyticsGraphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
+  const analyticsCard = computeAnalyticsCard(
+    nodes.length > 0,
+    (postEditAnalytics?.issues ?? generatedIssues).length,
+    analyticsGraphAnalytics?.cycle_analysis_overflowed ?? false,
+  );
 
   return (
     <div style={styles.panel}>

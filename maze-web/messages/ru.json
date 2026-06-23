@@ -222,6 +222,7 @@
   "analytics.graph_components": "Компоненты",
   "analytics.graph_cycle_count": "Циклы",
   "analytics.graph_cycle_regions": "Цикличные регионы",
+  "analytics.cycle_analysis_overflowed": "Слишком много циклов для анализа - метрики циклов недоступны для этого лабиринта",
   "status.no_maze": "Сначала сгенерируйте лабиринт",
   "status.analytics_available": "Аналитика доступна",
   "post_edit.title": "Постобработка",

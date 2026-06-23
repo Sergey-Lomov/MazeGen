@@ -13,7 +13,9 @@ fn triangle(a: u64, b: u64, c: u64) -> Graph {
 
 fn all_cycles(g: &Graph) -> Vec<Vec<usize>> {
     let nav = build_nav_graph(g);
-    let cycles = find_all_simple_cycles(&nav);
+    let CycleSearchResult::Cycles(cycles) = find_all_simple_cycles(&nav) else {
+        panic!("test fixture unexpectedly exceeded MAX_SIMPLE_CYCLES");
+    };
     dedup_bidirectional_pairs(&nav, cycles)
 }
 
@@ -149,7 +151,9 @@ fn bidirectional_self_loop_ring_cw_ccw_dedups_to_one_cycle() {
     let nav = build_nav_graph(&g);
     assert_eq!(nav.nodes.len(), 1, "pure bidirectional ring with no junction compresses to one nav-node");
 
-    let cycles = find_all_simple_cycles(&nav);
+    let CycleSearchResult::Cycles(cycles) = find_all_simple_cycles(&nav) else {
+        panic!("test fixture unexpectedly exceeded MAX_SIMPLE_CYCLES");
+    };
     assert_eq!(cycles.len(), 2, "Johnson's correctly finds both CW and CCW self-loops as distinct directed cycles");
 
     let deduped = dedup_bidirectional_pairs(&nav, cycles);
@@ -261,4 +265,32 @@ fn dense_grid_completes_quickly_and_reports_observed_cycle_count() {
     // signals either a correctness regression or a deliberate algorithm change, either of
     // which should be investigated explicitly rather than silently passing under a timeout.
     assert_eq!(cycles.len(), 9349, "deterministic count for this fixed 5x5 grid — investigate any change");
+}
+
+#[test]
+fn dense_grid_exceeding_max_simple_cycles_aborts_instead_of_hanging() {
+    // A 6x6 fully-bidirectional grid has 2,444,782 simple cycles (measured) — far past
+    // MAX_SIMPLE_CYCLES (100_000). This is the regression test for issue #22 (full hang on a
+    // 7x7 fully-preset grid): enumeration must abort with TooManyCycles well before exhausting
+    // the search, not run to completion or hang. Using 6x6 here, not 7x7, keeps the test itself
+    // fast — the abort path is hit quickly regardless of how astronomically large the
+    // unbounded count would eventually be.
+    const SIDE: u64 = 6;
+    let mut g = Graph::new();
+    for id in 0..(SIDE * SIDE) { g.add_node(id); }
+    for row in 0..SIDE {
+        for col in 0..SIDE {
+            let id = row * SIDE + col;
+            if col + 1 < SIDE { g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic); }
+            if row + 1 < SIDE { g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic); }
+        }
+    }
+    let nav = build_nav_graph(&g);
+
+    let start = std::time::Instant::now();
+    let result = find_all_simple_cycles(&nav);
+    let elapsed = start.elapsed();
+
+    assert!(matches!(result, CycleSearchResult::TooManyCycles), "must abort, not enumerate all 2.4M cycles");
+    assert!(elapsed.as_secs() < 5, "abort must happen quickly, not after a near-complete enumeration: {elapsed:?}");
 }

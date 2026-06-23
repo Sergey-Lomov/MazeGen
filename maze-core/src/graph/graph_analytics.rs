@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::collections::VecDeque;
 use super::nav::{NavEdge, NavGraph, NavNodeId};
-use super::cycles::{find_all_simple_cycles, drop_trivial_reverse_pairs};
+use super::cycles::{find_all_simple_cycles, drop_trivial_reverse_pairs, CycleSearchResult};
 use crate::dsu::Dsu;
 
 /// Iterate distinct *undirected* nav-edges: an edge and its `reverse_edge` are the same
@@ -75,6 +75,11 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
 /// (the single source of truth shared with overlay, metrics, and `MinLoopLengthCheck`) —
 /// not a separate BFS pass. Self-loops are included: they are first-class cycles there.
 ///
+/// Returns `None` if enumeration aborted as `TooManyCycles` (see `find_all_simple_cycles`'s
+/// `MAX_SIMPLE_CYCLES` doc comment) — `compute_graph_analytics` has no toggle to disable this
+/// path, so a dense, fully-preset graph must surface as "analysis unavailable" rather than
+/// hang (see issue #22).
+///
 /// Two deliberate departures from a plain "union the deduped cycle list" approach, both
 /// needed for `compute_cycle_metrics`'s Euler formula (`E - V + C`) to produce correct
 /// results — confirmed by regressions when either was skipped:
@@ -94,9 +99,12 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
 ///    one physical corridor once — if only one direction is present in `core_edges`, the
 ///    pairing fails and miscounts E, producing a wrong cycle_count (confirmed on the
 ///    parallel-corridors fixture: cycle_count came out 0 instead of 1 without this).
-fn cycle_core(nav: &NavGraph) -> (HashSet<NavNodeId>, HashSet<usize>) {
+fn cycle_core(nav: &NavGraph) -> Option<(HashSet<NavNodeId>, HashSet<usize>)> {
     let edges: Vec<&NavEdge> = nav.edges().collect();
-    let cycles = find_all_simple_cycles(nav);
+    let cycles = match find_all_simple_cycles(nav) {
+        CycleSearchResult::Cycles(cycles) => cycles,
+        CycleSearchResult::TooManyCycles => return None,
+    };
     let cycles = drop_trivial_reverse_pairs(nav, cycles);
 
     let mut cyclic_nodes: HashSet<NavNodeId> = HashSet::new();
@@ -113,7 +121,7 @@ fn cycle_core(nav: &NavGraph) -> (HashSet<NavNodeId>, HashSet<usize>) {
         }
     }
 
-    (cyclic_nodes, cyclic_edges)
+    Some((cyclic_nodes, cyclic_edges))
 }
 
 /// Global graph analytics computed on the nav-graph.
@@ -129,6 +137,13 @@ pub struct GraphAnalytics {
     pub pure_cycle_nav_nodes: HashSet<NavNodeId>,
     /// Nav-edge indices in the pure-cycle core (real cycles only, no bridges).
     pub pure_cycle_edge_indices: HashSet<usize>,
+    /// True if cycle enumeration aborted because the graph has too many simple cycles to
+    /// enumerate (see `find_all_simple_cycles`'s `MAX_SIMPLE_CYCLES`) — a dense, heavily
+    /// preset-connected graph (see issue #22) can exceed this. When `true`, `cycle_count`,
+    /// `cycle_region_count`, `pure_cycle_nav_nodes`, and `pure_cycle_edge_indices` are all
+    /// empty/zero placeholders, not real results — callers must check this flag before
+    /// trusting those fields, not infer "no cycles" from them being empty.
+    pub cycle_analysis_overflowed: bool,
 }
 
 impl GraphAnalytics {
@@ -140,6 +155,7 @@ impl GraphAnalytics {
             cycle_region_count: 0,
             pure_cycle_nav_nodes: HashSet::new(),
             pure_cycle_edge_indices: HashSet::new(),
+            cycle_analysis_overflowed: false,
         }
     }
 }
@@ -206,7 +222,19 @@ pub fn compute_graph_analytics(nav: &NavGraph) -> GraphAnalytics {
     let edge_count = distinct_undirected_edges(nav, |_| true).count();
 
     // Pure-cycle core — nodes/edges participating in real directed cycles (no bridges).
-    let (pure_cycle_nav_nodes, pure_cycle_edge_indices) = cycle_core(nav);
+    // `None` means cycle enumeration overflowed (see `cycle_core`'s doc comment) — surface
+    // empty placeholders plus the overflow flag rather than propagating a hang.
+    let Some((pure_cycle_nav_nodes, pure_cycle_edge_indices)) = cycle_core(nav) else {
+        return GraphAnalytics {
+            node_count: n,
+            edge_count,
+            cycle_count: 0,
+            cycle_region_count: 0,
+            pure_cycle_nav_nodes: HashSet::new(),
+            pure_cycle_edge_indices: HashSet::new(),
+            cycle_analysis_overflowed: true,
+        };
+    };
     let (cycle_count, cycle_region_count) =
         compute_cycle_metrics(nav, &pure_cycle_nav_nodes, &pure_cycle_edge_indices);
 
@@ -217,6 +245,7 @@ pub fn compute_graph_analytics(nav: &NavGraph) -> GraphAnalytics {
         cycle_region_count,
         pure_cycle_nav_nodes,
         pure_cycle_edge_indices,
+        cycle_analysis_overflowed: false,
     }
 }
 

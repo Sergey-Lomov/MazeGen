@@ -212,6 +212,7 @@
   "analytics.graph_components": "Components",
   "analytics.graph_cycle_count": "Cycles",
   "analytics.graph_cycle_regions": "Cyclic regions",
+  "analytics.cycle_analysis_overflowed": "Too many cycles to analyze - cycle metrics unavailable for this maze",
   "status.no_maze": "Generate maze first",
   "status.analytics_available": "Analytics available",
   "post_edit.title": "Post-Edit",

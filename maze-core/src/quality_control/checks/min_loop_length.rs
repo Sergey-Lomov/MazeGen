@@ -1,6 +1,6 @@
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, resolve_to_edge_ids};
+use crate::graph::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, resolve_to_edge_ids, CycleSearchResult};
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, MIN_LOOP_LENGTH};
 use crate::quality_control::issue_data::IssueData;
@@ -15,7 +15,14 @@ impl<T: Tessellation> Check<T> for MinLoopLengthCheck {
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
-        let cycles = find_all_simple_cycles(nav);
+        // Silently skip on overflow (see `CycleSearchResult::TooManyCycles`) rather than
+        // hang on a dense, heavily preset-connected graph (issue #22) — this check is
+        // toggleable, so a maze that can't be analyzed here just doesn't get this check,
+        // same as if it were disabled.
+        let cycles = match find_all_simple_cycles(nav) {
+            CycleSearchResult::Cycles(cycles) => cycles,
+            CycleSearchResult::TooManyCycles => return,
+        };
         let cycles = dedup_bidirectional_pairs(nav, cycles);
 
         let short: Vec<usize> = cycles.iter().enumerate()

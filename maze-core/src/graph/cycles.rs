@@ -3,9 +3,32 @@ use crate::ids::EdgeId;
 use super::Graph;
 use super::nav::{NavGraph, NavNodeId, NavEdge};
 
-/// Find ALL simple directed cycles in `nav` (Johnson's algorithm, 1975).
-/// Returns each cycle as a list of nav-edge indices, in traversal order (needed to splice
-/// tile paths in `resolve_to_edge_ids`). No length bound — callers filter the result
+/// Result of `find_all_simple_cycles`: either the full list of simple cycles, or a signal
+/// that enumeration was aborted because it exceeded `MAX_SIMPLE_CYCLES` — see that constant's
+/// doc comment for why this exists.
+pub(crate) enum CycleSearchResult {
+    Cycles(Vec<Vec<usize>>),
+    TooManyCycles,
+}
+
+/// Hard cap on the number of simple cycles `find_all_simple_cycles` will enumerate before
+/// aborting. The number of simple cycles in a dense graph grows combinatorially with size —
+/// confirmed by measurement: a 5x5 fully-bidirectional grid yields 9349 *deduped* cycles (the
+/// raw, pre-dedup count this bound is checked against is higher — CW/CCW reverse-pairs count
+/// separately before `dedup_bidirectional_pairs` collapses them), a 6x6 grid yields 2,444,782
+/// (in 3.4s, release build), and a 7x7 fully-preset grid was observed to hang outright (issue
+/// #22). This is not a realistic maze topology (mazes are sparse by construction) but a
+/// fully-preset edit-mode grid can reach it, so enumeration must bail out rather than run
+/// unbounded. 20,000 comfortably covers the 5x5 raw count (so that topology still gets full
+/// analytics) while aborting well before the 6x6 regime, where a single call already takes
+/// seconds.
+const MAX_SIMPLE_CYCLES: usize = 20_000;
+
+/// Find ALL simple directed cycles in `nav` (Johnson's algorithm, 1975), or `TooManyCycles` if
+/// enumeration exceeds `MAX_SIMPLE_CYCLES` (see its doc comment) — callers must handle both
+/// outcomes; there is no length bound or per-consumer variant otherwise. Returns each cycle as
+/// a list of nav-edge indices, in traversal order (needed to splice tile paths in
+/// `resolve_to_edge_ids`). No length bound on individual cycles — callers filter the result
 /// themselves (see `MinLoopLengthCheck`).
 ///
 /// Self-loop `NavEdge`s (`from == to`) are first-class cycles here, not a special case
@@ -26,11 +49,11 @@ use super::nav::{NavGraph, NavNodeId, NavEdge};
 /// not an error. Collapsing such a pair into "one visual loop" is a deliberate domain-level
 /// step applied AFTER this function (see `dedup_bidirectional_pairs`), not part of the
 /// algorithm itself.
-pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> Vec<Vec<usize>> {
+pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     let edges: Vec<&NavEdge> = nav.edges().collect();
     let n = nav.nodes.len();
     if n == 0 {
-        return Vec::new();
+        return CycleSearchResult::Cycles(Vec::new());
     }
 
     // adjacency[node] = list of (edge_idx, to)
@@ -77,10 +100,14 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> Vec<Vec<usize>> {
             );
         }
 
+        if cycles.len() > MAX_SIMPLE_CYCLES {
+            return CycleSearchResult::TooManyCycles;
+        }
+
         remaining.remove(&start);
     }
 
-    cycles
+    CycleSearchResult::Cycles(cycles)
 }
 
 /// True if `scc` can contain a cycle: size > 1, or size == 1 with a self-loop edge.
@@ -93,7 +120,12 @@ fn is_nontrivial(scc: &[NavNodeId], adjacency: &[Vec<(usize, NavNodeId)>]) -> bo
 }
 
 /// Johnson's blocking DFS: find all simple cycles from `start` back to `start`, restricted
-/// to nodes in `scc_set` (the current SCC), updating `cycles` directly.
+/// to nodes in `scc_set` (the current SCC), updating `cycles` directly. Stops early (returns
+/// up the call stack without exploring further) once `cycles.len()` exceeds
+/// `MAX_SIMPLE_CYCLES` — `find_all_simple_cycles` checks the same bound after each SCC and
+/// converts to `TooManyCycles`, but that outer check alone would let a single pathologically
+/// dense SCC run unbounded before control ever returns to it; checking here too bounds the
+/// worst case to "a bit over the limit," not "however long this one SCC takes."
 ///
 /// Deliberately does NOT forbid walking straight back via an edge's own `reverse_edge`
 /// (e.g. B->C->B through a corridor's forward+reverse edge pair) — doing that inside this
@@ -119,6 +151,9 @@ fn johnson_circuit(
     let mut found_cycle = false;
 
     for &(edge_idx, w) in &adjacency[v] {
+        if cycles.len() > MAX_SIMPLE_CYCLES {
+            return found_cycle;
+        }
         if !scc_set.contains(&w) {
             continue;
         }

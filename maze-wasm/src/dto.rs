@@ -90,6 +90,11 @@ pub struct GraphAnalyticsDto {
     pub pure_cycle_node_ids: Vec<u32>,
     /// nav-edge pairs [from_maze_id, to_maze_id] in the pure-cycle core.
     pub pure_cycle_edge_pairs: Vec<[u32; 2]>,
+    /// True if cycle enumeration aborted because the graph has too many simple cycles to
+    /// analyze (see `GraphAnalytics::cycle_analysis_overflowed`) — when `true`, `cycle_count`,
+    /// `cycle_region_count`, `pure_cycle_node_ids`, and `pure_cycle_edge_pairs` are all
+    /// empty/zero placeholders, not real results.
+    pub cycle_analysis_overflowed: bool,
 }
 
 #[derive(Deserialize)]

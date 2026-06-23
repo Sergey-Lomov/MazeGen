@@ -59,6 +59,10 @@ export interface GraphAnalyticsDto {
   pure_cycle_node_ids: number[];
   /** nav-edge pairs [from_maze_id, to_maze_id] in the pure-cycle core. */
   pure_cycle_edge_pairs: [number, number][];
+  /** True if cycle enumeration aborted (graph has too many simple cycles to analyze) — when
+   *  true, cycle_count/cycle_region_count/pure_cycle_node_ids/pure_cycle_edge_pairs are empty
+   *  placeholders, not real results. */
+  cycle_analysis_overflowed: boolean;
 }
 
 export interface IssueDto {

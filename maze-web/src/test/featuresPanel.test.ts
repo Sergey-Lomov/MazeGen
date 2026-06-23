@@ -34,21 +34,26 @@ describe("computeFieldStatus", () => {
 
 describe("computeAnalyticsCard", () => {
   it("returns unavailable when no nodes", () => {
-    const card = computeAnalyticsCard(false, 0);
+    const card = computeAnalyticsCard(false, 0, false);
     expect(card.status).toBe("unavailable");
     expect(card.subtitle).toBeUndefined();
   });
 
   it("returns warning with subtitle when warnings present", () => {
-    const card = computeAnalyticsCard(true, 2);
+    const card = computeAnalyticsCard(true, 2, false);
     expect(card.status).toBe("warning");
     expect(card.subtitle).toBeDefined();
   });
 
   it("returns set with no subtitle when no warnings", () => {
-    const card = computeAnalyticsCard(true, 0);
+    const card = computeAnalyticsCard(true, 0, false);
     expect(card.status).toBe("set");
     expect(card.subtitle).toBeUndefined();
+  });
+
+  it("returns critical when cycle analysis overflowed, even with warnings present", () => {
+    const card = computeAnalyticsCard(true, 2, true);
+    expect(card.status).toBe("critical");
   });
 });
 

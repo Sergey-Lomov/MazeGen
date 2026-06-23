@@ -30,6 +30,7 @@ pub struct MazeAnalysis {
     nav_graph: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, graph::nav::NavGraph)>>,
     scc: std::cell::RefCell<Option<(u64, graph::scc::ConnectedComponents)>>,
     route_info: std::cell::RefCell<Option<(u64, ids::NodeId, ids::NodeId, Option<graph::routing::RouteInfo>)>>,
+    graph_analytics: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, GraphAnalytics)>>,
 }
 
 impl Default for MazeAnalysis {
@@ -38,6 +39,7 @@ impl Default for MazeAnalysis {
             nav_graph: std::cell::RefCell::new(None),
             scc: std::cell::RefCell::new(None),
             route_info: std::cell::RefCell::new(None),
+            graph_analytics: std::cell::RefCell::new(None),
         }
     }
 }
@@ -95,6 +97,26 @@ impl MazeAnalysis {
             let nav = graph::nav::build_nav_graph_pinned(graph, &pinned);
             let info = graph::routing::compute_route_info(&nav, start, finish);
             *cache = Some((version, start, finish, info));
+        }
+        cache.as_ref().unwrap().3.clone()
+    }
+
+    /// Builds and caches graph analytics (cycle structure, component counts) on the pinned nav
+    /// graph for `(graph.version(), meta.start, meta.finish)` — same key as `nav_graph`, since
+    /// analytics is computed directly on that nav graph.
+    ///
+    /// `compute_graph_analytics` has no toggle and is called on every analytics snapshot
+    /// (`maze-wasm/src/analytics.rs`) — caching it avoids recomputing cycle structure from
+    /// scratch on every call within the same graph version (e.g. repeated UI refreshes), on
+    /// top of the `MAX_SIMPLE_CYCLES` bound in `find_all_simple_cycles` that keeps any single
+    /// computation from hanging (see issue #22).
+    pub fn graph_analytics(&self, graph: &Graph, meta: &MazeMeta) -> GraphAnalytics {
+        let key = (graph.version(), meta.start, meta.finish);
+        let mut cache = self.graph_analytics.borrow_mut();
+        if !matches!(&*cache, Some((v, s, f, _)) if (*v, *s, *f) == key) {
+            let nav = self.nav_graph(graph, meta);
+            let analytics = graph::graph_analytics::compute_graph_analytics(&nav);
+            *cache = Some((key.0, key.1, key.2, analytics));
         }
         cache.as_ref().unwrap().3.clone()
     }

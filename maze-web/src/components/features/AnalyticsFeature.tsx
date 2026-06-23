@@ -60,6 +60,11 @@ export function AnalyticsFeature() {
   return (
     <div style={styles.root}>
 
+      {graphAnalytics?.cycle_analysis_overflowed && (
+        <div style={styles.overflowBubble}>
+          <span style={styles.overflowLabel}>{m["analytics.cycle_analysis_overflowed"]()}</span>
+        </div>
+      )}
       <IssuesBlock issues={issues} />
 
       {/* Layers block */}
@@ -143,8 +148,12 @@ export function AnalyticsFeature() {
             <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
             <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
             <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
-            <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
-            <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
+            {!graphAnalytics.cycle_analysis_overflowed && (
+              <>
+                <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
+                <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
+              </>
+            )}
           </div>
         </>
       )}
@@ -165,4 +174,15 @@ const styles: Record<string, React.CSSProperties> = {
   toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },
   toggleRow: { display: "flex", alignItems: "center", gap: 8 },
   toggleLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },
+  overflowBubble: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    background: colors.bgError,
+    border: `1px solid ${colors.textError}`,
+    borderRadius: 6,
+    padding: "4px 8px",
+    marginBottom: 4,
+  },
+  overflowLabel: { flex: 1, fontSize: font.sm, color: colors.textError, lineHeight: 1.4 },
 };
