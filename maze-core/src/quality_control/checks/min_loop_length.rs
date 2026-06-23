@@ -52,7 +52,7 @@ mod tests {
     use super::*;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
 
     fn maze_with_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
@@ -87,6 +87,37 @@ mod tests {
         let mut issues = Vec::new();
         check.check(&maze, &mut issues);
         assert!(issues.is_empty(), "triangle has 3 tile-hops, not < 3");
+    }
+
+    #[test]
+    fn silent_when_cycle_enumeration_overflows() {
+        // Same 6x6 fully-bidirectional grid as the `cycles.rs` regression test for issue #22
+        // (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES). This check is toggleable, so
+        // on overflow it must skip silently (no issue, no panic) rather than hang or surface a
+        // spurious result — same effect as if the check were disabled for this maze.
+        const SIDE: i32 = 6;
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        for y in 0..SIDE {
+            for x in 0..SIDE {
+                let here = field.node_at(SquarePoint { x, y }).unwrap();
+                if x + 1 < SIDE {
+                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
+                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
+                }
+                if y + 1 < SIDE {
+                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
+                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
+                }
+            }
+        }
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let mut issues = Vec::new();
+        check.check(&maze, &mut issues);
+        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
     #[test]

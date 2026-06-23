@@ -13,6 +13,7 @@ pub enum IssueKind {
     UnreachableFinish,
     MinLoopsCount,
     MinLoopLength,
+    CycleAnalysisOverflowed,
 }
 ```
 
@@ -32,9 +33,12 @@ pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
 pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
 pub const MIN_LOOPS_COUNT:    IssueKind = IssueKind::MinLoopsCount;
 pub const MIN_LOOP_LENGTH:    IssueKind = IssueKind::MinLoopLength;
+pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflowed;
 ```
 
 Always use the named constant — never use string literals or enum variants inline.
+
+**`CycleAnalysisOverflowed` is not a toggleable QC check** — every other kind here is produced by a `Check<T>` implementation the user selects via `config.checks`; this one is raised directly by `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) whenever `GraphAnalytics::cycle_analysis_overflowed` is true (cycle enumeration aborted past `MAX_SIMPLE_CYCLES` — see `graph-analytics.md`). It bypasses `QualityControlEngine` entirely: `build_analytics_snapshot` pushes `Issue::new(CYCLE_ANALYSIS_OVERFLOWED)` straight into the issue list after the engine (or `issues_override`) has already run, so it surfaces unconditionally — same `IssuesBlock`/`FeatureCard` UI as any other issue, but with no corresponding `Check<T>` or `RepairStrategy` and no way for a user to disable it. `IssueKind::from_str` still parses it like any other kind (used to validate `config.strategies` keys), but no strategy can ever be registered against it — see `from_str`'s doc comment.
 
 ### Issue
 

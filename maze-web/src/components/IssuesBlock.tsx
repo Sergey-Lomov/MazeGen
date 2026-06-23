@@ -3,27 +3,19 @@ import { colors, font } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
+import { resolveIssue } from "./issueRegistry";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import type { IssueDto } from "../wasm/types";
 
-type IssueInfo = { label: string; description: string };
-
-const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
-  missing_endpoints: () => ({ label: m["issue.missing_endpoints.label"](), description: m["issue.missing_endpoints.description"]() }),
-  unreachable_finish: () => ({ label: m["issue.unreachable_finish.label"](), description: m["issue.unreachable_finish.description"]() }),
-  min_loops_count: () => ({ label: m["issue.min_loops_count.label"](), description: m["issue.min_loops_count.description"]() }),
-};
-
-function resolveIssue(kind: string): IssueInfo {
-  return KNOWN_ISSUES[kind]?.() ?? { label: kind, description: "" };
-}
-
 export function IssueBubble({ issue }: { issue: IssueDto }) {
   const [open, setOpen] = useState(false);
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
-  const { label, description } = resolveIssue(issue.kind);
+  const { label, description, severity } = resolveIssue(issue.kind);
   const loopEdges = issue.short_loop_edges;
+  const palette = severity === "critical"
+    ? { bg: colors.bgError, text: colors.textError }
+    : { bg: colors.bgWarning, text: colors.textWarning };
 
   const handleMouseEnter = loopEdges != null
     ? () => setHoveredIssueLoopEdges(loopEdges.flat())
@@ -35,13 +27,18 @@ export function IssueBubble({ issue }: { issue: IssueDto }) {
   return (
     <>
       <div
-        style={{ ...issueStyles.bubble, ...(description ? issueStyles.bubbleClickable : {}) }}
+        style={{
+          ...issueStyles.bubble,
+          background: palette.bg,
+          borderColor: palette.text,
+          ...(description ? issueStyles.bubbleClickable : {}),
+        }}
         onClick={description ? () => setOpen(true) : undefined}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        <span style={issueStyles.label}>{label}</span>
-        {description && <span style={issueStyles.infoIcon}>ℹ</span>}
+        <span style={{ ...issueStyles.label, color: palette.text }}>{label}</span>
+        {description && <span style={{ ...issueStyles.infoIcon, color: palette.text }}>ℹ</span>}
       </div>
       {open && (
         <Modal title={label} onClose={() => setOpen(false)}>
@@ -77,16 +74,16 @@ const issueStyles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    background: colors.bgWarning,
-    border: `1px solid ${colors.textWarning}`,
+    borderWidth: 1,
+    borderStyle: "solid",
     borderRadius: 6,
     padding: "4px 8px",
   },
   bubbleClickable: {
     cursor: "pointer",
   },
-  label: { flex: 1, fontSize: font.sm, color: colors.textWarning, lineHeight: 1.4 },
-  infoIcon: { color: colors.textWarning, fontSize: font.xl, flexShrink: 0, lineHeight: 1 },
+  label: { flex: 1, fontSize: font.sm, lineHeight: 1.4 },
+  infoIcon: { fontSize: font.xl, flexShrink: 0, lineHeight: 1 },
   description: {
     margin: 0,
     fontSize: font.md,

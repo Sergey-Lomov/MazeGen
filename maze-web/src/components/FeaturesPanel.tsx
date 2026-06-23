@@ -11,6 +11,7 @@ import { QualityFeature } from "./features/QualityFeature";
 import { GenerationFeature } from "./features/GenerationFeature";
 import { PostEditFeature } from "./features/PostEditFeature";
 import { AnalyticsFeature } from "./features/AnalyticsFeature";
+import { resolveIssue } from "./issueRegistry";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
@@ -60,19 +61,24 @@ export interface AnalyticsCardData {
   subtitle?: string;
 }
 
-export function computeAnalyticsCard(hasNodes: boolean, warningsCount: number, cycleAnalysisOverflowed: boolean): AnalyticsCardData {
+/// Universal rule: card status mirrors the worst issue severity present, and the comment is
+/// that issue's title (not a generic "has issues" message) — critical beats warning, and
+/// within a severity the first matching issue (in `issueKinds` order) wins. No issues -> "set".
+export function computeAnalyticsCard(hasNodes: boolean, issueKinds: string[]): AnalyticsCardData {
   if (!hasNodes) return { status: "unavailable", comment: m["status.no_maze"]() };
-  if (cycleAnalysisOverflowed) {
-    return { status: "critical", comment: m["analytics.cycle_analysis_overflowed"]() };
+
+  const issues = issueKinds.map(resolveIssue);
+  const subtitleFor = (count: number) => count === 1
+    ? m["status.analytics_issues"]({ count })
+    : m["status.analytics_issues_plural"]({ count });
+
+  const critical = issues.find((issue) => issue.severity === "critical");
+  if (critical != null) {
+    return { status: "critical", comment: critical.label, subtitle: subtitleFor(issues.length) };
   }
-  if (warningsCount > 0) {
-    return {
-      status: "warning",
-      comment: m["status.post_edit_has_issues"](),
-      subtitle: warningsCount === 1
-        ? m["status.analytics_issues"]({ count: warningsCount })
-        : m["status.analytics_issues_plural"]({ count: warningsCount }),
-    };
+  const warning = issues.find((issue) => issue.severity === "warning");
+  if (warning != null) {
+    return { status: "warning", comment: warning.label, subtitle: subtitleFor(issues.length) };
   }
   return { status: "set", comment: m["status.analytics_available"]() };
 }
@@ -100,7 +106,6 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const nodes = useMazeStore((s) => s.nodes);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
   const generatedIssues = useMazeStore((s) => s.issues);
-  const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
   const loadProject = useMazeStore((s) => s.loadProject);
   const setError = useMazeStore((s) => s.setError);
 
@@ -193,11 +198,9 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     ? m["status.presets_configured"]()
     : m["status.no_presets"]();
 
-  const analyticsGraphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
   const analyticsCard = computeAnalyticsCard(
     nodes.length > 0,
-    (postEditAnalytics?.issues ?? generatedIssues).length,
-    analyticsGraphAnalytics?.cycle_analysis_overflowed ?? false,
+    (postEditAnalytics?.issues ?? generatedIssues).map((issue) => issue.kind),
   );
 
   return (

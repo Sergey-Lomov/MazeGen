@@ -270,7 +270,7 @@ fn dense_grid_completes_quickly_and_reports_observed_cycle_count() {
 #[test]
 fn dense_grid_exceeding_max_simple_cycles_aborts_instead_of_hanging() {
     // A 6x6 fully-bidirectional grid has 2,444,782 simple cycles (measured) — far past
-    // MAX_SIMPLE_CYCLES (100_000). This is the regression test for issue #22 (full hang on a
+    // MAX_SIMPLE_CYCLES (20_000). This is the regression test for issue #22 (full hang on a
     // 7x7 fully-preset grid): enumeration must abort with TooManyCycles well before exhausting
     // the search, not run to completion or hang. Using 6x6 here, not 7x7, keeps the test itself
     // fast — the abort path is hit quickly regardless of how astronomically large the

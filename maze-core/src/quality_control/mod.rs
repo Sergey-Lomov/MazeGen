@@ -4,7 +4,7 @@ pub mod check;
 pub mod engine;
 pub mod checks;
 
-pub use issue::{Issue, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOP_LENGTH};
+pub use issue::{Issue, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOP_LENGTH, CYCLE_ANALYSIS_OVERFLOWED};
 pub use issue_data::IssueData;
 pub use check::Check;
 pub use engine::QualityControlEngine;

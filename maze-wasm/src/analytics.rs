@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use maze_core::{
     space::Tessellation,
-    quality_control::{QualityControlEngine, Issue, IssueData},
+    quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED},
     compute_node_stats, compute_spatial_edge_stats,
     Maze,
 };
@@ -20,13 +20,23 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     issues_override: Option<Vec<Issue>>,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
 ) -> Result<MazeSnapshot, String> {
-    let raw_issues: Vec<Issue> = if let Some(i) = issues_override {
+    let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+    let graph_analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
+
+    let mut raw_issues: Vec<Issue> = if let Some(i) = issues_override {
         i
     } else if let Some(engine) = qc_engine {
         engine.run(maze)
     } else {
         vec![]
     };
+    // Not a toggleable QC check — `compute_graph_analytics` always runs, so this surfaces
+    // through the same Issue/IssuesBlock UI rather than a separate ad-hoc warning (see #22
+    // follow-up review): a dense, heavily preset-connected graph can exceed
+    // `find_all_simple_cycles`'s `MAX_SIMPLE_CYCLES` bound and abort cycle analysis.
+    if graph_analytics.cycle_analysis_overflowed {
+        raw_issues.push(Issue::new(CYCLE_ANALYSIS_OVERFLOWED));
+    }
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         let short_loop_edges = match &issue.data {
@@ -68,9 +78,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let meta_start  = maze.meta.start.and_then(|id| u32::try_from(id).ok());
     let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
-
-    let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-    let graph_analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
 
     let nav_nodes: Vec<NavNodeDto> = nav.nodes.iter()
         .filter_map(|n| u32::try_from(n.node_id).ok().map(|id| NavNodeDto { node_id: id }))
@@ -167,4 +174,59 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         graph_analytics: graph_analytics_dto,
         debug_steps: vec![],
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maze_core::graph::EdgeKind;
+    use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use maze_core::{Graph, IdGenerator};
+
+    #[test]
+    fn pushes_cycle_analysis_overflowed_issue_on_overflow() {
+        // Same 6x6 fully-bidirectional grid as the cycles.rs/min_loop_length.rs regression
+        // tests for issue #22 (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES).
+        const SIDE: i32 = 6;
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        for y in 0..SIDE {
+            for x in 0..SIDE {
+                let here = field.node_at(SquarePoint { x, y }).unwrap();
+                if x + 1 < SIDE {
+                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
+                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
+                }
+                if y + 1 < SIDE {
+                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
+                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
+                }
+            }
+        }
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), |p| (p.x, p.y)).unwrap();
+
+        assert!(snapshot.graph_analytics.cycle_analysis_overflowed);
+        assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
+    }
+
+    #[test]
+    fn no_overflow_issue_on_sparse_graph() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), |p| (p.x, p.y)).unwrap();
+
+        assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
+        assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
+    }
 }

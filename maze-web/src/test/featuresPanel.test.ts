@@ -5,6 +5,7 @@ import {
   presetConnectionsSubtitle,
   getTessellationKindLabel,
 } from "../components/FeaturesPanel";
+import { resolveIssue } from "../components/issueRegistry";
 import type { FieldConfig } from "../fieldConfig";
 
 const squareConfig: FieldConfig = { type: "square", width: 3, height: 3 };
@@ -34,26 +35,41 @@ describe("computeFieldStatus", () => {
 
 describe("computeAnalyticsCard", () => {
   it("returns unavailable when no nodes", () => {
-    const card = computeAnalyticsCard(false, 0, false);
+    const card = computeAnalyticsCard(false, []);
     expect(card.status).toBe("unavailable");
     expect(card.subtitle).toBeUndefined();
   });
 
   it("returns warning with subtitle when warnings present", () => {
-    const card = computeAnalyticsCard(true, 2, false);
+    const card = computeAnalyticsCard(true, ["missing_endpoints", "unreachable_finish"]);
     expect(card.status).toBe("warning");
     expect(card.subtitle).toBeDefined();
   });
 
+  it("comment is the title of the first warning issue", () => {
+    const card = computeAnalyticsCard(true, ["missing_endpoints", "unreachable_finish"]);
+    expect(card.comment).toBe(resolveIssue("missing_endpoints").label);
+  });
+
   it("returns set with no subtitle when no warnings", () => {
-    const card = computeAnalyticsCard(true, 0, false);
+    const card = computeAnalyticsCard(true, []);
     expect(card.status).toBe("set");
     expect(card.subtitle).toBeUndefined();
   });
 
   it("returns critical when cycle analysis overflowed, even with warnings present", () => {
-    const card = computeAnalyticsCard(true, 2, true);
+    const card = computeAnalyticsCard(true, ["missing_endpoints", "cycle_analysis_overflowed"]);
     expect(card.status).toBe("critical");
+  });
+
+  it("critical card still has a subtitle with the total issue count", () => {
+    const card = computeAnalyticsCard(true, ["missing_endpoints", "cycle_analysis_overflowed"]);
+    expect(card.subtitle).toBeDefined();
+  });
+
+  it("comment is the title of the critical issue, not the warning", () => {
+    const card = computeAnalyticsCard(true, ["missing_endpoints", "cycle_analysis_overflowed"]);
+    expect(card.comment).toBe(resolveIssue("cycle_analysis_overflowed").label);
   });
 });
 

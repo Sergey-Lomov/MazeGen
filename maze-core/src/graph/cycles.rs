@@ -94,6 +94,10 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
             let mut path_edges: Vec<usize> = Vec::new();
             blocked.insert(start);
 
+            // Return value (`None` on abort) is intentionally not consumed here: the
+            // `cycles.len() > MAX_SIMPLE_CYCLES` check right below catches the same abort
+            // condition (johnson_circuit only ever returns `None` after pushing past that
+            // bound), so re-checking it from the return value would be redundant.
             johnson_circuit(
                 start, start, &adjacency, &scc_set,
                 &mut blocked, &mut block_map, &mut path_nodes, &mut path_edges, &mut cycles,
@@ -120,12 +124,20 @@ fn is_nontrivial(scc: &[NavNodeId], adjacency: &[Vec<(usize, NavNodeId)>]) -> bo
 }
 
 /// Johnson's blocking DFS: find all simple cycles from `start` back to `start`, restricted
-/// to nodes in `scc_set` (the current SCC), updating `cycles` directly. Stops early (returns
-/// up the call stack without exploring further) once `cycles.len()` exceeds
-/// `MAX_SIMPLE_CYCLES` — `find_all_simple_cycles` checks the same bound after each SCC and
+/// to nodes in `scc_set` (the current SCC), updating `cycles` directly. Returns `None` if the
+/// search was aborted because `cycles.len()` exceeded `MAX_SIMPLE_CYCLES`, otherwise
+/// `Some(found_cycle)` — `find_all_simple_cycles` checks the same bound after each SCC and
 /// converts to `TooManyCycles`, but that outer check alone would let a single pathologically
 /// dense SCC run unbounded before control ever returns to it; checking here too bounds the
 /// worst case to "a bit over the limit," not "however long this one SCC takes."
+///
+/// Abort (`None`) is kept structurally distinct from "no cycle found through this branch"
+/// (`Some(false)`): on abort, every still-open stack frame propagates `None` immediately
+/// without touching `block_map`, instead of folding the abort into `found_cycle` and letting
+/// callers wrongly record "no cycle, stay blocked" for a branch that was never actually
+/// resolved. That distinction is moot today — the whole `cycles` result is discarded on
+/// `TooManyCycles` regardless of `block_map`'s state — but keeping it means that stays true
+/// even if a future caller ever wants a partial result instead of discarding everything.
 ///
 /// Deliberately does NOT forbid walking straight back via an edge's own `reverse_edge`
 /// (e.g. B->C->B through a corridor's forward+reverse edge pair) — doing that inside this
@@ -147,12 +159,12 @@ fn johnson_circuit(
     path_nodes: &mut Vec<NavNodeId>,
     path_edges: &mut Vec<usize>,
     cycles: &mut Vec<Vec<usize>>,
-) -> bool {
+) -> Option<bool> {
     let mut found_cycle = false;
 
     for &(edge_idx, w) in &adjacency[v] {
         if cycles.len() > MAX_SIMPLE_CYCLES {
-            return found_cycle;
+            return None;
         }
         if !scc_set.contains(&w) {
             continue;
@@ -167,13 +179,17 @@ fn johnson_circuit(
             path_nodes.push(w);
             path_edges.push(edge_idx);
 
-            let got_cycle = johnson_circuit(
+            let result = johnson_circuit(
                 start, w, adjacency, scc_set, blocked, block_map, path_nodes, path_edges, cycles,
             );
-            found_cycle |= got_cycle;
 
             path_edges.pop();
             path_nodes.pop();
+
+            let Some(got_cycle) = result else {
+                return None;
+            };
+            found_cycle |= got_cycle;
 
             if got_cycle {
                 unblock(w, blocked, block_map);
@@ -187,7 +203,7 @@ fn johnson_circuit(
         unblock(v, blocked, block_map);
     }
 
-    found_cycle
+    Some(found_cycle)
 }
 
 /// Recursive, unlike `strongly_connected_components` (explicitly iterative to avoid stack
