@@ -8,4 +8,4 @@ pub use params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyP
 pub use result::RepairResult;
 pub use strategy::RepairStrategy;
 pub use engine::RepairEngine;
-pub use strategies::{RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy, MinLoopLengthScoredStrategy};
+pub use strategies::{RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy};

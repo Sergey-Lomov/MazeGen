@@ -2,11 +2,11 @@ pub mod random_endpoints;
 pub mod farthest_endpoints;
 pub mod scored_endpoints;
 mod cycle_cut_set;
-pub mod min_loop_length_random;
-pub mod min_loop_length_scored;
+pub mod invalid_loop_random;
+pub mod invalid_loop_scored;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
 pub use scored_endpoints::ScoredEndpointsStrategy;
-pub use min_loop_length_random::MinLoopLengthRandomStrategy;
-pub use min_loop_length_scored::MinLoopLengthScoredStrategy;
+pub use invalid_loop_random::InvalidLoopRandomStrategy;
+pub use invalid_loop_scored::InvalidLoopScoredStrategy;

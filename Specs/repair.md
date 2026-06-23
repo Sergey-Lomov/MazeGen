@@ -146,11 +146,11 @@ Behavior per case:
 - **Only finish set**: fixes finish, searches for best start.
 - No reachable path found: returns `Failed`.
 
-### MinLoopLengthRandomStrategy
+### InvalidLoopRandomStrategy
 
-Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by `MinLoopLengthCheck` (currently: shorter than the threshold) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters.
+Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producing check (`MinLoopLengthCheck`: shorter than a threshold; `MaxLoopLengthCheck`: longer than a threshold; future checks may flag cycles invalid for other reasons) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters. The strategy itself is agnostic to *why* a cycle was flagged invalid — it only consumes `IssueData::InvalidLoops`.
 
-**`issue.data` is mandatory for this kind**, not an optional optimization: `MinLoopLengthCheck` already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply. This is a per-kind decision (see `quality_control.md`), not a general rule for all strategies.
+**`issue.data` is mandatory for this kind**, not an optional optimization: the producing check already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply. This is a per-kind decision (see `quality_control.md`), not a general rule for all strategies.
 
 - If `issue.data` is `Some(IssueData::InvalidLoops { all, invalid })`: cuts the cycles at indices `invalid` into `all`. An empty `invalid` is valid — nothing to break, returns `Fixed` immediately.
 - If `data` is missing or the wrong variant: this is a malformed call (should never happen in a normal pipeline run, where the check always attaches data) — returns `Failed`, not "already fixed".
@@ -158,12 +158,12 @@ Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by `MinLoopLeng
 - Picks one random survivor from the filtered candidates and removes it via `try_remove_edge` (which re-checks `preset_state` as a final guard) plus its reverse (`Graph::edge_between(to, from)`, also via `try_remove_edge`), if any. If `try_remove_edge` ever refuses (defensive — shouldn't happen given the upfront filter), the candidate is dropped and another is picked at random; this repeats until either a cut succeeds or no candidates remain for that cycle.
 - **Accepted imprecision, not fully solved**: removing an edge can invalidate another cycle in the same batch through subtler graph changes than a shared `EdgeId` (e.g. corridor re-compression). The existence check only catches the shared-edge case; it does not re-validate every remaining cycle entry. Acceptable for a `Random` strategy — a smarter variant that recomputes between cuts is a separate future task if needed.
 - **Does not guard connectivity or bridge status**: a cut may disconnect the maze, surfacing as `UnreachableFinish`/`MissingEndpoints` on the next QC pass. Deliberately not handled here — the pipeline's fixpoint loop (`build_maze`, up to `MAX_REPAIR_ITERATIONS`) already exists for exactly this kind of cascading repair, via the already-registered endpoint strategies.
-- **No candidate weighting** (segment length, multi-cycle membership, etc.) — the name `Random` is deliberate. `MinLoopLengthScoredStrategy` (below) is the weighted alternative on the same issue kind.
+- **No candidate weighting** (segment length, multi-cycle membership, etc.) — the name `Random` is deliberate. `InvalidLoopScoredStrategy` (below) is the weighted alternative on the same issue kind.
 - Returns `Fixed { score: None }`.
 
-### MinLoopLengthScoredStrategy
+### InvalidLoopScoredStrategy
 
-Handles `INVALID_LOOP`, same mandatory-`issue.data` contract as `MinLoopLengthRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (`RepairEngine` maps one strategy per `IssueKind`), not a replacement.
+Handles `INVALID_LOOP`, same mandatory-`issue.data` contract as `InvalidLoopRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (`RepairEngine` maps one strategy per `IssueKind`), not a replacement.
 
 Instead of picking a random edge from each invalid cycle, scores every still-present, non-preset-protected candidate edge in the cycle being cut and picks the highest-scoring one (ties broken via `rng`). The goal: bias cuts toward edges that simultaneously break several invalid loops at once (fewer total cuts needed to clear the issue) while avoiding edges that would also break a cycle the maze is meant to keep.
 
@@ -171,14 +171,14 @@ Instead of picking a random edge from each invalid cycle, scores every still-pre
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `short_overlap_weight` | Float | 5.0 | [0, 100] | Weight per other invalid cycle (in `invalid`) sharing this edge — name kept from when this kind only meant "too short" |
+| `short_overlap_weight` | Float | 5.0 | [0, 100] | Weight per other invalid cycle (in `invalid`) sharing this edge |
 | `other_overlap_weight` | Float | 6.0 | [0, 100] | Penalty per valid cycle (in `all`, not in `invalid`) sharing this edge |
 
 For a candidate edge, `short_overlap` counts how many cycles in `all` at indices listed in `invalid` (including the cycle currently being cut — a constant offset shared by every candidate in that cycle, so it doesn't affect which one wins) contain that `EdgeId`; `other_overlap` counts how many cycles in `all` *not* in `invalid` contain it. Score: `short_overlap * short_overlap_weight - other_overlap * other_overlap_weight`.
 
-The overlap counts (`edge -> (short_overlap, other_overlap)`) are computed **once** per `apply` call from the full `all` list, before any cut happens, and reused as-is for every cycle in `short` — including cycles processed later in the same `apply` call, after earlier cycles already had an edge cut. They are not recomputed between cuts, so a later cycle's candidate scores can reflect cycles that have already been (partially) broken by an earlier cut in the same call. Same accepted imprecision as `MinLoopLengthRandomStrategy` regarding cross-cycle invalidation after a cut — a smarter variant that recomputes overlap between cuts is a separate future task if needed.
+The overlap counts (`edge -> (short_overlap, other_overlap)`) are computed **once** per `apply` call from the full `all` list, before any cut happens, and reused as-is for every cycle in `short` — including cycles processed later in the same `apply` call, after earlier cycles already had an edge cut. They are not recomputed between cuts, so a later cycle's candidate scores can reflect cycles that have already been (partially) broken by an earlier cut in the same call. Same accepted imprecision as `InvalidLoopRandomStrategy` regarding cross-cycle invalidation after a cut — a smarter variant that recomputes overlap between cuts is a separate future task if needed.
 
-Same candidate filtering (existence + preset-protection), same cut mechanics (`try_remove_edge` plus reverse), same connectivity/bridge-status non-guarantee, and same `Fixed { score: None }` return as `MinLoopLengthRandomStrategy`.
+Same candidate filtering (existence + preset-protection), same cut mechanics (`try_remove_edge` plus reverse), same connectivity/bridge-status non-guarantee, and same `Fixed { score: None }` return as `InvalidLoopRandomStrategy`.
 
 ## Pipeline
 

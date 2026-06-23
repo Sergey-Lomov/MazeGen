@@ -6,7 +6,7 @@ use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationAlgorithm, EdgeBasedParams, ElementsConfig, GenerationConfig, PresetState, pipeline::build_maze};
 use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{QualityControlEngine, Check, Issue, IssueData, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck, MISSING_ENDPOINTS, INVALID_LOOP};
-use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, MinLoopLengthRandomStrategy, StrategyParams};
+use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams};
 
 fn make_engines() -> (QualityControlEngine<SquareTessellation>, RepairEngine<SquareTessellation>) {
     let qc = QualityControlEngine::new(vec![
@@ -145,7 +145,7 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
-    strategies.insert(INVALID_LOOP, Box::new(MinLoopLengthRandomStrategy));
+    strategies.insert(INVALID_LOOP, Box::new(InvalidLoopRandomStrategy));
     let repair = RepairEngine::new(strategies, HashMap::new());
 
     let (_, remaining) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
@@ -188,7 +188,7 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
         ]);
         let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
         strategies.insert(MISSING_ENDPOINTS, Box::new(RandomEndpointsStrategy));
-        strategies.insert(INVALID_LOOP, Box::new(MinLoopLengthRandomStrategy));
+        strategies.insert(INVALID_LOOP, Box::new(InvalidLoopRandomStrategy));
         let repair = RepairEngine::new(strategies, HashMap::new());
 
         let (maze, _) = build_maze(field, graph, seed, qc, repair, &PresetState::empty());
@@ -232,7 +232,7 @@ fn exact_issue_23_seed_never_isolates_a_node() {
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(RandomEndpointsStrategy));
-    strategies.insert(INVALID_LOOP, Box::new(MinLoopLengthRandomStrategy));
+    strategies.insert(INVALID_LOOP, Box::new(InvalidLoopRandomStrategy));
     let repair = RepairEngine::new(strategies, HashMap::new());
 
     let (maze, _) = build_maze(field, graph, seed, qc, repair, &PresetState::empty());
@@ -289,7 +289,7 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
         Box::new(FakeInvalidLoopCheck { cycle: vec![e3, e4, e5], source_check: "fake_b" }),
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
-    strategies.insert(INVALID_LOOP, Box::new(MinLoopLengthRandomStrategy));
+    strategies.insert(INVALID_LOOP, Box::new(InvalidLoopRandomStrategy));
     let repair = RepairEngine::new(strategies, HashMap::new());
 
     let (maze, remaining) = build_maze(field, g, 1, qc, repair, &PresetState::empty());

@@ -12,8 +12,8 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy, MinLoopLengthScoredStrategy},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
@@ -115,6 +115,17 @@ pub fn available_checks() -> JsValue {
                 kind: ParamKindDto::Integer { default: MIN_LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
             }],
         },
+        CheckDescriptor {
+            id: "max_loop_length",
+            label: "Maximum loop length",
+            description: "Fires if the maze has simple loops longer than the allowed maximum tile length.",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![ParamDescriptor {
+                id: "max_loop_length",
+                label: "Max loop length",
+                kind: ParamKindDto::Integer { default: MAX_LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
+            }],
+        },
     ];
     serde_wasm_bindgen::to_value(&checks).unwrap()
 }
@@ -138,14 +149,14 @@ pub fn available_strategies() -> JsValue {
             params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy)),
         },
         StrategyDescriptor {
-            id: "min_loop_length_random",
+            id: "invalid_loop_random",
             handles: kind_str(INVALID_LOOP),
-            params: strategy_params_dto(<MinLoopLengthRandomStrategy as RepairStrategy<SquareTessellation>>::params(&MinLoopLengthRandomStrategy)),
+            params: strategy_params_dto(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation>>::params(&InvalidLoopRandomStrategy)),
         },
         StrategyDescriptor {
-            id: "min_loop_length_scored",
+            id: "invalid_loop_scored",
             handles: kind_str(INVALID_LOOP),
-            params: strategy_params_dto(<MinLoopLengthScoredStrategy as RepairStrategy<SquareTessellation>>::params(&MinLoopLengthScoredStrategy)),
+            params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation>>::params(&InvalidLoopScoredStrategy)),
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()

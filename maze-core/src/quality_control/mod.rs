@@ -13,4 +13,5 @@ pub use checks::{
     UnreachableFinishCheck, UNREACHABLE_FINISH_CHECK_ID,
     MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MIN_LOOPS_COUNT_CHECK_ID,
     MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MIN_LOOP_LENGTH_CHECK_ID,
+    MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_CHECK_ID,
 };

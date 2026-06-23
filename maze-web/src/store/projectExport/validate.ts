@@ -43,6 +43,41 @@ const migrations: Record<number, (data: unknown) => unknown> = {
       },
     };
   },
+  // v2 → v3: MinLoopLengthRandomStrategy/MinLoopLengthScoredStrategy were renamed to
+  // InvalidLoopRandomStrategy/InvalidLoopScoredStrategy (a strategy attached to INVALID_LOOP
+  // is no longer assumed to be about "too short"). `quality.selectedStrategies` stores the
+  // strategy id as a value (keyed by issue kind); `quality.strategyParams` is keyed by the
+  // strategy id itself. `quality.checkParams` is keyed by check id ("min_loop_length"), which
+  // did not change.
+  2: (data) => {
+    const obj = data as Record<string, unknown>;
+    if (typeof obj !== "object" || obj === null) return obj;
+    const quality = obj.quality;
+    if (typeof quality !== "object" || quality === null || Array.isArray(quality)) return obj;
+    const q = quality as Record<string, unknown>;
+    const renameStrategyIdValue = (record: unknown): unknown => {
+      if (typeof record !== "object" || record === null || Array.isArray(record)) return record;
+      const rec = record as Record<string, unknown>;
+      return Object.fromEntries(Object.entries(rec).map(([k, v]) => [
+        k,
+        v === "min_loop_length_random" ? "invalid_loop_random"
+          : v === "min_loop_length_scored" ? "invalid_loop_scored"
+          : v,
+      ]));
+    };
+    const strategyParams = renameIssueKindKey(
+      renameIssueKindKey(q.strategyParams, "min_loop_length_random", "invalid_loop_random"),
+      "min_loop_length_scored", "invalid_loop_scored",
+    );
+    return {
+      ...obj,
+      quality: {
+        ...q,
+        selectedStrategies: renameStrategyIdValue(q.selectedStrategies),
+        strategyParams,
+      },
+    };
+  },
 };
 
 function migrateToLatest(data: unknown, fromVersion: number): unknown {

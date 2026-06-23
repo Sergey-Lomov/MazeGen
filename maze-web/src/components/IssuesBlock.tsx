@@ -12,7 +12,7 @@ export function IssueBubble({ issue }: { issue: IssueDto }) {
   const [open, setOpen] = useState(false);
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
   const { label, description, severity } = resolveIssue(issue.kind);
-  const loopEdges = issue.short_loop_edges;
+  const loopEdges = issue.invalid_loop_edges;
   const palette = severity === "critical"
     ? { bg: colors.bgError, text: colors.textError }
     : { bg: colors.bgWarning, text: colors.textWarning };

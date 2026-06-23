@@ -31,9 +31,10 @@ pub struct NavEdgeDto {
 #[derive(Serialize)]
 pub struct IssueDto {
     pub kind: String,
-    /// Present only for `min_loop_length` issues — each inner Vec is one short cycle,
+    /// Present only for `invalid_loop` issues — each inner Vec is one invalid cycle
+    /// (too short, too long, or invalid for some other check-specific reason),
     /// expressed as base-graph [from, to] maze node-id pairs for highlight rendering.
-    pub short_loop_edges: Option<Vec<Vec<[u32; 2]>>>,
+    pub invalid_loop_edges: Option<Vec<Vec<[u32; 2]>>>,
 }
 
 #[derive(Serialize)]

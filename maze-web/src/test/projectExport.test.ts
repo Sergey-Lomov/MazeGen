@@ -194,10 +194,10 @@ describe("parseAndValidate — v1 → v2 migration (min_loop_length → invalid_
   it("renames the issue-kind key in selectedStrategies and disabledStrategies", () => {
     const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
     data.version = 1;
-    data.quality.selectedStrategies = { min_loop_length: "min_loop_length_random" };
+    data.quality.selectedStrategies = { min_loop_length: "some_other_strategy" };
     data.quality.disabledStrategies = { min_loop_length: true };
     const result = parseAndValidate(data);
-    expect(result.quality.selectedStrategies).toEqual({ invalid_loop: "min_loop_length_random" });
+    expect(result.quality.selectedStrategies).toEqual({ invalid_loop: "some_other_strategy" });
     expect(result.quality.disabledStrategies).toEqual({ invalid_loop: true });
   });
 
@@ -215,5 +215,37 @@ describe("parseAndValidate — v1 → v2 migration (min_loop_length → invalid_
     data.quality.selectedStrategies = { other_kind: "some_strategy" };
     const result = parseAndValidate(data);
     expect(result.quality.selectedStrategies).toEqual({ other_kind: "some_strategy" });
+  });
+});
+
+describe("parseAndValidate — v2 → v3 migration (min_loop_length_random/scored → invalid_loop_random/scored)", () => {
+  it("renames the strategy id value in selectedStrategies", () => {
+    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    data.version = 2;
+    data.quality.selectedStrategies = {
+      invalid_loop: "min_loop_length_scored",
+      missing_endpoints: "random_endpoints",
+    };
+    const result = parseAndValidate(data);
+    expect(result.quality.selectedStrategies).toEqual({
+      invalid_loop: "invalid_loop_scored",
+      missing_endpoints: "random_endpoints",
+    });
+  });
+
+  it("renames the strategy id key in strategyParams", () => {
+    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    data.version = 2;
+    data.quality.strategyParams = { min_loop_length_random: { short_overlap_weight: "5" } };
+    const result = parseAndValidate(data);
+    expect(result.quality.strategyParams).toEqual({ invalid_loop_random: { short_overlap_weight: "5" } });
+  });
+
+  it("does not touch checkParams (keyed by check id, unaffected by the strategy rename)", () => {
+    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    data.version = 2;
+    data.quality.checkParams = { min_loop_length: { min_loop_length: "10" } };
+    const result = parseAndValidate(data);
+    expect(result.quality.checkParams).toEqual({ min_loop_length: { min_loop_length: "10" } });
   });
 });
