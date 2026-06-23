@@ -4,8 +4,13 @@ pub mod check;
 pub mod engine;
 pub mod checks;
 
-pub use issue::{Issue, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOP_LENGTH, CYCLE_ANALYSIS_OVERFLOWED};
+pub use issue::{Issue, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, INVALID_LOOP, CYCLE_ANALYSIS_OVERFLOWED};
 pub use issue_data::IssueData;
 pub use check::Check;
 pub use engine::QualityControlEngine;
-pub use checks::{MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT};
+pub use checks::{
+    MissingEndpointsCheck, MISSING_ENDPOINTS_CHECK_ID,
+    UnreachableFinishCheck, UNREACHABLE_FINISH_CHECK_ID,
+    MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MIN_LOOPS_COUNT_CHECK_ID,
+    MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MIN_LOOP_LENGTH_CHECK_ID,
+};

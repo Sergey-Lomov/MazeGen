@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use maze_core::{Graph, IdGenerator};
+use maze_core::{Graph, IdGenerator, Maze};
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationAlgorithm, EdgeBasedParams, ElementsConfig, GenerationConfig, PresetState, pipeline::build_maze};
 use maze_core::graph::EdgeKind;
-use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck, MISSING_ENDPOINTS, MIN_LOOP_LENGTH};
+use maze_core::quality_control::{QualityControlEngine, Check, Issue, IssueData, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck, MISSING_ENDPOINTS, INVALID_LOOP};
 use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, MinLoopLengthRandomStrategy, StrategyParams};
 
 fn make_engines() -> (QualityControlEngine<SquareTessellation>, RepairEngine<SquareTessellation>) {
@@ -88,7 +88,10 @@ fn pipeline_warns_when_strategy_always_fails() {
 }
 
 #[test]
-fn pipeline_deduplicates_issues_from_duplicate_checks() {
+fn pipeline_merges_issues_from_duplicate_checks_into_one_strategy_call() {
+    // Two checks producing the same (data-less) kind merge into one issue — the strategy
+    // is still called exactly once. See pipeline.rs::merge_issue for the merge rule when
+    // checks produce different IssueData for the same kind.
     use maze_core::quality_control::Issue;
     use maze_core::repair::{RepairResult, RepairStrategy};
     use maze_core::Maze;
@@ -142,11 +145,11 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
-    strategies.insert(MIN_LOOP_LENGTH, Box::new(MinLoopLengthRandomStrategy));
+    strategies.insert(INVALID_LOOP, Box::new(MinLoopLengthRandomStrategy));
     let repair = RepairEngine::new(strategies, HashMap::new());
 
     let (_, remaining) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
-    assert!(!remaining.iter().any(|i| i.kind == MIN_LOOP_LENGTH),
+    assert!(!remaining.iter().any(|i| i.kind == INVALID_LOOP),
         "short loop must be resolved by the pipeline: {:?}", remaining);
 }
 
@@ -185,7 +188,7 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
         ]);
         let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
         strategies.insert(MISSING_ENDPOINTS, Box::new(RandomEndpointsStrategy));
-        strategies.insert(MIN_LOOP_LENGTH, Box::new(MinLoopLengthRandomStrategy));
+        strategies.insert(INVALID_LOOP, Box::new(MinLoopLengthRandomStrategy));
         let repair = RepairEngine::new(strategies, HashMap::new());
 
         let (maze, _) = build_maze(field, graph, seed, qc, repair, &PresetState::empty());
@@ -229,7 +232,7 @@ fn exact_issue_23_seed_never_isolates_a_node() {
     ]);
     let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
     strategies.insert(MISSING_ENDPOINTS, Box::new(RandomEndpointsStrategy));
-    strategies.insert(MIN_LOOP_LENGTH, Box::new(MinLoopLengthRandomStrategy));
+    strategies.insert(INVALID_LOOP, Box::new(MinLoopLengthRandomStrategy));
     let repair = RepairEngine::new(strategies, HashMap::new());
 
     let (maze, _) = build_maze(field, graph, seed, qc, repair, &PresetState::empty());
@@ -237,5 +240,70 @@ fn exact_issue_23_seed_never_isolates_a_node() {
     for node in maze.graph.nodes() {
         let degree = maze.graph.edges().filter(|e| e.from == node.id || e.to == node.id).count();
         assert!(degree > 0, "node {} was fully cut off from the graph", node.id);
+    }
+}
+
+#[test]
+fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycles() {
+    // Two checks unrelated to MinLoopLengthCheck's real cycle search — each hardcodes its own
+    // cycle into IssueData::InvalidLoops, simulating "two different reasons a cycle can be
+    // flagged invalid" (the scenario this whole pipeline-merge change exists for) without
+    // needing a real second check (e.g. max-loop-length) or touching the cycles/scoring layer.
+    // Two disjoint triangles sharing no edge, so each check's cycle is independently verifiable
+    // as broken afterward.
+    let mut ids = IdGenerator::new();
+    let field = Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    // Triangle A: 0->1->2->0
+    let e0 = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    let e1 = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    let e2 = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+    // Triangle B: 3->4->5->3
+    let e3 = g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
+    let e4 = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
+    let e5 = g.add_edge(nodes[5], nodes[3], EdgeKind::Basic);
+
+    struct FakeInvalidLoopCheck {
+        cycle: Vec<usize>,
+        source_check: &'static str,
+    }
+    impl<T: maze_core::space::Tessellation> Check<T> for FakeInvalidLoopCheck {
+        fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
+            // Real checks recompute from current graph state — this fake one must too, or it
+            // would keep reporting an already-broken cycle as invalid forever, masking real
+            // pipeline behavior (fixpoint exit) behind a check that never reflects the repair.
+            if self.cycle.iter().all(|&eid| maze.graph.edge(eid).is_some()) {
+                issues.push(Issue::with_data_from_check(
+                    INVALID_LOOP,
+                    IssueData::InvalidLoops { all: vec![self.cycle.clone()], invalid: vec![0] },
+                    self.source_check,
+                ));
+            }
+        }
+    }
+
+    let qc = QualityControlEngine::new(vec![
+        Box::new(FakeInvalidLoopCheck { cycle: vec![e0, e1, e2], source_check: "fake_a" }),
+        Box::new(FakeInvalidLoopCheck { cycle: vec![e3, e4, e5], source_check: "fake_b" }),
+    ]);
+    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
+    strategies.insert(INVALID_LOOP, Box::new(MinLoopLengthRandomStrategy));
+    let repair = RepairEngine::new(strategies, HashMap::new());
+
+    let (maze, remaining) = build_maze(field, g, 1, qc, repair, &PresetState::empty());
+
+    assert!(!remaining.iter().any(|i| i.kind == INVALID_LOOP),
+        "both checks' issues must be merged into one and resolved in a single repair call: {:?}", remaining);
+    // Both triangles must have lost exactly one edge each — proof the strategy received both
+    // checks' cycles via the merged IssueData, not just the first one's.
+    let triangle_a_intact = g_edge_present(&maze, e0) && g_edge_present(&maze, e1) && g_edge_present(&maze, e2);
+    let triangle_b_intact = g_edge_present(&maze, e3) && g_edge_present(&maze, e4) && g_edge_present(&maze, e5);
+    assert!(!triangle_a_intact, "triangle A (from fake_a) must have been broken");
+    assert!(!triangle_b_intact, "triangle B (from fake_b) must have been broken");
+
+    fn g_edge_present(maze: &Maze<SquareTessellation>, id: usize) -> bool {
+        maze.graph.edge(id).is_some()
     }
 }

@@ -22,10 +22,12 @@ Opening Quality sets `qualityOpen = true` in the store. `App.tsx` hides the Pixi
 Three columns + detail panel, full height, flex row:
 
 ```
-[ Checks ~22% ] | [ Issues flex ] | [ Detail ~28% ]
+[ Checks ~22% ] | [ Strategies flex ] | [ Detail ~28% ]
 ```
 
 Dividers: `1px solid colors.borderMid`. Background: `colors.bgApp`.
+
+The middle column is **not** an "Issues" list — `Issue`/`IssueKind` are internal QC plumbing, never surfaced as their own selectable entity (see `quality_control.md`'s "IssueKind is a semantic category, not a producer id" rule and "`Issue` is an internal-only QC artifact"). The Strategies column renders **one row per distinct issue kind** produced by the active checks, not one row per check — when multiple checks share a kind (e.g. two different reasons a cycle can be invalid, both routed through `INVALID_LOOP`), they share a single strategy slot rather than each getting their own, since assigning two different strategies to the same kind isn't possible (`RepairEngine` maps one strategy per `IssueKind` — see `repair.md`).
 
 ### Checks column
 
@@ -35,15 +37,14 @@ Lists only **active** (selected) checks. Each check card shows label + `✖` rem
 - `+` button in column header opens `CheckSelectDialog`.
 - Empty state: hint text `status.no_checks`.
 
-### Issues column
+### Strategies column
 
-Lists unique issue kinds produced by all active checks (`issue_kinds` from their descriptors, deduplicated). Each row contains two cards side by side:
+One row per distinct kind in `issue_kinds` across all active checks (deduplicated — see above). Each row:
 
-- **Issue card** (40% width): issue label, clickable → selects issue in detail panel.
-- **Strategy card** (remaining width): label of currently selected strategy, or `strategy.no_fix.label` if none. `✎` edit button opens `StrategySelectDialog`. The strategy card itself is also clickable → selects strategy in detail panel (only if a real strategy is set).
-- When a strategy is set, a `Switch` toggle appears before `✎`: disables/re-enables the strategy without clearing its selection or params. Disabled state renders the strategy card dimmed. Hidden when no strategy is set (nothing to disable).
-
-Empty state: hint text `quality.no_issues`.
+- Strategy card: label of currently selected strategy for that kind, or `strategy.no_fix.label` if none. `✎` edit button opens `StrategySelectDialog`. The card itself is also clickable → selects strategy in detail panel (only if a real strategy is set).
+- When a strategy is set, a `Switch` toggle appears before `✎`: disables/re-enables the strategy without clearing its selection or params. Disabled state renders the card dimmed. Hidden when no strategy is set (nothing to disable).
+- The card shows only the strategy label — not the kind name or producing check(s). `producedBy` (ViewModel) still carries that data for the detail panel; the row itself stays a plain strategy card so its layout lines up with the Checks column instead of varying in height per row.
+- Empty state: hint text `quality.no_issues`.
 
 ### Detail panel
 
@@ -53,7 +54,6 @@ Shows details for the current selection:
 |-----------|---------|
 | None | Empty hint `quality.select_to_view` |
 | Check | Label, description, param fields (via `useParamEditor`) |
-| Issue | Label, description, list of detecting checks |
 | Strategy | Label, description, param fields (via `useParamEditor`) |
 
 ## CheckSelectDialog
@@ -82,16 +82,22 @@ Computed via `useMemo` from store state:
 
 ```ts
 interface QualityViewModel {
-  checks: CheckVM[];                         // only selectedChecks, in selection order
-  issues: IssueVM[];                         // unique issue_kinds from active checks
-  issueStrategy: Record<string, StrategyVM | null>;  // issueId → strategy or null
-  issueToChecks: Record<string, CheckVM[]>;  // issueId → detecting checks
+  checks: CheckVM[];               // only selectedChecks, in selection order
+  strategySlots: StrategySlotVM[]; // one per distinct issue kind across active checks
 }
 
-interface CheckVM    { id: string; label: string; description: string; params: ParamDescriptor[] }
-interface IssueVM    { id: string; label: string; description: string }
+interface CheckVM { id: string; label: string; description: string; params: ParamDescriptor[] }
+interface StrategySlotVM {
+  kind: string;
+  label: string;
+  strategy: StrategyVM | null;
+  disabled: boolean;
+  producedBy: CheckVM[];   // active checks producing this kind — usually one, can be several
+}
 interface StrategyVM { id: string; label: string; handles: string; params: ParamDescriptor[] }
 ```
+
+`kind` (on `StrategySlotVM`) is the join key with `availableStrategies[].handles`, and is what `selectedStrategies`/`disabledStrategies` in the store are keyed by — unchanged from before this redesign, since that key space was always issue-kind strings, never a deduplicated "Issue entity" id. `strategySlots` is built by deduplicating `issue_kinds` across all active checks' descriptors (not one slot per check) — `producedBy` is the set of checks that contributed that kind, so a kind shared by N checks gets exactly one slot, listing all N. There is no `IssueVM`/`issues` list in this ViewModel — see "QualityCanvas layout" above for why issues aren't surfaced as their own UI entity.
 
 All labels/descriptions pass through i18n resolvers. Param labels are localized via `resolveParamLabel`.
 
@@ -172,7 +178,7 @@ setQualityOpen(open: boolean): void
 
 - Deletes `issueKind` key from `selectedStrategies`.
 - Also deletes `issueKind` from `disabledStrategies` — a cleared strategy has no disabled state to preserve.
-- Results in `issueStrategy[issueKind] === null` in the ViewModel.
+- Results in `strategy: null` for the matching `StrategySlotVM` in the ViewModel.
 
 ### toggleStrategyDisabled
 

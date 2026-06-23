@@ -26,7 +26,7 @@ static PARAMS: &[StrategyParam] = &[
     },
 ];
 
-/// Handles MIN_LOOP_LENGTH like `MinLoopLengthRandomStrategy`, but picks which edge to cut
+/// Handles INVALID_LOOP like `MinLoopLengthRandomStrategy`, but picks which edge to cut
 /// from each short cycle by score instead of uniformly at random. The score is currently just
 /// the cycle-overlap term below, but the strategy is meant to grow more scoring terms over
 /// time (à la `ScoredEndpointsStrategy`) — keep new criteria additive into the same score
@@ -54,28 +54,28 @@ impl<T: Tessellation> RepairStrategy<T> for MinLoopLengthScoredStrategy {
         params: &StrategyParams,
         preset_state: &PresetState,
     ) -> RepairResult {
-        // Same per-kind contract as MinLoopLengthRandomStrategy: ShortLoops data is mandatory,
+        // Same per-kind contract as MinLoopLengthRandomStrategy: InvalidLoops data is mandatory,
         // not an optional optimization — see that strategy's doc comment for the rationale.
-        let Some(IssueData::ShortLoops { all, short }) = &issue.data else {
+        let Some(IssueData::InvalidLoops { all, invalid }) = &issue.data else {
             return RepairResult::Failed;
         };
 
         let short_overlap_weight = params.get(PARAM_SHORT_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
         let other_overlap_weight = params.get(PARAM_OTHER_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(6.0);
 
-        // edge -> (how many short cycles contain it, how many non-short cycles contain it)
-        let short_set: std::collections::HashSet<usize> = short.iter().copied().collect();
+        // edge -> (how many invalid cycles contain it, how many valid cycles contain it)
+        let invalid_set: std::collections::HashSet<usize> = invalid.iter().copied().collect();
         let mut overlap: HashMap<EdgeId, (u32, u32)> = HashMap::new();
         for (idx, cycle) in all.iter().enumerate() {
-            let is_short = short_set.contains(&idx);
+            let is_invalid = invalid_set.contains(&idx);
             for &eid in cycle {
                 let entry = overlap.entry(eid).or_insert((0, 0));
-                if is_short { entry.0 += 1; } else { entry.1 += 1; }
+                if is_invalid { entry.0 += 1; } else { entry.1 += 1; }
             }
         }
 
         let owners = edge_to_cycles_map(all);
-        let mut pending: Vec<usize> = short.to_vec();
+        let mut pending: Vec<usize> = invalid.to_vec();
 
         while let Some(idx) = pending.pop() {
             let Some(cycle) = all.get(idx) else { continue };
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn apply_fails_when_data_is_missing() {
         let mut maze = maze_with_shared_edge_triangles();
-        let issue = Issue::new(crate::quality_control::issue::MIN_LOOP_LENGTH);
+        let issue = Issue::new(crate::quality_control::issue::INVALID_LOOP);
         let mut rng = SmallRng::seed_from_u64(7);
         let result = MinLoopLengthScoredStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn apply_succeeds_on_empty_cycle_list() {
         let mut maze = maze_with_shared_edge_triangles();
-        let issue = Issue::with_data(crate::quality_control::issue::MIN_LOOP_LENGTH, IssueData::ShortLoops { all: vec![], short: vec![] });
+        let issue = Issue::with_data(crate::quality_control::issue::INVALID_LOOP, IssueData::InvalidLoops { all: vec![], invalid: vec![] });
         let mut rng = SmallRng::seed_from_u64(7);
         let result = MinLoopLengthScoredStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -300,8 +300,8 @@ mod tests {
         let mut issues = Vec::new();
         check.check(&maze, &mut issues);
         let issue = issues.into_iter().next().unwrap();
-        let Some(IssueData::ShortLoops { short, .. }) = &issue.data else { panic!("expected ShortLoops") };
-        assert_eq!(short.len(), 1, "only the triangle should be short; the long loop must stay valid");
+        let Some(IssueData::InvalidLoops { invalid, .. }) = &issue.data else { panic!("expected InvalidLoops") };
+        assert_eq!(invalid.len(), 1, "only the triangle should be invalid; the long loop must stay valid");
 
         let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
         let (a, c) = (nodes[0], nodes[2]);

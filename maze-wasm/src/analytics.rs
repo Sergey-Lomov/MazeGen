@@ -40,8 +40,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         let short_loop_edges = match &issue.data {
-            Some(IssueData::ShortLoops { all, short }) => Some(
-                short.iter().filter_map(|&idx| all.get(idx)).map(|loop_edges| {
+            Some(IssueData::InvalidLoops { all, invalid }) => Some(
+                invalid.iter().filter_map(|&idx| all.get(idx)).map(|loop_edges| {
                     loop_edges.iter().filter_map(|&eid| {
                         let edge = maze.graph.edge(eid)?;
                         let from = u32::try_from(edge.from).ok()?;

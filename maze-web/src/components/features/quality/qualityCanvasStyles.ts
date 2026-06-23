@@ -17,7 +17,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     overflow: "hidden",
   },
-  issuesColumn: {
+  strategiesColumn: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
@@ -81,22 +81,6 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     fontSize: font.sm,
     color: colors.textVeryDim,
     padding: "4px 2px",
-  },
-  issueRow: {
-    display: "flex",
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "stretch",
-  },
-  issueCard: {
-    flex: "0 0 40%",
-    minWidth: 0,
-    alignSelf: "stretch",
-  },
-  strategyCard: {
-    flex: 1,
-    minWidth: 0,
-    alignSelf: "stretch",
   },
   noStrategy: {
     color: colors.textVeryDim,

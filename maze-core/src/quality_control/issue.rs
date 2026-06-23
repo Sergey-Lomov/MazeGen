@@ -5,14 +5,18 @@ pub enum IssueKind {
     MissingEndpoints,
     UnreachableFinish,
     MinLoopsCount,
-    MinLoopLength,
+    InvalidLoop,
     CycleAnalysisOverflowed,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
 pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
 pub const MIN_LOOPS_COUNT: IssueKind = IssueKind::MinLoopsCount;
-pub const MIN_LOOP_LENGTH: IssueKind = IssueKind::MinLoopLength;
+/// A cycle is invalid for some check-specific reason (currently: shorter than a configured
+/// minimum tile-length — see `MinLoopLengthCheck`). Future checks may flag cycles invalid for
+/// other reasons entirely (e.g. too long) and reuse this same kind — see `IssueData::InvalidLoops`
+/// and `Issue.source_checks` for how multiple checks contributing to one kind are distinguished.
+pub const INVALID_LOOP: IssueKind = IssueKind::InvalidLoop;
 /// Not a toggleable QC check — raised directly by `build_analytics_snapshot`
 /// (maze-wasm/src/analytics.rs) whenever `GraphAnalytics::cycle_analysis_overflowed` is true.
 /// Unlike the other kinds here, no `Check<T>` implementation produces this; it surfaces a
@@ -25,7 +29,7 @@ impl IssueKind {
             IssueKind::MissingEndpoints => "missing_endpoints",
             IssueKind::UnreachableFinish => "unreachable_finish",
             IssueKind::MinLoopsCount => "min_loops_count",
-            IssueKind::MinLoopLength => "min_loop_length",
+            IssueKind::InvalidLoop => "invalid_loop",
             IssueKind::CycleAnalysisOverflowed => "cycle_analysis_overflowed",
         }
     }
@@ -43,7 +47,7 @@ impl IssueKind {
             "missing_endpoints"  => Some(IssueKind::MissingEndpoints),
             "unreachable_finish" => Some(IssueKind::UnreachableFinish),
             "min_loops_count"    => Some(IssueKind::MinLoopsCount),
-            "min_loop_length"    => Some(IssueKind::MinLoopLength),
+            "invalid_loop"       => Some(IssueKind::InvalidLoop),
             "cycle_analysis_overflowed" => Some(IssueKind::CycleAnalysisOverflowed),
             _ => None,
         }
@@ -60,15 +64,32 @@ impl std::fmt::Display for IssueKind {
 pub struct Issue {
     pub kind: IssueKind,
     pub data: Option<IssueData>,
+    /// Check id(s) (the wasm `available_checks()` id, e.g. `"min_loop_length"`) that produced
+    /// or contributed to this issue. Empty for issues not raised by a toggleable `Check<T>` —
+    /// currently only `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot`
+    /// (see its doc comment). Populated by `new_from_check`/`with_data_from_check`; merging two
+    /// issues of the same kind (pipeline dedup) unions this list without duplicates.
+    pub source_checks: Vec<&'static str>,
 }
 
 impl Issue {
+    /// For issues not raised by a toggleable `Check<T>` (currently only
+    /// `CYCLE_ANALYSIS_OVERFLOWED`) — `source_checks` is empty since there is no check id to
+    /// attribute this to. Checks should use `new_from_check` instead.
     pub fn new(kind: IssueKind) -> Self {
-        Self { kind, data: None }
+        Self { kind, data: None, source_checks: Vec::new() }
     }
 
     pub fn with_data(kind: IssueKind, data: IssueData) -> Self {
-        Self { kind, data: Some(data) }
+        Self { kind, data: Some(data), source_checks: Vec::new() }
+    }
+
+    pub fn new_from_check(kind: IssueKind, source_check: &'static str) -> Self {
+        Self { kind, data: None, source_checks: vec![source_check] }
+    }
+
+    pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: &'static str) -> Self {
+        Self { kind, data: Some(data), source_checks: vec![source_check] }
     }
 }
 
@@ -90,6 +111,13 @@ mod tests {
     fn new_has_no_data() {
         let issue = Issue::new(MISSING_ENDPOINTS);
         assert_eq!(issue.data, None);
+        assert!(issue.source_checks.is_empty());
+    }
+
+    #[test]
+    fn new_from_check_records_source() {
+        let issue = Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints");
+        assert_eq!(issue.source_checks, vec!["missing_endpoints"]);
     }
 
     #[test]
@@ -98,7 +126,7 @@ mod tests {
             IssueKind::MissingEndpoints,
             IssueKind::UnreachableFinish,
             IssueKind::MinLoopsCount,
-            IssueKind::MinLoopLength,
+            IssueKind::InvalidLoop,
             IssueKind::CycleAnalysisOverflowed,
         ];
         for kind in kinds {

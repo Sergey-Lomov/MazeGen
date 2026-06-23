@@ -15,8 +15,34 @@ import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 
 // ─── Migrations ──────────────────────────────────────────────────────────────
 
+function renameIssueKindKey(record: unknown, from: string, to: string): unknown {
+  if (typeof record !== "object" || record === null || Array.isArray(record)) return record;
+  const obj = record as Record<string, unknown>;
+  if (!(from in obj)) return obj;
+  const { [from]: value, ...rest } = obj;
+  return { ...rest, [to]: value };
+}
+
 const migrations: Record<number, (data: unknown) => unknown> = {
-  // future: 1 → 2, etc.
+  // v1 → v2: IssueKind::MinLoopLength was generalized and renamed to IssueKind::InvalidLoop
+  // (a cycle can now be flagged invalid for reasons beyond "too short"). `quality.checkParams`
+  // is keyed by check id ("min_loop_length"), which did not change — only the issue-kind keys
+  // in selectedStrategies/disabledStrategies need remapping.
+  1: (data) => {
+    const obj = data as Record<string, unknown>;
+    if (typeof obj !== "object" || obj === null) return obj;
+    const quality = obj.quality;
+    if (typeof quality !== "object" || quality === null || Array.isArray(quality)) return obj;
+    const q = quality as Record<string, unknown>;
+    return {
+      ...obj,
+      quality: {
+        ...q,
+        selectedStrategies: renameIssueKindKey(q.selectedStrategies, "min_loop_length", "invalid_loop"),
+        disabledStrategies: renameIssueKindKey(q.disabledStrategies, "min_loop_length", "invalid_loop"),
+      },
+    };
+  },
 };
 
 function migrateToLatest(data: unknown, fromVersion: number): unknown {

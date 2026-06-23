@@ -189,3 +189,31 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     return data;
   }
 });
+
+describe("parseAndValidate — v1 → v2 migration (min_loop_length → invalid_loop)", () => {
+  it("renames the issue-kind key in selectedStrategies and disabledStrategies", () => {
+    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    data.version = 1;
+    data.quality.selectedStrategies = { min_loop_length: "min_loop_length_random" };
+    data.quality.disabledStrategies = { min_loop_length: true };
+    const result = parseAndValidate(data);
+    expect(result.quality.selectedStrategies).toEqual({ invalid_loop: "min_loop_length_random" });
+    expect(result.quality.disabledStrategies).toEqual({ invalid_loop: true });
+  });
+
+  it("does not touch checkParams (keyed by check id, unaffected by the kind rename)", () => {
+    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    data.version = 1;
+    data.quality.checkParams = { min_loop_length: { min_loop_length: "10" } };
+    const result = parseAndValidate(data);
+    expect(result.quality.checkParams).toEqual({ min_loop_length: { min_loop_length: "10" } });
+  });
+
+  it("is a no-op when the old key is absent", () => {
+    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    data.version = 1;
+    data.quality.selectedStrategies = { other_kind: "some_strategy" };
+    const result = parseAndValidate(data);
+    expect(result.quality.selectedStrategies).toEqual({ other_kind: "some_strategy" });
+  });
+});

@@ -12,7 +12,7 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, MIN_LOOP_LENGTH, MIN_LOOP_LENGTH_DEFAULT},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, MinLoopLengthRandomStrategy, MinLoopLengthScoredStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
@@ -108,7 +108,7 @@ pub fn available_checks() -> JsValue {
             id: "min_loop_length",
             label: "Minimum loop length",
             description: "Fires if the maze has simple loops shorter than the required minimum tile length.",
-            issue_kinds: vec![kind_str(MIN_LOOP_LENGTH)],
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
             params: vec![ParamDescriptor {
                 id: "min_loop_length",
                 label: "Min loop length",
@@ -139,12 +139,12 @@ pub fn available_strategies() -> JsValue {
         },
         StrategyDescriptor {
             id: "min_loop_length_random",
-            handles: kind_str(MIN_LOOP_LENGTH),
+            handles: kind_str(INVALID_LOOP),
             params: strategy_params_dto(<MinLoopLengthRandomStrategy as RepairStrategy<SquareTessellation>>::params(&MinLoopLengthRandomStrategy)),
         },
         StrategyDescriptor {
             id: "min_loop_length_scored",
-            handles: kind_str(MIN_LOOP_LENGTH),
+            handles: kind_str(INVALID_LOOP),
             params: strategy_params_dto(<MinLoopLengthScoredStrategy as RepairStrategy<SquareTessellation>>::params(&MinLoopLengthScoredStrategy)),
         },
     ];

@@ -43,28 +43,9 @@ export function QualityDetailPanel({ selection, vm, flushRef }: Props) {
     );
   }
 
-  if (selection.type === "issue") {
-    const issue = vm.issues.find((i) => i.id === selection.id);
-    if (!issue) return <div style={styles.detailPanel} />;
-    const detectors = vm.issueToChecks[issue.id] ?? [];
-    return (
-      <div style={styles.detailPanel}>
-        <div style={styles.detailTitle}>{issue.label}</div>
-        {issue.description && <div style={styles.detailDesc}>{issue.description}</div>}
-        {detectors.length > 0 && (
-          <>
-            <div style={styles.detailSectionLabel}>{m["quality.detected_by"]()}</div>
-            {detectors.map((c) => (
-              <div key={c.id} style={styles.detailListItem}>{c.label}</div>
-            ))}
-          </>
-        )}
-      </div>
-    );
-  }
-
   if (selection.type === "strategy") {
-    const strategy = vm.issueStrategy[selection.issueId];
+    const slot = vm.strategySlots.find((s) => s.kind === selection.issueId);
+    const strategy = slot?.strategy;
     if (!strategy) return <div style={styles.detailPanel} />;
     return (
       <ParamizedDetail

@@ -67,7 +67,7 @@ export interface GraphAnalyticsDto {
 
 export interface IssueDto {
   kind: string;
-  /** Present only for `min_loop_length` issues — each entry is one short cycle's
+  /** Present only for `invalid_loop` issues — each entry is one invalid cycle's
    * base-graph edges as [from, to] maze node-id pairs, for highlight rendering. */
   short_loop_edges: [number, number][][] | null;
 }

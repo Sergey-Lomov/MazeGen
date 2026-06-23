@@ -92,7 +92,7 @@ impl<F: Field> RepairEngine<F> {
 - For each issue: looks up strategy by `issue.kind`, calls `build_params(strategy.params(), overrides)`, then calls `apply`.
 - If no strategy found: issue is skipped (not included in results). The pipeline detects this via the progress fingerprint guard.
 - Returns results only for issues that had a matching strategy, in the same order as the input slice.
-- One `IssueKind` maps to exactly one strategy. Multiple issues of the same kind are not expected by the engine (the pipeline deduplicates before calling).
+- One `IssueKind` maps to exactly one strategy. Multiple checks may produce the same `IssueKind` in one QC pass; the pipeline merges them into a single `Issue` per kind before calling `RepairEngine::run` (see "Pipeline" below) — the engine itself still only ever sees at most one issue per kind, the merge happens upstream of it.
 
 ## Built-in Strategies
 
@@ -148,11 +148,11 @@ Behavior per case:
 
 ### MinLoopLengthRandomStrategy
 
-Handles `MIN_LOOP_LENGTH`. Breaks each simple cycle found by `MinLoopLengthCheck` shorter than the threshold by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters.
+Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by `MinLoopLengthCheck` (currently: shorter than the threshold) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters.
 
 **`issue.data` is mandatory for this kind**, not an optional optimization: `MinLoopLengthCheck` already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply. This is a per-kind decision (see `quality_control.md`), not a general rule for all strategies.
 
-- If `issue.data` is `Some(IssueData::ShortLoops { all, short })`: cuts the cycles at indices `short` into `all`. An empty `short` is valid — nothing to break, returns `Fixed` immediately.
+- If `issue.data` is `Some(IssueData::InvalidLoops { all, invalid })`: cuts the cycles at indices `invalid` into `all`. An empty `invalid` is valid — nothing to break, returns `Fixed` immediately.
 - If `data` is missing or the wrong variant: this is a malformed call (should never happen in a normal pipeline run, where the check always attaches data) — returns `Failed`, not "already fixed".
 - For each cycle: filters candidates to edges still present in the graph (`Graph::edge(id).is_some()` — an earlier cut in the same `apply` may have already broken a cycle sharing an edge with this one) **and not in `preset_state.preset_edges`** — preset Passage/OneWay connections are never removed, filtered out upfront so the random pick never wastes a sample on a protected edge.
 - Picks one random survivor from the filtered candidates and removes it via `try_remove_edge` (which re-checks `preset_state` as a final guard) plus its reverse (`Graph::edge_between(to, from)`, also via `try_remove_edge`), if any. If `try_remove_edge` ever refuses (defensive — shouldn't happen given the upfront filter), the candidate is dropped and another is picked at random; this repeats until either a cut succeeds or no candidates remain for that cycle.
@@ -163,18 +163,18 @@ Handles `MIN_LOOP_LENGTH`. Breaks each simple cycle found by `MinLoopLengthCheck
 
 ### MinLoopLengthScoredStrategy
 
-Handles `MIN_LOOP_LENGTH`, same mandatory-`issue.data` contract as `MinLoopLengthRandomStrategy` above. An alternative to it — registering one or the other for `MIN_LOOP_LENGTH` is a config choice (`RepairEngine` maps one strategy per `IssueKind`), not a replacement.
+Handles `INVALID_LOOP`, same mandatory-`issue.data` contract as `MinLoopLengthRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (`RepairEngine` maps one strategy per `IssueKind`), not a replacement.
 
-Instead of picking a random edge from each short cycle, scores every still-present, non-preset-protected candidate edge in the cycle being cut and picks the highest-scoring one (ties broken via `rng`). The goal: bias cuts toward edges that simultaneously break several short loops at once (fewer total cuts needed to clear the issue) while avoiding edges that would also break a cycle the maze is meant to keep.
+Instead of picking a random edge from each invalid cycle, scores every still-present, non-preset-protected candidate edge in the cycle being cut and picks the highest-scoring one (ties broken via `rng`). The goal: bias cuts toward edges that simultaneously break several invalid loops at once (fewer total cuts needed to clear the issue) while avoiding edges that would also break a cycle the maze is meant to keep.
 
 **Parameters:**
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `short_overlap_weight` | Float | 5.0 | [0, 100] | Weight per other short cycle (in `short`) sharing this edge |
-| `other_overlap_weight` | Float | 6.0 | [0, 100] | Penalty per non-short cycle (in `all`, not in `short`) sharing this edge |
+| `short_overlap_weight` | Float | 5.0 | [0, 100] | Weight per other invalid cycle (in `invalid`) sharing this edge — name kept from when this kind only meant "too short" |
+| `other_overlap_weight` | Float | 6.0 | [0, 100] | Penalty per valid cycle (in `all`, not in `invalid`) sharing this edge |
 
-For a candidate edge, `short_overlap` counts how many cycles in `all` at indices listed in `short` (including the cycle currently being cut — a constant offset shared by every candidate in that cycle, so it doesn't affect which one wins) contain that `EdgeId`; `other_overlap` counts how many cycles in `all` *not* in `short` contain it. Score: `short_overlap * short_overlap_weight - other_overlap * other_overlap_weight`.
+For a candidate edge, `short_overlap` counts how many cycles in `all` at indices listed in `invalid` (including the cycle currently being cut — a constant offset shared by every candidate in that cycle, so it doesn't affect which one wins) contain that `EdgeId`; `other_overlap` counts how many cycles in `all` *not* in `invalid` contain it. Score: `short_overlap * short_overlap_weight - other_overlap * other_overlap_weight`.
 
 The overlap counts (`edge -> (short_overlap, other_overlap)`) are computed **once** per `apply` call from the full `all` list, before any cut happens, and reused as-is for every cycle in `short` — including cycles processed later in the same `apply` call, after earlier cycles already had an edge cut. They are not recomputed between cuts, so a later cycle's candidate scores can reflect cycles that have already been (partially) broken by an earlier cut in the same call. Same accepted imprecision as `MinLoopLengthRandomStrategy` regarding cross-cycle invalidation after a cut — a smarter variant that recomputes overlap between cuts is a separate future task if needed.
 
@@ -206,13 +206,12 @@ Logic:
 1. Construct `Maze` via `Maze::new(field, graph)` — sets `MazeMeta::empty()` and `MazeAnalysis::default()`.
 2. Create `rng = SmallRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations for cross-iteration determinism.
 3. Track `failed: HashSet<IssueKind>` — issues whose strategy returned `Failed`.
-   - **Note**: QC dedup keeps at most one `Issue` per `IssueKind` per pass (first occurrence wins). If multiple issues of the same kind carry different `data`, only the first's payload survives — a `debug_assert!` flags this in development builds.
 4. Track `previous_fingerprint: Option<Vec<IssueKind>>` for progress detection.
 5. Loop up to `MAX_REPAIR_ITERATIONS`:
    - Run QC.
-   - Deduplicate issues by `IssueKind` (keep first occurrence per kind), then filter out `failed` kinds. This preserves one issue per kind, in original QC order.
+   - **Merge, not drop, issues sharing a kind** — multiple checks may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). Group issues into a `HashMap<IssueKind, Issue>`: the first issue of a kind seeds the map entry, any further issue of the same kind is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions `source_checks` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces (see `IssueKind`/`Issue.source_checks` below for what "produced by which check" now means). Then filter out `failed` kinds. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
    - If no active issues: break (all resolved).
-   - Compute fingerprint: sorted list of active `IssueKind` values.
+   - Compute fingerprint: sorted list of active `IssueKind` values. **Known limitation**: the fingerprint only tracks which kinds are active, not their content — two consecutive iterations producing the same kind with genuinely different `data` look identical to this check and can trigger a false "no progress" break. Pre-existing limitation, not introduced by the merge change; tracked at https://github.com/Sergey-Lomov/MazeGen/issues/27.
    - If fingerprint equals previous: break (no progress possible).
    - Run repair on active issues, passing through `preset_state`.
    - Add `Failed` results to `failed` set.

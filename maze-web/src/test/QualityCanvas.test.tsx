@@ -25,6 +25,7 @@ beforeEach(() => {
     selectedChecks: ["c1"],
     availableStrategies: [],
     selectedStrategies: {},
+    disabledStrategies: {},
     checkParams: {},
     strategyParams: {},
   } as Partial<ReturnType<typeof useMazeStore.getState>>);
@@ -42,10 +43,13 @@ describe("QualityCanvas", () => {
     expect(screen.getByText("Check One description")).toBeInTheDocument();
   });
 
-  it("selecting the issue derived from the active check shows issue detail", () => {
+  it("renders one strategy slot, not duplicated, when two active checks share a kind", () => {
+    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [] };
+    useMazeStore.setState({
+      availableChecks: [checkDescriptor, checkB],
+      selectedChecks: ["c1", "c2"],
+    } as Partial<ReturnType<typeof useMazeStore.getState>>);
     render(<QualityCanvas />);
-    fireEvent.click(screen.getByText("i1"));
-    expect(screen.getByText("Detected by")).toBeInTheDocument();
-    expect(screen.getAllByText("Check One").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Do not fix")).toHaveLength(1);
   });
 });

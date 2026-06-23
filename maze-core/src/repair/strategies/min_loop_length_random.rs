@@ -20,15 +20,16 @@ impl<T: Tessellation> RepairStrategy<T> for MinLoopLengthRandomStrategy {
         _params: &StrategyParams,
         preset_state: &PresetState,
     ) -> RepairResult {
-        // MIN_LOOP_LENGTH always carries ShortLoops data in a well-formed pipeline run —
-        // the check already did the (expensive) cycle search, so the data isn't optional
-        // here the way it is for some other issue kinds. Missing/wrong-type data means
-        // this was called outside the normal pipeline (malformed) — Failed, not "already
-        // fixed". An empty cycle list, by contrast, means the check found nothing to break.
-        let Some(IssueData::ShortLoops { all, short }) = &issue.data else {
+        // INVALID_LOOP always carries InvalidLoops data in a well-formed pipeline run —
+        // the producing check already did the (expensive) cycle search, so the data isn't
+        // optional here the way it is for some other issue kinds. Missing/wrong-type data
+        // means this was called outside the normal pipeline (malformed) — Failed, not
+        // "already fixed". An empty cycle list, by contrast, means the check found nothing
+        // to break.
+        let Some(IssueData::InvalidLoops { all, invalid }) = &issue.data else {
             return RepairResult::Failed;
         };
-        apply_cuts(all, short, maze, rng, preset_state)
+        apply_cuts(all, invalid, maze, rng, preset_state)
     }
 }
 
@@ -129,10 +130,10 @@ mod tests {
 
     #[test]
     fn apply_fails_when_data_is_missing() {
-        // MIN_LOOP_LENGTH always carries ShortLoops data in a well-formed pipeline run.
+        // INVALID_LOOP always carries InvalidLoops data in a well-formed pipeline run.
         // Missing data means a malformed call, not "nothing to fix" — Failed, not Fixed.
         let mut maze = maze_with_triangle();
-        let issue = Issue::new(crate::quality_control::issue::MIN_LOOP_LENGTH); // no data attached
+        let issue = Issue::new(crate::quality_control::issue::INVALID_LOOP); // no data attached
         let mut rng = SmallRng::seed_from_u64(7);
         let result = MinLoopLengthRandomStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
@@ -140,9 +141,9 @@ mod tests {
 
     #[test]
     fn apply_succeeds_on_empty_cycle_list() {
-        // An empty ShortLoops list means the check found nothing to break — already fixed.
+        // An empty InvalidLoops list means the check found nothing to break — already fixed.
         let mut maze = maze_with_triangle();
-        let issue = Issue::with_data(crate::quality_control::issue::MIN_LOOP_LENGTH, IssueData::ShortLoops { all: vec![], short: vec![] });
+        let issue = Issue::with_data(crate::quality_control::issue::INVALID_LOOP, IssueData::InvalidLoops { all: vec![], invalid: vec![] });
         let mut rng = SmallRng::seed_from_u64(7);
         let result = MinLoopLengthRandomStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -253,8 +254,8 @@ mod tests {
         check.check(&maze, &mut issues);
         let issue = issues.into_iter().next().unwrap();
 
-        let IssueData::ShortLoops { all, short } = issue.data.as_ref().unwrap() else { panic!() };
-        let cycle = all[short[0]].clone();
+        let IssueData::InvalidLoops { all, invalid } = issue.data.as_ref().unwrap() else { panic!() };
+        let cycle = all[invalid[0]].clone();
         // Protect all but the last edge in the cycle from removal.
         let mut preset_state = PresetState::empty();
         for &edge_id in &cycle[..cycle.len() - 1] {

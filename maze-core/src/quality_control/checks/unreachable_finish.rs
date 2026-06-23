@@ -3,6 +3,8 @@ use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, UNREACHABLE_FINISH};
 
+pub const UNREACHABLE_FINISH_CHECK_ID: &str = "unreachable_finish";
+
 pub struct UnreachableFinishCheck;
 
 impl<T: Tessellation> Check<T> for UnreachableFinishCheck {
@@ -11,7 +13,7 @@ impl<T: Tessellation> Check<T> for UnreachableFinishCheck {
             return;
         };
         if !maze.graph.reachable_from(start).contains(&finish) {
-            issues.push(Issue::new(UNREACHABLE_FINISH));
+            issues.push(Issue::new_from_check(UNREACHABLE_FINISH, UNREACHABLE_FINISH_CHECK_ID));
         }
     }
 }

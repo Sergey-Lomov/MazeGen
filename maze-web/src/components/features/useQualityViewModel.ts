@@ -1,20 +1,7 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { ParamDescriptor } from "../../wasm/types";
-import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveIssueDescription, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
-
-export interface CheckVM {
-  id: string;
-  label: string;
-  description: string;
-  params: ParamDescriptor[];
-}
-
-export interface IssueVM {
-  id: string;
-  label: string;
-  description: string;
-}
+import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
 
 export interface StrategyVM {
   id: string;
@@ -23,17 +10,33 @@ export interface StrategyVM {
   params: ParamDescriptor[];
 }
 
+export interface CheckVM {
+  id: string;
+  label: string;
+  description: string;
+  params: ParamDescriptor[];
+}
+
+export interface StrategySlotVM {
+  /** Issue kind this slot's strategy handles — the join key with `availableStrategies[].handles`
+   * and with `selectedStrategies`/`disabledStrategies` in the store. */
+  kind: string;
+  label: string;
+  strategy: StrategyVM | null;
+  disabled: boolean;
+  /** Active checks that produce this kind — N checks can share one kind, so a slot is one
+   * per kind (not one per check) and lists every contributing check. Every check today
+   * produces exactly one kind, so this is usually a single-element list, but built from
+   * a dedup-by-kind pass over all active checks' issue_kinds rather than assumed 1:1. */
+  producedBy: CheckVM[];
+}
+
 export interface QualityViewModel {
   /** Only selected (active) checks */
   checks: CheckVM[];
-  /** Issues produced by active checks only */
-  issues: IssueVM[];
-  /** issueId → currently selected strategy (or null) */
-  issueStrategy: Record<string, StrategyVM | null>;
-  /** issueId → true if the selected strategy is temporarily disabled */
-  issueStrategyDisabled: Record<string, boolean>;
-  /** issueId → list of checks that detect it */
-  issueToChecks: Record<string, CheckVM[]>;
+  /** One per distinct issue kind produced by active checks — not one per check, since
+   * multiple checks can share a kind (see StrategySlotVM.producedBy). */
+  strategySlots: StrategySlotVM[];
 }
 
 function localizeParams(params: ParamDescriptor[]): ParamDescriptor[] {
@@ -51,47 +54,41 @@ export function useQualityViewModel(): QualityViewModel {
   const disabledStrategies = useMazeStore((s) => s.disabledStrategies);
 
   return useMemo(() => {
-    const checks: CheckVM[] = selectedChecks
+    const activeDescriptors = selectedChecks
       .map((id) => availableChecks.find((c) => c.id === id))
-      .filter((c): c is NonNullable<typeof c> => c !== undefined)
-      .map((c) => ({
-        id: c.id,
-        label: resolveCheckLabel(c.id, c.label),
-        description: resolveCheckDescription(c.id, c.description),
-        params: localizeParams(c.params),
-      }));
+      .filter((c): c is NonNullable<typeof c> => c !== undefined);
 
-    const issueKindSet = new Set<string>();
-    for (const c of availableChecks.filter((c) => selectedChecks.includes(c.id))) {
-      for (const kind of c.issue_kinds) issueKindSet.add(kind);
-    }
-    const issues: IssueVM[] = Array.from(issueKindSet).map((kind) => ({
-      id: kind,
-      label: resolveIssueLabel(kind),
-      description: resolveIssueDescription(kind),
+    const checks: CheckVM[] = activeDescriptors.map((c) => ({
+      id: c.id,
+      label: resolveCheckLabel(c.id, c.label),
+      description: resolveCheckDescription(c.id, c.description),
+      params: localizeParams(c.params),
     }));
 
-    const issueToChecks: Record<string, CheckVM[]> = {};
-    for (const check of checks) {
-      const orig = availableChecks.find((c) => c.id === check.id);
-      if (!orig) continue;
-      for (const kind of orig.issue_kinds) {
-        if (!issueToChecks[kind]) issueToChecks[kind] = [];
-        issueToChecks[kind].push(check);
+    const checkById = new Map(checks.map((c) => [c.id, c]));
+    const kindToCheckIds = new Map<string, string[]>();
+    for (const desc of activeDescriptors) {
+      for (const kind of desc.issue_kinds) {
+        const ids = kindToCheckIds.get(kind) ?? [];
+        ids.push(desc.id);
+        kindToCheckIds.set(kind, ids);
       }
     }
 
-    const issueStrategy: Record<string, StrategyVM | null> = {};
-    const issueStrategyDisabled: Record<string, boolean> = {};
-    for (const issue of issues) {
-      const strategyId = selectedStrategies[issue.id];
+    const strategySlots: StrategySlotVM[] = Array.from(kindToCheckIds.entries()).map(([kind, checkIds]) => {
+      const strategyId = selectedStrategies[kind];
       const s = strategyId ? availableStrategies.find((s) => s.id === strategyId) : undefined;
-      issueStrategy[issue.id] = s
-        ? { id: s.id, label: resolveStrategyLabel(s.id), handles: s.handles, params: localizeParams(s.params) }
-        : null;
-      issueStrategyDisabled[issue.id] = Boolean(disabledStrategies[issue.id]);
-    }
+      return {
+        kind,
+        label: resolveIssueLabel(kind),
+        strategy: s
+          ? { id: s.id, label: resolveStrategyLabel(s.id), handles: s.handles, params: localizeParams(s.params) }
+          : null,
+        disabled: Boolean(disabledStrategies[kind]),
+        producedBy: checkIds.map((id) => checkById.get(id)!).filter(Boolean),
+      };
+    });
 
-    return { checks, issues, issueStrategy, issueStrategyDisabled, issueToChecks };
+    return { checks, strategySlots };
   }, [availableChecks, selectedChecks, availableStrategies, selectedStrategies, disabledStrategies]);
 }

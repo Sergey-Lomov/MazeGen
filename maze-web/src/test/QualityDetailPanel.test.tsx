@@ -3,7 +3,9 @@ import { render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { QualityDetailPanel } from "../components/features/quality/QualityDetailPanel";
 import { useMazeStore } from "../store/mazeStore";
-import type { CheckVM, IssueVM, StrategyVM, QualityViewModel } from "../components/features/useQualityViewModel";
+import type { CheckVM, StrategyVM, QualityViewModel } from "../components/features/useQualityViewModel";
+
+const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "i1", params: [] };
 
 const check: CheckVM = {
   id: "c1",
@@ -12,17 +14,10 @@ const check: CheckVM = {
   params: [],
 };
 
-const issue: IssueVM = { id: "i1", label: "Issue One", description: "Issue One description" };
-
-const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "i1", params: [] };
-
 function makeVm(overrides: Partial<QualityViewModel> = {}): QualityViewModel {
   return {
     checks: [check],
-    issues: [issue],
-    issueStrategy: { i1: null },
-    issueStrategyDisabled: { i1: false },
-    issueToChecks: { i1: [check] },
+    strategySlots: [{ kind: "i1", label: "Issue One", strategy: null, disabled: false, producedBy: [check] }],
     ...overrides,
   };
 }
@@ -51,15 +46,10 @@ describe("QualityDetailPanel", () => {
     expect(screen.getByText("Check One description")).toBeInTheDocument();
   });
 
-  it("renders issue detail with detecting checks", () => {
-    render(<Harness selection={{ type: "issue", id: "i1" }} vm={makeVm()} />);
-    expect(screen.getByText("Issue One")).toBeInTheDocument();
-    expect(screen.getByText("Issue One description")).toBeInTheDocument();
-    expect(screen.getByText("Check One")).toBeInTheDocument();
-  });
-
   it("renders strategy detail when a strategy is selected", () => {
-    const vm = makeVm({ issueStrategy: { i1: strategy } });
+    const vm = makeVm({
+      strategySlots: [{ kind: "i1", label: "Issue One", strategy, disabled: false, producedBy: [check] }],
+    });
     render(
       <Harness selection={{ type: "strategy", issueId: "i1", strategyId: "s1" }} vm={vm} />
     );

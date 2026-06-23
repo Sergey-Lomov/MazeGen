@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQualityViewModel } from "./useQualityViewModel";
 import { ChecksColumn } from "./quality/ChecksColumn";
-import { IssuesColumn } from "./quality/IssuesColumn";
+import { StrategiesColumn } from "./quality/StrategiesColumn";
 import { QualityDetailPanel } from "./quality/QualityDetailPanel";
 import { qualityCanvasStyles as styles } from "./quality/qualityCanvasStyles";
 import type { QualitySelection } from "./quality/types";
@@ -24,10 +24,8 @@ export function QualityCanvas() {
         onSelect={handleSelect}
       />
       <div style={styles.divider} />
-      <IssuesColumn
-        issues={vm.issues}
-        issueStrategy={vm.issueStrategy}
-        issueStrategyDisabled={vm.issueStrategyDisabled}
+      <StrategiesColumn
+        slots={vm.strategySlots}
         selection={selection}
         onSelect={handleSelect}
       />
