@@ -44,6 +44,7 @@ export function baseStoreState() {
     elementsConfig: { one_way_chance: 0.04 },
     selectedChecks: [],
     selectedStrategies: {},
+    disabledStrategies: {},
     strategyParams: {},
     checkParams: {},
     registryLoaded: false,

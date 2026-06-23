@@ -21,6 +21,7 @@ function makeVm(overrides: Partial<QualityViewModel> = {}): QualityViewModel {
     checks: [check],
     issues: [issue],
     issueStrategy: { i1: null },
+    issueStrategyDisabled: { i1: false },
     issueToChecks: { i1: [check] },
     ...overrides,
   };

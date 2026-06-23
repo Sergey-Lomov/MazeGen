@@ -26,6 +26,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     quality: {
       selectedChecks: state.selectedChecks,
       selectedStrategies: state.selectedStrategies,
+      disabledStrategies: state.disabledStrategies,
       checkParams: state.checkParams,
       strategyParams: state.strategyParams,
     },

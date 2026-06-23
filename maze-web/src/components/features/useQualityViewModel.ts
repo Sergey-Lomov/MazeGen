@@ -30,6 +30,8 @@ export interface QualityViewModel {
   issues: IssueVM[];
   /** issueId → currently selected strategy (or null) */
   issueStrategy: Record<string, StrategyVM | null>;
+  /** issueId → true if the selected strategy is temporarily disabled */
+  issueStrategyDisabled: Record<string, boolean>;
   /** issueId → list of checks that detect it */
   issueToChecks: Record<string, CheckVM[]>;
 }
@@ -46,6 +48,7 @@ export function useQualityViewModel(): QualityViewModel {
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const selectedStrategies = useMazeStore((s) => s.selectedStrategies);
+  const disabledStrategies = useMazeStore((s) => s.disabledStrategies);
 
   return useMemo(() => {
     const checks: CheckVM[] = selectedChecks
@@ -79,18 +82,16 @@ export function useQualityViewModel(): QualityViewModel {
     }
 
     const issueStrategy: Record<string, StrategyVM | null> = {};
+    const issueStrategyDisabled: Record<string, boolean> = {};
     for (const issue of issues) {
       const strategyId = selectedStrategies[issue.id];
-      if (!strategyId) {
-        issueStrategy[issue.id] = null;
-        continue;
-      }
-      const s = availableStrategies.find((s) => s.id === strategyId);
+      const s = strategyId ? availableStrategies.find((s) => s.id === strategyId) : undefined;
       issueStrategy[issue.id] = s
         ? { id: s.id, label: resolveStrategyLabel(s.id), handles: s.handles, params: localizeParams(s.params) }
         : null;
+      issueStrategyDisabled[issue.id] = Boolean(disabledStrategies[issue.id]);
     }
 
-    return { checks, issues, issueStrategy, issueToChecks };
-  }, [availableChecks, selectedChecks, availableStrategies, selectedStrategies]);
+    return { checks, issues, issueStrategy, issueStrategyDisabled, issueToChecks };
+  }, [availableChecks, selectedChecks, availableStrategies, selectedStrategies, disabledStrategies]);
 }

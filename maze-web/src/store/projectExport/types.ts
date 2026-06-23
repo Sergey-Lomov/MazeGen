@@ -49,6 +49,7 @@ export interface ProjectFile {
   quality: {
     selectedChecks: string[];
     selectedStrategies: Record<string, string>;
+    disabledStrategies: Record<string, boolean>;
     checkParams: Record<string, Record<string, string>>;
     strategyParams: Record<string, Record<string, string>>;
   };

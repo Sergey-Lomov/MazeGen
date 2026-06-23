@@ -28,6 +28,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   availableStrategies: [],
   selectedChecks: [],
   selectedStrategies: {},
+  disabledStrategies: {},
   strategyParams: {},
   checkParams: {},
   initialConfig: { method: "recursive_backtracker" as const },
@@ -65,10 +66,11 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
           ? state.selectedChecks.filter((id) => knownIds.has(id))
           : defaultSelectedChecks;
         const selectedStrategies = state.registryLoaded ? state.selectedStrategies : defaultStrategies;
+        const disabledStrategies = state.registryLoaded ? state.disabledStrategies : {};
         const checkParams = Object.fromEntries(
           Object.entries(state.checkParams).filter(([id]) => knownIds.has(id))
         );
-        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies, checkParams };
+        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies, disabledStrategies, checkParams };
       });
     }).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -154,8 +156,15 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   clearStrategy: (issueKind) => set((state) => {
     const next = { ...state.selectedStrategies };
     delete next[issueKind];
-    return { selectedStrategies: next, debugStale: debugStaleOf(state) };
+    const nextDisabled = { ...state.disabledStrategies };
+    delete nextDisabled[issueKind];
+    return { selectedStrategies: next, disabledStrategies: nextDisabled, debugStale: debugStaleOf(state) };
   }),
+
+  toggleStrategyDisabled: (issueKind) => set((state) => ({
+    disabledStrategies: { ...state.disabledStrategies, [issueKind]: !state.disabledStrategies[issueKind] },
+    debugStale: debugStaleOf(state),
+  })),
 
   setStrategyParam: (strategyId, paramId, value) => set((state) => ({
     strategyParams: {
@@ -216,7 +225,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   if (state.isEditingField && state.fieldPoints.size < 2) return null;
   const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
   for (const [kind, strategyId] of Object.entries(state.selectedStrategies)) {
-    if (!strategyId) continue;
+    if (!strategyId || state.disabledStrategies[kind]) continue;
     const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
     const paramOverrides = state.strategyParams[strategyId] ?? {};
     const params: Record<string, string> = {};

@@ -156,6 +156,8 @@
   "quality.detected_by": "Detected by",
   "quality.open_to_configure": "Open to configure",
   "quality.edit_strategy": "Edit strategy",
+  "quality.disable_strategy": "Disable strategy",
+  "quality.enable_strategy": "Enable strategy",
   "quality.no_issues": "No issues from active checks",
   "quality.select_strategy": "Select strategy",
   "issue.missing_endpoints.label": "Missing endpoints",

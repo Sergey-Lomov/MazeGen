@@ -166,6 +166,8 @@
   "quality.detected_by": "Обнаруживается",
   "quality.open_to_configure": "Откройте для настройки",
   "quality.edit_strategy": "Редактировать стратегию",
+  "quality.disable_strategy": "Отключить стратегию",
+  "quality.enable_strategy": "Включить стратегию",
   "quality.no_issues": "Нет ишью от активных проверок",
   "quality.select_strategy": "Выбрать стратегию",
   "issue.missing_endpoints.label": "Нет точек входа/выхода",

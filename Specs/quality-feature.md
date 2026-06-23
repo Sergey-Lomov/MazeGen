@@ -41,6 +41,7 @@ Lists unique issue kinds produced by all active checks (`issue_kinds` from their
 
 - **Issue card** (40% width): issue label, clickable → selects issue in detail panel.
 - **Strategy card** (remaining width): label of currently selected strategy, or `strategy.no_fix.label` if none. `✎` edit button opens `StrategySelectDialog`. The strategy card itself is also clickable → selects strategy in detail panel (only if a real strategy is set).
+- When a strategy is set, a `Switch` toggle appears before `✎`: disables/re-enables the strategy without clearing its selection or params. Disabled state renders the strategy card dimmed. Hidden when no strategy is set (nothing to disable).
 
 Empty state: hint text `quality.no_issues`.
 
@@ -142,6 +143,7 @@ useParamEditor(options: {
 selectedChecks: string[]
 checkParams: Record<string, Record<string, string>>      // checkId → paramId → value
 selectedStrategies: Record<string, string>               // issueKind → strategyId
+disabledStrategies: Record<string, boolean>               // issueKind → temporarily disabled
 qualityOpen: boolean
 
 // Actions
@@ -150,6 +152,7 @@ removeCheck(id: string): void
 setCheckParam(checkId: string, paramId: string, value: string): void
 setStrategy(issueKind: string, strategyId: string): void
 clearStrategy(issueKind: string): void
+toggleStrategyDisabled(issueKind: string): void
 setQualityOpen(open: boolean): void
 ```
 
@@ -168,14 +171,24 @@ setQualityOpen(open: boolean): void
 ### clearStrategy
 
 - Deletes `issueKind` key from `selectedStrategies`.
+- Also deletes `issueKind` from `disabledStrategies` — a cleared strategy has no disabled state to preserve.
 - Results in `issueStrategy[issueKind] === null` in the ViewModel.
+
+### toggleStrategyDisabled
+
+- Flips `disabledStrategies[issueKind]` (absent/`false` ↔ `true`).
+- Does **not** touch `selectedStrategies` or `strategyParams` — the strategy choice and its parameter overrides survive toggling, unlike `clearStrategy`.
+- A disabled strategy is omitted entirely from the `strategies` map passed to `buildGenerateConfig`/`GenerateConfig`, so `RepairEngine` has no strategy registered for that `IssueKind` — equivalent to the issue having no strategy assigned (skipped, surfaced as unresolved).
+- Re-running `toggleStrategyDisabled` restores the same strategy id and param overrides without reconfiguration.
 
 ## Default State
 
 On `loadRegistry`, checks without params are auto-selected: `missing_endpoints` and `unreachable_finish`. Checks with params (`min_loops_count`) are not auto-selected.
 
-If `loadRegistry` is called again, `selectedChecks` and `selectedStrategies` are preserved. Stale check IDs are removed from `selectedChecks` and `checkParams`.
+If `loadRegistry` is called again, `selectedChecks`, `selectedStrategies`, and `disabledStrategies` are preserved. Stale check IDs are removed from `selectedChecks` and `checkParams`.
 
 ## Generate pipeline
 
 `checkParams` is passed as `check_params` in `GenerateConfig`. The WASM runner reads param values as strings, parses them per check. Unknown params are ignored; missing params fall back to descriptor defaults. Values are clamped server-side.
+
+`buildGenerateConfig` skips any `issueKind` whose `disabledStrategies[issueKind]` is `true` when building the `strategies` map — the entry is omitted from `GenerateConfig.strategies` entirely, so the WASM side never registers a `RepairStrategy` for that `IssueKind`.

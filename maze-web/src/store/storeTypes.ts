@@ -167,6 +167,8 @@ export interface GenerationState {
   availableStrategies: StrategyDescriptor[];
   selectedChecks: string[];
   selectedStrategies: Record<string, string>;
+  /** issueKind → true if its selected strategy is temporarily disabled (skipped by RepairEngine, selection/params kept) */
+  disabledStrategies: Record<string, boolean>;
   /** strategyParams[strategyId][paramId] = raw string value */
   strategyParams: Record<string, Record<string, string>>;
   /** checkParams[checkId][paramId] = raw string value */
@@ -204,6 +206,7 @@ export interface GenerationActions {
   setCheckParam: (checkId: string, paramId: string, value: string) => void;
   setStrategy: (issueKind: string, strategyId: string) => void;
   clearStrategy: (issueKind: string) => void;
+  toggleStrategyDisabled: (issueKind: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
   setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;

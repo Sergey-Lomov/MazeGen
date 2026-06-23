@@ -99,6 +99,15 @@ function optSection(parent: Record<string, unknown>, key: string, path: string):
   return parent[key] != null ? assertObject(parent[key], path) : null;
 }
 
+function optBoolRecord(obj: Record<string, unknown> | null, key: string, path: string): Record<string, boolean> {
+  if (obj == null || obj[key] == null) return {};
+  const rec = assertObject(obj[key], path);
+  for (const [k, val] of Object.entries(rec)) {
+    assertBoolean(val, `${path}.${k}`);
+  }
+  return rec as Record<string, boolean>;
+}
+
 function optCoordPair(v: unknown, path: string): [number, number] | null {
   return v === null || v === undefined ? null : validateCoordPair(v, path);
 }
@@ -252,6 +261,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const qualObj = assertObject(migrated.quality, "quality");
   const selectedChecks = assertArray(qualObj.selectedChecks, "quality.selectedChecks").map((v, i) => assertString(v, `quality.selectedChecks[${i}]`));
   const selectedStrategies = assertStringRecord(qualObj.selectedStrategies, "quality.selectedStrategies");
+  const disabledStrategies = optBoolRecord(qualObj, "disabledStrategies", "quality.disabledStrategies");
   const checkParams = assertStringRecordRecord(qualObj.checkParams, "quality.checkParams");
   const strategyParams = assertStringRecordRecord(qualObj.strategyParams, "quality.strategyParams");
 
@@ -314,7 +324,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     version: CURRENT_VERSION,
     tessellation: { config, savedConfigs },
     generation: { seed, randomSeed, initial, elements },
-    quality: { selectedChecks, selectedStrategies, checkParams, strategyParams },
+    quality: { selectedChecks, selectedStrategies, disabledStrategies, checkParams, strategyParams },
     presets: {
       connections,
       lockedNodes,

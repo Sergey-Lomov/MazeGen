@@ -12,6 +12,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     elementsConfig: {},
     selectedChecks: ["check_a"],
     selectedStrategies: { issue_a: "strategy_a" },
+    disabledStrategies: {},
     checkParams: { check_a: { param_a: "1" } },
     strategyParams: { strategy_a: { param_b: "2" } },
     presetConnections: new Map(),
@@ -170,6 +171,13 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     data.ui = { openCard: "not_a_real_card" };
     const result = parseAndValidate(data);
     expect(result.ui.openCard).toBe("basic_config");
+  });
+
+  it("defaults quality.disabledStrategies to {} when absent (pre-toggle-feature project files)", () => {
+    const data = valid_without_optional_sections();
+    delete (data.quality as Record<string, unknown>).disabledStrategies;
+    const result = parseAndValidate(data);
+    expect(result.quality.disabledStrategies).toEqual({});
   });
 
   function valid_without_optional_sections(): Record<string, unknown> {

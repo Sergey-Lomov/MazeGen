@@ -27,6 +27,7 @@ export function QualityCanvas() {
       <IssuesColumn
         issues={vm.issues}
         issueStrategy={vm.issueStrategy}
+        issueStrategyDisabled={vm.issueStrategyDisabled}
         selection={selection}
         onSelect={handleSelect}
       />

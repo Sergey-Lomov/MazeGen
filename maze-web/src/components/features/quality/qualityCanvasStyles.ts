@@ -101,6 +101,9 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   noStrategy: {
     color: colors.textVeryDim,
   },
+  strategyDisabled: {
+    opacity: 0.5,
+  },
   editBtn: {
     background: "none",
     border: "none",
@@ -111,6 +114,11 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     lineHeight: 1,
     flexShrink: 0,
     opacity: 0.7,
+  },
+  toggleWrap: {
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
   },
   divider: {
     width: 1,
