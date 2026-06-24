@@ -1,12 +1,19 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
-import { resolveCheckLabel, resolveCheckDescription } from "./qualityI18n";
+import { ParamFields } from "./ParamFields";
+import { resolveCheckLabel, resolveCheckDescription, resolveParamLabel } from "./qualityI18n";
 import { colors, font, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
+import type { ParamDescriptor } from "../../wasm/types";
 
 interface Props {
   onClose: () => void;
+}
+
+function defaultValue(p: ParamDescriptor): string {
+  const k = p.kind;
+  return k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
 }
 
 export function CheckSelectDialog({ onClose }: Props) {
@@ -15,13 +22,24 @@ export function CheckSelectDialog({ onClose }: Props) {
   const addCheck = useMazeStore((s) => s.addCheck);
 
   const [selectedId, setSelectedId] = useState<string>(availableChecks[0]?.id ?? "");
+  // Param edits made in this dialog before the check is actually added — keyed by check id so
+  // switching the selection and coming back preserves what was typed (mirrors useParamEditor's
+  // per-entity values, but nothing commits to the store until `addCheck` on confirm).
+  const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
 
   const selectedCheck = availableChecks.find((c) => c.id === selectedId);
   const isAlreadyActive = selectedId ? selectedChecks.includes(selectedId) : false;
 
+  function handleParamChange(paramId: string, value: string) {
+    setParamOverrides((prev) => ({
+      ...prev,
+      [selectedId]: { ...(prev[selectedId] ?? {}), [paramId]: value },
+    }));
+  }
+
   function handleAdd() {
     if (selectedId && !isAlreadyActive) {
-      addCheck(selectedId);
+      addCheck(selectedId, undefined, paramOverrides[selectedId]);
       onClose();
     }
   }
@@ -38,6 +56,16 @@ export function CheckSelectDialog({ onClose }: Props) {
       </div>
       {isAlreadyActive && (
         <div style={styles.alreadyActive}>{m["check.already_active"]()}</div>
+      )}
+      {!isAlreadyActive && selectedCheck.params.length > 0 && (
+        <div style={styles.paramsSection}>
+          <div style={styles.paramsSeparator} />
+          <ParamFields
+            params={selectedCheck.params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }))}
+            getValue={(p) => paramOverrides[selectedId]?.[p.id] ?? defaultValue(p)}
+            onChange={handleParamChange}
+          />
+        </div>
       )}
     </>
   ) : (
@@ -82,6 +110,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: font.md,
     color: colors.textError,
     marginTop: 4,
+  },
+  paramsSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  paramsSeparator: {
+    borderTop: `1px solid ${colors.borderDim}`,
+    marginBottom: 4,
   },
   empty: {
     fontSize: font.lg,

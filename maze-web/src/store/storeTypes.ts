@@ -227,8 +227,10 @@ export interface GenerationActions {
   loadRegistry: () => Promise<void>;
   /** Activates `id`. If `ruleId` is omitted, creates a fresh singleton rule for it (the
    * top-level "+ Add check" path). If given, activates the check directly into that existing
-   * rule instead of creating a new one (the per-rule "+ Add check to rule" path). */
-  addCheck: (id: string, ruleId?: string) => void;
+   * rule instead of creating a new one (the per-rule "+ Add check to rule" path).
+   * `initialParams` overrides the descriptor defaults (e.g. values edited in the select dialog
+   * before confirming) — ignored for a check that's already active. */
+  addCheck: (id: string, ruleId?: string, initialParams?: Record<string, string>) => void;
   removeCheck: (id: string) => void;
   setCheckParam: (checkId: string, paramId: string, value: string) => void;
   /** Moves `checkId` out of whatever rule it's in, into a fresh singleton rule of its own. */

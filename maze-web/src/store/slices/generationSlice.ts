@@ -142,12 +142,12 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   selectNode: (id) => set({ selectedNode: id }),
 
-  addCheck: (id, ruleId) => set((state) => {
+  addCheck: (id, ruleId, initialParams) => set((state) => {
     if (state.selectedChecks.includes(id)) return {};
     const descriptor = state.availableChecks.find((c) => c.id === id);
     if (!descriptor) return {};
     const existing = state.checkParams[id];
-    const params = existing ?? Object.fromEntries(
+    const params = existing ?? initialParams ?? Object.fromEntries(
       descriptor.params.map((p) => {
         const k = p.kind;
         const def = k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
