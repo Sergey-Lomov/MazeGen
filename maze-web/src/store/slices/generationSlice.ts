@@ -287,14 +287,19 @@ export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConf
   return { tessellation_type, points };
 }
 
+// ruleDisabled rules (and their checks) are excluded entirely — as if they were never selected
+// at all. Distinct from a rule with strategy:null/disabled (its checks still run): ruleDisabled
+// means the checks themselves don't run. Shared by buildGenerateConfig and confirmPostEdit so
+// both paths agree on which checks are actually active.
+export function activeChecksOf(state: { selectedChecks: string[]; rules: { checks: string[]; ruleDisabled: boolean }[] }): string[] {
+  const disabledCheckIds = new Set(state.rules.filter((g) => g.ruleDisabled).flatMap((g) => g.checks));
+  return state.selectedChecks.filter((id) => !disabledCheckIds.has(id));
+}
+
 export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   if (state.isEditingField && state.fieldPoints.size < 2) return null;
-  // ruleDisabled rules (and their checks) are excluded entirely — as if they were never
-  // selected at all. Distinct from a rule with strategy:null/disabled (still sent below, since
-  // its checks still run): ruleDisabled means the checks themselves don't run.
   const activeRules = state.rules.filter((g) => !g.ruleDisabled);
-  const disabledCheckIds = new Set(state.rules.filter((g) => g.ruleDisabled).flatMap((g) => g.checks));
-  const checks = state.selectedChecks.filter((id) => !disabledCheckIds.has(id));
+  const checks = activeChecksOf(state);
   // Every remaining rule is sent, including ones with no strategy or disabled — `strategy: null`
   // for those, not an omitted entry. The wasm layer still needs the rule's check composition to
   // merge/attribute issues correctly even when nothing repairs them (see Specs/repair.md).

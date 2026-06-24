@@ -3,7 +3,7 @@ import { computeAnalytics } from "../../wasm/mazeService";
 import type { PostEditEdgeWasmDto } from "../../wasm/types";
 import { applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated } from "../../pixi/postEditUtils";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool } from "../storeTypes";
-import { fieldConfigToWasm } from "./generationSlice";
+import { fieldConfigToWasm, activeChecksOf } from "./generationSlice";
 
 export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState & PostEditActions> = (set, get) => ({
   postEditAutoConfirm: true,
@@ -65,7 +65,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       edges: wasmEdges,
       start: effectiveStart ?? null,
       finish: effectiveFinish ?? null,
-      checks: selectedChecks,
+      checks: activeChecksOf({ selectedChecks, rules: state.rules }),
       check_params: checkParams,
     };
 
