@@ -1,6 +1,16 @@
 import type React from "react";
 import { colors, font, radius } from "./theme";
 
+const selectArrow = {
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='${colors.textDim.replace("#", "%23")}'/%3E%3C/svg%3E")`,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 6px center",
+  backgroundSize: "9px 6px",
+} satisfies React.CSSProperties;
+
 export const sharedStyles = {
   // Input / select field
   input: {
@@ -26,9 +36,10 @@ export const sharedStyles = {
     background: colors.bgInput,
     border: `1px solid ${colors.borderStrong}`,
     color: colors.textPrimary,
-    padding: "3px 6px",
+    padding: "3px 20px 3px 6px",
     fontSize: font.md,
     borderRadius: radius.sm,
+    ...selectArrow,
   } satisfies React.CSSProperties,
 
   selectSm: {
@@ -37,7 +48,8 @@ export const sharedStyles = {
     color: colors.textPrimary,
     fontSize: font.sm,
     borderRadius: radius.sm,
-    padding: "1px 4px",
+    padding: "1px 18px 1px 4px",
+    ...selectArrow,
   } satisfies React.CSSProperties,
 
   // Label as flex column (wraps a field)

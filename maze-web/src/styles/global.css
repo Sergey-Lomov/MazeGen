@@ -3,6 +3,12 @@ input[type="number"] {
   appearance: textfield;
 }
 
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #666;
+}
+
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
