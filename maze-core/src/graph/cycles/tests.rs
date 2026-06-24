@@ -294,3 +294,25 @@ fn dense_grid_exceeding_max_simple_cycles_aborts_instead_of_hanging() {
     assert!(matches!(result, CycleSearchResult::TooManyCycles), "must abort, not enumerate all 2.4M cycles");
     assert!(elapsed.as_secs() < 5, "abort must happen quickly, not after a near-complete enumeration: {elapsed:?}");
 }
+
+#[test]
+fn many_independent_small_sccs_all_found() {
+    // Chain of N independent directed triangles: (0,1,2), (3,4,5), ... Each is its own SCC,
+    // consumed one per outer-loop iteration -> N outer-loop iterations. Regression guard for
+    // issue #25 (incremental SCC update): this shape is the worst case for the old
+    // full-graph-Tarjan-per-iteration approach (N full O(V+E) reruns over a shrinking V) and
+    // was measured at 12.8s before the fix vs ~0.2s after (release build) — not asserted here
+    // as a wall-clock bound (flaky on slow CI), just the correctness of the result under the
+    // new incremental-SCC outer loop.
+    const TRIANGLES: u64 = 4000;
+    let mut g = Graph::new();
+    for id in 0..(TRIANGLES * 3) { g.add_node(id); }
+    for t in 0..TRIANGLES {
+        let base = t * 3;
+        g.add_edge(base, base + 1, EdgeKind::Basic);
+        g.add_edge(base + 1, base + 2, EdgeKind::Basic);
+        g.add_edge(base + 2, base, EdgeKind::Basic);
+    }
+    let cycles = all_cycles(&g);
+    assert_eq!(cycles.len(), TRIANGLES as usize);
+}

@@ -65,18 +65,26 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     let mut cycles: Vec<Vec<usize>> = Vec::new();
     let mut remaining: HashSet<NavNodeId> = (0..n).collect();
 
-    while !remaining.is_empty() {
-        let sccs = strongly_connected_components(&adjacency, &remaining);
+    // Maintained incrementally across iterations instead of a full Tarjan rerun on every
+    // outer-loop step (see issue #25 / `Specs/graph-analytics.md` complexity section).
+    // Removing a single vertex can only split the SCC it belonged to — every other SCC is
+    // unaffected, since a path between two nodes in different SCCs never routes through a
+    // third SCC's interior (otherwise they'd already be one SCC) — so only the affected
+    // SCC's subgraph needs re-running through Tarjan, not the whole remaining graph.
+    let mut sccs = strongly_connected_components(&adjacency, &remaining);
 
+    while !remaining.is_empty() {
         // Smallest-index nontrivial SCC first (deterministic order); also handles
         // self-loop size-1 SCCs and drops size-1-no-self-loop SCCs from `remaining`.
-        let Some(scc) = sccs.iter()
-            .filter(|scc| is_nontrivial(scc, &adjacency))
-            .min_by_key(|scc| *scc.iter().min().unwrap())
+        let Some((scc_pos, _)) = sccs.iter()
+            .enumerate()
+            .filter(|(_, scc)| is_nontrivial(scc, &adjacency))
+            .min_by_key(|(_, scc)| *scc.iter().min().unwrap())
         else {
             break; // no SCC has any cycle left
         };
 
+        let scc = &sccs[scc_pos];
         let start = *scc.iter().min().unwrap();
         let scc_set: HashSet<NavNodeId> = scc.iter().copied().collect();
 
@@ -109,6 +117,15 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
         }
 
         remaining.remove(&start);
+
+        // Replace just the consumed SCC with the (possibly several) SCCs it splits into
+        // after removing `start` — every other entry in `sccs` is left untouched, since
+        // removing `start` cannot affect a node outside its own SCC.
+        let mut remainder_set = scc_set;
+        remainder_set.remove(&start);
+        let split_sccs = strongly_connected_components(&adjacency, &remainder_set);
+        sccs.swap_remove(scc_pos);
+        sccs.extend(split_sccs);
     }
 
     CycleSearchResult::Cycles(cycles)
