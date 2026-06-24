@@ -224,10 +224,12 @@ export class MazeScene {
 
   refit(): void {
     this.app.resize();
-    const { nodes, activeTessellationConfig, tessellationConfig } = useMazeStore.getState();
-    const { x, y, scale } = nodes.length > 0
+    const { nodes, activeTessellationConfig, tessellationConfig, previewTessellationConfig, openCard } = useMazeStore.getState();
+    const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics") && nodes.length > 0;
+    const fieldCfg = openCard === "basic_config" ? previewTessellationConfig : tessellationConfig;
+    const { x, y, scale } = showsMaze
       ? fitMazeViewport(activeTessellationConfig, nodes, this.app.screen.width, this.app.screen.height)
-      : fitFieldViewport(tessellationConfig, this.app.screen.width, this.app.screen.height);
+      : fitFieldViewport(fieldCfg, this.app.screen.width, this.app.screen.height);
     this.viewport.scale.set(scale);
     this.viewport.x = x;
     this.viewport.y = y;
