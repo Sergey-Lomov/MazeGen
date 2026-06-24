@@ -95,10 +95,11 @@ pub fn build_maze<T: Tessellation>(
 /// (or, in principle, the same check twice) produce an issue of the same kind in one QC pass.
 /// Always unions data rather than picking one side — there is no precedence between sources,
 /// nothing is discarded (see `Specs/quality_control.md`'s "Dedup interaction" section).
-fn merge_issue(existing: &mut Issue, incoming: Issue) {
+fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
     for &source in incoming.source_checks() {
         existing.push_source(source);
     }
+    existing.merge_details(incoming.take_details());
     match (&mut existing.data, incoming.data) {
         (Some(IssueData::InvalidLoops { all, invalid, invalid_sources }),
          Some(IssueData::InvalidLoops { all: incoming_all, invalid: incoming_invalid, invalid_sources: incoming_sources })) => {
@@ -207,6 +208,18 @@ mod merge_tests {
             invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(source_check);
         }
         Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid, invalid_sources }, source_check)
+    }
+
+    #[test]
+    fn merge_keeps_each_source_checks_details_after_merge() {
+        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0])
+            .with_detail("min_loop_length", "threshold", "10".to_string());
+        let b = issue("max_loop_length", vec![vec![4, 5, 6]], vec![0])
+            .with_detail("max_loop_length", "threshold", "100".to_string());
+        merge_issue(&mut a, b);
+
+        assert_eq!(a.details().get("min_loop_length").and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
+        assert_eq!(a.details().get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
     }
 
     #[test]

@@ -3,16 +3,21 @@ import { colors, font } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
-import { resolveIssue } from "./issueRegistry";
+import { resolveIssue, resolveIssueSourceLabel } from "./issueRegistry";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import type { IssueDto } from "../wasm/types";
 
-export function IssueBubble({ issue }: { issue: IssueDto }) {
+export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceCheck: string | null }) {
   const [open, setOpen] = useState(false);
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
-  const { label, description, severity } = resolveIssue(issue.kind);
-  const loopEdges = issue.invalid_loop_edges;
+  const { description, severity } = resolveIssue(issue.kind);
+  const label = sourceCheck != null
+    ? resolveIssueSourceLabel(issue.kind, sourceCheck, issue.details[sourceCheck])
+    : resolveIssue(issue.kind).label;
+  // Only this bubble's own source check's cycles — not every contributing check's cycles
+  // combined (see `IssueDto.invalid_loop_edges`'s doc comment).
+  const loopEdges = sourceCheck != null ? issue.invalid_loop_edges[sourceCheck] ?? null : null;
   const palette = severity === "critical"
     ? { bg: colors.bgError, text: colors.textError }
     : { bg: colors.bgWarning, text: colors.textWarning };
@@ -51,13 +56,22 @@ export function IssueBubble({ issue }: { issue: IssueDto }) {
 
 export function IssuesBlock({ issues }: { issues: IssueDto[] }) {
   if (issues.length === 0) return null;
+  // One bubble per contributing check, not per issue -- a merged `invalid_loop` issue can carry
+  // both `min_loop_length` and `max_loop_length` at once, and each reads as a distinct, specific
+  // message (see `resolveIssueSourceLabel`). An issue with no source check (e.g.
+  // `cycle_analysis_overflowed`, not a toggleable check) renders as a single generic bubble.
+  const bubbles = issues.flatMap((issue, i) =>
+    issue.source_checks.length > 0
+      ? issue.source_checks.map((sourceCheck) => (
+          <IssueBubble key={`${i}-${sourceCheck}`} issue={issue} sourceCheck={sourceCheck} />
+        ))
+      : [<IssueBubble key={i} issue={issue} sourceCheck={null} />]
+  );
   return (
     <>
       <div style={sharedStyles.sectionHeader}>{m["analytics.issues"]()}</div>
       <div style={issueStyles.block}>
-        {issues.map((issue, i) => (
-          <IssueBubble key={i} issue={issue} />
-        ))}
+        {bubbles}
       </div>
       <div style={issueStyles.divider} />
     </>

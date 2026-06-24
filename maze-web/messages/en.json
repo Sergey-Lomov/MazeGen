@@ -177,6 +177,8 @@
   "issue.min_loops_count.description": "The maze has fewer loops than the required minimum.",
   "issue.invalid_loop.label": "Invalid loop",
   "issue.invalid_loop.description": "The maze has one or more loops flagged invalid by an active check (e.g. shorter than the required minimum tile length).",
+  "issue.invalid_loop.min_loop_length_label": "Loop shorter than {min_loop_length} tiles",
+  "issue.invalid_loop.max_loop_length_label": "Loop longer than {max_loop_length} tiles",
   "issue.cycle_analysis_overflowed.label": "Cycle analysis overflowed",
   "issue.cycle_analysis_overflowed.description": "Too many cycles to analyze - cycle metrics unavailable for this maze.",
   "strategy.no_fix.label": "Logging",

@@ -18,3 +18,28 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
 export function resolveIssue(kind: string): IssueInfo {
   return KNOWN_ISSUES[kind]?.() ?? { label: kind, description: "", severity: "warning" };
 }
+
+/// Per-source-check label override, filled in with that check's raw detail values (see
+/// `IssueDto.details`). Lets one `kind` (e.g. `invalid_loop`) read differently depending on
+/// which check actually produced it -- "Loop shorter than 5 tiles" vs "Loop longer than 100
+/// tiles" -- instead of a generic "Invalid loop" for both. A check id absent here falls back
+/// to the kind's generic label (`resolveIssue`).
+const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string | undefined> = {
+  min_loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.min_loop_length_label"]({ min_loop_length: d.threshold }) : undefined,
+  max_loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.max_loop_length_label"]({ max_loop_length: d.threshold }) : undefined,
+};
+
+/// Resolves the label for one source check within an issue, falling back to the issue kind's
+/// generic label when the check has no specific override or no details were recorded for it.
+/// Warns (not throws — a missing entry is a display gap, not a correctness bug) when a check
+/// reported non-empty `details` but has no `DETAIL_LABELS` entry to render them with, the same
+/// way `resolveCheckKind` warns on a multi-kind check — both are "registry didn't keep up with
+/// core" mistakes that are otherwise silent.
+export function resolveIssueSourceLabel(kind: string, sourceCheck: string, details: Record<string, string> | undefined): string {
+  const formatter = DETAIL_LABELS[sourceCheck];
+  if (!formatter && details && Object.keys(details).length > 0) {
+    console.error(`check "${sourceCheck}" reported details (${Object.keys(details).join(", ")}) but has no DETAIL_LABELS entry in issueRegistry.ts — falling back to the generic "${kind}" label`);
+  }
+  const override = formatter?.(details ?? {});
+  return override ?? resolveIssue(kind).label;
+}

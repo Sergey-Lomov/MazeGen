@@ -50,6 +50,7 @@ pub struct Issue {
     pub kind: IssueKind,
     pub data: Option<IssueData>,
     source_checks: Vec<&'static str>, // private — see accessors below
+    details: HashMap<&'static str, HashMap<&'static str, String>>, // private — see accessors below
 }
 
 impl Issue {
@@ -57,6 +58,8 @@ impl Issue {
     pub fn with_data(kind: IssueKind, data: IssueData) -> Self;                     // source_checks: []
     pub fn new_from_check(kind: IssueKind, source_check: &'static str) -> Self;
     pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: &'static str) -> Self;
+    /// Chainable — attaches one display detail under `source_check`. See `details()` below.
+    pub fn with_detail(self, source_check: &'static str, key: &'static str, value: String) -> Self;
     pub fn source_checks(&self) -> &[&'static str];
     /// `Some` only when there is exactly one source check (the normal raw, pre-merge case) —
     /// `None` for zero (e.g. `CYCLE_ANALYSIS_OVERFLOWED`) or 2+ sources (an already-merged
@@ -64,15 +67,19 @@ impl Issue {
     /// indexing, so a malformed multi-source raw issue can't be silently misrouted by an
     /// arbitrary first id — see `repair.md`'s "Pipeline" section.
     pub fn single_source_check(&self) -> Option<&'static str>;
+    pub fn details(&self) -> &HashMap<&'static str, HashMap<&'static str, String>>;
     pub(crate) fn push_source(&mut self, source: &'static str); // merge_issue only
+    pub(crate) fn merge_details(&mut self, incoming: HashMap<&'static str, HashMap<&'static str, String>>); // merge_issue only
 }
 ```
 
 `Issue` derives `PartialEq` but not `Eq` — `IssueData` is not `Eq` (future variants are expected to carry `f64` fields, e.g. weights/scores).
 
-`Issue` is an **internal-only QC artifact** — it is never serialized as a DTO or surfaced as its own UI entity (the WASM layer only ever serializes `IssueKind::as_str()`/`Display`, see "Not exposed over WASM" below; the web UI attaches strategies to checks directly, not to a separate issues list — see `quality-feature.md`). Keep this boundary explicit when extending `Issue`: new fields belong here only if they're plumbing between a `Check` and the matching `RepairStrategy` within one QC pass, not if they're meant for display.
+`Issue` is mostly an **internal QC artifact** — `data` is plumbing between a `Check` and the matching `RepairStrategy` within one QC pass and is never serialized (see "Not exposed over WASM" below). `kind`, `source_checks`, and `details` are the exception: the WASM layer (`maze-wasm/src/analytics.rs`) does serialize these three into `IssueDto` for the web UI (see `quality-feature.md`), since the UI needs to know which check(s) produced an issue and render a check-specific message. Keep this boundary explicit when extending `Issue`: a genuinely display-only payload belongs in `details` (generic, serialized), not `data` (kind-specific, repair-only, never serialized).
 
 `source_checks` (private field, read via `source_checks()`) records which check id(s) (the wasm `available_checks()` id, e.g. `"min_loop_length"`) produced or contributed to this issue. Every toggleable `Check<T>` implementation should construct its issues via `new_from_check`/`with_data_from_check`, passing its own check id. The one exception is `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` outside any `Check<T>` (see its doc comment below) — it has no check id to attribute to, so it uses plain `Issue::new` and `source_checks` stays empty. When two issues of the same kind are merged (see "Dedup interaction" below), `source_checks` is unioned without duplicates via `push_source` — the field is private specifically so nothing outside `merge_issue` can append to it or construct an `Issue` with an already-multi-source list before merge has legitimately produced one (a raw, pre-merge issue is expected to carry exactly one source check; `single_source_check()` is the type-level enforcement of that for rule-routing).
+
+`details` (private field, read via `details()`, written via the chainable `with_detail`) carries **raw display values only** — e.g. a check's configured threshold as a string — keyed by source check id, then by detail key (e.g. `"max_loop_length" -> {"max_loop_length" -> "100"}`). Never an assembled message: wording belongs entirely to the web UI's own i18n layer, which looks values up by key per check id (see `quality-feature.md`'s issue rendering section). Keyed by check id rather than flattened because a merged `Issue` (see "Dedup interaction" below) may carry details from several contributing checks at once — e.g. both `min_loop_length`'s and `max_loop_length`'s thresholds on one merged `INVALID_LOOP` issue — and the UI renders one bubble per source check, each reading only its own check's details. On merge, `merge_details` (`merge_issue`-only, mirroring `push_source`) folds `incoming`'s per-check entries into `existing`'s; since a raw (pre-merge) issue only ever has its own check id as a key, there is no same-check-id collision to reconcile, just a union across checks.
 
 ### IssueData
 
@@ -97,8 +104,8 @@ pub enum IssueData {
 - **`InvalidLoops { all, invalid, invalid_sources }`**: produced by any check that flags simple cycles invalid for a check-specific reason (paired with `INVALID_LOOP`) — currently `MinLoopLengthCheck` (cycles shorter than a configured threshold) and `MaxLoopLengthCheck` (cycles longer than a configured threshold), **mandatory** for this kind, see `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` in `repair.md`. `all` holds **every** simple cycle found in the maze, valid and invalid alike, each as the **set** of base-`Graph` edges forming it — element order carries no meaning beyond membership, only used as a convenient container, and `EdgeId` values never repeat within one cycle. `invalid` is the subset of indices into `all` that the producing check(s) flagged — the cycles a repair strategy must actually break. An empty `invalid` is valid and means no cycle was flagged (`all` may still be non-empty in that case). Future checks may flag cycles invalid for reasons other than length and reuse this same variant, rather than introducing a new one per reason — see the `IssueKind` hard rule above.
 - **`invalid_sources`**: per-cycle check attribution, keyed by `canonical_cycle_key` (the cycle's edge set, sorted) rather than by index into `all` — indices get remapped on every merge (see `merge_invalid_loops` in `repair.md`'s "Pipeline" section), but a cycle's canonical key is stable across merges, so this map never needs remapping. Maps a cycle to the check id(s) that flagged it invalid. A cycle absent from this map was flagged by no check directly tracked — shouldn't happen for entries in `invalid`, but the map is not required to cover every index; absence means "no recorded source," not an error.
 - Keeping the valid cycles in `all` (not just the invalid ones) lets a strategy avoid cutting an edge that is also part of a cycle the maze is meant to keep — see `InvalidLoopScoredStrategy` in `repair.md`.
-- **Not exposed over WASM**: the WASM layer only serializes `IssueKind` (via `as_str()`/`Display`), never the `Issue` struct or its `data`. No serde derive is needed unless that changes.
-- **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` (on `Issue`, see above) is unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
+- **`data` is not exposed over WASM**: the WASM layer serializes `IssueKind`, `source_checks`, and `details` (see `IssueDto` in `quality-feature.md`) but never `Issue.data` itself — that field stays internal, Check-to-Strategy plumbing only.
+- **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` and `details` (on `Issue`, see above) are unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 
 ### Check trait
 
@@ -172,7 +179,7 @@ Not a fundamental cycle basis — a basis only yields β₁ cycles relative to o
 
 Self-loop nav-edges (junction-free rings) are included — previously a known gap (a ring with at most one junction compresses into a self-loop `NavEdge` that the old `build_cyclic_core` unconditionally excluded, making such loops invisible to this check). Fixed by `find_all_simple_cycles` treating self-loops as first-class cycles.
 
-If any cycles below the threshold are found (`invalid` non-empty), fires a single `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid }, "min_loop_length")`. No issue is fired if `invalid` is empty, even if `all` is not. Other checks may also produce `INVALID_LOOP` issues for different reasons in the same pass — see the pipeline's merge behavior in `repair.md`.
+If any cycles below the threshold are found (`invalid` non-empty), fires a single `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid }, "min_loop_length")` with `.with_detail("min_loop_length", "min_loop_length", self.min_loop_length.to_string())` chained on — the configured threshold, for the web UI to render a specific message ("loop shorter than N tiles") instead of the generic `INVALID_LOOP` label. No issue is fired if `invalid` is empty, even if `all` is not. Other checks may also produce `INVALID_LOOP` issues for different reasons in the same pass — see the pipeline's merge behavior in `repair.md`.
 
 ### MaxLoopLengthCheck
 
@@ -186,11 +193,28 @@ pub struct MaxLoopLengthCheck {
 
 Symmetric counterpart to `MinLoopLengthCheck` — same cycle enumeration pipeline (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs` → tile-length filter → `resolve_to_edge_ids`), same silent skip on `CycleSearchResult::TooManyCycles` overflow, same `IssueData::InvalidLoops` shape. The only difference: the filter keeps cycles whose tile-length is **above** `max_loop_length` (`tile_length > max_loop_length`) instead of below a minimum.
 
-If any cycles above the threshold are found (`invalid` non-empty), fires a single `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid }, "max_loop_length")`. No issue is fired if `invalid` is empty. Both `MinLoopLengthCheck` and `MaxLoopLengthCheck` can be active at once — they each populate their own `invalid` subset and the pipeline merges the two `INVALID_LOOP` issues canonically (see "Dedup interaction" above and `repair.md`'s "Pipeline" section).
+If any cycles above the threshold are found (`invalid` non-empty), fires a single `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid }, "max_loop_length")` with `.with_detail("max_loop_length", "max_loop_length", self.max_loop_length.to_string())` chained on, same rationale as `MinLoopLengthCheck` above. No issue is fired if `invalid` is empty. Both `MinLoopLengthCheck` and `MaxLoopLengthCheck` can be active at once — they each populate their own `invalid` subset and the pipeline merges the two `INVALID_LOOP` issues canonically (see "Dedup interaction" above and `repair.md`'s "Pipeline" section); the merged issue then carries both checks' details, and the UI renders one bubble per source check.
 
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
+
+### IssueDto
+
+Serialized to JSON in `MazeSnapshot.issues` (`build_analytics_snapshot`, `maze-wasm/src/analytics.rs`) for every `Issue` the QC pass (or `issues_override`) produced:
+
+```rust
+struct IssueDto {
+    kind: String,                                       // IssueKind::as_str()
+    invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>>, // invalid_loop only, keyed by source check id
+    source_checks: Vec<String>,                          // Issue::source_checks()
+    details: HashMap<String, HashMap<String, String>>,   // Issue::details()
+}
+```
+
+`source_checks` and `details` are the serialized form of `Issue`'s same-named accessors (see "Issue" above) — the web UI uses them to render one bubble per contributing check, each with a check-specific label built from that check's own `details` entry (see `quality-feature.md`). `details` values are raw (numbers as strings, etc.) — the UI owns all wording.
+
+`invalid_loop_edges` is keyed by source check id, not one flat list — a merged `invalid_loop` issue may carry cycles from several checks at once (e.g. both `min_loop_length`'s short loops and `max_loop_length`'s long loops), and each is attributed to its own check's entry so the UI can highlight only the cycles relevant to the bubble being hovered, not every contributing check's cycles combined. Built by looking up each invalid cycle's canonical key (`canonical_cycle_key`) in `IssueData::InvalidLoops.invalid_sources` to find which check(s) flagged it — the same attribution map `merge_invalid_loops` (`repair.md`'s "Pipeline" section) already maintains across merges. A check id absent from `invalid_loop_edges` (or the whole map empty) means that check flagged no cycles, or the issue isn't `invalid_loop`.
 
 ### CheckDescriptor
 

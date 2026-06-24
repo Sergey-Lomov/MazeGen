@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use maze_core::{
     space::Tessellation,
     quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED},
+    quality_control::issue_data::canonical_cycle_key,
     compute_node_stats, compute_spatial_edge_stats,
     Maze,
 };
@@ -39,20 +40,33 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     }
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
-        let invalid_loop_edges = match &issue.data {
-            Some(IssueData::InvalidLoops { all, invalid, .. }) => Some(
-                invalid.iter().filter_map(|&idx| all.get(idx)).map(|loop_edges| {
-                    loop_edges.iter().filter_map(|&eid| {
-                        let edge = maze.graph.edge(eid)?;
-                        let from = u32::try_from(edge.from).ok()?;
-                        let to = u32::try_from(edge.to).ok()?;
-                        Some([from, to])
-                    }).collect()
-                }).collect()
-            ),
-            _ => None,
-        };
-        IssueDto { kind: issue.kind.to_string(), invalid_loop_edges }
+        // Grouped by source check id (not one flat list) so a merged issue rendered as several
+        // bubbles (one per `source_checks` entry) highlights only the cycles *that check*
+        // flagged on hover — see `IssueDto.invalid_loop_edges`'s doc comment.
+        let mut invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
+        if let Some(IssueData::InvalidLoops { all, invalid, invalid_sources }) = &issue.data {
+            for &idx in invalid {
+                let Some(loop_edges) = all.get(idx) else { continue };
+                let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| {
+                    let edge = maze.graph.edge(eid)?;
+                    let from = u32::try_from(edge.from).ok()?;
+                    let to = u32::try_from(edge.to).ok()?;
+                    Some([from, to])
+                }).collect();
+                let key = canonical_cycle_key(loop_edges);
+                for &source in invalid_sources.get(&key).into_iter().flatten() {
+                    invalid_loop_edges.entry(source.to_string()).or_default().push(edge_pairs.clone());
+                }
+            }
+        }
+        let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
+        let details = issue.details().iter()
+            .map(|(check_id, kv)| (
+                check_id.to_string(),
+                kv.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+            ))
+            .collect();
+        IssueDto { kind: issue.kind.to_string(), invalid_loop_edges, source_checks, details }
     }).collect();
 
     let nodes: Vec<NodeDto> = maze.graph
@@ -109,11 +123,11 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         .collect();
 
     let scc = maze.analysis.scc(&maze.graph);
-    let node_component: HashMap<u32, usize> = scc.components.iter()
+    let node_component: HashMap<String, usize> = scc.components.iter()
         .enumerate()
         .flat_map(|(comp_id, comp)| {
             comp.iter().filter_map(move |&node_id| {
-                u32::try_from(node_id).ok().map(|id| (id, comp_id))
+                u32::try_from(node_id).ok().map(|id| (id.to_string(), comp_id))
             })
         })
         .collect();

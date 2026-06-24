@@ -42,9 +42,9 @@ The Route overlay toggle is disabled when `routeInfo == null`. `showRouteOverlay
 
 ### Issues Block
 
-Displays `issues: IssueDto[]` from the store (QC issues reported by WASM). Each issue is one row styled in `textWarning` color. `IssueDto = { kind: string, invalid_loop_edges: [number, number][][] | null }`.
+Displays `issues: IssueDto[]` from the store (QC issues reported by WASM), one bubble per **contributing check** (not per issue) — see `quality-feature.md`'s "Issue rendering: IssuesBlock / IssueBubble" section for the full mechanism (per-source-check bubbles, labels, and highlight data). Each bubble is styled in `textWarning` (or `textError` for `cycle_analysis_overflowed`) color.
 
-`invalid_loop` issues carry `invalid_loop_edges` — one entry per invalid cycle (too short, too long, or invalid for some other check-specific reason), each a list of base-graph `[from, to]` maze node-id pairs. Hovering the issue bubble calls `setHoveredIssueLoopEdges(invalid_loop_edges.flat())`; leaving clears it back to `null`. This lets a maze-wide issue (e.g. a short loop entirely protected by a user preset, which the repair pass cannot fix) be visually located on the canvas instead of only reported by kind.
+`invalid_loop` issues carry `invalid_loop_edges: Record<string, [number, number][][]>`, keyed by source check id — one entry per invalid cycle *that check* flagged (too short for `min_loop_length`, too long for `max_loop_length`, etc.), each a list of base-graph `[from, to]` maze node-id pairs. Hovering one bubble calls `setHoveredIssueLoopEdges(issue.invalid_loop_edges[sourceCheck].flat())` — only that check's cycles, not every contributing check's combined; leaving clears it back to `null`. This lets a maze-wide issue (e.g. a short loop entirely protected by a user preset, which the repair pass cannot fix) be visually located on the canvas instead of only reported by kind.
 
 ### Overlay Layers Block
 

@@ -194,7 +194,9 @@ pub fn run_generate<T: Tessellation>(
         .map_err(|e| JsValue::from_str(&e))?;
     snapshot.debug_steps = debug_steps;
 
-    serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
+    use serde::Serialize;
+    snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 fn steps_to_dto(raw: Vec<GenerationStep>) -> Vec<GenerationStepDto> {

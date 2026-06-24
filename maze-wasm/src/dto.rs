@@ -31,10 +31,23 @@ pub struct NavEdgeDto {
 #[derive(Serialize)]
 pub struct IssueDto {
     pub kind: String,
-    /// Present only for `invalid_loop` issues — each inner Vec is one invalid cycle
-    /// (too short, too long, or invalid for some other check-specific reason),
-    /// expressed as base-graph [from, to] maze node-id pairs for highlight rendering.
-    pub invalid_loop_edges: Option<Vec<Vec<[u32; 2]>>>,
+    /// Present only for `invalid_loop` issues, keyed by source check id — each inner Vec is one
+    /// invalid cycle flagged by that check, expressed as base-graph [from, to] maze node-id pairs
+    /// for highlight rendering. Keyed per check (not one flat list) so that when one merged issue
+    /// renders as several bubbles (one per `source_checks` entry — see `quality_control.md`'s
+    /// "Dedup interaction"), hovering a bubble highlights only the cycles *that check* flagged,
+    /// not every contributing check's cycles combined (e.g. `min_loop_length`'s short loops must
+    /// not highlight when hovering the `max_loop_length` bubble).
+    pub invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>>,
+    /// Check id(s) that produced or contributed to this issue (`Issue::source_checks()`) —
+    /// lets the web UI render one bubble per contributing check rather than one per `kind`,
+    /// distinguishing e.g. `min_loop_length`'s and `max_loop_length`'s issues even though both
+    /// share the `invalid_loop` kind.
+    pub source_checks: Vec<String>,
+    /// Raw display values keyed by source check id then by detail key (`Issue::details()`),
+    /// e.g. `{"max_loop_length": {"max_loop_length": "100"}}`. Values are never assembled
+    /// messages — the web UI looks them up by key via its own i18n templates per check id.
+    pub details: HashMap<String, HashMap<String, String>>,
 }
 
 #[derive(Serialize)]
@@ -85,8 +98,9 @@ pub struct GraphAnalyticsDto {
     pub cycle_count: usize,
     /// Number of connected cyclic regions (WCC on the pure-cycle core).
     pub cycle_region_count: usize,
-    /// maze node id → component_id. Covers junction nodes and corridor nodes.
-    pub node_component: HashMap<u32, usize>,
+    /// maze node id (as string — `json_compatible()` serialization requires string map keys)
+    /// → component_id. Covers junction nodes and corridor nodes.
+    pub node_component: HashMap<String, usize>,
     /// maze node ids in the pure-cycle core (real cycles only, no bridges).
     pub pure_cycle_node_ids: Vec<u32>,
     /// nav-edge pairs [from_maze_id, to_maze_id] in the pure-cycle core.

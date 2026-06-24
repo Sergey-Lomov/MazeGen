@@ -187,6 +187,8 @@
   "issue.min_loops_count.description": "В лабиринте меньше петель, чем требуется.",
   "issue.invalid_loop.label": "Невалидная петля",
   "issue.invalid_loop.description": "В лабиринте есть одна или несколько петель, помеченных активной проверкой как невалидные (например, короче требуемого минимума тайлов).",
+  "issue.invalid_loop.min_loop_length_label": "Петля короче {min_loop_length} тайлов",
+  "issue.invalid_loop.max_loop_length_label": "Петля длиннее {max_loop_length} тайлов",
   "issue.cycle_analysis_overflowed.label": "Переполнение анализа циклов",
   "issue.cycle_analysis_overflowed.description": "Слишком много циклов для анализа - метрики циклов недоступны для этого лабиринта.",
   "strategy.no_fix.label": "Логирование",

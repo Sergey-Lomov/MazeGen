@@ -41,7 +41,9 @@ impl<T: Tessellation> Check<T> for MinLoopLengthCheck {
         for &idx in &short {
             invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(MIN_LOOP_LENGTH_CHECK_ID);
         }
-        issues.push(Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: short, invalid_sources }, MIN_LOOP_LENGTH_CHECK_ID));
+        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: short, invalid_sources }, MIN_LOOP_LENGTH_CHECK_ID)
+            .with_detail(MIN_LOOP_LENGTH_CHECK_ID, "threshold", self.min_loop_length.to_string());
+        issues.push(issue);
     }
 }
 
@@ -85,6 +87,10 @@ mod tests {
             Some(IssueData::InvalidLoops { invalid, .. }) => assert_eq!(invalid.len(), 1),
             other => panic!("expected InvalidLoops, got {other:?}"),
         }
+        assert_eq!(
+            issues[0].details().get(MIN_LOOP_LENGTH_CHECK_ID).and_then(|kv| kv.get("threshold")),
+            Some(&"10".to_string()),
+        );
     }
 
     #[test]

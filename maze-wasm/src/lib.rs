@@ -258,6 +258,7 @@ where
     let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, point_to_xy)
         .map_err(|e| JsValue::from_str(&e))?;
 
-    serde_wasm_bindgen::to_value(&snapshot).map_err(|e| JsValue::from_str(&e.to_string()))
+    snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 

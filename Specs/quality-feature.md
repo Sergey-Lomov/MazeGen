@@ -277,3 +277,15 @@ If `loadRegistry` is called again, `selectedChecks` and `rules` are preserved (r
 3. For a rule with a strategy: resolves the strategy's param overrides from `strategyParams[strategyId]`, filtered to keys the strategy descriptor actually declares.
 
 See `quality_control.md`'s "QcRuleConfig" section for the wasm-side shape this maps onto, and `repair.md`'s "QcRule and rule-based RepairEngine" section for how core turns it into a `RepairEngine`.
+
+## Issue rendering: IssuesBlock / IssueBubble
+
+`IssuesBlock` (`components/IssuesBlock.tsx`) renders the post-generation issue list (`MazeSnapshot.issues`, `IssueDto[]` — see `quality_control.md`'s "IssueDto" section), separately from the rule-configuration UI above (`QualityCanvas`/`RulesColumn`).
+
+**One bubble per contributing check, not per issue.** A merged `IssueDto` can have multiple entries in `source_checks` (e.g. `min_loop_length` and `max_loop_length` both flagged cycles in the same `invalid_loop` issue — see `quality_control.md`'s "Dedup interaction"). `IssuesBlock` flat-maps each issue into one `IssueBubble` per source check, so each reads as a distinct, specific message rather than one generic bubble covering both reasons. An issue with no source check (currently only `cycle_analysis_overflowed`, not a toggleable `Check<T>`) renders as a single bubble with `sourceCheck: null`.
+
+**Per-bubble label**: `resolveIssueSourceLabel(kind, sourceCheck, issue.details[sourceCheck])` (`issueRegistry.ts`) looks up a check-specific formatter in `DETAIL_LABELS`, passing that check's own slice of `IssueDto.details` (raw values only, e.g. `{"threshold": "100"}`) to build a localized message via paraglide (e.g. `issue.invalid_loop.max_loop_length_label`: "Loop longer than {max_loop_length} tiles"). Falls back to the kind's generic label (`resolveIssue(kind).label`) when `sourceCheck` has no `DETAIL_LABELS` entry or no details were recorded. `console.error`s when a check reports non-empty `details` but has no `DETAIL_LABELS` entry — a registry-didn't-keep-up-with-core gap, same class of mistake `resolveCheckKind` warns about for multi-kind checks.
+
+**Per-bubble highlight**: `IssueDto.invalid_loop_edges` is keyed by source check id (`Record<string, [number,number][][]>`), not one flat list — hovering one bubble (`setHoveredIssueLoopEdges`) highlights only the cycles *that check* flagged, not every contributing check's cycles combined. Built in `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) by looking up each invalid cycle's canonical key in `IssueData::InvalidLoops.invalid_sources` to find which check(s) it belongs to.
+
+Adding a new check that should render a specific message (not just the generic kind label) requires: the check attaching detail(s) via `Issue::with_detail` (core), and a `DETAIL_LABELS[check_id]` entry plus matching paraglide message key(s) here (web) — there is no automatic wiring between the two.

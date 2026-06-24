@@ -27,7 +27,7 @@ pub struct GraphAnalyticsDto {
     pub component_count: usize,
     pub cycle_count: usize,
     pub cycle_region_count: usize,
-    pub node_component: HashMap<u32, usize>,   // maze node id → SCC component id
+    pub node_component: HashMap<String, usize>, // maze node id (as string — see below) → SCC component id
     pub pure_cycle_node_ids: Vec<u32>,         // maze node ids in the pure-cycle core
     pub pure_cycle_edge_pairs: Vec<[u32; 2]>,  // [from_maze_id, to_maze_id] pure-cycle nav-edges
     pub cycle_analysis_overflowed: bool,
@@ -37,6 +37,8 @@ pub struct GraphAnalyticsDto {
 Maze-id translation happens in `build_analytics_snapshot` (maze-wasm/src/analytics.rs) — `GraphAnalytics` works in `NavNodeId`/edge-index domain, the DTO re-expresses everything in maze `NodeId` domain for the web layer.
 
 `component_count` and `node_component` in the DTO both come from base-graph SCC (`maze.analysis.scc`), computed independently of `GraphAnalytics` — kept for the `RegionsRenderer` overlay (every id in `node_component` is `< component_count`). `GraphAnalytics` itself has no physical-connectivity field; nothing in the nav-graph domain needs it.
+
+`node_component`'s key is `String`, not `u32` — `MazeSnapshot` is serialized via `serde_wasm_bindgen::Serializer::json_compatible()` (plain JS objects, not `Map`s), which requires string map keys; the maze node id is formatted with `.to_string()` when the map is built.
 
 ## Single Source of Truth: `find_all_simple_cycles`
 

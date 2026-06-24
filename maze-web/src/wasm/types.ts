@@ -53,8 +53,8 @@ export interface GraphAnalyticsDto {
   cycle_count: number;
   /** Number of connected cyclic regions. */
   cycle_region_count: number;
-  /** maze node id → component_id. Covers junctions and corridor nodes. */
-  node_component: Map<number, number> | Record<number, number>;
+  /** maze node id (as string key) → component_id. Covers junctions and corridor nodes. */
+  node_component: Record<string, number>;
   /** maze node ids in the pure-cycle core (real cycles only, no bridges). */
   pure_cycle_node_ids: number[];
   /** nav-edge pairs [from_maze_id, to_maze_id] in the pure-cycle core. */
@@ -67,9 +67,19 @@ export interface GraphAnalyticsDto {
 
 export interface IssueDto {
   kind: string;
-  /** Present only for `invalid_loop` issues — each entry is one invalid cycle's
-   * base-graph edges as [from, to] maze node-id pairs, for highlight rendering. */
-  invalid_loop_edges: [number, number][][] | null;
+  /** Present only for `invalid_loop` issues, keyed by source check id — each entry is one
+   * invalid cycle's base-graph edges as [from, to] maze node-id pairs, for highlight rendering.
+   * Keyed per check (not one flat list) so hovering one check's bubble highlights only the
+   * cycles that check flagged, not every contributing check's cycles combined. */
+  invalid_loop_edges: Record<string, [number, number][][]>;
+  /** Check id(s) that produced or contributed to this issue — lets the UI render one bubble
+   * per contributing check rather than one per `kind` (e.g. `min_loop_length` vs `max_loop_length`,
+   * both `invalid_loop`). */
+  source_checks: string[];
+  /** Raw display values keyed by source check id then by detail key, e.g.
+   * `{"max_loop_length": {"max_loop_length": "100"}}`. Never assembled messages — only used
+   * to fill in i18n templates keyed by check id (see `issueRegistry.ts`). */
+  details: Record<string, Record<string, string>>;
 }
 
 export interface MazeSnapshot {

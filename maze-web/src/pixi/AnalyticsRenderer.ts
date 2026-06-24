@@ -146,15 +146,10 @@ export class AnalyticsRenderer {
     this.regionsContainer.visible = showRegions;
     if (showRegions) {
       const components: number[][] = Array.from({ length: componentCount }, () => []);
-      const rawNc = graphAnalytics?.node_component as Map<number, number> | Record<number, number> | undefined;
-      if (rawNc instanceof Map) {
-        for (const [nodeId, compId] of rawNc) {
-          if (compId < componentCount) components[compId].push(nodeId);
-        }
-      } else if (rawNc != null) {
+      const rawNc = graphAnalytics?.node_component;
+      if (rawNc != null) {
         for (const [nodeId, compId] of Object.entries(rawNc)) {
-          const cid = compId as number;
-          if (cid < componentCount) components[cid].push(Number(nodeId));
+          if (compId < componentCount) components[compId].push(Number(nodeId));
         }
       }
       this.regionsRenderer.render({ nodes, components, cfg });

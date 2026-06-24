@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::quality_control::issue_data::IssueData;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -78,6 +79,13 @@ pub struct Issue {
     /// exposes the list read-only; `push_source` is the only way to add to it, used solely by
     /// `merge_issue` after merge has already established the issue may legitimately carry several.
     source_checks: Vec<&'static str>,
+    /// Generic per-source-check display data, e.g. `"max_loop_length" -> {"threshold" -> "100"}`.
+    /// Raw values only (numbers/ids as strings) — never assembled messages; the web UI owns all
+    /// wording and looks values up by key via its own i18n templates keyed by check id. Keyed by
+    /// check id (not merged into one flat map) because a merged `Issue` may carry details from
+    /// several checks at once (e.g. `min_loop_length`'s and `max_loop_length`'s thresholds both
+    /// present on one merged `INVALID_LOOP` issue) and a UI bubble is rendered per source check.
+    details: HashMap<&'static str, HashMap<&'static str, String>>,
 }
 
 impl Issue {
@@ -85,23 +93,38 @@ impl Issue {
     /// `CYCLE_ANALYSIS_OVERFLOWED`) — `source_checks` is empty since there is no check id to
     /// attribute this to. Checks should use `new_from_check` instead.
     pub fn new(kind: IssueKind) -> Self {
-        Self { kind, data: None, source_checks: Vec::new() }
+        Self { kind, data: None, source_checks: Vec::new(), details: HashMap::new() }
     }
 
     pub fn with_data(kind: IssueKind, data: IssueData) -> Self {
-        Self { kind, data: Some(data), source_checks: Vec::new() }
+        Self { kind, data: Some(data), source_checks: Vec::new(), details: HashMap::new() }
     }
 
     pub fn new_from_check(kind: IssueKind, source_check: &'static str) -> Self {
-        Self { kind, data: None, source_checks: vec![source_check] }
+        Self { kind, data: None, source_checks: vec![source_check], details: HashMap::new() }
     }
 
     pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: &'static str) -> Self {
-        Self { kind, data: Some(data), source_checks: vec![source_check] }
+        Self { kind, data: Some(data), source_checks: vec![source_check], details: HashMap::new() }
+    }
+
+    /// Attaches a display detail under `source_check` (raw value only, e.g. a threshold —
+    /// never an assembled message, see `details`' doc comment above). Chainable — a `Check`
+    /// calls this right after constructing its `Issue` via `new_from_check`/`with_data_from_check`.
+    /// `source_check` should be the same id the issue was constructed with.
+    pub fn with_detail(mut self, source_check: &'static str, key: &'static str, value: String) -> Self {
+        self.details.entry(source_check).or_default().insert(key, value);
+        self
     }
 
     pub fn source_checks(&self) -> &[&'static str] {
         &self.source_checks
+    }
+
+    /// Display details keyed by source check id, then by detail key — see `details`' doc
+    /// comment for why this isn't a flat map.
+    pub fn details(&self) -> &HashMap<&'static str, HashMap<&'static str, String>> {
+        &self.details
     }
 
     /// The check id this raw (pre-merge) issue should route by — `Some` only when there is
@@ -124,6 +147,20 @@ impl Issue {
             self.source_checks.push(source);
         }
     }
+
+    /// Merges `incoming`'s details into `self`'s, keyed by source check id. Since each check id
+    /// only ever appears as a raw (pre-merge) issue's sole source, `incoming`'s entries simply
+    /// overwrite any existing entry for the same check id — there is no same-check-id conflict
+    /// to reconcile. Used exclusively by `merge_issue` (`pipeline.rs`).
+    pub(crate) fn merge_details(&mut self, incoming: HashMap<&'static str, HashMap<&'static str, String>>) {
+        self.details.extend(incoming);
+    }
+
+    /// Takes `self`'s details by value, leaving an empty map behind — lets `merge_issue` fold an
+    /// `incoming: Issue` (consumed by value anyway) into `existing` without cloning.
+    pub(crate) fn take_details(&mut self) -> HashMap<&'static str, HashMap<&'static str, String>> {
+        std::mem::take(&mut self.details)
+    }
 }
 
 #[cfg(test)]
@@ -145,6 +182,25 @@ mod tests {
         let issue = Issue::new(MISSING_ENDPOINTS);
         assert_eq!(issue.data, None);
         assert!(issue.source_checks().is_empty());
+    }
+
+    #[test]
+    fn with_detail_attaches_value_under_source_check() {
+        let issue = Issue::new_from_check(INVALID_LOOP, "max_loop_length")
+            .with_detail("max_loop_length", "threshold", "100".to_string());
+        let details = issue.details();
+        assert_eq!(details.get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
+    }
+
+    #[test]
+    fn merge_details_keeps_each_source_checks_details_separate() {
+        let mut a = Issue::new_from_check(INVALID_LOOP, "min_loop_length")
+            .with_detail("min_loop_length", "threshold", "10".to_string());
+        let b = Issue::new_from_check(INVALID_LOOP, "max_loop_length")
+            .with_detail("max_loop_length", "threshold", "100".to_string());
+        a.merge_details(b.details().clone());
+        assert_eq!(a.details().get("min_loop_length").and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
+        assert_eq!(a.details().get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
     }
 
     #[test]
