@@ -338,3 +338,67 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
         maze.graph.edge(id).is_some()
     }
 }
+
+#[test]
+fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_iteration() {
+    // Regression for #27: a check that produces the same rule (same IssueKind, same source
+    // check id) on two consecutive iterations, but with genuinely different cycle data each
+    // time (cycle A is gone after iteration 1, only cycle B remains). The old rule-id-only
+    // fingerprint saw "INVALID_LOOP active" both times and falsely declared no progress,
+    // stopping before cycle B was ever repaired. The content-aware guard must tell these
+    // apart and keep going.
+    let mut ids = IdGenerator::new();
+    let field: Field<SquareTessellation> = Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    // Triangle A: 0->1->2->0
+    let e0 = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    let e1 = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    let e2 = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+    // Triangle B: 3->4->5->3
+    let e3 = g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
+    let e4 = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
+    let e5 = g.add_edge(nodes[5], nodes[3], EdgeKind::Basic);
+
+    // Reports triangle A while it's intact; once A is broken, reports triangle B instead —
+    // same IssueKind/source check both times, different IssueData::InvalidLoops content.
+    struct AlternatingInvalidLoopCheck {
+        triangle_a: Vec<usize>,
+        triangle_b: Vec<usize>,
+    }
+    impl<T: maze_core::space::Tessellation> Check<T> for AlternatingInvalidLoopCheck {
+        fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
+            let cycle = if self.triangle_a.iter().all(|&eid| maze.graph.edge(eid).is_some()) {
+                &self.triangle_a
+            } else if self.triangle_b.iter().all(|&eid| maze.graph.edge(eid).is_some()) {
+                &self.triangle_b
+            } else {
+                return;
+            };
+            let mut invalid_sources = HashMap::new();
+            let mut key = cycle.clone();
+            key.sort_unstable();
+            invalid_sources.insert(key, vec!["alternating"]);
+            issues.push(Issue::with_data_from_check(
+                INVALID_LOOP,
+                IssueData::InvalidLoops { all: vec![cycle.clone()], invalid: vec![0], invalid_sources },
+                "alternating",
+            ));
+        }
+    }
+
+    let qc = QualityControlEngine::new(vec![
+        Box::new(AlternatingInvalidLoopCheck { triangle_a: vec![e0, e1, e2], triangle_b: vec![e3, e4, e5] }),
+    ]);
+    let repair = engine_with_rule(INVALID_LOOP, &["alternating"], Box::new(InvalidLoopRandomStrategy));
+
+    let (maze, remaining) = build_maze(field, g, 1, qc, repair, &PresetState::empty());
+
+    assert!(!remaining.iter().any(|i| i.kind == INVALID_LOOP),
+        "both triangles must be resolved across iterations, not falsely stopped after the first: {:?}", remaining);
+    let triangle_a_intact = maze.graph.edge(e0).is_some() && maze.graph.edge(e1).is_some() && maze.graph.edge(e2).is_some();
+    let triangle_b_intact = maze.graph.edge(e3).is_some() && maze.graph.edge(e4).is_some() && maze.graph.edge(e5).is_some();
+    assert!(!triangle_a_intact, "triangle A must have been broken on iteration 1");
+    assert!(!triangle_b_intact, "triangle B must have been broken on a later iteration, not skipped by a false oscillation stop");
+}

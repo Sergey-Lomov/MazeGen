@@ -23,7 +23,7 @@ pub fn build_maze<T: Tessellation>(
     let mut maze = Maze::new(field, graph);
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut failed: HashSet<String> = HashSet::new();
-    let mut previous_fingerprint: Option<Vec<String>> = None;
+    let mut previous_active: Option<Vec<(String, Issue)>> = None;
     let check_id_to_rule = repair_engine.check_id_to_rule();
 
     for _ in 0..MAX_REPAIR_ITERATIONS {
@@ -60,18 +60,21 @@ pub fn build_maze<T: Tessellation>(
         // must not participate in fingerprint/progress-tracking or repair dispatch — same final
         // effect as today's "kind without a strategy is skipped", just keyed by rule now.
         let strategy_rule_ids = repair_engine.strategy_rule_ids();
-        let active: Vec<(String, Issue)> = by_rule.into_iter()
+        let mut active: Vec<(String, Issue)> = by_rule.into_iter()
             .filter(|(rule_id, _)| strategy_rule_ids.contains(rule_id.as_str()))
             .collect();
         if active.is_empty() {
             break;
         }
-        let mut fingerprint: Vec<String> = active.iter().map(|(rule_id, _)| rule_id.clone()).collect();
-        fingerprint.sort_unstable();
-        if Some(&fingerprint) == previous_fingerprint.as_ref() {
+        active.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+        // Progress guard compares full (rule_id, Issue) content, not just the set of active rule
+        // ids — two iterations producing the same rule with genuinely different issue data (e.g.
+        // different cycles flagged invalid) must not look like a no-progress oscillation. See
+        // https://github.com/Sergey-Lomov/MazeGen/issues/27.
+        if Some(&active) == previous_active.as_ref() {
             break;
         }
-        previous_fingerprint = Some(fingerprint);
+        previous_active = Some(active.clone());
 
         let results = repair_engine.run(&active, &mut maze, &mut rng, preset_state);
         for outcome in &results {
