@@ -217,8 +217,8 @@ fn farthest_endpoints_isolated_nav_node_returns_failed() {
 
 // --- RepairEngine routing ---
 
-fn rule(id: &str, kind: maze_core::quality_control::IssueKind, checks: &[&'static str]) -> QcRule {
-    QcRule { id: id.to_string(), kind, checks: checks.iter().map(|&c| CheckId(c)).collect() }
+fn rule(id: &str, kind: maze_core::quality_control::IssueKind, checks: &[CheckId]) -> QcRule {
+    QcRule { id: id.to_string(), kind, checks: checks.to_vec() }
 }
 
 #[test]
@@ -227,11 +227,11 @@ fn repair_engine_routes_by_rule() {
     let mut rng = make_rng();
     let engine: RepairEngine<SquareTessellation> = RepairEngine::new(
         vec![RepairRuleConfig {
-            rule: rule("g1", MISSING_ENDPOINTS, &["missing_endpoints"]),
+            rule: rule("g1", MISSING_ENDPOINTS, &[CheckId::MissingEndpoints]),
             strategy: Box::new(RandomEndpointsStrategy),
             param_overrides: HashMap::new(),
         }],
-        vec![rule("g1", MISSING_ENDPOINTS, &["missing_endpoints"])],
+        vec![rule("g1", MISSING_ENDPOINTS, &[CheckId::MissingEndpoints])],
     );
     let issues = vec![("g1".to_string(), Issue::new(MISSING_ENDPOINTS))];
     let results = engine.run(&issues, &mut maze, &mut rng, &PresetState::empty());
@@ -263,19 +263,19 @@ fn repair_engine_two_rules_same_kind_get_different_strategies() {
     let engine: RepairEngine<SquareTessellation> = RepairEngine::new(
         vec![
             RepairRuleConfig {
-                rule: rule("g_random", MISSING_ENDPOINTS, &["check_a"]),
+                rule: rule("g_random", MISSING_ENDPOINTS, &[CheckId::MissingEndpoints]),
                 strategy: Box::new(RandomEndpointsStrategy),
                 param_overrides: HashMap::new(),
             },
             RepairRuleConfig {
-                rule: rule("g_farthest", MISSING_ENDPOINTS, &["check_b"]),
+                rule: rule("g_farthest", MISSING_ENDPOINTS, &[CheckId::UnreachableFinish]),
                 strategy: Box::new(FarthestEndpointsStrategy),
                 param_overrides: HashMap::new(),
             },
         ],
         vec![
-            rule("g_random", MISSING_ENDPOINTS, &["check_a"]),
-            rule("g_farthest", MISSING_ENDPOINTS, &["check_b"]),
+            rule("g_random", MISSING_ENDPOINTS, &[CheckId::MissingEndpoints]),
+            rule("g_farthest", MISSING_ENDPOINTS, &[CheckId::UnreachableFinish]),
         ],
     );
     let issues_a = vec![("g_random".to_string(), Issue::new(MISSING_ENDPOINTS))];

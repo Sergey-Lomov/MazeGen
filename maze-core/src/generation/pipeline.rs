@@ -7,7 +7,7 @@ use crate::ids::EdgeId;
 use crate::space::{Field, Tessellation};
 use crate::quality_control::{Issue, IssueData, QualityControlEngine};
 use crate::quality_control::issue_data::canonical_cycle_key;
-use crate::repair::{CheckId, RepairEngine, RepairResult};
+use crate::repair::{RepairEngine, RepairResult};
 use super::PresetState;
 
 pub const MAX_REPAIR_ITERATIONS: usize = 8;
@@ -48,7 +48,7 @@ pub fn build_maze<T: Tessellation>(
                  Issue::new_from_check/with_data_from_check always set exactly one, \
                  Issue::new/with_data set none");
             let Some(rule_id) = issue.single_source_check()
-                .and_then(|check_id| check_id_to_rule.get(&CheckId(check_id)))
+                .and_then(|check_id| check_id_to_rule.get(&check_id))
             else { continue };
             if failed.contains(rule_id) { continue; }
             match by_rule.entry(rule_id.clone()) {
@@ -128,10 +128,10 @@ fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
 fn merge_invalid_loops(
     all: &mut Vec<Vec<EdgeId>>,
     invalid: &mut Vec<usize>,
-    invalid_sources: &mut HashMap<Vec<EdgeId>, Vec<&'static str>>,
+    invalid_sources: &mut HashMap<Vec<EdgeId>, Vec<crate::repair::CheckId>>,
     incoming_all: Vec<Vec<EdgeId>>,
     incoming_invalid: Vec<usize>,
-    incoming_sources: HashMap<Vec<EdgeId>, Vec<&'static str>>,
+    incoming_sources: HashMap<Vec<EdgeId>, Vec<crate::repair::CheckId>>,
 ) {
     // Step 1+2: dedup — build the merged `all`, mapping every old index (from both sides) to its
     // new index in the merged list; identical cycles (by canonical_cycle_key) collapse onto the
@@ -204,9 +204,10 @@ fn merge_invalid_loops(
 mod merge_tests {
     use super::*;
     use crate::quality_control::INVALID_LOOP;
+    use crate::repair::CheckId;
 
-    fn issue(source_check: &'static str, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>) -> Issue {
-        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<&'static str>> = HashMap::new();
+    fn issue(source_check: CheckId, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>) -> Issue {
+        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<CheckId>> = HashMap::new();
         for &idx in &invalid {
             invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(source_check);
         }
@@ -215,33 +216,33 @@ mod merge_tests {
 
     #[test]
     fn merge_keeps_each_source_checks_details_after_merge() {
-        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0])
-            .with_detail("min_loop_length", "threshold", "10".to_string());
-        let b = issue("max_loop_length", vec![vec![4, 5, 6]], vec![0])
-            .with_detail("max_loop_length", "threshold", "100".to_string());
+        let mut a = issue(CheckId::MinLoopLength, vec![vec![1, 2, 3]], vec![0])
+            .with_detail(CheckId::MinLoopLength, "threshold", "10".to_string());
+        let b = issue(CheckId::MaxLoopLength, vec![vec![4, 5, 6]], vec![0])
+            .with_detail(CheckId::MaxLoopLength, "threshold", "100".to_string());
         merge_issue(&mut a, b);
 
-        assert_eq!(a.details().get("min_loop_length").and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
-        assert_eq!(a.details().get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
+        assert_eq!(a.details().get(&CheckId::MinLoopLength).and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
+        assert_eq!(a.details().get(&CheckId::MaxLoopLength).and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
     }
 
     #[test]
     fn merge_disjoint_cycles_unions_all_and_invalid() {
-        let mut a = issue("check_a", vec![vec![1, 2, 3]], vec![0]);
-        let b = issue("check_b", vec![vec![4, 5, 6]], vec![0]);
+        let mut a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
+        let b = issue(CheckId::UnreachableFinish, vec![vec![4, 5, 6]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
         assert_eq!(all.len(), 2, "disjoint cycles must not collapse");
         assert_eq!(invalid.len(), 2, "both cycles are invalid, from different sources");
-        assert_eq!(a.source_checks(), vec!["check_a", "check_b"]);
+        assert_eq!(a.source_checks(), vec![CheckId::MissingEndpoints, CheckId::UnreachableFinish]);
     }
 
     #[test]
     fn merge_deduplicates_identical_cycle_found_by_both_sides() {
         // Same cycle, edges listed in a different order — must collapse to one entry in `all`.
-        let mut a = issue("check_a", vec![vec![1, 2, 3]], vec![0]);
-        let b = issue("check_b", vec![vec![3, 1, 2]], vec![0]);
+        let mut a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
+        let b = issue(CheckId::UnreachableFinish, vec![vec![3, 1, 2]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
@@ -251,8 +252,8 @@ mod merge_tests {
 
     #[test]
     fn merge_keeps_valid_cycles_distinct_from_invalid_ones() {
-        let mut a = issue("check_a", vec![vec![1, 2, 3], vec![7, 8, 9]], vec![0]); // second cycle valid
-        let b = issue("check_b", vec![vec![4, 5, 6]], vec![0]);
+        let mut a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3], vec![7, 8, 9]], vec![0]); // second cycle valid
+        let b = issue(CheckId::UnreachableFinish, vec![vec![4, 5, 6]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
@@ -262,53 +263,53 @@ mod merge_tests {
 
     #[test]
     fn merge_source_checks_has_no_duplicates() {
-        let mut a = issue("check_a", vec![], vec![]);
-        let b = issue("check_a", vec![], vec![]);
+        let mut a = issue(CheckId::MissingEndpoints, vec![], vec![]);
+        let b = issue(CheckId::MissingEndpoints, vec![], vec![]);
         merge_issue(&mut a, b);
-        assert_eq!(a.source_checks(), vec!["check_a"], "merging the same source twice must not duplicate it");
+        assert_eq!(a.source_checks(), vec![CheckId::MissingEndpoints], "merging the same source twice must not duplicate it");
     }
 
     #[test]
     fn merge_none_data_is_noop() {
-        let mut a = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, "missing_endpoints");
-        let b = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, "missing_endpoints");
+        let mut a = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, CheckId::MissingEndpoints);
+        let b = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, CheckId::MissingEndpoints);
         merge_issue(&mut a, b);
         assert_eq!(a.data, None);
-        assert_eq!(a.source_checks(), vec!["missing_endpoints"]);
+        assert_eq!(a.source_checks(), vec![CheckId::MissingEndpoints]);
     }
 
     #[test]
     fn merge_invalid_sources_unions_check_ids_for_same_cycle() {
         // Same cycle (different edge order), flagged invalid by two different checks — both
         // check ids must end up attributed to it, not just one side's.
-        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0]);
-        let b = issue("max_loop_length", vec![vec![3, 1, 2]], vec![0]);
+        let mut a = issue(CheckId::MinLoopLength, vec![vec![1, 2, 3]], vec![0]);
+        let b = issue(CheckId::MaxLoopLength, vec![vec![3, 1, 2]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { invalid_sources, .. }) = &a.data else { panic!() };
         let key = canonical_cycle_key(&[1, 2, 3]);
         let sources = invalid_sources.get(&key).expect("merged cycle must have recorded sources");
         assert_eq!(sources.len(), 2);
-        assert!(sources.contains(&"min_loop_length"));
-        assert!(sources.contains(&"max_loop_length"));
+        assert!(sources.contains(&CheckId::MinLoopLength));
+        assert!(sources.contains(&CheckId::MaxLoopLength));
     }
 
     #[test]
     fn merge_invalid_sources_no_duplicate_for_repeated_check() {
-        let mut a = issue("check_a", vec![vec![1, 2, 3]], vec![0]);
-        let b = issue("check_a", vec![vec![1, 2, 3]], vec![0]);
+        let mut a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
+        let b = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { invalid_sources, .. }) = &a.data else { panic!() };
         let key = canonical_cycle_key(&[1, 2, 3]);
-        assert_eq!(invalid_sources.get(&key), Some(&vec!["check_a"]));
+        assert_eq!(invalid_sources.get(&key), Some(&vec![CheckId::MissingEndpoints]));
     }
 
     #[test]
     fn merge_invalid_sources_associative_regardless_of_merge_order() {
-        let a = issue("check_a", vec![vec![1, 2, 3]], vec![0]);
-        let b = issue("check_b", vec![vec![1, 2, 3]], vec![0]);
-        let c = issue("check_c", vec![vec![1, 2, 3]], vec![0]);
+        let a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
+        let b = issue(CheckId::UnreachableFinish, vec![vec![1, 2, 3]], vec![0]);
+        let c = issue(CheckId::MinLoopsCount, vec![vec![1, 2, 3]], vec![0]);
 
         let mut left_first = a.clone();
         merge_issue(&mut left_first, b.clone());
@@ -326,7 +327,7 @@ mod merge_tests {
             sources
         };
         assert_eq!(extract_sorted(&left_first), extract_sorted(&right_first));
-        assert_eq!(extract_sorted(&left_first), vec!["check_a", "check_b", "check_c"]);
+        assert_eq!(extract_sorted(&left_first), vec![CheckId::MissingEndpoints, CheckId::UnreachableFinish, CheckId::MinLoopsCount]);
     }
 
     #[test]
@@ -342,9 +343,9 @@ mod merge_tests {
         let mut a = Issue::with_data_from_check(
             INVALID_LOOP,
             IssueData::InvalidLoops { all: vec![vec![1, 2, 3]], invalid: vec![99], invalid_sources: HashMap::new() },
-            "check_a",
+            CheckId::MissingEndpoints,
         );
-        let b = issue("check_b", vec![vec![4, 5, 6]], vec![0]);
+        let b = issue(CheckId::UnreachableFinish, vec![vec![4, 5, 6]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };

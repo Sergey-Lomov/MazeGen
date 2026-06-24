@@ -13,29 +13,29 @@ use maze_core::repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairS
 /// repeating the `RepairRuleConfig`/`QcRule` boilerplate at every call site.
 fn engine_with_rule<T: maze_core::space::Tessellation>(
     kind: IssueKind,
-    checks: &[&'static str],
+    checks: &[CheckId],
     strategy: Box<dyn RepairStrategy<T>>,
 ) -> RepairEngine<T> {
-    let rule = QcRule { id: "g".to_string(), kind, checks: checks.iter().map(|&c| CheckId(c)).collect() };
+    let rule = QcRule { id: "g".to_string(), kind, checks: checks.to_vec() };
     RepairEngine::new(
-        vec![RepairRuleConfig { rule: QcRule { id: "g".to_string(), kind, checks: checks.iter().map(|&c| CheckId(c)).collect() }, strategy, param_overrides: HashMap::new() }],
+        vec![RepairRuleConfig { rule: QcRule { id: "g".to_string(), kind, checks: checks.to_vec() }, strategy, param_overrides: HashMap::new() }],
         vec![rule],
     )
 }
 
 /// Builds a `RepairEngine` with two independent single-check rules, each with its own strategy.
 fn two_rules<T: maze_core::space::Tessellation>(
-    a: (IssueKind, &[&'static str], Box<dyn RepairStrategy<T>>),
-    b: (IssueKind, &[&'static str], Box<dyn RepairStrategy<T>>),
+    a: (IssueKind, &[CheckId], Box<dyn RepairStrategy<T>>),
+    b: (IssueKind, &[CheckId], Box<dyn RepairStrategy<T>>),
 ) -> RepairEngine<T> {
     let (kind_a, checks_a, strategy_a) = a;
     let (kind_b, checks_b, strategy_b) = b;
-    let rule_a = QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.iter().map(|&c| CheckId(c)).collect() };
-    let rule_b = QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.iter().map(|&c| CheckId(c)).collect() };
+    let rule_a = QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.to_vec() };
+    let rule_b = QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.to_vec() };
     RepairEngine::new(
         vec![
-            RepairRuleConfig { rule: QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.iter().map(|&c| CheckId(c)).collect() }, strategy: strategy_a, param_overrides: HashMap::new() },
-            RepairRuleConfig { rule: QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.iter().map(|&c| CheckId(c)).collect() }, strategy: strategy_b, param_overrides: HashMap::new() },
+            RepairRuleConfig { rule: QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.to_vec() }, strategy: strategy_a, param_overrides: HashMap::new() },
+            RepairRuleConfig { rule: QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.to_vec() }, strategy: strategy_b, param_overrides: HashMap::new() },
         ],
         vec![rule_a, rule_b],
     )
@@ -46,7 +46,7 @@ fn make_engines() -> (QualityControlEngine<SquareTessellation>, RepairEngine<Squ
         Box::new(MissingEndpointsCheck),
         Box::new(UnreachableFinishCheck),
     ]);
-    let repair = engine_with_rule(MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(FarthestEndpointsStrategy));
+    let repair = engine_with_rule(MISSING_ENDPOINTS, &[CheckId::MissingEndpoints], Box::new(FarthestEndpointsStrategy));
     (qc, repair)
 }
 
@@ -111,7 +111,7 @@ fn pipeline_warns_when_strategy_always_fails() {
 
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck)]);
-    let repair = engine_with_rule(MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(AlwaysFail));
+    let repair = engine_with_rule(MISSING_ENDPOINTS, &[CheckId::MissingEndpoints], Box::new(AlwaysFail));
     let (_, warnings) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
     assert!(!warnings.is_empty());
 }
@@ -147,7 +147,7 @@ fn pipeline_merges_issues_from_duplicate_checks_into_one_strategy_call() {
         Box::new(MissingEndpointsCheck),
         Box::new(MissingEndpointsCheck),
     ]);
-    let repair = engine_with_rule(MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(CountingStrategy { count: Arc::clone(&call_count) }));
+    let repair = engine_with_rule(MISSING_ENDPOINTS, &[CheckId::MissingEndpoints], Box::new(CountingStrategy { count: Arc::clone(&call_count) }));
 
     let (_, warnings) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
     assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
@@ -171,8 +171,8 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
         Box::new(MinLoopLengthCheck { min_loop_length: 10 }),
     ]);
     let repair = two_rules(
-        (MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(FarthestEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation>>),
-        (INVALID_LOOP, &["min_loop_length"], Box::new(InvalidLoopRandomStrategy)),
+        (MISSING_ENDPOINTS, &[CheckId::MissingEndpoints], Box::new(FarthestEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation>>),
+        (INVALID_LOOP, &[CheckId::MinLoopLength], Box::new(InvalidLoopRandomStrategy)),
     );
 
     let (_, remaining) = build_maze(field, graph, 1, qc, repair, &PresetState::empty());
@@ -214,8 +214,8 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
             Box::new(MinLoopLengthCheck { min_loop_length: 10 }),
         ]);
         let repair = two_rules(
-            (MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(RandomEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation>>),
-            (INVALID_LOOP, &["min_loop_length"], Box::new(InvalidLoopRandomStrategy)),
+            (MISSING_ENDPOINTS, &[CheckId::MissingEndpoints], Box::new(RandomEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation>>),
+            (INVALID_LOOP, &[CheckId::MinLoopLength], Box::new(InvalidLoopRandomStrategy)),
         );
 
         let (maze, _) = build_maze(field, graph, seed, qc, repair, &PresetState::empty());
@@ -258,8 +258,8 @@ fn exact_issue_23_seed_never_isolates_a_node() {
         Box::new(MinLoopLengthCheck { min_loop_length: 10 }),
     ]);
     let repair = two_rules(
-        (MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(RandomEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation>>),
-        (INVALID_LOOP, &["min_loop_length"], Box::new(InvalidLoopRandomStrategy)),
+        (MISSING_ENDPOINTS, &[CheckId::MissingEndpoints], Box::new(RandomEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation>>),
+        (INVALID_LOOP, &[CheckId::MinLoopLength], Box::new(InvalidLoopRandomStrategy)),
     );
 
     let (maze, _) = build_maze(field, graph, seed, qc, repair, &PresetState::empty());
@@ -294,7 +294,7 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
 
     struct FakeInvalidLoopCheck {
         cycle: Vec<usize>,
-        source_check: &'static str,
+        source_check: CheckId,
     }
     impl<T: maze_core::space::Tessellation> Check<T> for FakeInvalidLoopCheck {
         fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
@@ -318,10 +318,10 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     }
 
     let qc = QualityControlEngine::new(vec![
-        Box::new(FakeInvalidLoopCheck { cycle: vec![e0, e1, e2], source_check: "fake_a" }),
-        Box::new(FakeInvalidLoopCheck { cycle: vec![e3, e4, e5], source_check: "fake_b" }),
+        Box::new(FakeInvalidLoopCheck { cycle: vec![e0, e1, e2], source_check: CheckId::MissingEndpoints }),
+        Box::new(FakeInvalidLoopCheck { cycle: vec![e3, e4, e5], source_check: CheckId::UnreachableFinish }),
     ]);
-    let repair = engine_with_rule(INVALID_LOOP, &["fake_a", "fake_b"], Box::new(InvalidLoopRandomStrategy));
+    let repair = engine_with_rule(INVALID_LOOP, &[CheckId::MissingEndpoints, CheckId::UnreachableFinish], Box::new(InvalidLoopRandomStrategy));
 
     let (maze, remaining) = build_maze(field, g, 1, qc, repair, &PresetState::empty());
 
@@ -379,11 +379,11 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
             let mut invalid_sources = HashMap::new();
             let mut key = cycle.clone();
             key.sort_unstable();
-            invalid_sources.insert(key, vec!["alternating"]);
+            invalid_sources.insert(key, vec![CheckId::MissingEndpoints]);
             issues.push(Issue::with_data_from_check(
                 INVALID_LOOP,
                 IssueData::InvalidLoops { all: vec![cycle.clone()], invalid: vec![0], invalid_sources },
-                "alternating",
+                CheckId::MissingEndpoints,
             ));
         }
     }
@@ -391,7 +391,7 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     let qc = QualityControlEngine::new(vec![
         Box::new(AlternatingInvalidLoopCheck { triangle_a: vec![e0, e1, e2], triangle_b: vec![e3, e4, e5] }),
     ]);
-    let repair = engine_with_rule(INVALID_LOOP, &["alternating"], Box::new(InvalidLoopRandomStrategy));
+    let repair = engine_with_rule(INVALID_LOOP, &[CheckId::MissingEndpoints], Box::new(InvalidLoopRandomStrategy));
 
     let (maze, remaining) = build_maze(field, g, 1, qc, repair, &PresetState::empty());
 

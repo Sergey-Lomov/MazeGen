@@ -21,10 +21,10 @@ fn main() {
         Box::new(MissingEndpointsCheck),
         Box::new(UnreachableFinishCheck),
     ]);
-    let rule = QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec![CheckId("missing_endpoints")] };
+    let rule = QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec![CheckId::MissingEndpoints] };
     let repair_engine = RepairEngine::new(
         vec![RepairRuleConfig {
-            rule: QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec![CheckId("missing_endpoints")] },
+            rule: QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec![CheckId::MissingEndpoints] },
             strategy: Box::new(FarthestEndpointsStrategy),
             param_overrides: HashMap::new(),
         }],

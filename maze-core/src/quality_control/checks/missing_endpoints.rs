@@ -2,8 +2,9 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, MISSING_ENDPOINTS};
+use crate::repair::CheckId;
 
-pub const MISSING_ENDPOINTS_CHECK_ID: &str = "missing_endpoints";
+pub const MISSING_ENDPOINTS_CHECK_ID: CheckId = CheckId::MissingEndpoints;
 
 pub struct MissingEndpointsCheck;
 

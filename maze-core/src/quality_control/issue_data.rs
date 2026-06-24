@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use crate::ids::EdgeId;
+use crate::repair::CheckId;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and
@@ -33,6 +34,6 @@ pub enum IssueData {
         /// merges, so this map never needs remapping. A cycle absent here was flagged by no
         /// check directly tracked (shouldn't happen for entries in `invalid`, but the map is not
         /// required to cover every index — absence means "no recorded source", not an error).
-        invalid_sources: HashMap<Vec<EdgeId>, Vec<&'static str>>,
+        invalid_sources: HashMap<Vec<EdgeId>, Vec<CheckId>>,
     },
 }

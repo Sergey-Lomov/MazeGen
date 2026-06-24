@@ -12,25 +12,21 @@ use crate::dto::{EdgeDto, GenerationStepDto};
 use crate::analytics::build_analytics_snapshot;
 
 /// Resolves a check type id (`available_checks()`'s `CheckDescriptor.id`) to the `IssueKind`
-/// it produces and its `&'static str` literal — used to validate `QcRuleConfig` (all
-/// checks in a rule must share one kind) and to build `CheckId` without needing a `Check<T>`
-/// instance. Returns the literal alongside the kind so callers never need a second lookup
-/// (see `intern_check_id` callers below) — check ids arrive as owned `String`s (deserialized
-/// from JS) but `CheckId` wraps `&'static str`, so resolving both at once avoids leaking
-/// owned strings into `CheckId`.
+/// it produces and its `CheckId` — used to validate `QcRuleConfig` (all checks in a rule must
+/// share one kind) and to build `CheckId` without needing a `Check<T>` instance.
 ///
 /// Panics on an unknown id — the only call site (`build_qc_and_repair_impl`) only ever passes
 /// ids already validated against `config.checks`, which is restricted to this same 5-id set
 /// (the `match` in this function's neighboring check-building loop). An `Option` return here
 /// would have a `None` arm no caller can actually reach; `unreachable!` documents that instead
 /// of silently swallowing a contract violation that should never happen.
-fn check_id_info(id: &str) -> (IssueKind, &'static str) {
+fn check_id_info(id: &str) -> (IssueKind, CheckId) {
     match id {
-        "missing_endpoints" => (MISSING_ENDPOINTS, "missing_endpoints"),
-        "unreachable_finish" => (UNREACHABLE_FINISH, "unreachable_finish"),
-        "min_loops_count" => (MIN_LOOPS_COUNT, "min_loops_count"),
-        "min_loop_length" => (INVALID_LOOP, "min_loop_length"),
-        "max_loop_length" => (INVALID_LOOP, "max_loop_length"),
+        "missing_endpoints" => (MISSING_ENDPOINTS, CheckId::MissingEndpoints),
+        "unreachable_finish" => (UNREACHABLE_FINISH, CheckId::UnreachableFinish),
+        "min_loops_count" => (MIN_LOOPS_COUNT, CheckId::MinLoopsCount),
+        "min_loop_length" => (INVALID_LOOP, CheckId::MinLoopLength),
+        "max_loop_length" => (INVALID_LOOP, CheckId::MaxLoopLength),
         other => unreachable!("check_id_info called with id not in config.checks's validated set: {other}"),
     }
 }
@@ -104,13 +100,13 @@ fn build_qc_and_repair_impl<T: Tessellation>(
             if !seen_check_ids.insert(check_id.as_str()) {
                 return Err(format!("check {check_id} belongs to more than one rule"));
             }
-            let (this_kind, literal) = check_id_info(check_id);
+            let (this_kind, check_id) = check_id_info(check_id);
             match kind {
                 None => kind = Some(this_kind),
                 Some(k) if k == this_kind => {}
                 Some(_) => return Err(format!("checks in rule {} produce different issue kinds", rule_cfg.id)),
             }
-            checks.push(CheckId(literal));
+            checks.push(check_id);
         }
         let kind = kind.expect("non-empty rule always resolves a kind");
         let rule = QcRule { id: rule_cfg.id.clone(), kind, checks: checks.clone() };

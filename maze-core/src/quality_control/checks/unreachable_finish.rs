@@ -2,8 +2,9 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, UNREACHABLE_FINISH};
+use crate::repair::CheckId;
 
-pub const UNREACHABLE_FINISH_CHECK_ID: &str = "unreachable_finish";
+pub const UNREACHABLE_FINISH_CHECK_ID: CheckId = CheckId::UnreachableFinish;
 
 pub struct UnreachableFinishCheck;
 
