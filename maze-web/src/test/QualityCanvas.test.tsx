@@ -24,8 +24,7 @@ beforeEach(() => {
     availableChecks: [checkDescriptor],
     selectedChecks: ["c1"],
     availableStrategies: [],
-    selectedStrategies: {},
-    disabledStrategies: {},
+    rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["c1"], strategyId: null, disabled: false, ruleDisabled: false }],
     checkParams: {},
     strategyParams: {},
   } as Partial<ReturnType<typeof useMazeStore.getState>>);
@@ -43,13 +42,28 @@ describe("QualityCanvas", () => {
     expect(screen.getByText("Check One description")).toBeInTheDocument();
   });
 
-  it("renders one strategy slot, not duplicated, when two active checks share a kind", () => {
+  it("renders one strategy slot, not duplicated, when two active checks are merged into one rule", () => {
     const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [] };
     useMazeStore.setState({
       availableChecks: [checkDescriptor, checkB],
       selectedChecks: ["c1", "c2"],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["c1", "c2"], strategyId: null, disabled: false, ruleDisabled: false }],
     } as Partial<ReturnType<typeof useMazeStore.getState>>);
     render(<QualityCanvas />);
-    expect(screen.getAllByText("Do not fix")).toHaveLength(1);
+    expect(screen.getAllByText("Logging")).toHaveLength(1);
+  });
+
+  it("renders two strategy slots when two active checks of the same kind are in separate rules", () => {
+    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [] };
+    useMazeStore.setState({
+      availableChecks: [checkDescriptor, checkB],
+      selectedChecks: ["c1", "c2"],
+      rules: [
+        { id: "g1", name: "Rule 1", kind: "k1", checks: ["c1"], strategyId: null, disabled: false, ruleDisabled: false },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: ["c2"], strategyId: null, disabled: false, ruleDisabled: false },
+      ],
+    } as Partial<ReturnType<typeof useMazeStore.getState>>);
+    render(<QualityCanvas />);
+    expect(screen.getAllByText("Logging")).toHaveLength(2);
   });
 });

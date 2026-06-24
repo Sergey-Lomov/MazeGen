@@ -26,7 +26,7 @@ impl<T: Tessellation> RepairStrategy<T> for InvalidLoopRandomStrategy {
         // means this was called outside the normal pipeline (malformed) — Failed, not
         // "already fixed". An empty cycle list, by contrast, means the check found nothing
         // to break.
-        let Some(IssueData::InvalidLoops { all, invalid }) = &issue.data else {
+        let Some(IssueData::InvalidLoops { all, invalid, .. }) = &issue.data else {
             return RepairResult::Failed;
         };
         apply_cuts(all, invalid, maze, rng, preset_state)
@@ -143,7 +143,7 @@ mod tests {
     fn apply_succeeds_on_empty_cycle_list() {
         // An empty InvalidLoops list means the check found nothing to break — already fixed.
         let mut maze = maze_with_triangle();
-        let issue = Issue::with_data(crate::quality_control::issue::INVALID_LOOP, IssueData::InvalidLoops { all: vec![], invalid: vec![] });
+        let issue = Issue::with_data(crate::quality_control::issue::INVALID_LOOP, IssueData::InvalidLoops { all: vec![], invalid: vec![], invalid_sources: Default::default() });
         let mut rng = SmallRng::seed_from_u64(7);
         let result = InvalidLoopRandomStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -254,7 +254,7 @@ mod tests {
         check.check(&maze, &mut issues);
         let issue = issues.into_iter().next().unwrap();
 
-        let IssueData::InvalidLoops { all, invalid } = issue.data.as_ref().unwrap() else { panic!() };
+        let IssueData::InvalidLoops { all, invalid, .. } = issue.data.as_ref().unwrap() else { panic!() };
         let cycle = all[invalid[0]].clone();
         // Protect all but the last edge in the cycle from removal.
         let mut preset_state = PresetState::empty();

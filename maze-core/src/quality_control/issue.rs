@@ -69,7 +69,15 @@ pub struct Issue {
     /// currently only `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot`
     /// (see its doc comment). Populated by `new_from_check`/`with_data_from_check`; merging two
     /// issues of the same kind (pipeline dedup) unions this list without duplicates.
-    pub source_checks: Vec<&'static str>,
+    ///
+    /// Private — a raw (pre-merge) `Issue` must carry exactly one source check, and the pipeline's
+    /// rule-routing (`pipeline.rs`) reads only the first element under that assumption. Making
+    /// this a public `Vec` field let any code construct an `Issue` with 0 or 2+ raw sources,
+    /// bypassing `new_from_check`/`with_data_from_check` — a release build (no `debug_assert`)
+    /// would then silently route by an arbitrary single id, dropping the rest. `source_checks()`
+    /// exposes the list read-only; `push_source` is the only way to add to it, used solely by
+    /// `merge_issue` after merge has already established the issue may legitimately carry several.
+    source_checks: Vec<&'static str>,
 }
 
 impl Issue {
@@ -91,6 +99,31 @@ impl Issue {
     pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: &'static str) -> Self {
         Self { kind, data: Some(data), source_checks: vec![source_check] }
     }
+
+    pub fn source_checks(&self) -> &[&'static str] {
+        &self.source_checks
+    }
+
+    /// The check id this raw (pre-merge) issue should route by — `Some` only when there is
+    /// exactly one source check, `None` for zero (e.g. `CYCLE_ANALYSIS_OVERFLOWED`) or for an
+    /// already-merged issue (2+ sources). Pipeline routing (`pipeline.rs`) must use this instead
+    /// of indexing `source_checks()` directly, so a malformed 2+-source raw issue is routed to
+    /// "no rule" (safe, same as 0 sources) rather than silently picked by an arbitrary first id.
+    pub fn single_source_check(&self) -> Option<&'static str> {
+        match self.source_checks.as_slice() {
+            [only] => Some(only),
+            _ => None,
+        }
+    }
+
+    /// Adds `source` to this issue's recorded sources if not already present — the only way to
+    /// grow `source_checks` past its construction-time value. Used exclusively by `merge_issue`
+    /// once two issues are confirmed to share a rule and are being combined into one.
+    pub(crate) fn push_source(&mut self, source: &'static str) {
+        if !self.source_checks.contains(&source) {
+            self.source_checks.push(source);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -111,13 +144,47 @@ mod tests {
     fn new_has_no_data() {
         let issue = Issue::new(MISSING_ENDPOINTS);
         assert_eq!(issue.data, None);
-        assert!(issue.source_checks.is_empty());
+        assert!(issue.source_checks().is_empty());
     }
 
     #[test]
     fn new_from_check_records_source() {
         let issue = Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints");
-        assert_eq!(issue.source_checks, vec!["missing_endpoints"]);
+        assert_eq!(issue.source_checks(), vec!["missing_endpoints"]);
+    }
+
+    #[test]
+    fn single_source_check_returns_the_one_source() {
+        let issue = Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints");
+        assert_eq!(issue.single_source_check(), Some("missing_endpoints"));
+    }
+
+    #[test]
+    fn single_source_check_is_none_for_zero_sources() {
+        let issue = Issue::new(MISSING_ENDPOINTS);
+        assert_eq!(issue.single_source_check(), None);
+    }
+
+    #[test]
+    fn single_source_check_is_none_after_a_second_source_is_pushed() {
+        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, "check_a");
+        issue.push_source("check_b");
+        assert_eq!(issue.single_source_check(), None,
+            "an issue with 2+ sources (e.g. post-merge) must not look like a routable single-source issue");
+    }
+
+    #[test]
+    fn push_source_does_not_duplicate_an_existing_source() {
+        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, "check_a");
+        issue.push_source("check_a");
+        assert_eq!(issue.source_checks(), vec!["check_a"]);
+    }
+
+    #[test]
+    fn push_source_appends_a_new_source() {
+        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, "check_a");
+        issue.push_source("check_b");
+        assert_eq!(issue.source_checks(), vec!["check_a", "check_b"]);
     }
 
     #[test]

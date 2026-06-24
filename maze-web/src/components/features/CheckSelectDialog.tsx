@@ -61,7 +61,7 @@ export function CheckSelectDialog({ onClose }: Props) {
 
   return (
     <ItemSelectDialog
-      title={m["check.add_title"]()}
+      title={m["quality.select_initial_check_title"]()}
       items={items}
       selectedId={selectedId}
       onSelectId={setSelectedId}

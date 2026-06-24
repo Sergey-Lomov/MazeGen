@@ -12,6 +12,17 @@ pub struct StrategyConfig {
     pub params: HashMap<String, String>,
 }
 
+/// One user-defined QC rule: a set of checks producing the same `IssueKind`, sharing one repair
+/// strategy. `strategy: None` means "no_fix" — the rule's issues still merge for attribution
+/// (see `build_qc_and_repair`) but no `RepairStrategy` is dispatched for them.
+#[derive(Deserialize)]
+pub struct QcRuleConfig {
+    pub id: String,
+    pub checks: Vec<String>,
+    #[serde(default)]
+    pub strategy: Option<StrategyConfig>,
+}
+
 #[derive(Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TessellationType {
@@ -115,7 +126,7 @@ pub struct GenerateConfig {
     #[serde(default)]
     pub checks: Vec<String>,
     #[serde(default)]
-    pub strategies: HashMap<String, StrategyConfig>,
+    pub check_rules: Vec<QcRuleConfig>,
     #[serde(default)]
     pub check_params: HashMap<String, HashMap<String, String>>,
     #[serde(default)]
@@ -141,14 +152,16 @@ impl Default for GenerateConfig {
                 MISSING_ENDPOINTS.as_str().to_string(),
                 UNREACHABLE_FINISH.as_str().to_string(),
             ],
-            strategies: {
-                let mut m = HashMap::new();
-                m.insert(MISSING_ENDPOINTS.as_str().to_string(), StrategyConfig {
-                    id: "farthest_endpoints".to_string(),
-                    params: HashMap::new(),
-                });
-                m
-            },
+            check_rules: vec![
+                QcRuleConfig {
+                    id: "default_missing_endpoints".to_string(),
+                    checks: vec![MISSING_ENDPOINTS.as_str().to_string()],
+                    strategy: Some(StrategyConfig {
+                        id: "farthest_endpoints".to_string(),
+                        params: HashMap::new(),
+                    }),
+                },
+            ],
             check_params: HashMap::new(),
             initial: InitialGenerationConfig::default(),
             elements: ElementsConfigDto::default(),

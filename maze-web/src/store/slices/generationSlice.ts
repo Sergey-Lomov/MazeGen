@@ -1,13 +1,35 @@
 import type { StateCreator } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../../wasm/mazeService";
 import { initWasm } from "../../wasm/wasmLoader";
-import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot } from "../../wasm/types";
+import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot, CheckDescriptor } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated } from "../../pixi/postEditUtils";
-import type { MazeStore, GenerationState, GenerationActions, PostEditTool } from "../storeTypes";
+import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState } from "../storeTypes";
 import { activeTessellationOf, buildResetMazeState, debugStaleOf } from "../storeHelpers";
+import * as m from "~/paraglide/messages";
+
+// Rule-kind matching across the store (addCheck/newRule below, RulesColumn's candidate filter,
+// useQualityViewModel) all assume one issue kind per check and read issue_kinds[0]. No current
+// check produces more than one kind, but nothing enforces it at the descriptor level — warn
+// loudly instead of silently dropping the other kinds if that assumption is ever violated.
+function resolveCheckKind(descriptor: CheckDescriptor): string {
+  if (descriptor.issue_kinds.length > 1) {
+    console.error(`check "${descriptor.id}" produces multiple issue kinds (${descriptor.issue_kinds.join(", ")}); rules only support one kind per check — using "${descriptor.issue_kinds[0]}"`);
+  }
+  return descriptor.issue_kinds[0];
+}
+
+let ruleIdCounter = 0;
+// `name` is plain user-editable text seeded from the current locale at creation time (renaming
+// UI not implemented yet) — it does not re-translate later, same as any other user-entered
+// string would not. The counter is shared with `id` so a rule's number stays stable as other
+// rules are added/removed (not derived from array position, which would shift on removal).
+function newRule(kind: string, checks: string[], strategyId: string | null, disabled: boolean): QcRuleState {
+  ruleIdCounter += 1;
+  return { id: `rule_${ruleIdCounter}`, name: m["quality.default_rule_name"]({ n: ruleIdCounter }), kind, checks, strategyId, disabled, ruleDisabled: false };
+}
 
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (set, get) => ({
   nodes: [],
@@ -27,8 +49,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   availableChecks: [],
   availableStrategies: [],
   selectedChecks: [],
-  selectedStrategies: {},
-  disabledStrategies: {},
+  rules: [],
   strategyParams: {},
   checkParams: {},
   initialConfig: { method: "recursive_backtracker" as const },
@@ -53,24 +74,29 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       const checks = getAvailableChecks();
       const strategies = getAvailableStrategies();
       const defaultSelectedChecks = checks.filter((c) => c.params.length === 0).map((c) => c.id);
-      const defaultStrategies: Record<string, string> = {};
-      for (const check of checks) {
-        for (const kind of check.issue_kinds) {
-          const match = strategies.find((s) => s.handles === kind);
-          if (match) defaultStrategies[kind] = match.id;
-        }
-      }
+      // Default: one singleton rule per default-selected check, with the first strategy that
+      // handles its kind (if any) — preserves the old "auto-pick the only strategy" behavior
+      // for checks without params, since there's no UI yet to have configured anything else.
+      const defaultRules: QcRuleState[] = defaultSelectedChecks.map((checkId) => {
+        const descriptor = checks.find((c) => c.id === checkId)!;
+        const kind = resolveCheckKind(descriptor);
+        const match = strategies.find((s) => s.handles === kind);
+        return newRule(kind, [checkId], match?.id ?? null, false);
+      });
       const knownIds = new Set(checks.map((c) => c.id));
       set((state) => {
         const selectedChecks = state.registryLoaded
           ? state.selectedChecks.filter((id) => knownIds.has(id))
           : defaultSelectedChecks;
-        const selectedStrategies = state.registryLoaded ? state.selectedStrategies : defaultStrategies;
-        const disabledStrategies = state.registryLoaded ? state.disabledStrategies : {};
+        const rules = state.registryLoaded
+          ? state.rules
+              .map((g) => ({ ...g, checks: g.checks.filter((id) => knownIds.has(id)) }))
+              .filter((g) => g.checks.length > 0)
+          : defaultRules;
         const checkParams = Object.fromEntries(
           Object.entries(state.checkParams).filter(([id]) => knownIds.has(id))
         );
-        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, selectedChecks, selectedStrategies, disabledStrategies, checkParams };
+        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, selectedChecks, rules, checkParams };
       });
     }).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -116,7 +142,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   selectNode: (id) => set({ selectedNode: id }),
 
-  addCheck: (id) => set((state) => {
+  addCheck: (id, ruleId) => set((state) => {
     if (state.selectedChecks.includes(id)) return {};
     const descriptor = state.availableChecks.find((c) => c.id === id);
     if (!descriptor) return {};
@@ -128,15 +154,29 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
         return [p.id, def];
       })
     );
+    const checkKind = resolveCheckKind(descriptor);
+    // A kind mismatch here would only be caught later, at wasm config-build time, with a
+    // confusing "checks in rule produce different issue kinds" error far from this action — the
+    // dialogs that call `addCheck` with a ruleId already pre-filter candidates by kind (see
+    // `RulesColumn.candidatesFor`), but the store must not rely on that being the only caller.
+    const targetRule = ruleId ? state.rules.find((g) => g.id === ruleId && g.kind === checkKind) : undefined;
+    const rules = targetRule
+      ? state.rules.map((g) => g.id === ruleId ? { ...g, checks: [...g.checks, id] } : g)
+      : [...state.rules, newRule(checkKind, [id], null, false)];
     return {
       selectedChecks: [...state.selectedChecks, id],
       checkParams: { ...state.checkParams, [id]: params },
+      rules,
       debugStale: debugStaleOf(state),
     };
   }),
 
+  // Unlike addCheckToRule/removeCheckFromRule, an empty rule here is not auto-dropped —
+  // the user removed the check via the card's own X, not by moving it elsewhere, so the empty
+  // card stays as a place to add a new check back into (see RulesColumn's add-check row).
   removeCheck: (id) => set((state) => ({
     selectedChecks: state.selectedChecks.filter((c) => c !== id),
+    rules: state.rules.map((g) => ({ ...g, checks: g.checks.filter((c) => c !== id) })),
     debugStale: debugStaleOf(state),
   })),
 
@@ -148,23 +188,49 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     debugStale: debugStaleOf(state),
   })),
 
-  setStrategy: (issueKind, strategyId) => set((state) => ({
-    selectedStrategies: { ...state.selectedStrategies, [issueKind]: strategyId },
-    debugStale: debugStaleOf(state),
-  })),
-
-  clearStrategy: (issueKind) => set((state) => {
-    const next = { ...state.selectedStrategies };
-    delete next[issueKind];
-    const nextDisabled = { ...state.disabledStrategies };
-    delete nextDisabled[issueKind];
-    return { selectedStrategies: next, disabledStrategies: nextDisabled, debugStale: debugStaleOf(state) };
+  removeCheckFromRule: (checkId) => set((state) => {
+    const descriptor = state.availableChecks.find((c) => c.id === checkId);
+    const rules = state.rules
+      .map((g) => ({ ...g, checks: g.checks.filter((c) => c !== checkId) }))
+      .filter((g) => g.checks.length > 0);
+    rules.push(newRule(descriptor ? resolveCheckKind(descriptor) : "", [checkId], null, false));
+    return { rules, debugStale: debugStaleOf(state) };
   }),
 
-  toggleStrategyDisabled: (issueKind) => set((state) => ({
-    disabledStrategies: { ...state.disabledStrategies, [issueKind]: !state.disabledStrategies[issueKind] },
+  setStrategy: (ruleId, strategyId) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId ? { ...g, strategyId } : g),
     debugStale: debugStaleOf(state),
   })),
+
+  clearStrategy: (ruleId) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId ? { ...g, strategyId: null, disabled: false } : g),
+    debugStale: debugStaleOf(state),
+  })),
+
+  toggleStrategyDisabled: (ruleId) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId ? { ...g, disabled: !g.disabled } : g),
+    debugStale: debugStaleOf(state),
+  })),
+
+  toggleRuleDisabled: (ruleId) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId ? { ...g, ruleDisabled: !g.ruleDisabled } : g),
+    debugStale: debugStaleOf(state),
+  })),
+
+  renameRule: (ruleId, name) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId ? { ...g, name } : g),
+  })),
+
+  removeRule: (ruleId) => set((state) => {
+    const rule = state.rules.find((g) => g.id === ruleId);
+    if (!rule) return {};
+    const removedIds = new Set(rule.checks);
+    return {
+      rules: state.rules.filter((g) => g.id !== ruleId),
+      selectedChecks: state.selectedChecks.filter((c) => !removedIds.has(c)),
+      debugStale: debugStaleOf(state),
+    };
+  }),
 
   setStrategyParam: (strategyId, paramId, value) => set((state) => ({
     strategyParams: {
@@ -223,19 +289,30 @@ export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConf
 
 export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   if (state.isEditingField && state.fieldPoints.size < 2) return null;
-  const strategies: Record<string, { id: string; params: Record<string, string> }> = {};
-  for (const [kind, strategyId] of Object.entries(state.selectedStrategies)) {
-    if (!strategyId || state.disabledStrategies[kind]) continue;
-    const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
-    const paramOverrides = state.strategyParams[strategyId] ?? {};
-    const params: Record<string, string> = {};
-    if (descriptor) {
-      for (const p of descriptor.params) {
-        if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
+  // ruleDisabled rules (and their checks) are excluded entirely — as if they were never
+  // selected at all. Distinct from a rule with strategy:null/disabled (still sent below, since
+  // its checks still run): ruleDisabled means the checks themselves don't run.
+  const activeRules = state.rules.filter((g) => !g.ruleDisabled);
+  const disabledCheckIds = new Set(state.rules.filter((g) => g.ruleDisabled).flatMap((g) => g.checks));
+  const checks = state.selectedChecks.filter((id) => !disabledCheckIds.has(id));
+  // Every remaining rule is sent, including ones with no strategy or disabled — `strategy: null`
+  // for those, not an omitted entry. The wasm layer still needs the rule's check composition to
+  // merge/attribute issues correctly even when nothing repairs them (see Specs/repair.md).
+  const check_rules = activeRules.map((g) => {
+    let strategy: { id: string; params: Record<string, string> } | null = null;
+    if (g.strategyId && !g.disabled) {
+      const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
+      const paramOverrides = state.strategyParams[g.strategyId] ?? {};
+      const params: Record<string, string> = {};
+      if (descriptor) {
+        for (const p of descriptor.params) {
+          if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
+        }
       }
+      strategy = { id: g.strategyId, params };
     }
-    strategies[kind] = { id: strategyId, params };
-  }
+    return { id: g.id, checks: g.checks, strategy };
+  });
   const activeTessellation = activeTessellationOf(state);
   const customPts = state.isEditingField ? state.fieldPoints : undefined;
   const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
@@ -252,8 +329,8 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   });
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
-    checks: state.selectedChecks,
-    strategies,
+    checks,
+    check_rules,
     check_params: state.checkParams,
     initial: state.initialConfig,
     elements: state.elementsConfig,

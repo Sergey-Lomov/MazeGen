@@ -11,8 +11,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: {},
     selectedChecks: ["check_a"],
-    selectedStrategies: { issue_a: "strategy_a" },
-    disabledStrategies: {},
+    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: "strategy_a", disabled: false, ruleDisabled: false }],
     checkParams: { check_a: { param_a: "1" } },
     strategyParams: { strategy_a: { param_b: "2" } },
     presetConnections: new Map(),
@@ -173,11 +172,24 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     expect(result.ui.openCard).toBe("basic_config");
   });
 
-  it("defaults quality.disabledStrategies to {} when absent (pre-toggle-feature project files)", () => {
+  it("round-trips quality.rules", () => {
     const data = valid_without_optional_sections();
-    delete (data.quality as Record<string, unknown>).disabledStrategies;
     const result = parseAndValidate(data);
-    expect(result.quality.disabledStrategies).toEqual({});
+    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: "strategy_a", disabled: false, ruleDisabled: false }]);
+  });
+
+  it("defaults rule name by array position when absent (pre-naming project files)", () => {
+    const data = valid_without_optional_sections();
+    delete (data.quality as { rules: Record<string, unknown>[] }).rules[0].name;
+    const result = parseAndValidate(data);
+    expect(result.quality.rules[0].name).toBe("Rule 1");
+  });
+
+  it("drops rules with no kind (pre-kind project files — can never accept a check again)", () => {
+    const data = valid_without_optional_sections();
+    delete (data.quality as { rules: Record<string, unknown>[] }).rules[0].kind;
+    const result = parseAndValidate(data);
+    expect(result.quality.rules).toEqual([]);
   });
 
   function valid_without_optional_sections(): Record<string, unknown> {
@@ -190,62 +202,10 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
   }
 });
 
-describe("parseAndValidate — v1 → v2 migration (min_loop_length → invalid_loop)", () => {
-  it("renames the issue-kind key in selectedStrategies and disabledStrategies", () => {
+describe("parseAndValidate — migrations", () => {
+  it("throws when a file's version has no registered migration path to current", () => {
     const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
-    data.version = 1;
-    data.quality.selectedStrategies = { min_loop_length: "some_other_strategy" };
-    data.quality.disabledStrategies = { min_loop_length: true };
-    const result = parseAndValidate(data);
-    expect(result.quality.selectedStrategies).toEqual({ invalid_loop: "some_other_strategy" });
-    expect(result.quality.disabledStrategies).toEqual({ invalid_loop: true });
-  });
-
-  it("does not touch checkParams (keyed by check id, unaffected by the kind rename)", () => {
-    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
-    data.version = 1;
-    data.quality.checkParams = { min_loop_length: { min_loop_length: "10" } };
-    const result = parseAndValidate(data);
-    expect(result.quality.checkParams).toEqual({ min_loop_length: { min_loop_length: "10" } });
-  });
-
-  it("is a no-op when the old key is absent", () => {
-    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
-    data.version = 1;
-    data.quality.selectedStrategies = { other_kind: "some_strategy" };
-    const result = parseAndValidate(data);
-    expect(result.quality.selectedStrategies).toEqual({ other_kind: "some_strategy" });
-  });
-});
-
-describe("parseAndValidate — v2 → v3 migration (min_loop_length_random/scored → invalid_loop_random/scored)", () => {
-  it("renames the strategy id value in selectedStrategies", () => {
-    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
-    data.version = 2;
-    data.quality.selectedStrategies = {
-      invalid_loop: "min_loop_length_scored",
-      missing_endpoints: "random_endpoints",
-    };
-    const result = parseAndValidate(data);
-    expect(result.quality.selectedStrategies).toEqual({
-      invalid_loop: "invalid_loop_scored",
-      missing_endpoints: "random_endpoints",
-    });
-  });
-
-  it("renames the strategy id key in strategyParams", () => {
-    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
-    data.version = 2;
-    data.quality.strategyParams = { min_loop_length_random: { short_overlap_weight: "5" } };
-    const result = parseAndValidate(data);
-    expect(result.quality.strategyParams).toEqual({ invalid_loop_random: { short_overlap_weight: "5" } });
-  });
-
-  it("does not touch checkParams (keyed by check id, unaffected by the strategy rename)", () => {
-    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
-    data.version = 2;
-    data.quality.checkParams = { min_loop_length: { min_loop_length: "10" } };
-    const result = parseAndValidate(data);
-    expect(result.quality.checkParams).toEqual({ min_loop_length: { min_loop_length: "10" } });
+    data.version = 0;
+    expect(() => parseAndValidate(data)).toThrow(/No migration for version/);
   });
 });

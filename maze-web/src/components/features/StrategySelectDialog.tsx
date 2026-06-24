@@ -9,26 +9,27 @@ import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
 
 interface Props {
-  issueId: string;
+  ruleId: string;
+  kind: string;
   onClose: () => void;
 }
 
-export function StrategySelectDialog({ issueId, onClose }: Props) {
+export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
-  const selectedStrategies = useMazeStore((s) => s.selectedStrategies);
+  const rules = useMazeStore((s) => s.rules);
   const setStrategy = useMazeStore((s) => s.setStrategy);
   const clearStrategy = useMazeStore((s) => s.clearStrategy);
 
-  const currentId = selectedStrategies[issueId] ?? NO_FIX_STRATEGY_ID;
+  const currentId = rules.find((r) => r.id === ruleId)?.strategyId ?? NO_FIX_STRATEGY_ID;
   const [selectedId, setSelectedId] = useState<string>(currentId);
 
-  const candidates = availableStrategies.filter((s) => s.handles === issueId);
+  const candidates = availableStrategies.filter((s) => s.handles === kind);
 
   function handleSelect() {
     if (selectedId === NO_FIX_STRATEGY_ID) {
-      clearStrategy(issueId);
+      clearStrategy(ruleId);
     } else {
-      setStrategy(issueId, selectedId);
+      setStrategy(ruleId, selectedId);
     }
     onClose();
   }

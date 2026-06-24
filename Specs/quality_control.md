@@ -49,7 +49,7 @@ Always use the named constant — never use string literals or enum variants inl
 pub struct Issue {
     pub kind: IssueKind,
     pub data: Option<IssueData>,
-    pub source_checks: Vec<&'static str>,
+    source_checks: Vec<&'static str>, // private — see accessors below
 }
 
 impl Issue {
@@ -57,6 +57,14 @@ impl Issue {
     pub fn with_data(kind: IssueKind, data: IssueData) -> Self;                     // source_checks: []
     pub fn new_from_check(kind: IssueKind, source_check: &'static str) -> Self;
     pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: &'static str) -> Self;
+    pub fn source_checks(&self) -> &[&'static str];
+    /// `Some` only when there is exactly one source check (the normal raw, pre-merge case) —
+    /// `None` for zero (e.g. `CYCLE_ANALYSIS_OVERFLOWED`) or 2+ sources (an already-merged
+    /// issue, or a malformed raw one). Pipeline rule-routing uses this, not `source_checks()`
+    /// indexing, so a malformed multi-source raw issue can't be silently misrouted by an
+    /// arbitrary first id — see `repair.md`'s "Pipeline" section.
+    pub fn single_source_check(&self) -> Option<&'static str>;
+    pub(crate) fn push_source(&mut self, source: &'static str); // merge_issue only
 }
 ```
 
@@ -64,7 +72,7 @@ impl Issue {
 
 `Issue` is an **internal-only QC artifact** — it is never serialized as a DTO or surfaced as its own UI entity (the WASM layer only ever serializes `IssueKind::as_str()`/`Display`, see "Not exposed over WASM" below; the web UI attaches strategies to checks directly, not to a separate issues list — see `quality-feature.md`). Keep this boundary explicit when extending `Issue`: new fields belong here only if they're plumbing between a `Check` and the matching `RepairStrategy` within one QC pass, not if they're meant for display.
 
-`source_checks` records which check id(s) (the wasm `available_checks()` id, e.g. `"min_loop_length"`) produced or contributed to this issue. Every toggleable `Check<T>` implementation should construct its issues via `new_from_check`/`with_data_from_check`, passing its own check id. The one exception is `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` outside any `Check<T>` (see its doc comment below) — it has no check id to attribute to, so it uses plain `Issue::new` and `source_checks` stays empty. When two issues of the same kind are merged (see "Dedup interaction" below), `source_checks` is unioned without duplicates.
+`source_checks` (private field, read via `source_checks()`) records which check id(s) (the wasm `available_checks()` id, e.g. `"min_loop_length"`) produced or contributed to this issue. Every toggleable `Check<T>` implementation should construct its issues via `new_from_check`/`with_data_from_check`, passing its own check id. The one exception is `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` outside any `Check<T>` (see its doc comment below) — it has no check id to attribute to, so it uses plain `Issue::new` and `source_checks` stays empty. When two issues of the same kind are merged (see "Dedup interaction" below), `source_checks` is unioned without duplicates via `push_source` — the field is private specifically so nothing outside `merge_issue` can append to it or construct an `Issue` with an already-multi-source list before merge has legitimately produced one (a raw, pre-merge issue is expected to carry exactly one source check; `single_source_check()` is the type-level enforcement of that for rule-routing).
 
 ### IssueData
 
@@ -75,6 +83,7 @@ pub enum IssueData {
     InvalidLoops {                // produced by any check flagging cycles invalid, see below
         all: Vec<Vec<EdgeId>>,
         invalid: Vec<usize>,
+        invalid_sources: HashMap<Vec<EdgeId>, Vec<&'static str>>,
     },
 }
 ```
@@ -85,10 +94,11 @@ pub enum IssueData {
 - **Lifecycle**: `IssueData` is valid only for the Check → Strategy pair within a single QC pass. It is never carried across pipeline iterations and must not be retained by a strategy after `apply` returns — the maze may have mutated since.
 - **Kind↔data invariant** (documentation-only, not runtime-checked — consistent with other contracts in this module): each `IssueKind` is expected to use a specific, fixed set of `IssueData` variants. It is the responsibility of the `Check`/`RepairStrategy` author to keep kind and data variant in sync.
 - **`TestPayload`**: a temporary, infra-only variant not tied to any real `IssueKind`, used to exercise `Clone`/equality on a non-trivial owned payload. Marked `// TODO` in code for removal once a first real variant lands.
-- **`InvalidLoops { all, invalid }`**: produced by any check that flags simple cycles invalid for a check-specific reason (paired with `INVALID_LOOP`) — currently `MinLoopLengthCheck` (cycles shorter than a configured threshold) and `MaxLoopLengthCheck` (cycles longer than a configured threshold), **mandatory** for this kind, see `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` in `repair.md`. `all` holds **every** simple cycle found in the maze, valid and invalid alike, each as the **set** of base-`Graph` edges forming it — element order carries no meaning beyond membership, only used as a convenient container, and `EdgeId` values never repeat within one cycle. `invalid` is the subset of indices into `all` that the producing check(s) flagged — the cycles a repair strategy must actually break. An empty `invalid` is valid and means no cycle was flagged (`all` may still be non-empty in that case). Future checks may flag cycles invalid for reasons other than length and reuse this same variant, rather than introducing a new one per reason — see the `IssueKind` hard rule above.
+- **`InvalidLoops { all, invalid, invalid_sources }`**: produced by any check that flags simple cycles invalid for a check-specific reason (paired with `INVALID_LOOP`) — currently `MinLoopLengthCheck` (cycles shorter than a configured threshold) and `MaxLoopLengthCheck` (cycles longer than a configured threshold), **mandatory** for this kind, see `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` in `repair.md`. `all` holds **every** simple cycle found in the maze, valid and invalid alike, each as the **set** of base-`Graph` edges forming it — element order carries no meaning beyond membership, only used as a convenient container, and `EdgeId` values never repeat within one cycle. `invalid` is the subset of indices into `all` that the producing check(s) flagged — the cycles a repair strategy must actually break. An empty `invalid` is valid and means no cycle was flagged (`all` may still be non-empty in that case). Future checks may flag cycles invalid for reasons other than length and reuse this same variant, rather than introducing a new one per reason — see the `IssueKind` hard rule above.
+- **`invalid_sources`**: per-cycle check attribution, keyed by `canonical_cycle_key` (the cycle's edge set, sorted) rather than by index into `all` — indices get remapped on every merge (see `merge_invalid_loops` in `repair.md`'s "Pipeline" section), but a cycle's canonical key is stable across merges, so this map never needs remapping. Maps a cycle to the check id(s) that flagged it invalid. A cycle absent from this map was flagged by no check directly tracked — shouldn't happen for entries in `invalid`, but the map is not required to cover every index; absence means "no recorded source," not an error.
 - Keeping the valid cycles in `all` (not just the invalid ones) lets a strategy avoid cutting an edge that is also part of a cycle the maze is meant to keep — see `InvalidLoopScoredStrategy` in `repair.md`.
 - **Not exposed over WASM**: the WASM layer only serializes `IssueKind` (via `as_str()`/`Display`), never the `Issue` struct or its `data`. No serde derive is needed unless that changes.
-- **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `source_checks` (on `Issue`, see above) is unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
+- **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` (on `Issue`, see above) is unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 
 ### Check trait
 
@@ -219,12 +229,28 @@ enum ParamKindDto {
 ```rust
 pub struct GenerateConfig {
     pub checks: Vec<String>,                                  // check IDs to run
+    pub check_rules: Vec<QcRuleConfig>,                        // rule configs — see below
     pub check_params: HashMap<String, HashMap<String, String>>, // check_id → param_id → value
     // ...
 }
 ```
 
 The runner matches checks by string ID (`match id.as_str()`), not by `IssueKind`. Unknown check IDs return an error. Unknown param keys are silently ignored; missing params fall back to the check's default constant.
+
+### QcRuleConfig
+
+```rust
+#[derive(Deserialize)]
+pub struct QcRuleConfig {
+    pub id: String,                       // opaque rule id, assigned by the web client
+    pub checks: Vec<String>,              // check ids, must share one IssueKind
+    pub strategy: Option<StrategyConfig>, // None = "no_fix"
+}
+```
+
+One user-defined QC rule: a non-empty set of active checks producing the same `IssueKind`, sharing one repair strategy (or none — `strategy: None`, the rule's issues still merge for attribution but no `RepairStrategy` is dispatched). See `repair.md`'s "QcRule and rule-based RepairEngine" section for how this is validated and turned into core's `QcRule`/`RepairRuleConfig`.
+
+`GenerateConfig::default()` ships one default rule: `{ id: "default_missing_endpoints", checks: ["missing_endpoints"], strategy: Some(farthest_endpoints) }`. `unreachable_finish` has no default rule.
 
 ### Available checks
 

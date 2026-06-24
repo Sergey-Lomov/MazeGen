@@ -65,34 +65,88 @@ pub trait RepairStrategy<F: Field> {
 - **Idempotency**: if the relevant meta field is already set, return `Fixed` immediately without modifying state or consuming `rng`. This ensures safe re-invocation.
 - May read `issue.data` (see `quality_control.md`) — findings the matching `Check` already computed during detection. Whether `data` is optional (cheap to recompute, so `None` falls back gracefully) or effectively required (the data *is* the expensive result, with no other channel to get it) is a **per-`IssueKind` decision**, documented by each strategy for its own kind — there is no blanket rule across all strategies.
 
-### RepairEngine
+### QcRule and rule-based RepairEngine
+
+A **rule** is the unit `RepairEngine` actually dispatches on — not `IssueKind` directly. A rule is a non-empty set of checks producing one `IssueKind`, with at most one strategy. This lets two checks producing the same `IssueKind` (e.g. `min_loop_length` and `max_loop_length`, both `INVALID_LOOP`) be split into independent rules with different strategies, instead of being forced to share the single strategy a kind-keyed engine would allow.
 
 ```rust
-pub struct RepairEngine<F: Field> {
-    strategies: HashMap<IssueKind, Box<dyn RepairStrategy<F>>>,
-    param_overrides: HashMap<IssueKind, HashMap<String, String>>,
-}
+/// Newtype over a check id (`available_checks()`'s `CheckDescriptor.id`, e.g. `"min_loop_length"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CheckId(pub &'static str);
 
-impl<F: Field> RepairEngine<F> {
-    pub fn new(
-        strategies: HashMap<IssueKind, Box<dyn RepairStrategy<F>>>,
-        param_overrides: HashMap<IssueKind, HashMap<String, String>>,
-    ) -> Self;
-    pub fn run(
-        &self,
-        issues: &[Issue],
-        maze: &mut Maze<F>,
-        rng: &mut impl RngCore,
-        preset_state: &PresetState,
-    ) -> Vec<(IssueKind, RepairResult)>;
+/// A user-defined QC rule. Caller-supplied configuration (built by the wasm layer from
+/// `GenerateConfig.check_rules`, see `quality_control.md`'s `QcRuleConfig`), not generated or
+/// interpreted by core. `id` is opaque — core never inspects its content, only uses it as a
+/// lookup/dedup key for one `build_maze` call; it is not required to be stable or unique across
+/// different `build_maze` calls.
+pub struct QcRule {
+    pub id: String,
+    pub kind: IssueKind,
+    pub checks: Vec<CheckId>,
 }
 ```
 
-- `param_overrides` is keyed by `IssueKind` (same key space as `strategies`).
-- For each issue: looks up strategy by `issue.kind`, calls `build_params(strategy.params(), overrides)`, then calls `apply`.
-- If no strategy found: issue is skipped (not included in results). The pipeline detects this via the progress fingerprint guard.
-- Returns results only for issues that had a matching strategy, in the same order as the input slice.
-- One `IssueKind` maps to exactly one strategy. Multiple checks may produce the same `IssueKind` in one QC pass; the pipeline merges them into a single `Issue` per kind before calling `RepairEngine::run` (see "Pipeline" below) — the engine itself still only ever sees at most one issue per kind, the merge happens upstream of it.
+`kind` is a **caller-supplied, caller-trusted invariant**: core never reads it for routing or validation logic (only `id`/`checks` are used by `check_id_to_rule`/`run`/`strategy_rule_ids`), and core does not verify that every check in `checks` actually produces `kind`. That check happens entirely on the caller side, before a `QcRule` is ever constructed — `maze-wasm/src/runner.rs::build_qc_and_repair` resolves each check id's kind and rejects a config where they disagree (`"checks in rule {id} produce different issue kinds"`) before building the `QcRule`. `kind` exists on the struct for callers that need to read it back (e.g. `maze-wasm` re-derives it when building `RepairRuleConfig`, and it round-trips into web-side `StrategySlotVM.kind` for UI display) — core just carries it through unread.
+
+```rust
+/// One rule's strategy assignment — RepairEngine's caller-supplied configuration unit.
+pub struct RepairRuleConfig<F: Field> {
+    pub rule: QcRule,
+    pub strategy: Box<dyn RepairStrategy<F>>,
+    pub param_overrides: HashMap<String, String>,
+}
+
+/// Result of running one rule's strategy. Named struct, not a tuple, so `rule_id` (an internal
+/// wiring detail repair/pipeline use for failed-tracking) isn't mistaken for a meaningful part
+/// of the domain result.
+pub struct RepairOutcome {
+    pub rule_id: String,
+    pub result: RepairResult,
+}
+
+pub struct RepairEngine<F: Field> {
+    /// Rules with a registered strategy — these are actually dispatched by `run`.
+    rules: Vec<RepairRuleConfig<F>>,
+    /// All rules, including ones with no strategy ("no_fix") — kept so `check_id_to_rule` can
+    /// route every check id, not just the repaired ones. A rule without a strategy still needs
+    /// correct merge/attribution upstream in `build_maze`.
+    all_rules: Vec<QcRule>,
+}
+
+impl<F: Field> RepairEngine<F> {
+    /// `rules` — strategy assignments (only for rules with a strategy). `all_rules` — full rule
+    /// list, including rules with no strategy. Every rule in `rules` must also appear in
+    /// `all_rules` (by `id`); callers (`maze-wasm/src/runner.rs::build_qc_and_repair`) are
+    /// responsible for this invariant.
+    pub fn new(rules: Vec<RepairRuleConfig<F>>, all_rules: Vec<QcRule>) -> Self;
+
+    /// All check ids across every rule (strategy or not), mapped to their rule id. Used by
+    /// `build_maze` to route raw issues to their rule before merging.
+    pub fn check_id_to_rule(&self) -> HashMap<CheckId, String>;
+
+    /// Rule ids with a registered strategy, as a lookup set — precomputed once per call rather
+    /// than scanned per lookup, since `build_maze` calls this once per repair-loop iteration and
+    /// tests it against every active rule that iteration. Rules without a strategy still merge
+    /// issues for attribution but must not enter fingerprint tracking or repair dispatch.
+    pub fn strategy_rule_ids(&self) -> HashSet<&str>;
+
+    /// `issues` are `(rule_id, Issue)` pairs — the rule-aware merge result built by `build_maze`
+    /// (see "Pipeline" below). For each pair: looks up the rule's strategy, calls
+    /// `build_params(strategy.params(), param_overrides)`, then calls `apply`.
+    pub fn run(
+        &self,
+        issues: &[(String, Issue)],
+        maze: &mut Maze<F>,
+        rng: &mut impl RngCore,
+        preset_state: &PresetState,
+    ) -> Vec<RepairOutcome>;
+}
+```
+
+- `param_overrides` is per-rule (carried on `RepairRuleConfig`), not a separate map keyed by kind.
+- If a `rule_id` in `issues` has no entry in `rules` (no strategy registered): skipped, not included in the result. The pipeline detects unresolved rules via the progress fingerprint guard, same mechanism as before, just keyed by rule id instead of kind.
+- Returns one `RepairOutcome` per issue that had a matching rule+strategy.
+- Multiple checks may produce the same `IssueKind`; which ones share a rule (and therefore a strategy) is caller-configured, not engine-decided. The pipeline merges issues sharing a *rule* (not a kind) into one `Issue` before calling `RepairEngine::run` — see "Pipeline" below.
 
 ## Built-in Strategies
 
@@ -205,17 +259,21 @@ Logic:
 
 1. Construct `Maze` via `Maze::new(field, graph)` — sets `MazeMeta::empty()` and `MazeAnalysis::default()`.
 2. Create `rng = SmallRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations for cross-iteration determinism.
-3. Track `failed: HashSet<IssueKind>` — issues whose strategy returned `Failed`.
-4. Track `previous_fingerprint: Option<Vec<IssueKind>>` for progress detection.
-5. Loop up to `MAX_REPAIR_ITERATIONS`:
+3. Build `check_id_to_rule: HashMap<CheckId, String>` once via `repair_engine.check_id_to_rule()` — maps every check id across every configured rule (strategy or not) to its rule id.
+4. Track `failed: HashSet<String>` — rule ids whose strategy returned `Failed`.
+5. Track `previous_fingerprint: Option<Vec<String>>` (sorted rule ids) for progress detection.
+6. Loop up to `MAX_REPAIR_ITERATIONS`:
    - Run QC.
-   - **Merge, not drop, issues sharing a kind** — multiple checks may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). Group issues into a `HashMap<IssueKind, Issue>`: the first issue of a kind seeds the map entry, any further issue of the same kind is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions `source_checks` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces (see `IssueKind`/`Issue.source_checks` below for what "produced by which check" now means). Then filter out `failed` kinds. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
+   - **Merge, not drop, issues sharing a rule** — multiple checks in the same rule may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). For each raw issue, route by `issue.single_source_check()` — `Some(check_id)` only when the issue carries exactly one source check, looked up via `check_id_to_rule`; `None` (zero sources, e.g. `CYCLE_ANALYSIS_OVERFLOWED`, or — should never happen for a raw pre-merge issue, guarded by `debug_assert!` — two or more) routes to no rule and the issue is dropped from this iteration's merge map. This is a deliberate fail-safe: a malformed 2+-source raw issue is routed as "no rule" rather than silently picked by an arbitrary single source id, which is what indexing `source_checks()` directly would do in a release build with `debug_assert!` compiled out. An issue with no matching rule isn't lost from the maze's perspective — the final `qc_engine.run` after the loop recomputes fresh and will surface it again if still present. Group routed issues by rule id into a `HashMap<String, Issue>`: the first issue for a rule seeds the entry, any further issue for the same rule is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions sources via `Issue::push_source` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice; `invalid_sources` (per-cycle check attribution) is unioned by canonical key alongside it. The remap step uses `.get()` on the old→new index map, not direct indexing — an out-of-range `invalid` index from a malformed future `Check` is dropped (debug-asserted, not panicked) rather than crashing the pipeline. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces. Then filter out `failed` rule ids. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
+   - **Rules with no registered strategy still merge their issues** (for attribution) but are filtered out before the fingerprint/dispatch step via `repair_engine.strategy_rule_ids()` (a precomputed `HashSet`, not a per-lookup scan) — same final effect as a kind without a strategy being skipped in the old design, just keyed by rule now.
    - If no active issues: break (all resolved).
-   - Compute fingerprint: sorted list of active `IssueKind` values. **Known limitation**: the fingerprint only tracks which kinds are active, not their content — two consecutive iterations producing the same kind with genuinely different `data` look identical to this check and can trigger a false "no progress" break. Pre-existing limitation, not introduced by the merge change; tracked at https://github.com/Sergey-Lomov/MazeGen/issues/27.
+   - Compute fingerprint: sorted list of active rule ids. **Known limitation**: the fingerprint only tracks which rules are active, not their content — two consecutive iterations producing the same rule with genuinely different `data` look identical to this check and can trigger a false "no progress" break. Pre-existing limitation (previously tracked per-kind, now per-rule), not introduced by the rules redesign; tracked at https://github.com/Sergey-Lomov/MazeGen/issues/27.
    - If fingerprint equals previous: break (no progress possible).
-   - Run repair on active issues, passing through `preset_state`.
-   - Add `Failed` results to `failed` set.
-6. Final QC: return `(maze, remaining_issues)`.
+   - Run repair on active `(rule_id, Issue)` pairs, passing through `preset_state`.
+   - Add `Failed` outcomes' `rule_id` to `failed` set.
+7. Final QC: return `(maze, remaining_issues)`.
+
+Two rules producing the same `IssueKind` are fully independent through this loop — each gets its own entry in `check_id_to_rule`, its own slot in the merge map, its own fingerprint entry, and its own `failed` tracking. A failure or no-progress break on one rule does not affect the other's repair dispatch.
 
 **Note:** `generate_maze` must be called **before** `build_maze`. `build_maze` only handles metadata, not graph structure.
 

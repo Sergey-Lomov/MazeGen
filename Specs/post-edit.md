@@ -83,7 +83,7 @@ Async, versioned via `_postEditRequestId`:
 2. Snapshots `postEditDraftEdges` and `postEditDraftMeta` at call time.
 3. Reads `effectiveStart`/`effectiveFinish` from snapshot (falls back to `state.start/finish` when null).
 4. Serializes non-wall edges to `PostEditEdgeWasmDto[]`. `basic` → `"basic"` (bidirectional in WASM). `one_way_forward`/`one_way_backward` → `"one_way"` (WASM adds only one directed edge `from→to`).
-5. Calls WASM `compute_analytics`.
+5. Calls WASM `compute_analytics` — QC-only (runs `checks`, no repair). Always sends an empty `check_rules`: rules exist to dispatch repair strategies, and `compute_analytics` discards the `RepairEngine` it builds internally, so a rule referencing a check the caller disabled would only ever produce a spurious "inactive check" validation error for no benefit.
 6. If `_postEditRequestId` changed (stale) — discards result.
 7. Writes to `postEditAnalytics`, `postEditEdges` (confirmed snapshot), `postEditMeta` (confirmed snapshot). Auto-resets `showRouteOverlay` to `false` when `route_info == null`.
 

@@ -18,24 +18,30 @@ export interface CheckVM {
 }
 
 export interface StrategySlotVM {
-  /** Issue kind this slot's strategy handles — the join key with `availableStrategies[].handles`
-   * and with `selectedStrategies`/`disabledStrategies` in the store. */
+  /** Opaque rule id — join key with the store's `rules` (and what `setStrategy`/
+   * `clearStrategy`/`toggleStrategyDisabled`/`addCheck`'s optional ruleId are keyed by). Not
+   * derived from `checks` — a rule keeps its identity as its check composition changes. */
+  ruleId: string;
+  /** User-facing rule name, shown as the card header (e.g. "Rule 1"). */
+  name: string;
+  /** Issue kind this rule's strategy handles — resolved from any member check's issue_kinds[0]
+   * (all checks in a rule are validated to share one kind). */
   kind: string;
   label: string;
   strategy: StrategyVM | null;
   disabled: boolean;
-  /** Active checks that produce this kind — N checks can share one kind, so a slot is one
-   * per kind (not one per check) and lists every contributing check. Every check today
-   * produces exactly one kind, so this is usually a single-element list, but built from
-   * a dedup-by-kind pass over all active checks' issue_kinds rather than assumed 1:1. */
+  /** Whole-rule toggle — when true, this rule's checks are excluded from generation entirely
+   * (not just unfixed). Distinct from `disabled`. */
+  ruleDisabled: boolean;
+  /** Active checks that make up this rule. */
   producedBy: CheckVM[];
 }
 
 export interface QualityViewModel {
   /** Only selected (active) checks */
   checks: CheckVM[];
-  /** One per distinct issue kind produced by active checks — not one per check, since
-   * multiple checks can share a kind (see StrategySlotVM.producedBy). */
+  /** One per rule in the store — not deduplicated by kind, since rules are how the user
+   * splits/merges checks sharing a kind into independent or shared strategy slots. */
   strategySlots: StrategySlotVM[];
 }
 
@@ -50,8 +56,7 @@ export function useQualityViewModel(): QualityViewModel {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
-  const selectedStrategies = useMazeStore((s) => s.selectedStrategies);
-  const disabledStrategies = useMazeStore((s) => s.disabledStrategies);
+  const rules = useMazeStore((s) => s.rules);
 
   return useMemo(() => {
     const activeDescriptors = selectedChecks
@@ -66,29 +71,23 @@ export function useQualityViewModel(): QualityViewModel {
     }));
 
     const checkById = new Map(checks.map((c) => [c.id, c]));
-    const kindToCheckIds = new Map<string, string[]>();
-    for (const desc of activeDescriptors) {
-      for (const kind of desc.issue_kinds) {
-        const ids = kindToCheckIds.get(kind) ?? [];
-        ids.push(desc.id);
-        kindToCheckIds.set(kind, ids);
-      }
-    }
 
-    const strategySlots: StrategySlotVM[] = Array.from(kindToCheckIds.entries()).map(([kind, checkIds]) => {
-      const strategyId = selectedStrategies[kind];
-      const s = strategyId ? availableStrategies.find((s) => s.id === strategyId) : undefined;
+    const strategySlots: StrategySlotVM[] = rules.map((r) => {
+      const s = r.strategyId ? availableStrategies.find((s) => s.id === r.strategyId) : undefined;
       return {
-        kind,
-        label: resolveIssueLabel(kind),
+        ruleId: r.id,
+        name: r.name,
+        kind: r.kind,
+        label: resolveIssueLabel(r.kind),
         strategy: s
           ? { id: s.id, label: resolveStrategyLabel(s.id), handles: s.handles, params: localizeParams(s.params) }
           : null,
-        disabled: Boolean(disabledStrategies[kind]),
-        producedBy: checkIds.map((id) => checkById.get(id)!).filter(Boolean),
+        disabled: r.disabled,
+        ruleDisabled: r.ruleDisabled,
+        producedBy: r.checks.map((id) => checkById.get(id)).filter((c): c is CheckVM => c !== undefined),
       };
     });
 
     return { checks, strategySlots };
-  }, [availableChecks, selectedChecks, availableStrategies, selectedStrategies, disabledStrategies]);
+  }, [availableChecks, selectedChecks, availableStrategies, rules]);
 }

@@ -48,8 +48,7 @@ export interface ProjectFile {
   };
   quality: {
     selectedChecks: string[];
-    selectedStrategies: Record<string, string>;
-    disabledStrategies: Record<string, boolean>;
+    rules: { id: string; name: string; kind: string; checks: string[]; strategyId: string | null; disabled: boolean; ruleDisabled: boolean }[];
     checkParams: Record<string, Record<string, string>>;
     strategyParams: Record<string, Record<string, string>>;
   };
@@ -69,4 +68,4 @@ export interface ProjectFile {
   ui: ProjectFileUi;
 }
 
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 1;

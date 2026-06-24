@@ -7,7 +7,7 @@ use maze_core::graph::EdgeKind;
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::quality_control::{Issue, MISSING_ENDPOINTS};
 use maze_core::repair::{
-    RepairEngine, RepairResult, RepairStrategy, StrategyParams,
+    QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairResult, RepairStrategy, StrategyParams,
     RandomEndpointsStrategy, FarthestEndpointsStrategy,
 };
 
@@ -217,17 +217,26 @@ fn farthest_endpoints_isolated_nav_node_returns_failed() {
 
 // --- RepairEngine routing ---
 
+fn rule(id: &str, kind: maze_core::quality_control::IssueKind, checks: &[&'static str]) -> QcRule {
+    QcRule { id: id.to_string(), kind, checks: checks.iter().map(|&c| CheckId(c)).collect() }
+}
+
 #[test]
-fn repair_engine_routes_by_kind() {
+fn repair_engine_routes_by_rule() {
     let (mut maze, _) = make_connected_maze(3);
     let mut rng = make_rng();
-    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
-    strategies.insert(MISSING_ENDPOINTS, Box::new(RandomEndpointsStrategy));
-    let engine = RepairEngine::new(strategies, HashMap::new());
-    let issues = vec![Issue::new(MISSING_ENDPOINTS)];
+    let engine: RepairEngine<SquareTessellation> = RepairEngine::new(
+        vec![RepairRuleConfig {
+            rule: rule("g1", MISSING_ENDPOINTS, &["missing_endpoints"]),
+            strategy: Box::new(RandomEndpointsStrategy),
+            param_overrides: HashMap::new(),
+        }],
+        vec![rule("g1", MISSING_ENDPOINTS, &["missing_endpoints"])],
+    );
+    let issues = vec![("g1".to_string(), Issue::new(MISSING_ENDPOINTS))];
     let results = engine.run(&issues, &mut maze, &mut rng, &PresetState::empty());
     assert_eq!(results.len(), 1);
-    assert!(matches!(results[0].1, RepairResult::Fixed { score: _ }));
+    assert!(matches!(results[0].result, RepairResult::Fixed { score: _ }));
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
 }
@@ -236,9 +245,45 @@ fn repair_engine_routes_by_kind() {
 fn repair_engine_no_strategy_leaves_unresolved() {
     let mut maze = make_maze(2, 1);
     let mut rng = make_rng();
-    let engine: RepairEngine<SquareTessellation> = RepairEngine::new(HashMap::new(), HashMap::new());
-    let issues = vec![Issue::new(MISSING_ENDPOINTS)];
+    let engine: RepairEngine<SquareTessellation> = RepairEngine::new(vec![], vec![]);
+    let issues = vec![("g1".to_string(), Issue::new(MISSING_ENDPOINTS))];
     let results = engine.run(&issues, &mut maze, &mut rng, &PresetState::empty());
     assert!(results.is_empty());
     assert!(maze.meta.start.is_none());
+}
+
+#[test]
+fn repair_engine_two_rules_same_kind_get_different_strategies() {
+    // Two rules producing the same IssueKind (MISSING_ENDPOINTS here, standing in for the
+    // real-world min/max loop length case) must dispatch to their own strategy independently.
+    let (mut maze_a, _) = make_connected_maze(3);
+    let (mut maze_b, _) = make_connected_maze(5);
+    let mut rng_a = make_rng();
+    let mut rng_b = make_rng();
+    let engine: RepairEngine<SquareTessellation> = RepairEngine::new(
+        vec![
+            RepairRuleConfig {
+                rule: rule("g_random", MISSING_ENDPOINTS, &["check_a"]),
+                strategy: Box::new(RandomEndpointsStrategy),
+                param_overrides: HashMap::new(),
+            },
+            RepairRuleConfig {
+                rule: rule("g_farthest", MISSING_ENDPOINTS, &["check_b"]),
+                strategy: Box::new(FarthestEndpointsStrategy),
+                param_overrides: HashMap::new(),
+            },
+        ],
+        vec![
+            rule("g_random", MISSING_ENDPOINTS, &["check_a"]),
+            rule("g_farthest", MISSING_ENDPOINTS, &["check_b"]),
+        ],
+    );
+    let issues_a = vec![("g_random".to_string(), Issue::new(MISSING_ENDPOINTS))];
+    let issues_b = vec![("g_farthest".to_string(), Issue::new(MISSING_ENDPOINTS))];
+    let results_a = engine.run(&issues_a, &mut maze_a, &mut rng_a, &PresetState::empty());
+    let results_b = engine.run(&issues_b, &mut maze_b, &mut rng_b, &PresetState::empty());
+    assert_eq!(results_a.len(), 1);
+    assert_eq!(results_b.len(), 1);
+    assert!(matches!(results_a[0].result, RepairResult::Fixed { score: _ }));
+    assert!(matches!(results_b[0].result, RepairResult::Fixed { score: _ }));
 }

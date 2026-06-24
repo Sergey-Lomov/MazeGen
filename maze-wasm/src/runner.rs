@@ -1,19 +1,53 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, IssueKind},
-    repair::{RepairEngine, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, INVALID_LOOP},
+    repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config};
 use crate::dto::{EdgeDto, GenerationStepDto};
 use crate::analytics::build_analytics_snapshot;
 
+/// Resolves a check type id (`available_checks()`'s `CheckDescriptor.id`) to the `IssueKind`
+/// it produces and its `&'static str` literal — used to validate `QcRuleConfig` (all
+/// checks in a rule must share one kind) and to build `CheckId` without needing a `Check<T>`
+/// instance. Returns the literal alongside the kind so callers never need a second lookup
+/// (see `intern_check_id` callers below) — check ids arrive as owned `String`s (deserialized
+/// from JS) but `CheckId` wraps `&'static str`, so resolving both at once avoids leaking
+/// owned strings into `CheckId`.
+///
+/// Panics on an unknown id — the only call site (`build_qc_and_repair_impl`) only ever passes
+/// ids already validated against `config.checks`, which is restricted to this same 5-id set
+/// (the `match` in this function's neighboring check-building loop). An `Option` return here
+/// would have a `None` arm no caller can actually reach; `unreachable!` documents that instead
+/// of silently swallowing a contract violation that should never happen.
+fn check_id_info(id: &str) -> (IssueKind, &'static str) {
+    match id {
+        "missing_endpoints" => (MISSING_ENDPOINTS, "missing_endpoints"),
+        "unreachable_finish" => (UNREACHABLE_FINISH, "unreachable_finish"),
+        "min_loops_count" => (MIN_LOOPS_COUNT, "min_loops_count"),
+        "min_loop_length" => (INVALID_LOOP, "min_loop_length"),
+        "max_loop_length" => (INVALID_LOOP, "max_loop_length"),
+        other => unreachable!("check_id_info called with id not in config.checks's validated set: {other}"),
+    }
+}
+
 pub fn build_qc_and_repair<T: Tessellation>(
     config: &GenerateConfig,
 ) -> Result<(QualityControlEngine<T>, RepairEngine<T>), JsValue> {
+    build_qc_and_repair_impl(config).map_err(|e| JsValue::from_str(&e))
+}
+
+/// Pure-`String`-error core of `build_qc_and_repair` — split out so the rule/strategy
+/// validation logic can be unit-tested without going through `JsValue`, which calls into real
+/// JS bindgen externs and aborts when run outside an actual wasm/JS host (e.g. plain
+/// `cargo test` on a native target).
+fn build_qc_and_repair_impl<T: Tessellation>(
+    config: &GenerateConfig,
+) -> Result<(QualityControlEngine<T>, RepairEngine<T>), String> {
     let mut checks: Vec<Box<dyn maze_core::quality_control::Check<T>>> = Vec::new();
     for id in &config.checks {
         match id.as_str() {
@@ -46,31 +80,59 @@ pub fn build_qc_and_repair<T: Tessellation>(
                     .unwrap_or(MAX_LOOP_LENGTH_DEFAULT);
                 checks.push(Box::new(MaxLoopLengthCheck { max_loop_length }));
             }
-            other => return Err(JsValue::from_str(&format!("unknown check: {other}"))),
+            other => return Err(format!("unknown check: {other}")),
         }
     }
     let qc_engine = QualityControlEngine::new(checks);
 
-    let mut strategies: HashMap<_, Box<dyn RepairStrategy<T>>> = HashMap::new();
-    let mut param_overrides: HashMap<IssueKind, HashMap<String, String>> = HashMap::new();
+    // Validate: every check id in a rule is a known active check, every rule is non-empty
+    // and single-kind, and a check id belongs to at most one rule.
+    let mut seen_check_ids: HashSet<&str> = HashSet::new();
+    let mut all_rules: Vec<QcRule> = Vec::new();
+    let mut repair_rules: Vec<RepairRuleConfig<T>> = Vec::new();
 
-    for (issue_kind_str, strategy_cfg) in &config.strategies {
-        let kind = IssueKind::from_str(issue_kind_str.as_str())
-            .ok_or_else(|| JsValue::from_str(&format!("unknown issue kind: {issue_kind_str}")))?;
-        let strategy: Box<dyn RepairStrategy<T>> = match strategy_cfg.id.as_str() {
-            "random_endpoints"   => Box::new(RandomEndpointsStrategy),
-            "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
-            "scored_endpoints"   => Box::new(ScoredEndpointsStrategy),
-            "invalid_loop_random" => Box::new(InvalidLoopRandomStrategy),
-            "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
-            other => return Err(JsValue::from_str(&format!("unknown strategy: {other}"))),
-        };
-        strategies.insert(kind, strategy);
-        if !strategy_cfg.params.is_empty() {
-            param_overrides.insert(kind, strategy_cfg.params.clone());
+    for rule_cfg in &config.check_rules {
+        if rule_cfg.checks.is_empty() {
+            return Err(format!("rule {} has no checks", rule_cfg.id));
         }
+        let mut kind: Option<IssueKind> = None;
+        let mut checks: Vec<CheckId> = Vec::with_capacity(rule_cfg.checks.len());
+        for check_id in &rule_cfg.checks {
+            if !config.checks.contains(check_id) {
+                return Err(format!("rule {} references inactive check: {check_id}", rule_cfg.id));
+            }
+            if !seen_check_ids.insert(check_id.as_str()) {
+                return Err(format!("check {check_id} belongs to more than one rule"));
+            }
+            let (this_kind, literal) = check_id_info(check_id);
+            match kind {
+                None => kind = Some(this_kind),
+                Some(k) if k == this_kind => {}
+                Some(_) => return Err(format!("checks in rule {} produce different issue kinds", rule_cfg.id)),
+            }
+            checks.push(CheckId(literal));
+        }
+        let kind = kind.expect("non-empty rule always resolves a kind");
+        let rule = QcRule { id: rule_cfg.id.clone(), kind, checks: checks.clone() };
+
+        if let Some(strategy_cfg) = &rule_cfg.strategy {
+            let strategy: Box<dyn RepairStrategy<T>> = match strategy_cfg.id.as_str() {
+                "random_endpoints"   => Box::new(RandomEndpointsStrategy),
+                "farthest_endpoints" => Box::new(FarthestEndpointsStrategy),
+                "scored_endpoints"   => Box::new(ScoredEndpointsStrategy),
+                "invalid_loop_random" => Box::new(InvalidLoopRandomStrategy),
+                "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
+                other => return Err(format!("unknown strategy: {other}")),
+            };
+            repair_rules.push(RepairRuleConfig {
+                rule: QcRule { id: rule_cfg.id.clone(), kind, checks },
+                strategy,
+                param_overrides: strategy_cfg.params.clone(),
+            });
+        }
+        all_rules.push(rule);
     }
-    let repair_engine = RepairEngine::new(strategies, param_overrides);
+    let repair_engine = RepairEngine::new(repair_rules, all_rules);
 
     Ok((qc_engine, repair_engine))
 }
@@ -149,4 +211,132 @@ fn steps_to_dto(raw: Vec<GenerationStep>) -> Vec<GenerationStepDto> {
         let current_src = u32::try_from(s.current_src).unwrap_or(0);
         GenerationStepDto { edges, active_nodes, current_src }
     }).collect()
+}
+
+#[cfg(test)]
+mod build_qc_and_repair_tests {
+    use super::*;
+    use crate::generation_config::QcRuleConfig;
+    use maze_core::space::SquareTessellation;
+
+    fn err_msg(config: &GenerateConfig) -> String {
+        build_qc_and_repair_impl::<SquareTessellation>(config)
+            .err()
+            .expect("expected an error")
+    }
+
+    #[test]
+    fn empty_rule_is_rejected() {
+        let config = GenerateConfig {
+            checks: vec!["missing_endpoints".to_string()],
+            check_rules: vec![QcRuleConfig {
+                id: "r1".to_string(),
+                checks: vec![],
+                strategy: None,
+            }],
+            ..GenerateConfig::default()
+        };
+        let msg = err_msg(&config);
+        assert!(msg.contains("no checks"), "unexpected message: {msg}");
+    }
+
+    #[test]
+    fn rule_referencing_inactive_check_is_rejected() {
+        let config = GenerateConfig {
+            checks: vec!["missing_endpoints".to_string()],
+            check_rules: vec![QcRuleConfig {
+                id: "r1".to_string(),
+                checks: vec!["unreachable_finish".to_string()],
+                strategy: None,
+            }],
+            ..GenerateConfig::default()
+        };
+        let msg = err_msg(&config);
+        assert!(msg.contains("inactive check"), "unexpected message: {msg}");
+    }
+
+    #[test]
+    fn check_in_two_rules_is_rejected() {
+        let config = GenerateConfig {
+            checks: vec!["missing_endpoints".to_string()],
+            check_rules: vec![
+                QcRuleConfig { id: "r1".to_string(), checks: vec!["missing_endpoints".to_string()], strategy: None },
+                QcRuleConfig { id: "r2".to_string(), checks: vec!["missing_endpoints".to_string()], strategy: None },
+            ],
+            ..GenerateConfig::default()
+        };
+        let msg = err_msg(&config);
+        assert!(msg.contains("more than one rule"), "unexpected message: {msg}");
+    }
+
+    #[test]
+    fn mixed_kind_rule_is_rejected() {
+        let config = GenerateConfig {
+            checks: vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()],
+            check_rules: vec![QcRuleConfig {
+                id: "r1".to_string(),
+                checks: vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()],
+                strategy: None,
+            }],
+            ..GenerateConfig::default()
+        };
+        let msg = err_msg(&config);
+        assert!(msg.contains("different issue kinds"), "unexpected message: {msg}");
+    }
+
+    #[test]
+    fn unknown_strategy_id_is_rejected() {
+        use crate::generation_config::StrategyConfig;
+        use std::collections::HashMap;
+
+        let config = GenerateConfig {
+            checks: vec!["missing_endpoints".to_string()],
+            check_rules: vec![QcRuleConfig {
+                id: "r1".to_string(),
+                checks: vec!["missing_endpoints".to_string()],
+                strategy: Some(StrategyConfig { id: "not_a_real_strategy".to_string(), params: HashMap::new() }),
+            }],
+            ..GenerateConfig::default()
+        };
+        let msg = err_msg(&config);
+        assert!(msg.contains("unknown strategy"), "unexpected message: {msg}");
+    }
+
+    #[test]
+    fn single_rule_with_no_strategy_succeeds() {
+        let config = GenerateConfig {
+            checks: vec!["missing_endpoints".to_string()],
+            check_rules: vec![QcRuleConfig {
+                id: "r1".to_string(),
+                checks: vec!["missing_endpoints".to_string()],
+                strategy: None,
+            }],
+            ..GenerateConfig::default()
+        };
+        assert!(build_qc_and_repair_impl::<SquareTessellation>(&config).is_ok());
+    }
+
+    #[test]
+    fn two_independent_rules_with_distinct_strategies_succeed() {
+        use crate::generation_config::StrategyConfig;
+        use std::collections::HashMap;
+
+        let config = GenerateConfig {
+            checks: vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()],
+            check_rules: vec![
+                QcRuleConfig {
+                    id: "r1".to_string(),
+                    checks: vec!["missing_endpoints".to_string()],
+                    strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new() }),
+                },
+                QcRuleConfig {
+                    id: "r2".to_string(),
+                    checks: vec!["unreachable_finish".to_string()],
+                    strategy: None,
+                },
+            ],
+            ..GenerateConfig::default()
+        };
+        assert!(build_qc_and_repair_impl::<SquareTessellation>(&config).is_ok());
+    }
 }

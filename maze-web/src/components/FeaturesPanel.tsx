@@ -112,9 +112,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleSave() {
-    const state = useMazeStore.getState();
-    if (!state.tessellationConfirmed) return;
-    downloadProjectFile(state);
+    downloadProjectFile(useMazeStore.getState());
   }
 
   function handleLoadClick() {

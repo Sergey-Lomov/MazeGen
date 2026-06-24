@@ -17,7 +17,7 @@ const check: CheckVM = {
 function makeVm(overrides: Partial<QualityViewModel> = {}): QualityViewModel {
   return {
     checks: [check],
-    strategySlots: [{ kind: "i1", label: "Issue One", strategy: null, disabled: false, producedBy: [check] }],
+    strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [check] }],
     ...overrides,
   };
 }
@@ -48,10 +48,10 @@ describe("QualityDetailPanel", () => {
 
   it("renders strategy detail when a strategy is selected", () => {
     const vm = makeVm({
-      strategySlots: [{ kind: "i1", label: "Issue One", strategy, disabled: false, producedBy: [check] }],
+      strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy, disabled: false, ruleDisabled: false, producedBy: [check] }],
     });
     render(
-      <Harness selection={{ type: "strategy", issueId: "i1", strategyId: "s1" }} vm={vm} />
+      <Harness selection={{ type: "strategy", ruleId: "g1", strategyId: "s1" }} vm={vm} />
     );
     expect(screen.getByText("Strategy One")).toBeInTheDocument();
   });

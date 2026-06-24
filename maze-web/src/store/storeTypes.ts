@@ -36,6 +36,29 @@ export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
 export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics";
 
+/** A user-defined rule: a group of active checks producing the same issue kind, sharing one
+ * strategy. `id` is opaque (client-generated), not derived from `checks` — rule identity
+ * survives adding/removing member checks. `checks` can become empty (e.g. after removing its
+ * last member via the card's own X) without the rule being dropped, so the user can repopulate it. */
+export interface QcRuleState {
+  id: string;
+  /** User-facing name, shown as the card header. Defaults to "Rule N" at creation time (see
+   * `newRule` in generationSlice.ts). Editable via the card header's edit button. */
+  name: string;
+  /** Issue kind shared by all member checks, captured at rule-creation time. Kept on the rule
+   * itself (not derived from `checks[0]`) so it survives `checks` becoming empty. */
+  kind: string;
+  checks: string[];
+  strategyId: string | null;
+  /** Strategy-only toggle — fix is skipped, but the rule's checks still run (QC still reports
+   * the issue, just unfixed). Independent from `ruleDisabled` below. */
+  disabled: boolean;
+  /** Whole-rule toggle — when true, the rule's checks are excluded entirely from the next
+   * generate() call (not sent to core at all), as if they were never selected. Distinct from
+   * `disabled` (which only skips the fix, checks still run). */
+  ruleDisabled: boolean;
+}
+
 export const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
 export const DEFAULT_TRI_ORI: TriOrientation = "r0";
 
@@ -166,9 +189,10 @@ export interface GenerationState {
   availableChecks: CheckDescriptor[];
   availableStrategies: StrategyDescriptor[];
   selectedChecks: string[];
-  selectedStrategies: Record<string, string>;
-  /** issueKind → true if its selected strategy is temporarily disabled (skipped by RepairEngine, selection/params kept) */
-  disabledStrategies: Record<string, boolean>;
+  /** One entry per rule (a group of active checks). Replaces the old per-kind
+   * `selectedStrategies`/`disabledStrategies` — a kind can now have several independent rules
+   * (e.g. min/max loop length each with their own strategy) instead of being forced to share one. */
+  rules: QcRuleState[];
   /** strategyParams[strategyId][paramId] = raw string value */
   strategyParams: Record<string, Record<string, string>>;
   /** checkParams[checkId][paramId] = raw string value */
@@ -201,12 +225,23 @@ export interface GenerationActions {
   setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze", value: boolean) => void;
   selectNode: (id: number | null) => void;
   loadRegistry: () => Promise<void>;
-  addCheck: (id: string) => void;
+  /** Activates `id`. If `ruleId` is omitted, creates a fresh singleton rule for it (the
+   * top-level "+ Add check" path). If given, activates the check directly into that existing
+   * rule instead of creating a new one (the per-rule "+ Add check to rule" path). */
+  addCheck: (id: string, ruleId?: string) => void;
   removeCheck: (id: string) => void;
   setCheckParam: (checkId: string, paramId: string, value: string) => void;
-  setStrategy: (issueKind: string, strategyId: string) => void;
-  clearStrategy: (issueKind: string) => void;
-  toggleStrategyDisabled: (issueKind: string) => void;
+  /** Moves `checkId` out of whatever rule it's in, into a fresh singleton rule of its own. */
+  removeCheckFromRule: (checkId: string) => void;
+  setStrategy: (ruleId: string, strategyId: string) => void;
+  clearStrategy: (ruleId: string) => void;
+  toggleStrategyDisabled: (ruleId: string) => void;
+  toggleRuleDisabled: (ruleId: string) => void;
+  renameRule: (ruleId: string, name: string) => void;
+  /** Removes a rule entirely along with its member checks (out of `selectedChecks` too) —
+   * the inverse of a rule existing only ever meaning its checks are active (see `removeCheck`'s
+   * atomicity invariant). */
+  removeRule: (ruleId: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
   setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;

@@ -3,6 +3,7 @@ export const colors = {
   bgApp: "#111111",
   bgPanel: "#181818",
   bgPanelAlt: "#222",
+  bgHover: "#272727",
   bgInput: "#2a2a2a",
   bgBtnPrimary: "#3a6ea8",
   bgBtnPrimaryActive: "#2a5080",

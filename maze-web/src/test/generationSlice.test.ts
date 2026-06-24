@@ -41,13 +41,13 @@ describe("mazeStore.generate", () => {
       seed: 7,
       tessellationConfig: { type: "square", width: 3, height: 4 },
       selectedChecks: [],
-      selectedStrategies: {},
+      rules: [],
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
       tessellation: fieldConfigToWasm({ type: "square", width: 3, height: 4 }),
       checks: [],
-      strategies: {},
+      check_rules: [],
       check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
@@ -62,13 +62,13 @@ describe("mazeStore.generate", () => {
       seed: 7,
       tessellationConfig: { type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" },
       selectedChecks: [],
-      selectedStrategies: {},
+      rules: [],
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
       tessellation: fieldConfigToWasm({ type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" }),
       checks: [],
-      strategies: {},
+      check_rules: [],
       check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
@@ -83,13 +83,13 @@ describe("mazeStore.generate", () => {
       seed: 7,
       tessellationConfig: { type: "hex_hexagon", radius: 3, orientation: "pointy_top" },
       selectedChecks: [],
-      selectedStrategies: {},
+      rules: [],
     });
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
       tessellation: fieldConfigToWasm({ type: "hex_hexagon", radius: 3, orientation: "pointy_top" }),
       checks: [],
-      strategies: {},
+      check_rules: [],
       check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
@@ -113,7 +113,7 @@ describe("mazeStore.generate", () => {
       hexOrientation: "flat_top",
       triOrientation: "r0",
       selectedChecks: [],
-      selectedStrategies: {},
+      rules: [],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
@@ -175,7 +175,7 @@ describe("mazeStore.generate", () => {
     useMazeStore.setState({
       tessellationConfig: { type: "square", width: 10, height: 10 },
       selectedChecks: ["missing_endpoints"],
-      selectedStrategies: { missing_endpoints: "scored_endpoints" },
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["missing_endpoints"], strategyId: "scored_endpoints", disabled: false, ruleDisabled: false }],
       strategyParams: { scored_endpoints: { path_weight: "2", junction_weight: "6" } },
       availableStrategies: [{
         id: "scored_endpoints",
@@ -190,12 +190,11 @@ describe("mazeStore.generate", () => {
     expect(generateMaze).toHaveBeenCalledWith(42, {
       tessellation: fieldConfigToWasm({ type: "square", width: 10, height: 10 }),
       checks: ["missing_endpoints"],
-      strategies: {
-        missing_endpoints: {
-          id: "scored_endpoints",
-          params: { path_weight: "2", junction_weight: "6" },
-        },
-      },
+      check_rules: [{
+        id: "g1",
+        checks: ["missing_endpoints"],
+        strategy: { id: "scored_endpoints", params: { path_weight: "2", junction_weight: "6" } },
+      }],
       check_params: {},
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
       elements: { one_way_chance: 0.04 },
@@ -208,7 +207,7 @@ describe("mazeStore.generate", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
     useMazeStore.setState({
       selectedChecks: [],
-      selectedStrategies: { missing_endpoints: "scored_endpoints" },
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["missing_endpoints"], strategyId: "scored_endpoints", disabled: false, ruleDisabled: false }],
       strategyParams: { scored_endpoints: { unknown_param: "99" } },
       availableStrategies: [{
         id: "scored_endpoints",
@@ -220,9 +219,26 @@ describe("mazeStore.generate", () => {
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
-    const strategies = call[1].strategies;
-    expect(strategies["missing_endpoints"].params).not.toHaveProperty("unknown_param");
-    expect(strategies["missing_endpoints"].params).not.toHaveProperty("path_weight");
+    const rule = call[1].check_rules.find((g) => g.id === "g1")!;
+    expect(rule.strategy!.params).not.toHaveProperty("unknown_param");
+    expect(rule.strategy!.params).not.toHaveProperty("path_weight");
+  });
+
+  it("sends rules with no strategy or disabled as strategy: null, not omitted", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      selectedChecks: ["check_a", "check_b"],
+      rules: [
+        { id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: null, disabled: false, ruleDisabled: false },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: ["check_b"], strategyId: "some_strategy", disabled: true, ruleDisabled: false },
+      ],
+    });
+    useMazeStore.getState().generate();
+    const call = vi.mocked(generateMaze).mock.calls[0];
+    expect(call[1].check_rules).toEqual([
+      { id: "g1", checks: ["check_a"], strategy: null },
+      { id: "g2", checks: ["check_b"], strategy: null },
+    ]);
   });
 });
 
@@ -324,7 +340,7 @@ describe("mazeStore.loadRegistry", () => {
     expect(useMazeStore.getState().selectedChecks).toEqual(["check_b"]);
   });
 
-  it("auto-selects first matching strategy per issue kind", async () => {
+  it("auto-creates one singleton rule per default-selected check, with first matching strategy", async () => {
     const checks = [{ id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [] }];
     const strategies = [
       { id: "strategy_first", handles: "kind_a", params: [] },
@@ -333,17 +349,19 @@ describe("mazeStore.loadRegistry", () => {
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
     await useMazeStore.getState().loadRegistry();
-    expect(useMazeStore.getState().selectedStrategies["kind_a"]).toBe("strategy_first");
+    const rules = useMazeStore.getState().rules;
+    expect(rules).toHaveLength(1);
+    expect(rules[0].checks).toEqual(["check_a"]);
+    expect(rules[0].strategyId).toBe("strategy_first");
   });
 
-  it("leaves issue kind without strategy unselected", async () => {
-    const checks = [{ id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a", "kind_b"], params: [] }];
-    const strategies = [{ id: "strategy_a", handles: "kind_a", params: [] }];
+  it("leaves rule without a matching strategy unassigned", async () => {
+    const checks = [{ id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [] }];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
-    vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
+    vi.mocked(getAvailableStrategies).mockReturnValue([]);
     await useMazeStore.getState().loadRegistry();
-    expect(useMazeStore.getState().selectedStrategies["kind_a"]).toBe("strategy_a");
-    expect(useMazeStore.getState().selectedStrategies["kind_b"]).toBeUndefined();
+    const rules = useMazeStore.getState().rules;
+    expect(rules[0].strategyId).toBeNull();
   });
 
   it("sets error when initWasm rejects", async () => {
@@ -463,53 +481,80 @@ describe("mazeStore.addCheck", () => {
   const descriptor = { id: "min_loops", label: "Min loops", description: "", issue_kinds: ["min_loops_count"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }] };
 
   it("adds check id to selectedChecks", () => {
-    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [] });
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], rules: [] });
     useMazeStore.getState().addCheck("min_loops");
     expect(useMazeStore.getState().selectedChecks).toContain("min_loops");
   });
 
   it("is idempotent — does not add duplicate", () => {
-    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: ["min_loops"] });
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: ["min_loops"], rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["min_loops"], strategyId: null, disabled: false, ruleDisabled: false }] });
     useMazeStore.getState().addCheck("min_loops");
     expect(useMazeStore.getState().selectedChecks.filter((id) => id === "min_loops")).toHaveLength(1);
   });
 
   it("initializes checkParams from descriptor defaults when no prior entry", () => {
-    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], checkParams: {} });
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], checkParams: {}, rules: [] });
     useMazeStore.getState().addCheck("min_loops");
     expect(useMazeStore.getState().checkParams["min_loops"]["min_loops"]).toBe("3");
   });
 
   it("preserves existing checkParams when re-adding", () => {
-    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], checkParams: { min_loops: { min_loops: "7" } } });
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], checkParams: { min_loops: { min_loops: "7" } }, rules: [] });
     useMazeStore.getState().addCheck("min_loops");
     expect(useMazeStore.getState().checkParams["min_loops"]["min_loops"]).toBe("7");
   });
 
   it("is no-op for unknown check id", () => {
-    useMazeStore.setState({ availableChecks: [], selectedChecks: [] });
+    useMazeStore.setState({ availableChecks: [], selectedChecks: [], rules: [] });
     useMazeStore.getState().addCheck("nonexistent");
     expect(useMazeStore.getState().selectedChecks).toEqual([]);
+  });
+
+  it("creates a new singleton rule for the added check", () => {
+    useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], rules: [] });
+    useMazeStore.getState().addCheck("min_loops");
+    const rules = useMazeStore.getState().rules;
+    expect(rules).toHaveLength(1);
+    expect(rules[0].checks).toEqual(["min_loops"]);
+    expect(rules[0].strategyId).toBeNull();
   });
 });
 
 describe("mazeStore.removeCheck", () => {
   it("removes check id from selectedChecks", () => {
-    useMazeStore.setState({ selectedChecks: ["check_a", "check_b"] });
+    useMazeStore.setState({ selectedChecks: ["check_a", "check_b"], rules: [] });
     useMazeStore.getState().removeCheck("check_a");
     expect(useMazeStore.getState().selectedChecks).toEqual(["check_b"]);
   });
 
   it("preserves checkParams after removal", () => {
-    useMazeStore.setState({ selectedChecks: ["check_a"], checkParams: { check_a: { p: "5" } } });
+    useMazeStore.setState({ selectedChecks: ["check_a"], checkParams: { check_a: { p: "5" } }, rules: [] });
     useMazeStore.getState().removeCheck("check_a");
     expect(useMazeStore.getState().checkParams["check_a"]).toEqual({ p: "5" });
   });
 
   it("is no-op for non-selected id", () => {
-    useMazeStore.setState({ selectedChecks: ["check_b"] });
+    useMazeStore.setState({ selectedChecks: ["check_b"], rules: [] });
     useMazeStore.getState().removeCheck("check_a");
     expect(useMazeStore.getState().selectedChecks).toEqual(["check_b"]);
+  });
+
+  it("removes the check from its rule, leaving an empty rule rather than dropping it", () => {
+    useMazeStore.setState({
+      selectedChecks: ["check_a"],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: "s1", disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().removeCheck("check_a");
+    expect(useMazeStore.getState().rules).toEqual([{ id: "g1", name: "Rule 1", kind: "k1", checks: [], strategyId: "s1", disabled: false, ruleDisabled: false }]);
+  });
+
+  it("removes only the check from a multi-check rule, keeping the rule", () => {
+    useMazeStore.setState({
+      selectedChecks: ["check_a", "check_b"],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a", "check_b"], strategyId: "s1", disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().removeCheck("check_a");
+    expect(useMazeStore.getState().rules).toEqual([{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_b"], strategyId: "s1", disabled: false, ruleDisabled: false }]);
   });
 });
 
@@ -558,16 +603,161 @@ describe("mazeStore.setElementsParam", () => {
   });
 });
 
-describe("mazeStore generation misc actions", () => {
-  it("setStrategy sets a strategy for an issue kind", () => {
-    useMazeStore.getState().setStrategy("missing_endpoints", "scored_endpoints");
-    expect(useMazeStore.getState().selectedStrategies.missing_endpoints).toBe("scored_endpoints");
+describe("mazeStore.addCheck with ruleId / removeCheckFromRule", () => {
+  it("addCheck with a ruleId activates the check directly into that rule, not a new one", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] }],
+      selectedChecks: [],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_b"], strategyId: "s1", disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().addCheck("check_a", "g1");
+    expect(useMazeStore.getState().selectedChecks).toEqual(["check_a"]);
+    expect(useMazeStore.getState().rules).toEqual([
+      { id: "g1", name: "Rule 1", kind: "k1", checks: ["check_b", "check_a"], strategyId: "s1", disabled: false, ruleDisabled: false },
+    ]);
   });
 
-  it("clearStrategy removes a strategy for an issue kind", () => {
-    useMazeStore.setState({ selectedStrategies: { missing_endpoints: "scored_endpoints" } });
-    useMazeStore.getState().clearStrategy("missing_endpoints");
-    expect(useMazeStore.getState().selectedStrategies).not.toHaveProperty("missing_endpoints");
+  it("addCheck with a ruleId whose kind differs from the check's kind falls back to a new singleton rule", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k2"], params: [] }],
+      selectedChecks: [],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_b"], strategyId: "s1", disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().addCheck("check_a", "g1");
+    const rules = useMazeStore.getState().rules;
+    expect(rules).toHaveLength(2);
+    expect(rules.find((g) => g.id === "g1")?.checks).toEqual(["check_b"]);
+    const newRule = rules.find((g) => g.id !== "g1")!;
+    expect(newRule.checks).toEqual(["check_a"]);
+    expect(newRule.kind).toBe("k2");
+  });
+
+  it("addCheck with a stale/unknown ruleId falls back to creating a new singleton rule", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] }],
+      selectedChecks: [],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_b"], strategyId: "s1", disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().addCheck("check_a", "does_not_exist");
+    const rules = useMazeStore.getState().rules;
+    expect(rules).toHaveLength(2);
+    expect(rules.find((g) => g.id === "g1")?.checks).toEqual(["check_b"]);
+    const newRule = rules.find((g) => g.id !== "g1")!;
+    expect(newRule.checks).toEqual(["check_a"]);
+  });
+
+  it("addCheck warns and uses the first kind for a check producing multiple issue kinds", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    useMazeStore.setState({
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1", "k2"], params: [] }],
+      selectedChecks: [],
+      rules: [],
+    });
+    useMazeStore.getState().addCheck("check_a");
+    const rules = useMazeStore.getState().rules;
+    expect(rules).toHaveLength(1);
+    expect(rules[0].kind).toBe("k1");
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("check_a"));
+    errorSpy.mockRestore();
+  });
+
+  it("addCheck creates a new singleton rule when ruleId is omitted", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "check_a", label: "A", description: "", issue_kinds: ["k1"], params: [] }],
+      selectedChecks: [],
+      rules: [],
+    });
+    useMazeStore.getState().addCheck("check_a");
+    const rules = useMazeStore.getState().rules;
+    expect(rules).toHaveLength(1);
+    expect(rules[0].checks).toEqual(["check_a"]);
+  });
+
+  it("removeCheckFromRule moves the check into a fresh singleton rule", () => {
+    useMazeStore.setState({
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a", "check_b"], strategyId: "s1", disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().removeCheckFromRule("check_a");
+    const rules = useMazeStore.getState().rules;
+    expect(rules).toHaveLength(2);
+    expect(rules.find((g) => g.id === "g1")?.checks).toEqual(["check_b"]);
+    const newRule = rules.find((g) => g.id !== "g1")!;
+    expect(newRule.checks).toEqual(["check_a"]);
+    expect(newRule.strategyId).toBeNull();
+  });
+});
+
+describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
+  it("renameRule updates the rule's name", () => {
+    useMazeStore.setState({
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: null, disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().renameRule("g1", "My custom rule");
+    expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.name).toBe("My custom rule");
+  });
+
+  it("removeRule removes the rule and its checks from selectedChecks", () => {
+    useMazeStore.setState({
+      selectedChecks: ["check_a", "check_b"],
+      rules: [
+        { id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: null, disabled: false, ruleDisabled: false },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: ["check_b"], strategyId: null, disabled: false, ruleDisabled: false },
+      ],
+    });
+    useMazeStore.getState().removeRule("g1");
+    expect(useMazeStore.getState().rules).toEqual([
+      { id: "g2", name: "Rule 2", kind: "k1", checks: ["check_b"], strategyId: null, disabled: false, ruleDisabled: false },
+    ]);
+    expect(useMazeStore.getState().selectedChecks).toEqual(["check_b"]);
+  });
+
+  it("removeRule is a no-op for an unknown rule id", () => {
+    useMazeStore.setState({
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: null, disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().removeRule("missing");
+    expect(useMazeStore.getState().rules).toHaveLength(1);
+  });
+
+  it("toggleRuleDisabled flips ruleDisabled independent of disabled", () => {
+    useMazeStore.setState({
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: "s1", disabled: false, ruleDisabled: false }],
+    });
+    useMazeStore.getState().toggleRuleDisabled("g1");
+    const g = useMazeStore.getState().rules.find((g) => g.id === "g1")!;
+    expect(g.ruleDisabled).toBe(true);
+    expect(g.disabled).toBe(false);
+  });
+});
+
+describe("buildGenerateConfig — ruleDisabled exclusion", () => {
+  it("excludes a ruleDisabled rule's checks entirely from checks and check_rules", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      selectedChecks: ["check_a", "check_b"],
+      rules: [
+        { id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: null, disabled: false, ruleDisabled: true },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: ["check_b"], strategyId: null, disabled: false, ruleDisabled: false },
+      ],
+    });
+    useMazeStore.getState().generate();
+    const call = vi.mocked(generateMaze).mock.calls[0];
+    expect(call[1].checks).toEqual(["check_b"]);
+    expect(call[1].check_rules).toEqual([{ id: "g2", checks: ["check_b"], strategy: null }]);
+  });
+});
+
+describe("mazeStore generation misc actions", () => {
+  it("setStrategy sets a strategy for a rule", () => {
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["missing_endpoints"], strategyId: null, disabled: false, ruleDisabled: false }] });
+    useMazeStore.getState().setStrategy("g1", "scored_endpoints");
+    expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.strategyId).toBe("scored_endpoints");
+  });
+
+  it("clearStrategy removes a strategy for a rule", () => {
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["missing_endpoints"], strategyId: "scored_endpoints", disabled: false, ruleDisabled: false }] });
+    useMazeStore.getState().clearStrategy("g1");
+    expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.strategyId).toBeNull();
   });
 
   it("setEdgeBasedParam updates param when method is custom_edge_based", () => {
@@ -636,7 +826,7 @@ describe("mazeStore generation misc actions", () => {
 
   it("regenerate calls generateMaze with the last used seed", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
-    useMazeStore.setState({ lastUsedSeed: 123, selectedChecks: [], selectedStrategies: {} });
+    useMazeStore.setState({ lastUsedSeed: 123, selectedChecks: [], rules: [] });
     useMazeStore.getState().regenerate();
     expect(generateMaze).toHaveBeenCalledWith(123, expect.anything());
   });

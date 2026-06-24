@@ -1,6 +1,6 @@
 # Quality Feature
 
-The Quality feature manages active checks, detected issues, and fix strategies. When opened, it replaces the canvas with a full-screen three-column UI (`QualityCanvas`). When closed, the Pixi canvas is restored.
+The Quality feature manages active checks, their **rules** (the unit a fix strategy attaches to), and fix strategies. When opened, it replaces the canvas with a full-screen two-column UI plus a detail panel (`QualityCanvas`). When closed, the Pixi canvas is restored.
 
 ## Feature Card Status
 
@@ -15,36 +15,59 @@ The card body (`QualityFeature` component) renders a status hint only when the p
 
 ## Canvas lifecycle
 
-Opening Quality sets `qualityOpen = true` in the store. `App.tsx` hides the Pixi canvas (`display: none`) and renders `<QualityCanvas />` in its place. `MazeScene` subscribes to `qualityOpen` and stops the Pixi ticker when open, restarts it when closed.
+`qualityOpen` is derived in `App.tsx` as `openCard === "quality"`, not its own store field — opening Quality means calling `setOpenCard("quality")` (the same action every feature card uses to become the active card). `App.tsx` hides the Pixi canvas (`display: none`) and renders `<QualityCanvas />` in its place when `qualityOpen` is true. `MazeScene` subscribes to `qualityOpen` and stops the Pixi ticker when open, restarts it when closed.
+
+## What a rule is
+
+A **rule** (`QcRuleState` in the store) is a user-defined, non-empty-or-empty set of active checks that share one `IssueKind` and one fix strategy. Rules are the feature's central concept — `Issue`/`IssueKind` are internal QC plumbing and never surfaced as their own selectable entity (see `quality_control.md`'s "IssueKind is a semantic category, not a producer id" rule and "`Issue` is an internal-only QC artifact").
+
+Unlike the older one-strategy-per-kind design, **two checks producing the same `IssueKind` no longer have to share a strategy** — each can live in its own rule with its own strategy (e.g. `min_loop_length` repaired by `invalid_loop_random`, `max_loop_length` repaired by `invalid_loop_scored`, both `INVALID_LOOP`). Splitting or merging checks into rules is an explicit user action (see "Rule actions" below), not automatic deduplication by kind.
+
+```typescript
+interface QcRuleState {
+  id: string;            // opaque, client-generated (rule_${counter}); not derived from `checks`
+  name: string;          // user-facing, defaults to "Rule N", editable
+  kind: string;          // IssueKind shared by all member checks, captured at creation time
+  checks: string[];      // member check ids — can be empty (see below)
+  strategyId: string | null;
+  disabled: boolean;     // strategy-only toggle, see below
+  ruleDisabled: boolean; // whole-rule toggle, see below
+}
+```
+
+- `kind` is captured once at rule creation and kept on the rule itself (not derived from `checks[0]`) so it survives `checks` becoming empty.
+- A rule's `checks` **can become empty** — e.g. after removing its last member via the check row's own `✖` (not via `removeCheckFromRule`, which moves the check elsewhere instead of leaving it homeless). An empty rule is not auto-dropped: it stays as a card with `strategyId`/`kind` intact so the user can repopulate it via the rule's own `+ Add check`. The card title shows `"{name} ({kind label})"` for an empty rule, since there's no member check left to imply what it's for.
+- `disabled` (strategy-only toggle) vs `ruleDisabled` (whole-rule toggle) are independent: `disabled` skips the fix but the rule's checks still run (QC still reports the issue, just unfixed); `ruleDisabled` excludes the rule's checks from generation entirely, as if never selected.
 
 ## QualityCanvas layout
 
-Three columns + detail panel, full height, flex row:
+Two columns + detail panel, full height, flex row:
 
 ```
-[ Checks ~22% ] | [ Strategies flex ] | [ Detail ~28% ]
+[ Rules flex ] | [ Detail ~28% ]
 ```
 
-Dividers: `1px solid colors.borderMid`. Background: `colors.bgApp`.
+Divider: `1px solid colors.borderMid`. Background: `colors.bgApp`.
 
-The middle column is **not** an "Issues" list — `Issue`/`IssueKind` are internal QC plumbing, never surfaced as their own selectable entity (see `quality_control.md`'s "IssueKind is a semantic category, not a producer id" rule and "`Issue` is an internal-only QC artifact"). The Strategies column renders **one row per distinct issue kind** produced by the active checks, not one row per check — when multiple checks share a kind (e.g. two different reasons a cycle can be invalid, both routed through `INVALID_LOOP`), they share a single strategy slot rather than each getting their own, since assigning two different strategies to the same kind isn't possible (`RepairEngine` maps one strategy per `IssueKind` — see `repair.md`).
+There is no separate "Checks" column — each rule card shows its own member checks inline (left half) next to its strategy (right half), so a check is always seen in the context of the rule it belongs to.
 
-### Checks column
+### Rules column (`RulesColumn`)
 
-Lists only **active** (selected) checks. Each check card shows label + `✖` remove button.
+One card per rule (`slots: StrategySlotVM[]`, one entry per rule in the store, not deduplicated by kind). Each card is split left/right:
 
-- Remove button: calls `removeCheck(id)` immediately, clears selection if that check was selected.
-- `+` button in column header opens `CheckSelectDialog`.
-- Empty state: hint text `status.no_checks`.
+- **Left half — checks list** (`RuleCheckRow`, one per member check): label, params shown always-expanded directly under the row (mirrors the strategy half's param layout — see below), `✖` remove button (calls `removeCheck`, which removes the check from `selectedChecks` **and** from this rule's `checks` atomically — never leaves a check "in a rule but not active"). Below the member checks: a `+ Add check` row — opens `AddCheckToRuleDialog` filtered to not-yet-active checks of this rule's `kind`; if none exist, opens an `AlertModal` instead (`quality.no_checks_for_kind`).
+- **Right half — strategy panel** (`RuleStrategyPanel`): strategy label (or `strategy.no_fix.label` if `strategyId` is null), its params shown always-expanded underneath (same layout as the checks side), a `Switch` toggle (visible only when a strategy is set) bound to `disabled`, and a `✎` edit button opening `StrategySelectDialog`.
+- **Card title row**: rule name (or inline rename input), a `Switch` bound to `ruleDisabled`, `✎` rename button, `✖` remove button (opens a `ConfirmModal` before calling `removeRule`, since it deletes member checks too).
 
-### Strategies column
+Split rather than stacked so disabling/configuring the fix reads as independent from the checks — the checks still run regardless of whether their rule's fix is enabled.
 
-One row per distinct kind in `issue_kinds` across all active checks (deduplicated — see above). Each row:
+Below all rule cards: a single `Add new rule` button (no `+` prefix) — opens `CheckSelectDialog`, titled `quality.select_initial_check_title` ("Select initial check for new rule"), which always creates a **new** singleton rule for whichever check is picked (never merges into an existing rule — that's `AddCheckToRuleDialog`'s job instead).
 
-- Strategy card: label of currently selected strategy for that kind, or `strategy.no_fix.label` if none. `✎` edit button opens `StrategySelectDialog`. The card itself is also clickable → selects strategy in detail panel (only if a real strategy is set).
-- When a strategy is set, a `Switch` toggle appears before `✎`: disables/re-enables the strategy without clearing its selection or params. Disabled state renders the card dimmed. Hidden when no strategy is set (nothing to disable).
-- The card shows only the strategy label — not the kind name or producing check(s). `producedBy` (ViewModel) still carries that data for the detail panel; the row itself stays a plain strategy card so its layout lines up with the Checks column instead of varying in height per row.
-- Empty state: hint text `quality.no_issues`.
+Empty state (no rules at all): hint text `status.no_checks`.
+
+### Inline param editing
+
+Both `RuleCheckRow` and `RuleStrategyPanel` run their own `useParamEditor` instance (debounced commit, ~300ms) and must flush it (`flushRef.current()`) before any action that could discard the maze state's column-of-truth or unmount the row — selecting a different row/rule in the detail panel, removing the check, toggling the strategy's disabled switch, or opening the edit dialog. `QualityCanvas`'s own `flushRef` (see "ViewModel" below) only covers `QualityDetailPanel`'s editor; the inline editors flush themselves locally at their own action sites, not through that shared ref.
 
 ### Detail panel
 
@@ -53,24 +76,47 @@ Shows details for the current selection:
 | Selection | Content |
 |-----------|---------|
 | None | Empty hint `quality.select_to_view` |
-| Check | Label, description, param fields (via `useParamEditor`) |
-| Strategy | Label, description, param fields (via `useParamEditor`) |
+| Check | Label, description, param fields (via `useParamEditor`, through `ParamizedDetail`) |
+| Strategy | Label, description, param fields (via `useParamEditor`, through `ParamizedDetail`) |
+| `"no_fix"` ("logging") | Static label/description for `strategy.no_fix` — no param fields, since there's no strategy instance to configure |
 
-## CheckSelectDialog
+`QualitySelection` (the union type driving this):
 
-Modal using `ItemSelectDialog`. Shows **all** available checks (not filtered to unselected).
+```typescript
+type QualitySelection =
+  | { type: "check"; id: string }
+  | { type: "strategy"; ruleId: string; strategyId: string }
+  | { type: "logging"; ruleId: string }
+  | null;
+```
+
+`QualityCanvas` holds a `flushRef` it passes into `QualityDetailPanel` (via `ParamizedDetail`) and calls before every selection change, so an in-flight debounced edit in the detail panel is never lost when switching selection. This is separate from — and does not cover — the inline editors in `RuleCheckRow`/`RuleStrategyPanel` (see above).
+
+## CheckSelectDialog ("Add new rule")
+
+Modal using `ItemSelectDialog`. Shows **all** available checks (not filtered to unselected). Static title `quality.select_initial_check_title` — does not change based on the current selection (deliberately non-interactive title, unlike the rule-targeted dialog below).
 
 - Already-active checks: Add button disabled, red error text `check.already_active` shown in right panel.
-- Right panel: check label, description, params (read-only preview in dialog; params are edited in the detail panel after adding).
+- Right panel: check label, description, params (read-only preview in dialog; params are edited inline in the rule card / detail panel after adding).
 - Footer: `[Cancel]` `[Add]`.
-- Add: calls `addCheck(id)`, closes.
+- Add: calls `addCheck(id)` with no `ruleId` — always creates a fresh singleton rule for the check (see `GenerationActions.addCheck` below), closes.
+
+## AddCheckToRuleDialog ("+ Add check" inside a rule card)
+
+Modal using `ItemSelectDialog`, targets one specific existing rule (`ruleId`, `kind` props). Title: `quality.add_check_dialog_title` ("Add check: {issue}"), where `{issue}` is the rule's kind, localized via `resolveIssueLabel`.
+
+- Candidates: checks sharing the rule's `kind` that aren't active anywhere yet (`!selectedChecks.includes(c.id)`) — computed by `RulesColumn.candidatesFor`.
+- Right panel: check label, description.
+- Footer: `[Cancel]` `[Add]`.
+- Add: calls `addCheck(id, ruleId)` — activates the check directly into the target rule's `checks` array, not as a new rule (see `addCheck`'s `ruleId` parameter below). Closes.
+- If `candidatesFor` returns empty when the row is clicked, this dialog never opens — an `AlertModal` (`quality.no_checks_for_kind`) shows instead.
 
 ## StrategySelectDialog
 
-Modal using `ItemSelectDialog`. Shows strategies where `handles === issueId`, plus `NO_FIX_STRATEGY_ID` ("no_fix") as the first item.
+Modal using `ItemSelectDialog`. Targets one rule (`ruleId`, `kind` props). Shows strategies where `handles === kind`, plus `NO_FIX_STRATEGY_ID` ("no_fix") as the first item.
 
-- Selecting `no_fix` calls `clearStrategy(issueId)` → removes the key from `selectedStrategies` → `issueStrategy[id]` becomes `null` in the ViewModel.
-- Selecting a real strategy calls `setStrategy(issueId, strategyId)`.
+- Selecting `no_fix` calls `clearStrategy(ruleId)` → sets the rule's `strategyId` to `null` and `disabled` to `false`.
+- Selecting a real strategy calls `setStrategy(ruleId, strategyId)`.
 - Right panel: strategy description + param fields (via `useParamEditor` inside `StrategyParamPanel`).
 - Footer: `[Cancel]` `[Select]`.
 
@@ -83,21 +129,26 @@ Computed via `useMemo` from store state:
 ```ts
 interface QualityViewModel {
   checks: CheckVM[];               // only selectedChecks, in selection order
-  strategySlots: StrategySlotVM[]; // one per distinct issue kind across active checks
+  strategySlots: StrategySlotVM[]; // one per rule in the store
 }
 
 interface CheckVM { id: string; label: string; description: string; params: ParamDescriptor[] }
 interface StrategySlotVM {
-  kind: string;
-  label: string;
+  ruleId: string;          // join key with the store's `rules` and ruleId-keyed actions below
+  name: string;            // rule's user-facing name
+  kind: string;            // rule's captured IssueKind
+  label: string;           // resolveIssueLabel(kind) — shown for an empty rule's card title
   strategy: StrategyVM | null;
   disabled: boolean;
-  producedBy: CheckVM[];   // active checks producing this kind — usually one, can be several
+  ruleDisabled: boolean;
+  producedBy: CheckVM[];    // this rule's member checks, resolved to full CheckVMs
 }
 interface StrategyVM { id: string; label: string; handles: string; params: ParamDescriptor[] }
 ```
 
-`kind` (on `StrategySlotVM`) is the join key with `availableStrategies[].handles`, and is what `selectedStrategies`/`disabledStrategies` in the store are keyed by — unchanged from before this redesign, since that key space was always issue-kind strings, never a deduplicated "Issue entity" id. `strategySlots` is built by deduplicating `issue_kinds` across all active checks' descriptors (not one slot per check) — `producedBy` is the set of checks that contributed that kind, so a kind shared by N checks gets exactly one slot, listing all N. There is no `IssueVM`/`issues` list in this ViewModel — see "QualityCanvas layout" above for why issues aren't surfaced as their own UI entity.
+`strategySlots` is built **one entry per rule** in `state.rules` — not deduplicated or grouped by kind. `kind` (on `StrategySlotVM`) is the join key with `availableStrategies[].handles` and what `StrategySelectDialog`/`AddCheckToRuleDialog`'s candidate filters use. `kind` is read directly from the rule's own `kind` field (captured at creation, see "What a rule is" above), not derived from `producedBy[0]` — so it survives `producedBy` becoming empty.
+
+There is no `IssueVM`/`issues` list in this ViewModel — see "What a rule is" above for why issues aren't surfaced as their own UI entity.
 
 All labels/descriptions pass through i18n resolvers. Param labels are localized via `resolveParamLabel`.
 
@@ -139,62 +190,90 @@ useParamEditor(options: {
 
 - `values` — controlled state for inputs.
 - `onChange` — updates local state + debounces (~300ms) commit to store.
-- `flushRef.current()` — immediately commits all pending values, cancels debounce timer. Called in `QualityCanvas` before changing selection to avoid losing in-flight edits.
+- `flushRef.current()` — immediately commits all pending values, cancels debounce timer. The caller is responsible for calling this before any action that could discard the pending edit (selection change, remove, toggle, navigating away) — see "Inline param editing" above for where each of the three editor instances (`ParamizedDetail`/detail panel, `RuleCheckRow`, `RuleStrategyPanel`) does this.
 - On `entityId` change: `useEffect` resets `values` from `storeValues` (no flush — caller is responsible for flushing first).
+- **Unmount does not flush** — the cleanup effect only clears the pending debounce timer. A caller that unmounts the editor (e.g. removing the check/rule) without calling `flushRef.current()` first silently drops the pending edit.
 
-## Store: quality-related state and actions
+## Store: rule-related state and actions
 
 ```typescript
 // State
 selectedChecks: string[]
 checkParams: Record<string, Record<string, string>>      // checkId → paramId → value
-selectedStrategies: Record<string, string>               // issueKind → strategyId
-disabledStrategies: Record<string, boolean>               // issueKind → temporarily disabled
-qualityOpen: boolean
+rules: QcRuleState[]
+strategyParams: Record<string, Record<string, string>>   // strategyId → paramId → value
 
 // Actions
-addCheck(id: string): void
+addCheck(id: string, ruleId?: string): void
 removeCheck(id: string): void
 setCheckParam(checkId: string, paramId: string, value: string): void
-setStrategy(issueKind: string, strategyId: string): void
-clearStrategy(issueKind: string): void
-toggleStrategyDisabled(issueKind: string): void
-setQualityOpen(open: boolean): void
+removeCheckFromRule(checkId: string): void
+setStrategy(ruleId: string, strategyId: string): void
+clearStrategy(ruleId: string): void
+toggleStrategyDisabled(ruleId: string): void
+toggleRuleDisabled(ruleId: string): void
+renameRule(ruleId: string, name: string): void
+removeRule(ruleId: string): void
+setStrategyParam(strategyId: string, paramId: string, value: string): void
 ```
 
-### addCheck
+### addCheck(id, ruleId?)
 
 - No-op if `id` already in `selectedChecks`.
 - No-op if descriptor not found in `availableChecks`.
 - Preserves existing `checkParams[id]` if present; initializes from descriptor defaults otherwise.
 - Appends `id` to `selectedChecks`.
+- If `ruleId` is **omitted**: creates a fresh singleton rule for the check (`newRule(kind, [id], null, false)`) — the top-level "Add new rule" path.
+- If `ruleId` is **given** and resolves to an existing rule: appends `id` to that rule's `checks` array instead of creating a new rule — the per-rule "+ Add check" path (`AddCheckToRuleDialog`).
+- If `ruleId` is given but does not resolve to any current rule (stale/unknown id): silently falls back to creating a new singleton rule, same as if `ruleId` were omitted. Not expected to happen from the UI (dialogs only ever pass a currently-rendered rule's id) and not surfaced as an error.
+- If the check's descriptor reports more than one `issue_kinds` entry: only `issue_kinds[0]` is used as the rule's kind, and a `console.error` is logged (`resolveCheckKind` in `generationSlice.ts`) — rules only support one kind per check; no current check produces more than one, this is a guard against silently dropping the others if that ever changes.
 
-### removeCheck
+### removeCheck(id)
 
-- Removes `id` from `selectedChecks`.
+- Removes `id` from `selectedChecks` **and** from whatever rule's `checks` array contains it, atomically in one `set` call — there is no intermediate state where a check is "in a rule but not active." If this empties the rule, the rule itself is **not** dropped (see "What a rule is" above) — distinct from `removeCheckFromRule` below, which always produces a non-empty new rule.
 - Does **not** clear `checkParams[id]` — values are preserved for re-add.
 
-### clearStrategy
+### removeCheckFromRule(checkId)
 
-- Deletes `issueKind` key from `selectedStrategies`.
-- Also deletes `issueKind` from `disabledStrategies` — a cleared strategy has no disabled state to preserve.
-- Results in `strategy: null` for the matching `StrategySlotVM` in the ViewModel.
+- Moves `checkId` out of whatever rule it's currently in (filtered out of that rule's `checks`) into a **fresh singleton rule** of its own (`strategyId: null`, `disabled: false`).
+- If this empties the source rule, that rule is **not** dropped — same empty-rule-stays policy as `removeCheck`.
+- Distinct from `removeCheck`: this does not deactivate the check (`selectedChecks` is untouched), it only changes which rule the check belongs to.
 
-### toggleStrategyDisabled
+### setStrategy(ruleId, strategyId) / clearStrategy(ruleId)
 
-- Flips `disabledStrategies[issueKind]` (absent/`false` ↔ `true`).
-- Does **not** touch `selectedStrategies` or `strategyParams` — the strategy choice and its parameter overrides survive toggling, unlike `clearStrategy`.
-- A disabled strategy is omitted entirely from the `strategies` map passed to `buildGenerateConfig`/`GenerateConfig`, so `RepairEngine` has no strategy registered for that `IssueKind` — equivalent to the issue having no strategy assigned (skipped, surfaced as unresolved).
-- Re-running `toggleStrategyDisabled` restores the same strategy id and param overrides without reconfiguration.
+- `setStrategy`: sets the rule's `strategyId`.
+- `clearStrategy`: sets the rule's `strategyId` to `null` **and** `disabled` to `false` — a cleared strategy has no disabled state to preserve.
+
+### toggleStrategyDisabled(ruleId)
+
+- Flips the rule's `disabled` (absent/`false` ↔ `true`).
+- Does **not** touch `strategyId` or `strategyParams` — the strategy choice and its parameter overrides survive toggling.
+- A disabled rule's strategy is sent as `strategy: null` in `GenerateConfig.check_rules` (not an omitted rule entry — the rule's check composition is still needed for merge/attribution), equivalent to the rule having no strategy assigned.
+
+### toggleRuleDisabled(ruleId)
+
+- Flips the rule's `ruleDisabled`.
+- When `true`: this rule's member checks are excluded entirely from the next `generate()` call (removed from the `checks` list sent to wasm, not just unfixed) — as if they were never selected.
+
+### renameRule(ruleId, name) / removeRule(ruleId)
+
+- `renameRule`: sets the rule's `name`.
+- `removeRule`: removes the rule **and** its member checks from `selectedChecks` — the inverse of a rule existing only ever meaning its checks are active. Triggered via a `ConfirmModal` in `RulesColumn`, since it's destructive to more than just the rule card.
 
 ## Default State
 
-On `loadRegistry`, checks without params are auto-selected: `missing_endpoints` and `unreachable_finish`. Checks with params (`min_loops_count`) are not auto-selected.
+On `loadRegistry`, checks without params are auto-selected: `missing_endpoints` and `unreachable_finish`, each given its own singleton rule with the first strategy that handles its kind (if any) — preserves the old "auto-pick the only strategy" behavior for checks without params. Checks with params (`min_loops_count`, `min_loop_length`, `max_loop_length`) are not auto-selected.
 
-If `loadRegistry` is called again, `selectedChecks`, `selectedStrategies`, and `disabledStrategies` are preserved. Stale check IDs are removed from `selectedChecks` and `checkParams`.
+If `loadRegistry` is called again, `selectedChecks` and `rules` are preserved (rules' member-check lists are filtered to still-known check ids; rules left empty by that filter are dropped — this is the registry-reload path, distinct from the empty-rule-stays policy for direct user actions like `removeCheck`). Stale check IDs are removed from `selectedChecks` and `checkParams`.
 
 ## Generate pipeline
 
 `checkParams` is passed as `check_params` in `GenerateConfig`. The WASM runner reads param values as strings, parses them per check. Unknown params are ignored; missing params fall back to descriptor defaults. Values are clamped server-side.
 
-`buildGenerateConfig` skips any `issueKind` whose `disabledStrategies[issueKind]` is `true` when building the `strategies` map — the entry is omitted from `GenerateConfig.strategies` entirely, so the WASM side never registers a `RepairStrategy` for that `IssueKind`.
+`buildGenerateConfig` (`generationSlice.ts`):
+
+1. Excludes `ruleDisabled` rules' checks entirely from both `checks` and `check_rules` — as if never selected.
+2. Builds `check_rules: QcRuleConfig[]` — **every** remaining rule is sent, including ones with no strategy or with `disabled: true` (`strategy: null` for those, not an omitted entry). The wasm layer needs the rule's check composition to merge/attribute issues correctly even when nothing repairs them — see `Specs/repair.md`.
+3. For a rule with a strategy: resolves the strategy's param overrides from `strategyParams[strategyId]`, filtered to keys the strategy descriptor actually declares.
+
+See `quality_control.md`'s "QcRuleConfig" section for the wasm-side shape this maps onto, and `repair.md`'s "QcRule and rule-based RepairEngine" section for how core turns it into a `RepairEngine`.

@@ -1,4 +1,5 @@
 export type QualitySelection =
   | { type: "check"; id: string }
-  | { type: "strategy"; issueId: string; strategyId: string }
+  | { type: "strategy"; ruleId: string; strategyId: string }
+  | { type: "logging"; ruleId: string }
   | null;

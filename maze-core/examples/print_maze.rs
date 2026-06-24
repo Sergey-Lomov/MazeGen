@@ -5,7 +5,7 @@ use maze_core::generation::{generate_maze, GenerationConfig, PresetState, pipeli
 use maze_core::validation::is_connected;
 use maze_core::io::render_ascii;
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
-use maze_core::repair::{RepairEngine, RepairStrategy, FarthestEndpointsStrategy};
+use maze_core::repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, FarthestEndpointsStrategy};
 
 fn main() {
     let seed = 3u64;
@@ -21,9 +21,15 @@ fn main() {
         Box::new(MissingEndpointsCheck),
         Box::new(UnreachableFinishCheck),
     ]);
-    let mut strategies: HashMap<_, Box<dyn RepairStrategy<SquareTessellation>>> = HashMap::new();
-    strategies.insert(MISSING_ENDPOINTS, Box::new(FarthestEndpointsStrategy));
-    let repair_engine = RepairEngine::new(strategies, HashMap::new());
+    let rule = QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec![CheckId("missing_endpoints")] };
+    let repair_engine = RepairEngine::new(
+        vec![RepairRuleConfig {
+            rule: QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec![CheckId("missing_endpoints")] },
+            strategy: Box::new(FarthestEndpointsStrategy),
+            param_overrides: HashMap::new(),
+        }],
+        vec![rule],
+    );
 
     let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine, &PresetState::empty());
     if !warnings.is_empty() {

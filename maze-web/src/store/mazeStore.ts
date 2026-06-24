@@ -73,8 +73,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       elementsConfig: file.generation.elements,
       // quality
       selectedChecks: file.quality.selectedChecks,
-      selectedStrategies: file.quality.selectedStrategies,
-      disabledStrategies: file.quality.disabledStrategies,
+      rules: file.quality.rules,
       checkParams: file.quality.checkParams,
       strategyParams: file.quality.strategyParams,
       // presets

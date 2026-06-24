@@ -40,7 +40,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         let invalid_loop_edges = match &issue.data {
-            Some(IssueData::InvalidLoops { all, invalid }) => Some(
+            Some(IssueData::InvalidLoops { all, invalid, .. }) => Some(
                 invalid.iter().filter_map(|&idx| all.get(idx)).map(|loop_edges| {
                     loop_edges.iter().filter_map(|&eid| {
                         let edge = maze.graph.edge(eid)?;

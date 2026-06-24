@@ -118,6 +118,12 @@ export interface StrategyConfig {
   params: Record<string, string>;
 }
 
+export interface QcRuleConfig {
+  id: string;
+  checks: string[];
+  strategy: StrategyConfig | null;
+}
+
 export type TessellationKindWasm = "square" | "hex" | "tri";
 
 export interface WasmTessellationConfig {
@@ -181,7 +187,7 @@ export interface LockedNodeDto {
 export interface GenerateConfig {
   tessellation: WasmTessellationConfig;
   checks: string[];
-  strategies: Record<string, StrategyConfig>;
+  check_rules: QcRuleConfig[];
   check_params?: Record<string, Record<string, string>>;
   initial: InitialGenerationConfig;
   elements: ElementsConfig;

@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, resolve_to_edge_ids, CycleSearchResult};
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_LOOP};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
 
 pub const MIN_LOOP_LENGTH_DEFAULT: u32 = 10;
 pub const MIN_LOOP_LENGTH_CHECK_ID: &str = "min_loop_length";
@@ -36,7 +37,11 @@ impl<T: Tessellation> Check<T> for MinLoopLengthCheck {
         let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
         debug_assert!(short.iter().all(|&idx| idx < all.len()),
             "short must only contain valid indices into all — built from the same `cycles` it resolves");
-        issues.push(Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: short }, MIN_LOOP_LENGTH_CHECK_ID));
+        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<&'static str>> = HashMap::new();
+        for &idx in &short {
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(MIN_LOOP_LENGTH_CHECK_ID);
+        }
+        issues.push(Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: short, invalid_sources }, MIN_LOOP_LENGTH_CHECK_ID));
     }
 }
 
@@ -75,7 +80,7 @@ mod tests {
         check.check(&maze, &mut issues);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
-        assert_eq!(issues[0].source_checks, vec![MIN_LOOP_LENGTH_CHECK_ID]);
+        assert_eq!(issues[0].source_checks(), vec![MIN_LOOP_LENGTH_CHECK_ID]);
         match &issues[0].data {
             Some(IssueData::InvalidLoops { invalid, .. }) => assert_eq!(invalid.len(), 1),
             other => panic!("expected InvalidLoops, got {other:?}"),

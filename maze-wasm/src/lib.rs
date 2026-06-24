@@ -240,10 +240,16 @@ where
     maze.meta.start  = cfg.start.map(|id| id as u64);
     maze.meta.finish = cfg.finish.map(|id| id as u64);
 
-    // Build QC engine from config (no repair)
+    // Build QC engine from config (no repair). `check_rules` is explicitly empty, not
+    // `..GenerateConfig::default()`'s hardcoded `default_missing_endpoints` rule — that default
+    // assumes `missing_endpoints` is active, which isn't guaranteed here (`cfg.checks` is
+    // caller-supplied), and `build_qc_and_repair`'s validation rejects any rule referencing a
+    // check not in `checks`. Rules only matter for repair dispatch, which this path discards
+    // anyway (`let (qc_engine, _) = ...` below), so an empty list is correct, not just safe.
     let qc_config = GenerateConfig {
         tessellation: cfg.tessellation,
         checks: cfg.checks,
+        check_rules: vec![],
         check_params: cfg.check_params,
         ..GenerateConfig::default()
     };

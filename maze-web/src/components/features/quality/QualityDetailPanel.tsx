@@ -43,8 +43,17 @@ export function QualityDetailPanel({ selection, vm, flushRef }: Props) {
     );
   }
 
+  if (selection.type === "logging") {
+    return (
+      <div style={styles.detailPanel}>
+        <span style={styles.detailTitle}>{m["strategy.no_fix.label"]()}</span>
+        <p style={styles.detailDesc}>{m["strategy.no_fix.description"]()}</p>
+      </div>
+    );
+  }
+
   if (selection.type === "strategy") {
-    const slot = vm.strategySlots.find((s) => s.kind === selection.issueId);
+    const slot = vm.strategySlots.find((s) => s.ruleId === selection.ruleId);
     const strategy = slot?.strategy;
     if (!strategy) return <div style={styles.detailPanel} />;
     return (

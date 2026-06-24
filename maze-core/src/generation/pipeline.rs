@@ -5,8 +5,9 @@ use rand::rngs::SmallRng;
 use crate::{Graph, Maze};
 use crate::ids::EdgeId;
 use crate::space::{Field, Tessellation};
-use crate::quality_control::{Issue, IssueData, IssueKind, QualityControlEngine};
-use crate::repair::{RepairEngine, RepairResult};
+use crate::quality_control::{Issue, IssueData, QualityControlEngine};
+use crate::quality_control::issue_data::canonical_cycle_key;
+use crate::repair::{CheckId, RepairEngine, RepairResult};
 use super::PresetState;
 
 pub const MAX_REPAIR_ITERATIONS: usize = 8;
@@ -21,26 +22,51 @@ pub fn build_maze<T: Tessellation>(
 ) -> (Maze<T>, Vec<crate::quality_control::Issue>) {
     let mut maze = Maze::new(field, graph);
     let mut rng = SmallRng::seed_from_u64(seed);
-    let mut failed: HashSet<IssueKind> = HashSet::new();
-    let mut previous_fingerprint: Option<Vec<IssueKind>> = None;
+    let mut failed: HashSet<String> = HashSet::new();
+    let mut previous_fingerprint: Option<Vec<String>> = None;
+    let check_id_to_rule = repair_engine.check_id_to_rule();
 
     for _ in 0..MAX_REPAIR_ITERATIONS {
         let issues = qc_engine.run(&maze);
-        // Merge (not drop) issues that share a kind — multiple checks may legitimately produce
-        // the same IssueKind (e.g. several reasons a cycle can be invalid). See merge_issue.
-        let mut by_kind: HashMap<IssueKind, Issue> = HashMap::new();
+        // Merge (not drop) issues that share a rule — multiple checks in the same rule may
+        // legitimately produce the same IssueKind (e.g. several reasons a cycle can be invalid).
+        // See merge_issue. An issue this loop can't route to any rule (zero source checks, e.g.
+        // CYCLE_ANALYSIS_OVERFLOWED, or a check id with no configured rule) is dropped from this
+        // iteration's `by_rule` map entirely — it plays no part in this iteration's repair pass.
+        // It is not lost from the maze's perspective: the final `qc_engine.run` call after the
+        // loop (see `remaining` below) recomputes issues fresh and will surface it there if it's
+        // still present, the same way CYCLE_ANALYSIS_OVERFLOWED (never routed, never repaired)
+        // does today.
+        let mut by_rule: HashMap<String, Issue> = HashMap::new();
         for issue in issues {
-            if failed.contains(&issue.kind) { continue; }
-            match by_kind.entry(issue.kind) {
+            // `single_source_check` returns `None` both for the legitimate zero-source case and
+            // for a malformed 2+-source raw issue (debug_assert below catches the latter in
+            // debug builds) — either way, routing as "no rule" is the safe outcome: a release
+            // build never silently misroutes by an arbitrary first source.
+            debug_assert!(issue.source_checks().len() <= 1,
+                "raw issue must have at most one source check before merge — \
+                 Issue::new_from_check/with_data_from_check always set exactly one, \
+                 Issue::new/with_data set none");
+            let Some(rule_id) = issue.single_source_check()
+                .and_then(|check_id| check_id_to_rule.get(&CheckId(check_id)))
+            else { continue };
+            if failed.contains(rule_id) { continue; }
+            match by_rule.entry(rule_id.clone()) {
                 Entry::Occupied(mut e) => merge_issue(e.get_mut(), issue),
                 Entry::Vacant(e) => { e.insert(issue); }
             }
         }
-        let active: Vec<Issue> = by_kind.into_values().collect();
+        // Rules with no registered strategy still merge their issues (for attribution), but
+        // must not participate in fingerprint/progress-tracking or repair dispatch — same final
+        // effect as today's "kind without a strategy is skipped", just keyed by rule now.
+        let strategy_rule_ids = repair_engine.strategy_rule_ids();
+        let active: Vec<(String, Issue)> = by_rule.into_iter()
+            .filter(|(rule_id, _)| strategy_rule_ids.contains(rule_id.as_str()))
+            .collect();
         if active.is_empty() {
             break;
         }
-        let mut fingerprint: Vec<IssueKind> = active.iter().map(|i| i.kind).collect();
+        let mut fingerprint: Vec<String> = active.iter().map(|(rule_id, _)| rule_id.clone()).collect();
         fingerprint.sort_unstable();
         if Some(&fingerprint) == previous_fingerprint.as_ref() {
             break;
@@ -48,9 +74,9 @@ pub fn build_maze<T: Tessellation>(
         previous_fingerprint = Some(fingerprint);
 
         let results = repair_engine.run(&active, &mut maze, &mut rng, preset_state);
-        for (kind, result) in &results {
-            match result {
-                RepairResult::Failed => { failed.insert(*kind); }
+        for outcome in &results {
+            match &outcome.result {
+                RepairResult::Failed => { failed.insert(outcome.rule_id.clone()); }
                 RepairResult::Fixed { score: Some(s) } => {
                     if maze.meta.route_score.is_none() {
                         maze.meta.route_score = Some(*s);
@@ -70,14 +96,13 @@ pub fn build_maze<T: Tessellation>(
 /// Always unions data rather than picking one side — there is no precedence between sources,
 /// nothing is discarded (see `Specs/quality_control.md`'s "Dedup interaction" section).
 fn merge_issue(existing: &mut Issue, incoming: Issue) {
-    for source in incoming.source_checks {
-        if !existing.source_checks.contains(&source) {
-            existing.source_checks.push(source);
-        }
+    for &source in incoming.source_checks() {
+        existing.push_source(source);
     }
     match (&mut existing.data, incoming.data) {
-        (Some(IssueData::InvalidLoops { all, invalid }), Some(IssueData::InvalidLoops { all: incoming_all, invalid: incoming_invalid })) => {
-            merge_invalid_loops(all, invalid, incoming_all, incoming_invalid);
+        (Some(IssueData::InvalidLoops { all, invalid, invalid_sources }),
+         Some(IssueData::InvalidLoops { all: incoming_all, invalid: incoming_invalid, invalid_sources: incoming_sources })) => {
+            merge_invalid_loops(all, invalid, invalid_sources, incoming_all, incoming_invalid, incoming_sources);
         }
         (None, None) => {}
         (existing_data, incoming_data) => {
@@ -94,27 +119,24 @@ fn merge_issue(existing: &mut Issue, incoming: Issue) {
 /// A cycle from `existing`/`incoming` that's identical as an edge-set (regardless of `Vec` order —
 /// cycles are sets of edges, not sequences, see `Specs/quality_control.md`) is kept once in the
 /// merged `all`, so the same cycle found by two different checks doesn't appear twice or end up
-/// with two different indices in `invalid`.
+/// with two different indices in `invalid`. `invalid_sources` is keyed by the same canonical key,
+/// so unioning it needs no remap — unlike `invalid`, which is index-based and must be remapped.
 fn merge_invalid_loops(
     all: &mut Vec<Vec<EdgeId>>,
     invalid: &mut Vec<usize>,
+    invalid_sources: &mut HashMap<Vec<EdgeId>, Vec<&'static str>>,
     incoming_all: Vec<Vec<EdgeId>>,
     incoming_invalid: Vec<usize>,
+    incoming_sources: HashMap<Vec<EdgeId>, Vec<&'static str>>,
 ) {
-    // Step 1: normalize — canonical key per cycle (sorted edge set), computed once per cycle.
-    fn canonical_key(cycle: &[EdgeId]) -> Vec<EdgeId> {
-        let mut key = cycle.to_vec();
-        key.sort_unstable();
-        key
-    }
-
-    // Step 2: dedup — build the merged `all`, mapping every old index (from both sides) to its
-    // new index in the merged list; identical cycles collapse onto the same new index.
+    // Step 1+2: dedup — build the merged `all`, mapping every old index (from both sides) to its
+    // new index in the merged list; identical cycles (by canonical_cycle_key) collapse onto the
+    // same new index.
     let mut canonical_to_new_index: HashMap<Vec<EdgeId>, usize> = HashMap::new();
     let mut merged_all: Vec<Vec<EdgeId>> = Vec::new();
     let mut existing_old_to_new: Vec<usize> = Vec::with_capacity(all.len());
     for cycle in all.iter() {
-        let key = canonical_key(cycle);
+        let key = canonical_cycle_key(cycle);
         let new_index = *canonical_to_new_index.entry(key).or_insert_with(|| {
             merged_all.push(cycle.clone());
             merged_all.len() - 1
@@ -123,7 +145,7 @@ fn merge_invalid_loops(
     }
     let mut incoming_old_to_new: Vec<usize> = Vec::with_capacity(incoming_all.len());
     for cycle in incoming_all.into_iter() {
-        let key = canonical_key(&cycle);
+        let key = canonical_cycle_key(&cycle);
         let new_index = *canonical_to_new_index.entry(key).or_insert_with(|| {
             merged_all.push(cycle);
             merged_all.len() - 1
@@ -132,19 +154,41 @@ fn merge_invalid_loops(
     }
 
     // Step 3: remap — translate both `invalid` index lists through the old->new mapping built
-    // above, deduplicating (the same merged cycle may be invalid per both sides).
+    // above, deduplicating (the same merged cycle may be invalid per both sides). Indexes via
+    // `.get()`, not `[]` — a well-behaved `Check` only ever puts indices into `invalid` that are
+    // valid for its own `all` (current producers assert this at construction time, see
+    // `min_loop_length.rs`/`max_loop_length.rs`), but that's a caller contract, not something
+    // this merge step can verify; an out-of-range index from a malformed future `Check` is
+    // dropped (with a debug-build signal) rather than panicking the whole repair pipeline.
     let mut merged_invalid: Vec<usize> = Vec::new();
     let mut seen_invalid: HashSet<usize> = HashSet::new();
     for &old_idx in invalid.iter() {
-        let new_idx = existing_old_to_new[old_idx];
+        let Some(&new_idx) = existing_old_to_new.get(old_idx) else {
+            debug_assert!(false, "merge_invalid_loops: invalid index {old_idx} out of range for existing.all (len {})", existing_old_to_new.len());
+            continue;
+        };
         if seen_invalid.insert(new_idx) {
             merged_invalid.push(new_idx);
         }
     }
     for &old_idx in incoming_invalid.iter() {
-        let new_idx = incoming_old_to_new[old_idx];
+        let Some(&new_idx) = incoming_old_to_new.get(old_idx) else {
+            debug_assert!(false, "merge_invalid_loops: invalid index {old_idx} out of range for incoming.all (len {})", incoming_old_to_new.len());
+            continue;
+        };
         if seen_invalid.insert(new_idx) {
             merged_invalid.push(new_idx);
+        }
+    }
+
+    // invalid_sources: keyed by canonical key, no remap needed — union directly, deduplicating
+    // per-check-id within each cycle's source list.
+    for (key, sources) in incoming_sources {
+        let entry = invalid_sources.entry(key).or_default();
+        for source in sources {
+            if !entry.contains(&source) {
+                entry.push(source);
+            }
         }
     }
 
@@ -158,7 +202,11 @@ mod merge_tests {
     use crate::quality_control::INVALID_LOOP;
 
     fn issue(source_check: &'static str, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>) -> Issue {
-        Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid }, source_check)
+        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<&'static str>> = HashMap::new();
+        for &idx in &invalid {
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(source_check);
+        }
+        Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid, invalid_sources }, source_check)
     }
 
     #[test]
@@ -167,10 +215,10 @@ mod merge_tests {
         let b = issue("check_b", vec![vec![4, 5, 6]], vec![0]);
         merge_issue(&mut a, b);
 
-        let Some(IssueData::InvalidLoops { all, invalid }) = &a.data else { panic!() };
+        let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
         assert_eq!(all.len(), 2, "disjoint cycles must not collapse");
         assert_eq!(invalid.len(), 2, "both cycles are invalid, from different sources");
-        assert_eq!(a.source_checks, vec!["check_a", "check_b"]);
+        assert_eq!(a.source_checks(), vec!["check_a", "check_b"]);
     }
 
     #[test]
@@ -180,7 +228,7 @@ mod merge_tests {
         let b = issue("check_b", vec![vec![3, 1, 2]], vec![0]);
         merge_issue(&mut a, b);
 
-        let Some(IssueData::InvalidLoops { all, invalid }) = &a.data else { panic!() };
+        let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
         assert_eq!(all.len(), 1, "identical cycle (as an edge set) must not be duplicated");
         assert_eq!(invalid, &vec![0], "both sides' invalid index must collapse onto the same merged index");
     }
@@ -191,7 +239,7 @@ mod merge_tests {
         let b = issue("check_b", vec![vec![4, 5, 6]], vec![0]);
         merge_issue(&mut a, b);
 
-        let Some(IssueData::InvalidLoops { all, invalid }) = &a.data else { panic!() };
+        let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
         assert_eq!(all.len(), 3);
         assert_eq!(invalid.len(), 2, "only the two flagged cycles are invalid; the valid one stays out of `invalid`");
     }
@@ -201,7 +249,7 @@ mod merge_tests {
         let mut a = issue("check_a", vec![], vec![]);
         let b = issue("check_a", vec![], vec![]);
         merge_issue(&mut a, b);
-        assert_eq!(a.source_checks, vec!["check_a"], "merging the same source twice must not duplicate it");
+        assert_eq!(a.source_checks(), vec!["check_a"], "merging the same source twice must not duplicate it");
     }
 
     #[test]
@@ -210,6 +258,81 @@ mod merge_tests {
         let b = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, "missing_endpoints");
         merge_issue(&mut a, b);
         assert_eq!(a.data, None);
-        assert_eq!(a.source_checks, vec!["missing_endpoints"]);
+        assert_eq!(a.source_checks(), vec!["missing_endpoints"]);
+    }
+
+    #[test]
+    fn merge_invalid_sources_unions_check_ids_for_same_cycle() {
+        // Same cycle (different edge order), flagged invalid by two different checks — both
+        // check ids must end up attributed to it, not just one side's.
+        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("max_loop_length", vec![vec![3, 1, 2]], vec![0]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::InvalidLoops { invalid_sources, .. }) = &a.data else { panic!() };
+        let key = canonical_cycle_key(&[1, 2, 3]);
+        let sources = invalid_sources.get(&key).expect("merged cycle must have recorded sources");
+        assert_eq!(sources.len(), 2);
+        assert!(sources.contains(&"min_loop_length"));
+        assert!(sources.contains(&"max_loop_length"));
+    }
+
+    #[test]
+    fn merge_invalid_sources_no_duplicate_for_repeated_check() {
+        let mut a = issue("check_a", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("check_a", vec![vec![1, 2, 3]], vec![0]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::InvalidLoops { invalid_sources, .. }) = &a.data else { panic!() };
+        let key = canonical_cycle_key(&[1, 2, 3]);
+        assert_eq!(invalid_sources.get(&key), Some(&vec!["check_a"]));
+    }
+
+    #[test]
+    fn merge_invalid_sources_associative_regardless_of_merge_order() {
+        let a = issue("check_a", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("check_b", vec![vec![1, 2, 3]], vec![0]);
+        let c = issue("check_c", vec![vec![1, 2, 3]], vec![0]);
+
+        let mut left_first = a.clone();
+        merge_issue(&mut left_first, b.clone());
+        merge_issue(&mut left_first, c.clone());
+
+        let mut right_first = b.clone();
+        merge_issue(&mut right_first, c.clone());
+        merge_issue(&mut right_first, a.clone());
+
+        let key = canonical_cycle_key(&[1, 2, 3]);
+        let extract_sorted = |issue: &Issue| {
+            let Some(IssueData::InvalidLoops { invalid_sources, .. }) = &issue.data else { panic!() };
+            let mut sources = invalid_sources.get(&key).cloned().unwrap_or_default();
+            sources.sort_unstable();
+            sources
+        };
+        assert_eq!(extract_sorted(&left_first), extract_sorted(&right_first));
+        assert_eq!(extract_sorted(&left_first), vec!["check_a", "check_b", "check_c"]);
+    }
+
+    #[test]
+    #[cfg_attr(debug_assertions, should_panic(expected = "out of range"))]
+    fn merge_drops_out_of_range_invalid_index_instead_of_panicking() {
+        // A malformed `Check` impl could put an index into `invalid` that's out of range for its
+        // own `all`. `merge_invalid_loops`'s remap step uses `.get()`, not `[]`, so the actual
+        // (release-build) behavior is "drop the bad index, keep going" — never an array-index
+        // panic. In a debug build the `debug_assert!` deliberately still fires (loud signal for
+        // whoever's developing a new `Check` and got this wrong); this test asserts on that
+        // debug-only panic message rather than disabling debug_assertions to exercise the
+        // release path, since `cargo test` always builds with them on.
+        let mut a = Issue::with_data_from_check(
+            INVALID_LOOP,
+            IssueData::InvalidLoops { all: vec![vec![1, 2, 3]], invalid: vec![99], invalid_sources: HashMap::new() },
+            "check_a",
+        );
+        let b = issue("check_b", vec![vec![4, 5, 6]], vec![0]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
+        assert_eq!(all.len(), 2, "both cycles still end up in the merged all");
+        assert_eq!(invalid, &vec![1], "the out-of-range index is dropped; only check_b's valid index survives");
     }
 }
