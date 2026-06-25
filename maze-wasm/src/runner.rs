@@ -4,7 +4,7 @@ use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, INVALID_LOOP},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, INVALID_LOOP},
     repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config};
@@ -16,7 +16,7 @@ use crate::analytics::build_analytics_snapshot;
 /// share one kind) and to build `CheckId` without needing a `Check<T>` instance.
 ///
 /// Panics on an unknown id — the only call site (`build_qc_and_repair_impl`) only ever passes
-/// ids already validated against `config.checks`, which is restricted to this same 5-id set
+/// ids already validated against `config.checks`, which is restricted to this same 6-id set
 /// (the `match` in this function's neighboring check-building loop). An `Option` return here
 /// would have a `None` arm no caller can actually reach; `unreachable!` documents that instead
 /// of silently swallowing a contract violation that should never happen.
@@ -27,6 +27,7 @@ fn check_id_info(id: &str) -> (IssueKind, CheckId) {
         "min_loops_count" => (MIN_LOOPS_COUNT, CheckId::MinLoopsCount),
         "min_loop_length" => (INVALID_LOOP, CheckId::MinLoopLength),
         "max_loop_length" => (INVALID_LOOP, CheckId::MaxLoopLength),
+        "external_escape_diversity" => (INVALID_LOOP, CheckId::ExternalEscapeDiversity),
         other => unreachable!("check_id_info called with id not in config.checks's validated set: {other}"),
     }
 }
@@ -75,6 +76,15 @@ fn build_qc_and_repair_impl<T: Tessellation>(
                     .map(|v| v.max(1) as u32)
                     .unwrap_or(MAX_LOOP_LENGTH_DEFAULT);
                 checks.push(Box::new(MaxLoopLengthCheck { max_loop_length }));
+            }
+            "external_escape_diversity" => {
+                let min_distinct_exits = config.check_params
+                    .get("external_escape_diversity")
+                    .and_then(|p| p.get("min_distinct_exits"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.max(0) as u32)
+                    .unwrap_or(EXTERNAL_ESCAPE_DIVERSITY_DEFAULT);
+                checks.push(Box::new(ExternalEscapeDiversityCheck { min_distinct_exits }));
             }
             other => return Err(format!("unknown check: {other}")),
         }

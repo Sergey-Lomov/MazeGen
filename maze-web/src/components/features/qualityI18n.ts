@@ -23,6 +23,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.max_loop_length.label"] as MessageFn,
     description: m["check.max_loop_length.description"] as MessageFn,
   },
+  external_escape_diversity: {
+    label: m["check.external_escape_diversity.label"] as MessageFn,
+    description: m["check.external_escape_diversity.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -77,6 +81,7 @@ export const paramI18n: Record<string, MessageFn> = {
   min_loops: m["param.min_loops.label"] as MessageFn,
   min_loop_length: m["param.min_loop_length.label"] as MessageFn,
   max_loop_length: m["param.max_loop_length.label"] as MessageFn,
+  min_distinct_exits: m["param.min_distinct_exits.label"] as MessageFn,
   path_weight: m["param.path_weight.label"] as MessageFn,
   junction_weight: m["param.junction_weight.label"] as MessageFn,
   oneway_weight: m["param.oneway_weight.label"] as MessageFn,

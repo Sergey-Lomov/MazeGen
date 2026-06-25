@@ -12,7 +12,7 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
@@ -124,6 +124,17 @@ pub fn available_checks() -> JsValue {
                 id: "max_loop_length",
                 label: "Max loop length",
                 kind: ParamKindDto::Integer { default: MAX_LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
+            }],
+        },
+        CheckDescriptor {
+            id: "external_escape_diversity",
+            label: "External escape diversity",
+            description: "Fires if a simple loop's outgoing connections converge on too few distinct destinations outside the loop, instead of spreading out diversely.",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![ParamDescriptor {
+                id: "min_distinct_exits",
+                label: "Min distinct exits",
+                kind: ParamKindDto::Integer { default: EXTERNAL_ESCAPE_DIVERSITY_DEFAULT as i64, min: 0, max: 1_000 },
             }],
         },
     ];

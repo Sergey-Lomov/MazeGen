@@ -195,6 +195,20 @@ Symmetric counterpart to `MinLoopLengthCheck` — same cycle enumeration pipelin
 
 If any cycles above the threshold are found (`invalid` non-empty), fires a single `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid }, "max_loop_length")` with `.with_detail("max_loop_length", "max_loop_length", self.max_loop_length.to_string())` chained on, same rationale as `MinLoopLengthCheck` above. No issue is fired if `invalid` is empty. Both `MinLoopLengthCheck` and `MaxLoopLengthCheck` can be active at once — they each populate their own `invalid` subset and the pipeline merges the two `INVALID_LOOP` issues canonically (see "Dedup interaction" above and `repair.md`'s "Pipeline" section); the merged issue then carries both checks' details, and the UI renders one bubble per source check.
 
+### ExternalEscapeDiversityCheck
+
+```rust
+pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
+
+pub struct ExternalEscapeDiversityCheck {
+    pub min_distinct_exits: u32,
+}
+```
+
+Detects cycles that are "locally trapped" despite having many outgoing connections — see issue #32. Uses the same enumeration pipeline as `MinLoopLengthCheck`/`MaxLoopLengthCheck` (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles`), but the filter is purely topological rather than length- or geometry-based: for each cycle, collect the set of cycle vertices (nav-nodes touched by any of its nav-edges), then count the distinct nav-nodes outside that set reached by a direct outgoing nav-edge from any cycle vertex (`distinct_exit_count`). No further traversal past that one hop, no geometry, no connected-component analysis on the rest of the graph — a cycle with 8 outgoing edges that all land on the same external node scores 1, not 8.
+
+If any cycle's distinct exit count is below `min_distinct_exits`, fires a single `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid }, "external_escape_diversity")` with `.with_detail("external_escape_diversity", "min_distinct_exits", self.min_distinct_exits.to_string())` chained on. No issue is fired if `invalid` is empty. Can be active alongside `MinLoopLengthCheck`/`MaxLoopLengthCheck` — all three merge into one `INVALID_LOOP` issue per the same dedup rule.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -285,6 +299,7 @@ One user-defined QC rule: a non-empty set of active checks producing the same `I
 | `min_loops_count` | `min_loops_count` | `min_loops: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_loop_length` | `invalid_loop` | `min_loop_length: Integer(default=10, min=1, max=100_000)` | no |
 | `max_loop_length` | `invalid_loop` | `max_loop_length: Integer(default=100, min=1, max=100_000)` | no |
+| `external_escape_diversity` | `invalid_loop` | `min_distinct_exits: Integer(default=3, min=0, max=1_000)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 
