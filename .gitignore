@@ -1,2 +1,3 @@
 /target
 maze-web/generated/
+.claude/settings.local.json
