@@ -232,6 +232,15 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     };
   }),
 
+  moveRule: (ruleId, direction) => set((state) => {
+    const idx = state.rules.findIndex((g) => g.id === ruleId);
+    const swapWith = direction === "up" ? idx - 1 : idx + 1;
+    if (idx === -1 || swapWith < 0 || swapWith >= state.rules.length) return {};
+    const rules = [...state.rules];
+    [rules[idx], rules[swapWith]] = [rules[swapWith], rules[idx]];
+    return { rules, debugStale: debugStaleOf(state) };
+  }),
+
   setStrategyParam: (strategyId, paramId, value) => set((state) => ({
     strategyParams: {
       ...state.strategyParams,

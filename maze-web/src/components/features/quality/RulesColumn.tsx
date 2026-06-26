@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X, ChevronUp, ChevronDown } from "lucide-react";
 import { useMazeStore } from "../../../store/mazeStore";
 import { CheckSelectDialog } from "../CheckSelectDialog";
 import { StrategySelectDialog } from "../StrategySelectDialog";
@@ -34,6 +34,7 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
   const renameRule = useMazeStore((s) => s.renameRule);
   const removeRule = useMazeStore((s) => s.removeRule);
+  const moveRule = useMazeStore((s) => s.moveRule);
   const [addCheckDialogOpen, setAddCheckDialogOpen] = useState(false);
   const [strategyDialogRuleId, setStrategyDialogRuleId] = useState<string | null>(null);
   const [addToRuleId, setAddToRuleId] = useState<string | null>(null);
@@ -80,9 +81,11 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
   return (
     <div style={styles.strategiesColumn}>
       <div style={styles.columnBody}>
-        {slots.map((slot) => {
+        {slots.map((slot, index) => {
           const strategySelected = (selection?.type === "strategy" || selection?.type === "logging") && selection.ruleId === slot.ruleId;
           const isRenaming = renamingRuleId === slot.ruleId;
+          const isFirst = index === 0;
+          const isLast = index === slots.length - 1;
           return (
             <div key={slot.ruleId} style={{ ...styles.ruleCard, ...(slot.ruleDisabled ? styles.ruleCardDisabled : {}) }}>
               <div style={styles.ruleCardTitle}>
@@ -104,6 +107,22 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
                   </span>
                 )}
                 <div style={styles.ruleCardTools}>
+                  <button
+                    style={{ ...styles.moveBtn, ...(isFirst ? styles.moveBtnDisabled : {}) }}
+                    title={m["quality.move_rule_up"]()}
+                    disabled={isFirst}
+                    onClick={() => moveRule(slot.ruleId, "up")}
+                  >
+                    <ChevronUp size={16} color={colors.textDim} />
+                  </button>
+                  <button
+                    style={{ ...styles.moveBtn, ...(isLast ? styles.moveBtnDisabled : {}) }}
+                    title={m["quality.move_rule_down"]()}
+                    disabled={isLast}
+                    onClick={() => moveRule(slot.ruleId, "down")}
+                  >
+                    <ChevronDown size={16} color={colors.textDim} />
+                  </button>
                   <div
                     style={styles.toggleWrap}
                     title={slot.ruleDisabled ? m["quality.enable_rule"]() : m["quality.disable_rule"]()}

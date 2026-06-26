@@ -194,6 +194,8 @@
   "quality.enable_rule": "Включить правило",
   "quality.rename_rule": "Переименовать правило",
   "quality.remove_rule": "Удалить правило",
+  "quality.move_rule_up": "Переместить правило выше",
+  "quality.move_rule_down": "Переместить правило ниже",
   "quality.confirm_remove_rule": "Удалить это правило и его проверки?",
   "quality.no_checks_for_kind": "Все проверки с этим типом проблемы уже в этом правиле.",
   "issue.missing_endpoints.label": "Нет точек входа/выхода",

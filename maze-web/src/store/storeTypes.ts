@@ -244,6 +244,10 @@ export interface GenerationActions {
    * the inverse of a rule existing only ever meaning its checks are active (see `removeCheck`'s
    * atomicity invariant). */
   removeRule: (ruleId: string) => void;
+  /** Swaps `ruleId` with its neighbor in `rules` order ("up" = earlier, "down" = later) — rule
+   * order is execution order in the repair fixpoint loop, so this controls priority. No-op at
+   * either end of the list. */
+  moveRule: (ruleId: string, direction: "up" | "down") => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
   setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;

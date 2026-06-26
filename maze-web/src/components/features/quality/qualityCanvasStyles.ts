@@ -79,6 +79,21 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     opacity: 0.7,
   },
+  moveBtn: {
+    background: "none",
+    border: "none",
+    color: colors.textDim,
+    padding: 0,
+    cursor: "pointer",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    opacity: 0.7,
+  },
+  moveBtnDisabled: {
+    opacity: 0.25,
+    cursor: "default",
+  },
   toggleWrap: {
     display: "flex",
     alignItems: "center",

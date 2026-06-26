@@ -214,6 +214,7 @@ toggleStrategyDisabled(ruleId: string): void
 toggleRuleDisabled(ruleId: string): void
 renameRule(ruleId: string, name: string): void
 removeRule(ruleId: string): void
+moveRule(ruleId: string, direction: "up" | "down"): void
 setStrategyParam(strategyId: string, paramId: string, value: string): void
 ```
 
@@ -259,6 +260,11 @@ setStrategyParam(strategyId: string, paramId: string, value: string): void
 
 - `renameRule`: sets the rule's `name`.
 - `removeRule`: removes the rule **and** its member checks from `selectedChecks` — the inverse of a rule existing only ever meaning its checks are active. Triggered via a `ConfirmModal` in `RulesColumn`, since it's destructive to more than just the rule card.
+
+### moveRule(ruleId, direction)
+
+- Swaps `ruleId` with its neighbor in `rules` order (`"up"` = earlier index, `"down"` = later index). No-op if the rule is already at that end of the list, or if `ruleId` is unknown.
+- `rules` array order is execution order in the repair pipeline's fixpoint loop (see `repair.md`), so this is how the user controls rule priority — surfaced in `RulesColumn` as ▲/▼ buttons in each rule card's title row, disabled at the respective end of the list.
 
 ## Default State
 

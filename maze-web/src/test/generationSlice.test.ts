@@ -730,6 +730,46 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
   });
 });
 
+describe("mazeStore.moveRule", () => {
+  function makeRules() {
+    return [
+      { id: "g1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: null, disabled: false, ruleDisabled: false },
+      { id: "g2", name: "Rule 2", kind: "k1", checks: ["check_b"], strategyId: null, disabled: false, ruleDisabled: false },
+      { id: "g3", name: "Rule 3", kind: "k1", checks: ["check_c"], strategyId: null, disabled: false, ruleDisabled: false },
+    ];
+  }
+
+  it("moves a rule up, swapping with its predecessor", () => {
+    useMazeStore.setState({ rules: makeRules() });
+    useMazeStore.getState().moveRule("g2", "up");
+    expect(useMazeStore.getState().rules.map((g) => g.id)).toEqual(["g2", "g1", "g3"]);
+  });
+
+  it("moves a rule down, swapping with its successor", () => {
+    useMazeStore.setState({ rules: makeRules() });
+    useMazeStore.getState().moveRule("g2", "down");
+    expect(useMazeStore.getState().rules.map((g) => g.id)).toEqual(["g1", "g3", "g2"]);
+  });
+
+  it("is a no-op moving the first rule up", () => {
+    useMazeStore.setState({ rules: makeRules() });
+    useMazeStore.getState().moveRule("g1", "up");
+    expect(useMazeStore.getState().rules.map((g) => g.id)).toEqual(["g1", "g2", "g3"]);
+  });
+
+  it("is a no-op moving the last rule down", () => {
+    useMazeStore.setState({ rules: makeRules() });
+    useMazeStore.getState().moveRule("g3", "down");
+    expect(useMazeStore.getState().rules.map((g) => g.id)).toEqual(["g1", "g2", "g3"]);
+  });
+
+  it("is a no-op for an unknown rule id", () => {
+    useMazeStore.setState({ rules: makeRules() });
+    useMazeStore.getState().moveRule("missing", "up");
+    expect(useMazeStore.getState().rules.map((g) => g.id)).toEqual(["g1", "g2", "g3"]);
+  });
+});
+
 describe("buildGenerateConfig — ruleDisabled exclusion", () => {
   it("excludes a ruleDisabled rule's checks entirely from checks and check_rules", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);

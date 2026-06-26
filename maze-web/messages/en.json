@@ -184,6 +184,8 @@
   "quality.enable_rule": "Enable rule",
   "quality.rename_rule": "Rename rule",
   "quality.remove_rule": "Remove rule",
+  "quality.move_rule_up": "Move rule up",
+  "quality.move_rule_down": "Move rule down",
   "quality.confirm_remove_rule": "Remove this rule and its checks?",
   "quality.no_checks_for_kind": "All checks producing this issue kind are already in this rule.",
   "issue.missing_endpoints.label": "Missing endpoints",
