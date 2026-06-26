@@ -264,7 +264,7 @@ setStrategyParam(strategyId: string, paramId: string, value: string): void
 ### moveRule(ruleId, direction)
 
 - Swaps `ruleId` with its neighbor in `rules` order (`"up"` = earlier index, `"down"` = later index). No-op if the rule is already at that end of the list, or if `ruleId` is unknown.
-- `rules` array order is execution order in the repair pipeline's fixpoint loop (see `repair.md`), so this is how the user controls rule priority — surfaced in `RulesColumn` as ▲/▼ buttons in each rule card's title row, disabled at the respective end of the list.
+- Purely organizational: core's `RepairEngine` dispatches rules independently via a `HashMap`-keyed lookup, not by array position (see `repair.md`'s "QcRule and rule-based RepairEngine" — order has no effect on which rule's strategy runs first or on fixpoint convergence). `moveRule` only changes how rules are listed in the UI and serialized into `check_rules` — surfaced in `RulesColumn` as ▲/▼ buttons in each rule card's title row, disabled at the respective end of the list.
 
 ## Default State
 
