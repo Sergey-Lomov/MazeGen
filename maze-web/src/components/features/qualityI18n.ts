@@ -87,6 +87,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.invalid_loop_scored.label"] as MessageFn,
     description: m["strategy.invalid_loop_scored.description"] as MessageFn,
   },
+  missing_loops_random: {
+    label: m["strategy.missing_loops_random.label"] as MessageFn,
+    description: m["strategy.missing_loops_random.description"] as MessageFn,
+  },
 };
 
 export const paramI18n: Record<string, MessageFn> = {
@@ -102,6 +106,7 @@ export const paramI18n: Record<string, MessageFn> = {
   oneway_weight: m["param.oneway_weight.label"] as MessageFn,
   short_overlap_weight: m["param.short_overlap_weight.label"] as MessageFn,
   other_overlap_weight: m["param.other_overlap_weight.label"] as MessageFn,
+  reserve_percent: m["param.reserve_percent.label"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

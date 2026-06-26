@@ -5,7 +5,7 @@ use maze_core::{
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP},
-    repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
+    repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config};
 use crate::dto::{EdgeDto, GenerationStepDto};
@@ -158,6 +158,7 @@ fn build_qc_and_repair_impl<T: Tessellation>(
                 "scored_endpoints"   => Box::new(ScoredEndpointsStrategy),
                 "invalid_loop_random" => Box::new(InvalidLoopRandomStrategy),
                 "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
+                "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
                 other => return Err(format!("unknown strategy: {other}")),
             };
             repair_rules.push(RepairRuleConfig {

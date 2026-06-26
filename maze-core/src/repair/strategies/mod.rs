@@ -4,9 +4,11 @@ pub mod scored_endpoints;
 mod cycle_cut_set;
 pub mod invalid_loop_random;
 pub mod invalid_loop_scored;
+pub mod missing_loops_random;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
 pub use scored_endpoints::ScoredEndpointsStrategy;
 pub use invalid_loop_random::InvalidLoopRandomStrategy;
 pub use invalid_loop_scored::InvalidLoopScoredStrategy;
+pub use missing_loops_random::MissingLoopsRandomStrategy;

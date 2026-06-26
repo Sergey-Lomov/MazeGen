@@ -13,7 +13,7 @@ use maze_core::{
     graph::{Graph, EdgeKind},
     Maze,
     quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
@@ -201,6 +201,11 @@ pub fn available_strategies() -> JsValue {
             id: "invalid_loop_scored",
             handles: kind_str(INVALID_LOOP),
             params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation>>::params(&InvalidLoopScoredStrategy)),
+        },
+        StrategyDescriptor {
+            id: "missing_loops_random",
+            handles: kind_str(MISSING_LOOPS),
+            params: strategy_params_dto(<MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation>>::params(&MissingLoopsRandomStrategy)),
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()
