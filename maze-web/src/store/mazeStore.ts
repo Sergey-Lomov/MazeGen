@@ -109,6 +109,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       showGraphOverlay: file.analytics.showGraphOverlay,
       showNavGraphOverlay: file.analytics.showNavGraphOverlay,
       showRouteOverlay: file.analytics.showRouteOverlay,
+      analyticsSectionsExpanded: file.analytics.sectionsExpanded,
       // debug settings
       debugMode: file.debug.debugMode,
       showDebugFrontier: file.debug.showDebugFrontier,

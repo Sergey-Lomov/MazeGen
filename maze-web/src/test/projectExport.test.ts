@@ -32,6 +32,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     showGraphOverlay: false,
     showNavGraphOverlay: false,
     showRouteOverlay: false,
+    analyticsSectionsExpanded: { layers: true },
     debugMode: false,
     showDebugFrontier: true,
     debugStep: 0,

@@ -66,6 +66,14 @@ function assertStringRecord(v: unknown, path: string): Record<string, string> {
   return obj as Record<string, string>;
 }
 
+function assertBoolRecord(v: unknown, path: string): Record<string, boolean> {
+  const obj = assertObject(v, path);
+  for (const [k, val] of Object.entries(obj)) {
+    assertBoolean(val, `${path}.${k}`);
+  }
+  return obj as Record<string, boolean>;
+}
+
 function assertStringRecordRecord(v: unknown, path: string): Record<string, Record<string, string>> {
   const obj = assertObject(v, path);
   for (const [k, val] of Object.entries(obj)) {
@@ -314,6 +322,9 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     showGraphOverlay: assertBoolean(analyticsObj.showGraphOverlay, "analytics.showGraphOverlay"),
     showNavGraphOverlay: assertBoolean(analyticsObj.showNavGraphOverlay, "analytics.showNavGraphOverlay"),
     showRouteOverlay: assertBoolean(analyticsObj.showRouteOverlay, "analytics.showRouteOverlay"),
+    sectionsExpanded: analyticsObj.sectionsExpanded != null
+      ? assertBoolRecord(analyticsObj.sectionsExpanded, "analytics.sectionsExpanded")
+      : { layers: true },
   };
 
   // debug (optional section — defaults for old files)

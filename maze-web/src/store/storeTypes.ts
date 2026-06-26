@@ -268,6 +268,8 @@ export interface AnalyticsOverlayState {
   showRouteOverlay: boolean;
   /** Base-graph [from, to] edges of the issue loops currently hovered in IssuesBlock. */
   hoveredIssueLoopEdges: [number, number][] | null;
+  /** Expanded/collapsed state per AnalyticsFeature section, keyed by AnalyticsSectionId. */
+  analyticsSectionsExpanded: Record<string, boolean>;
 }
 
 export interface AnalyticsOverlayActions {
@@ -278,6 +280,7 @@ export interface AnalyticsOverlayActions {
   setShowPureCyclesOverlay: (v: boolean) => void;
   setShowRouteOverlay: (v: boolean) => void;
   setHoveredIssueLoopEdges: (edges: [number, number][] | null) => void;
+  setAnalyticsSectionExpanded: (id: string, expanded: boolean) => void;
 }
 
 export interface PostEditState {

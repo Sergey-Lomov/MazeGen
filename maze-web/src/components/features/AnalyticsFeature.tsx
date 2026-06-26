@@ -1,4 +1,5 @@
 import React from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { colors, font } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
@@ -6,8 +7,13 @@ import { IssuesBlock } from "../IssuesBlock";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
 
-function SectionHeader({ label }: { label: string }) {
-  return <div style={sharedStyles.sectionHeader}>{label}</div>;
+function SectionHeader({ label, expanded, onToggle }: { label: string; expanded: boolean; onToggle: () => void }) {
+  return (
+    <div style={styles.sectionHeaderRow} onClick={onToggle}>
+      {expanded ? <ChevronDown size={14} color={colors.textDim} /> : <ChevronRight size={14} color={colors.textDim} />}
+      <div style={sharedStyles.sectionHeader}>{label}</div>
+    </div>
+  );
 }
 
 function StatRow({ label, count, pct }: { label: string; count: number; pct?: number }) {
@@ -57,46 +63,55 @@ export function AnalyticsFeature() {
   const setShowPureCyclesOverlay = useMazeStore((s) => s.setShowPureCyclesOverlay);
   const setShowRouteOverlay = useMazeStore((s) => s.setShowRouteOverlay);
 
+  const sectionsExpanded = useMazeStore((s) => s.analyticsSectionsExpanded);
+  const setAnalyticsSectionExpanded = useMazeStore((s) => s.setAnalyticsSectionExpanded);
+  const isExpanded = (id: string) => sectionsExpanded[id] ?? false;
+  const toggleSection = (id: string) => setAnalyticsSectionExpanded(id, !isExpanded(id));
+
   return (
     <div style={styles.root}>
 
       <IssuesBlock issues={issues} />
 
       {/* Layers block */}
-      <SectionHeader label={m["analytics.layers"]()} />
-      <div style={styles.toggleBlock}>
-        <ToggleRow label={m["analytics.layer_maze"]()} checked={showMazeOverlay} onChange={setShowMazeOverlay} />
-        <ToggleRow label={m["analytics.layer_components"]()} checked={showComponentsOverlay} onChange={setShowComponentsOverlay} />
-        <ToggleRow label={m["analytics.layer_graph"]()} checked={showGraphOverlay} onChange={setShowGraphOverlay} />
-        <ToggleRow label={m["analytics.layer_nav_graph"]()} checked={showNavGraphOverlay} onChange={setShowNavGraphOverlay} />
-        <ToggleRow label={m["analytics.layer_pure_cycles"]()} checked={showPureCyclesOverlay} onChange={setShowPureCyclesOverlay} disabled={(graphAnalytics?.cycle_count ?? 0) === 0} />
-        <ToggleRow label={m["analytics.layer_route"]()} checked={showRouteOverlay} onChange={setShowRouteOverlay} disabled={routeInfo == null} />
-      </div>
+      <SectionHeader label={m["analytics.layers"]()} expanded={isExpanded("layers")} onToggle={() => toggleSection("layers")} />
+      {isExpanded("layers") && (
+        <div style={styles.toggleBlock}>
+          <ToggleRow label={m["analytics.layer_maze"]()} checked={showMazeOverlay} onChange={setShowMazeOverlay} />
+          <ToggleRow label={m["analytics.layer_components"]()} checked={showComponentsOverlay} onChange={setShowComponentsOverlay} />
+          <ToggleRow label={m["analytics.layer_graph"]()} checked={showGraphOverlay} onChange={setShowGraphOverlay} />
+          <ToggleRow label={m["analytics.layer_nav_graph"]()} checked={showNavGraphOverlay} onChange={setShowNavGraphOverlay} />
+          <ToggleRow label={m["analytics.layer_pure_cycles"]()} checked={showPureCyclesOverlay} onChange={setShowPureCyclesOverlay} disabled={(graphAnalytics?.cycle_count ?? 0) === 0} />
+          <ToggleRow label={m["analytics.layer_route"]()} checked={showRouteOverlay} onChange={setShowRouteOverlay} disabled={routeInfo == null} />
+        </div>
+      )}
 
       <div style={styles.divider} />
 
       {/* Path block — hidden when no route */}
       {routeInfo != null && (
         <>
-          <SectionHeader label={m["analytics.path"]()} />
-          <div style={styles.statBlock}>
-            <StatRow label={m["analytics.path_length"]()} count={routeInfo.path_length} />
-            <StatRow label={m["analytics.junction_count"]()} count={routeInfo.junction_count} />
-            <StatRow label={m["analytics.one_way_count"]()} count={routeInfo.one_way_count} />
-            {routeInfo.score != null && (
-              <div style={styles.scoreRow}>
-                <span style={styles.statLabel}>{m["analytics.score"]()}</span>
-                <span style={styles.statCount}>{routeInfo.score.toFixed(2)}</span>
-              </div>
-            )}
-          </div>
+          <SectionHeader label={m["analytics.path"]()} expanded={isExpanded("path")} onToggle={() => toggleSection("path")} />
+          {isExpanded("path") && (
+            <div style={styles.statBlock}>
+              <StatRow label={m["analytics.path_length"]()} count={routeInfo.path_length} />
+              <StatRow label={m["analytics.junction_count"]()} count={routeInfo.junction_count} />
+              <StatRow label={m["analytics.one_way_count"]()} count={routeInfo.one_way_count} />
+              {routeInfo.score != null && (
+                <div style={styles.scoreRow}>
+                  <span style={styles.statLabel}>{m["analytics.score"]()}</span>
+                  <span style={styles.statCount}>{routeInfo.score.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          )}
           <div style={styles.divider} />
         </>
       )}
 
       {/* Nodes block */}
-      <SectionHeader label={m["analytics.node_elements"]()} />
-      {nodeStats ? (() => {
+      <SectionHeader label={m["analytics.node_elements"]()} expanded={isExpanded("nodes")} onToggle={() => toggleSection("nodes")} />
+      {isExpanded("nodes") && nodeStats ? (() => {
         const sorted = [...nodeStats.junctions].sort((a, b) => a.degree - b.degree);
         const total = nodeStats.dead_ends + nodeStats.straight + nodeStats.turns
           + sorted.reduce((s, j) => s + j.count, 0);
@@ -121,8 +136,8 @@ export function AnalyticsFeature() {
       <div style={styles.divider} />
 
       {/* Edges block */}
-      <SectionHeader label={m["analytics.edge_elements"]()} />
-      {edgeStats ? (() => {
+      <SectionHeader label={m["analytics.edge_elements"]()} expanded={isExpanded("edges")} onToggle={() => toggleSection("edges")} />
+      {isExpanded("edges") && edgeStats ? (() => {
         const total = edgeStats.bidirectional + edgeStats.one_way + edgeStats.walls;
         const pct = (n: number) => total > 0 ? (n / total) * 100 : 0;
         return (
@@ -138,18 +153,20 @@ export function AnalyticsFeature() {
       {graphAnalytics != null && (
         <>
           <div style={styles.divider} />
-          <SectionHeader label={m["analytics.graph"]()} />
-          <div style={styles.statBlock}>
-            <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
-            <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
-            <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
-            {!graphAnalytics.cycle_analysis_overflowed && (
-              <>
-                <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
-                <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
-              </>
-            )}
-          </div>
+          <SectionHeader label={m["analytics.graph"]()} expanded={isExpanded("graph")} onToggle={() => toggleSection("graph")} />
+          {isExpanded("graph") && (
+            <div style={styles.statBlock}>
+              <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
+              <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
+              <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
+              {!graphAnalytics.cycle_analysis_overflowed && (
+                <>
+                  <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
+                  <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
+                </>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -159,6 +176,7 @@ export function AnalyticsFeature() {
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 6 },
+  sectionHeaderRow: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer" },
   statBlock: { display: "flex", flexDirection: "column", gap: 3 },
   statRow: { display: "flex", alignItems: "center", gap: 6 },
   statLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },

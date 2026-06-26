@@ -51,6 +51,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       showGraphOverlay: state.showGraphOverlay,
       showNavGraphOverlay: state.showNavGraphOverlay,
       showRouteOverlay: state.showRouteOverlay,
+      sectionsExpanded: state.analyticsSectionsExpanded,
     },
     debug: {
       debugMode: state.debugMode,

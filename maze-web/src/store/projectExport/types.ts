@@ -14,6 +14,7 @@ export interface ProjectFileAnalytics {
   showGraphOverlay: boolean;
   showNavGraphOverlay: boolean;
   showRouteOverlay: boolean;
+  sectionsExpanded: Record<string, boolean>;
 }
 
 export interface ProjectFileDebug {
