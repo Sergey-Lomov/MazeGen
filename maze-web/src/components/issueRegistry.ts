@@ -28,6 +28,8 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   min_loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.min_loop_length_label"]({ min_loop_length: d.threshold }) : undefined,
   max_loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.max_loop_length_label"]({ max_loop_length: d.threshold }) : undefined,
   external_escape_diversity: (d) => d.min_distinct_exits !== undefined ? m["issue.invalid_loop.external_escape_diversity_label"]({ min_distinct_exits: d.min_distinct_exits }) : undefined,
+  loop_distance_from_start: (d) => d.min_distance_from_start !== undefined ? m["issue.invalid_loop.loop_distance_from_start_label"]({ min_distance_from_start: d.min_distance_from_start }) : undefined,
+  loop_distance_from_finish: (d) => d.min_distance_from_finish !== undefined ? m["issue.invalid_loop.loop_distance_from_finish_label"]({ min_distance_from_finish: d.min_distance_from_finish }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

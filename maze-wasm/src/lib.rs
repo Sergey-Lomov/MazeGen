@@ -12,7 +12,7 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
@@ -135,6 +135,28 @@ pub fn available_checks() -> JsValue {
                 id: "min_distinct_exits",
                 label: "Min distinct exits",
                 kind: ParamKindDto::Integer { default: EXTERNAL_ESCAPE_DIVERSITY_DEFAULT as i64, min: 0, max: 1_000 },
+            }],
+        },
+        CheckDescriptor {
+            id: "loop_distance_from_start",
+            label: "Loop distance from start",
+            description: "Fires if a simple loop sits closer to start (in tiles, directed graph distance) than the required minimum.",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![ParamDescriptor {
+                id: "min_distance_from_start",
+                label: "Min distance from start",
+                kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_START_DEFAULT as i64, min: 0, max: 100_000 },
+            }],
+        },
+        CheckDescriptor {
+            id: "loop_distance_from_finish",
+            label: "Loop distance from finish",
+            description: "Fires if a simple loop sits closer to finish (in tiles, directed graph distance) than the required minimum.",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![ParamDescriptor {
+                id: "min_distance_from_finish",
+                label: "Min distance from finish",
+                kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_FINISH_DEFAULT as i64, min: 0, max: 100_000 },
             }],
         },
     ];

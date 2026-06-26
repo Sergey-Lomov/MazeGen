@@ -6,6 +6,7 @@ pub mod routing;
 pub mod graph_analytics;
 pub(crate) mod pathfinding;
 pub(crate) mod cycles;
+pub(crate) mod distance_map;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::ids::{NodeId, EdgeId};

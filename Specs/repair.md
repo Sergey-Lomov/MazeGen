@@ -70,9 +70,21 @@ pub trait RepairStrategy<F: Field> {
 A **rule** is the unit `RepairEngine` actually dispatches on — not `IssueKind` directly. A rule is a non-empty set of checks producing one `IssueKind`, with at most one strategy. This lets two checks producing the same `IssueKind` (e.g. `min_loop_length` and `max_loop_length`, both `INVALID_LOOP`) be split into independent rules with different strategies, instead of being forced to share the single strategy a kind-keyed engine would allow.
 
 ```rust
-/// Newtype over a check id (`available_checks()`'s `CheckDescriptor.id`, e.g. `"min_loop_length"`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CheckId(pub &'static str);
+/// Identifies a check type (`available_checks()`'s `CheckDescriptor.id`). One variant per
+/// registered check — `as_str`/`from_str` are the wire-boundary conversion (wasm config
+/// parsing, serialization), same pattern as `IssueKind`. See `quality_control.md`'s "Available
+/// checks" table for the current full list of check ids this enum covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum CheckId {
+    MissingEndpoints,
+    UnreachableFinish,
+    MinLoopsCount,
+    MinLoopLength,
+    MaxLoopLength,
+    ExternalEscapeDiversity,
+    LoopDistanceFromStart,
+    LoopDistanceFromFinish,
+}
 
 /// A user-defined QC rule. Caller-supplied configuration (built by the wasm layer from
 /// `GenerateConfig.check_rules`, see `quality_control.md`'s `QcRuleConfig`), not generated or

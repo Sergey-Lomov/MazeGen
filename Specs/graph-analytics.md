@@ -106,6 +106,27 @@ Toggled via `showPureCyclesOverlay` in `mazeStore`. Stats block in `AnalyticsFea
 
 Base-graph SCC (`maze.analysis.scc`) is computed separately for the `RegionsRenderer` overlay (regions are derived client-side from `graph_analytics.node_component`).
 
+## Distance Maps (`distance_from_start` / `distance_from_finish`)
+
+Two lazily-computed, cached maps from `NavNodeId` to shortest-path distance **in tiles**:
+
+- `MazeAnalysis::distance_from_start(graph, meta)` — distance FROM `meta.start` to every reachable nav-node, following directed edges forward. Returns `None` if `meta.start` is unset.
+- `MazeAnalysis::distance_from_finish(graph, meta)` — distance TO `meta.finish` from every nav-node that can reach it, following directed edges backward. Returns `None` if `meta.finish` is unset.
+
+Both are keyed on `(graph.version(), start_or_finish_node)` (`maze-core/src/lib.rs`) — same invalidation contract as `nav_graph`/`graph_analytics`: any edge mutation or moving start/finish busts the cache.
+
+**Nav-domain (`NavNodeId`), not maze `NodeId`** — junction/start/finish nodes only, not corridor-interior nodes compressed out of the nav graph. Every consumer (QC checks operating on cycles, which are themselves lists of nav-edge indices) works in `NavNodeId` already, so there's no reason to unroll into maze-node domain. The distance value itself is still tile count, never nav-edge hop count: each nav-edge already carries its own tile length (`path.len() - 1`), so a nav-node four tiles away via one corridor has distance 4, not 1.
+
+Distance is **strictly graph-based** (Dijkstra shortest path on the directed nav-graph adjacency, weight = tile length per nav-edge) — never geometric/coordinate distance. Unreachable nav-nodes are absent from the map (no sentinel value); query with `.get()`.
+
+### Implementation: `compute_distance_map` (`maze-core/src/graph/distance_map.rs`)
+
+Single shared utility, reused by both directions (`DistanceDirection::Forward`/`Reverse`) — avoids duplicating shortest-path logic per consumer. Thin wrapper around `dijkstra_forward`/`dijkstra_reverse` (`pathfinding.rs`, same Dijkstra used by `routing.rs`): runs it from the source nav-node, then drops unreachable entries (`usize::MAX`) before returning the `HashMap<NavNodeId, usize>`.
+
+This feeds [issue #33](https://github.com/Sergey-Lomov/MazeGen/issues/33)'s `LoopDistanceFromStartCheck`/`LoopDistanceFromFinishCheck` (`quality_control.md`) — cycle placement in progression space — and any other consumer needing topology-based distance-to-start/finish in nav-domain.
+
+`cycle_min_distance(nav, cycle, dist_map)` (same file) is the other shared piece those two checks need: given a cycle (a list of nav-edge indices) and one of the two distance maps, returns the minimum distance among every nav-node the cycle touches (every `from`/`to` endpoint of its nav-edges) — the cycle's closest point to start/finish. A touched nav-node absent from `dist_map` is skipped; if every touched nav-node is absent, returns `usize::MAX` (no defined distance). One function, not duplicated per check — issue #33 explicitly called for extracting any such shared distance-reduction logic rather than letting each check reimplement it.
+
 ## Quality Control Use Cases
 
 | Metric | QC check |

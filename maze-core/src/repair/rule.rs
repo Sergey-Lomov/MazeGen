@@ -11,6 +11,8 @@ pub enum CheckId {
     MinLoopLength,
     MaxLoopLength,
     ExternalEscapeDiversity,
+    LoopDistanceFromStart,
+    LoopDistanceFromFinish,
 }
 
 impl CheckId {
@@ -22,6 +24,8 @@ impl CheckId {
             CheckId::MinLoopLength => "min_loop_length",
             CheckId::MaxLoopLength => "max_loop_length",
             CheckId::ExternalEscapeDiversity => "external_escape_diversity",
+            CheckId::LoopDistanceFromStart => "loop_distance_from_start",
+            CheckId::LoopDistanceFromFinish => "loop_distance_from_finish",
         }
     }
 
@@ -33,6 +37,8 @@ impl CheckId {
             "min_loop_length" => Some(CheckId::MinLoopLength),
             "max_loop_length" => Some(CheckId::MaxLoopLength),
             "external_escape_diversity" => Some(CheckId::ExternalEscapeDiversity),
+            "loop_distance_from_start" => Some(CheckId::LoopDistanceFromStart),
+            "loop_distance_from_finish" => Some(CheckId::LoopDistanceFromFinish),
             _ => None,
         }
     }

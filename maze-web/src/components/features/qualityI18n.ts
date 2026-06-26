@@ -27,6 +27,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.external_escape_diversity.label"] as MessageFn,
     description: m["check.external_escape_diversity.description"] as MessageFn,
   },
+  loop_distance_from_start: {
+    label: m["check.loop_distance_from_start.label"] as MessageFn,
+    description: m["check.loop_distance_from_start.description"] as MessageFn,
+  },
+  loop_distance_from_finish: {
+    label: m["check.loop_distance_from_finish.label"] as MessageFn,
+    description: m["check.loop_distance_from_finish.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -82,6 +90,8 @@ export const paramI18n: Record<string, MessageFn> = {
   min_loop_length: m["param.min_loop_length.label"] as MessageFn,
   max_loop_length: m["param.max_loop_length.label"] as MessageFn,
   min_distinct_exits: m["param.min_distinct_exits.label"] as MessageFn,
+  min_distance_from_start: m["param.min_distance_from_start.label"] as MessageFn,
+  min_distance_from_finish: m["param.min_distance_from_finish.label"] as MessageFn,
   path_weight: m["param.path_weight.label"] as MessageFn,
   junction_weight: m["param.junction_weight.label"] as MessageFn,
   oneway_weight: m["param.oneway_weight.label"] as MessageFn,

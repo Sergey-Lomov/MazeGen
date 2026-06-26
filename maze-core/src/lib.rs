@@ -31,6 +31,8 @@ pub struct MazeAnalysis {
     scc: std::cell::RefCell<Option<(u64, graph::scc::ConnectedComponents)>>,
     route_info: std::cell::RefCell<Option<(u64, ids::NodeId, ids::NodeId, Option<graph::routing::RouteInfo>)>>,
     graph_analytics: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, GraphAnalytics)>>,
+    distance_from_start: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashMap<graph::nav::NavNodeId, usize>)>>,
+    distance_from_finish: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashMap<graph::nav::NavNodeId, usize>)>>,
 }
 
 impl Default for MazeAnalysis {
@@ -40,6 +42,8 @@ impl Default for MazeAnalysis {
             scc: std::cell::RefCell::new(None),
             route_info: std::cell::RefCell::new(None),
             graph_analytics: std::cell::RefCell::new(None),
+            distance_from_start: std::cell::RefCell::new(None),
+            distance_from_finish: std::cell::RefCell::new(None),
         }
     }
 }
@@ -120,6 +124,49 @@ impl MazeAnalysis {
         }
         cache.as_ref().unwrap().3.clone()
     }
+
+    /// Builds and caches the per-nav-node shortest-path distance (in tiles) FROM `meta.start`,
+    /// keyed on `(graph.version(), meta.start)` — invalidated whenever the graph changes or
+    /// `start` is moved. Returns `None` if `meta.start` isn't set. Unreachable nav-nodes are
+    /// absent from the returned map.
+    ///
+    /// Nav-domain (`NavNodeId`), not maze `NodeId` — junction/start/finish nodes only, since
+    /// every consumer (QC checks operating on cycles, which are themselves nav-edge lists)
+    /// works in that domain already. Distance is still tile count, not nav-edge hop count:
+    /// each nav-edge already carries its own tile length (`path.len() - 1`).
+    ///
+    /// Distance is computed via directed graph traversal (`compute_distance_map`) on the
+    /// pinned nav graph, never geometric/coordinate distance — see `graph-analytics.md`.
+    pub fn distance_from_start(&self, graph: &Graph, meta: &MazeMeta) -> Option<std::collections::HashMap<graph::nav::NavNodeId, usize>> {
+        let start = meta.start?;
+        let version = graph.version();
+        let mut cache = self.distance_from_start.borrow_mut();
+        if !matches!(&*cache, Some((v, s, _)) if *v == version && *s == start) {
+            let nav = self.nav_graph(graph, meta);
+            let source = nav.nav_node_for(start)
+                .expect("nav_graph always pins meta.start as a NavNode when meta.start is Some");
+            let dist = graph::distance_map::compute_distance_map(&nav, source, graph::distance_map::DistanceDirection::Forward);
+            *cache = Some((version, start, dist));
+        }
+        Some(cache.as_ref().unwrap().2.clone())
+    }
+
+    /// Builds and caches the per-nav-node shortest-path distance (in tiles) TO `meta.finish`,
+    /// keyed on `(graph.version(), meta.finish)` — same invalidation contract and nav-domain
+    /// rationale as `distance_from_start`. Returns `None` if `meta.finish` isn't set.
+    pub fn distance_from_finish(&self, graph: &Graph, meta: &MazeMeta) -> Option<std::collections::HashMap<graph::nav::NavNodeId, usize>> {
+        let finish = meta.finish?;
+        let version = graph.version();
+        let mut cache = self.distance_from_finish.borrow_mut();
+        if !matches!(&*cache, Some((v, f, _)) if *v == version && *f == finish) {
+            let nav = self.nav_graph(graph, meta);
+            let source = nav.nav_node_for(finish)
+                .expect("nav_graph always pins meta.finish as a NavNode when meta.finish is Some");
+            let dist = graph::distance_map::compute_distance_map(&nav, source, graph::distance_map::DistanceDirection::Reverse);
+            *cache = Some((version, finish, dist));
+        }
+        Some(cache.as_ref().unwrap().2.clone())
+    }
 }
 
 pub struct Maze<T: Tessellation> {
@@ -137,5 +184,66 @@ impl<T: Tessellation> Maze<T> {
             meta: MazeMeta::empty(),
             analysis: MazeAnalysis::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod distance_cache_tests {
+    use super::*;
+    use crate::graph::EdgeKind;
+    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+
+    fn line_maze(len: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<ids::NodeId> = (0..len)
+            .map(|x| field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
+            .collect();
+        for i in 0..len - 1 {
+            g.add_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
+        }
+        let maze = Maze::new(field, g);
+        (maze, nodes)
+    }
+
+    #[test]
+    fn distance_from_start_repeated_call_returns_same_result_without_graph_change() {
+        let (mut maze, nodes) = line_maze(4);
+        maze.meta.start = Some(nodes[0]);
+        let first = maze.analysis.distance_from_start(&maze.graph, &maze.meta).unwrap();
+        let second = maze.analysis.distance_from_start(&maze.graph, &maze.meta).unwrap();
+        assert_eq!(first, second, "repeated call with unchanged graph/start must return identical map");
+    }
+
+    #[test]
+    fn distance_from_start_invalidates_on_graph_mutation() {
+        let (mut maze, nodes) = line_maze(4);
+        maze.meta.start = Some(nodes[0]);
+        let last_nav = maze.analysis.nav_graph(&maze.graph, &maze.meta).nav_node_for(nodes[3]).unwrap();
+        let before = maze.analysis.distance_from_start(&maze.graph, &maze.meta).unwrap();
+        assert_eq!(before.get(&last_nav), Some(&3));
+
+        // Add a shortcut directly from start to the last node — cached entry for `nodes[3]`
+        // must reflect the new shorter path, not the stale pre-mutation value.
+        maze.graph.add_edge(nodes[0], nodes[3], EdgeKind::Basic);
+        let after = maze.analysis.distance_from_start(&maze.graph, &maze.meta).unwrap();
+        assert_eq!(after.get(&last_nav), Some(&1), "cache must invalidate after graph.version() changes");
+    }
+
+    #[test]
+    fn distance_from_finish_invalidates_when_finish_moves() {
+        let (mut maze, nodes) = line_maze(4);
+        maze.meta.finish = Some(nodes[3]);
+        let first_nav = maze.analysis.nav_graph(&maze.graph, &maze.meta).nav_node_for(nodes[0]).unwrap();
+        let before = maze.analysis.distance_from_finish(&maze.graph, &maze.meta).unwrap();
+        assert_eq!(before.get(&first_nav), Some(&3));
+
+        // Moving finish to nodes[1] without touching the graph itself (same version) must
+        // still bust the cache — keyed on finish, not just graph.version().
+        maze.meta.finish = Some(nodes[1]);
+        let after = maze.analysis.distance_from_finish(&maze.graph, &maze.meta).unwrap();
+        assert_eq!(after.get(&first_nav), Some(&1));
     }
 }
