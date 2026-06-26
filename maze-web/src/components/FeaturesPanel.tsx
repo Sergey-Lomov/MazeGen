@@ -203,6 +203,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
 
   return (
     <div style={styles.panel}>
+      <div style={styles.scrollArea}>
       <FeatureCard
         title={m["tessellation.title"]()}
         status={basicConfigStatus}
@@ -277,6 +278,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
       >
         <AnalyticsFeature />
       </FeatureCard>
+      </div>
       <div style={styles.footer}>
         <LanguageSwitcher />
         <div style={styles.footerRight}>
@@ -303,7 +305,13 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     height: "100%",
     background: colors.bgPanel,
+  },
+  scrollArea: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
     overflowY: "auto",
+    minHeight: 0,
   },
   footer: {
     display: "flex",
@@ -311,7 +319,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     padding: "8px 10px",
     borderTop: `1px solid ${colors.borderDim}`,
-    marginTop: "auto",
+    flexShrink: 0,
   },
   footerRight: {
     display: "flex",
