@@ -11,13 +11,15 @@ A read-only analysis pass that detects problems in a `Maze` and produces a list 
 pub enum IssueKind {
     MissingEndpoints,
     UnreachableFinish,
-    MinLoopsCount,
     InvalidLoop,
+    MissingLoops,
     CycleAnalysisOverflowed,
 }
 ```
 
 `LoopDistanceFromStartCheck`/`LoopDistanceFromFinishCheck` (below) reuse `InvalidLoop` — no new `IssueKind` variant, same as every other check flagging cycles invalid for a check-specific reason.
+
+`MissingLoops` mirrors `InvalidLoop`'s role, but for a missing-count condition (too few loops overall) instead of a specific invalid cycle — currently produced only by `MinLoopsCountCheck`; future checks needing more loops added may reuse this kind rather than inventing a new one.
 
 Each variant has a canonical string representation used in serialization and config:
 
@@ -33,8 +35,8 @@ Named constants alias the variants for use across crates:
 ```rust
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
 pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
-pub const MIN_LOOPS_COUNT:    IssueKind = IssueKind::MinLoopsCount;
 pub const INVALID_LOOP:       IssueKind = IssueKind::InvalidLoop;
+pub const MISSING_LOOPS:      IssueKind = IssueKind::MissingLoops;
 pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflowed;
 ```
 
@@ -94,6 +96,9 @@ pub enum IssueData {
         invalid: Vec<usize>,
         invalid_sources: HashMap<Vec<EdgeId>, Vec<&'static str>>,
     },
+    Missing {                     // produced by any check flagging too few loops, see below
+        missing: u32,
+    },
 }
 ```
 
@@ -106,6 +111,7 @@ pub enum IssueData {
 - **`InvalidLoops { all, invalid, invalid_sources }`**: produced by any check that flags simple cycles invalid for a check-specific reason (paired with `INVALID_LOOP`) — currently `MinLoopLengthCheck` (cycles shorter than a configured threshold) and `MaxLoopLengthCheck` (cycles longer than a configured threshold), **mandatory** for this kind, see `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` in `repair.md`. `all` holds **every** simple cycle found in the maze, valid and invalid alike, each as the **set** of base-`Graph` edges forming it — element order carries no meaning beyond membership, only used as a convenient container, and `EdgeId` values never repeat within one cycle. `invalid` is the subset of indices into `all` that the producing check(s) flagged — the cycles a repair strategy must actually break. An empty `invalid` is valid and means no cycle was flagged (`all` may still be non-empty in that case). Future checks may flag cycles invalid for reasons other than length and reuse this same variant, rather than introducing a new one per reason — see the `IssueKind` hard rule above.
 - **`invalid_sources`**: per-cycle check attribution, keyed by `canonical_cycle_key` (the cycle's edge set, sorted) rather than by index into `all` — indices get remapped on every merge (see `merge_invalid_loops` in `repair.md`'s "Pipeline" section), but a cycle's canonical key is stable across merges, so this map never needs remapping. Maps a cycle to the check id(s) that flagged it invalid. A cycle absent from this map was flagged by no check directly tracked — shouldn't happen for entries in `invalid`, but the map is not required to cover every index; absence means "no recorded source," not an error.
 - Keeping the valid cycles in `all` (not just the invalid ones) lets a strategy avoid cutting an edge that is also part of a cycle the maze is meant to keep — see `InvalidLoopScoredStrategy` in `repair.md`.
+- **`Missing { missing }`**: produced by any check that flags the maze as short on loops overall (paired with `MISSING_LOOPS`) — currently only `MinLoopsCountCheck`. `missing` is how many loops short of the requirement the maze is (`min_loops.saturating_sub(graph_analytics.cycle_count)` — the independent-cycle count, see `MinLoopsCountCheck` below), letting a repair strategy know how many to add. No merge rule defined yet — currently only one check ever produces `MISSING_LOOPS`, so the dedup/merge path is never exercised for this variant.
 - **`data` is not exposed over WASM**: the WASM layer serializes `IssueKind`, `source_checks`, and `details` (see `IssueDto` in `quality-feature.md`) but never `Issue.data` itself — that field stays internal, Check-to-Strategy plumbing only.
 - **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` and `details` (on `Issue`, see above) are unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 
@@ -162,7 +168,7 @@ pub struct MinLoopsCountCheck {
 }
 ```
 
-Intended to fire `Issue::new_from_check(MIN_LOOPS_COUNT, "min_loops_count")` when the maze has fewer loops than `min_loops`. Loop detection is not yet implemented — the check always fires regardless of `min_loops`.
+Counts loops via `maze.analysis.graph_analytics(&maze.graph, &maze.meta).cycle_count` — the **independent** cycle count (Euler's formula, `E - V + C` on the pure-cycle core, see `graph-analytics.md`), the same number shown to the user as the "Cycle count" analytics stat. Deliberately **not** `find_deduped_simple_cycles`'s raw simple-cycle enumeration: that is a different (usually much larger) metric, and using it here would make this check disagree with what the UI displays as the maze's loop count. Silently skips (no issue) when `graph_analytics.cycle_analysis_overflowed` is true, same overflow rationale as the simple-cycle checks below (shared underlying enumeration). If `cycle_count` is below `min_loops`, fires `Issue::with_data_from_check(MISSING_LOOPS, IssueData::Missing { missing }, "min_loops_count")` with `.with_detail("min_loops_count", "missing", missing.to_string())` chained on, where `missing = min_loops.saturating_sub(cycle_count)`. No issue is fired when the count meets or exceeds `min_loops`.
 
 ### MinLoopLengthCheck
 
@@ -347,7 +353,7 @@ One user-defined QC rule: a non-empty set of active checks producing the same `I
 |----|------------|--------|-----------------|
 | `missing_endpoints` | `missing_endpoints` | — | yes |
 | `unreachable_finish` | `unreachable_finish` | — | yes |
-| `min_loops_count` | `min_loops_count` | `min_loops: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_loops_count` | `missing_loops` | `min_loops: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_loop_length` | `invalid_loop` | `min_loop_length: Integer(default=10, min=1, max=100_000)` | no |
 | `max_loop_length` | `invalid_loop` | `max_loop_length: Integer(default=100, min=1, max=100_000)` | no |
 | `external_escape_diversity` | `invalid_loop` | `min_distinct_exits: Integer(default=3, min=0, max=1_000)` | no |

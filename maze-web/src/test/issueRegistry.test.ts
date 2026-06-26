@@ -10,8 +10,8 @@ describe("resolveIssue", () => {
     expect(resolveIssue("unreachable_finish").severity).toBe("warning");
   });
 
-  it("returns warning severity for min_loops_count", () => {
-    expect(resolveIssue("min_loops_count").severity).toBe("warning");
+  it("returns warning severity for missing_loops", () => {
+    expect(resolveIssue("missing_loops").severity).toBe("warning");
   });
 
   it("returns warning severity for invalid_loop", () => {
@@ -26,7 +26,7 @@ describe("resolveIssue", () => {
     const knownKinds = [
       "missing_endpoints",
       "unreachable_finish",
-      "min_loops_count",
+      "missing_loops",
       "invalid_loop",
       "cycle_analysis_overflowed",
     ];

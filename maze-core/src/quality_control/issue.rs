@@ -6,19 +6,23 @@ use crate::repair::CheckId;
 pub enum IssueKind {
     MissingEndpoints,
     UnreachableFinish,
-    MinLoopsCount,
     InvalidLoop,
+    MissingLoops,
     CycleAnalysisOverflowed,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
 pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
-pub const MIN_LOOPS_COUNT: IssueKind = IssueKind::MinLoopsCount;
 /// A cycle is invalid for some check-specific reason (currently: shorter than a configured
 /// minimum tile-length — see `MinLoopLengthCheck`). Future checks may flag cycles invalid for
 /// other reasons entirely (e.g. too long) and reuse this same kind — see `IssueData::InvalidLoops`
 /// and `Issue.source_checks` for how multiple checks contributing to one kind are distinguished.
 pub const INVALID_LOOP: IssueKind = IssueKind::InvalidLoop;
+/// The maze has fewer loops than some check requires (currently only `MinLoopsCountCheck`).
+/// Mirrors `INVALID_LOOP`'s role for invalid cycles, but for a missing-count condition instead
+/// of a specific-cycle one — future checks needing more loops added can reuse this kind. Carries
+/// `IssueData::Missing { missing }` — see that variant's doc comment.
+pub const MISSING_LOOPS: IssueKind = IssueKind::MissingLoops;
 /// Not a toggleable QC check — raised directly by `build_analytics_snapshot`
 /// (maze-wasm/src/analytics.rs) whenever `GraphAnalytics::cycle_analysis_overflowed` is true.
 /// Unlike the other kinds here, no `Check<T>` implementation produces this; it surfaces a
@@ -30,8 +34,8 @@ impl IssueKind {
         match self {
             IssueKind::MissingEndpoints => "missing_endpoints",
             IssueKind::UnreachableFinish => "unreachable_finish",
-            IssueKind::MinLoopsCount => "min_loops_count",
             IssueKind::InvalidLoop => "invalid_loop",
+            IssueKind::MissingLoops => "missing_loops",
             IssueKind::CycleAnalysisOverflowed => "cycle_analysis_overflowed",
         }
     }
@@ -48,8 +52,8 @@ impl IssueKind {
         match s {
             "missing_endpoints"  => Some(IssueKind::MissingEndpoints),
             "unreachable_finish" => Some(IssueKind::UnreachableFinish),
-            "min_loops_count"    => Some(IssueKind::MinLoopsCount),
             "invalid_loop"       => Some(IssueKind::InvalidLoop),
+            "missing_loops"      => Some(IssueKind::MissingLoops),
             "cycle_analysis_overflowed" => Some(IssueKind::CycleAnalysisOverflowed),
             _ => None,
         }
@@ -171,8 +175,8 @@ mod tests {
 
     #[test]
     fn with_data_round_trip() {
-        let issue = Issue::with_data(MIN_LOOPS_COUNT, IssueData::TestPayload(vec![1, 2, 3]));
-        assert_eq!(issue.kind, MIN_LOOPS_COUNT);
+        let issue = Issue::with_data(MISSING_LOOPS, IssueData::TestPayload(vec![1, 2, 3]));
+        assert_eq!(issue.kind, MISSING_LOOPS);
         assert_eq!(issue.data, Some(IssueData::TestPayload(vec![1, 2, 3])));
         let cloned = issue.clone();
         assert_eq!(issue, cloned);
@@ -249,8 +253,8 @@ mod tests {
         let kinds = [
             IssueKind::MissingEndpoints,
             IssueKind::UnreachableFinish,
-            IssueKind::MinLoopsCount,
             IssueKind::InvalidLoop,
+            IssueKind::MissingLoops,
             IssueKind::CycleAnalysisOverflowed,
         ];
         for kind in kinds {

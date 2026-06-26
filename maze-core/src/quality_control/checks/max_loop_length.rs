@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, resolve_to_edge_ids, CycleSearchResult};
+use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_LOOP};
 use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
@@ -20,11 +20,7 @@ impl<T: Tessellation> Check<T> for MaxLoopLengthCheck {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let cycles = match find_all_simple_cycles(nav) {
-            CycleSearchResult::Cycles(cycles) => cycles,
-            CycleSearchResult::TooManyCycles => return,
-        };
-        let cycles = dedup_bidirectional_pairs(nav, cycles);
+        let Some(cycles) = find_deduped_simple_cycles(nav) else { return };
 
         let long: Vec<usize> = cycles.iter().enumerate()
             .filter(|(_, cycle)| tile_length(nav, cycle) > self.max_loop_length)

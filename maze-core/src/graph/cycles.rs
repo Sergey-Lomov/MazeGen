@@ -363,6 +363,19 @@ pub(crate) fn drop_trivial_reverse_pairs(nav: &NavGraph, cycles: Vec<Vec<usize>>
     cycles.into_iter().filter(|cycle| !is_trivial_reverse_pair(&edges, cycle)).collect()
 }
 
+/// Combines `find_all_simple_cycles` + `dedup_bidirectional_pairs`, the pair every loop-based
+/// QC check (`MinLoopsCountCheck`, `MinLoopLengthCheck`, `MaxLoopLengthCheck`, etc.) needs
+/// before doing its own filtering. Returns `None` on `CycleSearchResult::TooManyCycles` — callers
+/// must silently skip (no issue raised) rather than fail, same rationale as `MinLoopLengthCheck`
+/// (issue #22); `CYCLE_ANALYSIS_OVERFLOWED` (raised independently by `build_analytics_snapshot`)
+/// already surfaces the overflow to the UI, so skipping here does not hide it.
+pub(crate) fn find_deduped_simple_cycles(nav: &NavGraph) -> Option<Vec<Vec<usize>>> {
+    match find_all_simple_cycles(nav) {
+        CycleSearchResult::Cycles(cycles) => Some(dedup_bidirectional_pairs(nav, cycles)),
+        CycleSearchResult::TooManyCycles => None,
+    }
+}
+
 /// Collapse cycles that are the same physical loop walked in opposite directions via
 /// `reverse_edge` pairs (ordinary bidirectional corridors, or a self-loop CW/CCW pair on
 /// the same nav-node) into one entry. A cycle using at least one one-way edge keeps its own

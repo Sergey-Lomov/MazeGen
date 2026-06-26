@@ -5,7 +5,7 @@ import { useMazeStore } from "../store/mazeStore";
 
 const availableChecks = [
   { id: "missing_endpoints", label: "Missing endpoints", description: "Fires if no start/finish.", issue_kinds: ["missing_endpoints"], params: [] },
-  { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["min_loops_count"], params: [] },
+  { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [] },
 ];
 
 beforeEach(() => {

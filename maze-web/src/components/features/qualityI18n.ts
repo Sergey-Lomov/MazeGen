@@ -50,9 +50,9 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.unreachable_finish.label"] as MessageFn,
     description: m["issue.unreachable_finish.description"] as MessageFn,
   },
-  min_loops_count: {
-    label: m["issue.min_loops_count.label"] as MessageFn,
-    description: m["issue.min_loops_count.description"] as MessageFn,
+  missing_loops: {
+    label: m["issue.missing_loops.label"] as MessageFn,
+    description: m["issue.missing_loops.description"] as MessageFn,
   },
   invalid_loop: {
     label: m["issue.invalid_loop.label"] as MessageFn,

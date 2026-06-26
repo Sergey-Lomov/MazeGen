@@ -36,4 +36,11 @@ pub enum IssueData {
         /// required to cover every index — absence means "no recorded source", not an error).
         invalid_sources: HashMap<Vec<EdgeId>, Vec<CheckId>>,
     },
+    /// Produced by any check that flags the maze as short on loops overall (currently only
+    /// `MinLoopsCountCheck`; future checks needing more loops added may reuse this variant).
+    /// `missing` is how many loops short of the requirement the maze is — lets a repair
+    /// strategy know how many to add.
+    Missing {
+        missing: u32,
+    },
 }

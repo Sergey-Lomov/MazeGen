@@ -478,7 +478,7 @@ describe("mazeStore.setGenerationMethod", () => {
 
 describe("mazeStore.addCheck", () => {
   const paramKind = { type: "integer" as const, default: 3, min: 1, max: 100 };
-  const descriptor = { id: "min_loops", label: "Min loops", description: "", issue_kinds: ["min_loops_count"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }] };
+  const descriptor = { id: "min_loops", label: "Min loops", description: "", issue_kinds: ["missing_loops"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }] };
 
   it("adds check id to selectedChecks", () => {
     useMazeStore.setState({ availableChecks: [descriptor], selectedChecks: [], rules: [] });
