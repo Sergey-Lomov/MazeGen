@@ -26,6 +26,7 @@ export function resolveIssue(kind: string): IssueInfo {
 /// to the kind's generic label (`resolveIssue`).
 const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string | undefined> = {
   min_loops_count: (d) => d.missing !== undefined ? m["issue.missing_loops.min_loops_count_label"]({ missing: d.missing }) : undefined,
+  min_loop_density: (d) => d.missing !== undefined ? m["issue.missing_loops.min_loop_density_label"]({ missing: d.missing }) : undefined,
   min_loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.min_loop_length_label"]({ min_loop_length: d.threshold }) : undefined,
   max_loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.max_loop_length_label"]({ max_loop_length: d.threshold }) : undefined,
   external_escape_diversity: (d) => d.min_distinct_exits !== undefined ? m["issue.invalid_loop.external_escape_diversity_label"]({ min_distinct_exits: d.min_distinct_exits }) : undefined,

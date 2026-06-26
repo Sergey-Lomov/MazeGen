@@ -4,7 +4,7 @@ use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP},
     repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config};
@@ -25,6 +25,7 @@ fn check_id_info(id: &str) -> (IssueKind, CheckId) {
         "missing_endpoints" => (MISSING_ENDPOINTS, CheckId::MissingEndpoints),
         "unreachable_finish" => (UNREACHABLE_FINISH, CheckId::UnreachableFinish),
         "min_loops_count" => (MISSING_LOOPS, CheckId::MinLoopsCount),
+        "min_loop_density" => (MISSING_LOOPS, CheckId::MinLoopDensity),
         "min_loop_length" => (INVALID_LOOP, CheckId::MinLoopLength),
         "max_loop_length" => (INVALID_LOOP, CheckId::MaxLoopLength),
         "external_escape_diversity" => (INVALID_LOOP, CheckId::ExternalEscapeDiversity),
@@ -61,6 +62,21 @@ fn build_qc_and_repair_impl<T: Tessellation>(
                     .map(|v| v.max(1) as u32)
                     .unwrap_or(MIN_LOOPS_DEFAULT);
                 checks.push(Box::new(MinLoopsCountCheck { min_loops }));
+            }
+            "min_loop_density" => {
+                let min_density = config.check_params
+                    .get("min_loop_density")
+                    .and_then(|p| p.get("min_density"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.clamp(0, 100) as u32)
+                    .unwrap_or(MIN_LOOP_DENSITY_DEFAULT);
+                let avg_loop_length_estimate = config.check_params
+                    .get("min_loop_density")
+                    .and_then(|p| p.get("avg_loop_length_estimate"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.max(1) as u32)
+                    .unwrap_or(AVG_LOOP_LENGTH_ESTIMATE_DEFAULT);
+                checks.push(Box::new(MinLoopDensityCheck { min_density, avg_loop_length_estimate }));
             }
             "min_loop_length" => {
                 let min_loop_length = config.check_params

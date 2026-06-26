@@ -25,8 +25,8 @@ static PARAMS: &[StrategyParam] = &[
 /// whichever of them don't end up forming a valid loop.
 ///
 /// **`issue.data` is mandatory for this kind**: `missing` (how many loops short of the
-/// requirement) has no other channel — the producing check (`MinLoopsCountCheck`) already
-/// computed it.
+/// requirement) has no other channel — the producing check (`MinLoopsCountCheck` or
+/// `MinLoopDensityCheck`) already computed it.
 pub struct MissingLoopsRandomStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for MissingLoopsRandomStrategy {

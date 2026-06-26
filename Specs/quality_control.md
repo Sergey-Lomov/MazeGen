@@ -170,6 +170,24 @@ pub struct MinLoopsCountCheck {
 
 Counts loops via `maze.analysis.graph_analytics(&maze.graph, &maze.meta).cycle_count` — the **independent** cycle count (Euler's formula, `E - V + C` on the pure-cycle core, see `graph-analytics.md`), the same number shown to the user as the "Cycle count" analytics stat. Deliberately **not** `find_deduped_simple_cycles`'s raw simple-cycle enumeration: that is a different (usually much larger) metric, and using it here would make this check disagree with what the UI displays as the maze's loop count. Silently skips (no issue) when `graph_analytics.cycle_analysis_overflowed` is true, same overflow rationale as the simple-cycle checks below (shared underlying enumeration). If `cycle_count` is below `min_loops`, fires `Issue::with_data_from_check(MISSING_LOOPS, IssueData::Missing { missing }, "min_loops_count")` with `.with_detail("min_loops_count", "missing", missing.to_string())` chained on, where `missing = min_loops.saturating_sub(cycle_count)`. No issue is fired when the count meets or exceeds `min_loops`.
 
+### MinLoopDensityCheck
+
+```rust
+pub const MIN_LOOP_DENSITY_DEFAULT: u32 = 30;
+pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
+
+pub struct MinLoopDensityCheck {
+    pub min_density: u32,
+    pub avg_loop_length_estimate: u32,
+}
+```
+
+Flags too few loops when too small a share of the field is covered by loops overall — see GitHub issue #36. Symmetric counterpart to `MaxLoopDensityCheck` (below): same **density** metric (count of distinct field cells covered by any simple loop, a cell shared by several loops counted once, expressed per 100 field cells via `maze.field.node_count()`), same cycle enumeration pipeline (`nav_graph` → `find_deduped_simple_cycles` → `resolve_to_edge_ids`), same silent skip on `CycleSearchResult::TooManyCycles` overflow — but checked against a **minimum** instead of a maximum, and producing `MISSING_LOOPS` (a loop-count deficit) instead of `INVALID_LOOP` (specific cycles to cut), since adding loops rather than removing them is the only way to raise coverage.
+
+If density is at or above `min_density`, the check is silent, same as every other loop check producing no issue when nothing is wrong. If density is below `min_density`, the deficit is converted from a cell count into a loop count: `missing_cells = (min_density - density) * field_cells / 100`, then `missing = ceil(missing_cells / avg_loop_length_estimate)` — rounded up so the request never undershoots the actual deficit (the repair strategy can always add more loops than asked, but never fewer to safely close the gap, since `avg_loop_length_estimate` is only an estimate, not a guarantee any newly added loop covers exactly that many cells). If `missing` rounds to `0` (deficit too small relative to the estimate), no issue is fired.
+
+Fires `Issue::with_data_from_check(MISSING_LOOPS, IssueData::Missing { missing }, "min_loop_density")` with `.with_detail("min_loop_density", "missing", missing.to_string())` chained on — same detail key as `MinLoopsCountCheck`, so the web UI's per-source-check label resolver can render both with one shared message shape. Repaired the same way as `MinLoopsCountCheck`'s `MISSING_LOOPS` issues — `MissingLoopsRandomStrategy` (see `repair.md`) needs no new logic, since both checks produce the same `IssueData::Missing` shape.
+
 ### MinLoopLengthCheck
 
 ```rust
@@ -354,6 +372,7 @@ One user-defined QC rule: a non-empty set of active checks producing the same `I
 | `missing_endpoints` | `missing_endpoints` | — | yes |
 | `unreachable_finish` | `unreachable_finish` | — | yes |
 | `min_loops_count` | `missing_loops` | `min_loops: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_loop_density` | `missing_loops` | `min_density: Integer(default=30, min=0, max=100)`, `avg_loop_length_estimate: Integer(default=10, min=1, max=100_000)` | no |
 | `min_loop_length` | `invalid_loop` | `min_loop_length: Integer(default=10, min=1, max=100_000)` | no |
 | `max_loop_length` | `invalid_loop` | `max_loop_length: Integer(default=100, min=1, max=100_000)` | no |
 | `external_escape_diversity` | `invalid_loop` | `min_distinct_exits: Integer(default=3, min=0, max=1_000)` | no |

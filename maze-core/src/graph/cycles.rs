@@ -425,6 +425,14 @@ pub(crate) fn resolve_to_edge_ids(
     }).collect()
 }
 
+/// Rounds to the nearest integer, not truncating — a truncating division would silently pass
+/// a density threshold for a true density that is actually fractionally past it (e.g. 30.9%
+/// reading as 30). Shared by `MinLoopDensityCheck` and `MaxLoopDensityCheck` — same metric,
+/// checked against a minimum and a maximum respectively.
+pub(crate) fn density_per_100(cells: usize, field_cells: usize) -> u32 {
+    ((cells * 100 + field_cells / 2) / field_cells) as u32
+}
+
 #[cfg(test)]
 #[path = "cycles/tests.rs"]
 mod tests;

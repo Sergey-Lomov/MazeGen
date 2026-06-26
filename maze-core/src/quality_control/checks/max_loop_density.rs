@@ -4,7 +4,7 @@ use rand::seq::SliceRandom;
 use crate::Maze;
 use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
+use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, density_per_100};
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_LOOP};
 use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
@@ -78,13 +78,6 @@ fn cycle_cells(graph: &crate::Graph, cycle: &[EdgeId]) -> HashSet<NodeId> {
         .filter_map(|&id| graph.edge(id))
         .flat_map(|edge| [edge.from, edge.to])
         .collect()
-}
-
-/// Rounds to the nearest integer, not truncating — a truncating division would silently
-/// pass a `max_density` threshold for a true density that is actually fractionally above it
-/// (e.g. 30.9% reading as 30).
-fn density_per_100(cells: usize, field_cells: usize) -> u32 {
-    ((cells * 100 + field_cells / 2) / field_cells) as u32
 }
 
 #[cfg(test)]
