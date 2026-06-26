@@ -193,7 +193,8 @@ mod tests {
     fn check_finds_short_loop(maze: &Maze<SquareTessellation>) -> bool {
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(maze, &mut issues, &mut check_rng);
         !issues.is_empty()
     }
 
@@ -202,7 +203,8 @@ mod tests {
         let maze = maze_with_shared_edge_triangles();
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         // Run from many seeds: the shared A->B edge should always be the one cut, since it
@@ -231,7 +233,8 @@ mod tests {
         let maze = maze_with_shared_edge_triangles();
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let nodes = shared_edge_triangle_nodes(&maze.field);
@@ -298,7 +301,8 @@ mod tests {
         let maze = maze_with_plain_edge_and_penalized_edge();
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
         let Some(IssueData::InvalidLoops { invalid, .. }) = &issue.data else { panic!("expected InvalidLoops") };
         assert_eq!(invalid.len(), 1, "only the triangle should be invalid; the long loop must stay valid");
@@ -323,7 +327,8 @@ mod tests {
         let maze = maze_with_shared_edge_triangles();
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         // Protect the shared A->B edge — the strategy must fall back to cutting something else.

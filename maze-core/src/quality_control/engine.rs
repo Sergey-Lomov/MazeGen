@@ -1,3 +1,4 @@
+use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use super::check::Check;
@@ -12,10 +13,10 @@ impl<T: Tessellation> QualityControlEngine<T> {
         Self { checks }
     }
 
-    pub fn run(&self, maze: &Maze<T>) -> Vec<Issue> {
+    pub fn run(&self, maze: &Maze<T>, rng: &mut dyn RngCore) -> Vec<Issue> {
         let mut issues = Vec::new();
         for check in &self.checks {
-            check.check(maze, &mut issues);
+            check.check(maze, &mut issues, rng);
         }
         issues
     }

@@ -297,7 +297,7 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
         source_check: CheckId,
     }
     impl<T: maze_core::space::Tessellation> Check<T> for FakeInvalidLoopCheck {
-        fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
+        fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn rand::RngCore) {
             // Real checks recompute from current graph state — this fake one must too, or it
             // would keep reporting an already-broken cycle as invalid forever, masking real
             // pipeline behavior (fixpoint exit) behind a check that never reflects the repair.
@@ -368,7 +368,7 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
         triangle_b: Vec<usize>,
     }
     impl<T: maze_core::space::Tessellation> Check<T> for AlternatingInvalidLoopCheck {
-        fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
+        fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn rand::RngCore) {
             let cycle = if self.triangle_a.iter().all(|&eid| maze.graph.edge(eid).is_some()) {
                 &self.triangle_a
             } else if self.triangle_b.iter().all(|&eid| maze.graph.edge(eid).is_some()) {

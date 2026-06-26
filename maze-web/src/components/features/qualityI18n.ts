@@ -35,6 +35,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.loop_distance_from_finish.label"] as MessageFn,
     description: m["check.loop_distance_from_finish.description"] as MessageFn,
   },
+  max_loop_density: {
+    label: m["check.max_loop_density.label"] as MessageFn,
+    description: m["check.max_loop_density.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -92,6 +96,7 @@ export const paramI18n: Record<string, MessageFn> = {
   min_distinct_exits: m["param.min_distinct_exits.label"] as MessageFn,
   min_distance_from_start: m["param.min_distance_from_start.label"] as MessageFn,
   min_distance_from_finish: m["param.min_distance_from_finish.label"] as MessageFn,
+  max_density: m["param.max_density.label"] as MessageFn,
   path_weight: m["param.path_weight.label"] as MessageFn,
   junction_weight: m["param.junction_weight.label"] as MessageFn,
   oneway_weight: m["param.oneway_weight.label"] as MessageFn,

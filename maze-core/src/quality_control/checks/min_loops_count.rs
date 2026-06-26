@@ -1,3 +1,4 @@
+use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
@@ -12,7 +13,7 @@ pub struct MinLoopsCountCheck {
 }
 
 impl<T: Tessellation> Check<T> for MinLoopsCountCheck {
-    fn check(&self, _maze: &Maze<T>, issues: &mut Vec<Issue>) {
+    fn check(&self, _maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         // Loop detection not yet implemented — always fires
         issues.push(Issue::new_from_check(IssueKind::MinLoopsCount, MIN_LOOPS_COUNT_CHECK_ID));
     }

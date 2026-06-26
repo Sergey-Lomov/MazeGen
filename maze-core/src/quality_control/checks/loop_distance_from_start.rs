@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, resolve_to_edge_ids, CycleSearchResult};
@@ -22,7 +23,7 @@ pub struct LoopDistanceFromStartCheck {
 }
 
 impl<T: Tessellation> Check<T> for LoopDistanceFromStartCheck {
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
+    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let Some(dist_from_start) = maze.analysis.distance_from_start(&maze.graph, &maze.meta) else { return };
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
@@ -58,6 +59,7 @@ impl<T: Tessellation> Check<T> for LoopDistanceFromStartCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
@@ -93,7 +95,8 @@ mod tests {
         let maze = maze_with_triangle_at_distance(3);
         let check = LoopDistanceFromStartCheck { min_distance_from_start: 5 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
         assert_eq!(issues[0].source_checks(), vec![CheckId::LoopDistanceFromStart]);
@@ -112,7 +115,8 @@ mod tests {
         let maze = maze_with_triangle_at_distance(10);
         let check = LoopDistanceFromStartCheck { min_distance_from_start: 5 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "cycle is 10 tiles out, threshold is 5");
     }
 
@@ -153,7 +157,8 @@ mod tests {
         let maze = maze_with_two_triangles(20);
         let check = LoopDistanceFromStartCheck { min_distance_from_start: 5 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         match &issues[0].data {
             Some(IssueData::InvalidLoops { all, invalid, .. }) => {
@@ -169,7 +174,8 @@ mod tests {
         let maze = maze_with_triangle_at_distance(0);
         let check = LoopDistanceFromStartCheck { min_distance_from_start: 0 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
     }
 
@@ -179,7 +185,8 @@ mod tests {
         maze.meta.start = None;
         let check = LoopDistanceFromStartCheck { min_distance_from_start: 100 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "missing start is MissingEndpointsCheck's job");
     }
 
@@ -196,7 +203,8 @@ mod tests {
         maze.meta.start = Some(nodes[0]);
         let check = LoopDistanceFromStartCheck { min_distance_from_start: 100 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -224,7 +232,8 @@ mod tests {
         maze.meta.start = Some(maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap());
         let check = LoopDistanceFromStartCheck { min_distance_from_start: 100 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 }

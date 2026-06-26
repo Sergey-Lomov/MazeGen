@@ -27,7 +27,7 @@ pub fn build_maze<T: Tessellation>(
     let check_id_to_rule = repair_engine.check_id_to_rule();
 
     for _ in 0..MAX_REPAIR_ITERATIONS {
-        let issues = qc_engine.run(&maze);
+        let issues = qc_engine.run(&maze, &mut rng);
         // Merge (not drop) issues that share a rule — multiple checks in the same rule may
         // legitimately produce the same IssueKind (e.g. several reasons a cycle can be invalid).
         // See merge_issue. An issue this loop can't route to any rule (zero source checks, e.g.
@@ -90,7 +90,7 @@ pub fn build_maze<T: Tessellation>(
         }
     }
 
-    let remaining = qc_engine.run(&maze);
+    let remaining = qc_engine.run(&maze, &mut rng);
     (maze, remaining)
 }
 

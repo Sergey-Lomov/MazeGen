@@ -12,7 +12,7 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, MIN_LOOPS_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
@@ -157,6 +157,17 @@ pub fn available_checks() -> JsValue {
                 id: "min_distance_from_finish",
                 label: "Min distance from finish",
                 kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_FINISH_DEFAULT as i64, min: 0, max: 100_000 },
+            }],
+        },
+        CheckDescriptor {
+            id: "max_loop_density",
+            label: "Maximum loop density",
+            description: "Fires if too large a share of the field is covered by loops; excess loops are picked at random and flagged until density drops to the allowed maximum.",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![ParamDescriptor {
+                id: "max_density",
+                label: "Max loop density (per 100 cells)",
+                kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
             }],
         },
     ];

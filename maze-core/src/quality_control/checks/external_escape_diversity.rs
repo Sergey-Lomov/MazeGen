@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use rand::RngCore;
 use crate::Maze;
 use crate::graph::nav::NavNodeId;
 use crate::space::Tessellation;
@@ -21,7 +22,7 @@ pub struct ExternalEscapeDiversityCheck {
 }
 
 impl<T: Tessellation> Check<T> for ExternalEscapeDiversityCheck {
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
+    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
@@ -76,6 +77,7 @@ fn distinct_exit_count(nav: &crate::graph::nav::NavGraph, cycle: &[usize]) -> u3
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
@@ -128,7 +130,8 @@ mod tests {
         let maze = maze_with_trapped_ring();
         let check = ExternalEscapeDiversityCheck { min_distinct_exits: 3 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
         assert_eq!(issues[0].source_checks(), vec![CheckId::ExternalEscapeDiversity]);
@@ -147,7 +150,8 @@ mod tests {
         let maze = maze_with_diverse_ring();
         let check = ExternalEscapeDiversityCheck { min_distinct_exits: 3 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "8 distinct exit destinations should clear a threshold of 3");
     }
 
@@ -156,7 +160,8 @@ mod tests {
         let maze = maze_with_trapped_ring();
         let check = ExternalEscapeDiversityCheck { min_distinct_exits: 0 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
     }
 
@@ -183,7 +188,8 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = ExternalEscapeDiversityCheck { min_distinct_exits: 3 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
@@ -199,7 +205,8 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = ExternalEscapeDiversityCheck { min_distinct_exits: 3 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 }

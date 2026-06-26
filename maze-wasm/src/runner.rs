@@ -4,7 +4,7 @@ use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, INVALID_LOOP},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MIN_LOOPS_COUNT, INVALID_LOOP},
     repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config};
@@ -30,6 +30,7 @@ fn check_id_info(id: &str) -> (IssueKind, CheckId) {
         "external_escape_diversity" => (INVALID_LOOP, CheckId::ExternalEscapeDiversity),
         "loop_distance_from_start" => (INVALID_LOOP, CheckId::LoopDistanceFromStart),
         "loop_distance_from_finish" => (INVALID_LOOP, CheckId::LoopDistanceFromFinish),
+        "max_loop_density" => (INVALID_LOOP, CheckId::MaxLoopDensity),
         other => unreachable!("check_id_info called with id not in config.checks's validated set: {other}"),
     }
 }
@@ -105,6 +106,15 @@ fn build_qc_and_repair_impl<T: Tessellation>(
                     .map(|v| v.max(0) as u32)
                     .unwrap_or(LOOP_DISTANCE_FROM_FINISH_DEFAULT);
                 checks.push(Box::new(LoopDistanceFromFinishCheck { min_distance_from_finish }));
+            }
+            "max_loop_density" => {
+                let max_density = config.check_params
+                    .get("max_loop_density")
+                    .and_then(|p| p.get("max_density"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.clamp(0, 100) as u32)
+                    .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
+                checks.push(Box::new(MaxLoopDensityCheck { max_density }));
             }
             other => return Err(format!("unknown check: {other}")),
         }

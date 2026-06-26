@@ -13,6 +13,7 @@ pub enum CheckId {
     ExternalEscapeDiversity,
     LoopDistanceFromStart,
     LoopDistanceFromFinish,
+    MaxLoopDensity,
 }
 
 impl CheckId {
@@ -26,6 +27,7 @@ impl CheckId {
             CheckId::ExternalEscapeDiversity => "external_escape_diversity",
             CheckId::LoopDistanceFromStart => "loop_distance_from_start",
             CheckId::LoopDistanceFromFinish => "loop_distance_from_finish",
+            CheckId::MaxLoopDensity => "max_loop_density",
         }
     }
 
@@ -39,6 +41,7 @@ impl CheckId {
             "external_escape_diversity" => Some(CheckId::ExternalEscapeDiversity),
             "loop_distance_from_start" => Some(CheckId::LoopDistanceFromStart),
             "loop_distance_from_finish" => Some(CheckId::LoopDistanceFromFinish),
+            "max_loop_density" => Some(CheckId::MaxLoopDensity),
             _ => None,
         }
     }

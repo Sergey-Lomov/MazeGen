@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, resolve_to_edge_ids, CycleSearchResult};
@@ -15,7 +16,7 @@ pub struct MaxLoopLengthCheck {
 }
 
 impl<T: Tessellation> Check<T> for MaxLoopLengthCheck {
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>) {
+    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
@@ -56,6 +57,7 @@ fn tile_length(nav: &crate::graph::nav::NavGraph, cycle: &[usize]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
@@ -77,7 +79,8 @@ mod tests {
         let maze = maze_with_triangle();
         let check = MaxLoopLengthCheck { max_loop_length: 2 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
         assert_eq!(issues[0].source_checks(), vec![CheckId::MaxLoopLength]);
@@ -96,7 +99,8 @@ mod tests {
         let maze = maze_with_triangle();
         let check = MaxLoopLengthCheck { max_loop_length: 3 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "triangle has 3 tile-hops, not > 3");
     }
 
@@ -125,7 +129,8 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MaxLoopLengthCheck { max_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
@@ -141,7 +146,8 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MaxLoopLengthCheck { max_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 }

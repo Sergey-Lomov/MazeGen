@@ -30,6 +30,7 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   external_escape_diversity: (d) => d.min_distinct_exits !== undefined ? m["issue.invalid_loop.external_escape_diversity_label"]({ min_distinct_exits: d.min_distinct_exits }) : undefined,
   loop_distance_from_start: (d) => d.min_distance_from_start !== undefined ? m["issue.invalid_loop.loop_distance_from_start_label"]({ min_distance_from_start: d.min_distance_from_start }) : undefined,
   loop_distance_from_finish: (d) => d.min_distance_from_finish !== undefined ? m["issue.invalid_loop.loop_distance_from_finish_label"]({ min_distance_from_finish: d.min_distance_from_finish }) : undefined,
+  max_loop_density: (d) => d.max_density !== undefined ? m["issue.invalid_loop.max_loop_density_label"]({ max_density: d.max_density }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

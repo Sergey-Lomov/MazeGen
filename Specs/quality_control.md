@@ -51,27 +51,27 @@ Always use the named constant — never use string literals or enum variants inl
 pub struct Issue {
     pub kind: IssueKind,
     pub data: Option<IssueData>,
-    source_checks: Vec<&'static str>, // private — see accessors below
-    details: HashMap<&'static str, HashMap<&'static str, String>>, // private — see accessors below
+    source_checks: Vec<CheckId>, // private — see accessors below
+    details: HashMap<CheckId, HashMap<&'static str, String>>, // private — see accessors below
 }
 
 impl Issue {
-    pub fn new(kind: IssueKind) -> Self;                                            // data: None, source_checks: []
-    pub fn with_data(kind: IssueKind, data: IssueData) -> Self;                     // source_checks: []
-    pub fn new_from_check(kind: IssueKind, source_check: &'static str) -> Self;
-    pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: &'static str) -> Self;
+    pub fn new(kind: IssueKind) -> Self;                                       // data: None, source_checks: []
+    pub fn with_data(kind: IssueKind, data: IssueData) -> Self;                 // source_checks: []
+    pub fn new_from_check(kind: IssueKind, source_check: CheckId) -> Self;
+    pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: CheckId) -> Self;
     /// Chainable — attaches one display detail under `source_check`. See `details()` below.
-    pub fn with_detail(self, source_check: &'static str, key: &'static str, value: String) -> Self;
-    pub fn source_checks(&self) -> &[&'static str];
+    pub fn with_detail(self, source_check: CheckId, key: &'static str, value: String) -> Self;
+    pub fn source_checks(&self) -> &[CheckId];
     /// `Some` only when there is exactly one source check (the normal raw, pre-merge case) —
     /// `None` for zero (e.g. `CYCLE_ANALYSIS_OVERFLOWED`) or 2+ sources (an already-merged
     /// issue, or a malformed raw one). Pipeline rule-routing uses this, not `source_checks()`
     /// indexing, so a malformed multi-source raw issue can't be silently misrouted by an
     /// arbitrary first id — see `repair.md`'s "Pipeline" section.
-    pub fn single_source_check(&self) -> Option<&'static str>;
-    pub fn details(&self) -> &HashMap<&'static str, HashMap<&'static str, String>>;
-    pub(crate) fn push_source(&mut self, source: &'static str); // merge_issue only
-    pub(crate) fn merge_details(&mut self, incoming: HashMap<&'static str, HashMap<&'static str, String>>); // merge_issue only
+    pub fn single_source_check(&self) -> Option<CheckId>;
+    pub fn details(&self) -> &HashMap<CheckId, HashMap<&'static str, String>>;
+    pub(crate) fn push_source(&mut self, source: CheckId); // merge_issue only
+    pub(crate) fn merge_details(&mut self, incoming: HashMap<CheckId, HashMap<&'static str, String>>); // merge_issue only
 }
 ```
 
@@ -79,9 +79,9 @@ impl Issue {
 
 `Issue` is mostly an **internal QC artifact** — `data` is plumbing between a `Check` and the matching `RepairStrategy` within one QC pass and is never serialized (see "Not exposed over WASM" below). `kind`, `source_checks`, and `details` are the exception: the WASM layer (`maze-wasm/src/analytics.rs`) does serialize these three into `IssueDto` for the web UI (see `quality-feature.md`), since the UI needs to know which check(s) produced an issue and render a check-specific message. Keep this boundary explicit when extending `Issue`: a genuinely display-only payload belongs in `details` (generic, serialized), not `data` (kind-specific, repair-only, never serialized).
 
-`source_checks` (private field, read via `source_checks()`) records which check id(s) (the wasm `available_checks()` id, e.g. `"min_loop_length"`) produced or contributed to this issue. Every toggleable `Check<T>` implementation should construct its issues via `new_from_check`/`with_data_from_check`, passing its own check id. The one exception is `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` outside any `Check<T>` (see its doc comment below) — it has no check id to attribute to, so it uses plain `Issue::new` and `source_checks` stays empty. When two issues of the same kind are merged (see "Dedup interaction" below), `source_checks` is unioned without duplicates via `push_source` — the field is private specifically so nothing outside `merge_issue` can append to it or construct an `Issue` with an already-multi-source list before merge has legitimately produced one (a raw, pre-merge issue is expected to carry exactly one source check; `single_source_check()` is the type-level enforcement of that for rule-routing).
+`source_checks` (private field, read via `source_checks()`) records which check id(s) (the `CheckId` enum, e.g. `CheckId::MinLoopLength` — see `repair.md`) produced or contributed to this issue. Every toggleable `Check<T>` implementation should construct its issues via `new_from_check`/`with_data_from_check`, passing its own check id. The one exception is `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` outside any `Check<T>` (see its doc comment below) — it has no check id to attribute to, so it uses plain `Issue::new` and `source_checks` stays empty. When two issues of the same kind are merged (see "Dedup interaction" below), `source_checks` is unioned without duplicates via `push_source` — the field is private specifically so nothing outside `merge_issue` can append to it or construct an `Issue` with an already-multi-source list before merge has legitimately produced one (a raw, pre-merge issue is expected to carry exactly one source check; `single_source_check()` is the type-level enforcement of that for rule-routing).
 
-`details` (private field, read via `details()`, written via the chainable `with_detail`) carries **raw display values only** — e.g. a check's configured threshold as a string — keyed by source check id, then by detail key (e.g. `"max_loop_length" -> {"max_loop_length" -> "100"}`). Never an assembled message: wording belongs entirely to the web UI's own i18n layer, which looks values up by key per check id (see `quality-feature.md`'s issue rendering section). Keyed by check id rather than flattened because a merged `Issue` (see "Dedup interaction" below) may carry details from several contributing checks at once — e.g. both `min_loop_length`'s and `max_loop_length`'s thresholds on one merged `INVALID_LOOP` issue — and the UI renders one bubble per source check, each reading only its own check's details. On merge, `merge_details` (`merge_issue`-only, mirroring `push_source`) folds `incoming`'s per-check entries into `existing`'s; since a raw (pre-merge) issue only ever has its own check id as a key, there is no same-check-id collision to reconcile, just a union across checks.
+`details` (private field, read via `details()`, written via the chainable `with_detail`) carries **raw display values only** — e.g. a check's configured threshold as a string — keyed by source check id (`CheckId`), then by detail key (e.g. `CheckId::MaxLoopLength -> {"max_loop_length" -> "100"}`). Never an assembled message: wording belongs entirely to the web UI's own i18n layer, which looks values up by key per check id (see `quality-feature.md`'s issue rendering section). Keyed by check id rather than flattened because a merged `Issue` (see "Dedup interaction" below) may carry details from several contributing checks at once — e.g. both `min_loop_length`'s and `max_loop_length`'s thresholds on one merged `INVALID_LOOP` issue — and the UI renders one bubble per source check, each reading only its own check's details. On merge, `merge_details` (`merge_issue`-only, mirroring `push_source`) folds `incoming`'s per-check entries into `existing`'s; since a raw (pre-merge) issue only ever has its own check id as a key, there is no same-check-id collision to reconcile, just a union across checks.
 
 ### IssueData
 
@@ -113,12 +113,13 @@ pub enum IssueData {
 
 ```rust
 pub trait Check<T: Tessellation> {
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>);
+    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, rng: &mut dyn RngCore);
 }
 ```
 
 - **Read-only**: `maze` is immutable. A `Check` must not mutate any state.
-- **No side effects**: `check` must not access global state, perform I/O, or produce non-deterministic output.
+- **No side effects**: `check` must not access global state or perform I/O.
+- **`rng` is the one sanctioned source of non-determinism**: most checks ignore it (`_rng`) and stay fully deterministic, but a check whose contract is inherently randomized — currently only `MaxLoopDensityCheck` (below), which must pick *which* excess loops to flag without a deterministic ordering rule — draws from it instead of seeding its own. `QualityControlEngine::run` takes the `rng` from its caller (the pipeline's per-`build_maze`-call `SmallRng`, seeded from the generation seed) rather than each check owning one, so a whole QC pass stays reproducible for a given seed.
 - A check may produce zero or more issues per call.
 - A check may read `maze.analysis` to avoid redundant computation.
 
@@ -131,7 +132,7 @@ pub struct QualityControlEngine<T: Tessellation> {
 
 impl<T: Tessellation> QualityControlEngine<T> {
     pub fn new(checks: Vec<Box<dyn Check<T>>>) -> Self;
-    pub fn run(&self, maze: &Maze<T>) -> Vec<Issue>;
+    pub fn run(&self, maze: &Maze<T>, rng: &mut dyn RngCore) -> Vec<Issue>;
 }
 ```
 
@@ -241,6 +242,24 @@ Symmetric counterpart to `LoopDistanceFromStartCheck` — flags simple cycles pl
 
 Fires `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid }, "loop_distance_from_finish")` with `.with_detail("loop_distance_from_finish", "min_distance_from_finish", self.min_distance_from_finish.to_string())` chained on.
 
+### MaxLoopDensityCheck
+
+```rust
+pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
+
+pub struct MaxLoopDensityCheck {
+    pub max_density: u32,
+}
+```
+
+Flags excess simple loops when too large a share of the field is covered by loops overall — see GitHub issue #37. Unlike the other loop checks, this one judges the maze's loops as a set rather than each cycle independently.
+
+Same cycle enumeration pipeline as the other loop checks (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles` overflow), then resolves every cycle to its base-`Graph` `EdgeId`s via `resolve_to_edge_ids` same as the others, but additionally maps each cycle's edges to the set of base-`Graph` `NodeId`s (cells) its edges touch. **Density** is the count of distinct field cells covered by any loop (a cell shared by several loops counts once), expressed per 100 field cells (`maze.field.node_count()`): `covered_cells * 100 / field_cells`. If density is at or below `max_density`, the check is silent — same as every other loop check producing no issue when nothing is wrong.
+
+If density exceeds `max_density`, the check must pick which loops to flag — there is no single deterministic "worst" loop the way there is a shortest/longest one, so it shuffles the cycle indices via the `rng` passed into `check` (see the `Check` trait's `rng` note above) and flags them one at a time in that random order, recomputing the remaining covered-cell count after each pick: removing a loop only frees the cells not also covered by another loop not yet picked, so the running total is the *set difference* against the still-unselected loops' coverage, not a flat per-loop cell count. Picking stops as soon as the remaining density is at or below `max_density`, or once every loop has been picked (covers the case where even flagging all of them can't reach an unusually low `max_density`). The picked indices become `invalid`.
+
+Fires a single `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid, invalid_sources }, "max_loop_density")` with `.with_detail("max_loop_density", "max_density", self.max_density.to_string())` chained on. Can be active alongside any other `INVALID_LOOP`-producing check — all merge into one issue per the same dedup rule. The flagged loops need no new repair logic — `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` cut them exactly like any other check's `invalid` entries.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -334,6 +353,7 @@ One user-defined QC rule: a non-empty set of active checks producing the same `I
 | `external_escape_diversity` | `invalid_loop` | `min_distinct_exits: Integer(default=3, min=0, max=1_000)` | no |
 | `loop_distance_from_start` | `invalid_loop` | `min_distance_from_start: Integer(default=0, min=0, max=100_000)` | no |
 | `loop_distance_from_finish` | `invalid_loop` | `min_distance_from_finish: Integer(default=0, min=0, max=100_000)` | no |
+| `max_loop_density` | `invalid_loop` | `max_density: Integer(default=30, min=0, max=100)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

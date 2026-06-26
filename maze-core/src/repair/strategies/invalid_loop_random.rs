@@ -99,7 +99,8 @@ mod tests {
     fn check_finds_short_loop(maze: &Maze<SquareTessellation>) -> bool {
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(maze, &mut issues, &mut check_rng);
         !issues.is_empty()
     }
 
@@ -114,7 +115,8 @@ mod tests {
 
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = SmallRng::seed_from_u64(7);
@@ -155,7 +157,8 @@ mod tests {
             let maze = maze_with_triangle();
             let check = MinLoopLengthCheck { min_loop_length: 10 };
             let mut issues = Vec::new();
-            check.check(&maze, &mut issues);
+            let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+            check.check(&maze, &mut issues, &mut check_rng);
             issues.into_iter().next().unwrap()
         };
 
@@ -191,7 +194,8 @@ mod tests {
 
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = SmallRng::seed_from_u64(99);
@@ -227,7 +231,8 @@ mod tests {
         let maze = build();
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
@@ -251,7 +256,8 @@ mod tests {
 
         let check = MinLoopLengthCheck { min_loop_length: 10 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues);
+        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let IssueData::InvalidLoops { all, invalid, .. } = issue.data.as_ref().unwrap() else { panic!() };
