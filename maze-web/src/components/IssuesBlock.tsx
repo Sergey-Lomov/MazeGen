@@ -11,6 +11,7 @@ import type { IssueDto } from "../wasm/types";
 export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceCheck: string | null }) {
   const [open, setOpen] = useState(false);
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
+  const setHoveredIssueRegionGroups = useMazeStore((s) => s.setHoveredIssueRegionGroups);
   const rules = useMazeStore((s) => s.rules);
   const { description, severity } = resolveIssue(issue.kind);
   // No source check (e.g. `cycle_analysis_overflowed`, `repair_limit_reached` — neither is a
@@ -30,15 +31,22 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // Only this bubble's own source check's cycles — not every contributing check's cycles
   // combined (see `IssueDto.invalid_loop_edges`'s doc comment).
   const loopEdges = sourceCheck != null ? issue.invalid_loop_edges[sourceCheck] ?? null : null;
+  // Same per-check isolation as `loopEdges` above — only this bubble's own source check's
+  // flagged regions, not every contributing check's regions combined.
+  const regionNodes = sourceCheck != null ? issue.region_needs_expansion_nodes[sourceCheck] ?? null : null;
   const palette = severity === "critical"
     ? { bg: colors.bgError, text: colors.textError }
     : { bg: colors.bgWarning, text: colors.textWarning };
 
   const handleMouseEnter = loopEdges != null
     ? () => setHoveredIssueLoopEdges(loopEdges.flat())
+    : regionNodes != null
+    ? () => setHoveredIssueRegionGroups(regionNodes)
     : undefined;
   const handleMouseLeave = loopEdges != null
     ? () => setHoveredIssueLoopEdges(null)
+    : regionNodes != null
+    ? () => setHoveredIssueRegionGroups(null)
     : undefined;
 
   return (

@@ -281,6 +281,11 @@ export interface AnalyticsOverlayState {
   showRouteOverlay: boolean;
   /** Base-graph [from, to] edges of the issue loops currently hovered in IssuesBlock. */
   hoveredIssueLoopEdges: [number, number][] | null;
+  /** Undersized SCC region(s) currently hovered in IssuesBlock, each as its own list of maze
+   * node ids — kept as separate groups (not one flat list) so adjacent-in-id-space but disjoint
+   * regions don't merge into one shared outline. The renderer derives each region's perimeter
+   * client-side from its node set. */
+  hoveredIssueRegionGroups: number[][] | null;
   /** Expanded/collapsed state per AnalyticsFeature section, keyed by AnalyticsSectionId. */
   analyticsSectionsExpanded: Record<string, boolean>;
 }
@@ -293,6 +298,7 @@ export interface AnalyticsOverlayActions {
   setShowPureCyclesOverlay: (v: boolean) => void;
   setShowRouteOverlay: (v: boolean) => void;
   setHoveredIssueLoopEdges: (edges: [number, number][] | null) => void;
+  setHoveredIssueRegionGroups: (groups: number[][] | null) => void;
   setAnalyticsSectionExpanded: (id: string, expanded: boolean) => void;
 }
 

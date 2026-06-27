@@ -39,6 +39,13 @@ pub struct IssueDto {
     /// not every contributing check's cycles combined (e.g. `min_loop_length`'s short loops must
     /// not highlight when hovering the `max_loop_length` bubble).
     pub invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>>,
+    /// Present only for `region_needs_expansion` issues, keyed by source check id — each inner
+    /// Vec is one flagged SCC region's member maze node ids (not edges — the web side derives the
+    /// region's perimeter client-side from this node set, the same way it already derives preset
+    /// boundary walls from a cell set). Keyed per check for the same reason as
+    /// `invalid_loop_edges` — `min_region_size` and `min_region_ratio` can both flag regions and
+    /// merge into one issue, but hovering one bubble must highlight only that check's regions.
+    pub region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>>,
     /// Check id(s) that produced or contributed to this issue (`Issue::source_checks()`) —
     /// lets the web UI render one bubble per contributing check rather than one per `kind`,
     /// distinguishing e.g. `min_loop_length`'s and `max_loop_length`'s issues even though both

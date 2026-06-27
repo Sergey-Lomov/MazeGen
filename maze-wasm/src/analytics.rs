@@ -44,6 +44,11 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         raw_issues.push(Issue::new(CYCLE_ANALYSIS_OVERFLOWED));
     }
 
+    // Computed once here (before the issues map needs it for `RegionsNeedingExpansion`) and reused
+    // below for `graph_analytics_dto.node_component` — cached per `graph.version()`, so the
+    // second call is a cache hit, not a recomputation.
+    let scc = maze.analysis.scc(&maze.graph);
+
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         // Grouped by source check id (not one flat list) so a merged issue rendered as several
         // bubbles (one per `source_checks` entry) highlights only the cycles *that check*
@@ -61,6 +66,16 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                 let key = canonical_cycle_key(loop_edges);
                 for &source in invalid_sources.get(&key).into_iter().flatten() {
                     invalid_loop_edges.entry(source.to_string()).or_default().push(edge_pairs.clone());
+                }
+            }
+        }
+        let mut region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>> = HashMap::new();
+        if let Some(IssueData::RegionsNeedingExpansion { invalid, invalid_sources }) = &issue.data {
+            for &idx in invalid {
+                let Some(region) = scc.components.get(idx) else { continue };
+                let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
+                for &source in invalid_sources.get(&idx).into_iter().flatten() {
+                    region_needs_expansion_nodes.entry(source.to_string()).or_default().push(node_ids.clone());
                 }
             }
         }
@@ -84,7 +99,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         if let Some(IssueData::QcNoProgress { rule_ids }) = &issue.data {
             details.insert(issue.kind.to_string(), HashMap::from([("rule_ids".to_string(), rule_ids.join(", "))]));
         }
-        IssueDto { kind: issue.kind.to_string(), invalid_loop_edges, source_checks, details }
+        IssueDto { kind: issue.kind.to_string(), invalid_loop_edges, region_needs_expansion_nodes, source_checks, details }
     }).collect();
 
     let nodes: Vec<NodeDto> = maze.graph
@@ -140,7 +155,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         })
         .collect();
 
-    let scc = maze.analysis.scc(&maze.graph);
     let node_component: HashMap<String, usize> = scc.components.iter()
         .enumerate()
         .flat_map(|(comp_id, comp)| {

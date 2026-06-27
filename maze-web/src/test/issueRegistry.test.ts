@@ -26,6 +26,10 @@ describe("resolveIssue", () => {
     expect(resolveIssue("excessive_scc_count").severity).toBe("warning");
   });
 
+  it("returns warning severity for region_needs_expansion", () => {
+    expect(resolveIssue("region_needs_expansion").severity).toBe("warning");
+  });
+
   it("returns non-empty label and description for every known kind", () => {
     const knownKinds = [
       "missing_endpoints",
@@ -34,6 +38,7 @@ describe("resolveIssue", () => {
       "invalid_loop",
       "cycle_analysis_overflowed",
       "excessive_scc_count",
+      "region_needs_expansion",
     ];
     for (const kind of knownKinds) {
       const info = resolveIssue(kind);

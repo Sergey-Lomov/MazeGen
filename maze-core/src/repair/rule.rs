@@ -16,6 +16,8 @@ pub enum CheckId {
     LoopDistanceFromFinish,
     MaxLoopDensity,
     SccCount,
+    MinRegionSize,
+    MinRegionRatio,
 }
 
 impl CheckId {
@@ -32,6 +34,8 @@ impl CheckId {
             CheckId::LoopDistanceFromFinish => "loop_distance_from_finish",
             CheckId::MaxLoopDensity => "max_loop_density",
             CheckId::SccCount => "scc_count",
+            CheckId::MinRegionSize => "min_region_size",
+            CheckId::MinRegionRatio => "min_region_ratio",
         }
     }
 
@@ -48,6 +52,8 @@ impl CheckId {
             "loop_distance_from_finish" => Some(CheckId::LoopDistanceFromFinish),
             "max_loop_density" => Some(CheckId::MaxLoopDensity),
             "scc_count" => Some(CheckId::SccCount),
+            "min_region_size" => Some(CheckId::MinRegionSize),
+            "min_region_ratio" => Some(CheckId::MinRegionRatio),
             _ => None,
         }
     }

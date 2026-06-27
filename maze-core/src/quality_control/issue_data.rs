@@ -57,6 +57,22 @@ pub enum IssueData {
     QcNoProgress {
         rule_ids: Vec<String>,
     },
+    /// Produced by any check that flags an SCC region as needing expansion for a check-specific
+    /// reason (paired with `REGION_NEEDS_EXPANSION`) — currently `MinRegionSizeCheck` (region
+    /// smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller
+    /// than a configured share of the field), though future checks may flag a region for
+    /// expansion for reasons unrelated to size. `invalid` holds indices into
+    /// `maze.analysis.scc(&maze.graph).components` — not a copy of the regions themselves, since
+    /// that computation is already cached there and a repair strategy can re-fetch it (cache hit)
+    /// rather than carry a duplicate snapshot through `Issue`.
+    RegionsNeedingExpansion {
+        invalid: Vec<usize>,
+        /// Per-region check provenance, keyed by the same component index as `invalid` — stable
+        /// within one QC pass because every check sharing this issue reads from the same single
+        /// `maze.analysis.scc(&maze.graph)` cache entry, unlike cycle indices (which get
+        /// remapped on merge because cycle enumeration has no equivalent stable identity).
+        invalid_sources: HashMap<usize, Vec<CheckId>>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

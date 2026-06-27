@@ -12,6 +12,7 @@ pub enum IssueKind {
     RepairLimitReached,
     QcNoProgress,
     ExcessiveSccCount,
+    RegionNeedsExpansion,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -50,6 +51,13 @@ pub const QC_NO_PROGRESS: IssueKind = IssueKind::QcNoProgress;
 /// maze even when other checks pass. Reuses `build_scc` (`graph::scc`) rather than
 /// re-implementing SCC computation.
 pub const EXCESSIVE_SCC_COUNT: IssueKind = IssueKind::ExcessiveSccCount;
+/// An SCC region needs to be expanded for some check-specific reason (currently: smaller than a
+/// configured absolute tile count, or smaller than a configured share of the field — see
+/// `MinRegionSizeCheck`/`MinRegionRatioCheck`). Mirrors `INVALID_LOOP`'s role for cycles: a
+/// semantic category, not tied to size specifically or to any one reason — future checks may
+/// flag a region as needing expansion for reasons unrelated to size and reuse this same kind.
+/// Carries `IssueData::RegionsNeedingExpansion` — see that variant's doc comment.
+pub const REGION_NEEDS_EXPANSION: IssueKind = IssueKind::RegionNeedsExpansion;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -62,6 +70,7 @@ impl IssueKind {
             IssueKind::RepairLimitReached => "repair_limit_reached",
             IssueKind::QcNoProgress => "qc_no_progress",
             IssueKind::ExcessiveSccCount => "excessive_scc_count",
+            IssueKind::RegionNeedsExpansion => "region_needs_expansion",
         }
     }
 
@@ -83,6 +92,7 @@ impl IssueKind {
             "repair_limit_reached" => Some(IssueKind::RepairLimitReached),
             "qc_no_progress" => Some(IssueKind::QcNoProgress),
             "excessive_scc_count" => Some(IssueKind::ExcessiveSccCount),
+            "region_needs_expansion" => Some(IssueKind::RegionNeedsExpansion),
             _ => None,
         }
     }
@@ -287,6 +297,7 @@ mod tests {
             IssueKind::RepairLimitReached,
             IssueKind::QcNoProgress,
             IssueKind::ExcessiveSccCount,
+            IssueKind::RegionNeedsExpansion,
         ];
         for kind in kinds {
             assert_eq!(IssueKind::from_str(kind.as_str()), Some(kind));

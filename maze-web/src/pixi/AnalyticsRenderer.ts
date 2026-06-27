@@ -90,7 +90,8 @@ export class AnalyticsRenderer {
         state.showNavGraphOverlay !== prev.showNavGraphOverlay ||
         state.showPureCyclesOverlay !== prev.showPureCyclesOverlay ||
         state.showRouteOverlay !== prev.showRouteOverlay ||
-        state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges;
+        state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges ||
+        state.hoveredIssueRegionGroups !== prev.hoveredIssueRegionGroups;
 
       const dataChanged =
         state.nodes !== prev.nodes ||
@@ -118,7 +119,7 @@ export class AnalyticsRenderer {
     const analyticsOpen = state.openCard === "analytics";
     const { nodes, activeTessellationConfig: cfg,
       showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
-      showPureCyclesOverlay, showRouteOverlay, postEditAnalytics, hoveredIssueLoopEdges } = state;
+      showPureCyclesOverlay, showRouteOverlay, postEditAnalytics, hoveredIssueLoopEdges, hoveredIssueRegionGroups } = state;
 
     const graphAnalytics = postEditAnalytics?.graphAnalytics ?? state.graphAnalytics;
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
@@ -198,11 +199,13 @@ export class AnalyticsRenderer {
       this.routeRenderer.clear();
     }
 
-    // Issue highlight overlay — hovered issue's loop edges
-    const showIssueHighlight = analyticsOpen && hoveredIssueLoopEdges != null && hoveredIssueLoopEdges.length > 0;
+    // Issue highlight overlay — hovered issue's loop edges or undersized region perimeter/fill
+    const hasLoopEdges = hoveredIssueLoopEdges != null && hoveredIssueLoopEdges.length > 0;
+    const hasRegionGroups = hoveredIssueRegionGroups != null && hoveredIssueRegionGroups.length > 0;
+    const showIssueHighlight = analyticsOpen && (hasLoopEdges || hasRegionGroups);
     this.issueHighlightContainer.visible = showIssueHighlight;
     if (showIssueHighlight) {
-      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, cfg });
+      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, regionGroups: hoveredIssueRegionGroups, cfg });
     } else {
       this.issueHighlightRenderer.clear();
     }

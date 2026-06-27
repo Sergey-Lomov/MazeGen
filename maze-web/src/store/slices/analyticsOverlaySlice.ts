@@ -9,6 +9,7 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   showPureCyclesOverlay: false,
   showRouteOverlay: false,
   hoveredIssueLoopEdges: null,
+  hoveredIssueRegionGroups: null,
   analyticsSectionsExpanded: { layers: true },
 
   setShowMazeOverlay: (v) => set({ showMazeOverlay: v }),
@@ -18,6 +19,7 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   setShowPureCyclesOverlay: (v) => set({ showPureCyclesOverlay: v }),
   setShowRouteOverlay: (v) => set({ showRouteOverlay: v }),
   setHoveredIssueLoopEdges: (edges) => set({ hoveredIssueLoopEdges: edges }),
+  setHoveredIssueRegionGroups: (groups) => set({ hoveredIssueRegionGroups: groups }),
   setAnalyticsSectionExpanded: (id, expanded) =>
     set((s) => ({ analyticsSectionsExpanded: { ...s.analyticsSectionsExpanded, [id]: expanded } })),
 });

@@ -72,6 +72,11 @@ export interface IssueDto {
    * Keyed per check (not one flat list) so hovering one check's bubble highlights only the
    * cycles that check flagged, not every contributing check's cycles combined. */
   invalid_loop_edges: Record<string, [number, number][][]>;
+  /** Present only for `region_needs_expansion` issues, keyed by source check id — each entry is
+   * one flagged SCC region's member maze node ids (not edges — the UI derives the region's
+   * perimeter client-side from this node set, the same way preset boundary walls are derived from
+   * a cell set). Keyed per check for the same reason as `invalid_loop_edges`. */
+  region_needs_expansion_nodes: Record<string, number[][]>;
   /** Check id(s) that produced or contributed to this issue — lets the UI render one bubble
    * per contributing check rather than one per `kind` (e.g. `min_loop_length` vs `max_loop_length`,
    * both `invalid_loop`). */

@@ -1,4 +1,4 @@
-# Quality Control
+﻿# Quality Control
 
 A read-only analysis pass that detects problems in a `Maze` and produces a list of `Issue` values. Runs before and after each repair iteration in the pipeline.
 
@@ -17,6 +17,7 @@ pub enum IssueKind {
     RepairLimitReached,
     QcNoProgress,
     ExcessiveSccCount,
+    RegionNeedsExpansion,
 }
 ```
 
@@ -46,6 +47,8 @@ pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflo
 Always use the named constant — never use string literals or enum variants inline.
 
 **Hard rule: `IssueKind` is a semantic category, not a producer id.** `InvalidLoop` means "this cycle is invalid for some check-specific reason" — it does not identify *which* check found it. Multiple checks can legitimately produce the same `IssueKind` for different underlying reasons — currently `MinLoopLengthCheck` (cycles shorter than a threshold) and `MaxLoopLengthCheck` (cycles longer than a threshold); future checks may flag cycles invalid for still other reasons and reuse this same kind rather than inventing a new one per reason. Which check(s) actually contributed to a given `Issue` is tracked separately, in `Issue.source_checks` (below) — never by adding more `IssueKind` variants.
+
+`RegionNeedsExpansion` mirrors `InvalidLoop`'s role for SCC regions: a semantic category ("this region needs to be expanded for some check-specific reason"), not tied to size specifically or to any one reason. Currently produced by `MinRegionSizeCheck` (region smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller than a configured share of the field), but future checks may flag a region as needing expansion for reasons unrelated to size and reuse this same kind. Carries `IssueData::RegionsNeedingExpansion` — see that variant's doc comment.
 
 **`CycleAnalysisOverflowed` is not a toggleable QC check** — every other kind here is produced by a `Check<T>` implementation the user selects via `config.checks`; this one is raised directly by `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) whenever `GraphAnalytics::cycle_analysis_overflowed` is true (cycle enumeration aborted past `MAX_SIMPLE_CYCLES` — see `graph-analytics.md`). It bypasses `QualityControlEngine` entirely: `build_analytics_snapshot` pushes `Issue::new(CYCLE_ANALYSIS_OVERFLOWED)` straight into the issue list after the engine (or `issues_override`) has already run, so it surfaces unconditionally — same `IssuesBlock`/`FeatureCard` UI as any other issue, but with no corresponding `Check<T>` or `RepairStrategy` and no way for a user to disable it. `IssueKind::from_str` still parses it like any other kind (used to validate `config.strategies` keys), but no strategy can ever be registered against it — see `from_str`'s doc comment.
 
@@ -102,6 +105,10 @@ pub enum IssueData {
     Missing {                     // produced by any check flagging too few loops, see below
         missing: u32,
     },
+    RegionsNeedingExpansion {            // produced by any check flagging SCC regions needing expansion, see below
+        invalid: Vec<usize>,
+        invalid_sources: HashMap<usize, Vec<CheckId>>,
+    },
 }
 ```
 
@@ -115,6 +122,7 @@ pub enum IssueData {
 - **`invalid_sources`**: per-cycle check attribution, keyed by `canonical_cycle_key` (the cycle's edge set, sorted) rather than by index into `all` — indices get remapped on every merge (see `merge_invalid_loops` in `repair.md`'s "Pipeline" section), but a cycle's canonical key is stable across merges, so this map never needs remapping. Maps a cycle to the check id(s) that flagged it invalid. A cycle absent from this map was flagged by no check directly tracked — shouldn't happen for entries in `invalid`, but the map is not required to cover every index; absence means "no recorded source," not an error.
 - Keeping the valid cycles in `all` (not just the invalid ones) lets a strategy avoid cutting an edge that is also part of a cycle the maze is meant to keep — see `InvalidLoopScoredStrategy` in `repair.md`.
 - **`Missing { missing }`**: produced by any check that flags the maze as short on loops overall (paired with `MISSING_LOOPS`) — currently only `MinLoopsCountCheck`. `missing` is how many loops short of the requirement the maze is (`min_loops.saturating_sub(graph_analytics.cycle_count)` — the independent-cycle count, see `MinLoopsCountCheck` below), letting a repair strategy know how many to add. No merge rule defined yet — currently only one check ever produces `MISSING_LOOPS`, so the dedup/merge path is never exercised for this variant.
+- **`RegionsNeedingExpansion { invalid, invalid_sources }`**: produced by any check that flags SCC regions undersized for a check-specific reason (paired with `REGION_NEEDS_EXPANSION`) — currently `MinRegionSizeCheck` (region smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller than a configured share of the field). `invalid` holds indices into `maze.analysis.scc(&maze.graph).components` — not a copy of the regions themselves: that computation is already cached there (keyed by `graph.version()`, see `analysis.md`), and a future repair strategy can re-fetch it (cache hit within the same QC pass) instead of `Issue` carrying a duplicate snapshot. `invalid_sources` is keyed by the same component index — unlike `invalid_sources` on `InvalidLoops`, this needs no remap on merge, because every check sharing this issue within one QC pass reads from the same single `scc()` cache entry, so a given index means the same region on both sides of a merge (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section). No `RepairStrategy` registered yet for this kind — same "detectable, not yet repairable" status `EXCESSIVE_SCC_COUNT` has.
 - **`data` is not exposed over WASM**: the WASM layer serializes `IssueKind`, `source_checks`, and `details` (see `IssueDto` in `quality-feature.md`) but never `Issue.data` itself — that field stays internal, Check-to-Strategy plumbing only.
 - **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` and `details` (on `Issue`, see above) are unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 
@@ -301,6 +309,32 @@ Flags an excessively fragmented graph — see GitHub issue #48. Uses `maze.analy
 
 No `IssueData` variant and no registered `RepairStrategy` yet — `EXCESSIVE_SCC_COUNT` is a detectable-but-not-yet-repairable issue kind, same as any other kind with `strategy: None` in its `QcRuleConfig` (see `repair.md`'s "QcRule and rule-based RepairEngine" section).
 
+### MinRegionSizeCheck
+
+```rust
+pub const MIN_REGION_SIZE_DEFAULT: u32 = 20;
+
+pub struct MinRegionSizeCheck {
+    pub min_region_size: u32,
+}
+```
+
+Flags SCC regions with fewer tiles than a configured absolute minimum — see GitHub issue #50. Uses `maze.analysis.scc(&maze.graph)` (same cache `SccCountCheck` reads), and flags every component whose `len()` is below `min_region_size`. If no region is undersized, the check is silent. Otherwise fires a single `Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, "min_region_size")` with `.with_detail("min_region_size", "min_region_size", self.min_region_size.to_string())` chained on — `invalid` holds every undersized component's index into `scc.components`.
+
+### MinRegionRatioCheck
+
+```rust
+pub const MIN_REGION_RATIO_DEFAULT: u32 = 25;
+
+pub struct MinRegionRatioCheck {
+    pub min_region_ratio: u32,
+}
+```
+
+Counterpart to `MinRegionSizeCheck` using a relative threshold instead of an absolute tile count — see GitHub issue #50. Flags every SCC region covering less than `min_region_ratio` percent of the field (`maze.field.node_count()`): `region.len() * 100 < min_region_ratio * field_cells`. Silently skips (no issue) if the field has zero cells. If no region is undersized, the check is silent. Otherwise fires a single `Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, "min_region_ratio")` with `.with_detail("min_region_ratio", "min_region_ratio", self.min_region_ratio.to_string())` chained on.
+
+Can be active alongside `MinRegionSizeCheck` — both produce `REGION_NEEDS_EXPANSION` and merge into one issue (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section): since both checks read the same `scc()` cache entry within one QC pass, a region's component index is stable across the merge, so unioning `invalid` and `invalid_sources` needs no remap, unlike the cycle-index remap `merge_invalid_loops` must do.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -313,6 +347,7 @@ Serialized to JSON in `MazeSnapshot.issues` (`build_analytics_snapshot`, `maze-w
 struct IssueDto {
     kind: String,                                       // IssueKind::as_str()
     invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>>, // invalid_loop only, keyed by source check id
+    region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>>, // region_needs_expansion only, keyed by source check id
     source_checks: Vec<String>,                          // Issue::source_checks()
     details: HashMap<String, HashMap<String, String>>,   // Issue::details()
 }
@@ -321,6 +356,8 @@ struct IssueDto {
 `source_checks` and `details` are the serialized form of `Issue`'s same-named accessors (see "Issue" above) — the web UI uses them to render one bubble per contributing check, each with a check-specific label built from that check's own `details` entry (see `quality-feature.md`). `details` values are raw (numbers as strings, etc.) — the UI owns all wording.
 
 `invalid_loop_edges` is keyed by source check id, not one flat list — a merged `invalid_loop` issue may carry cycles from several checks at once (e.g. both `min_loop_length`'s short loops and `max_loop_length`'s long loops), and each is attributed to its own check's entry so the UI can highlight only the cycles relevant to the bubble being hovered, not every contributing check's cycles combined. Built by looking up each invalid cycle's canonical key (`canonical_cycle_key`) in `IssueData::InvalidLoops.invalid_sources` to find which check(s) flagged it — the same attribution map `merge_invalid_loops` (`repair.md`'s "Pipeline" section) already maintains across merges. A check id absent from `invalid_loop_edges` (or the whole map empty) means that check flagged no cycles, or the issue isn't `invalid_loop`.
+
+`region_needs_expansion_nodes` mirrors `invalid_loop_edges`'s role for `region_needs_expansion` issues (currently produced by `MinRegionSizeCheck`/`MinRegionRatioCheck`) — keyed by source check id for the same reason, so hovering one check's bubble highlights only the regions that check flagged. Each inner `Vec<u32>` is one flagged region's member maze node ids (not edges — the web client derives the region's perimeter and fill client-side from this node set, the same way it derives preset boundary walls from a cell set; see `IssueHighlightOverlay.ts`/`issueHighlightSelectors.ts`). Built from `IssueData::RegionsNeedingExpansion.invalid` (indices into `maze.analysis.scc(&maze.graph).components`) and `invalid_sources` (keyed by component index, no remap needed within one QC pass — see `IssueData::RegionsNeedingExpansion`'s doc comment above). A check id absent from `region_needs_expansion_nodes` means that check flagged no regions, or the issue isn't `region_needs_expansion`.
 
 ### CheckDescriptor
 
@@ -397,6 +434,8 @@ One user-defined QC rule: a non-empty set of active checks producing the same `I
 | `loop_distance_from_finish` | `invalid_loop` | `min_distance_from_finish: Integer(default=0, min=0, max=100_000)` | no |
 | `max_loop_density` | `invalid_loop` | `max_density: Integer(default=30, min=0, max=100)` | no |
 | `scc_count` | `excessive_scc_count` | `max_scc_count: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)` | no |
+| `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Integer(default=25, min=0, max=100)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

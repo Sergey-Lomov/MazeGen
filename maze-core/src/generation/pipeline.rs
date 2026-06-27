@@ -171,6 +171,10 @@ fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
          Some(IssueData::InvalidLoops { all: incoming_all, invalid: incoming_invalid, invalid_sources: incoming_sources })) => {
             merge_invalid_loops(all, invalid, invalid_sources, incoming_all, incoming_invalid, incoming_sources);
         }
+        (Some(IssueData::RegionsNeedingExpansion { invalid, invalid_sources }),
+         Some(IssueData::RegionsNeedingExpansion { invalid: incoming_invalid, invalid_sources: incoming_sources })) => {
+            merge_regions_needing_expansion(invalid, invalid_sources, incoming_invalid, incoming_sources);
+        }
         (None, None) => {}
         (existing_data, incoming_data) => {
             debug_assert!(false,
@@ -261,6 +265,31 @@ fn merge_invalid_loops(
 
     *all = merged_all;
     *invalid = merged_invalid;
+}
+
+/// Canonical merge for `IssueData::RegionsNeedingExpansion`. Unlike `merge_invalid_loops`, no
+/// index remapping is needed: both sides' indices are into the same `maze.analysis.scc(&maze.graph)`
+/// cache entry for this QC pass, so a given component index means the same region on both sides.
+fn merge_regions_needing_expansion(
+    invalid: &mut Vec<usize>,
+    invalid_sources: &mut HashMap<usize, Vec<crate::repair::CheckId>>,
+    incoming_invalid: Vec<usize>,
+    incoming_sources: HashMap<usize, Vec<crate::repair::CheckId>>,
+) {
+    let mut seen: HashSet<usize> = invalid.iter().copied().collect();
+    for idx in incoming_invalid {
+        if seen.insert(idx) {
+            invalid.push(idx);
+        }
+    }
+    for (key, sources) in incoming_sources {
+        let entry = invalid_sources.entry(key).or_default();
+        for source in sources {
+            if !entry.contains(&source) {
+                entry.push(source);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -414,5 +443,42 @@ mod merge_tests {
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
         assert_eq!(all.len(), 2, "both cycles still end up in the merged all");
         assert_eq!(invalid, &vec![1], "the out-of-range index is dropped; only check_b's valid index survives");
+    }
+
+    fn region_needs_expansion_issue(source_check: CheckId, invalid: Vec<usize>) -> Issue {
+        let mut invalid_sources: HashMap<usize, Vec<CheckId>> = HashMap::new();
+        for &idx in &invalid {
+            invalid_sources.entry(idx).or_default().push(source_check);
+        }
+        Issue::with_data_from_check(
+            crate::quality_control::REGION_NEEDS_EXPANSION,
+            IssueData::RegionsNeedingExpansion { invalid, invalid_sources },
+            source_check,
+        )
+    }
+
+    #[test]
+    fn merge_regions_needing_expansion_unions_disjoint_indices() {
+        let mut a = region_needs_expansion_issue(CheckId::MinRegionSize, vec![0]);
+        let b = region_needs_expansion_issue(CheckId::MinRegionRatio, vec![1]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::RegionsNeedingExpansion { invalid, .. }) = &a.data else { panic!() };
+        assert_eq!(invalid.len(), 2);
+        assert!(invalid.contains(&0));
+        assert!(invalid.contains(&1));
+    }
+
+    #[test]
+    fn merge_regions_needing_expansion_deduplicates_shared_index() {
+        let mut a = region_needs_expansion_issue(CheckId::MinRegionSize, vec![0]);
+        let b = region_needs_expansion_issue(CheckId::MinRegionRatio, vec![0]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::RegionsNeedingExpansion { invalid, invalid_sources }) = &a.data else { panic!() };
+        assert_eq!(invalid, &vec![0], "the same region index found by both checks must not be duplicated");
+        let sources = invalid_sources.get(&0).expect("region 0 must have recorded sources");
+        assert!(sources.contains(&CheckId::MinRegionSize));
+        assert!(sources.contains(&CheckId::MinRegionRatio));
     }
 }

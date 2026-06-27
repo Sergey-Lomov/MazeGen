@@ -9,6 +9,8 @@ pub mod loop_distance_from_start;
 pub mod loop_distance_from_finish;
 pub mod max_loop_density;
 pub mod scc_count;
+pub mod min_region_size;
+pub mod min_region_ratio;
 
 pub use missing_endpoints::{MissingEndpointsCheck, MISSING_ENDPOINTS_CHECK_ID};
 pub use unreachable_finish::{UnreachableFinishCheck, UNREACHABLE_FINISH_CHECK_ID};
@@ -21,3 +23,5 @@ pub use loop_distance_from_start::{LoopDistanceFromStartCheck, LOOP_DISTANCE_FRO
 pub use loop_distance_from_finish::{LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, LOOP_DISTANCE_FROM_FINISH_CHECK_ID};
 pub use max_loop_density::{MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOP_DENSITY_CHECK_ID};
 pub use scc_count::{SccCountCheck, MAX_SCC_COUNT_DEFAULT, SCC_COUNT_CHECK_ID};
+pub use min_region_size::{MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT, MIN_REGION_SIZE_CHECK_ID};
+pub use min_region_ratio::{MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT, MIN_REGION_RATIO_CHECK_ID};

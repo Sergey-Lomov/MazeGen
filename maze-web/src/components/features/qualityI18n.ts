@@ -47,6 +47,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.scc_count.label"] as MessageFn,
     description: m["check.scc_count.description"] as MessageFn,
   },
+  min_region_size: {
+    label: m["check.min_region_size.label"] as MessageFn,
+    description: m["check.min_region_size.description"] as MessageFn,
+  },
+  min_region_ratio: {
+    label: m["check.min_region_ratio.label"] as MessageFn,
+    description: m["check.min_region_ratio.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -69,6 +77,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   excessive_scc_count: {
     label: m["issue.excessive_scc_count.label"] as MessageFn,
     description: m["issue.excessive_scc_count.description"] as MessageFn,
+  },
+  region_needs_expansion: {
+    label: m["issue.region_needs_expansion.label"] as MessageFn,
+    description: m["issue.region_needs_expansion.description"] as MessageFn,
   },
 };
 
@@ -169,6 +181,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   max_scc_count: {
     label: m["param.max_scc_count.label"] as MessageFn,
     description: m["param.max_scc_count.description"] as MessageFn,
+  },
+  min_region_size: {
+    label: m["param.min_region_size.label"] as MessageFn,
+    description: m["param.min_region_size.description"] as MessageFn,
+  },
+  min_region_ratio: {
+    label: m["param.min_region_ratio.label"] as MessageFn,
+    description: m["param.min_region_ratio.description"] as MessageFn,
   },
 };
 

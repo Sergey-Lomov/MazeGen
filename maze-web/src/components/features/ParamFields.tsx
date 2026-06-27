@@ -32,15 +32,18 @@ export function ParamFields({ params, values, getValue, onChange, labelSize = "l
             <div style={styles.row}>
               <label style={{ ...styles.label, fontSize: labelSize === "sm" ? font.sm : font.lg }}>{p.label}</label>
               {(p.kind.type === "float" || p.kind.type === "integer") && (
-                <input
-                  type="number"
-                  style={styles.input}
-                  value={get(p)}
-                  min={p.kind.min}
-                  max={p.kind.max}
-                  step={p.kind.type === "integer" ? 1 : 0.1}
-                  onChange={(e) => onChange(p.id, e.target.value)}
-                />
+                <div style={styles.inputWithUnit}>
+                  <input
+                    type="number"
+                    style={styles.input}
+                    value={get(p)}
+                    min={p.kind.min}
+                    max={p.kind.max}
+                    step={p.kind.type === "integer" ? 1 : 0.1}
+                    onChange={(e) => onChange(p.id, e.target.value)}
+                  />
+                  {p.id === "min_region_ratio" && <span style={styles.unit}>%</span>}
+                </div>
               )}
               {p.kind.type === "bool" && (
                 <input
@@ -97,6 +100,14 @@ const styles: Record<string, React.CSSProperties> = {
   input: {
     ...sharedStyles.inputSm,
     width: 80,
+  },
+  inputWithUnit: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+  },
+  unit: {
+    color: colors.textMuted,
   },
   select: {
     ...sharedStyles.selectSm,

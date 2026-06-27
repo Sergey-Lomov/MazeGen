@@ -12,7 +12,7 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
@@ -131,6 +131,28 @@ pub fn available_checks() -> JsValue {
                 id: "max_scc_count",
                 label: "Max SCC region count",
                 kind: ParamKindDto::Integer { default: MAX_SCC_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
+            }],
+        },
+        CheckDescriptor {
+            id: "min_region_size",
+            label: "Minimum SCC region size",
+            description: "Fires if any strongly-connected region has fewer tiles than the required minimum.",
+            issue_kinds: vec![kind_str(REGION_NEEDS_EXPANSION)],
+            params: vec![ParamDescriptor {
+                id: "min_region_size",
+                label: "Min region size (tiles)",
+                kind: ParamKindDto::Integer { default: MIN_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
+            }],
+        },
+        CheckDescriptor {
+            id: "min_region_ratio",
+            label: "Minimum SCC region ratio",
+            description: "Fires if any strongly-connected region covers less than the required share of the field.",
+            issue_kinds: vec![kind_str(REGION_NEEDS_EXPANSION)],
+            params: vec![ParamDescriptor {
+                id: "min_region_ratio",
+                label: "Min region ratio (per 100 cells)",
+                kind: ParamKindDto::Integer { default: MIN_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
             }],
         },
         CheckDescriptor {

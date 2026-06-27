@@ -4,7 +4,7 @@ use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, SccCountCheck, MAX_SCC_COUNT_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP, EXCESSIVE_SCC_COUNT},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, SccCountCheck, MAX_SCC_COUNT_DEFAULT, MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT, MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION},
     repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
@@ -16,7 +16,7 @@ use crate::analytics::build_analytics_snapshot;
 /// share one kind) and to build `CheckId` without needing a `Check<T>` instance.
 ///
 /// Panics on an unknown id — the only call site (`build_qc_and_repair_impl`) only ever passes
-/// ids already validated against `config.checks`, which is restricted to this same 8-id set
+/// ids already validated against `config.checks`, which is restricted to this same id set
 /// (the `match` in this function's neighboring check-building loop). An `Option` return here
 /// would have a `None` arm no caller can actually reach; `unreachable!` documents that instead
 /// of silently swallowing a contract violation that should never happen.
@@ -33,6 +33,8 @@ fn check_id_info(id: &str) -> (IssueKind, CheckId) {
         "loop_distance_from_finish" => (INVALID_LOOP, CheckId::LoopDistanceFromFinish),
         "max_loop_density" => (INVALID_LOOP, CheckId::MaxLoopDensity),
         "scc_count" => (EXCESSIVE_SCC_COUNT, CheckId::SccCount),
+        "min_region_size" => (REGION_NEEDS_EXPANSION, CheckId::MinRegionSize),
+        "min_region_ratio" => (REGION_NEEDS_EXPANSION, CheckId::MinRegionRatio),
         other => unreachable!("check_id_info called with id not in config.checks's validated set: {other}"),
     }
 }
@@ -141,6 +143,24 @@ fn build_qc_and_repair_impl<T: Tessellation>(
                     .map(|v| v.max(1) as u32)
                     .unwrap_or(MAX_SCC_COUNT_DEFAULT);
                 checks.push(Box::new(SccCountCheck { max_scc_count }));
+            }
+            "min_region_size" => {
+                let min_region_size = config.check_params
+                    .get("min_region_size")
+                    .and_then(|p| p.get("min_region_size"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.max(1) as u32)
+                    .unwrap_or(MIN_REGION_SIZE_DEFAULT);
+                checks.push(Box::new(MinRegionSizeCheck { min_region_size }));
+            }
+            "min_region_ratio" => {
+                let min_region_ratio = config.check_params
+                    .get("min_region_ratio")
+                    .and_then(|p| p.get("min_region_ratio"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.clamp(0, 100) as u32)
+                    .unwrap_or(MIN_REGION_RATIO_DEFAULT);
+                checks.push(Box::new(MinRegionRatioCheck { min_region_ratio }));
             }
             other => return Err(format!("unknown check: {other}")),
         }
