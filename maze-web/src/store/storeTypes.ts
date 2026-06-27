@@ -237,6 +237,17 @@ export interface GenerationActions {
    * `initialParams` overrides the descriptor defaults (e.g. values edited in the select dialog
    * before confirming) — ignored for a check that's already active. */
   addCheck: (id: string, ruleId?: string, initialParams?: Record<string, string>) => void;
+  /** Creates one fresh rule with all of `ids` as member checks (and `strategyId`, if given) in
+   * a single atomic step — the multiselect "Add new rule" flow (IssueSelectDialog +
+   * CheckSelectDialog + StrategySelectDialog chain). Unlike calling `addCheck` once per id,
+   * this never creates intermediate singleton rules for ids after the first. All ids must share
+   * one issue kind (validated by the caller's candidate filtering, same as `addCheck`). */
+  createRule: (
+    ids: string[],
+    strategyId: string | null,
+    initialCheckParams?: Record<string, Record<string, string>>,
+    initialStrategyParams?: Record<string, string>,
+  ) => void;
   removeCheck: (id: string) => void;
   setCheckParam: (checkId: string, paramId: string, value: string) => void;
   /** Moves `checkId` out of whatever rule it's in, into a fresh singleton rule of its own. */

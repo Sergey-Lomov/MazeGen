@@ -1,11 +1,15 @@
 import React from "react";
 import { Modal } from "../Modal";
+import { Switch } from "../Switch";
 import { colors, font, dialogSpacing } from "../../styles/theme";
 
 interface Item {
   id: string;
   label: string;
   disabled?: boolean;
+  /** When given (multiselect mode), renders a checkbox before the label, toggled via
+   * `onToggleChecked` independent of row-click (which only changes `selectedId`/preview). */
+  checked?: boolean;
 }
 
 interface Props {
@@ -13,12 +17,18 @@ interface Props {
   items: Item[];
   selectedId: string;
   onSelectId: (id: string) => void;
+  /** Multiselect mode when given — shows a checkbox per item (see `Item.checked`). */
+  onToggleChecked?: (id: string) => void;
+  /** Selected-row highlight color — "primary" (blue, default) for dialogs that target an
+   * existing rule/strategy, "neutral" (grey) for the "Add new rule" flow's own dialogs, where
+   * blue would wrongly read as "already committed" before the flow finishes. */
+  selectedVariant?: "primary" | "neutral";
   rightPanel: React.ReactNode;
   footer: React.ReactNode;
   onClose: () => void;
 }
 
-export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPanel, footer, onClose }: Props) {
+export function ItemSelectDialog({ title, items, selectedId, onSelectId, onToggleChecked, selectedVariant = "primary", rightPanel, footer, onClose }: Props) {
   const body = (
     <div style={styles.content}>
       <div style={styles.leftCol}>
@@ -27,13 +37,22 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPa
             key={item.id}
             style={{
               ...styles.item,
-              ...(item.id === selectedId ? styles.itemSelected : {}),
+              ...(item.id === selectedId ? (selectedVariant === "neutral" ? styles.itemSelectedNeutral : styles.itemSelected) : {}),
               ...(item.disabled ? styles.itemDisabled : {}),
             }}
             disabled={item.disabled}
             onClick={() => onSelectId(item.id)}
           >
-            {item.label}
+            <span style={styles.itemLabel}>{item.label}</span>
+            {onToggleChecked && (
+              <span onClick={(e) => e.stopPropagation()}>
+                <Switch
+                  checked={item.checked ?? false}
+                  disabled={item.disabled}
+                  onChange={() => onToggleChecked(item.id)}
+                />
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -55,7 +74,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
   },
   leftCol: {
-    width: 180,
+    width: 260,
     flexShrink: 0,
     borderRight: `1px solid ${colors.borderMid}`,
     overflowY: "auto" as const,
@@ -73,14 +92,24 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
     cursor: "pointer",
     width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
   },
   itemSelected: {
     background: colors.bgBtnPrimary,
     color: colors.textWhite,
   },
+  itemSelectedNeutral: {
+    background: colors.bgBtnSecondary,
+    color: colors.textWhite,
+  },
   itemDisabled: {
     opacity: 0.4,
     cursor: "default",
+  },
+  itemLabel: {
+    flex: 1,
   },
   rightCol: {
     flex: 1,

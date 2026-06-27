@@ -4,15 +4,17 @@ import { colors } from "../styles/theme";
 interface Props {
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }
 
-export function Switch({ checked, onChange }: Props) {
+export function Switch({ checked, onChange, disabled }: Props) {
   return (
-    <label style={styles.wrap}>
+    <label style={{ ...styles.wrap, ...(disabled ? styles.wrapDisabled : {}) }}>
       <input
         type="checkbox"
         style={styles.input}
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
       <span style={{ ...styles.track, ...(checked ? styles.trackOn : {}) }}>
@@ -29,6 +31,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     cursor: "pointer",
     flexShrink: 0,
+  },
+  wrapDisabled: {
+    opacity: 0.4,
+    cursor: "default",
   },
   input: {
     position: "absolute",

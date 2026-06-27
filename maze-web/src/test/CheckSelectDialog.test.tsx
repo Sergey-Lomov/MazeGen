@@ -4,8 +4,9 @@ import { CheckSelectDialog } from "../components/features/CheckSelectDialog";
 import { useMazeStore } from "../store/mazeStore";
 
 const availableChecks = [
-  { id: "missing_endpoints", label: "Missing endpoints", description: "Fires if no start/finish.", issue_kinds: ["missing_endpoints"], params: [] },
   { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [] },
+  { id: "min_loop_length", label: "Minimum loop length", description: "Fires if a loop is too short.", issue_kinds: ["invalid_loop"], params: [] },
+  { id: "max_loop_length", label: "Maximum loop length", description: "Fires if a loop is too long.", issue_kinds: ["invalid_loop"], params: [] },
 ];
 
 beforeEach(() => {
@@ -13,43 +14,54 @@ beforeEach(() => {
 });
 
 describe("CheckSelectDialog", () => {
-  it("has a static title that does not depend on the current selection", () => {
-    render(<CheckSelectDialog onClose={vi.fn()} />);
-    expect(screen.getByText("Select initial check for new rule")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Minimum loop count"));
-    expect(screen.getByText("Select initial check for new rule")).toBeInTheDocument();
+  it("only lists checks of the given issue kind", () => {
+    render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText("Minimum loop length")).toBeInTheDocument();
+    expect(screen.getByText("Maximum loop length")).toBeInTheDocument();
+    expect(screen.queryByText("Minimum loop count")).not.toBeInTheDocument();
   });
 
-  it("lists every available check, not just unselected ones", () => {
-    useMazeStore.setState({ selectedChecks: ["missing_endpoints"] });
-    render(<CheckSelectDialog onClose={vi.fn()} />);
-    expect(screen.getByText("Start and finish present")).toBeInTheDocument();
-    expect(screen.getByText("Minimum loop count")).toBeInTheDocument();
-  });
-
-  it("disables Add and shows the already-active warning for an already-selected check", () => {
-    useMazeStore.setState({ selectedChecks: ["missing_endpoints"] });
-    render(<CheckSelectDialog onClose={vi.fn()} />);
+  it("disables the checkbox and shows the already-active warning for an already-selected check", () => {
+    useMazeStore.setState({ selectedChecks: ["min_loop_length"] });
+    render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Minimum loop length"));
     expect(screen.getByText("Cannot add two checks of this type")).toBeInTheDocument();
-    expect(screen.getByText("Add")).toBeDisabled();
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes[0]).toBeDisabled();
   });
 
-  it("adding a check always creates a new rule (no ruleId passed)", () => {
-    const onClose = vi.fn();
-    render(<CheckSelectDialog onClose={onClose} />);
-    fireEvent.click(screen.getByText("Minimum loop count"));
-    fireEvent.click(screen.getByText("Add"));
-    expect(useMazeStore.getState().selectedChecks).toEqual(["min_loops_count"]);
-    expect(useMazeStore.getState().rules).toHaveLength(1);
-    expect(useMazeStore.getState().rules[0].checks).toEqual(["min_loops_count"]);
-    expect(onClose).toHaveBeenCalled();
+  it("Next is disabled until at least one check is toggled on", () => {
+    render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText("Next")).toBeDisabled();
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    expect(screen.getByText("Next")).not.toBeDisabled();
+  });
+
+  it("Next hands the toggled-on check ids to onNext, without touching the store", () => {
+    const onNext = vi.fn();
+    render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={onNext} onClose={vi.fn()} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    fireEvent.click(screen.getByText("Next"));
+    expect(onNext).toHaveBeenCalledWith(["min_loop_length", "max_loop_length"], {});
+    expect(useMazeStore.getState().selectedChecks).toEqual([]);
+    expect(useMazeStore.getState().rules).toEqual([]);
   });
 
   it("Cancel closes without modifying the store", () => {
     const onClose = vi.fn();
-    render(<CheckSelectDialog onClose={onClose} />);
+    render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={onClose} />);
     fireEvent.click(screen.getByText("Cancel"));
     expect(onClose).toHaveBeenCalled();
     expect(useMazeStore.getState().selectedChecks).toEqual([]);
+  });
+
+  it("Back calls onBack instead of onClose", () => {
+    const onBack = vi.fn();
+    const onClose = vi.fn();
+    render(<CheckSelectDialog kind="invalid_loop" onBack={onBack} onNext={vi.fn()} onClose={onClose} />);
+    fireEvent.click(screen.getByText("Back"));
+    expect(onBack).toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

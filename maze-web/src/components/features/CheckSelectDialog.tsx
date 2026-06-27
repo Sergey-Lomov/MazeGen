@@ -2,12 +2,20 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { ParamFields } from "./ParamFields";
-import { resolveCheckLabel, resolveCheckDescription, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
+import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
 import { colors, font, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
 
 interface Props {
+  /** Issue kind chosen in step 1 (IssueSelectDialog) — only checks of this kind are listed. */
+  kind: string;
+  /** Shows a Back button that returns to step 1 (IssueSelectDialog) instead of closing. */
+  onBack: () => void;
+  /** Step 2 confirm — hands the chosen check ids (with any param overrides) to step 3
+   * (strategy pick), not the store. Nothing commits until the whole "Add new rule" flow
+   * finishes (see `RulesColumn`'s `createRule` call). */
+  onNext: (ids: string[], paramOverrides: Record<string, Record<string, string>>) => void;
   onClose: () => void;
 }
 
@@ -16,19 +24,26 @@ function defaultValue(p: ParamDescriptor): string {
   return k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
 }
 
-export function CheckSelectDialog({ onClose }: Props) {
-  const availableChecks = useMazeStore((s) => s.availableChecks);
+export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
+  const allChecks = useMazeStore((s) => s.availableChecks);
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
-  const addCheck = useMazeStore((s) => s.addCheck);
+
+  const availableChecks = allChecks.filter((c) => c.issue_kinds[0] === kind);
 
   const [selectedId, setSelectedId] = useState<string>(availableChecks[0]?.id ?? "");
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
   // Param edits made in this dialog before the check is actually added — keyed by check id so
   // switching the selection and coming back preserves what was typed (mirrors useParamEditor's
-  // per-entity values, but nothing commits to the store until `addCheck` on confirm).
+  // per-entity values, but nothing commits to the store until the flow finishes).
   const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
 
   const selectedCheck = availableChecks.find((c) => c.id === selectedId);
-  const isAlreadyActive = selectedId ? selectedChecks.includes(selectedId) : false;
+  const isAlreadyActive = (id: string) => selectedChecks.includes(id);
+
+  function toggleChecked(id: string) {
+    if (isAlreadyActive(id)) return;
+    setCheckedIds((prev) => prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]);
+  }
 
   function handleParamChange(paramId: string, value: string) {
     setParamOverrides((prev) => ({
@@ -37,16 +52,17 @@ export function CheckSelectDialog({ onClose }: Props) {
     }));
   }
 
-  function handleAdd() {
-    if (selectedId && !isAlreadyActive) {
-      addCheck(selectedId, undefined, paramOverrides[selectedId]);
-      onClose();
+  function handleNext() {
+    if (checkedIds.length > 0) {
+      onNext(checkedIds, paramOverrides);
     }
   }
 
   const items = availableChecks.map((c) => ({
     id: c.id,
     label: resolveCheckLabel(c.id, c.label),
+    disabled: isAlreadyActive(c.id),
+    checked: checkedIds.includes(c.id),
   }));
 
   const rightPanel = selectedCheck ? (
@@ -54,10 +70,10 @@ export function CheckSelectDialog({ onClose }: Props) {
       <div style={styles.description}>
         {resolveCheckDescription(selectedCheck.id, selectedCheck.description)}
       </div>
-      {isAlreadyActive && (
+      {isAlreadyActive(selectedCheck.id) && (
         <div style={styles.alreadyActive}>{m["check.already_active"]()}</div>
       )}
-      {!isAlreadyActive && selectedCheck.params.length > 0 && (
+      {!isAlreadyActive(selectedCheck.id) && selectedCheck.params.length > 0 && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
           <ParamFields
@@ -73,27 +89,30 @@ export function CheckSelectDialog({ onClose }: Props) {
     <div style={styles.empty}>{m["check.not_selected"]()}</div>
   );
 
-  const canAdd = !!selectedId && !isAlreadyActive;
+  const canProceed = checkedIds.length > 0;
 
   const footer = (
     <>
+      <button style={styles.btnSecondary} onClick={onBack}>{m["common.back"]()}</button>
       <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
       <button
-        style={{ ...styles.btnPrimary, ...(!canAdd ? styles.btnDisabled : {}) }}
-        disabled={!canAdd}
-        onClick={handleAdd}
+        style={{ ...styles.btnPrimary, ...(!canProceed ? styles.btnDisabled : {}) }}
+        disabled={!canProceed}
+        onClick={handleNext}
       >
-        {m["check.add"]()}
+        {m["common.next"]()}
       </button>
     </>
   );
 
   return (
     <ItemSelectDialog
-      title={m["quality.select_initial_check_title"]()}
+      title={m["quality.add_check_dialog_title"]({ issue: resolveIssueLabel(kind) })}
       items={items}
       selectedId={selectedId}
       onSelectId={setSelectedId}
+      onToggleChecked={toggleChecked}
+      selectedVariant="neutral"
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}

@@ -61,7 +61,7 @@ One card per rule (`slots: StrategySlotVM[]`, one entry per rule in the store, n
 
 Split rather than stacked so disabling/configuring the fix reads as independent from the checks — the checks still run regardless of whether their rule's fix is enabled.
 
-Below all rule cards: a single `Add new rule` button (no `+` prefix) — opens `CheckSelectDialog`, titled `quality.select_initial_check_title` ("Select initial check for new rule"), which always creates a **new** singleton rule for whichever check is picked (never merges into an existing rule — that's `AddCheckToRuleDialog`'s job instead).
+Below all rule cards: a single `Add new rule` button (no `+` prefix) — opens a three-step flow: `IssueSelectDialog` (pick an issue kind) → `CheckSelectDialog` filtered to that kind (multiselect via per-row checkboxes) → `NewRuleStrategyDialog` (pick a fix strategy, skipped when no strategy handles the kind). Nothing commits to the store until the flow finishes — see `createRule` below. This always creates one **new** rule (never merges into an existing rule — that's `AddCheckToRuleDialog`'s job instead).
 
 Empty state (no rules at all): hint text `status.no_checks`.
 
@@ -92,14 +92,31 @@ type QualitySelection =
 
 `QualityCanvas` holds a `flushRef` it passes into `QualityDetailPanel` (via `ParamizedDetail`) and calls before every selection change, so an in-flight debounced edit in the detail panel is never lost when switching selection. This is separate from — and does not cover — the inline editors in `RuleCheckRow`/`RuleStrategyPanel` (see above).
 
-## CheckSelectDialog ("Add new rule")
+## IssueSelectDialog ("Add new rule", step 1)
 
-Modal using `ItemSelectDialog`. Shows **all** available checks (not filtered to unselected). Static title `quality.select_initial_check_title` — does not change based on the current selection (deliberately non-interactive title, unlike the rule-targeted dialog below).
+Modal using `ItemSelectDialog`. Lists distinct issue kinds — `Array.from(new Set(availableChecks.map(c => c.issue_kinds[0])))` — not a separate `IssueVM` in the ViewModel, just derived inline (see "no `IssueVM`" note below). Title `quality.select_issue_title` ("Select rule") — despite the `kind`/issue plumbing, labels and descriptions (`issueI18n`) are worded as rule descriptions (e.g. "Loop validation", "Checks loops against configured criteria...") rather than problem descriptions, since this list is the user-facing "what kind of rule do I want" picker.
 
-- Already-active checks: Add button disabled, red error text `check.already_active` shown in right panel.
-- Right panel: check label, description, params (read-only preview in dialog; params are edited inline in the rule card / detail panel after adding).
-- Footer: `[Cancel]` `[Add]`.
-- Add: calls `addCheck(id)` with no `ruleId` — always creates a fresh singleton rule for the check (see `GenerationActions.addCheck` below), closes.
+- Right panel: issue label + description (`resolveIssueLabel`/`resolveIssueDescription`).
+- Footer: `[Cancel]` `[Select]`.
+- Select: closes this dialog and opens `CheckSelectDialog` with the chosen `kind`, not `addCheck` — no store mutation happens at this step.
+
+## CheckSelectDialog ("Add new rule", step 2)
+
+Modal using `ItemSelectDialog` in multiselect mode (per-row checkbox, toggled independent of row-click which only changes the right-panel preview), takes a required `kind` prop from step 1. Shows available checks of that kind only.
+
+- Already-active checks: checkbox disabled, red error text `check.already_active` shown in right panel when previewed.
+- Right panel (for the previewed/clicked row, not necessarily checked): check label, description, params (edited locally in this dialog's own state — `paramOverrides` — nothing commits to the store here).
+- Footer: `[Back]` (returns to `IssueSelectDialog`) `[Cancel]` `[Next]` (disabled until at least one checkbox is on).
+- Next: calls `onNext(checkedIds, paramOverrides)` — hands the picked ids to step 3, no store mutation.
+
+## NewRuleStrategyDialog ("Add new rule", step 3)
+
+Modal using `ItemSelectDialog`, takes a required `kind` prop. Shows `no_fix` plus strategies where `handles === kind` — same candidate filter as `StrategySelectDialog`, but this dialog targets no existing rule (nothing in the store yet) and stages strategy params locally instead of writing through `setStrategyParam`.
+
+- This step is skipped entirely (by `RulesColumn`, before opening it) when `availableStrategies` has no entry with `handles === kind` — the rule is created directly with `strategyId: null`.
+- Right panel: strategy description + param fields (local state, not `useParamEditor`).
+- Footer: `[Back]` (returns to `CheckSelectDialog`, step 2) `[Cancel]` `[Add]`.
+- Add: calls `onConfirm(strategyId, params)` (`strategyId` is `null` for `no_fix`) — `RulesColumn` then calls `createRule(checkIds, strategyId, checkParamOverrides, strategyParams)` to commit the whole rule atomically, closes the flow.
 
 ## AddCheckToRuleDialog ("+ Add check" inside a rule card)
 
@@ -205,6 +222,7 @@ strategyParams: Record<string, Record<string, string>>   // strategyId → param
 
 // Actions
 addCheck(id: string, ruleId?: string): void
+createRule(ids: string[], strategyId: string | null, initialCheckParams?: Record<string, Record<string, string>>, initialStrategyParams?: Record<string, string>): void
 removeCheck(id: string): void
 setCheckParam(checkId: string, paramId: string, value: string): void
 removeCheckFromRule(checkId: string): void
@@ -228,6 +246,15 @@ setStrategyParam(strategyId: string, paramId: string, value: string): void
 - If `ruleId` is **given** and resolves to an existing rule: appends `id` to that rule's `checks` array instead of creating a new rule — the per-rule "+ Add check" path (`AddCheckToRuleDialog`).
 - If `ruleId` is given but does not resolve to any current rule (stale/unknown id): silently falls back to creating a new singleton rule, same as if `ruleId` were omitted. Not expected to happen from the UI (dialogs only ever pass a currently-rendered rule's id) and not surfaced as an error.
 - If the check's descriptor reports more than one `issue_kinds` entry: only `issue_kinds[0]` is used as the rule's kind, and a `console.error` is logged (`resolveCheckKind` in `generationSlice.ts`) — rules only support one kind per check; no current check produces more than one, this is a guard against silently dropping the others if that ever changes.
+
+### createRule(ids, strategyId, initialCheckParams?, initialStrategyParams?)
+
+- No-op if `ids` is empty or none resolve to a known descriptor.
+- Creates exactly **one** new rule with all of `ids` as member checks (`newRule(kind, ids, strategyId, false)`) — the multiselect "Add new rule" flow (`IssueSelectDialog` → `CheckSelectDialog` → `NewRuleStrategyDialog`). Unlike calling `addCheck` once per id, this never creates intermediate singleton rules for ids after the first.
+- `kind` is taken from `ids[0]`'s descriptor — same one-kind-per-rule assumption as `addCheck`; callers pre-filter candidates by kind.
+- For each id without an existing `checkParams` entry: uses `initialCheckParams[id]` if given, else descriptor defaults.
+- If `strategyId` is given and has no existing `strategyParams` entry: uses `initialStrategyParams` if given, else the strategy descriptor's defaults.
+- Appends all `ids` to `selectedChecks`.
 
 ### removeCheck(id)
 

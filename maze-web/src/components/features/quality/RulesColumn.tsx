@@ -2,6 +2,8 @@ import { useState } from "react";
 import { X, ChevronUp, ChevronDown } from "lucide-react";
 import { useMazeStore } from "../../../store/mazeStore";
 import { CheckSelectDialog } from "../CheckSelectDialog";
+import { IssueSelectDialog } from "../IssueSelectDialog";
+import { NewRuleStrategyDialog } from "../NewRuleStrategyDialog";
 import { StrategySelectDialog } from "../StrategySelectDialog";
 import { AddCheckToRuleDialog } from "../AddCheckToRuleDialog";
 import { RuleStrategyPanel } from "./RuleStrategyPanel";
@@ -16,6 +18,15 @@ import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
 import type { StrategySlotVM, CheckVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
+// Three-step "Add new rule" flow: pick an issue kind, then checks of that kind (multiselect),
+// then a fix strategy for the new rule — nothing commits to the store until step 3 confirms
+// (see `createRule`). Step 3 is skipped when no strategy handles the kind (logging-only kinds).
+type NewRuleStep =
+  | { stage: "issue" }
+  | { stage: "checks"; kind: string }
+  | { stage: "strategy"; kind: string; checkIds: string[]; paramOverrides: Record<string, Record<string, string>> }
+  | null;
+
 interface Props {
   slots: StrategySlotVM[];
   selection: QualitySelection;
@@ -29,13 +40,15 @@ interface Props {
 // rename, remove), distinct from the strategy-only toggle in the right half.
 export function RulesColumn({ slots, selection, onSelect }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
+  const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
   const removeCheck = useMazeStore((s) => s.removeCheck);
+  const createRule = useMazeStore((s) => s.createRule);
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
   const renameRule = useMazeStore((s) => s.renameRule);
   const removeRule = useMazeStore((s) => s.removeRule);
   const moveRule = useMazeStore((s) => s.moveRule);
-  const [addCheckDialogOpen, setAddCheckDialogOpen] = useState(false);
+  const [newRuleStep, setNewRuleStep] = useState<NewRuleStep>(null);
   const [strategyDialogRuleId, setStrategyDialogRuleId] = useState<string | null>(null);
   const [addToRuleId, setAddToRuleId] = useState<string | null>(null);
   const [noCandidatesAlertOpen, setNoCandidatesAlertOpen] = useState(false);
@@ -63,6 +76,17 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
       setNoCandidatesAlertOpen(true);
     } else {
       setAddToRuleId(slot.ruleId);
+    }
+  }
+
+  // Step 2 confirm: skip the strategy step entirely when no strategy handles this kind
+  // (logging-only kinds), creating the rule right away with `strategyId: null`.
+  function handleChecksNext(kind: string, checkIds: string[], paramOverrides: Record<string, Record<string, string>>) {
+    if (availableStrategies.some((s) => s.handles === kind)) {
+      setNewRuleStep({ stage: "strategy", kind, checkIds, paramOverrides });
+    } else {
+      createRule(checkIds, null, paramOverrides);
+      setNewRuleStep(null);
     }
   }
 
@@ -178,11 +202,35 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
         {slots.length === 0 && (
           <span style={styles.emptyHint}>{m["status.no_checks"]()}</span>
         )}
-        <button style={styles.addRuleBtn} onClick={() => setAddCheckDialogOpen(true)}>
+        <button style={styles.addRuleBtn} onClick={() => setNewRuleStep({ stage: "issue" })}>
           {m["quality.add_new_rule"]()}
         </button>
       </div>
-      {addCheckDialogOpen && <CheckSelectDialog onClose={() => setAddCheckDialogOpen(false)} />}
+      {newRuleStep?.stage === "issue" && (
+        <IssueSelectDialog
+          onSelect={(kind) => setNewRuleStep({ stage: "checks", kind })}
+          onClose={() => setNewRuleStep(null)}
+        />
+      )}
+      {newRuleStep?.stage === "checks" && (
+        <CheckSelectDialog
+          kind={newRuleStep.kind}
+          onBack={() => setNewRuleStep({ stage: "issue" })}
+          onNext={(ids, paramOverrides) => handleChecksNext(newRuleStep.kind, ids, paramOverrides)}
+          onClose={() => setNewRuleStep(null)}
+        />
+      )}
+      {newRuleStep?.stage === "strategy" && (
+        <NewRuleStrategyDialog
+          kind={newRuleStep.kind}
+          onBack={() => setNewRuleStep({ stage: "checks", kind: newRuleStep.kind })}
+          onConfirm={(strategyId, params) => {
+            createRule(newRuleStep.checkIds, strategyId, newRuleStep.paramOverrides, params);
+            setNewRuleStep(null);
+          }}
+          onClose={() => setNewRuleStep(null)}
+        />
+      )}
       {strategyDialogRuleId !== null && (
         <StrategySelectDialog
           ruleId={strategyDialogRuleId}

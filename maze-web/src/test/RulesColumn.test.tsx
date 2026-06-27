@@ -5,7 +5,28 @@ import { useMazeStore } from "../store/mazeStore";
 import type { StrategySlotVM, StrategyVM, CheckVM } from "../components/features/useQualityViewModel";
 
 vi.mock("../components/features/CheckSelectDialog", () => ({
-  CheckSelectDialog: () => <div data-testid="check-select-dialog" />,
+  CheckSelectDialog: ({ kind, onBack, onNext }: { kind: string; onBack: () => void; onNext: (ids: string[], paramOverrides: Record<string, Record<string, string>>) => void }) => (
+    <div data-testid="check-select-dialog">
+      {kind}
+      <button onClick={onBack}>go-back</button>
+      <button onClick={() => onNext(["c1"], {})}>pick-checks</button>
+    </div>
+  ),
+}));
+vi.mock("../components/features/IssueSelectDialog", () => ({
+  IssueSelectDialog: ({ onSelect }: { onSelect: (kind: string) => void }) => (
+    <div data-testid="issue-select-dialog">
+      <button onClick={() => onSelect("k1")}>pick-k1</button>
+    </div>
+  ),
+}));
+vi.mock("../components/features/NewRuleStrategyDialog", () => ({
+  NewRuleStrategyDialog: ({ onBack, onConfirm }: { onBack: () => void; onConfirm: (strategyId: string | null, params?: Record<string, string>) => void }) => (
+    <div data-testid="new-rule-strategy-dialog">
+      <button onClick={onBack}>go-back-2</button>
+      <button onClick={() => onConfirm("s1", undefined)}>pick-strategy</button>
+    </div>
+  ),
 }));
 vi.mock("../components/features/StrategySelectDialog", () => ({
   StrategySelectDialog: ({ ruleId, onClose }: { ruleId: string; onClose: () => void }) => (
@@ -33,7 +54,7 @@ const checkWithParams: CheckVM = {
 };
 
 beforeEach(() => {
-  useMazeStore.setState({ rules: [], availableChecks: [], selectedChecks: [] });
+  useMazeStore.setState({ rules: [], availableChecks: [], availableStrategies: [], selectedChecks: [] });
 });
 
 describe("RulesColumn", () => {
@@ -206,11 +227,88 @@ describe("RulesColumn", () => {
     expect(screen.queryByText("Logging")).not.toBeInTheDocument();
   });
 
-  it("opens the top-level add-check dialog via the bottom add-new-rule button", () => {
+  it("opens the issue-select dialog via the bottom add-new-rule button, then the check dialog filtered to the picked issue", () => {
+    useMazeStore.setState({ availableStrategies: [] });
     render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);
-    expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("issue-select-dialog")).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Add new rule"));
+    expect(screen.getByTestId("issue-select-dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("pick-k1"));
+    expect(screen.queryByTestId("issue-select-dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("check-select-dialog")).toHaveTextContent("k1");
+  });
+
+  it("Back from the check dialog returns to the issue-select dialog", () => {
+    render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByText("Add new rule"));
+    fireEvent.click(screen.getByText("pick-k1"));
+    fireEvent.click(screen.getByText("go-back"));
+    expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("issue-select-dialog")).toBeInTheDocument();
+  });
+
+  it("advances to the strategy dialog after picking checks, when a strategy handles the kind", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }],
+      availableStrategies: [{ id: "s1", handles: "k1", params: [] }],
+    });
+    render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByText("Add new rule"));
+    fireEvent.click(screen.getByText("pick-k1"));
+    fireEvent.click(screen.getByText("pick-checks"));
+    expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("new-rule-strategy-dialog")).toBeInTheDocument();
+  });
+
+  it("Back from the strategy dialog returns to the check dialog", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }],
+      availableStrategies: [{ id: "s1", handles: "k1", params: [] }],
+    });
+    render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByText("Add new rule"));
+    fireEvent.click(screen.getByText("pick-k1"));
+    fireEvent.click(screen.getByText("pick-checks"));
+    fireEvent.click(screen.getByText("go-back-2"));
+    expect(screen.queryByTestId("new-rule-strategy-dialog")).not.toBeInTheDocument();
     expect(screen.getByTestId("check-select-dialog")).toBeInTheDocument();
+  });
+
+  it("creates the rule with the picked checks and strategy on strategy-dialog confirm", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }],
+      availableStrategies: [{ id: "s1", handles: "k1", params: [] }],
+      rules: [],
+      selectedChecks: [],
+    });
+    render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByText("Add new rule"));
+    fireEvent.click(screen.getByText("pick-k1"));
+    fireEvent.click(screen.getByText("pick-checks"));
+    fireEvent.click(screen.getByText("pick-strategy"));
+    expect(screen.queryByTestId("new-rule-strategy-dialog")).not.toBeInTheDocument();
+    expect(useMazeStore.getState().selectedChecks).toEqual(["c1"]);
+    expect(useMazeStore.getState().rules).toHaveLength(1);
+    expect(useMazeStore.getState().rules[0].checks).toEqual(["c1"]);
+    expect(useMazeStore.getState().rules[0].strategyId).toBe("s1");
+  });
+
+  it("skips the strategy step and creates the rule directly when no strategy handles the kind", () => {
+    useMazeStore.setState({
+      availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [] }],
+      availableStrategies: [],
+      rules: [],
+      selectedChecks: [],
+    });
+    render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByText("Add new rule"));
+    fireEvent.click(screen.getByText("pick-k1"));
+    fireEvent.click(screen.getByText("pick-checks"));
+    expect(screen.queryByTestId("check-select-dialog")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("new-rule-strategy-dialog")).not.toBeInTheDocument();
+    expect(useMazeStore.getState().rules).toHaveLength(1);
+    expect(useMazeStore.getState().rules[0].checks).toEqual(["c1"]);
+    expect(useMazeStore.getState().rules[0].strategyId).toBeNull();
   });
 
   it("opens the add-to-rule dialog with not-yet-active checks of the same kind as candidates", () => {
@@ -257,7 +355,7 @@ describe("RulesColumn", () => {
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA] }];
     render(<RulesColumn slots={slots} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getByText("+ Add check"));
-    expect(screen.getByText("All checks producing this issue kind are already in this rule.")).toBeInTheDocument();
+    expect(screen.getByText("All checks compatible with this rule are already added.")).toBeInTheDocument();
   });
 
   it("toggles ruleDisabled and visually dims the card title row", () => {

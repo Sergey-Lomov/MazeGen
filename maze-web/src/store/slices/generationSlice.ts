@@ -173,6 +173,43 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     };
   }),
 
+  createRule: (ids, strategyId, initialCheckParams, initialStrategyParams) => set((state) => {
+    if (ids.length === 0) return {};
+    const descriptors = ids.map((id) => state.availableChecks.find((c) => c.id === id)).filter((d): d is NonNullable<typeof d> => d !== undefined);
+    if (descriptors.length === 0) return {};
+    const checkKind = resolveCheckKind(descriptors[0]);
+    const checkParams = { ...state.checkParams };
+    for (const descriptor of descriptors) {
+      if (checkParams[descriptor.id]) continue;
+      const override = initialCheckParams?.[descriptor.id];
+      checkParams[descriptor.id] = override ?? Object.fromEntries(
+        descriptor.params.map((p) => {
+          const k = p.kind;
+          const def = k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
+          return [p.id, def];
+        })
+      );
+    }
+    const strategyParams = { ...state.strategyParams };
+    if (strategyId && !strategyParams[strategyId]) {
+      const strategyDescriptor = state.availableStrategies.find((s) => s.id === strategyId);
+      strategyParams[strategyId] = initialStrategyParams ?? Object.fromEntries(
+        (strategyDescriptor?.params ?? []).map((p) => {
+          const k = p.kind;
+          const def = k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
+          return [p.id, def];
+        })
+      );
+    }
+    return {
+      selectedChecks: [...state.selectedChecks, ...descriptors.map((d) => d.id)],
+      checkParams,
+      strategyParams,
+      rules: [...state.rules, newRule(checkKind, descriptors.map((d) => d.id), strategyId, false)],
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
   // Unlike addCheckToRule/removeCheckFromRule, an empty rule here is not auto-dropped —
   // the user removed the check via the card's own X, not by moving it elsewhere, so the empty
   // card stays as a place to add a new check back into (see RulesColumn's add-check row).
