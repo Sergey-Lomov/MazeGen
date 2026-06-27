@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
-import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel } from "./qualityI18n";
+import { ParamFields } from "./ParamFields";
+import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel } from "./qualityI18n";
 import { colors, font, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { CheckVM } from "./useQualityViewModel";
+import type { ParamDescriptor } from "../../wasm/types";
+
+function defaultValue(p: ParamDescriptor): string {
+  const k = p.kind;
+  return k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
+}
 
 interface Props {
   ruleId: string;
@@ -22,12 +29,22 @@ interface Props {
 export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Props) {
   const addCheck = useMazeStore((s) => s.addCheck);
   const [selectedId, setSelectedId] = useState<string>(candidates[0]?.id ?? "");
+  // Param edits made in this dialog before the check is actually added — keyed by check id so
+  // switching the selection and coming back preserves what was typed (mirrors CheckSelectDialog).
+  const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
 
   const selected = candidates.find((c) => c.id === selectedId);
 
+  function handleParamChange(paramId: string, value: string) {
+    setParamOverrides((prev) => ({
+      ...prev,
+      [selectedId]: { ...(prev[selectedId] ?? {}), [paramId]: value },
+    }));
+  }
+
   function handleAdd() {
     if (selectedId) {
-      addCheck(selectedId, ruleId);
+      addCheck(selectedId, ruleId, paramOverrides[selectedId]);
       onClose();
     }
   }
@@ -38,7 +55,19 @@ export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Prop
   }));
 
   const rightPanel = selected ? (
-    <div style={styles.description}>{resolveCheckDescription(selected.id, selected.description)}</div>
+    <>
+      <div style={styles.description}>{resolveCheckDescription(selected.id, selected.description)}</div>
+      {selected.params.length > 0 && (
+        <div style={styles.paramsSection}>
+          <div style={styles.paramsSeparator} />
+          <ParamFields
+            params={selected.params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }))}
+            getValue={(p) => paramOverrides[selectedId]?.[p.id] ?? defaultValue(p)}
+            onChange={handleParamChange}
+          />
+        </div>
+      )}
+    </>
   ) : (
     <div style={styles.empty}>{m["check.not_selected"]()}</div>
   );
@@ -78,6 +107,15 @@ const styles: Record<string, React.CSSProperties> = {
   empty: {
     fontSize: font.lg,
     color: colors.textVeryDim,
+  },
+  paramsSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  paramsSeparator: {
+    borderTop: `1px solid ${colors.borderDim}`,
+    marginBottom: 4,
   },
   btnPrimary: {
     background: colors.bgBtnPrimary,
