@@ -33,7 +33,9 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     showComponentsOverlay: false,
     showGraphOverlay: false,
     showNavGraphOverlay: false,
+    showPureCyclesOverlay: false,
     showRouteOverlay: false,
+    showRegionClassesOverlay: false,
     analyticsSectionsExpanded: { layers: true },
     debugMode: false,
     showDebugFrontier: true,
@@ -61,6 +63,17 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.quality.repairMaxIterations).toBeNull();
     expect(reparsed.quality.repairTimeBudgetSecs).toBeNull();
+  });
+
+  it("defaults showPureCyclesOverlay/showRegionClassesOverlay for a project file saved before these toggles existed", () => {
+    const state = makeState({ showPureCyclesOverlay: true, showRegionClassesOverlay: true });
+    const serialized = serializeProject(state);
+    const raw = JSON.parse(JSON.stringify(serialized));
+    delete raw.analytics.showPureCyclesOverlay;
+    delete raw.analytics.showRegionClassesOverlay;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.analytics.showPureCyclesOverlay).toBe(false);
+    expect(reparsed.analytics.showRegionClassesOverlay).toBe(false);
   });
 
   it("defaults repair limits for a project file saved before this setting existed", () => {

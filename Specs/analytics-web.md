@@ -48,7 +48,7 @@ Displays `issues: IssueDto[]` from the store (QC issues reported by WASM), one b
 
 ### Overlay Layers Block
 
-Five toggles, each backed by a store boolean:
+Toggles, each backed by a store boolean:
 
 | Toggle label | Store field | Default | Disabled when |
 |---|---|---|---|
@@ -56,9 +56,13 @@ Five toggles, each backed by a store boolean:
 | Connectivity regions | `showComponentsOverlay` | `false` | — |
 | Graph | `showGraphOverlay` | `false` | — |
 | Navigation graph | `showNavGraphOverlay` | `false` | — |
+| Cycles | `showPureCyclesOverlay` | `false` | `graphAnalytics.cycle_count === 0` |
 | Route | `showRouteOverlay` | `false` | `routeInfo == null` |
+| Region classes | `showRegionClassesOverlay` | `false` | `graphAnalytics.region_classes` empty (start or finish unset) — independent of whether a route actually exists |
 
-Toggle state persists when the card is closed and reopened. It resets only on full store reset.
+Toggle state persists when the card is closed and reopened. It resets only on full store reset. `showPureCyclesOverlay` and `showRegionClassesOverlay` are not yet persisted in project export (`ProjectFileAnalytics`) — they reset to default on project load, unlike the other toggles in this table.
+
+An info icon (ℹ) sits left of the Region classes switch, opening a legend modal that maps each `RegionClass` color to its name and a one-line meaning (`RegionClassLegendModal` in `AnalyticsFeature.tsx`) — see `graph-analytics.md`'s "Region Classes" section for the class semantics and `REGION_CLASS_COLORS`.
 
 ### Path Block
 
@@ -118,15 +122,17 @@ Owns all analytics canvas layers. Lives in `analyticsContainer` which is a synce
 | 1 | `gridContainer` | `GridRenderer` | `analyticsOpen && showMazeOverlay && nodes.length > 0` |
 | 2 | `floorContainer` | `CellFillRenderer` (via `MazeOverlayRenderer`) | same as grid |
 | 3 | `closedCellsContainer` | `CellFillRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 4 | `regionsContainer` | `RegionsRenderer` | `analyticsOpen && showComponentsOverlay && components.length > 0` |
-| 5 | `wallsContainer` | `WallRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 6 | `markersContainer` | `WaypointsRenderer` (via `MazeOverlayRenderer`) | same as grid |
-| 7 | `graphContainer` | `MazeGraphRenderer` | `analyticsOpen && showGraphOverlay && nodes.length > 0` |
-| 8 | `navGraphContainer` | `NavGraphRenderer` | `analyticsOpen && showNavGraphOverlay && navNodes.length > 0` |
-| 9 | `routeContainer` | `RouteOverlay` | `analyticsOpen && showRouteOverlay && routeInfo != null` |
-| 10 | `issueHighlightContainer` | `IssueHighlightOverlay` | `analyticsOpen && hoveredIssueLoopEdges != null && hoveredIssueLoopEdges.length > 0` |
+| 4 | `regionsContainer` | `RegionsRenderer` | `analyticsOpen && showComponentsOverlay && componentCount > 0` |
+| 5 | `regionClassesContainer` | `RegionClassesRenderer` | `analyticsOpen && showRegionClassesOverlay && componentCount > 0` |
+| 6 | `wallsContainer` | `WallRenderer` (via `MazeOverlayRenderer`) | same as grid |
+| 7 | `markersContainer` | `WaypointsRenderer` (via `MazeOverlayRenderer`) | same as grid |
+| 8 | `graphContainer` | `MazeGraphRenderer` | `analyticsOpen && showGraphOverlay && nodes.length > 0` |
+| 9 | `navGraphContainer` | `NavGraphRenderer` | `analyticsOpen && showNavGraphOverlay && navNodes.length > 0` |
+| 10 | `pureCyclesContainer` | `PureCyclesOverlay` | `analyticsOpen && showPureCyclesOverlay && navNodes.length > 0` |
+| 11 | `routeContainer` | `RouteOverlay` | `analyticsOpen && showRouteOverlay && routeInfo != null` |
+| 12 | `issueHighlightContainer` | `IssueHighlightOverlay` | `analyticsOpen && (hoveredIssueLoopEdges or hoveredIssueRegionGroups non-empty)` |
 
-`closedCells` (layer 3) renders nodes with no edges in `WALL_COLOR` — isolated cells that are completely walled off. Regions (layer 4) sits between closedCells and walls so region colors show through wall rendering — intentional.
+`closedCells` (layer 3) renders nodes with no edges in `WALL_COLOR` — isolated cells that are completely walled off. Regions (layer 4) and Region classes (layer 5) both sit between closedCells and walls so their tint shows through wall rendering — intentional. The `components: number[][]` array (member node ids per SCC, derived from `graph_analytics.node_component`) is built once in `syncAll` and shared by both renderers rather than rebuilt per layer.
 
 ### IssueHighlightOverlay
 

@@ -25,6 +25,7 @@ describe("mazeStore analytics overlays", () => {
     s0.setShowNavGraphOverlay(true);
     s0.setShowPureCyclesOverlay(true);
     s0.setShowRouteOverlay(true);
+    s0.setShowRegionClassesOverlay(true);
     const s = useMazeStore.getState();
     expect(s.showMazeOverlay).toBe(false);
     expect(s.showComponentsOverlay).toBe(true);
@@ -32,5 +33,14 @@ describe("mazeStore analytics overlays", () => {
     expect(s.showNavGraphOverlay).toBe(true);
     expect(s.showPureCyclesOverlay).toBe(true);
     expect(s.showRouteOverlay).toBe(true);
+    expect(s.showRegionClassesOverlay).toBe(true);
+  });
+
+  it("setRegionClassLegendOpen toggles the legend modal flag", () => {
+    expect(useMazeStore.getState().regionClassLegendOpen).toBe(false);
+    useMazeStore.getState().setRegionClassLegendOpen(true);
+    expect(useMazeStore.getState().regionClassLegendOpen).toBe(true);
+    useMazeStore.getState().setRegionClassLegendOpen(false);
+    expect(useMazeStore.getState().regionClassLegendOpen).toBe(false);
   });
 });

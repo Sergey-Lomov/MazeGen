@@ -7,7 +7,36 @@ import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { Switch } from "../Switch";
+import { Modal } from "../Modal";
+import { REGION_CLASS_COLORS } from "../../pixi/colorUtils";
 import * as m from "~/paraglide/messages";
+
+const REGION_CLASS_LEGEND: { cls: keyof typeof REGION_CLASS_COLORS; label: () => string; desc: () => string }[] = [
+  { cls: "path", label: () => m["analytics.region_class_path"](), desc: () => m["analytics.region_class_path_desc"]() },
+  { cls: "alternative", label: () => m["analytics.region_class_alternative"](), desc: () => m["analytics.region_class_alternative_desc"]() },
+  { cls: "unreachable", label: () => m["analytics.region_class_unreachable"](), desc: () => m["analytics.region_class_unreachable_desc"]() },
+  { cls: "trap", label: () => m["analytics.region_class_trap"](), desc: () => m["analytics.region_class_trap_desc"]() },
+];
+
+function colorToCss(color: number): string {
+  return `#${color.toString(16).padStart(6, "0")}`;
+}
+
+function RegionClassLegendModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal title={m["analytics.region_class_legend_title"]()} onClose={onClose}>
+      {REGION_CLASS_LEGEND.map(({ cls, label, desc }) => (
+        <div key={cls} style={styles.legendRow}>
+          <span style={{ ...styles.legendSwatch, background: colorToCss(REGION_CLASS_COLORS[cls]) }} />
+          <div>
+            <div style={styles.legendLabel}>{label()}</div>
+            <div style={styles.legendDesc}>{desc()}</div>
+          </div>
+        </div>
+      ))}
+    </Modal>
+  );
+}
 
 function SectionHeader({ label, expanded, onToggle }: { label: string; expanded: boolean; onToggle: () => void }) {
   return (
@@ -28,10 +57,14 @@ function StatRow({ label, count, pct }: { label: string; count: number; pct?: nu
   );
 }
 
-function ToggleRow({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function ToggleRow({ label, checked, onChange, disabled, info }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; info?: () => void }) {
   return (
     <div style={styles.toggleRow}>
       <span style={{ ...styles.toggleLabel, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
+      {info && (
+        <span role="button" tabIndex={0} style={styles.infoIcon} onClick={info}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") info(); }}>ℹ</span>
+      )}
       <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} />
     </div>
   );
@@ -49,6 +82,9 @@ export function AnalyticsFeature() {
   const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
   const graphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
+  // Backend leaves region_classes empty whenever start or finish is unset — the same condition
+  // the issue calls "unavailable otherwise" (independent of whether a route actually exists).
+  const regionClassesUnavailable = Object.keys(graphAnalytics?.region_classes ?? {}).length === 0;
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
@@ -56,6 +92,8 @@ export function AnalyticsFeature() {
   const showNavGraphOverlay = useMazeStore((s) => s.showNavGraphOverlay);
   const showPureCyclesOverlay = useMazeStore((s) => s.showPureCyclesOverlay);
   const showRouteOverlay = useMazeStore((s) => s.showRouteOverlay);
+  const showRegionClassesOverlay = useMazeStore((s) => s.showRegionClassesOverlay);
+  const regionClassLegendOpen = useMazeStore((s) => s.regionClassLegendOpen);
 
   const setShowMazeOverlay = useMazeStore((s) => s.setShowMazeOverlay);
   const setShowComponentsOverlay = useMazeStore((s) => s.setShowComponentsOverlay);
@@ -63,6 +101,8 @@ export function AnalyticsFeature() {
   const setShowNavGraphOverlay = useMazeStore((s) => s.setShowNavGraphOverlay);
   const setShowPureCyclesOverlay = useMazeStore((s) => s.setShowPureCyclesOverlay);
   const setShowRouteOverlay = useMazeStore((s) => s.setShowRouteOverlay);
+  const setShowRegionClassesOverlay = useMazeStore((s) => s.setShowRegionClassesOverlay);
+  const setRegionClassLegendOpen = useMazeStore((s) => s.setRegionClassLegendOpen);
 
   const sectionsExpanded = useMazeStore((s) => s.analyticsSectionsExpanded);
   const setAnalyticsSectionExpanded = useMazeStore((s) => s.setAnalyticsSectionExpanded);
@@ -84,8 +124,17 @@ export function AnalyticsFeature() {
           <ToggleRow label={m["analytics.layer_nav_graph"]()} checked={showNavGraphOverlay} onChange={setShowNavGraphOverlay} />
           <ToggleRow label={m["analytics.layer_pure_cycles"]()} checked={showPureCyclesOverlay} onChange={setShowPureCyclesOverlay} disabled={(graphAnalytics?.cycle_count ?? 0) === 0} />
           <ToggleRow label={m["analytics.layer_route"]()} checked={showRouteOverlay} onChange={setShowRouteOverlay} disabled={routeInfo == null} />
+          <ToggleRow
+            label={m["analytics.layer_region_classes"]()}
+            checked={showRegionClassesOverlay}
+            onChange={setShowRegionClassesOverlay}
+            disabled={regionClassesUnavailable}
+            info={() => setRegionClassLegendOpen(true)}
+          />
         </div>
       )}
+
+      {regionClassLegendOpen && <RegionClassLegendModal onClose={() => setRegionClassLegendOpen(false)} />}
 
       <div style={styles.divider} />
 
@@ -188,4 +237,9 @@ const styles: Record<string, React.CSSProperties> = {
   toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },
   toggleRow: { display: "flex", alignItems: "center", gap: 8 },
   toggleLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },
+  infoIcon: { fontSize: font.xl, lineHeight: 1, flexShrink: 0, cursor: "pointer", color: colors.textDim },
+  legendRow: { display: "flex", alignItems: "flex-start", gap: 8 },
+  legendSwatch: { width: 14, height: 14, borderRadius: 3, marginTop: 2, flexShrink: 0 },
+  legendLabel: { fontSize: font.sm, color: colors.textPrimary, fontWeight: "bold" as const },
+  legendDesc: { fontSize: font.sm, color: colors.textMuted },
 };

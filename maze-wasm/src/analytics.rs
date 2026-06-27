@@ -5,7 +5,7 @@ use maze_core::{
     quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED},
     quality_control::issue_data::canonical_cycle_key,
     compute_node_stats, compute_spatial_edge_stats,
-    Maze,
+    Maze, RegionClass,
 };
 use crate::dto::{
     EdgeDto, IssueDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
@@ -164,6 +164,20 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         })
         .collect();
 
+    let region_classes: HashMap<String, String> = match (maze.meta.start, maze.meta.finish) {
+        (Some(s), Some(f)) => {
+            maze.analysis.region_classes(&maze.graph, s, f).into_iter()
+                .map(|(comp_id, class)| (comp_id.to_string(), match class {
+                    RegionClass::Path => "path",
+                    RegionClass::Alternative => "alternative",
+                    RegionClass::Unreachable => "unreachable",
+                    RegionClass::Trap => "trap",
+                }.to_string()))
+                .collect()
+        }
+        _ => HashMap::new(),
+    };
+
     let graph_analytics_dto = GraphAnalyticsDto {
         node_count:        graph_analytics.node_count,
         edge_count:        graph_analytics.edge_count,
@@ -174,6 +188,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         pure_cycle_node_ids,
         pure_cycle_edge_pairs,
         cycle_analysis_overflowed: graph_analytics.cycle_analysis_overflowed,
+        region_classes,
     };
 
     let raw_node_stats = compute_node_stats(&maze.graph, &maze.field);
@@ -274,5 +289,45 @@ mod tests {
 
         assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
+    }
+
+    #[test]
+    fn region_classes_empty_when_start_or_finish_unset() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        // Neither start nor finish set.
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), |p| (p.x, p.y)).unwrap();
+
+        assert!(snapshot.graph_analytics.region_classes.is_empty());
+    }
+
+    #[test]
+    fn region_classes_populated_when_start_and_finish_set() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let c = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+        g.add_bidirectional_edge(b, c, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(a);
+        maze.meta.finish = Some(c);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), |p| (p.x, p.y)).unwrap();
+
+        // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
+        // a region, which is always "path" by definition.
+        assert!(!snapshot.graph_analytics.region_classes.is_empty());
+        assert!(snapshot.graph_analytics.region_classes.values().all(|c| c == "path"));
     }
 }

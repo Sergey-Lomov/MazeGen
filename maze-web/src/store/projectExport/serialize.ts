@@ -52,7 +52,9 @@ export function serializeProject(state: MazeState): ProjectFile {
       showComponentsOverlay: state.showComponentsOverlay,
       showGraphOverlay: state.showGraphOverlay,
       showNavGraphOverlay: state.showNavGraphOverlay,
+      showPureCyclesOverlay: state.showPureCyclesOverlay,
       showRouteOverlay: state.showRouteOverlay,
+      showRegionClassesOverlay: state.showRegionClassesOverlay,
       sectionsExpanded: state.analyticsSectionsExpanded,
     },
     debug: {

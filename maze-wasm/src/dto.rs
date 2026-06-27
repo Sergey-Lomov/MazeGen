@@ -117,6 +117,11 @@ pub struct GraphAnalyticsDto {
     /// `cycle_region_count`, `pure_cycle_node_ids`, and `pure_cycle_edge_pairs` are all
     /// empty/zero placeholders, not real results.
     pub cycle_analysis_overflowed: bool,
+    /// SCC region class relative to `start`/`finish` — "path" | "alternative" | "unreachable" |
+    /// "trap" — keyed by `component_id` (as string, same `json_compatible()` requirement as
+    /// `node_component`). Empty when `start` or `finish` is unset (region classes are
+    /// unavailable without both).
+    pub region_classes: HashMap<String, String>,
 }
 
 #[derive(Deserialize)]

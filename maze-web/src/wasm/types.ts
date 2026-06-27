@@ -63,7 +63,12 @@ export interface GraphAnalyticsDto {
    *  true, cycle_count/cycle_region_count/pure_cycle_node_ids/pure_cycle_edge_pairs are empty
    *  placeholders, not real results. */
   cycle_analysis_overflowed: boolean;
+  /** SCC region class relative to start/finish — "path" | "alternative" | "unreachable" |
+   *  "trap" — keyed by component_id (string key). Empty when start or finish is unset. */
+  region_classes: Record<string, RegionClass>;
 }
+
+export type RegionClass = "path" | "alternative" | "unreachable" | "trap";
 
 export interface IssueDto {
   kind: string;

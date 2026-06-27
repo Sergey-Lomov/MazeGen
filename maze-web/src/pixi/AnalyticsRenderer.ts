@@ -1,6 +1,7 @@
 ﻿import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { RegionsRenderer } from "./RegionsRenderer";
+import { RegionClassesRenderer } from "./RegionClassesRenderer";
 import { MazeOverlayRenderer } from "./MazeOverlayRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { MazeGraphRenderer } from "./MazeGraphRenderer";
@@ -16,6 +17,7 @@ export class AnalyticsRenderer {
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly regionsContainer: Container;
+  private readonly regionClassesContainer: Container;
   private readonly wallsContainer: Container;
   private readonly markersContainer: Container;
   private readonly graphContainer: Container;
@@ -27,6 +29,7 @@ export class AnalyticsRenderer {
   private readonly grid: GridRenderer;
   private readonly mazeOverlay: MazeOverlayRenderer;
   private readonly regionsRenderer: RegionsRenderer;
+  private readonly regionClassesRenderer: RegionClassesRenderer;
   private readonly graphRenderer: MazeGraphRenderer;
   private readonly navGraphRenderer: NavGraphRenderer;
   private readonly pureCyclesRenderer: PureCyclesOverlay;
@@ -41,6 +44,7 @@ export class AnalyticsRenderer {
     this.floorContainer       = new Container();
     this.closedCellsContainer = new Container();
     this.regionsContainer     = new Container();
+    this.regionClassesContainer = new Container();
     this.wallsContainer       = new Container();
     this.markersContainer     = new Container();
     this.graphContainer       = new Container();
@@ -53,6 +57,7 @@ export class AnalyticsRenderer {
     container.addChild(this.floorContainer);
     container.addChild(this.closedCellsContainer);
     container.addChild(this.regionsContainer);
+    container.addChild(this.regionClassesContainer);
     container.addChild(this.wallsContainer);
     container.addChild(this.markersContainer);
     container.addChild(this.graphContainer);
@@ -69,6 +74,7 @@ export class AnalyticsRenderer {
       markers: this.markersContainer,
     });
     this.regionsRenderer = new RegionsRenderer(this.regionsContainer);
+    this.regionClassesRenderer = new RegionClassesRenderer(this.regionClassesContainer);
     this.graphRenderer = new MazeGraphRenderer(this.graphContainer);
     this.navGraphRenderer = new NavGraphRenderer(this.navGraphContainer);
     this.pureCyclesRenderer = new PureCyclesOverlay(this.pureCyclesContainer);
@@ -90,6 +96,7 @@ export class AnalyticsRenderer {
         state.showNavGraphOverlay !== prev.showNavGraphOverlay ||
         state.showPureCyclesOverlay !== prev.showPureCyclesOverlay ||
         state.showRouteOverlay !== prev.showRouteOverlay ||
+        state.showRegionClassesOverlay !== prev.showRegionClassesOverlay ||
         state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges ||
         state.hoveredIssueRegionGroups !== prev.hoveredIssueRegionGroups;
 
@@ -119,7 +126,7 @@ export class AnalyticsRenderer {
     const analyticsOpen = state.openCard === "analytics";
     const { nodes, activeTessellationConfig: cfg,
       showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
-      showPureCyclesOverlay, showRouteOverlay, postEditAnalytics, hoveredIssueLoopEdges, hoveredIssueRegionGroups } = state;
+      showPureCyclesOverlay, showRouteOverlay, showRegionClassesOverlay, postEditAnalytics, hoveredIssueLoopEdges, hoveredIssueRegionGroups } = state;
 
     const graphAnalytics = postEditAnalytics?.graphAnalytics ?? state.graphAnalytics;
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
@@ -141,19 +148,33 @@ export class AnalyticsRenderer {
       this.mazeOverlay.render({ nodes, edges, start, finish, cfg });
     }
 
-    // Regions overlay — build components list from node_component map
+    // Components list shared by both Regions and Region classes overlays — built from
+    // node_component map once regardless of which overlay (if any) is active.
     const componentCount = graphAnalytics?.component_count ?? 0;
+    const components: number[][] = Array.from({ length: componentCount }, () => []);
+    const rawNc = graphAnalytics?.node_component;
+    if (rawNc != null) {
+      for (const [nodeId, compId] of Object.entries(rawNc)) {
+        if (compId < componentCount) components[compId].push(Number(nodeId));
+      }
+    }
+
+    // Regions overlay
     const showRegions = analyticsOpen && showComponentsOverlay && componentCount > 0;
     this.regionsContainer.visible = showRegions;
     if (showRegions) {
-      const components: number[][] = Array.from({ length: componentCount }, () => []);
-      const rawNc = graphAnalytics?.node_component;
-      if (rawNc != null) {
-        for (const [nodeId, compId] of Object.entries(rawNc)) {
-          if (compId < componentCount) components[compId].push(Number(nodeId));
-        }
-      }
       this.regionsRenderer.render({ nodes, components, cfg });
+    }
+
+    // Region classes overlay — region_classes is empty whenever start/finish aren't both set
+    // (see GraphAnalyticsDto.region_classes); gate on that too, not just componentCount, so a
+    // stale showRegionClassesOverlay=true (e.g. loaded from an older project file before
+    // start/finish were assigned) can't paint every region gray via the renderer's fallback.
+    const regionClasses = graphAnalytics?.region_classes ?? {};
+    const showRegionClasses = analyticsOpen && showRegionClassesOverlay && componentCount > 0 && Object.keys(regionClasses).length > 0;
+    this.regionClassesContainer.visible = showRegionClasses;
+    if (showRegionClasses) {
+      this.regionClassesRenderer.render({ nodes, components, regionClasses, cfg });
     }
 
     // Graph overlay
@@ -224,6 +245,7 @@ export class AnalyticsRenderer {
     this.grid.destroy();
     this.mazeOverlay.destroy();
     this.regionsRenderer.destroy();
+    this.regionClassesRenderer.destroy();
     this.graphRenderer.destroy();
     this.navGraphRenderer.destroy();
     this.pureCyclesRenderer.destroy();
@@ -232,6 +254,7 @@ export class AnalyticsRenderer {
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.regionsContainer.destroy();
+    this.regionClassesContainer.destroy();
     this.wallsContainer.destroy();
     this.markersContainer.destroy();
     this.graphContainer.destroy();

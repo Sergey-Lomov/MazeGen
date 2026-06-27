@@ -279,6 +279,9 @@ export interface AnalyticsOverlayState {
   showNavGraphOverlay: boolean;
   showPureCyclesOverlay: boolean;
   showRouteOverlay: boolean;
+  showRegionClassesOverlay: boolean;
+  /** Whether the region-class legend modal is open. */
+  regionClassLegendOpen: boolean;
   /** Base-graph [from, to] edges of the issue loops currently hovered in IssuesBlock. */
   hoveredIssueLoopEdges: [number, number][] | null;
   /** Undersized SCC region(s) currently hovered in IssuesBlock, each as its own list of maze
@@ -297,6 +300,8 @@ export interface AnalyticsOverlayActions {
   setShowNavGraphOverlay: (v: boolean) => void;
   setShowPureCyclesOverlay: (v: boolean) => void;
   setShowRouteOverlay: (v: boolean) => void;
+  setShowRegionClassesOverlay: (v: boolean) => void;
+  setRegionClassLegendOpen: (v: boolean) => void;
   setHoveredIssueLoopEdges: (edges: [number, number][] | null) => void;
   setHoveredIssueRegionGroups: (groups: number[][] | null) => void;
   setAnalyticsSectionExpanded: (id: string, expanded: boolean) => void;

@@ -47,6 +47,15 @@ export const ACTIVE_CELL_ALPHA = 0.7;
 // Component overlay
 export const COMPONENT_MASK_ALPHA = 0.45;
 
+// Region class overlay — fixed per-class colors (not the rotating component palette)
+export const REGION_CLASS_COLORS: Record<"path" | "alternative" | "unreachable" | "trap", number> = {
+  path: 0x44dd88,
+  alternative: 0x4a9eff,
+  unreachable: 0x888888,
+  trap: 0xdd4466,
+};
+export const REGION_CLASS_MASK_ALPHA = 0.45;
+
 // Debug overlay
 export const DEBUG_ACTIVE_COLOR = 0x4488ff;
 export const DEBUG_CURRENT_SRC_COLOR = 0xcccc22;

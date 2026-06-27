@@ -13,7 +13,9 @@ export interface ProjectFileAnalytics {
   showComponentsOverlay: boolean;
   showGraphOverlay: boolean;
   showNavGraphOverlay: boolean;
+  showPureCyclesOverlay: boolean;
   showRouteOverlay: boolean;
+  showRegionClassesOverlay: boolean;
   sectionsExpanded: Record<string, boolean>;
 }
 

@@ -332,7 +332,10 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     showComponentsOverlay: assertBoolean(analyticsObj.showComponentsOverlay, "analytics.showComponentsOverlay"),
     showGraphOverlay: assertBoolean(analyticsObj.showGraphOverlay, "analytics.showGraphOverlay"),
     showNavGraphOverlay: assertBoolean(analyticsObj.showNavGraphOverlay, "analytics.showNavGraphOverlay"),
+    // Optional — absent in project files saved before these toggles existed.
+    showPureCyclesOverlay: optBool(analyticsObj, "showPureCyclesOverlay", false),
     showRouteOverlay: assertBoolean(analyticsObj.showRouteOverlay, "analytics.showRouteOverlay"),
+    showRegionClassesOverlay: optBool(analyticsObj, "showRegionClassesOverlay", false),
     sectionsExpanded: analyticsObj.sectionsExpanded != null
       ? assertBoolRecord(analyticsObj.sectionsExpanded, "analytics.sectionsExpanded")
       : { layers: true },

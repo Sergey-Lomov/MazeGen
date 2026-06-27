@@ -16,6 +16,7 @@ pub use graph::classify::{GeometricNodeClass, classify_node};
 pub use graph::stats::{GeometricNodeStats, SpatialEdgeStats, compute_node_stats, compute_spatial_edge_stats};
 pub use graph::routing::{RouteInfo, compute_route_info};
 pub use graph::graph_analytics::{GraphAnalytics, compute_graph_analytics};
+pub use graph::region_class::{RegionClass, classify_regions};
 pub use space::{
     Tessellation, Field,
     HexPoint, HexFace, HexTessellation, hex_parallelogram, hex_hexagon,
@@ -33,6 +34,7 @@ pub struct MazeAnalysis {
     graph_analytics: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, GraphAnalytics)>>,
     distance_from_start: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashMap<graph::nav::NavNodeId, usize>)>>,
     distance_from_finish: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashMap<graph::nav::NavNodeId, usize>)>>,
+    region_classes: std::cell::RefCell<Option<(u64, ids::NodeId, ids::NodeId, std::collections::HashMap<graph::scc::ComponentId, RegionClass>)>>,
 }
 
 impl Default for MazeAnalysis {
@@ -44,6 +46,7 @@ impl Default for MazeAnalysis {
             graph_analytics: std::cell::RefCell::new(None),
             distance_from_start: std::cell::RefCell::new(None),
             distance_from_finish: std::cell::RefCell::new(None),
+            region_classes: std::cell::RefCell::new(None),
         }
     }
 }
@@ -101,6 +104,22 @@ impl MazeAnalysis {
             let nav = graph::nav::build_nav_graph_pinned(graph, &pinned);
             let info = graph::routing::compute_route_info(&nav, start, finish);
             *cache = Some((version, start, finish, info));
+        }
+        cache.as_ref().unwrap().3.clone()
+    }
+
+    /// Classifies every SCC region relative to `start`/`finish` (see `graph::region_class`).
+    /// Keyed on `(graph.version(), start, finish)` — same invalidation shape as `route_info`/
+    /// `scc`, since classification depends on both. Reuses `scc()` and `route_info()`, both
+    /// independently cached, so repeated calls within the same key are cheap.
+    pub fn region_classes(&self, graph: &Graph, start: ids::NodeId, finish: ids::NodeId) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
+        let key = (graph.version(), start, finish);
+        let mut cache = self.region_classes.borrow_mut();
+        if !matches!(&*cache, Some((v, s, f, _)) if (*v, *s, *f) == key) {
+            let scc = self.scc(graph);
+            let route = self.route_info(graph, start, finish);
+            let classes = graph::region_class::classify_regions(graph, &scc, route.as_ref(), start, finish);
+            *cache = Some((key.0, key.1, key.2, classes));
         }
         cache.as_ref().unwrap().3.clone()
     }
@@ -245,5 +264,76 @@ mod distance_cache_tests {
         maze.meta.finish = Some(nodes[1]);
         let after = maze.analysis.distance_from_finish(&maze.graph, &maze.meta).unwrap();
         assert_eq!(after.get(&first_nav), Some(&1));
+    }
+
+    #[test]
+    fn region_classes_repeated_call_returns_same_result_without_graph_change() {
+        let (mut maze, nodes) = line_maze(4);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[3]);
+        let first = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        let second = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        assert_eq!(first, second, "repeated call with unchanged graph/start/finish must return identical map");
+    }
+
+    /// Directed line start(0) -> 1 -> 2 -> finish(3), each node its own SCC (one-way edges
+    /// never merge into a single component the way `line_maze`'s bidirectional ones would).
+    fn directed_line_maze(len: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<ids::NodeId> = (0..len)
+            .map(|x| field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
+            .collect();
+        for i in 0..len - 1 {
+            g.add_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
+        }
+        let maze = Maze::new(field, g);
+        (maze, nodes)
+    }
+
+    #[test]
+    fn region_classes_invalidates_on_graph_mutation() {
+        let (mut maze, nodes) = directed_line_maze(4);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[3]);
+
+        // Remove the one-way link into nodes[2] — nodes[2]/nodes[3] become unreachable from
+        // start. nodes[3] is finish itself (always Path by definition), so check nodes[2].
+        let cut = maze.graph.edge_between(nodes[1], nodes[2]).unwrap();
+        maze.graph.remove_edge(cut);
+
+        let scc = maze.analysis.scc(&maze.graph);
+        let before = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        assert_eq!(before[&scc.component_of(nodes[2]).unwrap()], RegionClass::Unreachable);
+
+        // Reconnect — cached entry for nodes[2]'s region must reflect the new reachability
+        // (now on the start->finish route), not the stale pre-mutation value, since
+        // graph.version() bumped.
+        maze.graph.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        let scc_after = maze.analysis.scc(&maze.graph);
+        let after = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        assert_eq!(after[&scc_after.component_of(nodes[2]).unwrap()], RegionClass::Path, "cache must invalidate after graph.version() changes");
+    }
+
+    #[test]
+    fn region_classes_invalidates_when_start_or_finish_changes() {
+        let (mut maze, nodes) = directed_line_maze(4);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[3]);
+        // Extra one-way branch off nodes[1] into a dead end — its own region, reachable from
+        // start but never on the start->finish path regardless of which node is start.
+        maze.graph.add_edge(nodes[1], nodes[3], EdgeKind::Basic);
+        let scc = maze.analysis.scc(&maze.graph);
+
+        // nodes[0] is start here, so its own region is Path by definition.
+        let with_node0_as_start = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        assert_eq!(with_node0_as_start[&scc.component_of(nodes[0]).unwrap()], RegionClass::Path);
+
+        // Same graph.version(), nodes[0] is no longer start — with no incoming edge into
+        // nodes[0], it's unreachable from nodes[1]. Confirms the cache key includes start.
+        let with_node1_as_start = maze.analysis.region_classes(&maze.graph, nodes[1], nodes[3]);
+        assert_eq!(with_node1_as_start[&scc.component_of(nodes[0]).unwrap()], RegionClass::Unreachable);
     }
 }

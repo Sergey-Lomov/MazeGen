@@ -106,6 +106,50 @@ Toggled via `showPureCyclesOverlay` in `mazeStore`. Stats block in `AnalyticsFea
 
 Base-graph SCC (`maze.analysis.scc`) is computed separately for the `RegionsRenderer` overlay (regions are derived client-side from `graph_analytics.node_component`).
 
+## Region Classes (`RegionClass` / `classify_regions`)
+
+Classifies every base-graph SCC region (`maze.analysis.scc`) relative to `meta.start`/`meta.finish`. Location: `maze_core::graph::region_class`.
+
+```rust
+pub enum RegionClass {
+    Path,         // on RouteInfo::path, or contains start/finish
+    Alternative,  // reachable from start AND can reach finish, but not on the shortest path
+    Unreachable,  // not reachable from start at all
+    Trap,         // reachable from start, but cannot reach finish
+}
+
+pub fn classify_regions(
+    graph: &Graph,
+    scc: &ConnectedComponents,
+    route: Option<&RouteInfo>,
+    start: NodeId,
+    finish: NodeId,
+) -> HashMap<ComponentId, RegionClass>
+```
+
+Every region gets exactly one class:
+
+- **Path** — the region appears in `route.path` (the single shortest start→finish route — other equal-length routes are not distinguished and fall under Alternative), or the region contains `start` or `finish` directly (always Path by definition, even if `route` is `None`, e.g. a disconnected graph).
+- **Alternative** — not Path, but at least one member node is in `graph.reachable_from(start)` AND at least one member node is in `graph.reachable_to(finish)`.
+- **Unreachable** — no member node is in `graph.reachable_from(start)`.
+- **Trap** — reachable from `start`, but no member node is in `graph.reachable_to(finish)`.
+
+`reachable_from`/`reachable_to` are plain directed BFS on the base `Graph` (not nav-domain) — region classification works in maze `NodeId` domain throughout, unlike the nav-domain distance maps below.
+
+### Caching: `MazeAnalysis::region_classes`
+
+```rust
+pub fn region_classes(&self, graph: &Graph, start: NodeId, finish: NodeId) -> HashMap<ComponentId, RegionClass>
+```
+
+Keyed on `(graph.version(), start, finish)` — same invalidation shape as `route_info`/`scc`. Internally calls `self.scc(graph)` and `self.route_info(graph, start, finish)`, both independently cached, so a cache hit on either is reused rather than recomputed.
+
+### Web Integration
+
+`GraphAnalyticsDto.region_classes: HashMap<String, String>` (maze-wasm) — component id (as string key) → `"path" | "alternative" | "unreachable" | "trap"`. Computed in `build_analytics_snapshot` only when both `maze.meta.start` and `maze.meta.finish` are set; empty otherwise (region classes are unavailable without both endpoints, independent of whether a route actually exists between them).
+
+Web overlay: **`RegionClassesRenderer`** (`maze-web/src/pixi/`), toggled via `showRegionClassesOverlay` in `mazeStore`. Renders the same per-component cell groups as `RegionsRenderer` (derived from `graph_analytics.node_component`), tinted by `REGION_CLASS_COLORS` (`maze-web/src/pixi/colorUtils.ts`) instead of the rotating component palette — fixed colors per class (path: green, alternative: blue, unreachable: gray, trap: red). An info icon next to the toggle opens a legend modal mapping each class's color to its name and meaning. The toggle is disabled whenever `graphAnalytics.region_classes` is empty (start or finish unset), not when no route exists — see `analytics-web.md`.
+
 ## Distance Maps (`distance_from_start` / `distance_from_finish`)
 
 Two lazily-computed, cached maps from `NavNodeId` to shortest-path distance **in tiles**:
