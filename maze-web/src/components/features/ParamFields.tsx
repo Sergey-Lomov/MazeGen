@@ -2,6 +2,7 @@ import React from "react";
 import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
 import { colors, font } from "../../styles/theme";
+import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
 
 interface Props {
   params: ParamDescriptor[];
@@ -59,12 +60,25 @@ export function ParamFields({ params, values, getValue, onChange, labelSize = "l
                   onChange={(e) => onChange(p.id, e.target.value)}
                 >
                   {p.kind.options.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
+                    <option key={opt} value={opt}>{resolveParamOptionLabel(p.id, opt)}</option>
                   ))}
                 </select>
               )}
             </div>
             {description && <div style={styles.description}>{description}</div>}
+            {description && p.kind.type === "enum" && (
+              <ul style={styles.optionList}>
+                {p.kind.options.map((opt) => {
+                  const explanation = resolveParamOptionExplanation(p.id, opt);
+                  if (!explanation) return null;
+                  return (
+                    <li key={opt} style={styles.optionListItem}>
+                      <strong>{resolveParamOptionLabel(p.id, opt)}</strong> — {explanation}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         );
       })}
@@ -97,9 +111,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textDim,
     lineHeight: 1.4,
   },
+  optionList: {
+    margin: "2px 0 0",
+    paddingLeft: 16,
+    fontSize: font.sm,
+    color: colors.textDim,
+    lineHeight: 1.4,
+  },
+  optionListItem: {
+    marginBottom: 2,
+  },
   input: {
     ...sharedStyles.inputSm,
     width: 80,
+    boxSizing: "border-box",
+    height: 22,
   },
   inputWithUnit: {
     display: "flex",
@@ -112,5 +138,8 @@ const styles: Record<string, React.CSSProperties> = {
   select: {
     ...sharedStyles.selectSm,
     width: 120,
+    boxSizing: "border-box",
+    height: 22,
+    padding: "2px 18px 2px 4px",
   },
 };

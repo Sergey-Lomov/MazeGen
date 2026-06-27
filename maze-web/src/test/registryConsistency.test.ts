@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
-import { checkI18n, strategyI18n, paramI18n } from "../components/features/qualityI18n";
+import { checkI18n, strategyI18n, paramI18n, paramOptionI18n, paramOptionExplanationI18n } from "../components/features/qualityI18n";
 import { resolveIssue } from "../components/issueRegistry";
 
 // `src/wasm/pkg/` is gitignored build output produced by `wasm-rebuild.ps1` — absent on a
@@ -66,6 +66,24 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
         expect(paramI18n[param.id], `missing paramI18n entry for "${param.id}" (strategy "${strategy.id}")`).toBeDefined();
         expect(paramI18n[param.id].label().length).toBeGreaterThan(0);
         expect(paramI18n[param.id].description().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("every enum-kind param option has a paramOptionI18n and paramOptionExplanationI18n entry", () => {
+    for (const [ownerKind, entity] of [
+      ...checks.map((c) => ["check", c] as const),
+      ...strategies.map((s) => ["strategy", s] as const),
+    ]) {
+      for (const param of entity.params) {
+        if (param.kind.type !== "enum") continue;
+        for (const opt of param.kind.options) {
+          const key = `${param.id}.${opt}`;
+          expect(paramOptionI18n[key], `missing paramOptionI18n entry for "${key}" (${ownerKind} "${entity.id}")`).toBeDefined();
+          expect(paramOptionI18n[key]().length).toBeGreaterThan(0);
+          expect(paramOptionExplanationI18n[key], `missing paramOptionExplanationI18n entry for "${key}" (${ownerKind} "${entity.id}")`).toBeDefined();
+          expect(paramOptionExplanationI18n[key]().length).toBeGreaterThan(0);
+        }
       }
     }
   });

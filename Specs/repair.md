@@ -246,6 +246,33 @@ The overlap counts (`edge -> (short_overlap, other_overlap)`) are computed **onc
 
 Same candidate filtering (existence + preset-protection), same cut mechanics (`try_remove_edge` plus reverse), same connectivity/bridge-status non-guarantee, and same `Fixed { score: None }` return as `InvalidLoopRandomStrategy`.
 
+### ExpandRegionPassageStrategy
+
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #51. Merges each flagged undersized SCC region into a neighboring region by adding a full bidirectional passage (two symmetric directed edges, same as any other passage) across a shared tessellation wall, picked by **geometric adjacency** (`field.neighbors`) — not graph adjacency, since two regions can be neighbors with no existing edge between any of their cell pairs at all.
+
+**`issue.data` is mandatory for this kind**: `invalid` (which `maze.analysis.scc(&maze.graph).components` indices are undersized) is the producing check's result — there is no other channel to learn it.
+
+**Parameters:**
+
+| id | type | default | options | description |
+|----|------|---------|---------|-------------|
+| `target_mode` | Enum | `random` | `largest`, `smallest`, `random`, `prefer_needy` | How to pick which neighboring region to merge into |
+
+- If `issue.data` is missing or the wrong variant: returns `Failed` (malformed call, not "already fixed").
+- If `invalid` is empty: returns `Fixed` immediately — nothing to expand.
+- Processes each flagged region index from `invalid` in turn. For a region already merged away earlier in the same `apply` call (because an earlier merge picked it as the neighbor), it is skipped — the SCC index space is stale for it once a previous merge happened, but no recomputation is needed: skipping is enough since the region's nodes already belong to whatever region absorbed them.
+- For a region, candidate neighbors are found by scanning every node in the region, then every `field.neighbors(node)` cell, and looking up that neighbor cell's current SCC component (from `maze.analysis.scc(&maze.graph)`, fetched once at the start of `apply` — the graph hasn't mutated yet at that point). A neighbor cell in the same component is skipped (not a different region). One representative bridging cell pair is kept per distinct neighboring component.
+- A candidate pair is rejected if blocked by preset state — both directions must be free (`blocked`/`locked_out`/`locked_in`), same strict "fully bidirectional or skip" contract `MissingLoopsRandomStrategy` uses. An existing one-way edge between the pair is **not** a blocker and gets **no priority** over a fully-walled pair — it's just another valid candidate; the strategy only adds whichever direction is still missing.
+- Target selection by `target_mode`:
+  - `random`: returns the first geometrically-adjacent, non-blocked neighbor found while scanning — does not enumerate every neighbor first.
+  - `largest` / `smallest`: enumerates every distinct neighboring region first, then picks by `components[i].len()`.
+  - `prefer_needy`: enumerates every distinct neighboring region first; if any are also in `invalid` (and not already merged away), picks uniformly at random among those via `rng`; otherwise falls back to picking uniformly at random among all neighbors (same as `random`'s effective pool, just without the early-exit).
+  - For every mode except `random`, the distinct neighboring component ids are collected into a `Vec` and **sorted** before any tie-breaking (`largest`/`smallest`) or `rng`-indexed pick (`prefer_needy`) — required for the Determinism Contract below, since the ids start out keys of a `HashMap` whose iteration order is randomized per-process and would otherwise make the same seed pick a different neighbor on different runs.
+- If a region has no neighboring region at all (isolated field cell, or every candidate pair preset-blocked): that region is skipped, not a hard failure for the whole call.
+- After a successful merge, if the absorbed neighbor's component index was also in `invalid`, it is marked merged-away so a later iteration in the same `apply` call doesn't try to expand it again as a separate region.
+- Returns `Fixed` if at least one region was successfully merged; `Failed` if none were (e.g. every flagged region was isolated or fully preset-blocked).
+- **Out of scope** (separate follow-up strategies for the same issue kind): one-way-passage expansion, teleport expansion.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

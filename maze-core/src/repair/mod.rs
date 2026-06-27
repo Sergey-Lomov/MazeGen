@@ -10,4 +10,4 @@ pub use result::RepairResult;
 pub use strategy::RepairStrategy;
 pub use rule::{CheckId, QcRule};
 pub use engine::{RepairEngine, RepairRuleConfig, RepairOutcome};
-pub use strategies::{RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy};
+pub use strategies::{RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy};

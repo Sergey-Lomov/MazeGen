@@ -192,7 +192,6 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     flex: 1,
     minWidth: 0,
     padding: "6px 0",
-    gap: 6,
   },
   ruleStrategyHeader: {
     display: "flex",

@@ -115,6 +115,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_loops_random.label"] as MessageFn,
     description: m["strategy.missing_loops_random.description"] as MessageFn,
   },
+  expand_region_passage: {
+    label: m["strategy.expand_region_passage.label"] as MessageFn,
+    description: m["strategy.expand_region_passage.description"] as MessageFn,
+  },
 };
 
 export const paramI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -190,6 +194,27 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.min_region_ratio.label"] as MessageFn,
     description: m["param.min_region_ratio.description"] as MessageFn,
   },
+  target_mode: {
+    label: m["param.target_mode.label"] as MessageFn,
+    description: m["param.target_mode.description"] as MessageFn,
+  },
+};
+
+// Labels for individual option values of Enum-kind params, keyed by `${paramId}.${value}`.
+export const paramOptionI18n: Record<string, MessageFn> = {
+  "target_mode.largest": m["param.target_mode.option.largest"] as MessageFn,
+  "target_mode.smallest": m["param.target_mode.option.smallest"] as MessageFn,
+  "target_mode.random": m["param.target_mode.option.random"] as MessageFn,
+  "target_mode.prefer_needy": m["param.target_mode.option.prefer_needy"] as MessageFn,
+};
+
+// Explanations for individual option values of Enum-kind params, shown under the param's
+// own description in expanded detail views. Keyed the same way as `paramOptionI18n`.
+export const paramOptionExplanationI18n: Record<string, MessageFn> = {
+  "target_mode.largest": m["param.target_mode.option.largest.explanation"] as MessageFn,
+  "target_mode.smallest": m["param.target_mode.option.smallest.explanation"] as MessageFn,
+  "target_mode.random": m["param.target_mode.option.random.explanation"] as MessageFn,
+  "target_mode.prefer_needy": m["param.target_mode.option.prefer_needy.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {
@@ -222,4 +247,12 @@ export function resolveParamLabel(id: string, fallback: string): string {
 
 export function resolveParamDescription(id: string): string | undefined {
   return paramI18n[id]?.description();
+}
+
+export function resolveParamOptionLabel(paramId: string, value: string): string {
+  return paramOptionI18n[`${paramId}.${value}`]?.() ?? value;
+}
+
+export function resolveParamOptionExplanation(paramId: string, value: string): string | undefined {
+  return paramOptionExplanationI18n[`${paramId}.${value}`]?.();
 }
