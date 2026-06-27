@@ -22,13 +22,21 @@ function resolveCheckKind(descriptor: CheckDescriptor): string {
 }
 
 let ruleIdCounter = 0;
+// Default rule name = the issue kind's own label (the same text shown in IssueSelectDialog's
+// picker), mirroring `qualityI18n.resolveIssueLabel`'s fallback to the raw kind — duplicated
+// here rather than imported to keep the store layer free of component-layer imports.
+function defaultRuleName(kind: string): string {
+  const fn = (m as unknown as Record<string, (() => string) | undefined>)[`issue.${kind}.label`];
+  return fn?.() ?? kind;
+}
+
 // `name` is plain user-editable text seeded from the current locale at creation time (renaming
 // UI not implemented yet) — it does not re-translate later, same as any other user-entered
 // string would not. The counter is shared with `id` so a rule's number stays stable as other
 // rules are added/removed (not derived from array position, which would shift on removal).
 function newRule(kind: string, checks: string[], strategyId: string | null, disabled: boolean): QcRuleState {
   ruleIdCounter += 1;
-  return { id: `rule_${ruleIdCounter}`, name: m["quality.default_rule_name"]({ n: ruleIdCounter }), kind, checks, strategyId, disabled, ruleDisabled: false };
+  return { id: `rule_${ruleIdCounter}`, name: defaultRuleName(kind), kind, checks, strategyId, disabled, ruleDisabled: false };
 }
 
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (set, get) => ({
@@ -76,13 +84,17 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       const checks = getAvailableChecks();
       const strategies = getAvailableStrategies();
       const defaultSelectedChecks = checks.filter((c) => c.params.length === 0).map((c) => c.id);
-      // Default: one singleton rule per default-selected check, with the first strategy that
-      // handles its kind (if any) — preserves the old "auto-pick the only strategy" behavior
-      // for checks without params, since there's no UI yet to have configured anything else.
+      // Default: one singleton rule per default-selected check, with a default strategy for its
+      // kind (if any) — preserves the old "auto-pick a strategy" behavior for checks without
+      // params, since there's no UI yet to have configured anything else. `scored_endpoints` is
+      // preferred for the start/finish kind over the first match (random/farthest) since it
+      // produces better-scored placements; other kinds fall back to the first strategy handling
+      // them.
       const defaultRules: QcRuleState[] = defaultSelectedChecks.map((checkId) => {
         const descriptor = checks.find((c) => c.id === checkId)!;
         const kind = resolveCheckKind(descriptor);
-        const match = strategies.find((s) => s.handles === kind);
+        const candidates = strategies.filter((s) => s.handles === kind);
+        const match = candidates.find((s) => s.id === "scored_endpoints") ?? candidates[0];
         return newRule(kind, [checkId], match?.id ?? null, false);
       });
       const knownIds = new Set(checks.map((c) => c.id));

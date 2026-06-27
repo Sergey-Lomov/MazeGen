@@ -25,8 +25,12 @@ function defaultValue(p: ParamDescriptor): string {
 export function NewRuleStrategyDialog({ kind, onBack, onConfirm, onClose }: Props) {
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const candidates = availableStrategies.filter((s) => s.handles === kind);
+  // `scored_endpoints` is the preferred default for the start/finish kind (better-scored
+  // placements than the first-listed random/farthest strategies) — same preference as the
+  // registry's default-rule seeding in generationSlice.
+  const defaultCandidate = candidates.find((s) => s.id === "scored_endpoints") ?? candidates[0];
 
-  const [selectedId, setSelectedId] = useState<string>(candidates[0]?.id ?? NO_FIX_STRATEGY_ID);
+  const [selectedId, setSelectedId] = useState<string>(defaultCandidate?.id ?? NO_FIX_STRATEGY_ID);
   const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
 
   const selectedStrategy = candidates.find((s) => s.id === selectedId);

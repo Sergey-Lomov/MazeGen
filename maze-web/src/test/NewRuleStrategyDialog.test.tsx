@@ -9,6 +9,12 @@ const availableStrategies = [
   { id: "s3", handles: "k2", params: [] },
 ];
 
+const endpointStrategies = [
+  { id: "random_endpoints", handles: "missing_endpoints", params: [] },
+  { id: "farthest_endpoints", handles: "missing_endpoints", params: [] },
+  { id: "scored_endpoints", handles: "missing_endpoints", params: [] },
+];
+
 beforeEach(() => {
   useMazeStore.setState({ availableStrategies });
 });
@@ -44,6 +50,14 @@ describe("NewRuleStrategyDialog", () => {
     fireEvent.click(screen.getByText("Back"));
     expect(onBack).toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("defaults the selection to scored_endpoints for the missing_endpoints kind", () => {
+    useMazeStore.setState({ availableStrategies: endpointStrategies });
+    const onConfirm = vi.fn();
+    render(<NewRuleStrategyDialog kind="missing_endpoints" onBack={vi.fn()} onConfirm={onConfirm} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Add"));
+    expect(onConfirm).toHaveBeenCalledWith("scored_endpoints", undefined);
   });
 
   it("Cancel closes without calling onConfirm", () => {

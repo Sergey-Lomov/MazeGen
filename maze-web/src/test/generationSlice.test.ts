@@ -359,6 +359,27 @@ describe("mazeStore.loadRegistry", () => {
     expect(rules[0].strategyId).toBe("strategy_first");
   });
 
+  it("names the default rule after its issue kind's label, not a counter", async () => {
+    const checks = [{ id: "missing_endpoints", label: "Missing endpoints", description: "", issue_kinds: ["missing_endpoints"], params: [] }];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue([]);
+    await useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().rules[0].name).toBe("Endpoint presence");
+  });
+
+  it("prefers scored_endpoints over earlier-listed strategies for the missing_endpoints kind", async () => {
+    const checks = [{ id: "missing_endpoints", label: "Missing endpoints", description: "", issue_kinds: ["missing_endpoints"], params: [] }];
+    const strategies = [
+      { id: "random_endpoints", handles: "missing_endpoints", params: [] },
+      { id: "farthest_endpoints", handles: "missing_endpoints", params: [] },
+      { id: "scored_endpoints", handles: "missing_endpoints", params: [] },
+    ];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
+    await useMazeStore.getState().loadRegistry();
+    expect(useMazeStore.getState().rules[0].strategyId).toBe("scored_endpoints");
+  });
+
   it("leaves rule without a matching strategy unassigned", async () => {
     const checks = [{ id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [] }];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);

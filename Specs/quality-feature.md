@@ -26,7 +26,7 @@ Unlike the older one-strategy-per-kind design, **two checks producing the same `
 ```typescript
 interface QcRuleState {
   id: string;            // opaque, client-generated (rule_${counter}); not derived from `checks`
-  name: string;          // user-facing, defaults to "Rule N", editable
+  name: string;          // user-facing, defaults to the issue kind's own label (resolveIssueLabel), editable
   kind: string;          // IssueKind shared by all member checks, captured at creation time
   checks: string[];      // member check ids — can be empty (see below)
   strategyId: string | null;
@@ -295,7 +295,7 @@ setStrategyParam(strategyId: string, paramId: string, value: string): void
 
 ## Default State
 
-On `loadRegistry`, checks without params are auto-selected: `missing_endpoints` and `unreachable_finish`, each given its own singleton rule with the first strategy that handles its kind (if any) — preserves the old "auto-pick the only strategy" behavior for checks without params. Checks with params (`min_loops_count`, `min_loop_length`, `max_loop_length`) are not auto-selected.
+On `loadRegistry`, checks without params are auto-selected: `missing_endpoints` and `unreachable_finish`, each given its own singleton rule with a default strategy for its kind (if any) — preserves the old "auto-pick a strategy" behavior for checks without params. The default is `scored_endpoints` when it handles the kind (currently true only for `missing_endpoints`/start-finish placement, since it produces better-scored placements than the first-listed random/farthest strategies); otherwise the first strategy handling the kind. `NewRuleStrategyDialog`'s own initial selection (step 3 of "Add new rule") uses the same `scored_endpoints`-first preference. Checks with params (`min_loops_count`, `min_loop_length`, `max_loop_length`) are not auto-selected.
 
 If `loadRegistry` is called again, `selectedChecks` and `rules` are preserved (rules' member-check lists are filtered to still-known check ids; rules left empty by that filter are dropped — this is the registry-reload path, distinct from the empty-rule-stays policy for direct user actions like `removeCheck`). Stale check IDs are removed from `selectedChecks` and `checkParams`.
 
