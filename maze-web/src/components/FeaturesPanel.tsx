@@ -181,7 +181,6 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   );
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
-  const totalPresetCount = presetConnections.size + markerCount;
   const presetStatus: FeatureStatus = fieldBlocking
     ? "unavailable"
     : presetInvalidKeys.size > 0
@@ -195,9 +194,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     ? (presetInvalidKeys.size === 1
         ? m["status.presets_outside_field"]({ count: presetInvalidKeys.size })
         : m["status.presets_outside_field_plural"]({ count: presetInvalidKeys.size }))
-    : totalPresetCount > 0
-    ? m["status.presets_configured"]()
-    : m["status.no_presets"]();
+    : undefined;
 
   const analyticsCard = computeAnalyticsCard(
     nodes.length > 0,

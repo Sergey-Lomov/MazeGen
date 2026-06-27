@@ -98,8 +98,6 @@
   "status.field_no_nodes": "Поле не содержит узлов",
   "status.field_configured": "Поле настроено",
   "status.configure_field_first": "Сначала настройте поле",
-  "status.no_presets": "Нет предустановок",
-  "status.presets_configured": "Предустановки настроены",
   "status.presets_outside_field": "{count} предустановка вне поля",
   "status.presets_outside_field_plural": "{count} предустановки вне поля",
   "status.no_checks": "Нет активных проверок",

@@ -91,8 +91,6 @@
   "status.field_no_nodes": "Field has no nodes",
   "status.field_configured": "Field configured",
   "status.configure_field_first": "Configure field first",
-  "status.no_presets": "No presets set",
-  "status.presets_configured": "Presets configured",
   "status.presets_outside_field": "{count} preset outside field",
   "status.presets_outside_field_plural": "{count} presets outside field",
   "status.no_checks": "No checks active",
