@@ -7,7 +7,7 @@ export type Viewport = {
 };
 
 export type PassageKind = "both" | "forward" | "backward" | "none";
-export type WallStyle = "solid" | "faint" | "invalid";
+export type WallStyle = "solid" | "faint" | "background";
 
 export type WallEdge = {
   a: [number, number];

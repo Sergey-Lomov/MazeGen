@@ -4,7 +4,7 @@ import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../re
 import type { PresetConnectionEntry, FieldEdge } from "../presetConnectionsUtils";
 import { edgeKey, canonicalize, computeInvalidKeysFromCells } from "../presetConnectionsUtils";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
-import { buildCellSet, buildOwnedEdgeKeys } from "./sharedSelectors";
+import { buildCellSet } from "./sharedSelectors";
 import {
   NODE_START_COLOR, NODE_FINISH_COLOR, NODE_RADIUS,
   INVALID_COLOR, HOVER_COLOR, WALL_THICKNESS,
@@ -14,13 +14,13 @@ export function buildPresetWallGroups(
   cells: [number, number][],
   connections: Map<string, PresetConnectionEntry>,
   cfg: TessellationConfig,
-): { undecided: WallEdge[]; preset: WallEdge[]; invalidKeys: Set<string> } {
+): { undecided: WallEdge[]; preset: WallEdge[]; invalidPassages: WallEdge[]; invalidKeys: Set<string> } {
   const cellSet = buildCellSet(cells);
-  const ownedKeys = buildOwnedEdgeKeys(cells, cfg, cellSet);
   const invalidKeys = computeInvalidKeysFromCells(connections, cells);
 
   const undecided: WallEdge[] = [];
   const preset: WallEdge[] = [];
+  const invalidPassages: WallEdge[] = [];
 
   for (const [x, y] of cells) {
     const { offsets } = getNeighborData(cfg, x, y);
@@ -33,17 +33,18 @@ export function buildPresetWallGroups(
         continue;
       }
 
+      // each interior edge is shared by two cells; only process it once, from
+      // the lexicographically-smaller side
+      const ownsEdge = x < nx || (x === nx && y < ny);
+      if (!ownsEdge) continue;
+
       const key = edgeKey([x, y], [nx, ny]);
-      if (!ownedKeys.has(key)) continue;
 
       const entry = connections.get(key);
       if (!entry || entry.state === "undefined") {
         undecided.push({ a: [x, y], b: [nx, ny], kind: "none", style: "faint" });
         continue;
       }
-
-      const isInvalid = invalidKeys.has(key);
-      const style = isInvalid ? "invalid" : "solid";
 
       if (entry.state === "passage") continue; // open passage — no wall
 
@@ -62,11 +63,41 @@ export function buildPresetWallGroups(
         if (len > 0) oneWayDir = { dx: tdx / len, dy: tdy / len };
       }
 
-      preset.push({ a: [x, y], b: [nx, ny], kind, style, oneWayDir });
+      preset.push({ a: [x, y], b: [nx, ny], kind, style: "solid", oneWayDir });
     }
   }
 
-  return { undecided, preset, invalidKeys };
+  // Invalid presets with at least one endpoint outside the field are never
+  // visited by the cell loop above (it only walks cells inside the field).
+  // Render them directly from the connection map so they stay visible.
+  for (const key of invalidKeys) {
+    const entry = connections.get(key);
+    if (!entry || entry.state === "undefined") continue;
+
+    if (entry.state === "passage") {
+      invalidPassages.push({ a: entry.from, b: entry.to, kind: "none", style: "background" });
+      continue;
+    }
+
+    let kind: PassageKind = "none";
+    let oneWayDir: { dx: number; dy: number } | undefined;
+
+    if (entry.state === "one_way_forward" || entry.state === "one_way_backward") {
+      kind = entry.state === "one_way_forward" ? "forward" : "backward";
+      const [fa, fb] = canonicalize(entry.from, entry.to);
+      const cA = getCellCenter(fa[0], fa[1], cfg);
+      const cB = getCellCenter(fb[0], fb[1], cfg);
+      const isForward = entry.state === "one_way_forward";
+      const tdx = isForward ? cB.x - cA.x : cA.x - cB.x;
+      const tdy = isForward ? cB.y - cA.y : cA.y - cB.y;
+      const len = Math.sqrt(tdx * tdx + tdy * tdy);
+      if (len > 0) oneWayDir = { dx: tdx / len, dy: tdy / len };
+    }
+
+    preset.push({ a: entry.from, b: entry.to, kind, style: "solid", oneWayDir });
+  }
+
+  return { undecided, preset, invalidPassages, invalidKeys };
 }
 
 export function buildPresetMarkers(

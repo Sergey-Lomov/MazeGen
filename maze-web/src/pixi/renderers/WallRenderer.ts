@@ -3,12 +3,12 @@ import type { WallEdge } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellVertices, getNeighborData } from "../tessellationGeometry";
 import { drawOneWayTriangle } from "./wallUtils";
-import { WALL_COLOR, WALL_COLOR_UNDECIDED, INVALID_COLOR, WALL_THICKNESS } from "../colorUtils";
+import { WALL_COLOR, WALL_COLOR_UNDECIDED, STAGE_BACKGROUND_COLOR, WALL_THICKNESS } from "../colorUtils";
 
 const WALL_STYLES = {
-  solid:   { color: WALL_COLOR,           cap: "round" as const, join: "round" as const },
-  faint:   { color: WALL_COLOR_UNDECIDED, cap: "round" as const, join: "round" as const },
-  invalid: { color: INVALID_COLOR,        cap: "round" as const, join: "round" as const },
+  solid:      { color: WALL_COLOR,             cap: "round" as const, join: "round" as const },
+  faint:      { color: WALL_COLOR_UNDECIDED,   cap: "round" as const, join: "round" as const },
+  background: { color: STAGE_BACKGROUND_COLOR, cap: "round" as const, join: "round" as const },
 };
 
 export class WallRenderer {

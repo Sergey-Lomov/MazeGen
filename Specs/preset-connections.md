@@ -77,9 +77,13 @@ One-way and lock/gen-source tools do not support drag.
 ## Validity
 
 A preset connection is **invalid** if either of its endpoint cells is outside the current field. `computeInvalidKeys` iterates the preset map and checks membership in the cell set. Invalid presets:
-- are drawn in yellow
+- are drawn at full color/brightness, same as valid presets — the dark stage background outside the field (no floor fill there) already gives them lower visual weight, no separate dimming is applied
 - are excluded from `generate()` before sending to WASM
 - can be bulk-removed via "Clear invalid"
+
+Since the cell-iteration loop in `buildPresetWallGroups` only visits cells inside the field, invalid presets with an endpoint entirely outside the field (never reached by that loop) are rendered in a second pass directly from the connection map, so they remain visible instead of silently disappearing. Invalid `wall`/`one_way` presets from this pass go into the same `preset` list as normal walls. Invalid `passage` presets go into a separate `invalidPassages` list, rendered on `invalidPassagesLayer` (see Rendering section).
+
+The separate `highlightInvalidPresets` overlay (yellow, `INVALID_COLOR`) is the only explicit visual marker for invalid presets — it's an opt-in highlight layer, not the base rendering of the preset itself.
 
 `computeInvalidKeysFromCells` takes pre-resolved `[number, number][]` cells and skips `resolveCells`; used by the renderer which caches cells.
 
@@ -160,15 +164,16 @@ Active when `presetConnectionsOpen = true`. Renders on top of grid; maze graph i
 Layers (bottom to top):
 1. **gridLayer** — tessellation grid
 2. **floorLayer** — filled cell polygons (dark background)
-3. **undecidedLayer** — interior edges with no preset (faint stroke)
-4. **presetWallsLayer** — `wall` and `one_way` edges (solid stroke); one-way arrow triangles drawn inline; invalid presets drawn in invalid style
-5. **locksLayer** — lock icons for both `lockedNodes` and `autoLockedNodes` (merged)
-6. **markersLayer** — start/finish circles (`NODE_RADIUS * 1.5`)
-7. **originLayer** — origin crosshair (when `showPresetOrigin = true`)
-8. **genSourceLayer** — blue cross marker at `presetGenSource` cell
-9. **isolatedHLLayer** — cell highlight for nodes locked both-in-and-out with no passage preset
-10. **invalidHLLayer** — thick highlight when `highlightInvalidPresets = true`
-11. **hoverLayer** — highlighted edge under cursor
+3. **invalidPassagesLayer** — invalid (out-of-field) `passage` presets, drawn with `WallStyle: "background"` (`STAGE_BACKGROUND_COLOR`) that paints over the grid line, so the open passage reads as a gap in the grid (not a brightened/thickened line); sits below the wall layers so wall strokes are never broken by it
+4. **undecidedLayer** — interior edges with no preset (faint stroke)
+5. **presetWallsLayer** — `wall` and `one_way` edges (solid stroke), including invalid ones; one-way arrow triangles drawn inline
+6. **locksLayer** — lock icons for both `lockedNodes` and `autoLockedNodes` (merged)
+7. **markersLayer** — start/finish circles (`NODE_RADIUS * 1.5`)
+8. **originLayer** — origin crosshair (when `showPresetOrigin = true`)
+9. **genSourceLayer** — blue cross marker at `presetGenSource` cell
+10. **isolatedHLLayer** — cell highlight for nodes locked both-in-and-out with no passage preset
+11. **invalidHLLayer** — thick highlight when `highlightInvalidPresets = true`
+12. **hoverLayer** — highlighted edge under cursor
 
 **Exterior edges** (one endpoint outside field) are drawn as solid walls. **Interior edges** (both endpoints inside field) are drawn according to their preset state.
 

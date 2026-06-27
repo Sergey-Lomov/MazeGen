@@ -17,6 +17,9 @@ export const WALL_THICKNESS = 3;
 // Floor rendering
 export const FLOOR_COLOR = 0x2a2a2a;
 
+// Pixi stage/canvas background color (outside any field/floor area)
+export const STAGE_BACKGROUND_COLOR = 0x111111;
+
 // One-way passage marker
 export const ONE_WAY_COLOR = 0xffaa00;
 

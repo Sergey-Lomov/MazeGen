@@ -33,6 +33,7 @@ export function drawOneWayTriangle(
   wallCy: number,
   pointingDx: number,
   pointingDy: number,
+  color?: number,
 ): void {
-  drawDirectionArrow(g, wallCx, wallCy, pointingDx, pointingDy, TILE_SIZE * 0.18);
+  drawDirectionArrow(g, wallCx, wallCy, pointingDx, pointingDy, TILE_SIZE * 0.18, color);
 }

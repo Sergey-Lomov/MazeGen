@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { resolveCells } from "./presetConnectionsUtils";
+import { resolveCells, computeInvalidKeysFromCells } from "./presetConnectionsUtils";
 import type { FieldEdge } from "./presetConnectionsUtils";
 import { encodePoint } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -30,6 +30,7 @@ export class PresetConnectionsRenderer {
 
   private readonly gridContainer: Container;
   private readonly floorContainer: Container;
+  private readonly invalidPassagesContainer: Container;
   private readonly undecidedWallsContainer: Container;
   private readonly presetWallsContainer: Container;
   private readonly locksContainer: Container;
@@ -42,6 +43,7 @@ export class PresetConnectionsRenderer {
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
+  private readonly invalidPassages: WallRenderer;
   private readonly undecidedWalls: WallRenderer;
   private readonly presetWalls: WallRenderer;
   private readonly locks: LockRenderer;
@@ -64,6 +66,7 @@ export class PresetConnectionsRenderer {
 
     this.gridContainer           = new Container();
     this.floorContainer          = new Container();
+    this.invalidPassagesContainer = new Container();
     this.undecidedWallsContainer = new Container();
     this.presetWallsContainer    = new Container();
     this.locksContainer          = new Container();
@@ -76,6 +79,7 @@ export class PresetConnectionsRenderer {
 
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
+    this.root.addChild(this.invalidPassagesContainer);
     this.root.addChild(this.undecidedWallsContainer);
     this.root.addChild(this.presetWallsContainer);
     this.root.addChild(this.locksContainer);
@@ -88,6 +92,7 @@ export class PresetConnectionsRenderer {
 
     this.grid           = new GridRenderer(this.gridContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
+    this.invalidPassages = new WallRenderer(this.invalidPassagesContainer);
     this.undecidedWalls = new WallRenderer(this.undecidedWallsContainer);
     this.presetWalls    = new WallRenderer(this.presetWallsContainer);
     this.locks          = new LockRenderer(this.locksContainer);
@@ -203,7 +208,8 @@ export class PresetConnectionsRenderer {
     this.grid.render({ viewport: this.viewport }, cfg);
     this.floor.render({ cells, color: FLOOR_COLOR, alpha: 1 }, cfg);
 
-    const { undecided, preset, invalidKeys } = buildPresetWallGroups(cells, state.presetConnections, cfg);
+    const { undecided, preset, invalidPassages, invalidKeys } = buildPresetWallGroups(cells, state.presetConnections, cfg);
+    this.invalidPassages.render({ edges: invalidPassages }, cfg);
     this.undecidedWalls.render({ edges: undecided }, cfg);
     this.presetWalls.render({ edges: preset }, cfg);
 
@@ -253,7 +259,7 @@ export class PresetConnectionsRenderer {
       this.invalidHL.render({ highlights: [] });
       return;
     }
-    const { invalidKeys } = buildPresetWallGroups(this.cachedCells, state.presetConnections, this.cfg);
+    const invalidKeys = computeInvalidKeysFromCells(state.presetConnections, this.cachedCells);
     const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, state.presetConnections, this.cfg);
     this.invalidHL.render({ highlights: edgeHighlights });
   }
@@ -263,6 +269,7 @@ export class PresetConnectionsRenderer {
     const cfg = this.cfg;
     this.grid.render({ viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 } }, cfg);
     this.floor.render({ cells: [], color: FLOOR_COLOR, alpha: 1 }, cfg);
+    this.invalidPassages.render({ edges: [] }, cfg);
     this.undecidedWalls.render({ edges: [] }, cfg);
     this.presetWalls.render({ edges: [] }, cfg);
     this.locks.render({ locks: [] }, cfg);
@@ -278,6 +285,7 @@ export class PresetConnectionsRenderer {
     this.unsubscribe?.();
     this.grid.destroy();
     this.floor.destroy();
+    this.invalidPassages.destroy();
     this.undecidedWalls.destroy();
     this.presetWalls.destroy();
     this.locks.destroy();
@@ -289,6 +297,7 @@ export class PresetConnectionsRenderer {
     this.hover.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
+    this.invalidPassagesContainer.destroy();
     this.undecidedWallsContainer.destroy();
     this.presetWallsContainer.destroy();
     this.locksContainer.destroy();
