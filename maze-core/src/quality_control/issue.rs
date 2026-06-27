@@ -13,6 +13,7 @@ pub enum IssueKind {
     QcNoProgress,
     ExcessiveSccCount,
     RegionNeedsExpansion,
+    MissingRegions,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -58,6 +59,11 @@ pub const EXCESSIVE_SCC_COUNT: IssueKind = IssueKind::ExcessiveSccCount;
 /// flag a region as needing expansion for reasons unrelated to size and reuse this same kind.
 /// Carries `IssueData::RegionsNeedingExpansion` — see that variant's doc comment.
 pub const REGION_NEEDS_EXPANSION: IssueKind = IssueKind::RegionNeedsExpansion;
+/// The maze has fewer regions of some `RegionClass` than a check's configured minimum requires
+/// (currently only `MinRegionCountCheck`) — e.g. guaranteeing at least N trap or alternative-route
+/// regions for structural variety. Carries `IssueData::MissingRegions { region_class, missing }` —
+/// see that variant's doc comment. No `RepairStrategy` registered yet for this kind.
+pub const MISSING_REGIONS: IssueKind = IssueKind::MissingRegions;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -71,6 +77,7 @@ impl IssueKind {
             IssueKind::QcNoProgress => "qc_no_progress",
             IssueKind::ExcessiveSccCount => "excessive_scc_count",
             IssueKind::RegionNeedsExpansion => "region_needs_expansion",
+            IssueKind::MissingRegions => "missing_regions",
         }
     }
 
@@ -93,6 +100,7 @@ impl IssueKind {
             "qc_no_progress" => Some(IssueKind::QcNoProgress),
             "excessive_scc_count" => Some(IssueKind::ExcessiveSccCount),
             "region_needs_expansion" => Some(IssueKind::RegionNeedsExpansion),
+            "missing_regions" => Some(IssueKind::MissingRegions),
             _ => None,
         }
     }
@@ -298,6 +306,7 @@ mod tests {
             IssueKind::QcNoProgress,
             IssueKind::ExcessiveSccCount,
             IssueKind::RegionNeedsExpansion,
+            IssueKind::MissingRegions,
         ];
         for kind in kinds {
             assert_eq!(IssueKind::from_str(kind.as_str()), Some(kind));

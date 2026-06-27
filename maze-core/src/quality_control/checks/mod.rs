@@ -11,6 +11,7 @@ pub mod max_loop_density;
 pub mod scc_count;
 pub mod min_region_size;
 pub mod min_region_ratio;
+pub mod min_region_count;
 
 pub use missing_endpoints::{MissingEndpointsCheck, MISSING_ENDPOINTS_CHECK_ID};
 pub use unreachable_finish::{UnreachableFinishCheck, UNREACHABLE_FINISH_CHECK_ID};
@@ -25,3 +26,4 @@ pub use max_loop_density::{MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, MAX_LO
 pub use scc_count::{SccCountCheck, MAX_SCC_COUNT_DEFAULT, SCC_COUNT_CHECK_ID};
 pub use min_region_size::{MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT, MIN_REGION_SIZE_CHECK_ID};
 pub use min_region_ratio::{MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT, MIN_REGION_RATIO_CHECK_ID};
+pub use min_region_count::{MinRegionCountCheck, MIN_REGION_COUNT_DEFAULT, MIN_REGION_COUNT_CHECK_ID};

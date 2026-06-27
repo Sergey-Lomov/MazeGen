@@ -1,4 +1,5 @@
 import * as m from "~/paraglide/messages";
+import { resolveParamOptionLabel } from "./features/qualityI18n";
 
 export type IssueSeverity = "warning" | "critical";
 export type IssueInfo = { label: string; description: string; severity: IssueSeverity };
@@ -17,6 +18,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   qc_no_progress: () => ({ label: m["issue.qc_no_progress.label"](), description: m["issue.qc_no_progress.description"](), severity: "critical" }),
   excessive_scc_count: () => ({ label: m["issue.excessive_scc_count.label"](), description: m["issue.excessive_scc_count.description"](), severity: "warning" }),
   region_needs_expansion: () => ({ label: m["issue.region_needs_expansion.label"](), description: m["issue.region_needs_expansion.description"](), severity: "warning" }),
+  missing_regions: () => ({ label: m["issue.missing_regions.label"](), description: m["issue.missing_regions.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -53,6 +55,9 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
     : undefined,
   min_region_ratio: (d) => d.min_region_ratio !== undefined
     ? m["issue.region_needs_expansion.min_region_ratio_label"]({ min_region_ratio: d.min_region_ratio })
+    : undefined,
+  min_region_count: (d) => d.region_class !== undefined && d.count !== undefined
+    ? m["issue.missing_regions.min_region_count_label"]({ region_class: resolveParamOptionLabel("region_class", d.region_class), min_count: d.count })
     : undefined,
 };
 

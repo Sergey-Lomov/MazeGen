@@ -18,6 +18,7 @@ pub enum IssueKind {
     QcNoProgress,
     ExcessiveSccCount,
     RegionNeedsExpansion,
+    MissingRegions,
 }
 ```
 
@@ -43,6 +44,8 @@ pub const INVALID_LOOP:       IssueKind = IssueKind::InvalidLoop;
 pub const MISSING_LOOPS:      IssueKind = IssueKind::MissingLoops;
 pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflowed;
 ```
+
+`MissingRegions` mirrors `MissingLoops`'s role, but for a deficit in the count of regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap — see "Region Classes" in `graph-analytics.md`) instead of overall loop count — currently produced only by `MinRegionCountCheck`.
 
 Always use the named constant — never use string literals or enum variants inline.
 
@@ -109,6 +112,10 @@ pub enum IssueData {
         invalid: Vec<usize>,
         invalid_sources: HashMap<usize, Vec<CheckId>>,
     },
+    MissingRegions {               // produced by any check flagging too few regions of a class, see below
+        region_class: RegionClass,
+        missing: u32,
+    },
 }
 ```
 
@@ -123,6 +130,7 @@ pub enum IssueData {
 - Keeping the valid cycles in `all` (not just the invalid ones) lets a strategy avoid cutting an edge that is also part of a cycle the maze is meant to keep — see `InvalidLoopScoredStrategy` in `repair.md`.
 - **`Missing { missing }`**: produced by any check that flags the maze as short on loops overall (paired with `MISSING_LOOPS`) — currently only `MinLoopsCountCheck`. `missing` is how many loops short of the requirement the maze is (`min_loops.saturating_sub(graph_analytics.cycle_count)` — the independent-cycle count, see `MinLoopsCountCheck` below), letting a repair strategy know how many to add. No merge rule defined yet — currently only one check ever produces `MISSING_LOOPS`, so the dedup/merge path is never exercised for this variant.
 - **`RegionsNeedingExpansion { invalid, invalid_sources }`**: produced by any check that flags SCC regions undersized for a check-specific reason (paired with `REGION_NEEDS_EXPANSION`) — currently `MinRegionSizeCheck` (region smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller than a configured share of the field). `invalid` holds indices into `maze.analysis.scc(&maze.graph).components` — not a copy of the regions themselves: that computation is already cached there (keyed by `graph.version()`, see `analysis.md`), and a future repair strategy can re-fetch it (cache hit within the same QC pass) instead of `Issue` carrying a duplicate snapshot. `invalid_sources` is keyed by the same component index — unlike `invalid_sources` on `InvalidLoops`, this needs no remap on merge, because every check sharing this issue within one QC pass reads from the same single `scc()` cache entry, so a given index means the same region on both sides of a merge (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section). No `RepairStrategy` registered yet for this kind — same "detectable, not yet repairable" status `EXCESSIVE_SCC_COUNT` has.
+- **`MissingRegions { region_class, missing }`**: produced by any check that flags the maze as short on regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap, see `graph-analytics.md`'s "Region Classes" section) — currently only `MinRegionCountCheck`. `missing` is how many regions of `region_class` short of the requirement the maze is (`min_count.saturating_sub(count)`), letting a future repair strategy know how many regions of that class to add. No merge rule defined yet — currently only one check ever produces `MISSING_REGIONS`, so the dedup/merge path is never exercised for this variant.
 - **`data` is not exposed over WASM**: the WASM layer serializes `IssueKind`, `source_checks`, and `details` (see `IssueDto` in `quality-feature.md`) but never `Issue.data` itself — that field stays internal, Check-to-Strategy plumbing only.
 - **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` and `details` (on `Issue`, see above) are unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 
@@ -335,6 +343,23 @@ Counterpart to `MinRegionSizeCheck` using a relative threshold instead of an abs
 
 Can be active alongside `MinRegionSizeCheck` — both produce `REGION_NEEDS_EXPANSION` and merge into one issue (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section): since both checks read the same `scc()` cache entry within one QC pass, a region's component index is stable across the merge, so unioning `invalid` and `invalid_sources` needs no remap, unlike the cycle-index remap `merge_invalid_loops` must do.
 
+### MinRegionCountCheck
+
+```rust
+pub const MIN_REGION_COUNT_DEFAULT: u32 = 1;
+
+pub struct MinRegionCountCheck {
+    pub region_class: RegionClass,
+    pub min_count: u32,
+}
+```
+
+Flags too few SCC regions of a configured `RegionClass` (Path/Alternative/Unreachable/Trap — see `graph-analytics.md`'s "Region Classes" section) — see GitHub issue #55. Lets a user enforce structural variety (e.g. guarantee at least N trap or alternative-route regions) instead of only constraining individual region size/ratio.
+
+Uses `maze.analysis.region_classes(&maze.graph, start, finish)` and counts entries whose value equals `self.region_class`. Silently skips (no issue) if either `maze.meta.start` or `maze.meta.finish` is `None` — same as `UnreachableFinishCheck`/the loop-distance checks, that failure mode belongs to `MissingEndpointsCheck`, not this check. If the count is at or above `min_count`, the check is silent. Otherwise fires `Issue::with_data_from_check(MISSING_REGIONS, IssueData::MissingRegions { region_class, missing }, "min_region_count")` with `.with_detail("min_region_count", "region_class", self.region_class.as_str().to_string())` and `.with_detail("min_region_count", "count", self.min_count.to_string())` chained on, where `missing = min_count - count`.
+
+Only one instance of this check can be active at a time (`selectedChecks` allows one entry per check id, see `quality-feature.md`) — requiring separate minimums for two different region classes simultaneously (e.g. "at least 2 trap regions" and separately "at least 2 alternative regions") is not yet supported; this is a known follow-up, not covered by this check's current scope. No `RepairStrategy` registered yet for this kind — `MISSING_REGIONS` is a detectable-but-not-yet-repairable issue kind, same status `EXCESSIVE_SCC_COUNT` has.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -436,6 +461,7 @@ One user-defined QC rule: a non-empty set of active checks producing the same `I
 | `scc_count` | `excessive_scc_count` | `max_scc_count: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)` | no |
 | `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Integer(default=25, min=0, max=100)` | no |
+| `min_region_count` | `missing_regions` | `region_class: Enum(options=[path,alternative,unreachable,trap], default=trap)`, `count: Integer(default=1, min=0, max=1_000_000)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

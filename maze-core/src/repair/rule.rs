@@ -18,6 +18,7 @@ pub enum CheckId {
     SccCount,
     MinRegionSize,
     MinRegionRatio,
+    MinRegionCount,
 }
 
 impl CheckId {
@@ -36,6 +37,7 @@ impl CheckId {
             CheckId::SccCount => "scc_count",
             CheckId::MinRegionSize => "min_region_size",
             CheckId::MinRegionRatio => "min_region_ratio",
+            CheckId::MinRegionCount => "min_region_count",
         }
     }
 
@@ -54,6 +56,7 @@ impl CheckId {
             "scc_count" => Some(CheckId::SccCount),
             "min_region_size" => Some(CheckId::MinRegionSize),
             "min_region_ratio" => Some(CheckId::MinRegionRatio),
+            "min_region_count" => Some(CheckId::MinRegionCount),
             _ => None,
         }
     }

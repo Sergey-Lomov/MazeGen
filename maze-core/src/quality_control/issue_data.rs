@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use crate::ids::EdgeId;
 use crate::repair::CheckId;
+use crate::graph::region_class::RegionClass;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and
@@ -72,6 +73,15 @@ pub enum IssueData {
         /// `maze.analysis.scc(&maze.graph)` cache entry, unlike cycle indices (which get
         /// remapped on merge because cycle enumeration has no equivalent stable identity).
         invalid_sources: HashMap<usize, Vec<CheckId>>,
+    },
+    /// Produced by any check that flags the maze as short on regions of a specific `RegionClass`
+    /// (paired with `MISSING_REGIONS`; currently only `MinRegionCountCheck`). `missing` is how
+    /// many regions of `region_class` short of the requirement the maze is — lets a future repair
+    /// strategy know how many regions of that class to add. No merge rule defined yet — only one
+    /// check produces `MISSING_REGIONS` so far, so the dedup/merge path is never exercised.
+    MissingRegions {
+        region_class: RegionClass,
+        missing: u32,
     },
 }
 

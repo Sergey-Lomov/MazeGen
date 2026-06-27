@@ -18,6 +18,33 @@ pub enum RegionClass {
     Trap,
 }
 
+impl RegionClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RegionClass::Path => "path",
+            RegionClass::Alternative => "alternative",
+            RegionClass::Unreachable => "unreachable",
+            RegionClass::Trap => "trap",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "path" => Some(RegionClass::Path),
+            "alternative" => Some(RegionClass::Alternative),
+            "unreachable" => Some(RegionClass::Unreachable),
+            "trap" => Some(RegionClass::Trap),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for RegionClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Classifies every SCC region in `scc` relative to `start`/`finish`. `route` is the
 /// already-computed shortest path between them (`MazeAnalysis::route_info`) — `None` is
 /// treated the same as "no region is on the path" (every reachable-and-reaching region becomes

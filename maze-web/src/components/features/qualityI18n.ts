@@ -55,6 +55,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.min_region_ratio.label"] as MessageFn,
     description: m["check.min_region_ratio.description"] as MessageFn,
   },
+  min_region_count: {
+    label: m["check.min_region_count.label"] as MessageFn,
+    description: m["check.min_region_count.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -81,6 +85,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   region_needs_expansion: {
     label: m["issue.region_needs_expansion.label"] as MessageFn,
     description: m["issue.region_needs_expansion.description"] as MessageFn,
+  },
+  missing_regions: {
+    label: m["issue.missing_regions.label"] as MessageFn,
+    description: m["issue.missing_regions.description"] as MessageFn,
   },
 };
 
@@ -198,6 +206,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.target_mode.label"] as MessageFn,
     description: m["param.target_mode.description"] as MessageFn,
   },
+  region_class: {
+    label: m["param.region_class.label"] as MessageFn,
+    description: m["param.region_class.description"] as MessageFn,
+  },
+  count: {
+    label: m["param.count.label"] as MessageFn,
+    description: m["param.count.description"] as MessageFn,
+  },
 };
 
 // Labels for individual option values of Enum-kind params, keyed by `${paramId}.${value}`.
@@ -206,6 +222,10 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "target_mode.smallest": m["param.target_mode.option.smallest"] as MessageFn,
   "target_mode.random": m["param.target_mode.option.random"] as MessageFn,
   "target_mode.prefer_needy": m["param.target_mode.option.prefer_needy"] as MessageFn,
+  "region_class.path": m["param.region_class.option.path"] as MessageFn,
+  "region_class.alternative": m["param.region_class.option.alternative"] as MessageFn,
+  "region_class.unreachable": m["param.region_class.option.unreachable"] as MessageFn,
+  "region_class.trap": m["param.region_class.option.trap"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -215,6 +235,10 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "target_mode.smallest": m["param.target_mode.option.smallest.explanation"] as MessageFn,
   "target_mode.random": m["param.target_mode.option.random.explanation"] as MessageFn,
   "target_mode.prefer_needy": m["param.target_mode.option.prefer_needy.explanation"] as MessageFn,
+  "region_class.path": m["param.region_class.option.path.explanation"] as MessageFn,
+  "region_class.alternative": m["param.region_class.option.alternative.explanation"] as MessageFn,
+  "region_class.unreachable": m["param.region_class.option.unreachable.explanation"] as MessageFn,
+  "region_class.trap": m["param.region_class.option.trap.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

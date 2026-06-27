@@ -12,7 +12,8 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS},
+    RegionClass,
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
@@ -154,6 +155,32 @@ pub fn available_checks() -> JsValue {
                 label: "Min region ratio (per 100 cells)",
                 kind: ParamKindDto::Integer { default: MIN_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
             }],
+        },
+        CheckDescriptor {
+            id: "min_region_count",
+            label: "Minimum region count per class",
+            description: "Fires if the maze has fewer regions of the selected class (path/alternative/unreachable/trap) than the required minimum.",
+            issue_kinds: vec![kind_str(MISSING_REGIONS)],
+            params: vec![
+                ParamDescriptor {
+                    id: "region_class",
+                    label: "Region class",
+                    kind: ParamKindDto::Enum {
+                        options: vec![
+                            RegionClass::Path.as_str(),
+                            RegionClass::Alternative.as_str(),
+                            RegionClass::Unreachable.as_str(),
+                            RegionClass::Trap.as_str(),
+                        ],
+                        default: RegionClass::Trap.as_str(),
+                    },
+                },
+                ParamDescriptor {
+                    id: "count",
+                    label: "Min region count",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
         },
         CheckDescriptor {
             id: "min_loop_length",

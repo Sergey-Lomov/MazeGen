@@ -5,7 +5,7 @@ use maze_core::{
     quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED},
     quality_control::issue_data::canonical_cycle_key,
     compute_node_stats, compute_spatial_edge_stats,
-    Maze, RegionClass,
+    Maze,
 };
 use crate::dto::{
     EdgeDto, IssueDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
@@ -167,12 +167,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let region_classes: HashMap<String, String> = match (maze.meta.start, maze.meta.finish) {
         (Some(s), Some(f)) => {
             maze.analysis.region_classes(&maze.graph, s, f).into_iter()
-                .map(|(comp_id, class)| (comp_id.to_string(), match class {
-                    RegionClass::Path => "path",
-                    RegionClass::Alternative => "alternative",
-                    RegionClass::Unreachable => "unreachable",
-                    RegionClass::Trap => "trap",
-                }.to_string()))
+                .map(|(comp_id, class)| (comp_id.to_string(), class.as_str().to_string()))
                 .collect()
         }
         _ => HashMap::new(),
