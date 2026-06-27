@@ -11,6 +11,7 @@ pub enum IssueKind {
     CycleAnalysisOverflowed,
     RepairLimitReached,
     QcNoProgress,
+    ExcessiveSccCount,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -44,6 +45,11 @@ pub const REPAIR_LIMIT_REACHED: IssueKind = IssueKind::RepairLimitReached;
 /// active rules whose strategies fight to a net-zero change each iteration (e.g. contradictory
 /// min/max thresholds on the same metric), distinct from simply running out of iterations/time.
 pub const QC_NO_PROGRESS: IssueKind = IssueKind::QcNoProgress;
+/// The graph is split into more strongly-connected components than a check's configured limit
+/// allows (currently only `SccCountCheck`) — often signals a poorly-connected or fragmented
+/// maze even when other checks pass. Reuses `build_scc` (`graph::scc`) rather than
+/// re-implementing SCC computation.
+pub const EXCESSIVE_SCC_COUNT: IssueKind = IssueKind::ExcessiveSccCount;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -55,6 +61,7 @@ impl IssueKind {
             IssueKind::CycleAnalysisOverflowed => "cycle_analysis_overflowed",
             IssueKind::RepairLimitReached => "repair_limit_reached",
             IssueKind::QcNoProgress => "qc_no_progress",
+            IssueKind::ExcessiveSccCount => "excessive_scc_count",
         }
     }
 
@@ -75,6 +82,7 @@ impl IssueKind {
             "cycle_analysis_overflowed" => Some(IssueKind::CycleAnalysisOverflowed),
             "repair_limit_reached" => Some(IssueKind::RepairLimitReached),
             "qc_no_progress" => Some(IssueKind::QcNoProgress),
+            "excessive_scc_count" => Some(IssueKind::ExcessiveSccCount),
             _ => None,
         }
     }
@@ -276,6 +284,9 @@ mod tests {
             IssueKind::InvalidLoop,
             IssueKind::MissingLoops,
             IssueKind::CycleAnalysisOverflowed,
+            IssueKind::RepairLimitReached,
+            IssueKind::QcNoProgress,
+            IssueKind::ExcessiveSccCount,
         ];
         for kind in kinds {
             assert_eq!(IssueKind::from_str(kind.as_str()), Some(kind));

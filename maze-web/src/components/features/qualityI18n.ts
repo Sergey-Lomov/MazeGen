@@ -43,6 +43,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.max_loop_density.label"] as MessageFn,
     description: m["check.max_loop_density.description"] as MessageFn,
   },
+  scc_count: {
+    label: m["check.scc_count.label"] as MessageFn,
+    description: m["check.scc_count.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -61,6 +65,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   invalid_loop: {
     label: m["issue.invalid_loop.label"] as MessageFn,
     description: m["issue.invalid_loop.description"] as MessageFn,
+  },
+  excessive_scc_count: {
+    label: m["issue.excessive_scc_count.label"] as MessageFn,
+    description: m["issue.excessive_scc_count.description"] as MessageFn,
   },
 };
 
@@ -157,6 +165,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   reserve_percent: {
     label: m["param.reserve_percent.label"] as MessageFn,
     description: m["param.reserve_percent.description"] as MessageFn,
+  },
+  max_scc_count: {
+    label: m["param.max_scc_count.label"] as MessageFn,
+    description: m["param.max_scc_count.description"] as MessageFn,
   },
 };
 

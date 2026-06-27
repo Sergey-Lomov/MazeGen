@@ -14,6 +14,9 @@ pub enum IssueKind {
     InvalidLoop,
     MissingLoops,
     CycleAnalysisOverflowed,
+    RepairLimitReached,
+    QcNoProgress,
+    ExcessiveSccCount,
 }
 ```
 
@@ -284,6 +287,20 @@ If density exceeds `max_density`, the check must pick which loops to flag — th
 
 Fires a single `Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid, invalid_sources }, "max_loop_density")` with `.with_detail("max_loop_density", "max_density", self.max_density.to_string())` chained on. Can be active alongside any other `INVALID_LOOP`-producing check — all merge into one issue per the same dedup rule. The flagged loops need no new repair logic — `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` cut them exactly like any other check's `invalid` entries.
 
+### SccCountCheck
+
+```rust
+pub const MAX_SCC_COUNT_DEFAULT: u32 = 1;
+
+pub struct SccCountCheck {
+    pub max_scc_count: u32,
+}
+```
+
+Flags an excessively fragmented graph — see GitHub issue #48. Uses `maze.analysis.scc(&maze.graph)` (cached per `graph.version()` — see `analysis.md`), itself backed by `build_scc` (`maze-core/src/graph/scc.rs`, Tarjan's algorithm), rather than re-implementing or directly recomputing SCC; counts `ConnectedComponents::components.len()`. If the count is at or below `max_scc_count`, the check is silent. If it exceeds `max_scc_count`, fires `Issue::new_from_check(EXCESSIVE_SCC_COUNT, "scc_count")` with `.with_detail("scc_count", "max_scc_count", self.max_scc_count.to_string())` and `.with_detail("scc_count", "scc_count", count.to_string())` chained on — both raw values for the web UI to render a specific message.
+
+No `IssueData` variant and no registered `RepairStrategy` yet — `EXCESSIVE_SCC_COUNT` is a detectable-but-not-yet-repairable issue kind, same as any other kind with `strategy: None` in its `QcRuleConfig` (see `repair.md`'s "QcRule and rule-based RepairEngine" section).
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -379,6 +396,7 @@ One user-defined QC rule: a non-empty set of active checks producing the same `I
 | `loop_distance_from_start` | `invalid_loop` | `min_distance_from_start: Integer(default=0, min=0, max=100_000)` | no |
 | `loop_distance_from_finish` | `invalid_loop` | `min_distance_from_finish: Integer(default=0, min=0, max=100_000)` | no |
 | `max_loop_density` | `invalid_loop` | `max_density: Integer(default=30, min=0, max=100)` | no |
+| `scc_count` | `excessive_scc_count` | `max_scc_count: Integer(default=1, min=1, max=1_000_000)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

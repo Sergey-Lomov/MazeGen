@@ -23,7 +23,7 @@ describe("CheckSelectDialog", () => {
   it("lists every available check, not just unselected ones", () => {
     useMazeStore.setState({ selectedChecks: ["missing_endpoints"] });
     render(<CheckSelectDialog onClose={vi.fn()} />);
-    expect(screen.getByText("Missing endpoints")).toBeInTheDocument();
+    expect(screen.getByText("Start and finish present")).toBeInTheDocument();
     expect(screen.getByText("Minimum loop count")).toBeInTheDocument();
   });
 

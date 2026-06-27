@@ -15,6 +15,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   cycle_analysis_overflowed: () => ({ label: m["issue.cycle_analysis_overflowed.label"](), description: m["issue.cycle_analysis_overflowed.description"](), severity: "critical" }),
   repair_limit_reached: () => ({ label: m["issue.repair_limit_reached.label"](), description: m["issue.repair_limit_reached.description"](), severity: "critical" }),
   qc_no_progress: () => ({ label: m["issue.qc_no_progress.label"](), description: m["issue.qc_no_progress.description"](), severity: "critical" }),
+  excessive_scc_count: () => ({ label: m["issue.excessive_scc_count.label"](), description: m["issue.excessive_scc_count.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -43,6 +44,9 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
     ? m["issue.repair_limit_reached.time_budget_label"]()
     : undefined,
   qc_no_progress: (d) => d.rule_ids !== undefined ? m["issue.qc_no_progress.rule_ids_label"]({ rule_ids: d.rule_ids }) : undefined,
+  scc_count: (d) => d.scc_count !== undefined && d.max_scc_count !== undefined
+    ? m["issue.excessive_scc_count.scc_count_label"]({ scc_count: d.scc_count, max_scc_count: d.max_scc_count })
+    : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

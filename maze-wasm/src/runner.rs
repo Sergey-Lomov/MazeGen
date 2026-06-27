@@ -4,7 +4,7 @@ use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
-    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP},
+    quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, SccCountCheck, MAX_SCC_COUNT_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP, EXCESSIVE_SCC_COUNT},
     repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
@@ -32,6 +32,7 @@ fn check_id_info(id: &str) -> (IssueKind, CheckId) {
         "loop_distance_from_start" => (INVALID_LOOP, CheckId::LoopDistanceFromStart),
         "loop_distance_from_finish" => (INVALID_LOOP, CheckId::LoopDistanceFromFinish),
         "max_loop_density" => (INVALID_LOOP, CheckId::MaxLoopDensity),
+        "scc_count" => (EXCESSIVE_SCC_COUNT, CheckId::SccCount),
         other => unreachable!("check_id_info called with id not in config.checks's validated set: {other}"),
     }
 }
@@ -131,6 +132,15 @@ fn build_qc_and_repair_impl<T: Tessellation>(
                     .map(|v| v.clamp(0, 100) as u32)
                     .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
                 checks.push(Box::new(MaxLoopDensityCheck { max_density }));
+            }
+            "scc_count" => {
+                let max_scc_count = config.check_params
+                    .get("scc_count")
+                    .and_then(|p| p.get("max_scc_count"))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .map(|v| v.max(1) as u32)
+                    .unwrap_or(MAX_SCC_COUNT_DEFAULT);
+                checks.push(Box::new(SccCountCheck { max_scc_count }));
             }
             other => return Err(format!("unknown check: {other}")),
         }

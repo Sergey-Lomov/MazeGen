@@ -15,6 +15,7 @@ pub enum CheckId {
     LoopDistanceFromStart,
     LoopDistanceFromFinish,
     MaxLoopDensity,
+    SccCount,
 }
 
 impl CheckId {
@@ -30,6 +31,7 @@ impl CheckId {
             CheckId::LoopDistanceFromStart => "loop_distance_from_start",
             CheckId::LoopDistanceFromFinish => "loop_distance_from_finish",
             CheckId::MaxLoopDensity => "max_loop_density",
+            CheckId::SccCount => "scc_count",
         }
     }
 
@@ -45,6 +47,7 @@ impl CheckId {
             "loop_distance_from_start" => Some(CheckId::LoopDistanceFromStart),
             "loop_distance_from_finish" => Some(CheckId::LoopDistanceFromFinish),
             "max_loop_density" => Some(CheckId::MaxLoopDensity),
+            "scc_count" => Some(CheckId::SccCount),
             _ => None,
         }
     }

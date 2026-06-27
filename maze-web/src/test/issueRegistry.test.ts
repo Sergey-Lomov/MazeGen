@@ -22,6 +22,10 @@ describe("resolveIssue", () => {
     expect(resolveIssue("cycle_analysis_overflowed").severity).toBe("critical");
   });
 
+  it("returns warning severity for excessive_scc_count", () => {
+    expect(resolveIssue("excessive_scc_count").severity).toBe("warning");
+  });
+
   it("returns non-empty label and description for every known kind", () => {
     const knownKinds = [
       "missing_endpoints",
@@ -29,6 +33,7 @@ describe("resolveIssue", () => {
       "missing_loops",
       "invalid_loop",
       "cycle_analysis_overflowed",
+      "excessive_scc_count",
     ];
     for (const kind of knownKinds) {
       const info = resolveIssue(kind);
