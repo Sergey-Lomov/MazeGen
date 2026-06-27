@@ -24,7 +24,7 @@ pub use space::{
 };
 pub use meta::MazeMeta;
 pub use generation::{generate_maze, generate_maze_steps, build_preset_state, ElementsConfig, GenerationConfig, GenerationAlgorithm, GenerationEdge, GenerationStep, PresetConnection, PresetConnectionState, NodeLockKind, LockedNode, PresetState};
-pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS};
+pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS, RepairLimits};
 
 pub struct MazeAnalysis {
     nav_graph: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, graph::nav::NavGraph)>>,

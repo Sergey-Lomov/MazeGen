@@ -68,6 +68,8 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   debugStale: false,
   showDebugFrontier: true,
   mazeDirty: false,
+  repairMaxIterations: 10,
+  repairTimeBudgetSecs: null,
 
   loadRegistry: () => {
     return initWasm().then(() => {
@@ -282,6 +284,9 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   })),
 
   setError: (msg) => set({ error: msg }),
+
+  setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
+  setRepairTimeBudgetSecs: (v) => set({ repairTimeBudgetSecs: v }),
 });
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
@@ -346,6 +351,8 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     checks,
     check_rules,
     check_params: state.checkParams,
+    ...(state.repairMaxIterations != null ? { repair_max_iterations: state.repairMaxIterations } : {}),
+    ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
     initial: state.initialConfig,
     elements: state.elementsConfig,
     preset_connections: validPresets,

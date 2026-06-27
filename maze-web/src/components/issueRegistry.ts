@@ -13,6 +13,8 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   missing_loops: () => ({ label: m["issue.missing_loops.label"](), description: m["issue.missing_loops.description"](), severity: "warning" }),
   invalid_loop: () => ({ label: m["issue.invalid_loop.label"](), description: m["issue.invalid_loop.description"](), severity: "warning" }),
   cycle_analysis_overflowed: () => ({ label: m["issue.cycle_analysis_overflowed.label"](), description: m["issue.cycle_analysis_overflowed.description"](), severity: "critical" }),
+  repair_limit_reached: () => ({ label: m["issue.repair_limit_reached.label"](), description: m["issue.repair_limit_reached.description"](), severity: "critical" }),
+  qc_no_progress: () => ({ label: m["issue.qc_no_progress.label"](), description: m["issue.qc_no_progress.description"](), severity: "critical" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -33,6 +35,14 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   loop_distance_from_start: (d) => d.min_distance_from_start !== undefined ? m["issue.invalid_loop.loop_distance_from_start_label"]({ min_distance_from_start: d.min_distance_from_start }) : undefined,
   loop_distance_from_finish: (d) => d.min_distance_from_finish !== undefined ? m["issue.invalid_loop.loop_distance_from_finish_label"]({ min_distance_from_finish: d.min_distance_from_finish }) : undefined,
   max_loop_density: (d) => d.max_density !== undefined ? m["issue.invalid_loop.max_loop_density_label"]({ max_density: d.max_density }) : undefined,
+  // Keyed by the issue's own kind string, not a CheckId — `repair_limit_reached` carries no
+  // source check (see `IssuesBlock`'s null-sourceCheck fallback).
+  repair_limit_reached: (d) => d.limit === "max_iterations"
+    ? m["issue.repair_limit_reached.max_iterations_label"]()
+    : d.limit === "time_budget"
+    ? m["issue.repair_limit_reached.time_budget_label"]()
+    : undefined,
+  qc_no_progress: (d) => d.rule_ids !== undefined ? m["issue.qc_no_progress.rule_ids_label"]({ rule_ids: d.rule_ids }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

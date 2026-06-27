@@ -9,6 +9,8 @@ pub enum IssueKind {
     InvalidLoop,
     MissingLoops,
     CycleAnalysisOverflowed,
+    RepairLimitReached,
+    QcNoProgress,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -28,6 +30,20 @@ pub const MISSING_LOOPS: IssueKind = IssueKind::MissingLoops;
 /// Unlike the other kinds here, no `Check<T>` implementation produces this; it surfaces a
 /// condition from the always-on analytics computation, not a user-selected check.
 pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflowed;
+/// Not a toggleable QC check — pushed directly by `build_maze` (`generation::pipeline`) when the
+/// repair fixpoint loop exits because a `RepairLimits` bound was hit (max iterations or time
+/// budget), rather than via convergence (no active issues) or no-progress. Carries
+/// `IssueData::RepairLimitReached { limit }` identifying which bound fired. Surfaces as a
+/// critical analytics issue so the user can tell "still broken because the cap cut repair short"
+/// apart from "still broken because no strategy could fix it".
+pub const REPAIR_LIMIT_REACHED: IssueKind = IssueKind::RepairLimitReached;
+/// Not a toggleable QC check — pushed directly by `build_maze` when the repair fixpoint loop
+/// exits via the no-progress guard (the same `(rule_id, Issue)` set repeated identically across
+/// two iterations), rather than via convergence or a `RepairLimits` cap. Carries
+/// `IssueData::QcNoProgress { rule_ids }` naming the stuck rule(s) — typically a sign of two
+/// active rules whose strategies fight to a net-zero change each iteration (e.g. contradictory
+/// min/max thresholds on the same metric), distinct from simply running out of iterations/time.
+pub const QC_NO_PROGRESS: IssueKind = IssueKind::QcNoProgress;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -37,6 +53,8 @@ impl IssueKind {
             IssueKind::InvalidLoop => "invalid_loop",
             IssueKind::MissingLoops => "missing_loops",
             IssueKind::CycleAnalysisOverflowed => "cycle_analysis_overflowed",
+            IssueKind::RepairLimitReached => "repair_limit_reached",
+            IssueKind::QcNoProgress => "qc_no_progress",
         }
     }
 
@@ -55,6 +73,8 @@ impl IssueKind {
             "invalid_loop"       => Some(IssueKind::InvalidLoop),
             "missing_loops"      => Some(IssueKind::MissingLoops),
             "cycle_analysis_overflowed" => Some(IssueKind::CycleAnalysisOverflowed),
+            "repair_limit_reached" => Some(IssueKind::RepairLimitReached),
+            "qc_no_progress" => Some(IssueKind::QcNoProgress),
             _ => None,
         }
     }

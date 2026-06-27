@@ -287,6 +287,17 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     .filter((r) => r.kind !== "");
   const checkParams = assertStringRecordRecord(qualObj.checkParams, "quality.checkParams");
   const strategyParams = assertStringRecordRecord(qualObj.strategyParams, "quality.strategyParams");
+  // Optional — files saved before this setting existed (key absent entirely) default to the same
+  // values as a fresh store (see generationSlice's initial state): max_iterations capped, no time
+  // budget. A key that *is* present but `null` (the user explicitly disabled that limit) must
+  // stay `null`, not fall back to the default — checked via `in`, not `typeof === "number"`,
+  // which would also catch the legitimate "disabled" case and silently re-enable it on load.
+  const repairMaxIterations = "repairMaxIterations" in qualObj
+    ? (typeof qualObj.repairMaxIterations === "number" ? qualObj.repairMaxIterations : null)
+    : 10;
+  const repairTimeBudgetSecs = "repairTimeBudgetSecs" in qualObj
+    ? (typeof qualObj.repairTimeBudgetSecs === "number" ? qualObj.repairTimeBudgetSecs : null)
+    : null;
 
   // presets
   const presetsObj = assertObject(migrated.presets, "presets");
@@ -350,7 +361,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     version: CURRENT_VERSION,
     tessellation: { config, savedConfigs },
     generation: { seed, randomSeed, initial, elements },
-    quality: { selectedChecks, rules, checkParams, strategyParams },
+    quality: { selectedChecks, rules, checkParams, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
     presets: {
       connections,
       lockedNodes,

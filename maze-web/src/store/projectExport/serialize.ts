@@ -28,6 +28,8 @@ export function serializeProject(state: MazeState): ProjectFile {
       rules: state.rules,
       checkParams: state.checkParams,
       strategyParams: state.strategyParams,
+      repairMaxIterations: state.repairMaxIterations,
+      repairTimeBudgetSecs: state.repairTimeBudgetSecs,
     },
     presets: {
       connections: Array.from(state.presetConnections.entries()),

@@ -1,8 +1,10 @@
 import React from "react";
+import { useShallow } from "zustand/react/shallow";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { colors, font } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
+import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
@@ -40,14 +42,13 @@ export function AnalyticsFeature() {
   const generatedEdgeStats = useMazeStore((s) => s.edgeStats);
   const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
   const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
-  const generatedIssues = useMazeStore((s) => s.issues);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
+  const issues = useMazeStore(useShallow(selectAnalyticsIssues));
 
   const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
   const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
   const graphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
-  const issues = postEditAnalytics?.issues ?? generatedIssues;
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);

@@ -65,12 +65,25 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             }
         }
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
-        let details = issue.details().iter()
+        let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()
             .map(|(check_id, kv)| (
                 check_id.to_string(),
                 kv.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
             ))
             .collect();
+        // `REPAIR_LIMIT_REACHED` carries no source check (pushed directly by `build_maze`, not a
+        // toggleable `Check<T>`), so its detail can't be keyed by `CheckId` like the others —
+        // keyed by the issue's own kind string instead, the only stable key available here.
+        if let Some(IssueData::RepairLimitReached { limit }) = &issue.data {
+            details.insert(issue.kind.to_string(), HashMap::from([("limit".to_string(), limit.as_str().to_string())]));
+        }
+        // Same rationale as `REPAIR_LIMIT_REACHED` above — `QC_NO_PROGRESS` carries no source
+        // check either. `rule_ids` is joined into one comma-separated string since `details`'
+        // values are flat strings, not lists; the web side only needs it for display, not
+        // further parsing into a structured rule reference.
+        if let Some(IssueData::QcNoProgress { rule_ids }) = &issue.data {
+            details.insert(issue.kind.to_string(), HashMap::from([("rule_ids".to_string(), rule_ids.join(", "))]));
+        }
         IssueDto { kind: issue.kind.to_string(), invalid_loop_edges, source_checks, details }
     }).collect();
 

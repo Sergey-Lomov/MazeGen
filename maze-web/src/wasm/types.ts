@@ -199,6 +199,8 @@ export interface GenerateConfig {
   checks: string[];
   check_rules: QcRuleConfig[];
   check_params?: Record<string, Record<string, string>>;
+  repair_max_iterations?: number;
+  repair_time_budget_secs?: number;
   initial: InitialGenerationConfig;
   elements: ElementsConfig;
   preset_connections?: PresetConnection[];

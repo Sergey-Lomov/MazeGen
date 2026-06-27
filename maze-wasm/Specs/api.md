@@ -44,10 +44,14 @@ Returns `Array<StrategyDescriptor>` — list of all registered repair strategies
     id: string,
     params: Record<string, string>
   }>,
+  repair_max_iterations?: number,     // default: 10 — caps the repair fixpoint loop's iteration count
+  repair_time_budget_secs?: number,   // default: undefined (no time cap) — wall-clock budget for the repair loop
   initial: InitialGenerationConfig,   // default: { method: "custom_vertex_based" }
   elements: ElementsConfig,           // default: { one_way_chance: 0.04 }
 }
 ```
+
+`repair_max_iterations` and `repair_time_budget_secs` are both optional and independent — whichever limit is hit first stops the repair loop early, returning whatever issues remain unresolved at that point (see `Specs/repair.md`'s `RepairLimits`). Both `null`/omitted means no cap at all.
 
 ### `InitialGenerationConfig`
 

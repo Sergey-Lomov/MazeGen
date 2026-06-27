@@ -6,6 +6,9 @@ edition = "2024"
 [dependencies]
 rand = { version = "0.9", features = ["small_rng"] }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+
 [[example]]
 name = "print_maze"
 

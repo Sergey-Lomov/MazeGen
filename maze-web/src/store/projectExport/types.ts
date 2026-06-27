@@ -52,6 +52,8 @@ export interface ProjectFile {
     rules: { id: string; name: string; kind: string; checks: string[]; strategyId: string | null; disabled: boolean; ruleDisabled: boolean }[];
     checkParams: Record<string, Record<string, string>>;
     strategyParams: Record<string, Record<string, string>>;
+    repairMaxIterations: number | null;
+    repairTimeBudgetSecs: number | null;
   };
   presets: {
     connections: [string, PresetConnectionEntry][];

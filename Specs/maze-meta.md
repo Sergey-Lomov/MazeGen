@@ -30,7 +30,7 @@ MazeMeta::empty()  // both fields None
 
 ```
 generate_maze(graph, field, seed, start_node)
-build_maze(field, graph, seed, qc_engine, repair_engine, preset_state)
+build_maze(field, graph, seed, qc_engine, repair_engine, preset_state, limits)
   → Maze::new(field, graph)          // MazeMeta::empty() inside
   → QC + Repair loop
   → meta fields assigned by strategies

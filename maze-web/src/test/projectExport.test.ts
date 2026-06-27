@@ -14,6 +14,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: "strategy_a", disabled: false, ruleDisabled: false }],
     checkParams: { check_a: { param_a: "1" } },
     strategyParams: { strategy_a: { param_b: "2" } },
+    repairMaxIterations: 10,
+    repairTimeBudgetSecs: null,
     presetConnections: new Map(),
     lockedNodes: new Map(),
     defaultEdgeState: "undefined",
@@ -51,6 +53,25 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed).toEqual(serialized);
+  });
+
+  it("round-trips explicitly disabled repair limits (both null), not the default", () => {
+    const state = makeState({ repairMaxIterations: null, repairTimeBudgetSecs: null });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.quality.repairMaxIterations).toBeNull();
+    expect(reparsed.quality.repairTimeBudgetSecs).toBeNull();
+  });
+
+  it("defaults repair limits for a project file saved before this setting existed", () => {
+    const state = makeState();
+    const serialized = serializeProject(state);
+    const raw = JSON.parse(JSON.stringify(serialized));
+    delete raw.quality.repairMaxIterations;
+    delete raw.quality.repairTimeBudgetSecs;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.quality.repairMaxIterations).toBe(10);
+    expect(reparsed.quality.repairTimeBudgetSecs).toBeNull();
   });
 
   it("round-trips dirty post-edit draft edges", () => {

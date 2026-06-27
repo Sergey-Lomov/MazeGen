@@ -1,4 +1,4 @@
-﻿import type { NodeDto, EdgeDto } from "../../wasm/types";
+﻿import type { NodeDto, EdgeDto, IssueDto } from "../../wasm/types";
 import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, PassageKind } from "../renderers/types";
@@ -108,6 +108,24 @@ export function selectTessellationWouldLoseData(s: Pick<MazeState,
 >): boolean {
   if (s.previewKind === s.tessellationKind) return false;
   return s.fieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty;
+}
+
+const PIPELINE_ONLY_ISSUE_KINDS = ["repair_limit_reached", "qc_no_progress"];
+
+/** Issues shown by the Analytics card/feature — `postEditAnalytics.issues` when present
+ * (recomputed by `confirmPostEdit`'s `computeAnalytics`, which always re-runs right after
+ * generation, even with no user edits), else `issues` (the raw post-generation snapshot).
+ * `computeAnalytics` runs QC alone, with no `RepairLimits` concept, so `repair_limit_reached`/
+ * `qc_no_progress` (pushed only by `build_maze`'s repair loop — see `Specs/repair.md`) can never
+ * appear in `postEditAnalytics.issues`; carried forward from `issues` regardless of which source
+ * otherwise wins, so they survive the post-generation `confirmPostEdit` recompute. Single source
+ * of truth for both the bubble list (`AnalyticsFeature`) and the card status (`FeaturesPanel`) —
+ * they must agree on what counts as "this maze has issues". */
+export function selectAnalyticsIssues(s: Pick<MazeState, "issues" | "postEditAnalytics">): IssueDto[] {
+  return [
+    ...s.issues.filter((i) => PIPELINE_ONLY_ISSUE_KINDS.includes(i.kind)),
+    ...(s.postEditAnalytics?.issues ?? s.issues),
+  ];
 }
 
 export function buildMazeMarkers(

@@ -3,6 +3,7 @@ use serde::Deserialize;
 use maze_core::{
     generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, LockedNode, NodeLockKind},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
+    RepairLimits,
 };
 
 #[derive(Deserialize)]
@@ -130,6 +131,10 @@ pub struct GenerateConfig {
     #[serde(default)]
     pub check_params: HashMap<String, HashMap<String, String>>,
     #[serde(default)]
+    pub repair_max_iterations: Option<usize>,
+    #[serde(default)]
+    pub repair_time_budget_secs: Option<f64>,
+    #[serde(default)]
     pub initial: InitialGenerationConfig,
     #[serde(default)]
     pub elements: ElementsConfigDto,
@@ -163,6 +168,8 @@ impl Default for GenerateConfig {
                 },
             ],
             check_params: HashMap::new(),
+            repair_max_iterations: RepairLimits::default().max_iterations,
+            repair_time_budget_secs: RepairLimits::default().time_budget_secs,
             initial: InitialGenerationConfig::default(),
             elements: ElementsConfigDto::default(),
             preset_connections: vec![],
@@ -172,6 +179,13 @@ impl Default for GenerateConfig {
             preset_gen_source: None,
             debug: false,
         }
+    }
+}
+
+pub fn build_repair_limits(config: &GenerateConfig) -> RepairLimits {
+    RepairLimits {
+        max_iterations: config.repair_max_iterations,
+        time_budget_secs: config.repair_time_budget_secs,
     }
 }
 

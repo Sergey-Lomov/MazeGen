@@ -76,6 +76,8 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       rules: file.quality.rules,
       checkParams: file.quality.checkParams,
       strategyParams: file.quality.strategyParams,
+      repairMaxIterations: file.quality.repairMaxIterations,
+      repairTimeBudgetSecs: file.quality.repairTimeBudgetSecs,
       // presets
       presetConnections: restoredPresetConnections,
       lockedNodes: new Map(file.presets.lockedNodes),

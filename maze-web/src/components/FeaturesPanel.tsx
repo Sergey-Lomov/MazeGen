@@ -1,4 +1,5 @@
 ﻿import React, { useMemo, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { Save, FolderOpen, Maximize2 } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
@@ -16,6 +17,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
+import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { colors } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
@@ -103,9 +105,10 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const presetFinish = useMazeStore((s) => s.presetFinish);
 
   const selectedChecks = useMazeStore((s) => s.selectedChecks);
+  const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
+  const repairTimeBudgetSecs = useMazeStore((s) => s.repairTimeBudgetSecs);
   const nodes = useMazeStore((s) => s.nodes);
-  const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
-  const generatedIssues = useMazeStore((s) => s.issues);
+  const analyticsIssues = useMazeStore(useShallow(selectAnalyticsIssues));
   const loadProject = useMazeStore((s) => s.loadProject);
   const setError = useMazeStore((s) => s.setError);
 
@@ -198,8 +201,18 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
 
   const analyticsCard = computeAnalyticsCard(
     nodes.length > 0,
-    (postEditAnalytics?.issues ?? generatedIssues).map((issue) => issue.kind),
+    analyticsIssues.map((issue) => issue.kind),
   );
+
+  // No checks beats an unbounded repair loop — both are "warning", but having nothing to check
+  // at all is the more fundamental gap, so its message takes priority when both are true.
+  const repairUnbounded = repairMaxIterations == null && repairTimeBudgetSecs == null;
+  const qualityStatus: FeatureStatus = selectedChecks.length === 0 || repairUnbounded ? "warning" : "set";
+  const qualityComment = selectedChecks.length === 0
+    ? m["status.no_checks"]()
+    : repairUnbounded
+    ? m["status.repair_loop_unbounded"]()
+    : m["status.quality_configured"]();
 
   return (
     <div style={styles.panel}>
@@ -240,8 +253,8 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
       </FeatureCard>
       <FeatureCard
         title={m["quality.title"]()}
-        status={selectedChecks.length === 0 ? "warning" : "set"}
-        comment={selectedChecks.length === 0 ? m["status.no_checks"]() : m["status.quality_configured"]()}
+        status={qualityStatus}
+        comment={qualityComment}
         subtitle={selectedChecks.length === 1
           ? m["quality.checks_active"]({ count: selectedChecks.length })
           : m["quality.checks_active_plural"]({ count: selectedChecks.length })}

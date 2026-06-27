@@ -217,6 +217,12 @@ export interface GenerationState {
   showDebugFrontier: boolean;
   /** True after the maze has been generated since the last confirmTessellation. */
   mazeDirty: boolean;
+  /** Caps on the QC repair fixpoint loop (see `Specs/repair.md`'s `RepairLimits`). Both are
+   * optional and independent of each other — `null` disables that particular cap. If both are
+   * `null`, the loop has no hard cap at all (only convergence/no-progress stop it), which the
+   * Quality feature card surfaces as a warning. */
+  repairMaxIterations: number | null;
+  repairTimeBudgetSecs: number | null;
 }
 
 export interface GenerationActions {
@@ -262,6 +268,8 @@ export interface GenerationActions {
   setShowDebugFrontier: (v: boolean) => void;
   regenerate: () => void;
   setError: (msg: string | null) => void;
+  setRepairMaxIterations: (v: number | null) => void;
+  setRepairTimeBudgetSecs: (v: number | null) => void;
 }
 
 export interface AnalyticsOverlayState {

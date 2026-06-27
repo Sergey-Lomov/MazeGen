@@ -5,12 +5,46 @@ use rand::rngs::SmallRng;
 use crate::{Graph, Maze};
 use crate::ids::EdgeId;
 use crate::space::{Field, Tessellation};
-use crate::quality_control::{Issue, IssueData, QualityControlEngine};
-use crate::quality_control::issue_data::canonical_cycle_key;
+use crate::quality_control::{Issue, IssueData, QualityControlEngine, REPAIR_LIMIT_REACHED, QC_NO_PROGRESS};
+use crate::quality_control::issue_data::{canonical_cycle_key, RepairLimitKind};
 use crate::repair::{RepairEngine, RepairResult};
 use super::PresetState;
 
-pub const MAX_REPAIR_ITERATIONS: usize = 8;
+pub const MAX_REPAIR_ITERATIONS: usize = 10;
+
+/// Caps on the repair fixpoint loop in `build_maze`. Both bounds are optional and independent —
+/// whichever is hit first stops the loop. `None` for both means the loop only stops on
+/// convergence (no active issues) or no-progress, with no hard cap; callers surfacing this to
+/// users should treat "both None" as worth flagging, since an unconverging rule set can then loop
+/// indefinitely.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RepairLimits {
+    pub max_iterations: Option<usize>,
+    pub time_budget_secs: Option<f64>,
+}
+
+impl Default for RepairLimits {
+    fn default() -> Self {
+        RepairLimits { max_iterations: Some(MAX_REPAIR_ITERATIONS), time_budget_secs: None }
+    }
+}
+
+/// Milliseconds since an arbitrary epoch — only ever used for measuring elapsed duration within
+/// one `build_maze` call, never compared across calls. `std::time::Instant` panics on
+/// `wasm32-unknown-unknown` (no syscall backing it), so the wasm target reads `Performance.now()`
+/// via `js-sys` instead; native (including `cargo test`) uses the monotonic `Instant` clock.
+#[cfg(target_arch = "wasm32")]
+fn now_ms() -> f64 {
+    js_sys::Date::now()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn now_ms() -> f64 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_secs_f64() * 1000.0
+}
 
 pub fn build_maze<T: Tessellation>(
     field: Field<T>,
@@ -19,14 +53,27 @@ pub fn build_maze<T: Tessellation>(
     qc_engine: QualityControlEngine<T>,
     repair_engine: RepairEngine<T>,
     preset_state: &PresetState,
+    limits: RepairLimits,
 ) -> (Maze<T>, Vec<crate::quality_control::Issue>) {
     let mut maze = Maze::new(field, graph);
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut failed: HashSet<String> = HashSet::new();
     let mut previous_active: Option<Vec<(String, Issue)>> = None;
     let check_id_to_rule = repair_engine.check_id_to_rule();
+    let start_ms = now_ms();
 
-    for _ in 0..MAX_REPAIR_ITERATIONS {
+    let mut iterations_done = 0usize;
+    let mut limit_reached: Option<RepairLimitKind> = None;
+    let mut no_progress_rules: Option<Vec<String>> = None;
+    loop {
+        if let Some(max) = limits.max_iterations {
+            if iterations_done >= max { limit_reached = Some(RepairLimitKind::MaxIterations); break; }
+        }
+        if let Some(budget_secs) = limits.time_budget_secs {
+            if now_ms() - start_ms >= budget_secs * 1000.0 { limit_reached = Some(RepairLimitKind::TimeBudget); break; }
+        }
+        iterations_done += 1;
+
         let issues = qc_engine.run(&maze, &mut rng);
         // Merge (not drop) issues that share a rule — multiple checks in the same rule may
         // legitimately produce the same IssueKind (e.g. several reasons a cycle can be invalid).
@@ -72,6 +119,7 @@ pub fn build_maze<T: Tessellation>(
         // different cycles flagged invalid) must not look like a no-progress oscillation. See
         // https://github.com/Sergey-Lomov/MazeGen/issues/27.
         if Some(&active) == previous_active.as_ref() {
+            no_progress_rules = Some(active.iter().map(|(rule_id, _)| rule_id.clone()).collect());
             break;
         }
         previous_active = Some(active.clone());
@@ -90,7 +138,22 @@ pub fn build_maze<T: Tessellation>(
         }
     }
 
-    let remaining = qc_engine.run(&maze, &mut rng);
+    let mut remaining = qc_engine.run(&maze, &mut rng);
+    // `limit_reached` is only `Some` when the loop's own cap (not convergence, not no-progress)
+    // cut the repair short — surfaced as its own issue (rather than silently folded into
+    // whatever QC issues remain) so the user can tell "still broken because the cap fired" apart
+    // from "still broken because no strategy could fix it". Not a toggleable `Check<T>`, so —
+    // like `CYCLE_ANALYSIS_OVERFLOWED` — it carries no source check.
+    if let Some(limit) = limit_reached {
+        remaining.push(Issue::with_data(REPAIR_LIMIT_REACHED, IssueData::RepairLimitReached { limit }));
+    }
+    // Mirrors the `limit_reached` push above — surfaces *why* the loop stopped early as its own
+    // issue, distinct from "ran out of iterations/time" (`REPAIR_LIMIT_REACHED`). Naming the
+    // stuck rule(s) makes a structural conflict (e.g. contradictory min/max thresholds on the
+    // same metric) visible without having to infer it from the leftover QC issues alone.
+    if let Some(rule_ids) = no_progress_rules {
+        remaining.push(Issue::with_data(QC_NO_PROGRESS, IssueData::QcNoProgress { rule_ids }));
+    }
     (maze, remaining)
 }
 

@@ -251,7 +251,22 @@ Same candidate filtering (existence + preset-protection), same cut mechanics (`t
 Defined in `maze_core::generation::pipeline`.
 
 ```rust
-pub const MAX_REPAIR_ITERATIONS: usize = 8;
+pub const MAX_REPAIR_ITERATIONS: usize = 10;
+
+/// Caps on the repair fixpoint loop. Both bounds are optional and independent — whichever is hit
+/// first stops the loop. `None` for both means no hard cap (loop only stops on convergence or
+/// no-progress) — callers surfacing this to users should flag that combination, since an
+/// unconverging rule set can then loop indefinitely.
+pub struct RepairLimits {
+    pub max_iterations: Option<usize>,
+    pub time_budget_secs: Option<f64>,
+}
+
+impl Default for RepairLimits {
+    fn default() -> Self {
+        RepairLimits { max_iterations: Some(MAX_REPAIR_ITERATIONS), time_budget_secs: None }
+    }
+}
 
 pub fn build_maze<F: Field>(
     field: F,
@@ -260,12 +275,15 @@ pub fn build_maze<F: Field>(
     qc_engine: QualityControlEngine<F>,
     repair_engine: RepairEngine<F>,
     preset_state: &PresetState,
+    limits: RepairLimits,
 ) -> (Maze<F>, Vec<Issue>)
 ```
 
-`build_maze` and `MAX_REPAIR_ITERATIONS` are re-exported from `maze_core` root.
+`build_maze`, `MAX_REPAIR_ITERATIONS`, and `RepairLimits` are re-exported from `maze_core` root.
 
 The second return value is the list of unresolved issues after all repair iterations. An empty vec means all issues were resolved. Callers decide how to handle unresolved issues — the pipeline always returns a maze regardless.
+
+Time is measured via a small internal `now_ms()` helper, not `std::time::Instant` directly — `Instant` panics on `wasm32-unknown-unknown` (no syscall backing it). Native (including `cargo test`) reads a process-lifetime monotonic clock; the `wasm32` target reads `js_sys::Date::now()` instead. Either way, the value is only ever used for measuring elapsed duration within one `build_maze` call.
 
 Logic:
 
@@ -274,7 +292,9 @@ Logic:
 3. Build `check_id_to_rule: HashMap<CheckId, String>` once via `repair_engine.check_id_to_rule()` — maps every check id across every configured rule (strategy or not) to its rule id.
 4. Track `failed: HashSet<String>` — rule ids whose strategy returned `Failed`.
 5. Track `previous_fingerprint: Option<Vec<String>>` (sorted rule ids) for progress detection.
-6. Loop up to `MAX_REPAIR_ITERATIONS`:
+6. Record `start_ms = now_ms()` before the loop. Loop, checking at the top of each iteration (before running QC):
+   - If `limits.max_iterations` is `Some(max)` and the iteration count already reached `max`: break.
+   - If `limits.time_budget_secs` is `Some(budget)` and `now_ms() - start_ms >= budget * 1000.0`: break.
    - Run QC.
    - **Merge, not drop, issues sharing a rule** — multiple checks in the same rule may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). For each raw issue, route by `issue.single_source_check()` — `Some(check_id)` only when the issue carries exactly one source check, looked up via `check_id_to_rule`; `None` (zero sources, e.g. `CYCLE_ANALYSIS_OVERFLOWED`, or — should never happen for a raw pre-merge issue, guarded by `debug_assert!` — two or more) routes to no rule and the issue is dropped from this iteration's merge map. This is a deliberate fail-safe: a malformed 2+-source raw issue is routed as "no rule" rather than silently picked by an arbitrary single source id, which is what indexing `source_checks()` directly would do in a release build with `debug_assert!` compiled out. An issue with no matching rule isn't lost from the maze's perspective — the final `qc_engine.run` after the loop recomputes fresh and will surface it again if still present. Group routed issues by rule id into a `HashMap<String, Issue>`: the first issue for a rule seeds the entry, any further issue for the same rule is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions sources via `Issue::push_source` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice; `invalid_sources` (per-cycle check attribution) is unioned by canonical key alongside it. The remap step uses `.get()` on the old→new index map, not direct indexing — an out-of-range `invalid` index from a malformed future `Check` is dropped (debug-asserted, not panicked) rather than crashing the pipeline. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces. Then filter out `failed` rule ids. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
    - **Rules with no registered strategy still merge their issues** (for attribution) but are filtered out before the fingerprint/dispatch step via `repair_engine.strategy_rule_ids()` (a precomputed `HashSet`, not a per-lookup scan) — same final effect as a kind without a strategy being skipped in the old design, just keyed by rule now.

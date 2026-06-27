@@ -7,7 +7,7 @@ use maze_core::{
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP},
     repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy},
 };
-use crate::generation_config::{GenerateConfig, build_generation_config};
+use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
 use crate::dto::{EdgeDto, GenerationStepDto};
 use crate::analytics::build_analytics_snapshot;
 
@@ -222,7 +222,7 @@ pub fn run_generate<T: Tessellation>(
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<T>(config)?;
 
-    let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state);
+    let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, build_repair_limits(config));
 
     if let Some([fx, fy]) = config.preset_finish {
         if let Some(finish_id) = maze.field.all_points()

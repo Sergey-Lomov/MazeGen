@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use maze_core::{IdGenerator, Graph};
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
-use maze_core::generation::{generate_maze, GenerationConfig, PresetState, pipeline::build_maze};
+use maze_core::generation::{generate_maze, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::validation::is_connected;
 use maze_core::io::render_ascii;
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
@@ -31,7 +31,7 @@ fn main() {
         vec![rule],
     );
 
-    let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine, &PresetState::empty());
+    let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine, &PresetState::empty(), RepairLimits::default());
     if !warnings.is_empty() {
         eprintln!("warnings: {:?}", warnings.iter().map(|i| i.kind).collect::<Vec<_>>());
     }

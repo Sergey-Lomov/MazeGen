@@ -43,4 +43,33 @@ pub enum IssueData {
     Missing {
         missing: u32,
     },
+    /// Carried by `REPAIR_LIMIT_REACHED` (see that const's doc comment) — identifies which
+    /// `RepairLimits` bound cut the repair loop short.
+    RepairLimitReached {
+        limit: RepairLimitKind,
+    },
+    /// Carried by `QC_NO_PROGRESS` (see that const's doc comment) — the rule ids whose merged
+    /// `(rule_id, Issue)` pair was byte-for-byte identical to the previous iteration's, the
+    /// condition that tripped the no-progress guard. Typically surfaces a structural conflict
+    /// between two active rules fighting over the same metric (e.g. a `min_loop_density` rule
+    /// and a `max_loop_density` rule whose thresholds can't both be satisfied at once) rather
+    /// than a transient stall.
+    QcNoProgress {
+        rule_ids: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepairLimitKind {
+    MaxIterations,
+    TimeBudget,
+}
+
+impl RepairLimitKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RepairLimitKind::MaxIterations => "max_iterations",
+            RepairLimitKind::TimeBudget => "time_budget",
+        }
+    }
 }
