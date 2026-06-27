@@ -17,6 +17,7 @@ export class AnalyticsRenderer {
   private readonly closedCellsContainer: Container;
   private readonly regionsContainer: Container;
   private readonly wallsContainer: Container;
+  private readonly regionsBorderContainer: Container;
   private readonly markersContainer: Container;
   private readonly graphContainer: Container;
   private readonly navGraphContainer: Container;
@@ -42,6 +43,7 @@ export class AnalyticsRenderer {
     this.closedCellsContainer = new Container();
     this.regionsContainer     = new Container();
     this.wallsContainer       = new Container();
+    this.regionsBorderContainer = new Container();
     this.markersContainer     = new Container();
     this.graphContainer       = new Container();
     this.navGraphContainer    = new Container();
@@ -54,6 +56,7 @@ export class AnalyticsRenderer {
     container.addChild(this.closedCellsContainer);
     container.addChild(this.regionsContainer);
     container.addChild(this.wallsContainer);
+    container.addChild(this.regionsBorderContainer);
     container.addChild(this.markersContainer);
     container.addChild(this.graphContainer);
     container.addChild(this.navGraphContainer);
@@ -68,7 +71,7 @@ export class AnalyticsRenderer {
       walls: this.wallsContainer,
       markers: this.markersContainer,
     });
-    this.regionsRenderer = new RegionsRenderer(this.regionsContainer);
+    this.regionsRenderer = new RegionsRenderer({ fill: this.regionsContainer, border: this.regionsBorderContainer });
     this.graphRenderer = new MazeGraphRenderer(this.graphContainer);
     this.navGraphRenderer = new NavGraphRenderer(this.navGraphContainer);
     this.pureCyclesRenderer = new PureCyclesOverlay(this.pureCyclesContainer);
@@ -145,6 +148,7 @@ export class AnalyticsRenderer {
     const componentCount = graphAnalytics?.component_count ?? 0;
     const showRegions = analyticsOpen && showComponentsOverlay && componentCount > 0;
     this.regionsContainer.visible = showRegions;
+    this.regionsBorderContainer.visible = showRegions;
     if (showRegions) {
       const components: number[][] = Array.from({ length: componentCount }, () => []);
       const rawNc = graphAnalytics?.node_component;
@@ -233,6 +237,7 @@ export class AnalyticsRenderer {
     this.floorContainer.destroy();
     this.regionsContainer.destroy();
     this.wallsContainer.destroy();
+    this.regionsBorderContainer.destroy();
     this.markersContainer.destroy();
     this.graphContainer.destroy();
     this.navGraphContainer.destroy();
