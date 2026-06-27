@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { ParamFields } from "./ParamFields";
 import { useParamEditor } from "./useParamEditor";
-import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, NO_FIX_STRATEGY_ID } from "./qualityI18n";
+import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { colors, font, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
@@ -87,7 +87,12 @@ function StrategyParamPanel({ strategyId, params }: { strategyId: string; params
   return (
     <div style={styles.paramsSection}>
       <div style={styles.paramsSeparator} />
-      <ParamFields params={localizedParams} values={values} onChange={onChange} />
+      <ParamFields
+        params={localizedParams}
+        values={values}
+        onChange={onChange}
+        getDescription={(p) => resolveParamDescription(p.id)}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import React from "react";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
+import { resolveParamDescription } from "../qualityI18n";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import type { ParamDescriptor } from "../../../wasm/types";
 
@@ -31,7 +32,12 @@ export function ParamizedDetail({ id, label, description, params, storeValues, o
       {params.length > 0 && (
         <>
           <div style={styles.detailDivider} />
-          <ParamFields params={params} values={values} onChange={onChange} />
+          <ParamFields
+            params={params}
+            values={values}
+            onChange={onChange}
+            getDescription={(p) => resolveParamDescription(p.id)}
+          />
         </>
       )}
     </div>

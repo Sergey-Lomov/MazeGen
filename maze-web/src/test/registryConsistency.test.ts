@@ -37,7 +37,8 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
     for (const check of checks) {
       for (const param of check.params) {
         expect(paramI18n[param.id], `missing paramI18n entry for "${param.id}" (check "${check.id}")`).toBeDefined();
-        expect(paramI18n[param.id]().length).toBeGreaterThan(0);
+        expect(paramI18n[param.id].label().length).toBeGreaterThan(0);
+        expect(paramI18n[param.id].description().length).toBeGreaterThan(0);
       }
     }
   });
@@ -63,7 +64,8 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
     for (const strategy of strategies) {
       for (const param of strategy.params) {
         expect(paramI18n[param.id], `missing paramI18n entry for "${param.id}" (strategy "${strategy.id}")`).toBeDefined();
-        expect(paramI18n[param.id]().length).toBeGreaterThan(0);
+        expect(paramI18n[param.id].label().length).toBeGreaterThan(0);
+        expect(paramI18n[param.id].description().length).toBeGreaterThan(0);
       }
     }
   });

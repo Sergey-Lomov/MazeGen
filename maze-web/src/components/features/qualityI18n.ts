@@ -97,22 +97,67 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   },
 };
 
-export const paramI18n: Record<string, MessageFn> = {
-  min_loops: m["param.min_loops.label"] as MessageFn,
-  min_loop_length: m["param.min_loop_length.label"] as MessageFn,
-  max_loop_length: m["param.max_loop_length.label"] as MessageFn,
-  min_distinct_exits: m["param.min_distinct_exits.label"] as MessageFn,
-  min_distance_from_start: m["param.min_distance_from_start.label"] as MessageFn,
-  min_distance_from_finish: m["param.min_distance_from_finish.label"] as MessageFn,
-  max_density: m["param.max_density.label"] as MessageFn,
-  min_density: m["param.min_density.label"] as MessageFn,
-  avg_loop_length_estimate: m["param.avg_loop_length_estimate.label"] as MessageFn,
-  path_weight: m["param.path_weight.label"] as MessageFn,
-  junction_weight: m["param.junction_weight.label"] as MessageFn,
-  oneway_weight: m["param.oneway_weight.label"] as MessageFn,
-  short_overlap_weight: m["param.short_overlap_weight.label"] as MessageFn,
-  other_overlap_weight: m["param.other_overlap_weight.label"] as MessageFn,
-  reserve_percent: m["param.reserve_percent.label"] as MessageFn,
+export const paramI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
+  min_loops: {
+    label: m["param.min_loops.label"] as MessageFn,
+    description: m["param.min_loops.description"] as MessageFn,
+  },
+  min_loop_length: {
+    label: m["param.min_loop_length.label"] as MessageFn,
+    description: m["param.min_loop_length.description"] as MessageFn,
+  },
+  max_loop_length: {
+    label: m["param.max_loop_length.label"] as MessageFn,
+    description: m["param.max_loop_length.description"] as MessageFn,
+  },
+  min_distinct_exits: {
+    label: m["param.min_distinct_exits.label"] as MessageFn,
+    description: m["param.min_distinct_exits.description"] as MessageFn,
+  },
+  min_distance_from_start: {
+    label: m["param.min_distance_from_start.label"] as MessageFn,
+    description: m["param.min_distance_from_start.description"] as MessageFn,
+  },
+  min_distance_from_finish: {
+    label: m["param.min_distance_from_finish.label"] as MessageFn,
+    description: m["param.min_distance_from_finish.description"] as MessageFn,
+  },
+  max_density: {
+    label: m["param.max_density.label"] as MessageFn,
+    description: m["param.max_density.description"] as MessageFn,
+  },
+  min_density: {
+    label: m["param.min_density.label"] as MessageFn,
+    description: m["param.min_density.description"] as MessageFn,
+  },
+  avg_loop_length_estimate: {
+    label: m["param.avg_loop_length_estimate.label"] as MessageFn,
+    description: m["param.avg_loop_length_estimate.description"] as MessageFn,
+  },
+  path_weight: {
+    label: m["param.path_weight.label"] as MessageFn,
+    description: m["param.path_weight.description"] as MessageFn,
+  },
+  junction_weight: {
+    label: m["param.junction_weight.label"] as MessageFn,
+    description: m["param.junction_weight.description"] as MessageFn,
+  },
+  oneway_weight: {
+    label: m["param.oneway_weight.label"] as MessageFn,
+    description: m["param.oneway_weight.description"] as MessageFn,
+  },
+  short_overlap_weight: {
+    label: m["param.short_overlap_weight.label"] as MessageFn,
+    description: m["param.short_overlap_weight.description"] as MessageFn,
+  },
+  other_overlap_weight: {
+    label: m["param.other_overlap_weight.label"] as MessageFn,
+    description: m["param.other_overlap_weight.description"] as MessageFn,
+  },
+  reserve_percent: {
+    label: m["param.reserve_percent.label"] as MessageFn,
+    description: m["param.reserve_percent.description"] as MessageFn,
+  },
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {
@@ -140,5 +185,9 @@ export function resolveStrategyDescription(id: string): string {
 }
 
 export function resolveParamLabel(id: string, fallback: string): string {
-  return paramI18n[id]?.() ?? fallback;
+  return paramI18n[id]?.label() ?? fallback;
+}
+
+export function resolveParamDescription(id: string): string | undefined {
+  return paramI18n[id]?.description();
 }

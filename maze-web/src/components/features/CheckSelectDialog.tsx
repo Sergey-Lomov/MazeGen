@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { ParamFields } from "./ParamFields";
-import { resolveCheckLabel, resolveCheckDescription, resolveParamLabel } from "./qualityI18n";
+import { resolveCheckLabel, resolveCheckDescription, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
 import { colors, font, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
@@ -64,6 +64,7 @@ export function CheckSelectDialog({ onClose }: Props) {
             params={selectedCheck.params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }))}
             getValue={(p) => paramOverrides[selectedId]?.[p.id] ?? defaultValue(p)}
             onChange={handleParamChange}
+            getDescription={(p) => resolveParamDescription(p.id)}
           />
         </div>
       )}

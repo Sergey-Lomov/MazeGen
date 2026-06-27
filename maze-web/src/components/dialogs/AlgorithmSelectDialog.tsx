@@ -66,21 +66,21 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
       {isVertexBased && vertexParams && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
-          <SliderRow label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
-          <SliderRow label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
-          <SliderRow label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
-          <SliderRow label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
-          <SliderRow label={m["generation.cyclicity"]()} value={vertexParams.cyclicity ?? 0.0} onChange={(v) => setGenerationParam("cyclicity", v)} />
+          <SliderRow label={m["generation.depth_first"]()} description={m["generation.desc.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
+          <SliderRow label={m["generation.corridor_chance"]()} description={m["generation.desc.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
+          <SliderRow label={m["generation.branching"]()} description={m["generation.desc.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
+          <SliderRow label={m["generation.directionality"]()} description={m["generation.desc.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
+          <SliderRow label={m["generation.cyclicity"]()} description={m["generation.desc.cyclicity"]()} value={vertexParams.cyclicity ?? 0.0} onChange={(v) => setGenerationParam("cyclicity", v)} />
         </div>
       )}
       {isEdgeBased && edgeParams && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
-          <SliderRow label={m["generation.corridor_length"]()} value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
-          <SliderRow label={m["generation.branching"]()} value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
-          <SliderRow label={m["generation.depth_first"]()} value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
-          <SliderRow label={m["generation.directionality"]()} value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
-          <SliderRow label={m["generation.cyclicity"]()} value={edgeParams.cyclicity ?? 0.0} onChange={(v) => setEdgeBasedParam("cyclicity", v)} />
+          <SliderRow label={m["generation.corridor_length"]()} description={m["generation.desc.corridor_length"]()} value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
+          <SliderRow label={m["generation.branching"]()} description={m["generation.desc.branching"]()} value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
+          <SliderRow label={m["generation.depth_first"]()} description={m["generation.desc.depth_first"]()} value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
+          <SliderRow label={m["generation.directionality"]()} description={m["generation.desc.directionality"]()} value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
+          <SliderRow label={m["generation.cyclicity"]()} description={m["generation.desc.cyclicity"]()} value={edgeParams.cyclicity ?? 0.0} onChange={(v) => setEdgeBasedParam("cyclicity", v)} />
         </div>
       )}
     </>
@@ -116,7 +116,7 @@ const styles: Record<string, React.CSSProperties> = {
   paramsSection: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    gap: 10,
   },
   paramsSeparator: {
     borderTop: `1px solid ${colors.borderDim}`,
