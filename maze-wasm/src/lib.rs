@@ -81,14 +81,14 @@ pub fn available_checks() -> JsValue {
     let checks = vec![
         CheckDescriptor {
             id: "missing_endpoints",
-            label: "Missing endpoints",
+            label: "Start and finish present",
             description: "Fires if the maze has no start or no finish.",
             issue_kinds: vec![kind_str(MISSING_ENDPOINTS)],
             params: vec![],
         },
         CheckDescriptor {
             id: "unreachable_finish",
-            label: "Unreachable finish",
+            label: "Finish reachable from start",
             description: "Fires if finish cannot be reached from start via directed traversal.",
             issue_kinds: vec![kind_str(UNREACHABLE_FINISH)],
             params: vec![],
