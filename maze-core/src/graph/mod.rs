@@ -72,7 +72,7 @@ impl Graph {
         self.incoming.insert(id, Vec::new());
     }
 
-    pub fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
+    pub(crate) fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
         debug_assert!(self.outgoing.contains_key(&from), "add_edge: node {from} not in graph");
         debug_assert!(self.incoming.contains_key(&to), "add_edge: node {to} not in graph");
         if let Some(existing) = self.edge_between(from, to) {
@@ -86,13 +86,34 @@ impl Graph {
         id
     }
 
-    pub fn add_bidirectional_edge(&mut self, a: NodeId, b: NodeId, kind: EdgeKind) -> (EdgeId, EdgeId) {
+    pub(crate) fn add_bidirectional_edge(&mut self, a: NodeId, b: NodeId, kind: EdgeKind) -> (EdgeId, EdgeId) {
         let ab = self.add_edge(a, b, kind.clone());
         let ba = self.add_edge(b, a, kind);
         (ab, ba)
     }
 
-    pub fn remove_edge(&mut self, id: EdgeId) {
+    /// Adds a directed edge with no `PresetState` check — for building the initial graph
+    /// from caller-trusted preset/post-edit data (before generation/repair starts) or for
+    /// hand-built test fixtures, not for mutating an already-generated graph. Generation
+    /// algorithms and repair strategies must go through the `try_add_edge`/`try_remove_edge`/
+    /// `try_add_bidirectional_edge` helpers in `generation::mod` instead.
+    pub fn build_initial_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
+        self.add_edge(from, to, kind)
+    }
+
+    /// Bidirectional counterpart of `build_initial_edge` — same unchecked-construction contract.
+    pub fn build_initial_bidirectional_edge(&mut self, a: NodeId, b: NodeId, kind: EdgeKind) -> (EdgeId, EdgeId) {
+        self.add_bidirectional_edge(a, b, kind)
+    }
+
+    /// Removes an edge with no `PresetState` check — same unchecked-construction contract as
+    /// `build_initial_edge`, for hand-built test fixtures and graph setup. Repair strategies
+    /// must go through `try_remove_edge` in `generation::mod` instead.
+    pub fn remove_initial_edge(&mut self, id: EdgeId) {
+        self.remove_edge(id);
+    }
+
+    pub(crate) fn remove_edge(&mut self, id: EdgeId) {
         if let Some(edge) = self.edges[id].take() {
             self.outgoing.entry(edge.from).and_modify(|v| v.retain(|&e| e != id));
             self.incoming.entry(edge.to).and_modify(|v| v.retain(|&e| e != id));

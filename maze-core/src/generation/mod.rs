@@ -252,6 +252,37 @@ pub(crate) fn try_add_edge(
     }
 }
 
+/// try_add_bidirectional_edge: strict "both directions free, or skip the pair" connect for
+/// repair strategies (`MissingLoopsRandomStrategy`, `ExpandRegionPassageStrategy`) that need a
+/// full passage, not the base-generation `try_add_edge` one_way_chance coin flip. Completion-
+/// aware: if one direction already exists (e.g. a preset one-way edge), only the missing
+/// direction is added rather than duplicating. Returns true if at least one direction was added
+/// or both were already present (i.e. the pair ends up as a full passage); false if either
+/// direction is blocked by `preset_state`, in which case nothing is mutated.
+pub(crate) fn try_add_bidirectional_edge(
+    graph: &mut Graph,
+    a: NodeId,
+    b: NodeId,
+    preset_state: &PresetState,
+) -> bool {
+    let fwd_blocked = preset_state.blocked.contains(&(a, b))
+        || preset_state.locked_out.contains(&a)
+        || preset_state.locked_in.contains(&b);
+    let bwd_blocked = preset_state.blocked.contains(&(b, a))
+        || preset_state.locked_out.contains(&b)
+        || preset_state.locked_in.contains(&a);
+    if fwd_blocked || bwd_blocked {
+        return false;
+    }
+    if graph.edge_between(a, b).is_none() {
+        graph.add_edge(a, b, EdgeKind::Basic);
+    }
+    if graph.edge_between(b, a).is_none() {
+        graph.add_edge(b, a, EdgeKind::Basic);
+    }
+    true
+}
+
 /// try_remove_edge: respects PresetState before removing a directed edge.
 /// Returns true if the edge was removed, false if it is protected by a preset connection.
 pub(crate) fn try_remove_edge(

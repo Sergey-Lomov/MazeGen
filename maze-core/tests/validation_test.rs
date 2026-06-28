@@ -15,15 +15,15 @@ fn make_graph(n: usize) -> (Graph, Vec<u64>) {
 #[test]
 fn connected_bidirectional_graph() {
     let (mut graph, ids) = make_graph(3);
-    graph.add_bidirectional_edge(ids[0], ids[1], EdgeKind::Basic);
-    graph.add_bidirectional_edge(ids[1], ids[2], EdgeKind::Basic);
+    graph.build_initial_bidirectional_edge(ids[0], ids[1], EdgeKind::Basic);
+    graph.build_initial_bidirectional_edge(ids[1], ids[2], EdgeKind::Basic);
     assert!(is_connected(&graph, ids[0]));
 }
 
 #[test]
 fn disconnected_graph_returns_false() {
     let (mut graph, ids) = make_graph(3);
-    graph.add_bidirectional_edge(ids[0], ids[1], EdgeKind::Basic);
+    graph.build_initial_bidirectional_edge(ids[0], ids[1], EdgeKind::Basic);
     // ids[2] isolated
     assert!(!is_connected(&graph, ids[0]));
 }
@@ -33,8 +33,8 @@ fn connected_via_incoming_only() {
     // ids[0] → ids[1] → ids[2] (one-way chain)
     // BFS from ids[2] must still reach ids[0] via incoming edges
     let (mut graph, ids) = make_graph(3);
-    graph.add_edge(ids[0], ids[1], EdgeKind::Basic);
-    graph.add_edge(ids[1], ids[2], EdgeKind::Basic);
+    graph.build_initial_edge(ids[0], ids[1], EdgeKind::Basic);
+    graph.build_initial_edge(ids[1], ids[2], EdgeKind::Basic);
     assert!(is_connected(&graph, ids[2]));
 }
 

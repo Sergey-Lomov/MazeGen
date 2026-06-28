@@ -22,7 +22,7 @@ fn add_node_increases_count() {
 #[test]
 fn add_edge_connects_nodes_directed() {
     let (mut graph, a, b, _) = setup();
-    graph.add_edge(a, b, EdgeKind::Basic);
+    graph.build_initial_edge(a, b, EdgeKind::Basic);
     assert!(graph.edge_between(a, b).is_some());
     assert!(graph.edge_between(b, a).is_none());
 }
@@ -30,7 +30,7 @@ fn add_edge_connects_nodes_directed() {
 #[test]
 fn add_bidirectional_edge_creates_two_edges() {
     let (mut graph, a, b, _) = setup();
-    graph.add_bidirectional_edge(a, b, EdgeKind::Basic);
+    graph.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
     assert!(graph.edge_between(a, b).is_some());
     assert!(graph.edge_between(b, a).is_some());
     assert_eq!(graph.edges().count(), 2);
@@ -43,7 +43,7 @@ fn add_bidirectional_edge_creates_two_edges() {
 #[test]
 fn neighbors_after_add_edge() {
     let (mut graph, a, b, _) = setup();
-    graph.add_edge(a, b, EdgeKind::Basic);
+    graph.build_initial_edge(a, b, EdgeKind::Basic);
     let out_a: Vec<_> = graph.outgoing_neighbors(a).collect();
     let out_b: Vec<_> = graph.outgoing_neighbors(b).collect();
     assert_eq!(out_a, vec![b]);
@@ -53,7 +53,7 @@ fn neighbors_after_add_edge() {
 #[test]
 fn incoming_neighbors_after_add_edge() {
     let (mut graph, a, b, _) = setup();
-    graph.add_edge(a, b, EdgeKind::Basic);
+    graph.build_initial_edge(a, b, EdgeKind::Basic);
     let inc_b: Vec<_> = graph.incoming_neighbors(b).collect();
     assert_eq!(inc_b, vec![a]);
     let inc_a: Vec<_> = graph.incoming_neighbors(a).collect();
@@ -63,8 +63,8 @@ fn incoming_neighbors_after_add_edge() {
 #[test]
 fn remove_edge_tombstone() {
     let (mut graph, a, b, _) = setup();
-    let eid = graph.add_edge(a, b, EdgeKind::Basic);
-    graph.remove_edge(eid);
+    let eid = graph.build_initial_edge(a, b, EdgeKind::Basic);
+    graph.remove_initial_edge(eid);
     assert!(graph.edge_between(a, b).is_none());
     assert!(graph.outgoing_neighbors(a).next().is_none());
     assert!(graph.incoming_neighbors(b).next().is_none());
@@ -73,9 +73,9 @@ fn remove_edge_tombstone() {
 #[test]
 fn remove_edge_does_not_affect_other_edges() {
     let (mut graph, a, b, c) = setup();
-    let eid_ab = graph.add_edge(a, b, EdgeKind::Basic);
-    graph.add_edge(b, c, EdgeKind::Basic);
-    graph.remove_edge(eid_ab);
+    let eid_ab = graph.build_initial_edge(a, b, EdgeKind::Basic);
+    graph.build_initial_edge(b, c, EdgeKind::Basic);
+    graph.remove_initial_edge(eid_ab);
     assert!(graph.edge_between(b, c).is_some());
 }
 
@@ -88,17 +88,17 @@ fn edge_between_unconnected_nodes_is_none() {
 #[test]
 fn edges_filters_tombstones() {
     let (mut graph, a, b, c) = setup();
-    let eid_ab = graph.add_edge(a, b, EdgeKind::Basic);
-    graph.add_edge(b, c, EdgeKind::Basic);
-    graph.remove_edge(eid_ab);
+    let eid_ab = graph.build_initial_edge(a, b, EdgeKind::Basic);
+    graph.build_initial_edge(b, c, EdgeKind::Basic);
+    graph.remove_initial_edge(eid_ab);
     assert_eq!(graph.edges().count(), 1);
 }
 
 #[test]
 fn reachable_from_follows_outgoing_only() {
     let (mut graph, a, b, c) = setup();
-    graph.add_edge(a, b, EdgeKind::Basic);
-    graph.add_edge(b, c, EdgeKind::Basic);
+    graph.build_initial_edge(a, b, EdgeKind::Basic);
+    graph.build_initial_edge(b, c, EdgeKind::Basic);
     // a → b → c, no reverse edges
     let reachable = graph.reachable_from(a);
     assert!(reachable.contains(&a));
@@ -121,8 +121,8 @@ fn reachable_from_unknown_node_is_empty() {
 #[test]
 fn reachable_to_follows_incoming_only() {
     let (mut graph, a, b, c) = setup();
-    graph.add_edge(a, b, EdgeKind::Basic);
-    graph.add_edge(b, c, EdgeKind::Basic);
+    graph.build_initial_edge(a, b, EdgeKind::Basic);
+    graph.build_initial_edge(b, c, EdgeKind::Basic);
     // a → b → c: reachable_to(c) = {a, b, c}
     let to_c = graph.reachable_to(c);
     assert!(to_c.contains(&a));

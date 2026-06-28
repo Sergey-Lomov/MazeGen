@@ -16,11 +16,11 @@ fn make_graph(n: usize) -> (Graph, Vec<u64>) {
 }
 
 fn bi(g: &mut Graph, a: u64, b: u64) {
-    g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+    g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
 }
 
 fn uni(g: &mut Graph, a: u64, b: u64) {
-    g.add_edge(a, b, EdgeKind::Basic);
+    g.build_initial_edge(a, b, EdgeKind::Basic);
 }
 
 // Empty graph: zero SCCs.

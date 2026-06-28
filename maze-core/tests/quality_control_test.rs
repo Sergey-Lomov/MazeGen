@@ -95,7 +95,7 @@ fn unreachable_finish_check_no_false_positive_when_reachable() {
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let nodes: Vec<_> = graph.nodes().map(|n| n.id).collect();
-    graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    graph.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let mut maze = Maze::new(field, graph);
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
@@ -117,11 +117,11 @@ fn two_min_region_count_instances_with_different_classes_both_fire_independently
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let nodes: Vec<_> = graph.nodes().map(|n| n.id).collect();
-    graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
-    graph.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
-    graph.add_edge(nodes[1], nodes[3], EdgeKind::Basic);
-    graph.add_edge(nodes[3], nodes[2], EdgeKind::Basic);
-    graph.add_edge(nodes[1], nodes[6], EdgeKind::Basic);
+    graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    graph.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    graph.build_initial_edge(nodes[1], nodes[3], EdgeKind::Basic);
+    graph.build_initial_edge(nodes[3], nodes[2], EdgeKind::Basic);
+    graph.build_initial_edge(nodes[1], nodes[6], EdgeKind::Basic);
     let mut maze = Maze::new(field, graph);
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[2]);

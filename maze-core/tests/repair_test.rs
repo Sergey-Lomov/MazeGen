@@ -25,7 +25,7 @@ fn make_connected_maze(n_cols: usize) -> (Maze<SquareTessellation>, Vec<NodeId>)
         .map(|x| maze.field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
         .collect();
     for i in 0..ordered.len() - 1 {
-        maze.graph.add_bidirectional_edge(ordered[i], ordered[i + 1], EdgeKind::Basic);
+        maze.graph.build_initial_bidirectional_edge(ordered[i], ordered[i + 1], EdgeKind::Basic);
     }
     (maze, ordered)
 }
@@ -187,8 +187,8 @@ fn make_disconnected_maze() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let ordered: Vec<NodeId> = (0..4)
         .map(|x| maze.field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
         .collect();
-    maze.graph.add_bidirectional_edge(ordered[0], ordered[1], EdgeKind::Basic);
-    maze.graph.add_bidirectional_edge(ordered[2], ordered[3], EdgeKind::Basic);
+    maze.graph.build_initial_bidirectional_edge(ordered[0], ordered[1], EdgeKind::Basic);
+    maze.graph.build_initial_bidirectional_edge(ordered[2], ordered[3], EdgeKind::Basic);
     (maze, ordered)
 }
 
@@ -300,10 +300,10 @@ fn snapshot_restore_reverts_full_graph_structure() {
 
     // Mutate several independent parts at once: remove an edge, add a node, add a new edge.
     let e = maze.graph.edge_between(ordered[0], ordered[1]).unwrap();
-    maze.graph.remove_edge(e);
+    maze.graph.remove_initial_edge(e);
     let new_node: NodeId = ordered.iter().max().unwrap() + 1;
     maze.graph.add_node(new_node);
-    maze.graph.add_edge(ordered[2], ordered[3], EdgeKind::Basic);
+    maze.graph.build_initial_edge(ordered[2], ordered[3], EdgeKind::Basic);
 
     stack.restore(&mut maze);
 
@@ -372,7 +372,7 @@ fn restore_bumps_version_strictly_past_pre_restore_version() {
     let mut stack = SnapshotStack::new();
     stack.snapshot(&maze);
 
-    maze.graph.add_edge(ordered[0], ordered[2], EdgeKind::Basic);
+    maze.graph.build_initial_edge(ordered[0], ordered[2], EdgeKind::Basic);
     let version_before_restore = maze.graph.version();
 
     stack.restore(&mut maze);
@@ -388,16 +388,16 @@ fn restore_version_monotonic_across_multiple_restores() {
     let mut stack = SnapshotStack::new();
 
     stack.snapshot(&maze);
-    maze.graph.add_edge(ordered[0], ordered[2], EdgeKind::Basic);
+    maze.graph.build_initial_edge(ordered[0], ordered[2], EdgeKind::Basic);
     stack.snapshot(&maze);
-    maze.graph.add_edge(ordered[1], ordered[3], EdgeKind::Basic);
+    maze.graph.build_initial_edge(ordered[1], ordered[3], EdgeKind::Basic);
 
     let v0 = maze.graph.version();
     stack.restore(&mut maze);
     let v1 = maze.graph.version();
     assert!(v1 > v0, "first restore must strictly increase version");
 
-    maze.graph.add_edge(ordered[0], ordered[3], EdgeKind::Basic);
+    maze.graph.build_initial_edge(ordered[0], ordered[3], EdgeKind::Basic);
     let v2 = maze.graph.version();
     stack.restore(&mut maze);
     let v3 = maze.graph.version();
@@ -414,7 +414,7 @@ fn restore_invalidates_nav_graph_cache() {
 
     // Cache nav_graph at an intermediate, soon-to-be-rolled-back state.
     let e = maze.graph.edge_between(ordered[1], ordered[2]).unwrap();
-    maze.graph.remove_edge(e);
+    maze.graph.remove_initial_edge(e);
     let intermediate_nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
     let intermediate_count = intermediate_nav.edges().count();
 
@@ -432,7 +432,7 @@ fn restore_invalidates_scc_cache() {
     stack.snapshot(&maze);
 
     // Connect the two components at an intermediate state, cache scc, then roll back.
-    maze.graph.add_bidirectional_edge(ordered[1], ordered[2], EdgeKind::Basic);
+    maze.graph.build_initial_bidirectional_edge(ordered[1], ordered[2], EdgeKind::Basic);
     let intermediate_scc = maze.analysis.scc(&maze.graph);
     assert_eq!(intermediate_scc.components.len(), 1, "bridging edge must merge both components into one");
 
@@ -454,9 +454,9 @@ fn restore_invalidates_route_info_cache() {
     assert!(intermediate_route.is_some(), "route must exist before the bridge is cut");
 
     let e = maze.graph.edge_between(ordered[1], ordered[2]).unwrap();
-    maze.graph.remove_edge(e);
+    maze.graph.remove_initial_edge(e);
     let e_rev = maze.graph.edge_between(ordered[2], ordered[1]).unwrap();
-    maze.graph.remove_edge(e_rev);
+    maze.graph.remove_initial_edge(e_rev);
     let cut_route = maze.analysis.route_info(&maze.graph, start, finish);
     assert!(cut_route.is_none(), "route must be gone once the only bridge is cut");
 
@@ -476,7 +476,7 @@ fn restore_invalidates_graph_analytics_cache() {
 
     // Add a bridging edge that creates a cycle, cache graph_analytics on that intermediate
     // state, then roll back.
-    maze.graph.add_bidirectional_edge(ordered[0], ordered[3], EdgeKind::Basic);
+    maze.graph.build_initial_bidirectional_edge(ordered[0], ordered[3], EdgeKind::Basic);
     let intermediate = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
     assert!(intermediate.cycle_count > 0, "added bridge must create a cycle");
 
@@ -496,7 +496,7 @@ fn restore_invalidates_distance_from_start_cache() {
     // Extending the corridor changes the tile-distance to the far end.
     let new_node: NodeId = ordered.iter().max().unwrap() + 1;
     maze.graph.add_node(new_node);
-    maze.graph.add_bidirectional_edge(ordered[3], new_node, EdgeKind::Basic);
+    maze.graph.build_initial_bidirectional_edge(ordered[3], new_node, EdgeKind::Basic);
     let intermediate = maze.analysis.distance_from_start(&maze.graph, &maze.meta).unwrap();
     let intermediate_max = *intermediate.values().max().unwrap();
 
@@ -516,7 +516,7 @@ fn restore_invalidates_distance_from_finish_cache() {
 
     let new_node: NodeId = ordered.iter().max().unwrap() + 1;
     maze.graph.add_node(new_node);
-    maze.graph.add_bidirectional_edge(ordered[0], new_node, EdgeKind::Basic);
+    maze.graph.build_initial_bidirectional_edge(ordered[0], new_node, EdgeKind::Basic);
     let intermediate = maze.analysis.distance_from_finish(&maze.graph, &maze.meta).unwrap();
     let intermediate_max = *intermediate.values().max().unwrap();
 

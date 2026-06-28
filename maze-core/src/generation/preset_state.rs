@@ -56,22 +56,22 @@ pub fn build_preset_state<T: Tessellation>(
                 blocked.insert((to_id, from_id));
             }
             PresetConnectionState::Passage => {
-                graph.add_edge(from_id, to_id, EdgeKind::Basic);
-                graph.add_edge(to_id, from_id, EdgeKind::Basic);
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
+                graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
                 preset_edges.insert((from_id, to_id));
                 preset_edges.insert((to_id, from_id));
             }
             PresetConnectionState::OneWayForward => {
-                graph.add_edge(from_id, to_id, EdgeKind::Basic);
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
                 blocked.insert((to_id, from_id));
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
                 preset_edges.insert((from_id, to_id));
             }
             PresetConnectionState::OneWayBackward => {
-                graph.add_edge(to_id, from_id, EdgeKind::Basic);
+                graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
                 blocked.insert((from_id, to_id));
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);

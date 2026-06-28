@@ -6,11 +6,11 @@ use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationConfig, PresetState};
 
 fn bi(g: &mut Graph, a: u64, b: u64) {
-    g.add_bidirectional_edge(a, b, EdgeKind::Basic);
+    g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
 }
 
 fn uni(g: &mut Graph, a: u64, b: u64) {
-    g.add_edge(a, b, EdgeKind::Basic);
+    g.build_initial_edge(a, b, EdgeKind::Basic);
 }
 
 fn make_graph(n: usize) -> Graph {

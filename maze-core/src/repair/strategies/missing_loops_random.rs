@@ -4,7 +4,7 @@ use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::quality_control::{Issue, IssueData};
-use crate::generation::PresetState;
+use crate::generation::{PresetState, try_add_bidirectional_edge};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
@@ -77,17 +77,10 @@ impl<T: Tessellation> RepairStrategy<T> for MissingLoopsRandomStrategy {
                 }
                 // Strictly bidirectional: skip the pair unless both directions are
                 // unblocked, rather than `can_connect`'s "at least one direction" contract.
-                let fwd_blocked = preset_state.blocked.contains(&(src, dst))
-                    || preset_state.locked_out.contains(&src)
-                    || preset_state.locked_in.contains(&dst);
-                let bwd_blocked = preset_state.blocked.contains(&(dst, src))
-                    || preset_state.locked_out.contains(&dst)
-                    || preset_state.locked_in.contains(&src);
-                if fwd_blocked || bwd_blocked {
+                if !try_add_bidirectional_edge(&mut maze.graph, src, dst, preset_state) {
                     continue;
                 }
 
-                maze.graph.add_bidirectional_edge(src, dst, crate::graph::EdgeKind::Basic);
                 added += 1;
                 connected = true;
                 break;

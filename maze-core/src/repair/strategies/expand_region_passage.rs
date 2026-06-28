@@ -2,11 +2,10 @@
 use std::collections::HashMap;
 use crate::Maze;
 use crate::ids::NodeId;
-use crate::graph::EdgeKind;
 use crate::graph::scc::ComponentId;
 use crate::space::Tessellation;
 use crate::quality_control::{Issue, IssueData};
-use crate::generation::PresetState;
+use crate::generation::{PresetState, try_add_bidirectional_edge};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
@@ -84,7 +83,7 @@ impl<T: Tessellation> RepairStrategy<T> for ExpandRegionPassageStrategy {
 
             let Some((src, dst, neighbor_idx)) = candidate else { continue };
 
-            add_passage(maze, src, dst, preset_state);
+            try_add_bidirectional_edge(&mut maze.graph, src, dst, preset_state);
             any_fixed = true;
             if needy.contains(&neighbor_idx) {
                 merged_away.insert(neighbor_idx);
@@ -174,17 +173,6 @@ fn pair_connectable(a: NodeId, b: NodeId, preset_state: &PresetState) -> bool {
         || preset_state.locked_out.contains(&b)
         || preset_state.locked_in.contains(&a);
     !fwd_blocked && !bwd_blocked
-}
-
-/// Adds the missing direction(s) so `a`<->`b` becomes a full passage, without disturbing
-/// an already-present direction (e.g. completing an existing one-way edge).
-fn add_passage<T: Tessellation>(maze: &mut Maze<T>, a: NodeId, b: NodeId, preset_state: &PresetState) {
-    if maze.graph.edge_between(a, b).is_none() && !preset_state.preset_edges.contains(&(a, b)) {
-        maze.graph.add_edge(a, b, EdgeKind::Basic);
-    }
-    if maze.graph.edge_between(b, a).is_none() && !preset_state.preset_edges.contains(&(b, a)) {
-        maze.graph.add_edge(b, a, EdgeKind::Basic);
-    }
 }
 
 #[cfg(test)]

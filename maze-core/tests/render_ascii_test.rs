@@ -33,7 +33,7 @@ fn open_passage_rendered_for_bidirectional_edge() {
     let (mut maze, nodes) = make_maze(2, 1);
     let left = nodes[0][0];
     let right = nodes[0][1];
-    maze.graph.add_bidirectional_edge(left, right, EdgeKind::Basic);
+    maze.graph.build_initial_bidirectional_edge(left, right, EdgeKind::Basic);
     let output = render_ascii(&maze);
     // 2x1 maze: single content row looks like "| [passage] |"
     // with bidirectional edge the middle '|' should be ' ' not '|'
@@ -49,7 +49,7 @@ fn directed_east_edge_renders_arrow() {
     let (mut maze, nodes) = make_maze(2, 1);
     let left = nodes[0][0];
     let right = nodes[0][1];
-    maze.graph.add_edge(left, right, EdgeKind::Basic); // only left→right
+    maze.graph.build_initial_edge(left, right, EdgeKind::Basic); // only left→right
     let output = render_ascii(&maze);
     assert!(output.contains('>'), "eastward directed edge should render '>'");
 }
@@ -59,7 +59,7 @@ fn directed_west_edge_renders_arrow() {
     let (mut maze, nodes) = make_maze(2, 1);
     let left = nodes[0][0];
     let right = nodes[0][1];
-    maze.graph.add_edge(right, left, EdgeKind::Basic); // only right→left
+    maze.graph.build_initial_edge(right, left, EdgeKind::Basic); // only right→left
     let output = render_ascii(&maze);
     assert!(output.contains('<'), "westward directed edge should render '<'");
 }
@@ -69,7 +69,7 @@ fn directed_north_edge_renders_arrow() {
     let (mut maze, nodes) = make_maze(1, 2);
     let bottom = nodes[0][0];
     let top = nodes[1][0];
-    maze.graph.add_edge(bottom, top, EdgeKind::Basic); // bottom→top = northward
+    maze.graph.build_initial_edge(bottom, top, EdgeKind::Basic); // bottom→top = northward
     let output = render_ascii(&maze);
     assert!(output.contains('^'), "northward directed edge should render '^'");
 }
@@ -79,7 +79,7 @@ fn directed_south_edge_renders_arrow() {
     let (mut maze, nodes) = make_maze(1, 2);
     let bottom = nodes[0][0];
     let top = nodes[1][0];
-    maze.graph.add_edge(top, bottom, EdgeKind::Basic); // top→bottom = southward
+    maze.graph.build_initial_edge(top, bottom, EdgeKind::Basic); // top→bottom = southward
     let output = render_ascii(&maze);
     assert!(output.contains('v'), "southward directed edge should render 'v'");
 }

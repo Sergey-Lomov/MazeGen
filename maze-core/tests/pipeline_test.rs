@@ -271,9 +271,9 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
-    graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
-    graph.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
-    graph.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+    graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    graph.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    graph.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
 
     let qc = QualityControlEngine::new(vec![
         Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }),
@@ -394,13 +394,13 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     field.build_nodes(&mut g);
     let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
     // Triangle A: 0->1->2->0
-    let e0 = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
-    let e1 = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
-    let e2 = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+    let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    let e2 = g.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
     // Triangle B: 3->4->5->3
-    let e3 = g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
-    let e4 = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
-    let e5 = g.add_edge(nodes[5], nodes[3], EdgeKind::Basic);
+    let e3 = g.build_initial_edge(nodes[3], nodes[4], EdgeKind::Basic);
+    let e4 = g.build_initial_edge(nodes[4], nodes[5], EdgeKind::Basic);
+    let e5 = g.build_initial_edge(nodes[5], nodes[3], EdgeKind::Basic);
 
     struct FakeInvalidLoopCheck {
         cycle: Vec<usize>,
@@ -463,13 +463,13 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     field.build_nodes(&mut g);
     let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
     // Triangle A: 0->1->2->0
-    let e0 = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
-    let e1 = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
-    let e2 = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+    let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+    let e2 = g.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
     // Triangle B: 3->4->5->3
-    let e3 = g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
-    let e4 = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
-    let e5 = g.add_edge(nodes[5], nodes[3], EdgeKind::Basic);
+    let e3 = g.build_initial_edge(nodes[3], nodes[4], EdgeKind::Basic);
+    let e4 = g.build_initial_edge(nodes[4], nodes[5], EdgeKind::Basic);
+    let e5 = g.build_initial_edge(nodes[5], nodes[3], EdgeKind::Basic);
 
     // Reports triangle A while it's intact; once A is broken, reports triangle B instead —
     // same IssueKind/source check both times, different IssueData::InvalidLoops content.

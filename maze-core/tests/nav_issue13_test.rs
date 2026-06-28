@@ -36,7 +36,7 @@ fn graph_from_edges(node_count: u64, edges: &[(u64, u64)]) -> Graph {
     let mut ids = IdGenerator::new();
     for _ in 0..=node_count { g.add_node(ids.next_id()); }
     for &(from, to) in edges {
-        g.add_edge(from, to, EdgeKind::Basic);
+        g.build_initial_edge(from, to, EdgeKind::Basic);
     }
     g
 }

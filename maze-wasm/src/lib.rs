@@ -398,12 +398,12 @@ where
         let to_id   = e.to   as u64;
         match e.kind.as_str() {
             "basic" => {
-                graph.add_edge(from_id, to_id, EdgeKind::Basic);
-                graph.add_edge(to_id, from_id, EdgeKind::Basic);
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
+                graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
             }
             "one_way" => {
                 // Direction already normalized: from→to is the actual passage direction
-                graph.add_edge(from_id, to_id, EdgeKind::Basic);
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
             }
             other => return Err(JsValue::from_str(&format!("unknown edge kind: {other}"))),
         }
