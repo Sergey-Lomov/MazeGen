@@ -3,7 +3,7 @@ import { computeAnalytics } from "../../wasm/mazeService";
 import type { PostEditEdgeWasmDto } from "../../wasm/types";
 import { applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated } from "../../pixi/postEditUtils";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool } from "../storeTypes";
-import { fieldConfigToWasm, activeChecksOf } from "./generationSlice";
+import { fieldConfigToWasm } from "./generationSlice";
 
 export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState & PostEditActions> = (set, get) => ({
   postEditAutoConfirm: true,
@@ -43,7 +43,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     set({ _postEditRequestId: requestId });
 
     const state = get();
-    const { postEditDraftEdges, postEditDraftMeta, activeTessellationConfig, nodes, start, finish, selectedChecks, checkParams } = state;
+    const { postEditDraftEdges, postEditDraftMeta, activeTessellationConfig, nodes, start, finish } = state;
     if (postEditDraftEdges === null) return;
     const edgesSnapshot = postEditDraftEdges;
     const metaSnapshot = postEditDraftMeta;
@@ -59,14 +59,18 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         kind: e.kind === "basic" ? "basic" as const : "one_way" as const,
       }));
 
+    // ruleDisabled rules excluded — same semantics as buildGenerateConfig (see generationSlice.ts).
+    const checks = state.rules
+      .filter((g) => !g.ruleDisabled)
+      .flatMap((g) => g.checks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })));
+
     const config = {
       tessellation: fieldConfigToWasm(activeTessellationConfig),
       nodes: nodes.map(n => [n.x, n.y] as [number, number]),
       edges: wasmEdges,
       start: effectiveStart ?? null,
       finish: effectiveFinish ?? null,
-      checks: activeChecksOf({ selectedChecks, rules: state.rules }),
-      check_params: checkParams,
+      checks,
     };
 
     try {

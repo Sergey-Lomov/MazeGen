@@ -46,11 +46,19 @@ pub struct IssueDto {
     /// `invalid_loop_edges` — `min_region_size` and `min_region_ratio` can both flag regions and
     /// merge into one issue, but hovering one bubble must highlight only that check's regions.
     pub region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>>,
-    /// Check id(s) that produced or contributed to this issue (`Issue::source_checks()`) —
-    /// lets the web UI render one bubble per contributing check rather than one per `kind`,
-    /// distinguishing e.g. `min_loop_length`'s and `max_loop_length`'s issues even though both
-    /// share the `invalid_loop` kind.
+    /// Opaque per-instance check id(s) that produced or contributed to this issue
+    /// (`Issue::source_checks()`) — lets the web UI render one bubble per contributing check
+    /// rather than one per `kind`, distinguishing e.g. two `min_region_count` instances' issues
+    /// even though both share the `missing_regions` kind. Not a check **type** id by itself
+    /// (see GitHub issue #60) — resolve the type id for i18n/label lookups via
+    /// `source_check_types`.
     pub source_checks: Vec<String>,
+    /// `source_checks` entry -> check type id (`available_checks()`'s `CheckDescriptor.id`) —
+    /// needed because `source_checks` entries are opaque per-instance ids, not type ids, so the
+    /// web UI's per-check-type `DETAIL_LABELS` lookup (`issueRegistry.ts`) can't key off them
+    /// directly. Invariant: exactly one entry per `source_checks` entry, no extras (see
+    /// `build_analytics_snapshot` in `analytics.rs`).
+    pub source_check_types: HashMap<String, String>,
     /// Raw display values keyed by source check id then by detail key (`Issue::details()`),
     /// e.g. `{"max_loop_length": {"max_loop_length": "100"}}`. Values are never assembled
     /// messages — the web UI looks them up by key via its own i18n templates per check id.
@@ -142,10 +150,13 @@ pub struct ComputeAnalyticsConfig {
     pub edges: Vec<PostEditEdgeDto>,
     pub start: Option<u32>,
     pub finish: Option<u32>,
+    /// Active checks for this analytics-only pass (no repair, no rules) — each becomes its own
+    /// synthetic singleton rule when building the `QualityControlEngine` (see
+    /// `dispatch_compute_analytics` in `lib.rs`), purely so `build_qc_and_repair`'s rule-driven
+    /// shape (GitHub issue #60) has something to iterate; the rule ids/kinds built from these are
+    /// discarded immediately since this path never runs `RepairEngine`.
     #[serde(default)]
-    pub checks: Vec<String>,
-    #[serde(default)]
-    pub check_params: HashMap<String, HashMap<String, String>>,
+    pub checks: Vec<crate::generation_config::CheckInstanceConfig>,
 }
 
 #[derive(Serialize)]

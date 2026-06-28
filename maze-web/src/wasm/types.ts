@@ -82,10 +82,14 @@ export interface IssueDto {
    * perimeter client-side from this node set, the same way preset boundary walls are derived from
    * a cell set). Keyed per check for the same reason as `invalid_loop_edges`. */
   region_needs_expansion_nodes: Record<string, number[][]>;
-  /** Check id(s) that produced or contributed to this issue — lets the UI render one bubble
-   * per contributing check rather than one per `kind` (e.g. `min_loop_length` vs `max_loop_length`,
-   * both `invalid_loop`). */
+  /** Opaque per-instance check id(s) that produced or contributed to this issue — lets the UI
+   * render one bubble per contributing check rather than one per `kind`. Not a check type id by
+   * itself (see GitHub issue #60) — resolve the type id via `source_check_types`. */
   source_checks: string[];
+  /** `source_checks` entry -> check type id (`CheckDescriptor.id`) — needed because
+   * `source_checks` entries are opaque per-instance ids, not type ids, so per-check-type lookups
+   * (`DETAIL_LABELS` in `issueRegistry.ts`) can't key off them directly. */
+  source_check_types: Record<string, string>;
   /** Raw display values keyed by source check id then by detail key, e.g.
    * `{"max_loop_length": {"max_loop_length": "100"}}`. Never assembled messages — only used
    * to fill in i18n templates keyed by check id (see `issueRegistry.ts`). */
@@ -113,6 +117,11 @@ export interface CheckDescriptor {
   description: string;
   issue_kinds: string[];
   params: ParamDescriptor[];
+  /** Whether more than one independent instance of this check type may be active at once
+   * (across rules, or within the same rule) — see GitHub issue #60. `true` only for
+   * `min_region_count` (different `region_class` per instance is a legitimate use case); every
+   * other check is `false`. */
+  allow_multiple_instances: boolean;
 }
 
 export type ParamKind =
@@ -138,9 +147,18 @@ export interface StrategyConfig {
   params: Record<string, string>;
 }
 
+/** One active check, declared inline inside the `QcRuleConfig` it belongs to — see GitHub issue
+ * #60. `local_id` is unique only within this rule's `checks`, not globally; `type_id` is the
+ * check type's wire id (`CheckDescriptor.id`). */
+export interface CheckInstanceConfig {
+  local_id: string;
+  type_id: string;
+  params: Record<string, string>;
+}
+
 export interface QcRuleConfig {
   id: string;
-  checks: string[];
+  checks: CheckInstanceConfig[];
   strategy: StrategyConfig | null;
 }
 
@@ -206,9 +224,7 @@ export interface LockedNodeDto {
 
 export interface GenerateConfig {
   tessellation: WasmTessellationConfig;
-  checks: string[];
   check_rules: QcRuleConfig[];
-  check_params?: Record<string, Record<string, string>>;
   repair_max_iterations?: number;
   repair_time_budget_secs?: number;
   initial: InitialGenerationConfig;
@@ -238,6 +254,5 @@ export interface ComputeAnalyticsConfig {
   edges: PostEditEdgeWasmDto[];
   start: number | null;
   finish: number | null;
-  checks: string[];
-  check_params: Record<string, Record<string, string>>;
+  checks: CheckInstanceConfig[];
 }

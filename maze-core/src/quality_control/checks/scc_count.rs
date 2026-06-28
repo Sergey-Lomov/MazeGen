@@ -3,12 +3,11 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, EXCESSIVE_SCC_COUNT};
-use crate::repair::CheckId;
 
 pub const MAX_SCC_COUNT_DEFAULT: u32 = 1;
-pub const SCC_COUNT_CHECK_ID: CheckId = CheckId::SccCount;
 
 pub struct SccCountCheck {
+    pub instance_id: String,
     pub max_scc_count: u32,
 }
 
@@ -19,9 +18,9 @@ impl<T: Tessellation> Check<T> for SccCountCheck {
         if count <= self.max_scc_count {
             return;
         }
-        let issue = Issue::new_from_check(EXCESSIVE_SCC_COUNT, SCC_COUNT_CHECK_ID)
-            .with_detail(SCC_COUNT_CHECK_ID, "max_scc_count", self.max_scc_count.to_string())
-            .with_detail(SCC_COUNT_CHECK_ID, "scc_count", count.to_string());
+        let issue = Issue::new_from_check(EXCESSIVE_SCC_COUNT, &self.instance_id)
+            .with_detail(&self.instance_id, "max_scc_count", self.max_scc_count.to_string())
+            .with_detail(&self.instance_id, "scc_count", count.to_string());
         issues.push(issue);
     }
 }
@@ -33,6 +32,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
+
+    const TEST_ID: &str = "scc_count";
 
     fn maze_with_two_isolated_components() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
@@ -61,7 +62,7 @@ mod tests {
     #[test]
     fn silent_when_scc_count_within_limit() {
         let maze = maze_with_one_scc();
-        let check = SccCountCheck { max_scc_count: 1 };
+        let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 1 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -71,19 +72,19 @@ mod tests {
     #[test]
     fn fires_when_scc_count_exceeds_limit() {
         let maze = maze_with_two_isolated_components();
-        let check = SccCountCheck { max_scc_count: 1 };
+        let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 1 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, EXCESSIVE_SCC_COUNT);
-        assert_eq!(issues[0].source_checks(), vec![CheckId::SccCount]);
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(
-            issues[0].details().get(&CheckId::SccCount).and_then(|kv| kv.get("max_scc_count")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("max_scc_count")),
             Some(&"1".to_string()),
         );
         assert_eq!(
-            issues[0].details().get(&CheckId::SccCount).and_then(|kv| kv.get("scc_count")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("scc_count")),
             Some(&"4".to_string()),
         );
     }
@@ -91,7 +92,7 @@ mod tests {
     #[test]
     fn silent_when_scc_count_equals_limit() {
         let maze = maze_with_two_isolated_components();
-        let check = SccCountCheck { max_scc_count: 4 };
+        let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 4 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);

@@ -4,9 +4,9 @@ import { IssueSelectDialog } from "../components/features/IssueSelectDialog";
 import { useMazeStore } from "../store/mazeStore";
 
 const availableChecks = [
-  { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [] },
-  { id: "min_loop_length", label: "Minimum loop length", description: "Fires if a loop is too short.", issue_kinds: ["invalid_loop"], params: [] },
-  { id: "max_loop_length", label: "Maximum loop length", description: "Fires if a loop is too long.", issue_kinds: ["invalid_loop"], params: [] },
+  { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [], allow_multiple_instances: false },
+  { id: "min_loop_length", label: "Minimum loop length", description: "Fires if a loop is too short.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
+  { id: "max_loop_length", label: "Maximum loop length", description: "Fires if a loop is too long.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
 ];
 
 beforeEach(() => {

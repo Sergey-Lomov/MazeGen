@@ -7,10 +7,8 @@ use crate::graph::distance_map::cycle_min_distance;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_LOOP};
 use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
-use crate::repair::CheckId;
 
 pub const LOOP_DISTANCE_FROM_START_DEFAULT: u32 = 0;
-pub const LOOP_DISTANCE_FROM_START_CHECK_ID: CheckId = CheckId::LoopDistanceFromStart;
 
 /// Flags simple cycles placed too early in level progression — see GitHub issue #33. A cycle's
 /// distance from start is the minimum shortest-path distance (in tiles, directed graph
@@ -19,6 +17,7 @@ pub const LOOP_DISTANCE_FROM_START_CHECK_ID: CheckId = CheckId::LoopDistanceFrom
 ///
 /// Silently skips (no issue) if `meta.start` isn't set — covered by `MissingEndpointsCheck`.
 pub struct LoopDistanceFromStartCheck {
+    pub instance_id: String,
     pub min_distance_from_start: u32,
 }
 
@@ -42,12 +41,12 @@ impl<T: Tessellation> Check<T> for LoopDistanceFromStartCheck {
         let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
         debug_assert!(too_early.iter().all(|&idx| idx < all.len()),
             "too_early must only contain valid indices into all — built from the same `cycles` it resolves");
-        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<CheckId>> = HashMap::new();
+        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<String>> = HashMap::new();
         for &idx in &too_early {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(LOOP_DISTANCE_FROM_START_CHECK_ID);
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
         }
-        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: too_early, invalid_sources }, LOOP_DISTANCE_FROM_START_CHECK_ID)
-            .with_detail(LOOP_DISTANCE_FROM_START_CHECK_ID, "min_distance_from_start", self.min_distance_from_start.to_string());
+        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: too_early, invalid_sources }, &self.instance_id)
+            .with_detail(&self.instance_id, "min_distance_from_start", self.min_distance_from_start.to_string());
         issues.push(issue);
     }
 }
@@ -60,6 +59,8 @@ mod tests {
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
     use crate::meta::MazeMeta;
+
+    const TEST_ID: &str = "loop_distance_from_start";
 
     /// start -- a -- b -- c -- (triangle c,d,e) -- finish-less.
     /// Triangle's nearest vertex `c` is 3 tiles from start.
@@ -89,19 +90,19 @@ mod tests {
     #[test]
     fn fires_when_cycle_closer_than_threshold() {
         let maze = maze_with_triangle_at_distance(3);
-        let check = LoopDistanceFromStartCheck { min_distance_from_start: 5 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
-        assert_eq!(issues[0].source_checks(), vec![CheckId::LoopDistanceFromStart]);
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         match &issues[0].data {
             Some(IssueData::InvalidLoops { invalid, .. }) => assert_eq!(invalid.len(), 1),
             other => panic!("expected InvalidLoops, got {other:?}"),
         }
         assert_eq!(
-            issues[0].details().get(&CheckId::LoopDistanceFromStart).and_then(|kv| kv.get("min_distance_from_start")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_distance_from_start")),
             Some(&"5".to_string()),
         );
     }
@@ -109,7 +110,7 @@ mod tests {
     #[test]
     fn silent_when_cycle_farther_than_threshold() {
         let maze = maze_with_triangle_at_distance(10);
-        let check = LoopDistanceFromStartCheck { min_distance_from_start: 5 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -151,7 +152,7 @@ mod tests {
     #[test]
     fn flags_only_the_cycle_below_threshold_when_multiple_cycles_exist() {
         let maze = maze_with_two_triangles(20);
-        let check = LoopDistanceFromStartCheck { min_distance_from_start: 5 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -168,7 +169,7 @@ mod tests {
     #[test]
     fn silent_when_threshold_is_zero() {
         let maze = maze_with_triangle_at_distance(0);
-        let check = LoopDistanceFromStartCheck { min_distance_from_start: 0 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 0 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -179,7 +180,7 @@ mod tests {
     fn silent_when_start_is_missing() {
         let mut maze = maze_with_triangle_at_distance(3);
         maze.meta.start = None;
-        let check = LoopDistanceFromStartCheck { min_distance_from_start: 100 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -197,7 +198,7 @@ mod tests {
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.start = Some(nodes[0]);
-        let check = LoopDistanceFromStartCheck { min_distance_from_start: 100 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -226,7 +227,7 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.start = Some(maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap());
-        let check = LoopDistanceFromStartCheck { min_distance_from_start: 100 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);

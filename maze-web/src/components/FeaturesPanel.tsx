@@ -104,7 +104,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
 
-  const selectedChecks = useMazeStore((s) => s.selectedChecks);
+  const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
   const repairTimeBudgetSecs = useMazeStore((s) => s.repairTimeBudgetSecs);
   const nodes = useMazeStore((s) => s.nodes);
@@ -204,8 +204,8 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   // No checks beats an unbounded repair loop — both are "warning", but having nothing to check
   // at all is the more fundamental gap, so its message takes priority when both are true.
   const repairUnbounded = repairMaxIterations == null && repairTimeBudgetSecs == null;
-  const qualityStatus: FeatureStatus = selectedChecks.length === 0 || repairUnbounded ? "warning" : "set";
-  const qualityComment = selectedChecks.length === 0
+  const qualityStatus: FeatureStatus = activeCheckCount === 0 || repairUnbounded ? "warning" : "set";
+  const qualityComment = activeCheckCount === 0
     ? m["status.no_checks"]()
     : repairUnbounded
     ? m["status.repair_loop_unbounded"]()
@@ -252,9 +252,9 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
         title={m["quality.title"]()}
         status={qualityStatus}
         comment={qualityComment}
-        subtitle={selectedChecks.length === 1
-          ? m["quality.checks_active"]({ count: selectedChecks.length })
-          : m["quality.checks_active_plural"]({ count: selectedChecks.length })}
+        subtitle={activeCheckCount === 1
+          ? m["quality.checks_active"]({ count: activeCheckCount })
+          : m["quality.checks_active_plural"]({ count: activeCheckCount })}
         expanded={openCard === "quality"}
         onOpen={() => handleToggle("quality")}
       >

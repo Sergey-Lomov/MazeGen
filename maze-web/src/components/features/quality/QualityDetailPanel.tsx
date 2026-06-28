@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function QualityDetailPanel({ selection, vm, flushRef }: Props) {
-  const checkParams = useMazeStore((s) => s.checkParams);
+  const rules = useMazeStore((s) => s.rules);
   const setCheckParam = useMazeStore((s) => s.setCheckParam);
   const strategyParams = useMazeStore((s) => s.strategyParams);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
@@ -30,14 +30,15 @@ export function QualityDetailPanel({ selection, vm, flushRef }: Props) {
   if (selection.type === "check") {
     const check = vm.checks.find((c) => c.id === selection.id);
     if (!check) return <div style={styles.detailPanel} />;
+    const storeValues = rules.find((r) => r.id === check.ruleId)?.checks.find((c) => c.localId === check.localId)?.params ?? {};
     return (
       <ParamizedDetail
         id={check.id}
         label={check.label}
         description={check.description}
         params={check.params}
-        storeValues={checkParams[check.id] ?? {}}
-        onCommit={(paramId, value) => setCheckParam(check.id, paramId, value)}
+        storeValues={storeValues}
+        onCommit={(paramId, value) => setCheckParam(check.ruleId, check.localId, paramId, value)}
         flushRef={flushRef}
       />
     );

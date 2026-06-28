@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use crate::quality_control::issue_data::IssueData;
-use crate::repair::CheckId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IssueKind {
@@ -61,7 +60,7 @@ pub const EXCESSIVE_SCC_COUNT: IssueKind = IssueKind::ExcessiveSccCount;
 pub const REGION_NEEDS_EXPANSION: IssueKind = IssueKind::RegionNeedsExpansion;
 /// The maze has fewer regions of some `RegionClass` than a check's configured minimum requires
 /// (currently only `MinRegionCountCheck`) — e.g. guaranteeing at least N trap or alternative-route
-/// regions for structural variety. Carries `IssueData::MissingRegions { region_class, missing }` —
+/// regions for structural variety. Carries `IssueData::MissingRegions { missing_by_class }` —
 /// see that variant's doc comment. No `RepairStrategy` registered yet for this kind.
 pub const MISSING_REGIONS: IssueKind = IssueKind::MissingRegions;
 
@@ -116,11 +115,13 @@ impl std::fmt::Display for IssueKind {
 pub struct Issue {
     pub kind: IssueKind,
     pub data: Option<IssueData>,
-    /// Check id(s) (e.g. `CheckId::MinLoopLength`) that produced
-    /// or contributed to this issue. Empty for issues not raised by a toggleable `Check<T>` —
-    /// currently only `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot`
-    /// (see its doc comment). Populated by `new_from_check`/`with_data_from_check`; merging two
-    /// issues of the same kind (pipeline dedup) unions this list without duplicates.
+    /// Opaque check id(s) that produced or contributed to this issue — the same id passed to
+    /// `new_from_check`/`with_data_from_check`, expected to be `maze-wasm/src/runner.rs`'s
+    /// composite routing key (not a `CheckId` — see `CheckId`'s doc comment for why attribution
+    /// no longer uses it). Empty for issues not raised by a toggleable `Check<T>` — currently
+    /// only `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` (see its
+    /// doc comment). Merging two issues of the same kind (pipeline dedup) unions this list
+    /// without duplicates.
     ///
     /// Private — a raw (pre-merge) `Issue` must carry exactly one source check, and the pipeline's
     /// rule-routing (`pipeline.rs`) reads only the first element under that assumption. Making
@@ -129,14 +130,14 @@ pub struct Issue {
     /// would then silently route by an arbitrary single id, dropping the rest. `source_checks()`
     /// exposes the list read-only; `push_source` is the only way to add to it, used solely by
     /// `merge_issue` after merge has already established the issue may legitimately carry several.
-    source_checks: Vec<CheckId>,
+    source_checks: Vec<String>,
     /// Generic per-source-check display data, e.g. `"max_loop_length" -> {"threshold" -> "100"}`.
     /// Raw values only (numbers/ids as strings) — never assembled messages; the web UI owns all
     /// wording and looks values up by key via its own i18n templates keyed by check id. Keyed by
     /// check id (not merged into one flat map) because a merged `Issue` may carry details from
     /// several checks at once (e.g. `min_loop_length`'s and `max_loop_length`'s thresholds both
     /// present on one merged `INVALID_LOOP` issue) and a UI bubble is rendered per source check.
-    details: HashMap<CheckId, HashMap<&'static str, String>>,
+    details: HashMap<String, HashMap<&'static str, String>>,
 }
 
 impl Issue {
@@ -151,30 +152,30 @@ impl Issue {
         Self { kind, data: Some(data), source_checks: Vec::new(), details: HashMap::new() }
     }
 
-    pub fn new_from_check(kind: IssueKind, source_check: CheckId) -> Self {
-        Self { kind, data: None, source_checks: vec![source_check], details: HashMap::new() }
+    pub fn new_from_check(kind: IssueKind, source_check: &str) -> Self {
+        Self { kind, data: None, source_checks: vec![source_check.to_string()], details: HashMap::new() }
     }
 
-    pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: CheckId) -> Self {
-        Self { kind, data: Some(data), source_checks: vec![source_check], details: HashMap::new() }
+    pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: &str) -> Self {
+        Self { kind, data: Some(data), source_checks: vec![source_check.to_string()], details: HashMap::new() }
     }
 
     /// Attaches a display detail under `source_check` (raw value only, e.g. a threshold —
     /// never an assembled message, see `details`' doc comment above). Chainable — a `Check`
     /// calls this right after constructing its `Issue` via `new_from_check`/`with_data_from_check`.
     /// `source_check` should be the same id the issue was constructed with.
-    pub fn with_detail(mut self, source_check: CheckId, key: &'static str, value: String) -> Self {
-        self.details.entry(source_check).or_default().insert(key, value);
+    pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
+        self.details.entry(source_check.to_string()).or_default().insert(key, value);
         self
     }
 
-    pub fn source_checks(&self) -> &[CheckId] {
+    pub fn source_checks(&self) -> &[String] {
         &self.source_checks
     }
 
     /// Display details keyed by source check id, then by detail key — see `details`' doc
     /// comment for why this isn't a flat map.
-    pub fn details(&self) -> &HashMap<CheckId, HashMap<&'static str, String>> {
+    pub fn details(&self) -> &HashMap<String, HashMap<&'static str, String>> {
         &self.details
     }
 
@@ -183,9 +184,9 @@ impl Issue {
     /// already-merged issue (2+ sources). Pipeline routing (`pipeline.rs`) must use this instead
     /// of indexing `source_checks()` directly, so a malformed 2+-source raw issue is routed to
     /// "no rule" (safe, same as 0 sources) rather than silently picked by an arbitrary first id.
-    pub fn single_source_check(&self) -> Option<CheckId> {
+    pub fn single_source_check(&self) -> Option<&str> {
         match self.source_checks.as_slice() {
-            [only] => Some(*only),
+            [only] => Some(only.as_str()),
             _ => None,
         }
     }
@@ -193,9 +194,9 @@ impl Issue {
     /// Adds `source` to this issue's recorded sources if not already present — the only way to
     /// grow `source_checks` past its construction-time value. Used exclusively by `merge_issue`
     /// once two issues are confirmed to share a rule and are being combined into one.
-    pub(crate) fn push_source(&mut self, source: CheckId) {
-        if !self.source_checks.contains(&source) {
-            self.source_checks.push(source);
+    pub(crate) fn push_source(&mut self, source: &str) {
+        if !self.source_checks.iter().any(|s| s == source) {
+            self.source_checks.push(source.to_string());
         }
     }
 
@@ -203,13 +204,13 @@ impl Issue {
     /// only ever appears as a raw (pre-merge) issue's sole source, `incoming`'s entries simply
     /// overwrite any existing entry for the same check id — there is no same-check-id conflict
     /// to reconcile. Used exclusively by `merge_issue` (`pipeline.rs`).
-    pub(crate) fn merge_details(&mut self, incoming: HashMap<CheckId, HashMap<&'static str, String>>) {
+    pub(crate) fn merge_details(&mut self, incoming: HashMap<String, HashMap<&'static str, String>>) {
         self.details.extend(incoming);
     }
 
     /// Takes `self`'s details by value, leaving an empty map behind — lets `merge_issue` fold an
     /// `incoming: Issue` (consumed by value anyway) into `existing` without cloning.
-    pub(crate) fn take_details(&mut self) -> HashMap<CheckId, HashMap<&'static str, String>> {
+    pub(crate) fn take_details(&mut self) -> HashMap<String, HashMap<&'static str, String>> {
         std::mem::take(&mut self.details)
     }
 }
@@ -237,33 +238,33 @@ mod tests {
 
     #[test]
     fn with_detail_attaches_value_under_source_check() {
-        let issue = Issue::new_from_check(INVALID_LOOP, CheckId::MaxLoopLength)
-            .with_detail(CheckId::MaxLoopLength, "threshold", "100".to_string());
+        let issue = Issue::new_from_check(INVALID_LOOP, "max_loop_length")
+            .with_detail("max_loop_length", "threshold", "100".to_string());
         let details = issue.details();
-        assert_eq!(details.get(&CheckId::MaxLoopLength).and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
+        assert_eq!(details.get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
     }
 
     #[test]
     fn merge_details_keeps_each_source_checks_details_separate() {
-        let mut a = Issue::new_from_check(INVALID_LOOP, CheckId::MinLoopLength)
-            .with_detail(CheckId::MinLoopLength, "threshold", "10".to_string());
-        let b = Issue::new_from_check(INVALID_LOOP, CheckId::MaxLoopLength)
-            .with_detail(CheckId::MaxLoopLength, "threshold", "100".to_string());
+        let mut a = Issue::new_from_check(INVALID_LOOP, "min_loop_length")
+            .with_detail("min_loop_length", "threshold", "10".to_string());
+        let b = Issue::new_from_check(INVALID_LOOP, "max_loop_length")
+            .with_detail("max_loop_length", "threshold", "100".to_string());
         a.merge_details(b.details().clone());
-        assert_eq!(a.details().get(&CheckId::MinLoopLength).and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
-        assert_eq!(a.details().get(&CheckId::MaxLoopLength).and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
+        assert_eq!(a.details().get("min_loop_length").and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
+        assert_eq!(a.details().get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
     }
 
     #[test]
     fn new_from_check_records_source() {
-        let issue = Issue::new_from_check(MISSING_ENDPOINTS, CheckId::MissingEndpoints);
-        assert_eq!(issue.source_checks(), vec![CheckId::MissingEndpoints]);
+        let issue = Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints");
+        assert_eq!(issue.source_checks(), vec!["missing_endpoints".to_string()]);
     }
 
     #[test]
     fn single_source_check_returns_the_one_source() {
-        let issue = Issue::new_from_check(MISSING_ENDPOINTS, CheckId::MissingEndpoints);
-        assert_eq!(issue.single_source_check(), Some(CheckId::MissingEndpoints));
+        let issue = Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints");
+        assert_eq!(issue.single_source_check(), Some("missing_endpoints"));
     }
 
     #[test]
@@ -274,24 +275,24 @@ mod tests {
 
     #[test]
     fn single_source_check_is_none_after_a_second_source_is_pushed() {
-        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, CheckId::MissingEndpoints);
-        issue.push_source(CheckId::UnreachableFinish);
+        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints");
+        issue.push_source("unreachable_finish");
         assert_eq!(issue.single_source_check(), None,
             "an issue with 2+ sources (e.g. post-merge) must not look like a routable single-source issue");
     }
 
     #[test]
     fn push_source_does_not_duplicate_an_existing_source() {
-        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, CheckId::MissingEndpoints);
-        issue.push_source(CheckId::MissingEndpoints);
-        assert_eq!(issue.source_checks(), vec![CheckId::MissingEndpoints]);
+        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints");
+        issue.push_source("missing_endpoints");
+        assert_eq!(issue.source_checks(), vec!["missing_endpoints".to_string()]);
     }
 
     #[test]
     fn push_source_appends_a_new_source() {
-        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, CheckId::MissingEndpoints);
-        issue.push_source(CheckId::UnreachableFinish);
-        assert_eq!(issue.source_checks(), vec![CheckId::MissingEndpoints, CheckId::UnreachableFinish]);
+        let mut issue = Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints");
+        issue.push_source("unreachable_finish");
+        assert_eq!(issue.source_checks(), vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()]);
     }
 
     #[test]

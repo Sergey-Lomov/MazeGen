@@ -17,15 +17,14 @@ const checkDescriptor: CheckDescriptor = {
   description: "Check One description",
   issue_kinds: ["i1"],
   params: [],
+  allow_multiple_instances: false,
 };
 
 beforeEach(() => {
   useMazeStore.setState({
     availableChecks: [checkDescriptor],
-    selectedChecks: ["c1"],
     availableStrategies: [],
-    rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["c1"], strategyId: null, disabled: false, ruleDisabled: false }],
-    checkParams: {},
+    rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false }],
     strategyParams: {},
   } as Partial<ReturnType<typeof useMazeStore.getState>>);
 });
@@ -43,24 +42,22 @@ describe("QualityCanvas", () => {
   });
 
   it("renders one strategy slot, not duplicated, when two active checks are merged into one rule", () => {
-    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [] };
+    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [], allow_multiple_instances: false };
     useMazeStore.setState({
       availableChecks: [checkDescriptor, checkB],
-      selectedChecks: ["c1", "c2"],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: ["c1", "c2"], strategyId: null, disabled: false, ruleDisabled: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }, { localId: 1, typeId: "c2", params: {} }], nextLocalCheckId: 2, strategyId: null, disabled: false, ruleDisabled: false }],
     } as Partial<ReturnType<typeof useMazeStore.getState>>);
     render(<QualityCanvas />);
     expect(screen.getAllByText("Logging")).toHaveLength(1);
   });
 
   it("renders two strategy slots when two active checks of the same kind are in separate rules", () => {
-    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [] };
+    const checkB: CheckDescriptor = { id: "c2", label: "Check Two", description: "", issue_kinds: ["i1"], params: [], allow_multiple_instances: false };
     useMazeStore.setState({
       availableChecks: [checkDescriptor, checkB],
-      selectedChecks: ["c1", "c2"],
       rules: [
-        { id: "g1", name: "Rule 1", kind: "k1", checks: ["c1"], strategyId: null, disabled: false, ruleDisabled: false },
-        { id: "g2", name: "Rule 2", kind: "k1", checks: ["c2"], strategyId: null, disabled: false, ruleDisabled: false },
+        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "c2", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false },
       ],
     } as Partial<ReturnType<typeof useMazeStore.getState>>);
     render(<QualityCanvas />);

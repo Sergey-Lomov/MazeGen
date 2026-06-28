@@ -7,6 +7,11 @@ import { X } from "lucide-react";
 import { colors } from "../../../styles/theme";
 import type { CheckVM } from "../useQualityViewModel";
 
+// Stable reference for the lookup-miss fallback — a fresh `{}` literal on every selector call
+// would make the Zustand selector return a new reference each render even when the underlying
+// store data hasn't changed, causing unnecessary re-renders.
+const EMPTY_PARAMS: Record<string, string> = {};
+
 interface Props {
   check: CheckVM;
   selected: boolean;
@@ -20,14 +25,14 @@ interface Props {
 // plus its params shown inline underneath, always expanded — same layout the strategy half uses,
 // so checks and strategy read as the same kind of thing rather than checks needing an extra click.
 export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onHoverChange }: Props) {
-  const checkParams = useMazeStore((s) => s.checkParams);
   const setCheckParam = useMazeStore((s) => s.setCheckParam);
+  const storeValues = useMazeStore((s) => s.rules.find((r) => r.id === check.ruleId)?.checks.find((c) => c.localId === check.localId)?.params ?? EMPTY_PARAMS);
 
   const { values, onChange, flushRef } = useParamEditor({
     entityId: check.id,
     params: check.params,
-    storeValues: checkParams[check.id] ?? {},
-    onCommit: (paramId, value) => setCheckParam(check.id, paramId, value),
+    storeValues,
+    onCommit: (paramId, value) => setCheckParam(check.ruleId, check.localId, paramId, value),
   });
 
   return (

@@ -70,22 +70,6 @@ pub trait RepairStrategy<F: Field> {
 A **rule** is the unit `RepairEngine` actually dispatches on — not `IssueKind` directly. A rule is a non-empty set of checks producing one `IssueKind`, with at most one strategy. This lets two checks producing the same `IssueKind` (e.g. `min_loop_length` and `max_loop_length`, both `INVALID_LOOP`) be split into independent rules with different strategies, instead of being forced to share the single strategy a kind-keyed engine would allow.
 
 ```rust
-/// Identifies a check type (`available_checks()`'s `CheckDescriptor.id`). One variant per
-/// registered check — `as_str`/`from_str` are the wire-boundary conversion (wasm config
-/// parsing, serialization), same pattern as `IssueKind`. See `quality_control.md`'s "Available
-/// checks" table for the current full list of check ids this enum covers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum CheckId {
-    MissingEndpoints,
-    UnreachableFinish,
-    MinLoopsCount,
-    MinLoopLength,
-    MaxLoopLength,
-    ExternalEscapeDiversity,
-    LoopDistanceFromStart,
-    LoopDistanceFromFinish,
-}
-
 /// A user-defined QC rule. Caller-supplied configuration (built by the wasm layer from
 /// `GenerateConfig.check_rules`, see `quality_control.md`'s `QcRuleConfig`), not generated or
 /// interpreted by core. `id` is opaque — core never inspects its content, only uses it as a
@@ -94,9 +78,21 @@ pub enum CheckId {
 pub struct QcRule {
     pub id: String,
     pub kind: IssueKind,
-    pub checks: Vec<CheckId>,
+    /// Rule-scoped composite check-instance ids (`{rule_id}:{local_id}`, see GitHub issue #60),
+    /// minted by `maze-wasm/src/runner.rs::composite_check_id` — not check type ids. Opaque to
+    /// core: never parsed back apart, only used as a routing/dedup key (same role the old
+    /// `CheckId` enum played, before it was widened to a `String` to let two configured
+    /// instances of one check type — e.g. two `MinRegionCountCheck`s with different
+    /// `region_class` — route independently instead of colliding on one enum variant).
+    pub checks: Vec<String>,
 }
 ```
+
+There is no `CheckId` enum anymore — `maze-wasm/src/runner.rs::build_check` dispatches directly
+on `CheckInstanceConfig.type_id: &str` (`match type_id.as_str() { "missing_endpoints" => ..., ... }`)
+to pick which `Check<T>` struct to construct. That `type_id` string ("what kind of check is
+this") is a different thing from the composite routing id in `QcRule.checks` ("which specific
+configured instance produced this issue") — do not confuse the two.
 
 `kind` is a **caller-supplied, caller-trusted invariant**: core never reads it for routing or validation logic (only `id`/`checks` are used by `check_id_to_rule`/`run`/`strategy_rule_ids`), and core does not verify that every check in `checks` actually produces `kind`. That check happens entirely on the caller side, before a `QcRule` is ever constructed — `maze-wasm/src/runner.rs::build_qc_and_repair` resolves each check id's kind and rejects a config where they disagree (`"checks in rule {id} produce different issue kinds"`) before building the `QcRule`. `kind` exists on the struct for callers that need to read it back (e.g. `maze-wasm` re-derives it when building `RepairRuleConfig`, and it round-trips into web-side `StrategySlotVM.kind` for UI display) — core just carries it through unread.
 
@@ -132,9 +128,10 @@ impl<F: Field> RepairEngine<F> {
     /// responsible for this invariant.
     pub fn new(rules: Vec<RepairRuleConfig<F>>, all_rules: Vec<QcRule>) -> Self;
 
-    /// All check ids across every rule (strategy or not), mapped to their rule id. Used by
-    /// `build_maze` to route raw issues to their rule before merging.
-    pub fn check_id_to_rule(&self) -> HashMap<CheckId, String>;
+    /// All check instance ids (composite routing ids, see `QcRule.checks` above) across every
+    /// rule (strategy or not), mapped to their rule id. Used by `build_maze` to route raw issues
+    /// to their rule before merging.
+    pub fn check_id_to_rule(&self) -> HashMap<String, String>;
 
     /// Rule ids with a registered strategy, as a lookup set — precomputed once per call rather
     /// than scanned per lookup, since `build_maze` calls this once per repair-loop iteration and
@@ -316,14 +313,14 @@ Logic:
 
 1. Construct `Maze` via `Maze::new(field, graph)` — sets `MazeMeta::empty()` and `MazeAnalysis::default()`.
 2. Create `rng = SmallRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations for cross-iteration determinism.
-3. Build `check_id_to_rule: HashMap<CheckId, String>` once via `repair_engine.check_id_to_rule()` — maps every check id across every configured rule (strategy or not) to its rule id.
+3. Build `check_id_to_rule: HashMap<String, String>` once via `repair_engine.check_id_to_rule()` — maps every check instance's composite routing id (see `QcRule.checks` above) across every configured rule (strategy or not) to its rule id.
 4. Track `failed: HashSet<String>` — rule ids whose strategy returned `Failed`.
 5. Track `previous_fingerprint: Option<Vec<String>>` (sorted rule ids) for progress detection.
 6. Record `start_ms = now_ms()` before the loop. Loop, checking at the top of each iteration (before running QC):
    - If `limits.max_iterations` is `Some(max)` and the iteration count already reached `max`: break.
    - If `limits.time_budget_secs` is `Some(budget)` and `now_ms() - start_ms >= budget * 1000.0`: break.
    - Run QC.
-   - **Merge, not drop, issues sharing a rule** — multiple checks in the same rule may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). For each raw issue, route by `issue.single_source_check()` — `Some(check_id)` only when the issue carries exactly one source check, looked up via `check_id_to_rule`; `None` (zero sources, e.g. `CYCLE_ANALYSIS_OVERFLOWED`, or — should never happen for a raw pre-merge issue, guarded by `debug_assert!` — two or more) routes to no rule and the issue is dropped from this iteration's merge map. This is a deliberate fail-safe: a malformed 2+-source raw issue is routed as "no rule" rather than silently picked by an arbitrary single source id, which is what indexing `source_checks()` directly would do in a release build with `debug_assert!` compiled out. An issue with no matching rule isn't lost from the maze's perspective — the final `qc_engine.run` after the loop recomputes fresh and will surface it again if still present. Group routed issues by rule id into a `HashMap<String, Issue>`: the first issue for a rule seeds the entry, any further issue for the same rule is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions sources via `Issue::push_source` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice; `invalid_sources` (per-cycle check attribution) is unioned by canonical key alongside it. The remap step uses `.get()` on the old→new index map, not direct indexing — an out-of-range `invalid` index from a malformed future `Check` is dropped (debug-asserted, not panicked) rather than crashing the pipeline. `IssueData::RegionsNeedingExpansion` (see `quality_control.md`) merges more simply via `merge_regions_needing_expansion` — no remap needed, since `invalid`'s indices are into the one `maze.analysis.scc(&maze.graph)` cache entry shared by every check in the pass, so the same index already means the same region on both sides; only a plain dedup-union of `invalid` and `invalid_sources` is required. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces. Then filter out `failed` rule ids. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
+   - **Merge, not drop, issues sharing a rule** — multiple checks in the same rule may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). For each raw issue, route by `issue.single_source_check()` — `Some(check_id)` only when the issue carries exactly one source check, looked up via `check_id_to_rule`; `None` (zero sources, e.g. `CYCLE_ANALYSIS_OVERFLOWED`, or — should never happen for a raw pre-merge issue, guarded by `debug_assert!` — two or more) routes to no rule and the issue is dropped from this iteration's merge map. This is a deliberate fail-safe: a malformed 2+-source raw issue is routed as "no rule" rather than silently picked by an arbitrary single source id, which is what indexing `source_checks()` directly would do in a release build with `debug_assert!` compiled out. An issue with no matching rule isn't lost from the maze's perspective — the final `qc_engine.run` after the loop recomputes fresh and will surface it again if still present. Group routed issues by rule id into a `HashMap<String, Issue>`: the first issue for a rule seeds the entry, any further issue for the same rule is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions sources via `Issue::push_source` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice; `invalid_sources` (per-cycle check attribution) is unioned by canonical key alongside it. The remap step uses `.get()` on the old→new index map, not direct indexing — an out-of-range `invalid` index from a malformed future `Check` is dropped (debug-asserted, not panicked) rather than crashing the pipeline. `IssueData::RegionsNeedingExpansion` (see `quality_control.md`) merges more simply via `merge_regions_needing_expansion` — no remap needed, since `invalid`'s indices are into the one `maze.analysis.scc(&maze.graph)` cache entry shared by every check in the pass, so the same index already means the same region on both sides; only a plain dedup-union of `invalid` and `invalid_sources` is required. `IssueData::MissingRegions` merges via `merge_missing_regions` — folds the incoming `missing_by_class` map into the existing one, entry by entry; a class present in both takes the **max** of the two `missing` values (both checks report the same shortfall against the same threshold, so summing would double-count it — see GitHub issue #60 and `quality_control.md`'s invariant on this variant), a class present in only one side is carried over unchanged. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces. Then filter out `failed` rule ids. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
    - **Rules with no registered strategy still merge their issues** (for attribution) but are filtered out before the fingerprint/dispatch step via `repair_engine.strategy_rule_ids()` (a precomputed `HashSet`, not a per-lookup scan) — same final effect as a kind without a strategy being skipped in the old design, just keyed by rule now.
    - If no active issues: break (all resolved).
    - Progress guard: sort `active` by rule id and compare the full `(rule_id, Issue)` list against the previous iteration's, by value (`Issue` derives `PartialEq`, covering `data`/`source_checks`/`details`). Catches true "no progress" (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid).

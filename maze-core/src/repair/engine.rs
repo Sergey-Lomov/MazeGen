@@ -4,7 +4,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::issue::Issue;
 use crate::generation::PresetState;
-use super::rule::{QcRule, CheckId};
+use super::rule::QcRule;
 use super::params::{build_params, StrategyParams};
 use super::result::RepairResult;
 use super::strategy::RepairStrategy;
@@ -44,11 +44,11 @@ impl<T: Tessellation> RepairEngine<T> {
 
     /// All check ids across every rule (strategy or not), mapped to their rule id. Used by
     /// `build_maze` (pipeline.rs) to route raw issues to their rule before merging.
-    pub fn check_id_to_rule(&self) -> HashMap<CheckId, String> {
+    pub fn check_id_to_rule(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         for rule in &self.all_rules {
-            for &check_id in &rule.checks {
-                map.insert(check_id, rule.id.clone());
+            for check_id in &rule.checks {
+                map.insert(check_id.clone(), rule.id.clone());
             }
         }
         map
@@ -89,5 +89,45 @@ impl<T: Tessellation> RepairEngine<T> {
             results.push(RepairOutcome { rule_id: rule_id.clone(), result });
         }
         results
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::quality_control::MISSING_ENDPOINTS;
+
+    fn rule(id: &str, checks: &[&str]) -> QcRule {
+        QcRule { id: id.to_string(), kind: MISSING_ENDPOINTS, checks: checks.iter().map(|s| s.to_string()).collect() }
+    }
+
+    #[test]
+    fn check_id_to_rule_maps_every_check_across_all_rules_strategy_or_not() {
+        let engine = RepairEngine::<crate::space::SquareTessellation>::new(
+            vec![],
+            vec![rule("rule_a", &["rule_a:0", "rule_a:1"]), rule("rule_b", &["rule_b:0"])],
+        );
+        let map = engine.check_id_to_rule();
+        assert_eq!(map.get("rule_a:0"), Some(&"rule_a".to_string()));
+        assert_eq!(map.get("rule_a:1"), Some(&"rule_a".to_string()));
+        assert_eq!(map.get("rule_b:0"), Some(&"rule_b".to_string()));
+        assert_eq!(map.len(), 3);
+    }
+
+    #[test]
+    fn check_id_to_rule_empty_when_no_rules() {
+        let engine = RepairEngine::<crate::space::SquareTessellation>::new(vec![], vec![]);
+        assert!(engine.check_id_to_rule().is_empty());
+    }
+
+    #[test]
+    fn strategy_rule_ids_only_includes_rules_with_a_registered_strategy() {
+        let engine = RepairEngine::<crate::space::SquareTessellation>::new(
+            vec![],
+            vec![rule("rule_a", &["rule_a:0"]), rule("rule_b", &["rule_b:0"])],
+        );
+        // Neither rule has a strategy here (empty `rules` vec) — both still route via
+        // `check_id_to_rule` for attribution, but neither is dispatched for repair.
+        assert!(engine.strategy_rule_ids().is_empty());
     }
 }

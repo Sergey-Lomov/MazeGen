@@ -191,7 +191,7 @@ mod tests {
     }
 
     fn check_finds_short_loop(maze: &Maze<SquareTessellation>) -> bool {
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(maze, &mut issues, &mut check_rng);
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn prefers_cutting_the_edge_shared_between_two_short_cycles() {
         let maze = maze_with_shared_edge_triangles();
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
@@ -231,7 +231,7 @@ mod tests {
         // second triangle must be dropped from the pending set rather than also losing one of
         // D's two edges — that would leave D with degree 0, fully cut off from the graph.
         let maze = maze_with_shared_edge_triangles();
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn avoids_cutting_an_edge_shared_with_a_long_valid_loop_in_favor_of_a_plain_edge() {
         let maze = maze_with_plain_edge_and_penalized_edge();
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
@@ -325,7 +325,7 @@ mod tests {
     #[test]
     fn does_not_cut_a_preset_protected_edge() {
         let maze = maze_with_shared_edge_triangles();
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);

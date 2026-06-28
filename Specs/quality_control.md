@@ -62,37 +62,72 @@ Always use the named constant — never use string literals or enum variants inl
 pub struct Issue {
     pub kind: IssueKind,
     pub data: Option<IssueData>,
-    source_checks: Vec<CheckId>, // private — see accessors below
-    details: HashMap<CheckId, HashMap<&'static str, String>>, // private — see accessors below
+    source_checks: Vec<String>, // private — see accessors below
+    details: HashMap<String, HashMap<&'static str, String>>, // private — see accessors below
 }
 
 impl Issue {
     pub fn new(kind: IssueKind) -> Self;                                       // data: None, source_checks: []
     pub fn with_data(kind: IssueKind, data: IssueData) -> Self;                 // source_checks: []
-    pub fn new_from_check(kind: IssueKind, source_check: CheckId) -> Self;
-    pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: CheckId) -> Self;
+    pub fn new_from_check(kind: IssueKind, source_check: &str) -> Self;
+    pub fn with_data_from_check(kind: IssueKind, data: IssueData, source_check: &str) -> Self;
     /// Chainable — attaches one display detail under `source_check`. See `details()` below.
-    pub fn with_detail(self, source_check: CheckId, key: &'static str, value: String) -> Self;
-    pub fn source_checks(&self) -> &[CheckId];
+    pub fn with_detail(self, source_check: &str, key: &'static str, value: String) -> Self;
+    pub fn source_checks(&self) -> &[String];
     /// `Some` only when there is exactly one source check (the normal raw, pre-merge case) —
     /// `None` for zero (e.g. `CYCLE_ANALYSIS_OVERFLOWED`) or 2+ sources (an already-merged
     /// issue, or a malformed raw one). Pipeline rule-routing uses this, not `source_checks()`
     /// indexing, so a malformed multi-source raw issue can't be silently misrouted by an
     /// arbitrary first id — see `repair.md`'s "Pipeline" section.
-    pub fn single_source_check(&self) -> Option<CheckId>;
-    pub fn details(&self) -> &HashMap<CheckId, HashMap<&'static str, String>>;
-    pub(crate) fn push_source(&mut self, source: CheckId); // merge_issue only
-    pub(crate) fn merge_details(&mut self, incoming: HashMap<CheckId, HashMap<&'static str, String>>); // merge_issue only
+    pub fn single_source_check(&self) -> Option<&str>;
+    pub fn details(&self) -> &HashMap<String, HashMap<&'static str, String>>;
+    pub(crate) fn push_source(&mut self, source: &str); // merge_issue only
+    pub(crate) fn merge_details(&mut self, incoming: HashMap<String, HashMap<&'static str, String>>); // merge_issue only
 }
 ```
+
+**`source_checks`/`details` carry a rule-scoped composite id, not a check type id** — see GitHub
+issue #60. Two active configurations of the same check type (e.g. two `min_region_count`
+instances, each with its own `region_class`/`count`) need distinct routing identity, so the
+string here is `{rule_id}:{local_id}` (built once, by `composite_check_id()` in
+`maze-wasm/src/runner.rs`, never reconstructed or parsed back apart anywhere in `maze_core`).
+`Issue` stays exactly as rule-agnostic as before this change — it still has no `rule_id` field
+and no concept of rules; the string it carries simply happens to be built from one outside this
+crate. Treat it as opaque: compare and pass it through, never split on `:`.
 
 `Issue` derives `PartialEq` but not `Eq` — `IssueData` is not `Eq` (future variants are expected to carry `f64` fields, e.g. weights/scores).
 
 `Issue` is mostly an **internal QC artifact** — `data` is plumbing between a `Check` and the matching `RepairStrategy` within one QC pass and is never serialized (see "Not exposed over WASM" below). `kind`, `source_checks`, and `details` are the exception: the WASM layer (`maze-wasm/src/analytics.rs`) does serialize these three into `IssueDto` for the web UI (see `quality-feature.md`), since the UI needs to know which check(s) produced an issue and render a check-specific message. Keep this boundary explicit when extending `Issue`: a genuinely display-only payload belongs in `details` (generic, serialized), not `data` (kind-specific, repair-only, never serialized).
 
-`source_checks` (private field, read via `source_checks()`) records which check id(s) (the `CheckId` enum, e.g. `CheckId::MinLoopLength` — see `repair.md`) produced or contributed to this issue. Every toggleable `Check<T>` implementation should construct its issues via `new_from_check`/`with_data_from_check`, passing its own check id. The one exception is `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` outside any `Check<T>` (see its doc comment below) — it has no check id to attribute to, so it uses plain `Issue::new` and `source_checks` stays empty. When two issues of the same kind are merged (see "Dedup interaction" below), `source_checks` is unioned without duplicates via `push_source` — the field is private specifically so nothing outside `merge_issue` can append to it or construct an `Issue` with an already-multi-source list before merge has legitimately produced one (a raw, pre-merge issue is expected to carry exactly one source check; `single_source_check()` is the type-level enforcement of that for rule-routing).
+`source_checks` (private field, read via `source_checks()`) records which check instance(s)
+(rule-scoped composite ids — see above) produced or contributed to this issue. Every toggleable
+`Check<T>` implementation should construct its issues via `new_from_check`/`with_data_from_check`,
+passing its own `instance_id` field (set externally at construction time by
+`maze-wasm/src/runner.rs::build_check`, since core itself never mints these ids). The one
+exception is `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` outside
+any `Check<T>` (see its doc comment below) — it has no check id to attribute to, so it uses plain
+`Issue::new` and `source_checks` stays empty. When two issues of the same kind are merged (see
+"Dedup interaction" below), `source_checks` is unioned without duplicates via `push_source` — the
+field is private specifically so nothing outside `merge_issue` can append to it or construct an
+`Issue` with an already-multi-source list before merge has legitimately produced one (a raw,
+pre-merge issue is expected to carry exactly one source check; `single_source_check()` is the
+type-level enforcement of that for rule-routing).
 
-`details` (private field, read via `details()`, written via the chainable `with_detail`) carries **raw display values only** — e.g. a check's configured threshold as a string — keyed by source check id (`CheckId`), then by detail key (e.g. `CheckId::MaxLoopLength -> {"max_loop_length" -> "100"}`). Never an assembled message: wording belongs entirely to the web UI's own i18n layer, which looks values up by key per check id (see `quality-feature.md`'s issue rendering section). Keyed by check id rather than flattened because a merged `Issue` (see "Dedup interaction" below) may carry details from several contributing checks at once — e.g. both `min_loop_length`'s and `max_loop_length`'s thresholds on one merged `INVALID_LOOP` issue — and the UI renders one bubble per source check, each reading only its own check's details. On merge, `merge_details` (`merge_issue`-only, mirroring `push_source`) folds `incoming`'s per-check entries into `existing`'s; since a raw (pre-merge) issue only ever has its own check id as a key, there is no same-check-id collision to reconcile, just a union across checks.
+`details` (private field, read via `details()`, written via the chainable `with_detail`) carries
+**raw display values only** — e.g. a check's configured threshold as a string — keyed by source
+check instance id (the same composite string as `source_checks`), then by detail key (e.g.
+`"rule_3:0" -> {"max_loop_length" -> "100"}`). Never an assembled message: wording belongs
+entirely to the web UI's own i18n layer, which looks values up by key per check **type** (see
+`quality-feature.md`'s issue rendering section — the web side needs `IssueDto.source_check_types`
+to recover the type id from the composite instance id for this lookup). Keyed by check instance
+rather than flattened because a merged `Issue` (see "Dedup interaction" below) may carry details
+from several contributing checks at once — e.g. both `min_loop_length`'s and `max_loop_length`'s
+thresholds on one merged `INVALID_LOOP` issue, or two `min_region_count` instances' thresholds on
+one merged `MISSING_REGIONS` issue — and the UI renders one bubble per source check, each reading
+only its own check's details. On merge, `merge_details` (`merge_issue`-only, mirroring
+`push_source`) folds `incoming`'s per-check entries into `existing`'s; since a raw (pre-merge)
+issue only ever has its own check instance id as a key, there is no same-key collision to
+reconcile, just a union across checks.
 
 ### IssueData
 
@@ -103,18 +138,17 @@ pub enum IssueData {
     InvalidLoops {                // produced by any check flagging cycles invalid, see below
         all: Vec<Vec<EdgeId>>,
         invalid: Vec<usize>,
-        invalid_sources: HashMap<Vec<EdgeId>, Vec<&'static str>>,
+        invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
     },
     Missing {                     // produced by any check flagging too few loops, see below
         missing: u32,
     },
     RegionsNeedingExpansion {            // produced by any check flagging SCC regions needing expansion, see below
         invalid: Vec<usize>,
-        invalid_sources: HashMap<usize, Vec<CheckId>>,
+        invalid_sources: HashMap<usize, Vec<String>>,
     },
-    MissingRegions {               // produced by any check flagging too few regions of a class, see below
-        region_class: RegionClass,
-        missing: u32,
+    MissingRegions {               // produced by any check flagging too few regions of one or more classes, see below
+        missing_by_class: HashMap<RegionClass, u32>,
     },
 }
 ```
@@ -126,11 +160,11 @@ pub enum IssueData {
 - **Kind↔data invariant** (documentation-only, not runtime-checked — consistent with other contracts in this module): each `IssueKind` is expected to use a specific, fixed set of `IssueData` variants. It is the responsibility of the `Check`/`RepairStrategy` author to keep kind and data variant in sync.
 - **`TestPayload`**: a temporary, infra-only variant not tied to any real `IssueKind`, used to exercise `Clone`/equality on a non-trivial owned payload. Marked `// TODO` in code for removal once a first real variant lands.
 - **`InvalidLoops { all, invalid, invalid_sources }`**: produced by any check that flags simple cycles invalid for a check-specific reason (paired with `INVALID_LOOP`) — currently `MinLoopLengthCheck` (cycles shorter than a configured threshold) and `MaxLoopLengthCheck` (cycles longer than a configured threshold), **mandatory** for this kind, see `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` in `repair.md`. `all` holds **every** simple cycle found in the maze, valid and invalid alike, each as the **set** of base-`Graph` edges forming it — element order carries no meaning beyond membership, only used as a convenient container, and `EdgeId` values never repeat within one cycle. `invalid` is the subset of indices into `all` that the producing check(s) flagged — the cycles a repair strategy must actually break. An empty `invalid` is valid and means no cycle was flagged (`all` may still be non-empty in that case). Future checks may flag cycles invalid for reasons other than length and reuse this same variant, rather than introducing a new one per reason — see the `IssueKind` hard rule above.
-- **`invalid_sources`**: per-cycle check attribution, keyed by `canonical_cycle_key` (the cycle's edge set, sorted) rather than by index into `all` — indices get remapped on every merge (see `merge_invalid_loops` in `repair.md`'s "Pipeline" section), but a cycle's canonical key is stable across merges, so this map never needs remapping. Maps a cycle to the check id(s) that flagged it invalid. A cycle absent from this map was flagged by no check directly tracked — shouldn't happen for entries in `invalid`, but the map is not required to cover every index; absence means "no recorded source," not an error.
+- **`invalid_sources`**: per-cycle check attribution, keyed by `canonical_cycle_key` (the cycle's edge set, sorted) rather than by index into `all` — indices get remapped on every merge (see `merge_invalid_loops` in `repair.md`'s "Pipeline" section), but a cycle's canonical key is stable across merges, so this map never needs remapping. Maps a cycle to the check instance composite id(s) (see "Issue" above) that flagged it invalid. A cycle absent from this map was flagged by no check directly tracked — shouldn't happen for entries in `invalid`, but the map is not required to cover every index; absence means "no recorded source," not an error.
 - Keeping the valid cycles in `all` (not just the invalid ones) lets a strategy avoid cutting an edge that is also part of a cycle the maze is meant to keep — see `InvalidLoopScoredStrategy` in `repair.md`.
 - **`Missing { missing }`**: produced by any check that flags the maze as short on loops overall (paired with `MISSING_LOOPS`) — currently only `MinLoopsCountCheck`. `missing` is how many loops short of the requirement the maze is (`min_loops.saturating_sub(graph_analytics.cycle_count)` — the independent-cycle count, see `MinLoopsCountCheck` below), letting a repair strategy know how many to add. No merge rule defined yet — currently only one check ever produces `MISSING_LOOPS`, so the dedup/merge path is never exercised for this variant.
 - **`RegionsNeedingExpansion { invalid, invalid_sources }`**: produced by any check that flags SCC regions undersized for a check-specific reason (paired with `REGION_NEEDS_EXPANSION`) — currently `MinRegionSizeCheck` (region smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller than a configured share of the field). `invalid` holds indices into `maze.analysis.scc(&maze.graph).components` — not a copy of the regions themselves: that computation is already cached there (keyed by `graph.version()`, see `analysis.md`), and a future repair strategy can re-fetch it (cache hit within the same QC pass) instead of `Issue` carrying a duplicate snapshot. `invalid_sources` is keyed by the same component index — unlike `invalid_sources` on `InvalidLoops`, this needs no remap on merge, because every check sharing this issue within one QC pass reads from the same single `scc()` cache entry, so a given index means the same region on both sides of a merge (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section). No `RepairStrategy` registered yet for this kind — same "detectable, not yet repairable" status `EXCESSIVE_SCC_COUNT` has.
-- **`MissingRegions { region_class, missing }`**: produced by any check that flags the maze as short on regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap, see `graph-analytics.md`'s "Region Classes" section) — currently only `MinRegionCountCheck`. `missing` is how many regions of `region_class` short of the requirement the maze is (`min_count.saturating_sub(count)`), letting a future repair strategy know how many regions of that class to add. No merge rule defined yet — currently only one check ever produces `MISSING_REGIONS`, so the dedup/merge path is never exercised for this variant.
+- **`MissingRegions { missing_by_class }`**: produced by any check that flags the maze as short on regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap, see `graph-analytics.md`'s "Region Classes" section) — currently only `MinRegionCountCheck`. **Invariant**: a single, non-merged `Issue` (the direct output of one `MinRegionCountCheck` instance) always carries **at most one entry** in `missing_by_class` — its own configured `region_class`. Multiple entries only ever arise from `merge_missing_regions` (see `repair.md`'s "Pipeline" section) combining two or more `MinRegionCountCheck` instances active at once with different `region_class` values (see GitHub issue #60 — this is exactly the scenario that motivated this variant's shape: before #60, only one `min_region_count` configuration could be active at a time, so a single `region_class`/`missing` pair was sufficient). When two instances target the *same* `region_class` (e.g. both in one rule), the merge takes the **max** of the two `missing` values, not the sum — both checks are reporting the same underlying shortfall against the same `count`, so summing would double-count it. `HashMap` iteration order is not stable — code that serializes or displays `missing_by_class` (the wasm DTO layer, the web UI) sorts by `RegionClass::as_str()` at the point of use rather than relying on map order, without needing an `Ord` derive on `RegionClass` itself for this one call site.
 - **`data` is not exposed over WASM**: the WASM layer serializes `IssueKind`, `source_checks`, and `details` (see `IssueDto` in `quality-feature.md`) but never `Issue.data` itself — that field stays internal, Check-to-Strategy plumbing only.
 - **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` and `details` (on `Issue`, see above) are unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 
@@ -358,7 +392,7 @@ Flags too few SCC regions of a configured `RegionClass` (Path/Alternative/Unreac
 
 Uses `maze.analysis.region_classes(&maze.graph, start, finish)` and counts entries whose value equals `self.region_class`. Silently skips (no issue) if either `maze.meta.start` or `maze.meta.finish` is `None` — same as `UnreachableFinishCheck`/the loop-distance checks, that failure mode belongs to `MissingEndpointsCheck`, not this check. If the count is at or above `min_count`, the check is silent. Otherwise fires `Issue::with_data_from_check(MISSING_REGIONS, IssueData::MissingRegions { region_class, missing }, "min_region_count")` with `.with_detail("min_region_count", "region_class", self.region_class.as_str().to_string())` and `.with_detail("min_region_count", "count", self.min_count.to_string())` chained on, where `missing = min_count - count`.
 
-Only one instance of this check can be active at a time (`selectedChecks` allows one entry per check id, see `quality-feature.md`) — requiring separate minimums for two different region classes simultaneously (e.g. "at least 2 trap regions" and separately "at least 2 alternative regions") is not yet supported; this is a known follow-up, not covered by this check's current scope. No `RepairStrategy` registered yet for this kind — `MISSING_REGIONS` is a detectable-but-not-yet-repairable issue kind, same status `EXCESSIVE_SCC_COUNT` has.
+Multiple independent instances of this check can be active at once with different `region_class`/`min_count` values — e.g. "at least 2 trap regions" and separately "at least 2 alternative regions" — see GitHub issue #60. Each instance produces its own `IssueData::MissingRegions { missing_by_class }` with exactly one entry (its own `region_class`); when two instances are active in the same rule, the pipeline merges their issues into one `MISSING_REGIONS` issue carrying both classes' shortfalls (see `IssueData::MissingRegions`'s invariant above and `merge_missing_regions` in `repair.md`'s "Pipeline" section). No `RepairStrategy` registered yet for this kind — `MISSING_REGIONS` is a detectable-but-not-yet-repairable issue kind, same status `EXCESSIVE_SCC_COUNT` has.
 
 ## WASM Interface
 
@@ -371,18 +405,51 @@ Serialized to JSON in `MazeSnapshot.issues` (`build_analytics_snapshot`, `maze-w
 ```rust
 struct IssueDto {
     kind: String,                                       // IssueKind::as_str()
-    invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>>, // invalid_loop only, keyed by source check id
-    region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>>, // region_needs_expansion only, keyed by source check id
-    source_checks: Vec<String>,                          // Issue::source_checks()
+    invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>>, // invalid_loop only, keyed by source check instance id
+    region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>>, // region_needs_expansion only, keyed by source check instance id
+    source_checks: Vec<String>,                          // Issue::source_checks() — opaque composite instance ids
+    source_check_types: HashMap<String, String>,         // source_checks entry -> check type id
     details: HashMap<String, HashMap<String, String>>,   // Issue::details()
 }
 ```
 
-`source_checks` and `details` are the serialized form of `Issue`'s same-named accessors (see "Issue" above) — the web UI uses them to render one bubble per contributing check, each with a check-specific label built from that check's own `details` entry (see `quality-feature.md`). `details` values are raw (numbers as strings, etc.) — the UI owns all wording.
+`source_checks` and `details` are the serialized form of `Issue`'s same-named accessors (see
+"Issue" above) — the web UI uses them to render one bubble per contributing check, each with a
+check-specific label built from that check's own `details` entry (see `quality-feature.md`).
+`details` values are raw (numbers as strings, etc.) — the UI owns all wording.
 
-`invalid_loop_edges` is keyed by source check id, not one flat list — a merged `invalid_loop` issue may carry cycles from several checks at once (e.g. both `min_loop_length`'s short loops and `max_loop_length`'s long loops), and each is attributed to its own check's entry so the UI can highlight only the cycles relevant to the bubble being hovered, not every contributing check's cycles combined. Built by looking up each invalid cycle's canonical key (`canonical_cycle_key`) in `IssueData::InvalidLoops.invalid_sources` to find which check(s) flagged it — the same attribution map `merge_invalid_loops` (`repair.md`'s "Pipeline" section) already maintains across merges. A check id absent from `invalid_loop_edges` (or the whole map empty) means that check flagged no cycles, or the issue isn't `invalid_loop`.
+`source_checks` entries are opaque per-**instance** composite ids (`{rule_id}:{local_id}`), not
+check type ids — two active instances of the same type (e.g. two `min_region_count`s, see GitHub
+issue #60) need distinct entries here. The web UI's per-check-type label lookup (`DETAIL_LABELS`
+in `issueRegistry.ts`) keys off the check's **type**, not its instance, so `source_check_types`
+maps each `source_checks` entry back to its type id. Built in `build_analytics_snapshot`
+(`maze-wasm/src/analytics.rs`) from the same composite-id-to-type-id map `runner.rs` already
+builds while constructing the active checks for this pass — invariant: exactly one
+`source_check_types` entry per distinct id appearing anywhere in any issue's `source_checks` for
+this snapshot, no extras.
 
-`region_needs_expansion_nodes` mirrors `invalid_loop_edges`'s role for `region_needs_expansion` issues (currently produced by `MinRegionSizeCheck`/`MinRegionRatioCheck`) — keyed by source check id for the same reason, so hovering one check's bubble highlights only the regions that check flagged. Each inner `Vec<u32>` is one flagged region's member maze node ids (not edges — the web client derives the region's perimeter and fill client-side from this node set, the same way it derives preset boundary walls from a cell set; see `IssueHighlightOverlay.ts`/`issueHighlightSelectors.ts`). Built from `IssueData::RegionsNeedingExpansion.invalid` (indices into `maze.analysis.scc(&maze.graph).components`) and `invalid_sources` (keyed by component index, no remap needed within one QC pass — see `IssueData::RegionsNeedingExpansion`'s doc comment above). A check id absent from `region_needs_expansion_nodes` means that check flagged no regions, or the issue isn't `region_needs_expansion`.
+`invalid_loop_edges` is keyed by source check instance id, not one flat list — a merged
+`invalid_loop` issue may carry cycles from several checks at once (e.g. both `min_loop_length`'s
+short loops and `max_loop_length`'s long loops), and each is attributed to its own check's entry
+so the UI can highlight only the cycles relevant to the bubble being hovered, not every
+contributing check's cycles combined. Built by looking up each invalid cycle's canonical key
+(`canonical_cycle_key`) in `IssueData::InvalidLoops.invalid_sources` to find which check(s)
+flagged it — the same attribution map `merge_invalid_loops` (`repair.md`'s "Pipeline" section)
+already maintains across merges. A check instance id absent from `invalid_loop_edges` (or the
+whole map empty) means that check flagged no cycles, or the issue isn't `invalid_loop`.
+
+`region_needs_expansion_nodes` mirrors `invalid_loop_edges`'s role for `region_needs_expansion`
+issues (currently produced by `MinRegionSizeCheck`/`MinRegionRatioCheck`) — keyed by source
+check instance id for the same reason, so hovering one check's bubble highlights only the
+regions that check flagged. Each inner `Vec<u32>` is one flagged region's member maze node ids
+(not edges — the web client derives the region's perimeter and fill client-side from this node
+set, the same way it derives preset boundary walls from a cell set; see
+`IssueHighlightOverlay.ts`/`issueHighlightSelectors.ts`). Built from
+`IssueData::RegionsNeedingExpansion.invalid` (indices into
+`maze.analysis.scc(&maze.graph).components`) and `invalid_sources` (keyed by component index, no
+remap needed within one QC pass — see `IssueData::RegionsNeedingExpansion`'s doc comment above).
+A check instance id absent from `region_needs_expansion_nodes` means that check flagged no
+regions, or the issue isn't `region_needs_expansion`.
 
 ### CheckDescriptor
 
@@ -390,13 +457,26 @@ Serialized to JSON by `available_checks()`:
 
 ```rust
 struct CheckDescriptor {
-    id: &'static str,           // check ID used in GenerateConfig.checks
+    id: &'static str,           // check type id — used as CheckInstanceConfig.type_id
     label: &'static str,        // human-readable name
     description: &'static str,  // human-readable description
     issue_kinds: Vec<&'static str>, // IssueKind::as_str() values this check may produce
     params: Vec<ParamDescriptor>,
+    allow_multiple_instances: bool, // see below
 }
 ```
+
+**`allow_multiple_instances`** gates whether the web store/UI permit more than one independent
+active configuration of this check type at once (across rules, or within the same rule) — see
+GitHub issue #60. `true` only for `min_region_count`: a second instance with a different
+`region_class` is a legitimate, common configuration (e.g. "at least 2 trap regions" AND
+separately "at least 2 alternative regions"). Every other check stays `false` — single active
+instance at a time, same restriction that existed before #60's refactor. This is enforced
+store-side (`addCheck`/`createRule` in `generationSlice.ts`) and mirrored in the UI's candidate
+filtering (`RulesColumn.candidatesFor`, `CheckSelectDialog`) — wasm/core themselves don't reject
+a duplicate `type_id` across instances; `QualityControlEngine` runs every configured instance
+unconditionally regardless of this flag, since nothing in the QC/repair pipeline depends on it
+being correct.
 
 ### ParamDescriptor
 
@@ -420,29 +500,49 @@ enum ParamKindDto {
 
 ```rust
 pub struct GenerateConfig {
-    pub checks: Vec<String>,                                  // check IDs to run
-    pub check_rules: Vec<QcRuleConfig>,                        // rule configs — see below
-    pub check_params: HashMap<String, HashMap<String, String>>, // check_id → param_id → value
+    pub check_rules: Vec<QcRuleConfig>, // rule configs — see below
     // ...
 }
 ```
 
-The runner matches checks by string ID (`match id.as_str()`), not by `IssueKind`. Unknown check IDs return an error. Unknown param keys are silently ignored; missing params fall back to the check's default constant.
+Checks exist only inside `check_rules` — there is no separate flat check list or global param
+dict (removed as part of GitHub issue #60; see `quality-feature.md`'s store-side model for the
+matching web-side shape). The runner matches each check instance by its `type_id` string
+(`match type_id.as_str()`), not by `IssueKind`. Unknown `type_id` values return an error. Unknown
+param keys are silently ignored; missing params fall back to the check's default constant.
 
 ### QcRuleConfig
 
 ```rust
 #[derive(Deserialize)]
+pub struct CheckInstanceConfig {
+    pub local_id: String,                  // unique only within this rule's `checks`, not globally
+    pub type_id: String,                   // check type id — available_checks()'s CheckDescriptor.id
+    pub params: HashMap<String, String>,   // this instance's own param overrides
+}
+
+#[derive(Deserialize)]
 pub struct QcRuleConfig {
-    pub id: String,                       // opaque rule id, assigned by the web client
-    pub checks: Vec<String>,              // check ids, must share one IssueKind
-    pub strategy: Option<StrategyConfig>, // None = "no_fix"
+    pub id: String,                        // opaque rule id, assigned by the web client
+    pub checks: Vec<CheckInstanceConfig>,  // check instances, must share one IssueKind
+    pub strategy: Option<StrategyConfig>,  // None = "no_fix"
 }
 ```
 
-One user-defined QC rule: a non-empty set of active checks producing the same `IssueKind`, sharing one repair strategy (or none — `strategy: None`, the rule's issues still merge for attribution but no `RepairStrategy` is dispatched). See `repair.md`'s "QcRule and rule-based RepairEngine" section for how this is validated and turned into core's `QcRule`/`RepairRuleConfig`.
+One user-defined QC rule: a non-empty set of active check **instances** producing the same
+`IssueKind`, sharing one repair strategy (or none — `strategy: None`, the rule's issues still
+merge for attribution but no `RepairStrategy` is dispatched). Two instances of the same
+`type_id` in the same rule (or in different rules) is a normal, fully supported case — see
+GitHub issue #60 — not deduplicated anywhere in this pipeline; `QualityControlEngine` runs every
+instance independently and completely. `local_id` only needs to be unique within its own rule's
+`checks` array — `maze-wasm/src/runner.rs::build_qc_and_repair` rejects a config with a
+duplicate `local_id` inside one rule (`"rule {id} has duplicate local_id: {local_id}"`), as a
+defense against malformed/hand-edited configs; the web store's own monotonic per-rule counter
+already guarantees this never happens via normal UI flow. See `repair.md`'s "QcRule and
+rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turned into core's
+`QcRule`/`RepairRuleConfig`.
 
-`GenerateConfig::default()` ships one default rule: `{ id: "default_missing_endpoints", checks: ["missing_endpoints"], strategy: Some(farthest_endpoints) }`. `unreachable_finish` has no default rule.
+`GenerateConfig::default()` ships one default rule: `{ id: "default_missing_endpoints", checks: [{ local_id: "missing_endpoints", type_id: "missing_endpoints", params: {} }], strategy: Some(farthest_endpoints) }` — `local_id == type_id` here is a deliberate special case for this fixed bootstrap singleton, not a general pattern. `unreachable_finish` has no default rule.
 
 ### Available checks
 

@@ -10,9 +10,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     randomSeed: false,
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: {},
-    selectedChecks: ["check_a"],
-    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: "strategy_a", disabled: false, ruleDisabled: false }],
-    checkParams: { check_a: { param_a: "1" } },
+    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" } }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false }],
     strategyParams: { strategy_a: { param_b: "2" } },
     repairMaxIterations: 10,
     repairTimeBudgetSecs: null,
@@ -210,7 +208,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
   it("round-trips quality.rules", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: ["check_a"], strategyId: "strategy_a", disabled: false, ruleDisabled: false }]);
+    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" } }], strategyId: "strategy_a", disabled: false, ruleDisabled: false }]);
   });
 
   it("defaults rule name by array position when absent (pre-naming project files)", () => {
@@ -225,6 +223,14 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     delete (data.quality as { rules: Record<string, unknown>[] }).rules[0].kind;
     const result = parseAndValidate(data);
     expect(result.quality.rules).toEqual([]);
+  });
+
+  it("rejects a rule with duplicate localId among its checks", () => {
+    const data = valid_without_optional_sections();
+    const rule = (data.quality as { rules: Record<string, unknown>[] }).rules[0];
+    const check = (rule.checks as Record<string, unknown>[])[0];
+    rule.checks = [check, { ...check, typeId: "check_b" }];
+    expect(() => parseAndValidate(data)).toThrow(/Duplicate localId/);
   });
 
   function valid_without_optional_sections(): Record<string, unknown> {

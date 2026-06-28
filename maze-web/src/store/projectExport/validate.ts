@@ -9,14 +9,16 @@ import {
   type ProjectFileAnalytics,
   type ProjectFileDebug,
   type ProjectFileUi,
+  type ProjectFileQcRule,
 } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
 // ─── Migrations ──────────────────────────────────────────────────────────────
-// No migrations currently registered — add an entry here (keyed by the version migrating
-// *from*) when a future schema change needs one.
+// No migrations currently registered — old files at an unregistered version fail to load with a
+// clear error (see migrateToLatest below). Per project policy, migrations are added only on
+// explicit user request, not automatically when a serialized shape changes.
 
 const migrations: Record<number, (data: unknown) => unknown> = {};
 
@@ -224,6 +226,15 @@ function validatePresetConnectionEntry(v: unknown, path: string): PresetConnecti
   };
 }
 
+function validateCheckInstance(v: unknown, path: string): { localId: number; typeId: string; params: Record<string, string> } {
+  const obj = assertObject(v, path);
+  return {
+    localId: assertNumber(obj.localId, `${path}.localId`),
+    typeId: assertString(obj.typeId, `${path}.typeId`),
+    params: assertStringRecord(obj.params ?? {}, `${path}.params`),
+  };
+}
+
 // `name` defaults by array position for project files saved before rule naming existed —
 // keeps old files loadable without a migration entry for what is a purely cosmetic field.
 // `ruleDisabled` defaults to false for the same reason (files saved before the whole-rule
@@ -231,12 +242,17 @@ function validatePresetConnectionEntry(v: unknown, path: string): PresetConnecti
 // before rules carried their own kind (it used to be derived from the first member check at
 // runtime) — an empty-string kind only affects the "add check to rule" candidate match, not
 // loading itself, and gets corrected as soon as the user adds or removes a member check.
-function validateQcRule(v: unknown, path: string, index: number): { id: string; name: string; kind: string; checks: string[]; strategyId: string | null; disabled: boolean; ruleDisabled: boolean } {
+function validateQcRule(v: unknown, path: string, index: number): ProjectFileQcRule {
   const obj = assertObject(v, path);
   const id = assertString(obj.id, `${path}.id`);
   const name = typeof obj.name === "string" ? obj.name : m["quality.default_rule_name"]({ n: index + 1 });
   const kind = typeof obj.kind === "string" ? obj.kind : "";
-  const checks = assertArray(obj.checks, `${path}.checks`).map((c, i) => assertString(c, `${path}.checks[${i}]`));
+  const checks = assertArray(obj.checks, `${path}.checks`).map((c, i) => validateCheckInstance(c, `${path}.checks[${i}]`));
+  const seenLocalIds = new Set<number>();
+  for (const c of checks) {
+    if (seenLocalIds.has(c.localId)) throw new Error(`Duplicate localId ${c.localId} at ${path}.checks`);
+    seenLocalIds.add(c.localId);
+  }
   const strategyId = obj.strategyId === null || obj.strategyId === undefined ? null : assertString(obj.strategyId, `${path}.strategyId`);
   const disabled = assertBoolean(obj.disabled, `${path}.disabled`);
   const ruleDisabled = typeof obj.ruleDisabled === "boolean" ? obj.ruleDisabled : false;
@@ -278,14 +294,12 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   // quality
   const qualObj = assertObject(migrated.quality, "quality");
-  const selectedChecks = assertArray(qualObj.selectedChecks, "quality.selectedChecks").map((v, i) => assertString(v, `quality.selectedChecks[${i}]`));
   // Rules with no kind (e.g. corrupted or saved before rules carried a kind) can never accept a
   // check via "add check to rule" again (the candidate filter matches by kind) — drop them on load
   // rather than keep them around as permanently inert cards.
   const rules = assertArray(qualObj.rules, "quality.rules")
     .map((v, i) => validateQcRule(v, `quality.rules[${i}]`, i))
     .filter((r) => r.kind !== "");
-  const checkParams = assertStringRecordRecord(qualObj.checkParams, "quality.checkParams");
   const strategyParams = assertStringRecordRecord(qualObj.strategyParams, "quality.strategyParams");
   // Optional — files saved before this setting existed (key absent entirely) default to the same
   // values as a fresh store (see generationSlice's initial state): max_iterations capped, no time
@@ -364,7 +378,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     version: CURRENT_VERSION,
     tessellation: { config, savedConfigs },
     generation: { seed, randomSeed, initial, elements },
-    quality: { selectedChecks, rules, checkParams, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
+    quality: { rules, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
     presets: {
       connections,
       lockedNodes,

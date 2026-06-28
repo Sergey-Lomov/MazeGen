@@ -32,7 +32,7 @@ function useCommitOnBlur(value: number, commit: (v: number) => void, clampMin: n
 }
 
 export function QualityFeature() {
-  const selectedChecks = useMazeStore((s) => s.selectedChecks);
+  const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
   const openCard = useMazeStore((s) => s.openCard);
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
   const repairTimeBudgetSecs = useMazeStore((s) => s.repairTimeBudgetSecs);
@@ -58,7 +58,7 @@ export function QualityFeature() {
 
   return (
     <div style={styles.root}>
-      {selectedChecks.length === 0 ? (
+      {activeCheckCount === 0 ? (
         <span style={styles.empty}>{m["status.no_checks"]()}</span>
       ) : openCard !== "quality" ? (
         <span style={styles.hint}>{m["quality.open_to_configure"]()}</span>

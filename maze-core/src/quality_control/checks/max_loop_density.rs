@@ -8,10 +8,8 @@ use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, dens
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_LOOP};
 use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
-use crate::repair::CheckId;
 
 pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
-pub const MAX_LOOP_DENSITY_CHECK_ID: CheckId = CheckId::MaxLoopDensity;
 
 /// Flags excess simple loops when too large a share of the field is covered by them — see
 /// GitHub issue #37. Density is the count of distinct field cells touched by any loop (each
@@ -22,6 +20,7 @@ pub const MAX_LOOP_DENSITY_CHECK_ID: CheckId = CheckId::MaxLoopDensity;
 /// selected — until enough are flagged to bring density down to `max_density`, or every loop
 /// has been flagged.
 pub struct MaxLoopDensityCheck {
+    pub instance_id: String,
     pub max_density: u32,
 }
 
@@ -62,12 +61,12 @@ impl<T: Tessellation> Check<T> for MaxLoopDensityCheck {
             }
         }
 
-        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<CheckId>> = HashMap::new();
+        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
         for &idx in &excess {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(MAX_LOOP_DENSITY_CHECK_ID);
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
         }
-        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: excess, invalid_sources }, MAX_LOOP_DENSITY_CHECK_ID)
-            .with_detail(MAX_LOOP_DENSITY_CHECK_ID, "max_density", self.max_density.to_string());
+        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: excess, invalid_sources }, &self.instance_id)
+            .with_detail(&self.instance_id, "max_density", self.max_density.to_string());
         issues.push(issue);
     }
 }
@@ -87,6 +86,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
+
+    const TEST_ID: &str = "max_loop_density";
 
     fn rng() -> rand::rngs::SmallRng {
         rand::rngs::SmallRng::seed_from_u64(0)
@@ -111,12 +112,12 @@ mod tests {
     #[test]
     fn fires_and_flags_loops_when_density_exceeds_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopDensityCheck { max_density: 30 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
-        assert_eq!(issues[0].source_checks(), vec![CheckId::MaxLoopDensity]);
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         match &issues[0].data {
             Some(IssueData::InvalidLoops { all, invalid, .. }) => {
                 assert_eq!(all.len(), 2, "both triangles enumerated");
@@ -125,7 +126,7 @@ mod tests {
             other => panic!("expected InvalidLoops, got {other:?}"),
         }
         assert_eq!(
-            issues[0].details().get(&CheckId::MaxLoopDensity).and_then(|kv| kv.get("max_density")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("max_density")),
             Some(&"30".to_string()),
         );
     }
@@ -133,7 +134,7 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_below_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopDensityCheck { max_density: 60 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 60 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "60% density should clear a threshold of 60");
@@ -155,7 +156,7 @@ mod tests {
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = MaxLoopDensityCheck { max_density: 37 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 37 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1, "37.5% rounds to 38, which exceeds max_density 37");
@@ -181,7 +182,7 @@ mod tests {
         g.add_edge(nodes[4], nodes[2], EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = MaxLoopDensityCheck { max_density: 30 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
@@ -196,7 +197,7 @@ mod tests {
     #[test]
     fn flags_all_loops_when_target_unreachable() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopDensityCheck { max_density: 0 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
@@ -218,7 +219,7 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopDensityCheck { max_density: 0 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty());
@@ -246,7 +247,7 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopDensityCheck { max_density: 0 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");

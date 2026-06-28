@@ -20,6 +20,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     maze: &mut Maze<T>,
     qc_engine: Option<&QualityControlEngine<T>>,
     issues_override: Option<Vec<Issue>>,
+    check_types: &HashMap<String, String>,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
 ) -> Result<MazeSnapshot, String> {
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
@@ -64,8 +65,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                     Some([from, to])
                 }).collect();
                 let key = canonical_cycle_key(loop_edges);
-                for &source in invalid_sources.get(&key).into_iter().flatten() {
-                    invalid_loop_edges.entry(source.to_string()).or_default().push(edge_pairs.clone());
+                for source in invalid_sources.get(&key).into_iter().flatten() {
+                    invalid_loop_edges.entry(source.clone()).or_default().push(edge_pairs.clone());
                 }
             }
         }
@@ -74,8 +75,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             for &idx in invalid {
                 let Some(region) = scc.components.get(idx) else { continue };
                 let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
-                for &source in invalid_sources.get(&idx).into_iter().flatten() {
-                    region_needs_expansion_nodes.entry(source.to_string()).or_default().push(node_ids.clone());
+                for source in invalid_sources.get(&idx).into_iter().flatten() {
+                    region_needs_expansion_nodes.entry(source.clone()).or_default().push(node_ids.clone());
                 }
             }
         }
@@ -87,8 +88,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             ))
             .collect();
         // `REPAIR_LIMIT_REACHED` carries no source check (pushed directly by `build_maze`, not a
-        // toggleable `Check<T>`), so its detail can't be keyed by `CheckId` like the others —
-        // keyed by the issue's own kind string instead, the only stable key available here.
+        // toggleable `Check<T>`), so its detail can't be keyed by a check instance id like the
+        // others — keyed by the issue's own kind string instead, the only stable key available here.
         if let Some(IssueData::RepairLimitReached { limit }) = &issue.data {
             details.insert(issue.kind.to_string(), HashMap::from([("limit".to_string(), limit.as_str().to_string())]));
         }
@@ -99,7 +100,14 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         if let Some(IssueData::QcNoProgress { rule_ids }) = &issue.data {
             details.insert(issue.kind.to_string(), HashMap::from([("rule_ids".to_string(), rule_ids.join(", "))]));
         }
-        IssueDto { kind: issue.kind.to_string(), invalid_loop_edges, region_needs_expansion_nodes, source_checks, details }
+        // Invariant: every key in `source_checks` has a matching entry here, no extras — both
+        // come from the same composite-id set built while constructing the active checks (see
+        // `build_qc_and_repair_impl`/`check_types` in `runner.rs`), not a separate pass that
+        // could drift from it.
+        let source_check_types: HashMap<String, String> = issue.source_checks().iter()
+            .filter_map(|s| check_types.get(s).map(|t| (s.clone(), t.clone())))
+            .collect();
+        IssueDto { kind: issue.kind.to_string(), invalid_loop_edges, region_needs_expansion_nodes, source_checks, source_check_types, details }
     }).collect();
 
     let nodes: Vec<NodeDto> = maze.graph
@@ -263,7 +271,7 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
 
         assert!(snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -280,7 +288,7 @@ mod tests {
         g.add_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
 
         assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -298,7 +306,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // Neither start nor finish set.
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
 
         assert!(snapshot.graph_analytics.region_classes.is_empty());
     }
@@ -318,7 +326,7 @@ mod tests {
         maze.meta.start = Some(a);
         maze.meta.finish = Some(c);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
 
         // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
         // a region, which is always "path" by definition.

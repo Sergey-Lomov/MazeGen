@@ -7,11 +7,9 @@ use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, dens
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, MISSING_LOOPS};
 use crate::quality_control::issue_data::IssueData;
-use crate::repair::CheckId;
 
 pub const MIN_LOOP_DENSITY_DEFAULT: u32 = 30;
 pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
-pub const MIN_LOOP_DENSITY_CHECK_ID: CheckId = CheckId::MinLoopDensity;
 
 /// Flags too few loops when too small a share of the field is covered by them — see GitHub
 /// issue #36. Density is the count of distinct field cells touched by any loop (each cell
@@ -21,6 +19,7 @@ pub const MIN_LOOP_DENSITY_CHECK_ID: CheckId = CheckId::MinLoopDensity;
 /// `avg_loop_length_estimate` (`missing_cells / avg_loop_length_estimate`, rounded up so the
 /// request never undershoots the deficit) and raised as `MISSING_LOOPS`.
 pub struct MinLoopDensityCheck {
+    pub instance_id: String,
     pub min_density: u32,
     pub avg_loop_length_estimate: u32,
 }
@@ -57,8 +56,8 @@ impl<T: Tessellation> Check<T> for MinLoopDensityCheck {
             return;
         }
 
-        let issue = Issue::with_data_from_check(MISSING_LOOPS, IssueData::Missing { missing }, MIN_LOOP_DENSITY_CHECK_ID)
-            .with_detail(MIN_LOOP_DENSITY_CHECK_ID, "missing", missing.to_string());
+        let issue = Issue::with_data_from_check(MISSING_LOOPS, IssueData::Missing { missing }, &self.instance_id)
+            .with_detail(&self.instance_id, "missing", missing.to_string());
         issues.push(issue);
     }
 }
@@ -74,6 +73,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
+
+    const TEST_ID: &str = "min_loop_density";
 
     fn rng() -> rand::rngs::SmallRng {
         rand::rngs::SmallRng::seed_from_u64(0)
@@ -95,7 +96,7 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_above_min() {
         let maze = maze_with_one_triangle();
-        let check = MinLoopDensityCheck { min_density: 30, avg_loop_length_estimate: 10 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 30, avg_loop_length_estimate: 10 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "30% density meets a minimum of 30");
@@ -106,18 +107,18 @@ mod tests {
         // 30% density, min_density 60 -> 30 missing points -> 3 missing cells out of 10 field
         // cells -> ceil(3 / 1) = 3 loops requested.
         let maze = maze_with_one_triangle();
-        let check = MinLoopDensityCheck { min_density: 60, avg_loop_length_estimate: 1 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, MISSING_LOOPS);
-        assert_eq!(issues[0].source_checks(), vec![CheckId::MinLoopDensity]);
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         match &issues[0].data {
             Some(IssueData::Missing { missing }) => assert_eq!(*missing, 3),
             other => panic!("expected Missing, got {other:?}"),
         }
         assert_eq!(
-            issues[0].details().get(&CheckId::MinLoopDensity).and_then(|kv| kv.get("missing")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
             Some(&"3".to_string()),
         );
     }
@@ -126,7 +127,7 @@ mod tests {
     fn missing_loop_count_rounds_up() {
         // 30% density, min_density 40 -> 10 missing points -> 1 missing cell -> ceil(1 / 4) = 1.
         let maze = maze_with_one_triangle();
-        let check = MinLoopDensityCheck { min_density: 40, avg_loop_length_estimate: 4 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 40, avg_loop_length_estimate: 4 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
@@ -146,7 +147,7 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MinLoopDensityCheck { min_density: 100, avg_loop_length_estimate: 1 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
@@ -178,7 +179,7 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MinLoopDensityCheck { min_density: 100, avg_loop_length_estimate: 1 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
@@ -188,7 +189,7 @@ mod tests {
     fn silent_when_missing_count_rounds_to_zero() {
         // 30% density, min_density 31 -> 1 missing point -> 0 missing cells (10*1/100=0) -> no issue.
         let maze = maze_with_one_triangle();
-        let check = MinLoopDensityCheck { min_density: 31, avg_loop_length_estimate: 1 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 31, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty());

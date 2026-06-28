@@ -36,6 +36,18 @@ export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
 export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics";
 
+/** One active check, declared inline inside the `QcRuleState` it belongs to — see GitHub issue
+ * #60. A check only ever exists inside exactly one rule's `checks`; there is no separate flat
+ * "active checks" list. `localId` is unique only within its owning rule (not globally) — minted
+ * by `nextLocalCheckId` (see `QcRuleState`), never reused even after the check is removed.
+ * `typeId` is the check type's wire id (`CheckDescriptor.id`, e.g. `"min_region_count"`). `params`
+ * are this instance's own param overrides — independent of any other instance of the same type. */
+export interface CheckInstance {
+  localId: number;
+  typeId: string;
+  params: Record<string, string>;
+}
+
 /** A user-defined rule: a group of active checks producing the same issue kind, sharing one
  * strategy. `id` is opaque (client-generated), not derived from `checks` — rule identity
  * survives adding/removing member checks. `checks` can become empty (e.g. after removing its
@@ -48,7 +60,11 @@ export interface QcRuleState {
   /** Issue kind shared by all member checks, captured at rule-creation time. Kept on the rule
    * itself (not derived from `checks[0]`) so it survives `checks` becoming empty. */
   kind: string;
-  checks: string[];
+  checks: CheckInstance[];
+  /** Monotonic counter minting this rule's `CheckInstance.localId`s — never reused, even after
+   * a check is removed (see `CheckInstance`'s doc comment). Not serialized to project files
+   * (see `projectExport`'s `serialize.ts`) — recomputed on load as `max(checks.map(localId)) + 1`. */
+  nextLocalCheckId: number;
   strategyId: string | null;
   /** Strategy-only toggle — fix is skipped, but the rule's checks still run (QC still reports
    * the issue, just unfixed). Independent from `ruleDisabled` below. */
@@ -188,15 +204,14 @@ export interface GenerationState {
   registryLoaded: boolean;
   availableChecks: CheckDescriptor[];
   availableStrategies: StrategyDescriptor[];
-  selectedChecks: string[];
   /** One entry per rule (a group of active checks). Replaces the old per-kind
    * `selectedStrategies`/`disabledStrategies` — a kind can now have several independent rules
-   * (e.g. min/max loop length each with their own strategy) instead of being forced to share one. */
+   * (e.g. min/max loop length each with their own strategy) instead of being forced to share one.
+   * There is no separate flat "active checks" list (see `CheckInstance`'s doc comment) — wherever
+   * one is needed (UI filters, analytics), it's derived as `rules.flatMap(r => r.checks)`. */
   rules: QcRuleState[];
   /** strategyParams[strategyId][paramId] = raw string value */
   strategyParams: Record<string, Record<string, string>>;
-  /** checkParams[checkId][paramId] = raw string value */
-  checkParams: Record<string, Record<string, string>>;
   initialConfig: InitialGenerationConfig;
   elementsConfig: ElementsConfig;
   nodeStats: NodeStatsDto | null;
@@ -231,35 +246,41 @@ export interface GenerationActions {
   setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze", value: boolean) => void;
   selectNode: (id: number | null) => void;
   loadRegistry: () => Promise<void>;
-  /** Activates `id`. If `ruleId` is omitted, creates a fresh singleton rule for it (the
-   * top-level "+ Add check" path). If given, activates the check directly into that existing
-   * rule instead of creating a new one (the per-rule "+ Add check to rule" path).
+  /** Activates a new `CheckInstance` of type `typeId`, minting a fresh `localId` from the
+   * target rule's `nextLocalCheckId`. If `ruleId` is omitted, creates a fresh singleton rule for
+   * it (the top-level "+ Add check" path). If given, activates the check directly into that
+   * existing rule instead of creating a new one (the per-rule "+ Add check to rule" path).
+   * No-op if `typeId`'s descriptor has `allow_multiple_instances: false` (every type except
+   * `min_region_count`) and it's already active in some rule — see GitHub issue #60.
    * `initialParams` overrides the descriptor defaults (e.g. values edited in the select dialog
-   * before confirming) — ignored for a check that's already active. */
-  addCheck: (id: string, ruleId?: string, initialParams?: Record<string, string>) => void;
-  /** Creates one fresh rule with all of `ids` as member checks (and `strategyId`, if given) in
-   * a single atomic step — the multiselect "Add new rule" flow (IssueSelectDialog +
+   * before confirming). */
+  addCheck: (typeId: string, ruleId?: string, initialParams?: Record<string, string>) => void;
+  /** Creates one fresh rule with one `CheckInstance` per `typeIds` entry (and `strategyId`, if
+   * given) in a single atomic step — the multiselect "Add new rule" flow (IssueSelectDialog +
    * CheckSelectDialog + StrategySelectDialog chain). Unlike calling `addCheck` once per id,
    * this never creates intermediate singleton rules for ids after the first. All ids must share
-   * one issue kind (validated by the caller's candidate filtering, same as `addCheck`). */
+   * one issue kind (validated by the caller's candidate filtering, same as `addCheck`). Drops
+   * any `typeId` whose descriptor has `allow_multiple_instances: false` and is already active
+   * in some existing rule — same restriction as `addCheck`, see GitHub issue #60. */
   createRule: (
-    ids: string[],
+    typeIds: string[],
     strategyId: string | null,
     initialCheckParams?: Record<string, Record<string, string>>,
     initialStrategyParams?: Record<string, string>,
   ) => void;
-  removeCheck: (id: string) => void;
-  setCheckParam: (checkId: string, paramId: string, value: string) => void;
-  /** Moves `checkId` out of whatever rule it's in, into a fresh singleton rule of its own. */
-  removeCheckFromRule: (checkId: string) => void;
+  removeCheck: (ruleId: string, localId: number) => void;
+  setCheckParam: (ruleId: string, localId: number, paramId: string, value: string) => void;
+  /** Moves the check at `(ruleId, localId)` out of its current rule, into a fresh singleton rule
+   * of its own — its params move with it (no separate lookup, they're already part of the
+   * `CheckInstance`). */
+  removeCheckFromRule: (ruleId: string, localId: number) => void;
   setStrategy: (ruleId: string, strategyId: string) => void;
   clearStrategy: (ruleId: string) => void;
   toggleStrategyDisabled: (ruleId: string) => void;
   toggleRuleDisabled: (ruleId: string) => void;
   renameRule: (ruleId: string, name: string) => void;
-  /** Removes a rule entirely along with its member checks (out of `selectedChecks` too) —
-   * the inverse of a rule existing only ever meaning its checks are active (see `removeCheck`'s
-   * atomicity invariant). */
+  /** Removes a rule entirely along with its member checks — the inverse of a rule existing
+   * only ever meaning its checks are active. */
   removeRule: (ruleId: string) => void;
   /** Swaps `ruleId` with its neighbor in `rules` order ("up" = earlier, "down" = later). Purely
    * organizational — core's repair dispatch is order-agnostic (see `repair.md`), so this only

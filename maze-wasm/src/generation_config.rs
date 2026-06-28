@@ -13,13 +13,30 @@ pub struct StrategyConfig {
     pub params: HashMap<String, String>,
 }
 
+/// One active check, declared inline inside the `QcRuleConfig` it belongs to — see GitHub issue
+/// #60. `local_id` is unique only within its owning rule's `checks` (not globally); `type_id` is
+/// the check type's wire id (`available_checks()`'s `CheckDescriptor.id`, e.g.
+/// `"min_region_count"`), used to dispatch which `Check<T>` struct to build (`runner.rs`).
+/// `params` are this instance's own param overrides — no longer a separate global
+/// `check_id -> params` lookup, so two instances of the same type can carry independent values.
+#[derive(Deserialize, Clone)]
+pub struct CheckInstanceConfig {
+    pub local_id: String,
+    pub type_id: String,
+    #[serde(default)]
+    pub params: HashMap<String, String>,
+}
+
 /// One user-defined QC rule: a set of checks producing the same `IssueKind`, sharing one repair
 /// strategy. `strategy: None` means "no_fix" — the rule's issues still merge for attribution
-/// (see `build_qc_and_repair`) but no `RepairStrategy` is dispatched for them.
+/// (see `build_qc_and_repair`) but no `RepairStrategy` is dispatched for them. A check only ever
+/// exists inside exactly one rule's `checks` — there is no separate flat "active checks" list
+/// (see GitHub issue #60), so "a check belongs to at most one rule" is now structurally
+/// guaranteed by this shape rather than runtime-validated.
 #[derive(Deserialize)]
 pub struct QcRuleConfig {
     pub id: String,
-    pub checks: Vec<String>,
+    pub checks: Vec<CheckInstanceConfig>,
     #[serde(default)]
     pub strategy: Option<StrategyConfig>,
 }
@@ -125,11 +142,7 @@ pub struct GenerateConfig {
     #[serde(default)]
     pub tessellation: TessellationConfig,
     #[serde(default)]
-    pub checks: Vec<String>,
-    #[serde(default)]
     pub check_rules: Vec<QcRuleConfig>,
-    #[serde(default)]
-    pub check_params: HashMap<String, HashMap<String, String>>,
     #[serde(default)]
     pub repair_max_iterations: Option<usize>,
     #[serde(default)]
@@ -153,21 +166,33 @@ impl Default for GenerateConfig {
     fn default() -> Self {
         Self {
             tessellation: TessellationConfig::default(),
-            checks: vec![
-                MISSING_ENDPOINTS.as_str().to_string(),
-                UNREACHABLE_FINISH.as_str().to_string(),
-            ],
+            // These two fixed defaults use `local_id == type_id` — safe only because they're
+            // singleton bootstrap entries with no possibility of a second instance coexisting,
+            // not the general rule (a UI-driven `CheckInstanceConfig` always mints a `local_id`
+            // distinct from its `type_id`, see GitHub issue #60 and `Specs/quality-feature.md`).
             check_rules: vec![
                 QcRuleConfig {
                     id: "default_missing_endpoints".to_string(),
-                    checks: vec![MISSING_ENDPOINTS.as_str().to_string()],
+                    checks: vec![CheckInstanceConfig {
+                        local_id: MISSING_ENDPOINTS.as_str().to_string(),
+                        type_id: MISSING_ENDPOINTS.as_str().to_string(),
+                        params: HashMap::new(),
+                    }],
                     strategy: Some(StrategyConfig {
                         id: "farthest_endpoints".to_string(),
                         params: HashMap::new(),
                     }),
                 },
+                QcRuleConfig {
+                    id: "default_unreachable_finish".to_string(),
+                    checks: vec![CheckInstanceConfig {
+                        local_id: UNREACHABLE_FINISH.as_str().to_string(),
+                        type_id: UNREACHABLE_FINISH.as_str().to_string(),
+                        params: HashMap::new(),
+                    }],
+                    strategy: None,
+                },
             ],
-            check_params: HashMap::new(),
             repair_max_iterations: RepairLimits::default().max_iterations,
             repair_time_budget_secs: RepairLimits::default().time_budget_secs,
             initial: InitialGenerationConfig::default(),

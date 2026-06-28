@@ -5,15 +5,14 @@ use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, REGION_NEEDS_EXPANSION};
 use crate::quality_control::issue_data::IssueData;
-use crate::repair::CheckId;
 
 pub const MIN_REGION_RATIO_DEFAULT: u32 = 25;
-pub const MIN_REGION_RATIO_CHECK_ID: CheckId = CheckId::MinRegionRatio;
 
 /// Flags SCC regions smaller than a configured share of the field — see GitHub issue #50.
 /// Counterpart to `MinRegionSizeCheck` using a relative threshold (a percentage of
 /// `maze.field.node_count()`) instead of an absolute tile count.
 pub struct MinRegionRatioCheck {
+    pub instance_id: String,
     pub min_region_ratio: u32,
 }
 
@@ -31,12 +30,12 @@ impl<T: Tessellation> Check<T> for MinRegionRatioCheck {
         if invalid.is_empty() {
             return;
         }
-        let mut invalid_sources: HashMap<usize, Vec<CheckId>> = HashMap::new();
+        let mut invalid_sources: HashMap<usize, Vec<String>> = HashMap::new();
         for &idx in &invalid {
-            invalid_sources.entry(idx).or_default().push(MIN_REGION_RATIO_CHECK_ID);
+            invalid_sources.entry(idx).or_default().push(self.instance_id.clone());
         }
-        let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, MIN_REGION_RATIO_CHECK_ID)
-            .with_detail(MIN_REGION_RATIO_CHECK_ID, "min_region_ratio", self.min_region_ratio.to_string());
+        let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, &self.instance_id)
+            .with_detail(&self.instance_id, "min_region_ratio", self.min_region_ratio.to_string());
         issues.push(issue);
     }
 }
@@ -48,6 +47,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
+
+    const TEST_ID: &str = "min_region_ratio";
 
     fn rng() -> rand::rngs::SmallRng {
         rand::rngs::SmallRng::seed_from_u64(0)
@@ -69,7 +70,7 @@ mod tests {
     #[test]
     fn silent_when_all_regions_meet_minimum_ratio() {
         let maze = maze_with_small_region();
-        let check = MinRegionRatioCheck { min_region_ratio: 10 };
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 10 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "every region is at least 10% of the field");
@@ -78,18 +79,18 @@ mod tests {
     #[test]
     fn fires_when_a_region_is_below_minimum_ratio() {
         let maze = maze_with_small_region();
-        let check = MinRegionRatioCheck { min_region_ratio: 20 };
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 20 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, REGION_NEEDS_EXPANSION);
-        assert_eq!(issues[0].source_checks(), vec![CheckId::MinRegionRatio]);
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         match &issues[0].data {
             Some(IssueData::RegionsNeedingExpansion { invalid, .. }) => assert_eq!(invalid.len(), 7, "the seven 10%-of-field singleton regions are below a 20% minimum"),
             other => panic!("expected RegionsNeedingExpansion, got {other:?}"),
         }
         assert_eq!(
-            issues[0].details().get(&CheckId::MinRegionRatio).and_then(|kv| kv.get("min_region_ratio")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_region_ratio")),
             Some(&"20".to_string()),
         );
     }
@@ -109,7 +110,7 @@ mod tests {
     #[test]
     fn silent_when_region_ratio_equals_minimum() {
         let maze = maze_with_one_region();
-        let check = MinRegionRatioCheck { min_region_ratio: 100 };
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 100 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "the single region is exactly 100% of the field, not below a minimum of 100");

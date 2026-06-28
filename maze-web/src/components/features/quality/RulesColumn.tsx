@@ -15,8 +15,10 @@ import { colors } from "../../../styles/theme";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
-import type { StrategySlotVM, CheckVM } from "../useQualityViewModel";
+import type { StrategySlotVM } from "../useQualityViewModel";
+import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
+import { isTypeAlreadyActive } from "../../../store/slices/generationSlice";
 
 // Three-step "Add new rule" flow: pick an issue kind, then checks of that kind (multiselect),
 // then a fix strategy for the new rule — nothing commits to the store until step 3 confirms
@@ -41,7 +43,7 @@ interface Props {
 export function RulesColumn({ slots, selection, onSelect }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
-  const selectedChecks = useMazeStore((s) => s.selectedChecks);
+  const rules = useMazeStore((s) => s.rules);
   const removeCheck = useMazeStore((s) => s.removeCheck);
   const createRule = useMazeStore((s) => s.createRule);
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
@@ -57,14 +59,17 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
   const [renameDraft, setRenameDraft] = useState("");
   const [hoveredCheckId, setHoveredCheckId] = useState<string | null>(null);
 
-  // Candidates to add into an existing rule: checks of the same issue kind that aren't active
-  // yet anywhere — adding one activates it directly into this rule (see `addCheck`'s optional
-  // ruleId), not as a separate new rule merged in afterwards.
-  function candidatesFor(slot: StrategySlotVM): CheckVM[] {
+  // Candidates to add into an existing rule: check types of the same issue kind. A type with
+  // `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue #60) is
+  // always offered, including one already active elsewhere or in this same rule. Every other
+  // type is filtered out once it's already active anywhere — adding a second instance of it
+  // would be silently rejected by the store anyway (see `addCheck`), so it's not offered here.
+  function candidatesFor(slot: StrategySlotVM): CheckCandidateVM[] {
     return availableChecks
-      .filter((c) => !selectedChecks.includes(c.id) && c.issue_kinds[0] === slot.kind)
+      .filter((c) => c.issue_kinds[0] === slot.kind)
+      .filter((c) => c.allow_multiple_instances || !isTypeAlreadyActive(rules, c.id))
       .map((c) => ({
-        id: c.id,
+        typeId: c.id,
         label: resolveCheckLabel(c.id, c.label),
         description: resolveCheckDescription(c.id, c.description),
         params: c.params,
@@ -176,7 +181,7 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
                         onSelect={() => onSelect({ type: "check", id: check.id })}
                         onRemove={() => {
                           if (checkSelected) onSelect(null);
-                          removeCheck(check.id);
+                          removeCheck(check.ruleId, check.localId);
                         }}
                         onHoverChange={(h) => setHoveredCheckId(h ? check.id : null)}
                       />

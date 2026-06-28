@@ -5,45 +5,181 @@ use maze_core::{
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, SccCountCheck, MAX_SCC_COUNT_DEFAULT, MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT, MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT, MinRegionCountCheck, MIN_REGION_COUNT_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS},
-    repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy},
+    repair::{QcRule, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy},
     RegionClass,
 };
-use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
+use crate::generation_config::{GenerateConfig, CheckInstanceConfig, build_generation_config, build_repair_limits};
 use crate::dto::{EdgeDto, GenerationStepDto};
 use crate::analytics::build_analytics_snapshot;
 
-/// Resolves a check type id (`available_checks()`'s `CheckDescriptor.id`) to the `IssueKind`
-/// it produces and its `CheckId` — used to validate `QcRuleConfig` (all checks in a rule must
-/// share one kind) and to build `CheckId` without needing a `Check<T>` instance.
+/// Resolves a check **type** id (`available_checks()`'s `CheckDescriptor.id`) to the `IssueKind`
+/// it produces — used to validate `QcRuleConfig` (all checks in a rule must share one kind).
+/// Unlike before GitHub issue #60, this no longer also returns a `CheckId`: attribution/routing
+/// uses the opaque per-instance composite id (`composite_check_id`) instead, so there is nothing
+/// for this function to hand back beyond the `IssueKind`.
 ///
-/// Panics on an unknown id — the only call site (`build_qc_and_repair_impl`) only ever passes
-/// ids already validated against `config.checks`, which is restricted to this same id set
-/// (the `match` in this function's neighboring check-building loop). An `Option` return here
-/// would have a `None` arm no caller can actually reach; `unreachable!` documents that instead
-/// of silently swallowing a contract violation that should never happen.
-fn check_id_info(id: &str) -> (IssueKind, CheckId) {
-    match id {
-        "missing_endpoints" => (MISSING_ENDPOINTS, CheckId::MissingEndpoints),
-        "unreachable_finish" => (UNREACHABLE_FINISH, CheckId::UnreachableFinish),
-        "min_loops_count" => (MISSING_LOOPS, CheckId::MinLoopsCount),
-        "min_loop_density" => (MISSING_LOOPS, CheckId::MinLoopDensity),
-        "min_loop_length" => (INVALID_LOOP, CheckId::MinLoopLength),
-        "max_loop_length" => (INVALID_LOOP, CheckId::MaxLoopLength),
-        "external_escape_diversity" => (INVALID_LOOP, CheckId::ExternalEscapeDiversity),
-        "loop_distance_from_start" => (INVALID_LOOP, CheckId::LoopDistanceFromStart),
-        "loop_distance_from_finish" => (INVALID_LOOP, CheckId::LoopDistanceFromFinish),
-        "max_loop_density" => (INVALID_LOOP, CheckId::MaxLoopDensity),
-        "scc_count" => (EXCESSIVE_SCC_COUNT, CheckId::SccCount),
-        "min_region_size" => (REGION_NEEDS_EXPANSION, CheckId::MinRegionSize),
-        "min_region_ratio" => (REGION_NEEDS_EXPANSION, CheckId::MinRegionRatio),
-        "min_region_count" => (MISSING_REGIONS, CheckId::MinRegionCount),
-        other => unreachable!("check_id_info called with id not in config.checks's validated set: {other}"),
+/// Panics on an unknown id — the only call sites (`build_qc_and_repair_impl`'s check-building and
+/// rule-validation loops) only ever pass ids already matched against the same `match` arms below.
+/// An `Option` return here would have a `None` arm no caller can actually reach; `unreachable!`
+/// documents that instead of silently swallowing a contract violation that should never happen.
+fn check_kind_for_type(type_id: &str) -> IssueKind {
+    match type_id {
+        "missing_endpoints" => MISSING_ENDPOINTS,
+        "unreachable_finish" => UNREACHABLE_FINISH,
+        "min_loops_count" => MISSING_LOOPS,
+        "min_loop_density" => MISSING_LOOPS,
+        "min_loop_length" => INVALID_LOOP,
+        "max_loop_length" => INVALID_LOOP,
+        "external_escape_diversity" => INVALID_LOOP,
+        "loop_distance_from_start" => INVALID_LOOP,
+        "loop_distance_from_finish" => INVALID_LOOP,
+        "max_loop_density" => INVALID_LOOP,
+        "scc_count" => EXCESSIVE_SCC_COUNT,
+        "min_region_size" => REGION_NEEDS_EXPANSION,
+        "min_region_ratio" => REGION_NEEDS_EXPANSION,
+        "min_region_count" => MISSING_REGIONS,
+        other => unreachable!("check_kind_for_type called with type_id not in the validated set: {other}"),
     }
 }
 
+/// The opaque routing/attribution key for one check instance — `Issue.source_checks`/`details`,
+/// `QcRule.checks`, and `RepairEngine::check_id_to_rule` all key by this, never by `rule_id`/
+/// `local_id` separately (see GitHub issue #60 and `Specs/quality_control.md`). Despite containing
+/// `rule_id` as a readable prefix, this is treated as fully opaque outside this module — no code
+/// in `maze-core` ever parses it back apart.
+fn composite_check_id(rule_id: &str, local_id: &str) -> String {
+    format!("{rule_id}:{local_id}")
+}
+
+/// Builds one `Box<dyn Check<T>>` from a `CheckInstanceConfig`, dispatching on its `type_id`.
+/// `instance_id` is the composite routing key (`composite_check_id`) already computed by the
+/// caller — every check struct gets one uniformly, including the two zero-field structs, so
+/// there is no two-tier "some checks support multiple instances, some don't" model to document
+/// separately.
+fn build_check<T: Tessellation>(
+    instance: &CheckInstanceConfig,
+    instance_id: String,
+) -> Result<Box<dyn maze_core::quality_control::Check<T>>, String> {
+    let check: Box<dyn maze_core::quality_control::Check<T>> = match instance.type_id.as_str() {
+        "missing_endpoints" => Box::new(MissingEndpointsCheck { instance_id }),
+        "unreachable_finish" => Box::new(UnreachableFinishCheck { instance_id }),
+        "min_loops_count" => {
+            let min_loops = instance.params
+                .get("min_loops")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MIN_LOOPS_DEFAULT);
+            Box::new(MinLoopsCountCheck { instance_id, min_loops })
+        }
+        "min_loop_density" => {
+            let min_density = instance.params
+                .get("min_density")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(MIN_LOOP_DENSITY_DEFAULT);
+            let avg_loop_length_estimate = instance.params
+                .get("avg_loop_length_estimate")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(AVG_LOOP_LENGTH_ESTIMATE_DEFAULT);
+            Box::new(MinLoopDensityCheck { instance_id, min_density, avg_loop_length_estimate })
+        }
+        "min_loop_length" => {
+            let min_loop_length = instance.params
+                .get("min_loop_length")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MIN_LOOP_LENGTH_DEFAULT);
+            Box::new(MinLoopLengthCheck { instance_id, min_loop_length })
+        }
+        "max_loop_length" => {
+            let max_loop_length = instance.params
+                .get("max_loop_length")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MAX_LOOP_LENGTH_DEFAULT);
+            Box::new(MaxLoopLengthCheck { instance_id, max_loop_length })
+        }
+        "external_escape_diversity" => {
+            let min_distinct_exits = instance.params
+                .get("min_distinct_exits")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(EXTERNAL_ESCAPE_DIVERSITY_DEFAULT);
+            Box::new(ExternalEscapeDiversityCheck { instance_id, min_distinct_exits })
+        }
+        "loop_distance_from_start" => {
+            let min_distance_from_start = instance.params
+                .get("min_distance_from_start")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(LOOP_DISTANCE_FROM_START_DEFAULT);
+            Box::new(LoopDistanceFromStartCheck { instance_id, min_distance_from_start })
+        }
+        "loop_distance_from_finish" => {
+            let min_distance_from_finish = instance.params
+                .get("min_distance_from_finish")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(LOOP_DISTANCE_FROM_FINISH_DEFAULT);
+            Box::new(LoopDistanceFromFinishCheck { instance_id, min_distance_from_finish })
+        }
+        "max_loop_density" => {
+            let max_density = instance.params
+                .get("max_density")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
+            Box::new(MaxLoopDensityCheck { instance_id, max_density })
+        }
+        "scc_count" => {
+            let max_scc_count = instance.params
+                .get("max_scc_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MAX_SCC_COUNT_DEFAULT);
+            Box::new(SccCountCheck { instance_id, max_scc_count })
+        }
+        "min_region_size" => {
+            let min_region_size = instance.params
+                .get("min_region_size")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MIN_REGION_SIZE_DEFAULT);
+            Box::new(MinRegionSizeCheck { instance_id, min_region_size })
+        }
+        "min_region_ratio" => {
+            let min_region_ratio = instance.params
+                .get("min_region_ratio")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(MIN_REGION_RATIO_DEFAULT);
+            Box::new(MinRegionRatioCheck { instance_id, min_region_ratio })
+        }
+        "min_region_count" => {
+            let region_class = instance.params
+                .get("region_class")
+                .and_then(|v| RegionClass::from_str(v))
+                .unwrap_or(RegionClass::Trap);
+            let min_count = instance.params
+                .get("count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MIN_REGION_COUNT_DEFAULT);
+            Box::new(MinRegionCountCheck { instance_id, region_class, min_count })
+        }
+        other => return Err(format!("unknown check: {other}")),
+    };
+    Ok(check)
+}
+
+/// Third element: composite check id -> type id, for every active check across all rules —
+/// `analytics.rs` threads this onto `IssueDto.source_check_types` so the web UI can resolve a
+/// check-specific detail label (keyed by type id) from an `Issue.source_checks` entry (now an
+/// opaque composite id, not a `CheckId` it could format itself) — see GitHub issue #60.
 pub fn build_qc_and_repair<T: Tessellation>(
     config: &GenerateConfig,
-) -> Result<(QualityControlEngine<T>, RepairEngine<T>), JsValue> {
+) -> Result<(QualityControlEngine<T>, RepairEngine<T>, std::collections::HashMap<String, String>), JsValue> {
     build_qc_and_repair_impl(config).map_err(|e| JsValue::from_str(&e))
 }
 
@@ -53,139 +189,9 @@ pub fn build_qc_and_repair<T: Tessellation>(
 /// `cargo test` on a native target).
 fn build_qc_and_repair_impl<T: Tessellation>(
     config: &GenerateConfig,
-) -> Result<(QualityControlEngine<T>, RepairEngine<T>), String> {
+) -> Result<(QualityControlEngine<T>, RepairEngine<T>, std::collections::HashMap<String, String>), String> {
     let mut checks: Vec<Box<dyn maze_core::quality_control::Check<T>>> = Vec::new();
-    for id in &config.checks {
-        match id.as_str() {
-            "missing_endpoints" => checks.push(Box::new(MissingEndpointsCheck)),
-            "unreachable_finish" => checks.push(Box::new(UnreachableFinishCheck)),
-            "min_loops_count" => {
-                let min_loops = config.check_params
-                    .get("min_loops_count")
-                    .and_then(|p| p.get("min_loops"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(1) as u32)
-                    .unwrap_or(MIN_LOOPS_DEFAULT);
-                checks.push(Box::new(MinLoopsCountCheck { min_loops }));
-            }
-            "min_loop_density" => {
-                let min_density = config.check_params
-                    .get("min_loop_density")
-                    .and_then(|p| p.get("min_density"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.clamp(0, 100) as u32)
-                    .unwrap_or(MIN_LOOP_DENSITY_DEFAULT);
-                let avg_loop_length_estimate = config.check_params
-                    .get("min_loop_density")
-                    .and_then(|p| p.get("avg_loop_length_estimate"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(1) as u32)
-                    .unwrap_or(AVG_LOOP_LENGTH_ESTIMATE_DEFAULT);
-                checks.push(Box::new(MinLoopDensityCheck { min_density, avg_loop_length_estimate }));
-            }
-            "min_loop_length" => {
-                let min_loop_length = config.check_params
-                    .get("min_loop_length")
-                    .and_then(|p| p.get("min_loop_length"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(1) as u32)
-                    .unwrap_or(MIN_LOOP_LENGTH_DEFAULT);
-                checks.push(Box::new(MinLoopLengthCheck { min_loop_length }));
-            }
-            "max_loop_length" => {
-                let max_loop_length = config.check_params
-                    .get("max_loop_length")
-                    .and_then(|p| p.get("max_loop_length"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(1) as u32)
-                    .unwrap_or(MAX_LOOP_LENGTH_DEFAULT);
-                checks.push(Box::new(MaxLoopLengthCheck { max_loop_length }));
-            }
-            "external_escape_diversity" => {
-                let min_distinct_exits = config.check_params
-                    .get("external_escape_diversity")
-                    .and_then(|p| p.get("min_distinct_exits"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(0) as u32)
-                    .unwrap_or(EXTERNAL_ESCAPE_DIVERSITY_DEFAULT);
-                checks.push(Box::new(ExternalEscapeDiversityCheck { min_distinct_exits }));
-            }
-            "loop_distance_from_start" => {
-                let min_distance_from_start = config.check_params
-                    .get("loop_distance_from_start")
-                    .and_then(|p| p.get("min_distance_from_start"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(0) as u32)
-                    .unwrap_or(LOOP_DISTANCE_FROM_START_DEFAULT);
-                checks.push(Box::new(LoopDistanceFromStartCheck { min_distance_from_start }));
-            }
-            "loop_distance_from_finish" => {
-                let min_distance_from_finish = config.check_params
-                    .get("loop_distance_from_finish")
-                    .and_then(|p| p.get("min_distance_from_finish"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(0) as u32)
-                    .unwrap_or(LOOP_DISTANCE_FROM_FINISH_DEFAULT);
-                checks.push(Box::new(LoopDistanceFromFinishCheck { min_distance_from_finish }));
-            }
-            "max_loop_density" => {
-                let max_density = config.check_params
-                    .get("max_loop_density")
-                    .and_then(|p| p.get("max_density"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.clamp(0, 100) as u32)
-                    .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
-                checks.push(Box::new(MaxLoopDensityCheck { max_density }));
-            }
-            "scc_count" => {
-                let max_scc_count = config.check_params
-                    .get("scc_count")
-                    .and_then(|p| p.get("max_scc_count"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(1) as u32)
-                    .unwrap_or(MAX_SCC_COUNT_DEFAULT);
-                checks.push(Box::new(SccCountCheck { max_scc_count }));
-            }
-            "min_region_size" => {
-                let min_region_size = config.check_params
-                    .get("min_region_size")
-                    .and_then(|p| p.get("min_region_size"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(1) as u32)
-                    .unwrap_or(MIN_REGION_SIZE_DEFAULT);
-                checks.push(Box::new(MinRegionSizeCheck { min_region_size }));
-            }
-            "min_region_ratio" => {
-                let min_region_ratio = config.check_params
-                    .get("min_region_ratio")
-                    .and_then(|p| p.get("min_region_ratio"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.clamp(0, 100) as u32)
-                    .unwrap_or(MIN_REGION_RATIO_DEFAULT);
-                checks.push(Box::new(MinRegionRatioCheck { min_region_ratio }));
-            }
-            "min_region_count" => {
-                let region_class = config.check_params
-                    .get("min_region_count")
-                    .and_then(|p| p.get("region_class"))
-                    .and_then(|v| RegionClass::from_str(v))
-                    .unwrap_or(RegionClass::Trap);
-                let min_count = config.check_params
-                    .get("min_region_count")
-                    .and_then(|p| p.get("count"))
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .map(|v| v.max(0) as u32)
-                    .unwrap_or(MIN_REGION_COUNT_DEFAULT);
-                checks.push(Box::new(MinRegionCountCheck { region_class, min_count }));
-            }
-            other => return Err(format!("unknown check: {other}")),
-        }
-    }
-    let qc_engine = QualityControlEngine::new(checks);
-
-    // Validate: every check id in a rule is a known active check, every rule is non-empty
-    // and single-kind, and a check id belongs to at most one rule.
-    let mut seen_check_ids: HashSet<&str> = HashSet::new();
+    let mut check_types: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut all_rules: Vec<QcRule> = Vec::new();
     let mut repair_rules: Vec<RepairRuleConfig<T>> = Vec::new();
 
@@ -194,24 +200,30 @@ fn build_qc_and_repair_impl<T: Tessellation>(
             return Err(format!("rule {} has no checks", rule_cfg.id));
         }
         let mut kind: Option<IssueKind> = None;
-        let mut checks: Vec<CheckId> = Vec::with_capacity(rule_cfg.checks.len());
-        for check_id in &rule_cfg.checks {
-            if !config.checks.contains(check_id) {
-                return Err(format!("rule {} references inactive check: {check_id}", rule_cfg.id));
+        let mut composite_ids: Vec<String> = Vec::with_capacity(rule_cfg.checks.len());
+        // Duplicate `local_id` within one rule is the only thing left to validate here — "a
+        // check belongs to at most one rule" no longer needs checking at all, since a check is
+        // now declared inline inside exactly one rule's `checks` and simply can't appear in two
+        // (see GitHub issue #60). This is a defense against malformed/hand-edited configs, not a
+        // path the UI's own `local_id` counter can ever trigger.
+        let mut seen_local_ids: HashSet<&str> = HashSet::new();
+        for instance in &rule_cfg.checks {
+            if !seen_local_ids.insert(instance.local_id.as_str()) {
+                return Err(format!("rule {} has duplicate local_id: {}", rule_cfg.id, instance.local_id));
             }
-            if !seen_check_ids.insert(check_id.as_str()) {
-                return Err(format!("check {check_id} belongs to more than one rule"));
-            }
-            let (this_kind, check_id) = check_id_info(check_id);
+            let this_kind = check_kind_for_type(&instance.type_id);
             match kind {
                 None => kind = Some(this_kind),
                 Some(k) if k == this_kind => {}
                 Some(_) => return Err(format!("checks in rule {} produce different issue kinds", rule_cfg.id)),
             }
-            checks.push(check_id);
+            let instance_id = composite_check_id(&rule_cfg.id, &instance.local_id);
+            check_types.insert(instance_id.clone(), instance.type_id.clone());
+            checks.push(build_check::<T>(instance, instance_id.clone())?);
+            composite_ids.push(instance_id);
         }
         let kind = kind.expect("non-empty rule always resolves a kind");
-        let rule = QcRule { id: rule_cfg.id.clone(), kind, checks: checks.clone() };
+        let rule = QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids.clone() };
 
         if let Some(strategy_cfg) = &rule_cfg.strategy {
             let strategy: Box<dyn RepairStrategy<T>> = match strategy_cfg.id.as_str() {
@@ -225,16 +237,20 @@ fn build_qc_and_repair_impl<T: Tessellation>(
                 other => return Err(format!("unknown strategy: {other}")),
             };
             repair_rules.push(RepairRuleConfig {
-                rule: QcRule { id: rule_cfg.id.clone(), kind, checks },
+                rule: QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids },
                 strategy,
                 param_overrides: strategy_cfg.params.clone(),
             });
         }
         all_rules.push(rule);
     }
+    // `QualityControlEngine` runs every check independently and performs no dedup by `type_id`
+    // — multiple instances of the same check type are a normal, expected case here (the whole
+    // point of GitHub issue #60), not an edge case worth special-casing or collapsing.
+    let qc_engine = QualityControlEngine::new(checks);
     let repair_engine = RepairEngine::new(repair_rules, all_rules);
 
-    Ok((qc_engine, repair_engine))
+    Ok((qc_engine, repair_engine, check_types))
 }
 
 pub fn run_generate<T: Tessellation>(
@@ -267,7 +283,7 @@ pub fn run_generate<T: Tessellation>(
         vec![]
     };
 
-    let (qc_engine, repair_engine) = build_qc_and_repair::<T>(config)?;
+    let (qc_engine, repair_engine, check_types) = build_qc_and_repair::<T>(config)?;
 
     let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, build_repair_limits(config));
 
@@ -290,7 +306,7 @@ pub fn run_generate<T: Tessellation>(
 
     let debug_steps = steps_to_dto(raw_steps);
 
-    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), point_to_xy)
+    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, point_to_xy)
         .map_err(|e| JsValue::from_str(&e))?;
     snapshot.debug_steps = debug_steps;
 
@@ -318,8 +334,12 @@ fn steps_to_dto(raw: Vec<GenerationStep>) -> Vec<GenerationStepDto> {
 #[cfg(test)]
 mod build_qc_and_repair_tests {
     use super::*;
-    use crate::generation_config::QcRuleConfig;
+    use crate::generation_config::{QcRuleConfig, CheckInstanceConfig};
     use maze_core::space::SquareTessellation;
+
+    fn check(local_id: &str, type_id: &str) -> CheckInstanceConfig {
+        CheckInstanceConfig { local_id: local_id.to_string(), type_id: type_id.to_string(), params: std::collections::HashMap::new() }
+    }
 
     fn err_msg(config: &GenerateConfig) -> String {
         build_qc_and_repair_impl::<SquareTessellation>(config)
@@ -330,7 +350,6 @@ mod build_qc_and_repair_tests {
     #[test]
     fn empty_rule_is_rejected() {
         let config = GenerateConfig {
-            checks: vec!["missing_endpoints".to_string()],
             check_rules: vec![QcRuleConfig {
                 id: "r1".to_string(),
                 checks: vec![],
@@ -343,41 +362,25 @@ mod build_qc_and_repair_tests {
     }
 
     #[test]
-    fn rule_referencing_inactive_check_is_rejected() {
+    fn duplicate_local_id_within_one_rule_is_rejected() {
         let config = GenerateConfig {
-            checks: vec!["missing_endpoints".to_string()],
             check_rules: vec![QcRuleConfig {
                 id: "r1".to_string(),
-                checks: vec!["unreachable_finish".to_string()],
+                checks: vec![check("a", "missing_endpoints"), check("a", "missing_endpoints")],
                 strategy: None,
             }],
             ..GenerateConfig::default()
         };
         let msg = err_msg(&config);
-        assert!(msg.contains("inactive check"), "unexpected message: {msg}");
-    }
-
-    #[test]
-    fn check_in_two_rules_is_rejected() {
-        let config = GenerateConfig {
-            checks: vec!["missing_endpoints".to_string()],
-            check_rules: vec![
-                QcRuleConfig { id: "r1".to_string(), checks: vec!["missing_endpoints".to_string()], strategy: None },
-                QcRuleConfig { id: "r2".to_string(), checks: vec!["missing_endpoints".to_string()], strategy: None },
-            ],
-            ..GenerateConfig::default()
-        };
-        let msg = err_msg(&config);
-        assert!(msg.contains("more than one rule"), "unexpected message: {msg}");
+        assert!(msg.contains("duplicate local_id"), "unexpected message: {msg}");
     }
 
     #[test]
     fn mixed_kind_rule_is_rejected() {
         let config = GenerateConfig {
-            checks: vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()],
             check_rules: vec![QcRuleConfig {
                 id: "r1".to_string(),
-                checks: vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()],
+                checks: vec![check("a", "missing_endpoints"), check("b", "unreachable_finish")],
                 strategy: None,
             }],
             ..GenerateConfig::default()
@@ -392,10 +395,9 @@ mod build_qc_and_repair_tests {
         use std::collections::HashMap;
 
         let config = GenerateConfig {
-            checks: vec!["missing_endpoints".to_string()],
             check_rules: vec![QcRuleConfig {
                 id: "r1".to_string(),
-                checks: vec!["missing_endpoints".to_string()],
+                checks: vec![check("a", "missing_endpoints")],
                 strategy: Some(StrategyConfig { id: "not_a_real_strategy".to_string(), params: HashMap::new() }),
             }],
             ..GenerateConfig::default()
@@ -407,10 +409,9 @@ mod build_qc_and_repair_tests {
     #[test]
     fn single_rule_with_no_strategy_succeeds() {
         let config = GenerateConfig {
-            checks: vec!["missing_endpoints".to_string()],
             check_rules: vec![QcRuleConfig {
                 id: "r1".to_string(),
-                checks: vec!["missing_endpoints".to_string()],
+                checks: vec![check("a", "missing_endpoints")],
                 strategy: None,
             }],
             ..GenerateConfig::default()
@@ -424,21 +425,86 @@ mod build_qc_and_repair_tests {
         use std::collections::HashMap;
 
         let config = GenerateConfig {
-            checks: vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()],
             check_rules: vec![
                 QcRuleConfig {
                     id: "r1".to_string(),
-                    checks: vec!["missing_endpoints".to_string()],
+                    checks: vec![check("a", "missing_endpoints")],
                     strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new() }),
                 },
                 QcRuleConfig {
                     id: "r2".to_string(),
-                    checks: vec!["unreachable_finish".to_string()],
+                    checks: vec![check("b", "unreachable_finish")],
                     strategy: None,
                 },
             ],
             ..GenerateConfig::default()
         };
         assert!(build_qc_and_repair_impl::<SquareTessellation>(&config).is_ok());
+    }
+
+    /// Two `min_region_count` instances (different `region_class`) in two different rules — the
+    /// core scenario GitHub issue #60 exists for. Each routes/merges independently.
+    #[test]
+    fn two_instances_of_same_check_type_in_different_rules_succeed_independently() {
+        use std::collections::HashMap;
+        let config = GenerateConfig {
+            check_rules: vec![
+                QcRuleConfig {
+                    id: "r_trap".to_string(),
+                    checks: vec![CheckInstanceConfig {
+                        local_id: "a".to_string(),
+                        type_id: "min_region_count".to_string(),
+                        params: HashMap::from([("region_class".to_string(), "trap".to_string()), ("count".to_string(), "2".to_string())]),
+                    }],
+                    strategy: None,
+                },
+                QcRuleConfig {
+                    id: "r_alt".to_string(),
+                    checks: vec![CheckInstanceConfig {
+                        local_id: "b".to_string(),
+                        type_id: "min_region_count".to_string(),
+                        params: HashMap::from([("region_class".to_string(), "alternative".to_string()), ("count".to_string(), "2".to_string())]),
+                    }],
+                    strategy: None,
+                },
+            ],
+            ..GenerateConfig::default()
+        };
+        let (_, repair_engine, check_types) = build_qc_and_repair_impl::<SquareTessellation>(&config).unwrap();
+        let routing = repair_engine.check_id_to_rule();
+        assert_eq!(routing.get("r_trap:a"), Some(&"r_trap".to_string()));
+        assert_eq!(routing.get("r_alt:b"), Some(&"r_alt".to_string()));
+        assert_eq!(check_types.get("r_trap:a"), Some(&"min_region_count".to_string()));
+        assert_eq!(check_types.get("r_alt:b"), Some(&"min_region_count".to_string()));
+    }
+
+    /// Two `min_region_count` instances in the *same* rule — both route to the one rule, merging
+    /// normally (no special-casing for "same type" vs "different type" checks in one rule).
+    #[test]
+    fn two_instances_of_same_check_type_in_one_rule_succeed() {
+        use std::collections::HashMap;
+        let config = GenerateConfig {
+            check_rules: vec![QcRuleConfig {
+                id: "r1".to_string(),
+                checks: vec![
+                    CheckInstanceConfig {
+                        local_id: "a".to_string(),
+                        type_id: "min_region_count".to_string(),
+                        params: HashMap::from([("region_class".to_string(), "trap".to_string())]),
+                    },
+                    CheckInstanceConfig {
+                        local_id: "b".to_string(),
+                        type_id: "min_region_count".to_string(),
+                        params: HashMap::from([("region_class".to_string(), "alternative".to_string())]),
+                    },
+                ],
+                strategy: None,
+            }],
+            ..GenerateConfig::default()
+        };
+        let (_, repair_engine, _) = build_qc_and_repair_impl::<SquareTessellation>(&config).unwrap();
+        let routing = repair_engine.check_id_to_rule();
+        assert_eq!(routing.get("r1:a"), Some(&"r1".to_string()));
+        assert_eq!(routing.get("r1:b"), Some(&"r1".to_string()));
     }
 }

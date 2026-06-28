@@ -8,7 +8,10 @@ import type { CheckVM, StrategyVM, QualityViewModel } from "../components/featur
 const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "i1", params: [] };
 
 const check: CheckVM = {
-  id: "c1",
+  id: "g1:0",
+  ruleId: "g1",
+  localId: 0,
+  typeId: "c1",
   label: "Check One",
   description: "Check One description",
   params: [],
@@ -29,7 +32,7 @@ function Harness({ selection, vm }: { selection: Parameters<typeof QualityDetail
 
 beforeEach(() => {
   useMazeStore.setState({
-    checkParams: {},
+    rules: [],
     strategyParams: {},
   } as Partial<ReturnType<typeof useMazeStore.getState>>);
 });
@@ -41,7 +44,7 @@ describe("QualityDetailPanel", () => {
   });
 
   it("renders check detail when a check is selected", () => {
-    render(<Harness selection={{ type: "check", id: "c1" }} vm={makeVm()} />);
+    render(<Harness selection={{ type: "check", id: "g1:0" }} vm={makeVm()} />);
     expect(screen.getByText("Check One")).toBeInTheDocument();
     expect(screen.getByText("Check One description")).toBeInTheDocument();
   });

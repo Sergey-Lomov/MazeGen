@@ -40,6 +40,25 @@ export interface ProjectFileDirtyFlags {
   maze: boolean;
 }
 
+/** One active check, inlined inside its owning rule — see GitHub issue #60. `localId` is unique
+ * only within this rule's `checks`, not globally; not stable across save/load cycles (see
+ * `CheckInstance`'s doc comment in storeTypes.ts) — only uniqueness-at-load-time matters. */
+export interface ProjectFileCheckInstance {
+  localId: number;
+  typeId: string;
+  params: Record<string, string>;
+}
+
+export interface ProjectFileQcRule {
+  id: string;
+  name: string;
+  kind: string;
+  checks: ProjectFileCheckInstance[];
+  strategyId: string | null;
+  disabled: boolean;
+  ruleDisabled: boolean;
+}
+
 export interface ProjectFile {
   version: number;
   tessellation: { config: TessellationConfig; savedConfigs: TessellationConfig[] };
@@ -50,9 +69,7 @@ export interface ProjectFile {
     elements: ElementsConfig;
   };
   quality: {
-    selectedChecks: string[];
-    rules: { id: string; name: string; kind: string; checks: string[]; strategyId: string | null; disabled: boolean; ruleDisabled: boolean }[];
-    checkParams: Record<string, Record<string, string>>;
+    rules: ProjectFileQcRule[];
     strategyParams: Record<string, Record<string, string>>;
     repairMaxIterations: number | null;
     repairTimeBudgetSecs: number | null;
@@ -73,4 +90,4 @@ export interface ProjectFile {
   ui: ProjectFileUi;
 }
 
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;

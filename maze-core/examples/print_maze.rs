@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use maze_core::{IdGenerator, Graph};
-use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use maze_core::space::{Field, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::validation::is_connected;
 use maze_core::io::render_ascii;
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
-use maze_core::repair::{QcRule, CheckId, RepairEngine, RepairRuleConfig, FarthestEndpointsStrategy};
+use maze_core::repair::{QcRule, RepairEngine, RepairRuleConfig, FarthestEndpointsStrategy};
 
 fn main() {
     let seed = 3u64;
@@ -18,13 +18,13 @@ fn main() {
     assert!(is_connected(&graph, start));
 
     let qc_engine = QualityControlEngine::new(vec![
-        Box::new(MissingEndpointsCheck),
-        Box::new(UnreachableFinishCheck),
+        Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }),
+        Box::new(UnreachableFinishCheck { instance_id: "unreachable_finish".to_string() }),
     ]);
-    let rule = QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec![CheckId::MissingEndpoints] };
+    let rule = QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec!["missing_endpoints".to_string()] };
     let repair_engine = RepairEngine::new(
         vec![RepairRuleConfig {
-            rule: QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec![CheckId::MissingEndpoints] },
+            rule: QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec!["missing_endpoints".to_string()] },
             strategy: Box::new(FarthestEndpointsStrategy),
             param_overrides: HashMap::new(),
         }],

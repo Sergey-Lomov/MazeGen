@@ -97,7 +97,7 @@ mod tests {
     }
 
     fn check_finds_short_loop(maze: &Maze<SquareTessellation>) -> bool {
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(maze, &mut issues, &mut check_rng);
@@ -113,7 +113,7 @@ mod tests {
         let mut maze = maze_with_triangle();
         assert!(check_finds_short_loop(&maze));
 
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
@@ -155,7 +155,7 @@ mod tests {
     fn apply_is_deterministic_for_fixed_seed() {
         let issue = {
             let maze = maze_with_triangle();
-            let check = MinLoopLengthCheck { min_loop_length: 10 };
+            let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
             let mut issues = Vec::new();
             let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
             check.check(&maze, &mut issues, &mut check_rng);
@@ -192,7 +192,7 @@ mod tests {
         g.add_edge(nodes[2], nodes[1], EdgeKind::Basic); // C->B
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
@@ -229,7 +229,7 @@ mod tests {
         }
 
         let maze = build();
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
@@ -254,7 +254,7 @@ mod tests {
         // candidate remains, so the strategy must pick exactly that one deterministically.
         let maze = maze_with_triangle();
 
-        let check = MinLoopLengthCheck { min_loop_length: 10 };
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);

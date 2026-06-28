@@ -63,14 +63,17 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's
 /// generic label when the check has no specific override or no details were recorded for it.
-/// Warns (not throws — a missing entry is a display gap, not a correctness bug) when a check
-/// reported non-empty `details` but has no `DETAIL_LABELS` entry to render them with, the same
-/// way `resolveCheckKind` warns on a multi-kind check — both are "registry didn't keep up with
-/// core" mistakes that are otherwise silent.
-export function resolveIssueSourceLabel(kind: string, sourceCheck: string, details: Record<string, string> | undefined): string {
-  const formatter = DETAIL_LABELS[sourceCheck];
+/// `typeId` is the check's type id (e.g. "min_region_count") — `DETAIL_LABELS` is keyed by type,
+/// not by the opaque per-instance `sourceCheck` id (see GitHub issue #60: two instances of the
+/// same type share one DETAIL_LABELS entry, since they format the same way). Warns (not throws
+/// — a missing entry is a display gap, not a correctness bug) when a check reported non-empty
+/// `details` but has no `DETAIL_LABELS` entry to render them with, the same way `resolveCheckKind`
+/// warns on a multi-kind check — both are "registry didn't keep up with core" mistakes that are
+/// otherwise silent.
+export function resolveIssueSourceLabel(kind: string, typeId: string, details: Record<string, string> | undefined): string {
+  const formatter = DETAIL_LABELS[typeId];
   if (!formatter && details && Object.keys(details).length > 0) {
-    console.error(`check "${sourceCheck}" reported details (${Object.keys(details).join(", ")}) but has no DETAIL_LABELS entry in issueRegistry.ts — falling back to the generic "${kind}" label`);
+    console.error(`check type "${typeId}" reported details (${Object.keys(details).join(", ")}) but has no DETAIL_LABELS entry in issueRegistry.ts — falling back to the generic "${kind}" label`);
   }
   const override = formatter?.(details ?? {});
   return override ?? resolveIssue(kind).label;

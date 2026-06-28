@@ -44,6 +44,16 @@ struct CheckDescriptor {
     description: &'static str,
     issue_kinds: Vec<&'static str>,
     params: Vec<ParamDescriptor>,
+    /// Whether more than one independent instance of this check type may be active at once
+    /// (across rules, or within the same rule) — see GitHub issue #60. `false` for every check
+    /// except `min_region_count`: a second `min_region_count` instance with a different
+    /// `region_class` is a legitimate, common configuration ("at least 2 trap regions" AND
+    /// separately "at least 2 alternative regions"); no other check has an analogous use case
+    /// for running twice with different params, so this stays opt-in per check rather than a
+    /// blanket allowance. The web store/UI enforce this (see `addCheck`/`createRule` in
+    /// `generationSlice.ts`) — wasm/core themselves don't reject a duplicate, since nothing
+    /// downstream of this flag depends on it being correct for repair/QC to function.
+    allow_multiple_instances: bool,
 }
 
 #[derive(Serialize)]
@@ -79,13 +89,18 @@ fn strategy_params_dto(params: &[maze_core::repair::StrategyParam]) -> Vec<Param
 
 #[wasm_bindgen]
 pub fn available_checks() -> JsValue {
-    let checks = vec![
+    serde_wasm_bindgen::to_value(&available_checks_list()).unwrap()
+}
+
+fn available_checks_list() -> Vec<CheckDescriptor> {
+    vec![
         CheckDescriptor {
             id: "missing_endpoints",
             label: "Start and finish present",
             description: "Fires if the maze has no start or no finish.",
             issue_kinds: vec![kind_str(MISSING_ENDPOINTS)],
             params: vec![],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "unreachable_finish",
@@ -93,6 +108,7 @@ pub fn available_checks() -> JsValue {
             description: "Fires if finish cannot be reached from start via directed traversal.",
             issue_kinds: vec![kind_str(UNREACHABLE_FINISH)],
             params: vec![],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "min_loops_count",
@@ -104,6 +120,7 @@ pub fn available_checks() -> JsValue {
                 label: "Min loop count",
                 kind: ParamKindDto::Integer { default: MIN_LOOPS_DEFAULT as i64, min: 1, max: 1_000_000 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "min_loop_density",
@@ -122,6 +139,7 @@ pub fn available_checks() -> JsValue {
                     kind: ParamKindDto::Integer { default: AVG_LOOP_LENGTH_ESTIMATE_DEFAULT as i64, min: 1, max: 100_000 },
                 },
             ],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "scc_count",
@@ -133,6 +151,7 @@ pub fn available_checks() -> JsValue {
                 label: "Max SCC region count",
                 kind: ParamKindDto::Integer { default: MAX_SCC_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "min_region_size",
@@ -144,6 +163,7 @@ pub fn available_checks() -> JsValue {
                 label: "Min region size (tiles)",
                 kind: ParamKindDto::Integer { default: MIN_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "min_region_ratio",
@@ -155,10 +175,11 @@ pub fn available_checks() -> JsValue {
                 label: "Min region ratio (per 100 cells)",
                 kind: ParamKindDto::Integer { default: MIN_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "min_region_count",
-            label: "Minimum region count per class",
+            label: "Minimum region count",
             description: "Fires if the maze has fewer regions of the selected class (path/alternative/unreachable/trap) than the required minimum.",
             issue_kinds: vec![kind_str(MISSING_REGIONS)],
             params: vec![
@@ -181,6 +202,7 @@ pub fn available_checks() -> JsValue {
                     kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
             ],
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "min_loop_length",
@@ -192,6 +214,7 @@ pub fn available_checks() -> JsValue {
                 label: "Min loop length",
                 kind: ParamKindDto::Integer { default: MIN_LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "max_loop_length",
@@ -203,6 +226,7 @@ pub fn available_checks() -> JsValue {
                 label: "Max loop length",
                 kind: ParamKindDto::Integer { default: MAX_LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "external_escape_diversity",
@@ -214,6 +238,7 @@ pub fn available_checks() -> JsValue {
                 label: "Min distinct exits",
                 kind: ParamKindDto::Integer { default: EXTERNAL_ESCAPE_DIVERSITY_DEFAULT as i64, min: 0, max: 1_000 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "loop_distance_from_start",
@@ -225,6 +250,7 @@ pub fn available_checks() -> JsValue {
                 label: "Min distance from start",
                 kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_START_DEFAULT as i64, min: 0, max: 100_000 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "loop_distance_from_finish",
@@ -236,6 +262,7 @@ pub fn available_checks() -> JsValue {
                 label: "Min distance from finish",
                 kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_FINISH_DEFAULT as i64, min: 0, max: 100_000 },
             }],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "max_loop_density",
@@ -247,9 +274,9 @@ pub fn available_checks() -> JsValue {
                 label: "Max loop density (per 100 cells)",
                 kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
             }],
+            allow_multiple_instances: false,
         },
-    ];
-    serde_wasm_bindgen::to_value(&checks).unwrap()
+    ]
 }
 
 #[wasm_bindgen]
@@ -332,6 +359,20 @@ fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, Js
     }
 }
 
+/// Wraps each analytics-only check in its own synthetic singleton rule — see the call site's
+/// doc comment in `run_compute_analytics` for why. Split out so the wrapping itself (one rule
+/// per check, distinct ids, no strategy) can be unit-tested without going through `JsValue`.
+fn analytics_only_check_rules(checks: Vec<generation_config::CheckInstanceConfig>) -> Vec<generation_config::QcRuleConfig> {
+    checks.into_iter()
+        .enumerate()
+        .map(|(i, instance)| generation_config::QcRuleConfig {
+            id: format!("analytics_only_{i}"),
+            checks: vec![instance],
+            strategy: None,
+        })
+        .collect()
+}
+
 fn run_compute_analytics<T: Tessellation>(
     cfg: ComputeAnalyticsConfig,
     pts: Vec<T::Point>,
@@ -372,25 +413,54 @@ where
     maze.meta.start  = cfg.start.map(|id| id as u64);
     maze.meta.finish = cfg.finish.map(|id| id as u64);
 
-    // Build QC engine from config (no repair). `check_rules` is explicitly empty, not
-    // `..GenerateConfig::default()`'s hardcoded `default_missing_endpoints` rule — that default
-    // assumes `missing_endpoints` is active, which isn't guaranteed here (`cfg.checks` is
-    // caller-supplied), and `build_qc_and_repair`'s validation rejects any rule referencing a
-    // check not in `checks`. Rules only matter for repair dispatch, which this path discards
-    // anyway (`let (qc_engine, _) = ...` below), so an empty list is correct, not just safe.
+    // Build QC engine from config (no repair). Each active check becomes its own synthetic
+    // singleton rule (id/kind discarded immediately below) — `build_qc_and_repair` is rule-driven
+    // (see GitHub issue #60) and no longer accepts a flat check list, but this path has no real
+    // rules of its own and never runs `RepairEngine`, so a throwaway one-check-per-rule wrapper
+    // is the simplest way to satisfy that shape without rule semantics actually mattering here.
+    let check_rules = analytics_only_check_rules(cfg.checks);
     let qc_config = GenerateConfig {
         tessellation: cfg.tessellation,
-        checks: cfg.checks,
-        check_rules: vec![],
-        check_params: cfg.check_params,
+        check_rules,
         ..GenerateConfig::default()
     };
-    let (qc_engine, _) = runner::build_qc_and_repair::<T>(&qc_config)?;
+    let (qc_engine, _, check_types) = runner::build_qc_and_repair::<T>(&qc_config)?;
 
-    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, point_to_xy)
+    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, point_to_xy)
         .map_err(|e| JsValue::from_str(&e))?;
 
     snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn exactly_one_check_descriptor_allows_multiple_instances() {
+        let checks = available_checks_list();
+        let allowing: Vec<&str> = checks.iter()
+            .filter(|c| c.allow_multiple_instances)
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(allowing, vec!["min_region_count"], "see GitHub issue #60 — only min_region_count supports multiple active instances");
+    }
+
+    #[test]
+    fn analytics_only_check_rules_wraps_each_check_in_its_own_singleton_rule() {
+        let checks = vec![
+            generation_config::CheckInstanceConfig { local_id: "a".to_string(), type_id: "missing_endpoints".to_string(), params: HashMap::new() },
+            generation_config::CheckInstanceConfig { local_id: "b".to_string(), type_id: "unreachable_finish".to_string(), params: HashMap::new() },
+        ];
+        let rules = analytics_only_check_rules(checks);
+        assert_eq!(rules.len(), 2);
+        assert_ne!(rules[0].id, rules[1].id, "each synthetic rule needs a distinct id");
+        for rule in &rules {
+            assert_eq!(rule.checks.len(), 1, "one check per synthetic rule");
+            assert!(rule.strategy.is_none(), "analytics-only path never runs RepairEngine");
+        }
+    }
 }
 

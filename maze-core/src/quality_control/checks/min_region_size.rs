@@ -5,12 +5,11 @@ use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, REGION_NEEDS_EXPANSION};
 use crate::quality_control::issue_data::IssueData;
-use crate::repair::CheckId;
 
 pub const MIN_REGION_SIZE_DEFAULT: u32 = 20;
-pub const MIN_REGION_SIZE_CHECK_ID: CheckId = CheckId::MinRegionSize;
 
 pub struct MinRegionSizeCheck {
+    pub instance_id: String,
     pub min_region_size: u32,
 }
 
@@ -24,12 +23,12 @@ impl<T: Tessellation> Check<T> for MinRegionSizeCheck {
         if invalid.is_empty() {
             return;
         }
-        let mut invalid_sources: HashMap<usize, Vec<CheckId>> = HashMap::new();
+        let mut invalid_sources: HashMap<usize, Vec<String>> = HashMap::new();
         for &idx in &invalid {
-            invalid_sources.entry(idx).or_default().push(MIN_REGION_SIZE_CHECK_ID);
+            invalid_sources.entry(idx).or_default().push(self.instance_id.clone());
         }
-        let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, MIN_REGION_SIZE_CHECK_ID)
-            .with_detail(MIN_REGION_SIZE_CHECK_ID, "min_region_size", self.min_region_size.to_string());
+        let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, &self.instance_id)
+            .with_detail(&self.instance_id, "min_region_size", self.min_region_size.to_string());
         issues.push(issue);
     }
 }
@@ -41,6 +40,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
+
+    const TEST_ID: &str = "min_region_size";
 
     fn rng() -> rand::rngs::SmallRng {
         rand::rngs::SmallRng::seed_from_u64(0)
@@ -63,7 +64,7 @@ mod tests {
     #[test]
     fn silent_when_all_regions_meet_minimum() {
         let maze = maze_with_small_region();
-        let check = MinRegionSizeCheck { min_region_size: 1 };
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty());
@@ -72,18 +73,18 @@ mod tests {
     #[test]
     fn fires_when_a_region_is_smaller_than_minimum() {
         let maze = maze_with_small_region();
-        let check = MinRegionSizeCheck { min_region_size: 2 };
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, REGION_NEEDS_EXPANSION);
-        assert_eq!(issues[0].source_checks(), vec![CheckId::MinRegionSize]);
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         match &issues[0].data {
             Some(IssueData::RegionsNeedingExpansion { invalid, .. }) => assert_eq!(invalid.len(), 1, "only the singleton region is undersized"),
             other => panic!("expected RegionsNeedingExpansion, got {other:?}"),
         }
         assert_eq!(
-            issues[0].details().get(&CheckId::MinRegionSize).and_then(|kv| kv.get("min_region_size")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_region_size")),
             Some(&"2".to_string()),
         );
     }
@@ -91,7 +92,7 @@ mod tests {
     #[test]
     fn silent_when_region_size_equals_minimum() {
         let maze = maze_with_small_region();
-        let check = MinRegionSizeCheck { min_region_size: 1 };
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1 };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "singleton region has size 1, not below a minimum of 1");

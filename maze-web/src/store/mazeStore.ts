@@ -72,9 +72,12 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       initialConfig: file.generation.initial,
       elementsConfig: file.generation.elements,
       // quality
-      selectedChecks: file.quality.selectedChecks,
-      rules: file.quality.rules,
-      checkParams: file.quality.checkParams,
+      // nextLocalCheckId recomputed below, not stored in the project file — see CheckInstance's
+      // doc comment in storeTypes.ts.
+      rules: file.quality.rules.map((rule) => ({
+        ...rule,
+        nextLocalCheckId: rule.checks.length === 0 ? 0 : Math.max(...rule.checks.map((c) => c.localId)) + 1,
+      })),
       strategyParams: file.quality.strategyParams,
       repairMaxIterations: file.quality.repairMaxIterations,
       repairTimeBudgetSecs: file.quality.repairTimeBudgetSecs,

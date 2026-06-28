@@ -5,7 +5,6 @@ import { ParamFields } from "./ParamFields";
 import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
 import { colors, font, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
-import type { CheckVM } from "./useQualityViewModel";
 import type { ParamDescriptor } from "../../wasm/types";
 
 function defaultValue(p: ParamDescriptor): string {
@@ -13,12 +12,25 @@ function defaultValue(p: ParamDescriptor): string {
   return k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
 }
 
+/** A check type offered as a candidate to add into a rule — this is a `CheckDescriptor`
+ * projection, not a `CheckVM`: candidates aren't active instances yet, so they have no
+ * `ruleId`/`localId`. */
+export interface CheckCandidateVM {
+  typeId: string;
+  label: string;
+  description: string;
+  params: ParamDescriptor[];
+}
+
 interface Props {
   ruleId: string;
   /** Issue kind shared by `candidates` and the target rule — shown in the dialog title. */
   kind: string;
-  /** Not-yet-active checks sharing the rule's kind — candidates to activate into this rule. */
-  candidates: CheckVM[];
+  /** Check types sharing the rule's kind, already filtered by `RulesColumn.candidatesFor` — a
+   * type with `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue
+   * #60) is offered even if already active elsewhere; every other type is excluded once active
+   * anywhere. */
+  candidates: CheckCandidateVM[];
   onClose: () => void;
 }
 
@@ -28,12 +40,12 @@ interface Props {
  * rule), this targets an existing rule. */
 export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Props) {
   const addCheck = useMazeStore((s) => s.addCheck);
-  const [selectedId, setSelectedId] = useState<string>(candidates[0]?.id ?? "");
-  // Param edits made in this dialog before the check is actually added — keyed by check id so
-  // switching the selection and coming back preserves what was typed (mirrors CheckSelectDialog).
+  const [selectedId, setSelectedId] = useState<string>(candidates[0]?.typeId ?? "");
+  // Param edits made in this dialog before the check is actually added — keyed by check type id
+  // so switching the selection and coming back preserves what was typed (mirrors CheckSelectDialog).
   const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
 
-  const selected = candidates.find((c) => c.id === selectedId);
+  const selected = candidates.find((c) => c.typeId === selectedId);
 
   function handleParamChange(paramId: string, value: string) {
     setParamOverrides((prev) => ({
@@ -50,13 +62,13 @@ export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Prop
   }
 
   const items = candidates.map((c) => ({
-    id: c.id,
-    label: resolveCheckLabel(c.id, c.label),
+    id: c.typeId,
+    label: resolveCheckLabel(c.typeId, c.label),
   }));
 
   const rightPanel = selected ? (
     <>
-      <div style={styles.description}>{resolveCheckDescription(selected.id, selected.description)}</div>
+      <div style={styles.description}>{resolveCheckDescription(selected.typeId, selected.description)}</div>
       {selected.params.length > 0 && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />

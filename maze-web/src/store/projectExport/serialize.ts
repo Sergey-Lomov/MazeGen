@@ -24,9 +24,9 @@ export function serializeProject(state: MazeState): ProjectFile {
       elements: state.elementsConfig,
     },
     quality: {
-      selectedChecks: state.selectedChecks,
-      rules: state.rules,
-      checkParams: state.checkParams,
+      // `nextLocalCheckId` deliberately omitted — recomputed on load, see CheckInstance's doc
+      // comment in storeTypes.ts.
+      rules: state.rules.map(({ nextLocalCheckId: _nextLocalCheckId, ...rule }) => rule),
       strategyParams: state.strategyParams,
       repairMaxIterations: state.repairMaxIterations,
       repairTimeBudgetSecs: state.repairTimeBudgetSecs,

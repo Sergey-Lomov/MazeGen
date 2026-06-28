@@ -6,12 +6,11 @@ use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_LOOP};
 use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
-use crate::repair::CheckId;
 
 pub const MAX_LOOP_LENGTH_DEFAULT: u32 = 100;
-pub const MAX_LOOP_LENGTH_CHECK_ID: CheckId = CheckId::MaxLoopLength;
 
 pub struct MaxLoopLengthCheck {
+    pub instance_id: String,
     pub max_loop_length: u32,
 }
 
@@ -32,12 +31,12 @@ impl<T: Tessellation> Check<T> for MaxLoopLengthCheck {
         let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
         debug_assert!(long.iter().all(|&idx| idx < all.len()),
             "long must only contain valid indices into all — built from the same `cycles` it resolves");
-        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<CheckId>> = HashMap::new();
+        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<String>> = HashMap::new();
         for &idx in &long {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(MAX_LOOP_LENGTH_CHECK_ID);
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
         }
-        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: long, invalid_sources }, MAX_LOOP_LENGTH_CHECK_ID)
-            .with_detail(MAX_LOOP_LENGTH_CHECK_ID, "threshold", self.max_loop_length.to_string());
+        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: long, invalid_sources }, &self.instance_id)
+            .with_detail(&self.instance_id, "threshold", self.max_loop_length.to_string());
         issues.push(issue);
     }
 }
@@ -58,6 +57,8 @@ mod tests {
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
 
+    const TEST_ID: &str = "max_loop_length";
+
     fn maze_with_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
@@ -73,19 +74,19 @@ mod tests {
     #[test]
     fn fires_when_long_cycle_exists() {
         let maze = maze_with_triangle();
-        let check = MaxLoopLengthCheck { max_loop_length: 2 };
+        let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 2 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
-        assert_eq!(issues[0].source_checks(), vec![CheckId::MaxLoopLength]);
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         match &issues[0].data {
             Some(IssueData::InvalidLoops { invalid, .. }) => assert_eq!(invalid.len(), 1),
             other => panic!("expected InvalidLoops, got {other:?}"),
         }
         assert_eq!(
-            issues[0].details().get(&CheckId::MaxLoopLength).and_then(|kv| kv.get("threshold")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("threshold")),
             Some(&"2".to_string()),
         );
     }
@@ -93,7 +94,7 @@ mod tests {
     #[test]
     fn silent_when_cycle_not_longer_than_threshold() {
         let maze = maze_with_triangle();
-        let check = MaxLoopLengthCheck { max_loop_length: 3 };
+        let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 3 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -123,7 +124,7 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopLengthCheck { max_loop_length: 10 };
+        let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 10 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -140,7 +141,7 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopLengthCheck { max_loop_length: 10 };
+        let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 10 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);

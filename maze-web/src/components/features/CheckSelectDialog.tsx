@@ -6,6 +6,7 @@ import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveP
 import { colors, font, radius } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
+import { isTypeAlreadyActive } from "../../store/slices/generationSlice";
 
 interface Props {
   /** Issue kind chosen in step 1 (IssueSelectDialog) — only checks of this kind are listed. */
@@ -26,9 +27,13 @@ function defaultValue(p: ParamDescriptor): string {
 
 export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const allChecks = useMazeStore((s) => s.availableChecks);
-  const selectedChecks = useMazeStore((s) => s.selectedChecks);
+  const rules = useMazeStore((s) => s.rules);
 
   const availableChecks = allChecks.filter((c) => c.issue_kinds[0] === kind);
+  // A type without `allow_multiple_instances` (every check except `min_region_count`, see
+  // GitHub issue #60) can't be picked here if it's already active in some existing rule —
+  // adding it anyway would be silently rejected by `createRule`.
+  const isAlreadyActive = (id: string) => isTypeAlreadyActive(rules, id);
 
   const [selectedId, setSelectedId] = useState<string>(availableChecks[0]?.id ?? "");
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
@@ -38,10 +43,10 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
 
   const selectedCheck = availableChecks.find((c) => c.id === selectedId);
-  const isAlreadyActive = (id: string) => selectedChecks.includes(id);
 
   function toggleChecked(id: string) {
-    if (isAlreadyActive(id)) return;
+    const descriptor = availableChecks.find((c) => c.id === id);
+    if (descriptor && !descriptor.allow_multiple_instances && isAlreadyActive(id)) return;
     setCheckedIds((prev) => prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]);
   }
 
@@ -61,7 +66,7 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const items = availableChecks.map((c) => ({
     id: c.id,
     label: resolveCheckLabel(c.id, c.label),
-    disabled: isAlreadyActive(c.id),
+    disabled: !c.allow_multiple_instances && isAlreadyActive(c.id),
     checked: checkedIds.includes(c.id),
   }));
 
@@ -70,10 +75,10 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
       <div style={styles.description}>
         {resolveCheckDescription(selectedCheck.id, selectedCheck.description)}
       </div>
-      {isAlreadyActive(selectedCheck.id) && (
+      {!selectedCheck.allow_multiple_instances && isAlreadyActive(selectedCheck.id) && (
         <div style={styles.alreadyActive}>{m["check.already_active"]()}</div>
       )}
-      {!isAlreadyActive(selectedCheck.id) && selectedCheck.params.length > 0 && (
+      {selectedCheck.params.length > 0 && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
           <ParamFields

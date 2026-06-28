@@ -24,8 +24,6 @@ beforeEach(() => {
     start: 0,
     finish: 1,
     activeTessellationConfig: { type: "square", width: 2, height: 1 },
-    selectedChecks: [],
-    checkParams: {},
     postEditDraftEdges: { "0-1": { from: 0, to: 1, kind: "basic" } },
     postEditDraftMeta: { start: 0, finish: 1 },
     postEditEdges: null,

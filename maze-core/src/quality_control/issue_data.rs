@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::repair::CheckId;
 use crate::graph::region_class::RegionClass;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
@@ -35,7 +34,7 @@ pub enum IssueData {
         /// merges, so this map never needs remapping. A cycle absent here was flagged by no
         /// check directly tracked (shouldn't happen for entries in `invalid`, but the map is not
         /// required to cover every index — absence means "no recorded source", not an error).
-        invalid_sources: HashMap<Vec<EdgeId>, Vec<CheckId>>,
+        invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
     },
     /// Produced by any check that flags the maze as short on loops overall (currently only
     /// `MinLoopsCountCheck`; future checks needing more loops added may reuse this variant).
@@ -72,16 +71,22 @@ pub enum IssueData {
         /// within one QC pass because every check sharing this issue reads from the same single
         /// `maze.analysis.scc(&maze.graph)` cache entry, unlike cycle indices (which get
         /// remapped on merge because cycle enumeration has no equivalent stable identity).
-        invalid_sources: HashMap<usize, Vec<CheckId>>,
+        invalid_sources: HashMap<usize, Vec<String>>,
     },
     /// Produced by any check that flags the maze as short on regions of a specific `RegionClass`
-    /// (paired with `MISSING_REGIONS`; currently only `MinRegionCountCheck`). `missing` is how
-    /// many regions of `region_class` short of the requirement the maze is — lets a future repair
-    /// strategy know how many regions of that class to add. No merge rule defined yet — only one
-    /// check produces `MISSING_REGIONS` so far, so the dedup/merge path is never exercised.
+    /// (paired with `MISSING_REGIONS`; currently only `MinRegionCountCheck`) — see GitHub issue
+    /// #60 for why this is a per-class map rather than a single `{region_class, missing}` pair:
+    /// multiple `MinRegionCountCheck` instances (different `region_class` each, or even the same
+    /// one) can be active in one rule and merge into a single issue. `missing_by_class` is how
+    /// many regions of each class are short of that class's requirement. Invariant: a single,
+    /// not-yet-merged `Issue` (as produced directly by one `MinRegionCountCheck::check()` call)
+    /// always carries **at most one** entry — its own `region_class`; multiple entries only ever
+    /// arise as the result of `merge_missing_regions` (`generation/pipeline.rs`) combining two
+    /// checks' issues, never as a single check's primary output. `HashMap` iteration order is
+    /// not stable — callers that surface this map (analytics DTOs, UI rendering) must sort by
+    /// `RegionClass::as_str()` before display/comparison if order matters there.
     MissingRegions {
-        region_class: RegionClass,
-        missing: u32,
+        missing_by_class: HashMap<RegionClass, u32>,
     },
 }
 

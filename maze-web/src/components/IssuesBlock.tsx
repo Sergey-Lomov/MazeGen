@@ -27,7 +27,11 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     const names = details.rule_ids.split(", ").map((id) => rules.find((r) => r.id === id)?.name ?? id).join(", ");
     details = { ...details, rule_ids: names };
   }
-  const label = resolveIssueSourceLabel(issue.kind, detailsKey, details);
+  // No source check -> fall back to the issue's own kind string as the DETAIL_LABELS key (e.g.
+  // `repair_limit_reached`/`qc_no_progress`, neither a toggleable `Check<T>` — see
+  // `issueRegistry.ts`'s doc comment on those two entries).
+  const typeId = sourceCheck != null ? issue.source_check_types[sourceCheck] ?? sourceCheck : issue.kind;
+  const label = resolveIssueSourceLabel(issue.kind, typeId, details);
   // Only this bubble's own source check's cycles — not every contributing check's cycles
   // combined (see `IssueDto.invalid_loop_edges`'s doc comment).
   const loopEdges = sourceCheck != null ? issue.invalid_loop_edges[sourceCheck] ?? null : null;

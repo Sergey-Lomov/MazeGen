@@ -95,7 +95,7 @@ pub fn build_maze<T: Tessellation>(
                  Issue::new_from_check/with_data_from_check always set exactly one, \
                  Issue::new/with_data set none");
             let Some(rule_id) = issue.single_source_check()
-                .and_then(|check_id| check_id_to_rule.get(&check_id))
+                .and_then(|check_id| check_id_to_rule.get(check_id))
             else { continue };
             if failed.contains(rule_id) { continue; }
             match by_rule.entry(rule_id.clone()) {
@@ -162,7 +162,7 @@ pub fn build_maze<T: Tessellation>(
 /// Always unions data rather than picking one side — there is no precedence between sources,
 /// nothing is discarded (see `Specs/quality_control.md`'s "Dedup interaction" section).
 fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
-    for &source in incoming.source_checks() {
+    for source in incoming.source_checks() {
         existing.push_source(source);
     }
     existing.merge_details(incoming.take_details());
@@ -174,6 +174,10 @@ fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
         (Some(IssueData::RegionsNeedingExpansion { invalid, invalid_sources }),
          Some(IssueData::RegionsNeedingExpansion { invalid: incoming_invalid, invalid_sources: incoming_sources })) => {
             merge_regions_needing_expansion(invalid, invalid_sources, incoming_invalid, incoming_sources);
+        }
+        (Some(IssueData::MissingRegions { missing_by_class }),
+         Some(IssueData::MissingRegions { missing_by_class: incoming_by_class })) => {
+            merge_missing_regions(missing_by_class, incoming_by_class);
         }
         (None, None) => {}
         (existing_data, incoming_data) => {
@@ -195,10 +199,10 @@ fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
 fn merge_invalid_loops(
     all: &mut Vec<Vec<EdgeId>>,
     invalid: &mut Vec<usize>,
-    invalid_sources: &mut HashMap<Vec<EdgeId>, Vec<crate::repair::CheckId>>,
+    invalid_sources: &mut HashMap<Vec<EdgeId>, Vec<String>>,
     incoming_all: Vec<Vec<EdgeId>>,
     incoming_invalid: Vec<usize>,
-    incoming_sources: HashMap<Vec<EdgeId>, Vec<crate::repair::CheckId>>,
+    incoming_sources: HashMap<Vec<EdgeId>, Vec<String>>,
 ) {
     // Step 1+2: dedup — build the merged `all`, mapping every old index (from both sides) to its
     // new index in the merged list; identical cycles (by canonical_cycle_key) collapse onto the
@@ -272,9 +276,9 @@ fn merge_invalid_loops(
 /// cache entry for this QC pass, so a given component index means the same region on both sides.
 fn merge_regions_needing_expansion(
     invalid: &mut Vec<usize>,
-    invalid_sources: &mut HashMap<usize, Vec<crate::repair::CheckId>>,
+    invalid_sources: &mut HashMap<usize, Vec<String>>,
     incoming_invalid: Vec<usize>,
-    incoming_sources: HashMap<usize, Vec<crate::repair::CheckId>>,
+    incoming_sources: HashMap<usize, Vec<String>>,
 ) {
     let mut seen: HashSet<usize> = invalid.iter().copied().collect();
     for idx in incoming_invalid {
@@ -292,49 +296,62 @@ fn merge_regions_needing_expansion(
     }
 }
 
+/// Canonical merge for `IssueData::MissingRegions` — see GitHub issue #60. Two
+/// `MinRegionCountCheck` instances in one rule can target different `RegionClass`es (union both
+/// into the merged map) or, less commonly, the same class with different `min_count` thresholds
+/// (take the **max** of the two `missing` counts, not the sum — both describe the same
+/// underlying shortfall against that class's population, summing would double-count it).
+fn merge_missing_regions(
+    missing_by_class: &mut HashMap<crate::graph::region_class::RegionClass, u32>,
+    incoming: HashMap<crate::graph::region_class::RegionClass, u32>,
+) {
+    for (class, missing) in incoming {
+        missing_by_class.entry(class).and_modify(|m| *m = (*m).max(missing)).or_insert(missing);
+    }
+}
+
 #[cfg(test)]
 mod merge_tests {
     use super::*;
     use crate::quality_control::INVALID_LOOP;
-    use crate::repair::CheckId;
 
-    fn issue(source_check: CheckId, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>) -> Issue {
-        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<CheckId>> = HashMap::new();
+    fn issue(source_check: &str, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>) -> Issue {
+        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
         for &idx in &invalid {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(source_check);
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(source_check.to_string());
         }
         Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid, invalid_sources }, source_check)
     }
 
     #[test]
     fn merge_keeps_each_source_checks_details_after_merge() {
-        let mut a = issue(CheckId::MinLoopLength, vec![vec![1, 2, 3]], vec![0])
-            .with_detail(CheckId::MinLoopLength, "threshold", "10".to_string());
-        let b = issue(CheckId::MaxLoopLength, vec![vec![4, 5, 6]], vec![0])
-            .with_detail(CheckId::MaxLoopLength, "threshold", "100".to_string());
+        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0])
+            .with_detail("min_loop_length", "threshold", "10".to_string());
+        let b = issue("max_loop_length", vec![vec![4, 5, 6]], vec![0])
+            .with_detail("max_loop_length", "threshold", "100".to_string());
         merge_issue(&mut a, b);
 
-        assert_eq!(a.details().get(&CheckId::MinLoopLength).and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
-        assert_eq!(a.details().get(&CheckId::MaxLoopLength).and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
+        assert_eq!(a.details().get("min_loop_length").and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
+        assert_eq!(a.details().get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
     }
 
     #[test]
     fn merge_disjoint_cycles_unions_all_and_invalid() {
-        let mut a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
-        let b = issue(CheckId::UnreachableFinish, vec![vec![4, 5, 6]], vec![0]);
+        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("unreachable_finish", vec![vec![4, 5, 6]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
         assert_eq!(all.len(), 2, "disjoint cycles must not collapse");
         assert_eq!(invalid.len(), 2, "both cycles are invalid, from different sources");
-        assert_eq!(a.source_checks(), vec![CheckId::MissingEndpoints, CheckId::UnreachableFinish]);
+        assert_eq!(a.source_checks(), vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()]);
     }
 
     #[test]
     fn merge_deduplicates_identical_cycle_found_by_both_sides() {
         // Same cycle, edges listed in a different order — must collapse to one entry in `all`.
-        let mut a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
-        let b = issue(CheckId::UnreachableFinish, vec![vec![3, 1, 2]], vec![0]);
+        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("unreachable_finish", vec![vec![3, 1, 2]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
@@ -344,8 +361,8 @@ mod merge_tests {
 
     #[test]
     fn merge_keeps_valid_cycles_distinct_from_invalid_ones() {
-        let mut a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3], vec![7, 8, 9]], vec![0]); // second cycle valid
-        let b = issue(CheckId::UnreachableFinish, vec![vec![4, 5, 6]], vec![0]);
+        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3], vec![7, 8, 9]], vec![0]); // second cycle valid
+        let b = issue("unreachable_finish", vec![vec![4, 5, 6]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
@@ -355,53 +372,53 @@ mod merge_tests {
 
     #[test]
     fn merge_source_checks_has_no_duplicates() {
-        let mut a = issue(CheckId::MissingEndpoints, vec![], vec![]);
-        let b = issue(CheckId::MissingEndpoints, vec![], vec![]);
+        let mut a = issue("missing_endpoints", vec![], vec![]);
+        let b = issue("missing_endpoints", vec![], vec![]);
         merge_issue(&mut a, b);
-        assert_eq!(a.source_checks(), vec![CheckId::MissingEndpoints], "merging the same source twice must not duplicate it");
+        assert_eq!(a.source_checks(), vec!["missing_endpoints".to_string()], "merging the same source twice must not duplicate it");
     }
 
     #[test]
     fn merge_none_data_is_noop() {
-        let mut a = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, CheckId::MissingEndpoints);
-        let b = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, CheckId::MissingEndpoints);
+        let mut a = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, "missing_endpoints");
+        let b = Issue::new_from_check(crate::quality_control::MISSING_ENDPOINTS, "missing_endpoints");
         merge_issue(&mut a, b);
         assert_eq!(a.data, None);
-        assert_eq!(a.source_checks(), vec![CheckId::MissingEndpoints]);
+        assert_eq!(a.source_checks(), vec!["missing_endpoints".to_string()]);
     }
 
     #[test]
     fn merge_invalid_sources_unions_check_ids_for_same_cycle() {
         // Same cycle (different edge order), flagged invalid by two different checks — both
         // check ids must end up attributed to it, not just one side's.
-        let mut a = issue(CheckId::MinLoopLength, vec![vec![1, 2, 3]], vec![0]);
-        let b = issue(CheckId::MaxLoopLength, vec![vec![3, 1, 2]], vec![0]);
+        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("max_loop_length", vec![vec![3, 1, 2]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { invalid_sources, .. }) = &a.data else { panic!() };
         let key = canonical_cycle_key(&[1, 2, 3]);
         let sources = invalid_sources.get(&key).expect("merged cycle must have recorded sources");
         assert_eq!(sources.len(), 2);
-        assert!(sources.contains(&CheckId::MinLoopLength));
-        assert!(sources.contains(&CheckId::MaxLoopLength));
+        assert!(sources.contains(&"min_loop_length".to_string()));
+        assert!(sources.contains(&"max_loop_length".to_string()));
     }
 
     #[test]
     fn merge_invalid_sources_no_duplicate_for_repeated_check() {
-        let mut a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
-        let b = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
+        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { invalid_sources, .. }) = &a.data else { panic!() };
         let key = canonical_cycle_key(&[1, 2, 3]);
-        assert_eq!(invalid_sources.get(&key), Some(&vec![CheckId::MissingEndpoints]));
+        assert_eq!(invalid_sources.get(&key), Some(&vec!["missing_endpoints".to_string()]));
     }
 
     #[test]
     fn merge_invalid_sources_associative_regardless_of_merge_order() {
-        let a = issue(CheckId::MissingEndpoints, vec![vec![1, 2, 3]], vec![0]);
-        let b = issue(CheckId::UnreachableFinish, vec![vec![1, 2, 3]], vec![0]);
-        let c = issue(CheckId::MinLoopsCount, vec![vec![1, 2, 3]], vec![0]);
+        let a = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("unreachable_finish", vec![vec![1, 2, 3]], vec![0]);
+        let c = issue("min_loops_count", vec![vec![1, 2, 3]], vec![0]);
 
         let mut left_first = a.clone();
         merge_issue(&mut left_first, b.clone());
@@ -419,7 +436,7 @@ mod merge_tests {
             sources
         };
         assert_eq!(extract_sorted(&left_first), extract_sorted(&right_first));
-        assert_eq!(extract_sorted(&left_first), vec![CheckId::MissingEndpoints, CheckId::UnreachableFinish, CheckId::MinLoopsCount]);
+        assert_eq!(extract_sorted(&left_first), vec!["min_loops_count".to_string(), "missing_endpoints".to_string(), "unreachable_finish".to_string()]);
     }
 
     #[test]
@@ -435,9 +452,9 @@ mod merge_tests {
         let mut a = Issue::with_data_from_check(
             INVALID_LOOP,
             IssueData::InvalidLoops { all: vec![vec![1, 2, 3]], invalid: vec![99], invalid_sources: HashMap::new() },
-            CheckId::MissingEndpoints,
+            "missing_endpoints",
         );
-        let b = issue(CheckId::UnreachableFinish, vec![vec![4, 5, 6]], vec![0]);
+        let b = issue("unreachable_finish", vec![vec![4, 5, 6]], vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::InvalidLoops { all, invalid, .. }) = &a.data else { panic!() };
@@ -445,10 +462,10 @@ mod merge_tests {
         assert_eq!(invalid, &vec![1], "the out-of-range index is dropped; only check_b's valid index survives");
     }
 
-    fn region_needs_expansion_issue(source_check: CheckId, invalid: Vec<usize>) -> Issue {
-        let mut invalid_sources: HashMap<usize, Vec<CheckId>> = HashMap::new();
+    fn region_needs_expansion_issue(source_check: &str, invalid: Vec<usize>) -> Issue {
+        let mut invalid_sources: HashMap<usize, Vec<String>> = HashMap::new();
         for &idx in &invalid {
-            invalid_sources.entry(idx).or_default().push(source_check);
+            invalid_sources.entry(idx).or_default().push(source_check.to_string());
         }
         Issue::with_data_from_check(
             crate::quality_control::REGION_NEEDS_EXPANSION,
@@ -459,8 +476,8 @@ mod merge_tests {
 
     #[test]
     fn merge_regions_needing_expansion_unions_disjoint_indices() {
-        let mut a = region_needs_expansion_issue(CheckId::MinRegionSize, vec![0]);
-        let b = region_needs_expansion_issue(CheckId::MinRegionRatio, vec![1]);
+        let mut a = region_needs_expansion_issue("min_region_size", vec![0]);
+        let b = region_needs_expansion_issue("min_region_ratio", vec![1]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::RegionsNeedingExpansion { invalid, .. }) = &a.data else { panic!() };
@@ -471,14 +488,45 @@ mod merge_tests {
 
     #[test]
     fn merge_regions_needing_expansion_deduplicates_shared_index() {
-        let mut a = region_needs_expansion_issue(CheckId::MinRegionSize, vec![0]);
-        let b = region_needs_expansion_issue(CheckId::MinRegionRatio, vec![0]);
+        let mut a = region_needs_expansion_issue("min_region_size", vec![0]);
+        let b = region_needs_expansion_issue("min_region_ratio", vec![0]);
         merge_issue(&mut a, b);
 
         let Some(IssueData::RegionsNeedingExpansion { invalid, invalid_sources }) = &a.data else { panic!() };
         assert_eq!(invalid, &vec![0], "the same region index found by both checks must not be duplicated");
         let sources = invalid_sources.get(&0).expect("region 0 must have recorded sources");
-        assert!(sources.contains(&CheckId::MinRegionSize));
-        assert!(sources.contains(&CheckId::MinRegionRatio));
+        assert!(sources.contains(&"min_region_size".to_string()));
+        assert!(sources.contains(&"min_region_ratio".to_string()));
+    }
+
+    fn missing_regions_issue(source_check: &str, class: crate::graph::region_class::RegionClass, missing: u32) -> Issue {
+        Issue::with_data_from_check(
+            crate::quality_control::MISSING_REGIONS,
+            IssueData::MissingRegions { missing_by_class: HashMap::from([(class, missing)]) },
+            source_check,
+        )
+    }
+
+    #[test]
+    fn merge_missing_regions_unions_different_classes() {
+        use crate::graph::region_class::RegionClass;
+        let mut a = missing_regions_issue("min_region_count_1", RegionClass::Trap, 2);
+        let b = missing_regions_issue("min_region_count_2", RegionClass::Alternative, 1);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::MissingRegions { missing_by_class }) = &a.data else { panic!() };
+        assert_eq!(missing_by_class, &HashMap::from([(RegionClass::Trap, 2), (RegionClass::Alternative, 1)]));
+    }
+
+    #[test]
+    fn merge_missing_regions_takes_max_for_same_class() {
+        use crate::graph::region_class::RegionClass;
+        let mut a = missing_regions_issue("min_region_count_1", RegionClass::Trap, 2);
+        let b = missing_regions_issue("min_region_count_2", RegionClass::Trap, 5);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::MissingRegions { missing_by_class }) = &a.data else { panic!() };
+        assert_eq!(missing_by_class, &HashMap::from([(RegionClass::Trap, 5)]),
+            "same-class shortfalls describe one underlying demand — take the stricter (max), not the sum");
     }
 }

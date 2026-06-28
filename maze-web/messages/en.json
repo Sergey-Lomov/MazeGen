@@ -165,7 +165,7 @@
   "check.min_region_size.description": "Fires if any strongly-connected region has fewer tiles than the required minimum.",
   "check.min_region_ratio.label": "Minimum SCC region ratio",
   "check.min_region_ratio.description": "Fires if any strongly-connected region covers less than the required share of the field.",
-  "check.min_region_count.label": "Minimum region count per class",
+  "check.min_region_count.label": "Minimum region count",
   "check.min_region_count.description": "Fires if the maze has fewer regions of the selected class than the required minimum.",
   "param.min_loops.label": "Min loop count",
   "param.min_loops.description": "The minimum number of loops the maze must contain.",

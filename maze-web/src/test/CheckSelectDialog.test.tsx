@@ -4,13 +4,13 @@ import { CheckSelectDialog } from "../components/features/CheckSelectDialog";
 import { useMazeStore } from "../store/mazeStore";
 
 const availableChecks = [
-  { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [] },
-  { id: "min_loop_length", label: "Minimum loop length", description: "Fires if a loop is too short.", issue_kinds: ["invalid_loop"], params: [] },
-  { id: "max_loop_length", label: "Maximum loop length", description: "Fires if a loop is too long.", issue_kinds: ["invalid_loop"], params: [] },
+  { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [], allow_multiple_instances: false },
+  { id: "min_loop_length", label: "Minimum loop length", description: "Fires if a loop is too short.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
+  { id: "max_loop_length", label: "Maximum loop length", description: "Fires if a loop is too long.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
 ];
 
 beforeEach(() => {
-  useMazeStore.setState({ availableChecks, selectedChecks: [], checkParams: {} });
+  useMazeStore.setState({ availableChecks, rules: [] });
 });
 
 describe("CheckSelectDialog", () => {
@@ -19,15 +19,6 @@ describe("CheckSelectDialog", () => {
     expect(screen.getByText("Minimum loop length")).toBeInTheDocument();
     expect(screen.getByText("Maximum loop length")).toBeInTheDocument();
     expect(screen.queryByText("Minimum loop count")).not.toBeInTheDocument();
-  });
-
-  it("disables the checkbox and shows the already-active warning for an already-selected check", () => {
-    useMazeStore.setState({ selectedChecks: ["min_loop_length"] });
-    render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Minimum loop length"));
-    expect(screen.getByText("Cannot add two checks of this type")).toBeInTheDocument();
-    const checkboxes = screen.getAllByRole("checkbox");
-    expect(checkboxes[0]).toBeDisabled();
   });
 
   it("Next is disabled until at least one check is toggled on", () => {
@@ -44,7 +35,6 @@ describe("CheckSelectDialog", () => {
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
     fireEvent.click(screen.getByText("Next"));
     expect(onNext).toHaveBeenCalledWith(["min_loop_length", "max_loop_length"], {});
-    expect(useMazeStore.getState().selectedChecks).toEqual([]);
     expect(useMazeStore.getState().rules).toEqual([]);
   });
 
@@ -53,7 +43,7 @@ describe("CheckSelectDialog", () => {
     render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={onClose} />);
     fireEvent.click(screen.getByText("Cancel"));
     expect(onClose).toHaveBeenCalled();
-    expect(useMazeStore.getState().selectedChecks).toEqual([]);
+    expect(useMazeStore.getState().rules).toEqual([]);
   });
 
   it("Back calls onBack instead of onClose", () => {

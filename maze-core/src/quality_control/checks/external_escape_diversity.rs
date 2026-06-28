@@ -7,10 +7,8 @@ use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_LOOP};
 use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
-use crate::repair::CheckId;
 
 pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
-pub const EXTERNAL_ESCAPE_DIVERSITY_CHECK_ID: CheckId = CheckId::ExternalEscapeDiversity;
 
 /// Flags simple cycles whose outgoing connections to the rest of the graph are not diverse —
 /// see `Specs/quality_control.md` and GitHub issue #32. Counts the distinct nav-nodes outside
@@ -18,6 +16,7 @@ pub const EXTERNAL_ESCAPE_DIVERSITY_CHECK_ID: CheckId = CheckId::ExternalEscapeD
 /// no geometry); a cycle below `min_distinct_exits` has many exits funneling into few distinct
 /// destinations, or few exits altogether — "locally trapped" despite raw edge count.
 pub struct ExternalEscapeDiversityCheck {
+    pub instance_id: String,
     pub min_distinct_exits: u32,
 }
 
@@ -38,12 +37,12 @@ impl<T: Tessellation> Check<T> for ExternalEscapeDiversityCheck {
         let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
         debug_assert!(low_diversity.iter().all(|&idx| idx < all.len()),
             "low_diversity must only contain valid indices into all — built from the same `cycles` it resolves");
-        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<CheckId>> = HashMap::new();
+        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<String>> = HashMap::new();
         for &idx in &low_diversity {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(EXTERNAL_ESCAPE_DIVERSITY_CHECK_ID);
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
         }
-        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: low_diversity, invalid_sources }, EXTERNAL_ESCAPE_DIVERSITY_CHECK_ID)
-            .with_detail(EXTERNAL_ESCAPE_DIVERSITY_CHECK_ID, "min_distinct_exits", self.min_distinct_exits.to_string());
+        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: low_diversity, invalid_sources }, &self.instance_id)
+            .with_detail(&self.instance_id, "min_distinct_exits", self.min_distinct_exits.to_string());
         issues.push(issue);
     }
 }
@@ -77,6 +76,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+
+    const TEST_ID: &str = "external_escape_diversity";
 
     /// A 3x3 ring (8 outer cells) with the center cell connected to every ring cell — each ring
     /// vertex has its own distinct exit to the center... but they all converge on the SAME
@@ -124,19 +125,19 @@ mod tests {
     #[test]
     fn fires_when_exits_converge_on_same_node() {
         let maze = maze_with_trapped_ring();
-        let check = ExternalEscapeDiversityCheck { min_distinct_exits: 3 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
-        assert_eq!(issues[0].source_checks(), vec![CheckId::ExternalEscapeDiversity]);
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         match &issues[0].data {
             Some(IssueData::InvalidLoops { invalid, .. }) => assert_eq!(invalid.len(), 1),
             other => panic!("expected InvalidLoops, got {other:?}"),
         }
         assert_eq!(
-            issues[0].details().get(&CheckId::ExternalEscapeDiversity).and_then(|kv| kv.get("min_distinct_exits")),
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_distinct_exits")),
             Some(&"3".to_string()),
         );
     }
@@ -144,7 +145,7 @@ mod tests {
     #[test]
     fn silent_when_exits_are_diverse() {
         let maze = maze_with_diverse_ring();
-        let check = ExternalEscapeDiversityCheck { min_distinct_exits: 3 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -154,7 +155,7 @@ mod tests {
     #[test]
     fn silent_when_threshold_is_zero() {
         let maze = maze_with_trapped_ring();
-        let check = ExternalEscapeDiversityCheck { min_distinct_exits: 0 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 0 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -182,7 +183,7 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = ExternalEscapeDiversityCheck { min_distinct_exits: 3 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -199,7 +200,7 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = ExternalEscapeDiversityCheck { min_distinct_exits: 3 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
