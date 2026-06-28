@@ -6,7 +6,7 @@ use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationAlgorithm, EdgeBasedParams, ElementsConfig, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{QualityControlEngine, Check, Issue, IssueData, IssueKind, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck, MISSING_ENDPOINTS, INVALID_LOOP, REPAIR_LIMIT_REACHED, RepairLimitKind};
-use maze_core::repair::{QcRule, RepairEngine, RepairRuleConfig, RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams};
+use maze_core::repair::{QcRule, RepairEngine, RepairRuleConfig, RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, SnapshotStack};
 
 /// Builds a single-rule `RepairEngine`: one rule containing all of `checks`, sharing `kind`,
 /// dispatching to `strategy`. Covers the common single-strategy-per-kind test shape without
@@ -107,7 +107,7 @@ fn pipeline_warns_when_strategy_always_fails() {
 
     struct AlwaysFail;
     impl RepairStrategy<SquareTessellation> for AlwaysFail {
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
             RepairResult::Failed
         }
     }
@@ -148,7 +148,7 @@ fn never_converging_setup(
         on_apply: F,
     }
     impl<F: Fn() + Send + Sync> RepairStrategy<SquareTessellation> for NoOpFix<F> {
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
             (self.on_apply)();
             RepairResult::Fixed { score: None }
         }
@@ -209,7 +209,7 @@ fn pipeline_surfaces_qc_no_progress_with_stuck_rule_id() {
     }
     struct NoOpFix;
     impl RepairStrategy<SquareTessellation> for NoOpFix {
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
             RepairResult::Fixed { score: None }
         }
     }
@@ -242,7 +242,7 @@ fn pipeline_merges_issues_from_duplicate_checks_into_one_strategy_call() {
         count: Arc<AtomicUsize>,
     }
     impl RepairStrategy<SquareTessellation> for CountingStrategy {
-        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
             self.count.fetch_add(1, Ordering::SeqCst);
             let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
             nodes.sort_unstable();

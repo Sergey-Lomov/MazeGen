@@ -8,6 +8,7 @@ use super::rule::QcRule;
 use super::params::{build_params, StrategyParams};
 use super::result::RepairResult;
 use super::strategy::RepairStrategy;
+use super::snapshot::SnapshotStack;
 
 /// One rule's strategy assignment — `RepairEngine`'s caller-supplied configuration unit.
 pub struct RepairRuleConfig<T: Tessellation> {
@@ -85,7 +86,8 @@ impl<T: Tessellation> RepairEngine<T> {
             let Some(&cfg) = by_id.get(rule_id.as_str()) else { continue };
             let overrides = Some(&cfg.param_overrides);
             let params: StrategyParams = build_params(cfg.strategy.params(), overrides);
-            let result = cfg.strategy.apply(issue, maze, rng, &params, preset_state);
+            let mut snapshots = SnapshotStack::new();
+            let result = cfg.strategy.apply(issue, maze, &mut snapshots, rng, &params, preset_state);
             results.push(RepairOutcome { rule_id: rule_id.clone(), result });
         }
         results

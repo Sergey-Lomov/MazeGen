@@ -1,4 +1,4 @@
-use rand::{Rng, RngCore};
+﻿use rand::{Rng, RngCore};
 use std::collections::HashMap;
 use crate::Maze;
 use crate::ids::NodeId;
@@ -10,6 +10,7 @@ use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
+use crate::repair::snapshot::SnapshotStack;
 use crate::graph::scc::ConnectedComponents;
 use std::collections::HashSet;
 
@@ -48,6 +49,7 @@ impl<T: Tessellation> RepairStrategy<T> for ExpandRegionPassageStrategy {
         &self,
         issue: &Issue,
         maze: &mut Maze<T>,
+        _snapshots: &mut SnapshotStack,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
@@ -236,7 +238,7 @@ mod tests {
         let (mut maze, _) = maze_4_singletons();
         let issue = Issue::new(REGION_NEEDS_EXPANSION);
         let mut rng = SmallRng::seed_from_u64(1);
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -246,7 +248,7 @@ mod tests {
         let issue = issue_for(vec![]);
         let mut rng = SmallRng::seed_from_u64(1);
         let edges_before = maze.graph.edges().count();
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), edges_before);
     }
@@ -259,7 +261,7 @@ mod tests {
         let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
         let issue = issue_for(vec![region_idx]);
         let mut rng = SmallRng::seed_from_u64(7);
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         // node[0]'s only geometric neighbor is node[1] -> must now be a full passage.
         assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
@@ -280,7 +282,7 @@ mod tests {
         let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[1]).unwrap();
         let issue = issue_for(vec![region_idx]);
         let mut rng = SmallRng::seed_from_u64(3);
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
         assert!(maze.graph.edge_between(nodes[1], nodes[0]).is_some());
@@ -299,7 +301,7 @@ mod tests {
         let region_idx = maze.analysis.scc(&maze.graph).components.len() - 1;
         let issue = issue_for(vec![region_idx]);
         let mut rng = SmallRng::seed_from_u64(1);
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -314,7 +316,7 @@ mod tests {
         let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
         let issue = issue_for(vec![region_idx]);
         let mut rng = SmallRng::seed_from_u64(5);
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &default_params(), &preset_state);
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &preset_state);
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 0);
     }
@@ -335,7 +337,7 @@ mod tests {
         let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[2]).unwrap();
         let issue = issue_for(vec![region_idx]);
         let mut rng = SmallRng::seed_from_u64(11);
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &params_with_mode(MODE_LARGEST), &PresetState::empty());
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_mode(MODE_LARGEST), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         // Must bridge toward the larger (2-cell) region on the right, not the singleton on the left.
         assert!(maze.graph.edge_between(nodes[2], nodes[3]).is_some());
@@ -355,7 +357,7 @@ mod tests {
         let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[2]).unwrap();
         let issue = issue_for(vec![region_idx]);
         let mut rng = SmallRng::seed_from_u64(11);
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &params_with_mode(MODE_SMALLEST), &PresetState::empty());
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_mode(MODE_SMALLEST), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         // Must bridge toward the smaller (1-cell) region on the left.
         assert!(maze.graph.edge_between(nodes[1], nodes[2]).is_some());
@@ -374,7 +376,7 @@ mod tests {
         let idx2 = scc.component_of(nodes[2]).unwrap();
         let issue = issue_for(vec![idx0, idx1, idx2]);
         let mut rng = SmallRng::seed_from_u64(2);
-        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut rng, &params_with_mode(MODE_PREFER_NEEDY), &PresetState::empty());
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_mode(MODE_PREFER_NEEDY), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -384,13 +386,13 @@ mod tests {
         let region_idx_a = maze_a.analysis.scc(&maze_a.graph).component_of(nodes_a[0]).unwrap();
         let issue_a = issue_for(vec![region_idx_a]);
         let mut rng_a = SmallRng::seed_from_u64(99);
-        ExpandRegionPassageStrategy.apply(&issue_a, &mut maze_a, &mut rng_a, &default_params(), &PresetState::empty());
+        ExpandRegionPassageStrategy.apply(&issue_a, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &default_params(), &PresetState::empty());
 
         let (mut maze_b, nodes_b) = maze_4_singletons();
         let region_idx_b = maze_b.analysis.scc(&maze_b.graph).component_of(nodes_b[0]).unwrap();
         let issue_b = issue_for(vec![region_idx_b]);
         let mut rng_b = SmallRng::seed_from_u64(99);
-        ExpandRegionPassageStrategy.apply(&issue_b, &mut maze_b, &mut rng_b, &default_params(), &PresetState::empty());
+        ExpandRegionPassageStrategy.apply(&issue_b, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &default_params(), &PresetState::empty());
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();

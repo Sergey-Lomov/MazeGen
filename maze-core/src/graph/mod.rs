@@ -12,7 +12,7 @@ pub(crate) mod distance_map;
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::ids::{NodeId, EdgeId};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node {
     pub id: NodeId,
 }
@@ -22,7 +22,7 @@ pub enum EdgeKind {
     Basic,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Edge {
     pub id: EdgeId,
     pub from: NodeId,
@@ -30,7 +30,7 @@ pub struct Edge {
     pub kind: EdgeKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Graph {
     nodes: Vec<Node>,
     edges: Vec<Option<Edge>>,
@@ -56,6 +56,14 @@ impl Graph {
     /// they can't make a cached cycle/nav-graph result wrong, only edges can.
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    /// Forces `version` strictly past `version` — used by `SnapshotStack::restore` after
+    /// swapping in an older graph copy, so `MazeAnalysis`'s version-keyed cache always treats
+    /// the restored graph as stale, even though its own version field is lower than the
+    /// pre-restore version.
+    pub(crate) fn force_bump_past(&mut self, version: u64) {
+        self.version = version.checked_add(1).expect("Graph version overflowed u64");
     }
 
     pub fn add_node(&mut self, id: NodeId) {
@@ -176,5 +184,40 @@ impl Graph {
 impl Default for Graph {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod force_bump_past_tests {
+    use super::*;
+
+    #[test]
+    fn bumps_strictly_past_given_version() {
+        let mut g = Graph::new();
+        g.force_bump_past(5);
+        assert_eq!(g.version(), 6);
+    }
+
+    #[test]
+    fn unconditionally_sets_version_to_arg_plus_one() {
+        // force_bump_past always sets version = arg + 1, regardless of the graph's current
+        // version — it is not a max()-style guard. Callers (SnapshotStack::restore) are
+        // responsible for passing the version recorded right before the restore, not an
+        // arbitrary one — passing a stale, lower value would actually decrease the version.
+        let mut g = Graph::new();
+        g.add_node(0);
+        g.add_node(1);
+        g.add_edge(0, 1, EdgeKind::Basic);
+        assert_eq!(g.version(), 1);
+
+        g.force_bump_past(g.version());
+        assert_eq!(g.version(), 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "Graph version overflowed u64")]
+    fn panics_on_u64_overflow() {
+        let mut g = Graph::new();
+        g.force_bump_past(u64::MAX);
     }
 }

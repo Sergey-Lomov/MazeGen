@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::EdgeId;
@@ -8,6 +8,7 @@ use crate::generation::{PresetState, try_remove_edge};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
+use crate::repair::snapshot::SnapshotStack;
 use super::cycle_cut_set::{edge_to_cycles_map, discard_cycles_with_edge, candidate_edges};
 
 pub const PARAM_SHORT_OVERLAP_WEIGHT: &str = "short_overlap_weight";
@@ -50,6 +51,7 @@ impl<T: Tessellation> RepairStrategy<T> for InvalidLoopScoredStrategy {
         &self,
         issue: &Issue,
         maze: &mut Maze<T>,
+        _snapshots: &mut SnapshotStack,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
@@ -213,7 +215,7 @@ mod tests {
         for seed in 0..20 {
             let mut maze_try = maze_with_shared_edge_triangles();
             let mut rng = SmallRng::seed_from_u64(seed);
-            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut rng, &no_params(), &PresetState::empty());
+            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
             assert!(matches!(result, RepairResult::Fixed { score: None }));
 
             let nodes = shared_edge_triangle_nodes(&maze_try.field);
@@ -243,7 +245,7 @@ mod tests {
         for seed in 0..20 {
             let mut maze_try = maze_with_shared_edge_triangles();
             let mut rng = SmallRng::seed_from_u64(seed);
-            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut rng, &no_params(), &PresetState::empty());
+            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
             assert!(matches!(result, RepairResult::Fixed { score: None }));
             let d_degree = maze_try.graph.edges().filter(|e| e.from == d || e.to == d).count();
             assert!(d_degree > 0, "seed {seed}: D must keep at least one edge — it must not be fully cut off");
@@ -255,7 +257,7 @@ mod tests {
         let mut maze = maze_with_shared_edge_triangles();
         let issue = Issue::new(crate::quality_control::issue::INVALID_LOOP);
         let mut rng = SmallRng::seed_from_u64(7);
-        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
+        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -264,7 +266,7 @@ mod tests {
         let mut maze = maze_with_shared_edge_triangles();
         let issue = Issue::with_data(crate::quality_control::issue::INVALID_LOOP, IssueData::InvalidLoops { all: vec![], invalid: vec![], invalid_sources: Default::default() });
         let mut rng = SmallRng::seed_from_u64(7);
-        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze, &mut rng, &no_params(), &PresetState::empty());
+        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -313,7 +315,7 @@ mod tests {
         for seed in 0..20 {
             let mut maze_try = maze_with_plain_edge_and_penalized_edge();
             let mut rng = SmallRng::seed_from_u64(seed);
-            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut rng, &no_params(), &PresetState::empty());
+            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
             assert!(matches!(result, RepairResult::Fixed { score: None }));
             assert!(maze_try.graph.edge_between(c, a).is_some(), "seed {seed}: C->A must survive, it's shared with a valid loop");
 
@@ -339,7 +341,7 @@ mod tests {
 
         let mut rng = SmallRng::seed_from_u64(1);
         let mut maze_try = maze_with_shared_edge_triangles();
-        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut rng, &no_params(), &preset_state);
+        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze_try.graph.edge_between(a, b).is_some(), "protected edge must survive");
     }

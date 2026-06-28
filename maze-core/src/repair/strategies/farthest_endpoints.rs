@@ -8,12 +8,13 @@ use crate::quality_control::Issue;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
+use crate::repair::snapshot::SnapshotStack;
 use crate::generation::PresetState;
 
 pub struct FarthestEndpointsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for FarthestEndpointsStrategy {
-    fn apply(&self, _issue: &Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState) -> RepairResult {
+    fn apply(&self, _issue: &Issue, maze: &mut Maze<T>, _snapshots: &mut SnapshotStack, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
             return RepairResult::Fixed { score: None };
         }

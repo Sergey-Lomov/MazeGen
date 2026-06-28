@@ -8,6 +8,7 @@ use crate::quality_control::Issue;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::RepairStrategy;
+use crate::repair::snapshot::SnapshotStack;
 use crate::generation::PresetState;
 
 pub const PARAM_PATH_WEIGHT: &str = "path_weight";
@@ -43,6 +44,7 @@ impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
         &self,
         _issue: &Issue,
         maze: &mut Maze<T>,
+        _snapshots: &mut SnapshotStack,
         _rng: &mut dyn RngCore,
         params: &StrategyParams,
         _preset_state: &PresetState,
