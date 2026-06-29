@@ -18,6 +18,16 @@ pub enum RegionClass {
     Trap,
 }
 
+/// Every `RegionClass` variant — the "All" selection of a per-class filter (e.g.
+/// `MinRegionSizeCheck::region_classes`) expands to this, not a sentinel value, so filtering code
+/// stays uniform between "all classes" and "some classes" (see GitHub issue #54).
+pub const ALL_REGION_CLASSES: [RegionClass; 4] = [
+    RegionClass::Path,
+    RegionClass::Alternative,
+    RegionClass::Unreachable,
+    RegionClass::Trap,
+];
+
 impl RegionClass {
     pub fn as_str(self) -> &'static str {
         match self {

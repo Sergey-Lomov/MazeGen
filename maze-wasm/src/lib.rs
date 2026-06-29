@@ -92,6 +92,25 @@ pub fn available_checks() -> JsValue {
     serde_wasm_bindgen::to_value(&available_checks_list()).unwrap()
 }
 
+/// Dropdown restricting `min_region_size`/`min_region_ratio` to one `RegionClass`, defaulting to
+/// `"all"` (every class, the checks' pre-#54 behavior) — see GitHub issue #54.
+fn region_class_filter_param() -> ParamDescriptor {
+    ParamDescriptor {
+        id: "region_class",
+        label: "Region class",
+        kind: ParamKindDto::Enum {
+            options: vec![
+                "all",
+                RegionClass::Path.as_str(),
+                RegionClass::Alternative.as_str(),
+                RegionClass::Unreachable.as_str(),
+                RegionClass::Trap.as_str(),
+            ],
+            default: "all",
+        },
+    }
+}
+
 fn available_checks_list() -> Vec<CheckDescriptor> {
     vec![
         CheckDescriptor {
@@ -158,11 +177,14 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Minimum SCC region size",
             description: "Fires if any strongly-connected region has fewer tiles than the required minimum.",
             issue_kinds: vec![kind_str(REGION_NEEDS_EXPANSION)],
-            params: vec![ParamDescriptor {
-                id: "min_region_size",
-                label: "Min region size (tiles)",
-                kind: ParamKindDto::Integer { default: MIN_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
-            }],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_region_size",
+                    label: "Min region size (tiles)",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
+                },
+                region_class_filter_param(),
+            ],
             allow_multiple_instances: false,
         },
         CheckDescriptor {
@@ -170,11 +192,14 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Minimum SCC region ratio",
             description: "Fires if any strongly-connected region covers less than the required share of the field.",
             issue_kinds: vec![kind_str(REGION_NEEDS_EXPANSION)],
-            params: vec![ParamDescriptor {
-                id: "min_region_ratio",
-                label: "Min region ratio (per 100 cells)",
-                kind: ParamKindDto::Integer { default: MIN_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
-            }],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_region_ratio",
+                    label: "Min region ratio (per 100 cells)",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
+                },
+                region_class_filter_param(),
+            ],
             allow_multiple_instances: false,
         },
         CheckDescriptor {

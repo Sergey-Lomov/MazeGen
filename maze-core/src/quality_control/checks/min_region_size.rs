@@ -2,24 +2,44 @@ use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
+use crate::graph::region_class::{RegionClass, ALL_REGION_CLASSES};
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, REGION_NEEDS_EXPANSION};
 use crate::quality_control::issue_data::IssueData;
 
 pub const MIN_REGION_SIZE_DEFAULT: u32 = 20;
 
+/// `region_classes`: SCC regions whose `RegionClass` (see `graph::region_class`) is not in this
+/// list are ignored entirely — never flagged, never assigned for expansion repair. Empty means no
+/// region matches (the check is always silent); all four classes means every region is checked,
+/// same as before this filter existed — see GitHub issue #54.
 pub struct MinRegionSizeCheck {
     pub instance_id: String,
     pub min_region_size: u32,
+    pub region_classes: Vec<RegionClass>,
 }
 
 impl<T: Tessellation> Check<T> for MinRegionSizeCheck {
     fn check_type_id(&self) -> &'static str { "min_region_size" }
 
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+        if self.region_classes.is_empty() {
+            return;
+        }
         let scc = maze.analysis.scc(&maze.graph);
+        let classes = if self.region_classes.len() == ALL_REGION_CLASSES.len() {
+            None
+        } else {
+            let (Some(start), Some(finish)) = (maze.meta.start, maze.meta.finish) else {
+                return;
+            };
+            Some(maze.analysis.region_classes(&maze.graph, start, finish))
+        };
         let invalid: Vec<usize> = scc.components.iter().enumerate()
-            .filter(|(_, region)| (region.len() as u32) < self.min_region_size)
+            .filter(|(idx, region)| {
+                (region.len() as u32) < self.min_region_size
+                    && classes.as_ref().is_none_or(|c| c.get(idx).is_some_and(|class| self.region_classes.contains(class)))
+            })
             .map(|(idx, _)| idx)
             .collect();
         if invalid.is_empty() {
@@ -66,7 +86,7 @@ mod tests {
     #[test]
     fn silent_when_all_regions_meet_minimum() {
         let maze = maze_with_small_region();
-        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1 };
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty());
@@ -75,7 +95,7 @@ mod tests {
     #[test]
     fn fires_when_a_region_is_smaller_than_minimum() {
         let maze = maze_with_small_region();
-        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2 };
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
@@ -94,9 +114,57 @@ mod tests {
     #[test]
     fn silent_when_region_size_equals_minimum() {
         let maze = maze_with_small_region();
-        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1 };
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
         check.check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "singleton region has size 1, not below a minimum of 1");
+    }
+
+    #[test]
+    fn silent_when_region_classes_empty() {
+        let maze = maze_with_small_region();
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: Vec::new() };
+        let mut issues = Vec::new();
+        check.check(&maze, &mut issues, &mut rng());
+        assert!(issues.is_empty(), "no region class is selected, so no region can match");
+    }
+
+    #[test]
+    fn silent_when_filtered_to_specific_class_without_endpoints() {
+        let maze = maze_with_small_region();
+        let check = MinRegionSizeCheck {
+            instance_id: TEST_ID.to_string(),
+            min_region_size: 2,
+            region_classes: vec![crate::graph::region_class::RegionClass::Trap],
+        };
+        let mut issues = Vec::new();
+        check.check(&maze, &mut issues, &mut rng());
+        assert!(issues.is_empty(), "start/finish are unset, so RegionClass can't be computed for a non-All filter");
+    }
+
+    #[test]
+    fn fires_only_for_regions_matching_the_selected_class() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let mut maze = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[1]);
+        // node 2 has no edges at all -> unreachable from start.
+        let check = MinRegionSizeCheck {
+            instance_id: TEST_ID.to_string(),
+            min_region_size: 2,
+            region_classes: vec![crate::graph::region_class::RegionClass::Unreachable],
+        };
+        let mut issues = Vec::new();
+        check.check(&maze, &mut issues, &mut rng());
+        assert_eq!(issues.len(), 1);
+        match &issues[0].data {
+            Some(IssueData::RegionsNeedingExpansion { invalid, .. }) => assert_eq!(invalid.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1"),
+            other => panic!("expected RegionsNeedingExpansion, got {other:?}"),
+        }
     }
 }

@@ -51,6 +51,16 @@ fn composite_check_id(rule_id: &str, local_id: &str) -> String {
     format!("{rule_id}:{local_id}")
 }
 
+/// Parses a `min_region_size`/`min_region_ratio` `region_class` param into the `Vec<RegionClass>`
+/// those checks filter on — see GitHub issue #54. `"all"`, missing, or unrecognized expands to
+/// every class (the checks' pre-#54 behavior); any other value restricts to that one class.
+fn parse_region_class_filter(param: Option<&String>) -> Vec<RegionClass> {
+    match param.and_then(|v| RegionClass::from_str(v)) {
+        Some(class) => vec![class],
+        None => maze_core::graph::region_class::ALL_REGION_CLASSES.to_vec(),
+    }
+}
+
 /// Builds one `Box<dyn Check<T>>` from a `CheckInstanceConfig`, dispatching on its `type_id`.
 /// `instance_id` is the composite routing key (`composite_check_id`) already computed by the
 /// caller — every check struct gets one uniformly, including the two zero-field structs, so
@@ -146,7 +156,8 @@ fn build_check<T: Tessellation>(
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MIN_REGION_SIZE_DEFAULT);
-            Box::new(MinRegionSizeCheck { instance_id, min_region_size })
+            let region_classes = parse_region_class_filter(instance.params.get("region_class"));
+            Box::new(MinRegionSizeCheck { instance_id, min_region_size, region_classes })
         }
         "min_region_ratio" => {
             let min_region_ratio = instance.params
@@ -154,7 +165,8 @@ fn build_check<T: Tessellation>(
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MIN_REGION_RATIO_DEFAULT);
-            Box::new(MinRegionRatioCheck { instance_id, min_region_ratio })
+            let region_classes = parse_region_class_filter(instance.params.get("region_class"));
+            Box::new(MinRegionRatioCheck { instance_id, min_region_ratio, region_classes })
         }
         "min_region_count" => {
             let region_class = instance.params

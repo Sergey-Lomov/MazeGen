@@ -358,10 +358,13 @@ pub const MIN_REGION_SIZE_DEFAULT: u32 = 20;
 
 pub struct MinRegionSizeCheck {
     pub min_region_size: u32,
+    pub region_classes: Vec<RegionClass>,
 }
 ```
 
 Flags SCC regions with fewer tiles than a configured absolute minimum — see GitHub issue #50. Uses `maze.analysis.scc(&maze.graph)` (same cache `SccCountCheck` reads), and flags every component whose `len()` is below `min_region_size`. If no region is undersized, the check is silent. Otherwise fires a single `Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, "min_region_size")` with `.with_detail("min_region_size", "min_region_size", self.min_region_size.to_string())` chained on — `invalid` holds every undersized component's index into `scc.components`.
+
+`region_classes` restricts the check to SCC regions of the listed `RegionClass`(es) (Path/Alternative/Unreachable/Trap — see `graph-analytics.md`'s "Region Classes" section) — see GitHub issue #54. Empty means no region matches (the check is always silent). All four classes (`ALL_REGION_CLASSES`, the wasm layer's `"all"` dropdown option) means every region is checked, the pre-#54 behavior, and skips computing `RegionClass`es entirely (no `start`/`finish` requirement in that case). For any other non-empty subset, the check additionally needs `maze.analysis.region_classes(&maze.graph, start, finish)` to look up each component's class; if either `maze.meta.start` or `maze.meta.finish` is `None`, the check is silent (classification unavailable — same failure mode `MinRegionCountCheck` has).
 
 ### MinRegionRatioCheck
 
@@ -370,10 +373,13 @@ pub const MIN_REGION_RATIO_DEFAULT: u32 = 25;
 
 pub struct MinRegionRatioCheck {
     pub min_region_ratio: u32,
+    pub region_classes: Vec<RegionClass>,
 }
 ```
 
 Counterpart to `MinRegionSizeCheck` using a relative threshold instead of an absolute tile count — see GitHub issue #50. Flags every SCC region covering less than `min_region_ratio` percent of the field (`maze.field.node_count()`): `region.len() * 100 < min_region_ratio * field_cells`. Silently skips (no issue) if the field has zero cells. If no region is undersized, the check is silent. Otherwise fires a single `Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, "min_region_ratio")` with `.with_detail("min_region_ratio", "min_region_ratio", self.min_region_ratio.to_string())` chained on.
+
+`region_classes` works exactly as for `MinRegionSizeCheck` above — see GitHub issue #54.
 
 Can be active alongside `MinRegionSizeCheck` — both produce `REGION_NEEDS_EXPANSION` and merge into one issue (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section): since both checks read the same `scc()` cache entry within one QC pass, a region's component index is stable across the merge, so unioning `invalid` and `invalid_sources` needs no remap, unlike the cycle-index remap `merge_invalid_loops` must do.
 
@@ -559,8 +565,8 @@ rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turne
 | `loop_distance_from_finish` | `invalid_loop` | `min_distance_from_finish: Integer(default=0, min=0, max=100_000)` | no |
 | `max_loop_density` | `invalid_loop` | `max_density: Integer(default=30, min=0, max=100)` | no |
 | `scc_count` | `excessive_scc_count` | `max_scc_count: Integer(default=1, min=1, max=1_000_000)` | no |
-| `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)` | no |
-| `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Integer(default=25, min=0, max=100)` | no |
+| `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
+| `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Integer(default=25, min=0, max=100)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_count` | `missing_regions` | `region_class: Enum(options=[path,alternative,unreachable,trap], default=trap)`, `count: Integer(default=1, min=0, max=1_000_000)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.

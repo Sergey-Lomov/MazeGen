@@ -205,6 +205,8 @@
   "param.min_region_ratio.description": "The minimum share of the field (in %) a strongly-connected region must cover.",
   "param.region_class.label": "Region class",
   "param.region_class.description": "Which region class to count regions of.",
+  "param.region_class.option.all": "All",
+  "param.region_class.option.all.explanation": "Every region class, no filtering",
   "param.region_class.option.path": "Path",
   "param.region_class.option.path.explanation": "On the shortest start→finish route",
   "param.region_class.option.alternative": "Alternative",
