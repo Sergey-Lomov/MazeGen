@@ -27,7 +27,6 @@ export function StrategyParamsModal({ strategyId, params, onClose }: Props) {
         params={params}
         getValue={getValue}
         onChange={(paramId, value) => setStrategyParam(strategyId, paramId, value)}
-        labelSize="sm"
       />
     </Modal>
   );

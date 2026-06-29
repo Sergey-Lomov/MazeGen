@@ -119,6 +119,7 @@
   "field.rows": "Rows",
   "field.radius": "Radius",
   "field.side": "Side",
+  "field.shape.point": "Point",
   "field.shape.rect": "Rect",
   "field.shape.parallelogram": "Parallelogram",
   "field.shape.hexagon": "Hexagon",

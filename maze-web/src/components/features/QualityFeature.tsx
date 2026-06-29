@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import { ui, font } from "../../styles/theme";
+import { typography, muted, disabled } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
@@ -107,12 +107,10 @@ const styles: Record<string, React.CSSProperties> = {
     paddingBottom: 4,
   },
   empty: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
+    ...disabled(typography.body),
   },
   hint: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
+    ...disabled(typography.body),
   },
   limitsBlock: {
     display: "flex",
@@ -126,8 +124,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   limitLabel: {
-    fontSize: font.sm,
-    color: ui.text.secondary,
+    ...muted(typography.body),
     flex: 1,
   },
   limitInput: {

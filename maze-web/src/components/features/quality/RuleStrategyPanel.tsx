@@ -69,7 +69,7 @@ export function RuleStrategyPanel({ slot, selected, onSelect, onEdit }: Props) {
       </div>
       {strategy && strategy.params.length > 0 && (
         <div style={styles.ruleStrategyParams}>
-          <ParamFields params={strategy.params} values={values} onChange={onChange} labelSize="sm" />
+          <ParamFields params={strategy.params} values={values} onChange={onChange} />
         </div>
       )}
     </div>

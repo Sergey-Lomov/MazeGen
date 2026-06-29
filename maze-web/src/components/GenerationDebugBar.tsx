@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
-import { ui, font, radius } from "../styles/theme";
+import { ui, radius, typography, muted } from "../styles/theme";
 import { Switch } from "./Switch";
 import { StepSlider } from "./StepSlider";
 import * as m from "~/paraglide/messages";
@@ -129,12 +129,12 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   iconBtn: {
+    ...typography.control,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     cursor: "pointer",
     padding: "0 10px",
-    fontSize: font.lg,
     flexShrink: 0,
     height: 28,
     boxSizing: "border-box" as const,
@@ -147,12 +147,12 @@ const styles: Record<string, React.CSSProperties> = {
     paddingBottom: 2,
   },
   playBtn: {
+    ...typography.control,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     cursor: "pointer",
     padding: "0 12px",
-    fontSize: font.lg,
     flexShrink: 0,
     height: 28,
     boxSizing: "border-box" as const,
@@ -165,10 +165,10 @@ const styles: Record<string, React.CSSProperties> = {
     paddingBottom: 2,
   },
   delayInput: {
+    ...typography.field,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
-    fontSize: font.md,
     padding: "0 6px",
     width: 60,
     height: 28,
@@ -185,14 +185,12 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "0 4px",
   },
   label: {
-    fontSize: font.md,
-    color: ui.text.secondary,
+    ...muted(typography.body),
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
   },
   stepLabel: {
-    fontSize: font.md,
-    color: ui.text.secondary,
+    ...muted(typography.body),
     whiteSpace: "nowrap" as const,
     flexShrink: 0,
     width: 150,
@@ -206,19 +204,19 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 60,
   },
   closeBtn: {
+    ...typography.icon,
     background: "none",
     border: "none",
     color: ui.text.tertiary,
     cursor: "pointer",
-    fontSize: font.xl,
     padding: "0 2px",
     flexShrink: 0,
     lineHeight: 1,
   },
   staleAlert: {
+    ...typography.body,
     background: ui.bg.error,
     color: ui.text.error,
-    fontSize: font.sm,
     padding: "4px 12px",
     flexShrink: 0,
   },

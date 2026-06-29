@@ -2,7 +2,7 @@ import React from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import { ui, font } from "../../styles/theme";
+import { ui, typography, muted, disabled } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
@@ -265,18 +265,18 @@ const styles: Record<string, React.CSSProperties> = {
   sectionHeaderRow: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer" },
   statBlock: { display: "flex", flexDirection: "column", gap: 3 },
   statRow: { display: "flex", alignItems: "center", gap: 6 },
-  statLabel: { flex: 1, fontSize: font.sm, color: ui.text.secondary },
-  statCount: { fontSize: font.sm, color: ui.text.tertiary, minWidth: 32, textAlign: "right" },
-  statPct: { fontSize: font.sm, color: ui.text.disabled, minWidth: 44, textAlign: "right" },
-  timingSubheader: { fontSize: font.sm, color: ui.text.disabled, marginTop: 4 },
+  statLabel: { flex: 1, ...muted(typography.body) },
+  statCount: { ...typography.caption, minWidth: 32, textAlign: "right" },
+  statPct: { ...disabled(typography.body), minWidth: 44, textAlign: "right" },
+  timingSubheader: { ...disabled(typography.body), marginTop: 4 },
   scoreRow: { display: "flex", alignItems: "center", gap: 6 },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: "4px 0" },
   toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },
   toggleRow: { display: "flex", alignItems: "center", gap: 8 },
-  toggleLabel: { flex: 1, fontSize: font.sm, color: ui.text.secondary },
-  infoIcon: { fontSize: font.xl, lineHeight: 1, flexShrink: 0, cursor: "pointer", color: ui.text.tertiary },
+  toggleLabel: { flex: 1, ...muted(typography.body) },
+  infoIcon: { ...muted(typography.icon), lineHeight: 1, flexShrink: 0, cursor: "pointer" },
   legendRow: { display: "flex", alignItems: "flex-start", gap: 8 },
   legendSwatch: { width: 14, height: 14, borderRadius: 3, marginTop: 2, flexShrink: 0 },
-  legendLabel: { fontSize: font.sm, color: ui.text.primary, fontWeight: "bold" as const },
-  legendDesc: { fontSize: font.sm, color: ui.text.secondary },
+  legendLabel: { ...typography.body, fontWeight: "bold" as const },
+  legendDesc: { ...muted(typography.body) },
 };

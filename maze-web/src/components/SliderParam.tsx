@@ -1,5 +1,5 @@
 import React from "react";
-import { ui, font } from "../styles/theme";
+import { typography, disabled } from "../styles/theme";
 
 interface Props {
   label: string;
@@ -39,11 +39,9 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
   },
   label: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
+    ...disabled(typography.body),
   },
   value: {
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
   },
 };

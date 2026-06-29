@@ -1,6 +1,6 @@
 import React from "react";
 import { Modal } from "./Modal";
-import { ui, font, radius, dialogSpacing } from "../styles/theme";
+import { ui, radius, dialogSpacing, typography } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -23,8 +23,7 @@ export function ConfirmModal({ message, onConfirm, onCancel }: Props) {
 
 const styles: Record<string, React.CSSProperties> = {
   message: {
-    fontSize: font.lg,
-    color: ui.text.secondary,
+    ...typography.message,
     lineHeight: 1.5,
   },
   footer: {
@@ -35,21 +34,21 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: `1px solid ${ui.border.default}`,
   },
   btnOk: {
+    ...typography.control,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
   btnCancel: {
+    ...typography.control,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
 };

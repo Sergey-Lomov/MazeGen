@@ -65,7 +65,7 @@ export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onH
       </div>
       {check.params.length > 0 && (
         <div style={styles.ruleStrategyParams}>
-          <ParamFields params={check.params} values={values} onChange={onChange} labelSize="sm" />
+          <ParamFields params={check.params} values={values} onChange={onChange} />
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import React from "react";
-import { ui, font } from "../styles/theme";
+import { ui, typography, disabled } from "../styles/theme";
 
 export type FeatureStatus = "unavailable" | "set" | "warning" | "critical";
 
@@ -113,17 +113,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   title: {
-    fontSize: font.lg,
-    fontWeight: 600,
-    color: ui.text.secondary,
+    ...typography.title,
   },
   comment: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
+    ...disabled(typography.body),
   },
   subtitle: {
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
   },
   body: {
     padding: "0 12px 12px",

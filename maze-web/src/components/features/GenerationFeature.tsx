@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { ConfirmModal } from "../ConfirmModal";
 import { sharedStyles } from "../../styles/shared";
-import { ui, font, radius } from "../../styles/theme";
+import { ui, radius, typography, muted } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
 import { Switch } from "../Switch";
 import { SliderParam } from "../SliderParam";
@@ -165,14 +165,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   seedLabel: {
-    fontSize: font.sm,
-    color: ui.text.secondary,
+    ...muted(typography.body),
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
   },
   switchLabel: {
-    fontSize: font.sm,
-    color: ui.text.secondary,
+    ...muted(typography.body),
     flexShrink: 0,
   },
   switchRight: {
@@ -184,23 +182,20 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
   },
   sectionCaption: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
+    ...typography.body,
+    marginTop: 8,
   },
   algorithmLabel: {
     flex: 1,
-    fontSize: font.lg,
-    color: ui.text.secondary,
+    ...muted(typography.body),
   },
   editBtn: {
+    ...typography.icon,
     background: "none",
     border: "none",
     color: ui.text.tertiary,
     padding: "0 2px",
     cursor: "pointer",
-    fontSize: 16,
     lineHeight: 1,
     flexShrink: 0,
     opacity: 0.7,
@@ -216,7 +211,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "2px 0",
   },
   statusError: {
-    fontSize: font.sm,
+    ...typography.body,
     color: ui.text.error,
   },
   btnRow: {
@@ -224,24 +219,24 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   btnGenerate: {
+    ...typography.control,
     flex: 1,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 0",
+    padding: "5px 4px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.md,
   },
   btnRegenerate: {
+    ...typography.control,
     flex: 1,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
-    padding: "5px 0",
+    padding: "5px 4px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.md,
   },
   btnDisabled: {
     opacity: 0.4,

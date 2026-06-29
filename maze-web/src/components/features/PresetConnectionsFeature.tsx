@@ -4,7 +4,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/presetConnectionsUtils";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { buttonStyle } from "../../styles/shared";
-import { ui, font } from "../../styles/theme";
+import { ui, typography, muted } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
@@ -233,10 +233,8 @@ export function PresetConnectionsFeature() {
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 8 },
   sectionLabel: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
+    ...typography.body,
+    marginTop: 8,
   },
   toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
   generationToolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
@@ -250,14 +248,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
     background: ui.bg.input,
     borderRadius: 4,
     padding: "6px 8px",
   },
   warningBubble: {
-    fontSize: font.sm,
+    ...typography.body,
     color: ui.text.warning,
     cursor: "default",
     background: ui.bg.input,
@@ -268,8 +265,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
   },
   autoLockLeft: {
     display: "flex",
@@ -277,12 +273,10 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   autoLockLabel: {
-    fontSize: font.sm,
-    color: ui.text.secondary,
+    ...muted(typography.body),
   },
   autoLockCount: {
-    fontSize: 10,
-    color: ui.text.disabled,
+    ...typography.caption,
     background: ui.bg.input,
     borderRadius: 3,
     padding: "1px 5px",
@@ -291,20 +285,17 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
   },
   originLabel: {
-    fontSize: font.sm,
-    color: ui.text.secondary,
+    ...muted(typography.body),
   },
   clearTag: {
+    ...muted(typography.icon),
     background: "none",
     border: "none",
-    color: ui.text.tertiary,
     cursor: "pointer",
     padding: "0 0 0 4px",
-    fontSize: 13,
     lineHeight: 1,
     display: "flex",
   },

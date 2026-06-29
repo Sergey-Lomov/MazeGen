@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { ParamFields } from "./ParamFields";
 import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveParamLabel, resolveParamDescription } from "./qualityI18n";
-import { ui, font, radius } from "../../styles/theme";
+import { ui, radius, typography, disabled } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
 
@@ -113,13 +113,11 @@ export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Prop
 
 const styles: Record<string, React.CSSProperties> = {
   description: {
-    fontSize: font.lg,
-    color: ui.text.tertiary,
+    ...typography.body,
     lineHeight: 1.6,
   },
   empty: {
-    fontSize: font.lg,
-    color: ui.text.disabled,
+    ...disabled(typography.caption),
   },
   paramsSection: {
     display: "flex",
@@ -131,22 +129,22 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4,
   },
   btnPrimary: {
+    ...typography.control,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
   btnSecondary: {
+    ...typography.control,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
   btnDisabled: {
     opacity: 0.4,

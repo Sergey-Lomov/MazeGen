@@ -1,7 +1,7 @@
 import React from "react";
 import { Modal } from "../Modal";
 import { Switch } from "../Switch";
-import { ui, font, dialogSpacing } from "../../styles/theme";
+import { ui, dialogSpacing, typography } from "../../styles/theme";
 
 interface Item {
   id: string;
@@ -84,11 +84,11 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 1,
   },
   item: {
+    ...typography.control,
     background: "none",
     border: "none",
     textAlign: "left" as const,
     padding: `6px ${dialogSpacing.paddingX}px`,
-    fontSize: font.lg,
     color: ui.text.secondary,
     cursor: "pointer",
     width: "100%",

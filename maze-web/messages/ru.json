@@ -129,6 +129,7 @@
   "field.rows": "Строки",
   "field.radius": "Радиус",
   "field.side": "Сторона",
+  "field.shape.point": "Точка",
   "field.shape.rect": "Прямоугольник",
   "field.shape.parallelogram": "Параллелограмм",
   "field.shape.hexagon": "Шестиугольник",

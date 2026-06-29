@@ -1,5 +1,5 @@
 import type React from "react";
-import { ui, font, radius } from "./theme";
+import { ui, font, radius, typography } from "./theme";
 
 const selectArrow = {
   appearance: "none",
@@ -14,39 +14,35 @@ const selectArrow = {
 export const sharedStyles = {
   // Input / select field
   input: {
+    ...typography.field,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
-    color: ui.text.primary,
     padding: "3px 6px",
-    fontSize: font.md,
     borderRadius: radius.sm,
   } satisfies React.CSSProperties,
 
-  // Same as input but used in contexts where fontSize: 11 is needed
+  // Same as input but used in tighter layouts (padding only, same font size as `input`).
   inputSm: {
+    ...typography.field,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
-    color: ui.text.primary,
-    fontSize: font.sm,
     borderRadius: radius.sm,
     padding: "2px 6px",
   } satisfies React.CSSProperties,
 
   select: {
+    ...typography.field,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
-    color: ui.text.primary,
     padding: "3px 20px 3px 6px",
-    fontSize: font.md,
     borderRadius: radius.sm,
     ...selectArrow,
   } satisfies React.CSSProperties,
 
   selectSm: {
+    ...typography.field,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
-    color: ui.text.primary,
-    fontSize: font.sm,
     borderRadius: radius.sm,
     padding: "1px 18px 1px 4px",
     ...selectArrow,
@@ -57,46 +53,41 @@ export const sharedStyles = {
     display: "flex",
     flexDirection: "column",
     gap: 3,
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
   } satisfies React.CSSProperties,
 
-  // Section header: uppercase, bold, dim
+  // Section header, separated from surrounding content by spacing rather than weight/case.
   sectionHeader: {
-    fontSize: font.sm,
-    fontWeight: "bold" as const,
-    color: ui.text.tertiary,
-    textTransform: "uppercase" as const,
-    letterSpacing: 1,
+    ...typography.body,
   } satisfies React.CSSProperties,
 
   // Primary action button
   btnPrimary: {
+    ...typography.control,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 0",
+    padding: "5px 4px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.md,
   } satisfies React.CSSProperties,
 
   // Muted / secondary button
   btnMuted: {
+    ...typography.control,
     background: ui.border.strong,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 0",
+    padding: "5px 4px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.md,
   } satisfies React.CSSProperties,
 
   // Toggle / pill button (inactive state)
   toggleBtn: {
+    ...typography.control,
     flex: 1,
-    padding: "4px 0",
-    fontSize: font.sm,
+    padding: "4px 4px",
     border: `1px solid ${ui.border.strong}`,
     background: ui.bg.input,
     color: ui.text.tertiary,
@@ -113,11 +104,11 @@ export const sharedStyles = {
 
   // Icon/close button (no bg/border)
   closeBtn: {
+    ...typography.icon,
     background: "none",
     border: "none",
     color: ui.text.tertiary,
     cursor: "pointer",
-    fontSize: font.xl,
     padding: "0 2px",
   } satisfies React.CSSProperties,
 
@@ -156,7 +147,7 @@ export const sharedStyles = {
 
   // Error / warning messages
   errorMsg: {
-    fontSize: font.sm,
+    ...typography.body,
     color: ui.text.error,
     background: ui.bg.error,
     padding: "4px 6px",
@@ -164,7 +155,7 @@ export const sharedStyles = {
   } satisfies React.CSSProperties,
 
   warningMsg: {
-    fontSize: font.sm,
+    ...typography.body,
     color: ui.text.warning,
     background: ui.bg.warning,
     padding: "4px 6px",
@@ -173,9 +164,7 @@ export const sharedStyles = {
 
   // Panel title
   panelTitle: {
-    fontSize: font.lg,
-    fontWeight: "bold" as const,
-    color: ui.text.tertiary,
+    ...typography.title,
     marginBottom: 4,
   } satisfies React.CSSProperties,
 } as const;
@@ -186,19 +175,19 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
   switch (variant) {
     case "primary":
       return {
+        ...typography.control,
         background: ui.accent.base,
         border: "none",
         color: ui.text.inverse,
-        padding: "5px 0",
+        padding: "5px 4px",
         cursor: "pointer",
         borderRadius: radius.sm,
-        fontSize: font.md,
       };
     case "toggle":
       return {
+        ...typography.control,
         flex: 1,
-        padding: "4px 0",
-        fontSize: font.sm,
+        padding: "4px 4px",
         border: `1px solid ${ui.border.strong}`,
         background: ui.bg.input,
         color: ui.text.tertiary,
@@ -207,9 +196,9 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
       };
     case "toggle-active":
       return {
+        ...typography.control,
         flex: 1,
-        padding: "4px 0",
-        fontSize: font.sm,
+        padding: "4px 4px",
         border: `1px solid ${ui.accent.base}`,
         background: ui.accent.base,
         color: ui.text.inverse,
@@ -218,8 +207,8 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
       };
     case "destructive":
       return {
-        padding: "4px 0",
-        fontSize: font.sm,
+        ...typography.control,
+        padding: "4px 4px",
         border: `1px solid ${ui.text.error}`,
         background: ui.bg.input,
         color: ui.text.error,

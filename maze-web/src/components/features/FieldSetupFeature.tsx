@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
-import { ui, font } from "../../styles/theme";
+import { typography, muted } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
@@ -231,9 +231,9 @@ export function FieldSetupFeature() {
 }
 
 function primitivesForKind(kind: TessellationKind): [string, string][] {
-  if (kind === "square") return [["point", "Point"], ["square_rect", "Rect"]];
-  if (kind === "hex") return [["point", "Point"], ["hex_parallelogram", "Parallelogram"], ["hex_hexagon", "Hexagon"]];
-  return [["point", "Point"], ["tri_rect", "Rect"], ["tri_triangle", "Triangle"], ["tri_hexagon", "Hexagon"]];
+  if (kind === "square") return [["point", m["field.shape.point"]()], ["square_rect", m["field.shape.rect"]()]];
+  if (kind === "hex") return [["point", m["field.shape.point"]()], ["hex_parallelogram", m["field.shape.parallelogram"]()], ["hex_hexagon", m["field.shape.hexagon"]()]];
+  return [["point", m["field.shape.point"]()], ["tri_rect", m["field.shape.rect"]()], ["tri_triangle", m["field.shape.triangle"]()], ["tri_hexagon", m["field.shape.hexagon"]()]];
 }
 
 function shapeLabel(kind: TessellationKind, squareShape: SquareShape, hexShape: HexShape, triangleShape: TriangleShape): string {
@@ -304,8 +304,8 @@ const styles: Record<string, React.CSSProperties> = {
   label: sharedStyles.fieldLabel,
   select: sharedStyles.select,
   input: sharedStyles.input,
-  sectionLabel: { fontSize: 11, color: ui.text.tertiary },
+  sectionLabel: { ...typography.body, marginTop: 8 },
   primitiveGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: font.sm, color: ui.text.secondary },
-  originLabel: { fontSize: font.sm, color: ui.text.secondary },
+  originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", ...muted(typography.body) },
+  originLabel: { ...muted(typography.body) },
 };

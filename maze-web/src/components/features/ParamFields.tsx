@@ -1,7 +1,7 @@
 import React from "react";
 import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
-import { ui, font } from "../../styles/theme";
+import { ui, typography } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
 
 interface Props {
@@ -9,14 +9,13 @@ interface Props {
   values?: Record<string, string>;
   getValue?: (p: ParamDescriptor) => string;
   onChange: (paramId: string, value: string) => void;
-  labelSize?: "sm" | "lg";
   /** Show each param's description as secondary text below its row. Only the expanded
    * detail view (e.g. QualityDetailPanel, AddCheckToRuleDialog) should set this — compact
    * views (rule cards, feature cards) must not. */
   getDescription?: (p: ParamDescriptor) => string | undefined;
 }
 
-export function ParamFields({ params, values, getValue, onChange, labelSize = "lg", getDescription }: Props) {
+export function ParamFields({ params, values, getValue, onChange, getDescription }: Props) {
   if (params.length === 0) return null;
 
   function get(p: ParamDescriptor): string {
@@ -31,7 +30,7 @@ export function ParamFields({ params, values, getValue, onChange, labelSize = "l
         return (
           <div key={p.id} style={styles.field}>
             <div style={styles.row}>
-              <label style={{ ...styles.label, fontSize: labelSize === "sm" ? font.sm : font.lg }}>{p.label}</label>
+              <label style={{ ...typography.body, ...styles.label }}>{p.label}</label>
               {(p.kind.type === "float" || p.kind.type === "integer") && (
                 <input
                   type="number"
@@ -104,15 +103,13 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
   },
   description: {
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
     lineHeight: 1.4,
   },
   optionList: {
     margin: "2px 0 0",
     paddingLeft: 16,
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
     lineHeight: 1.4,
   },
   optionListItem: {

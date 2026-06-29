@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { buttonStyle } from "../../styles/shared";
-import { ui, font } from "../../styles/theme";
+import { ui, typography, muted } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import { IssuesBlock } from "../IssuesBlock";
@@ -129,26 +129,21 @@ export function PostEditFeature() {
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 8 },
   sectionLabel: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
+    ...typography.body,
+    marginTop: 8,
   },
   toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
   autoConfirmRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
   },
   autoConfirmLabel: {
-    fontSize: font.sm,
-    color: ui.text.secondary,
+    ...muted(typography.body),
   },
   hint: {
-    fontSize: 10,
-    color: ui.text.disabled,
+    ...typography.caption,
     marginTop: -4,
   },
   statusBlock: {
@@ -160,18 +155,16 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
     background: ui.bg.input,
     borderRadius: 4,
     padding: "6px 8px",
   },
   clearTag: {
+    ...muted(typography.icon),
     background: "none",
     border: "none",
-    color: ui.text.tertiary,
     cursor: "pointer",
-    fontSize: font.md,
     padding: "0 2px",
     lineHeight: 1,
     display: "flex",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ui, font } from "../styles/theme";
+import { ui, typography, muted } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
@@ -120,12 +120,11 @@ const issueStyles: Record<string, React.CSSProperties> = {
   bubbleClickable: {
     cursor: "pointer",
   },
-  label: { flex: 1, fontSize: font.sm, lineHeight: 1.4 },
-  infoIcon: { fontSize: font.xl, flexShrink: 0, lineHeight: 1 },
+  label: { flex: 1, ...typography.body, lineHeight: 1.4 },
+  infoIcon: { ...typography.icon, flexShrink: 0, lineHeight: 1 },
   description: {
     margin: 0,
-    fontSize: font.md,
-    color: ui.text.secondary,
+    ...muted(typography.body),
     lineHeight: 1.5,
   },
   divider: {

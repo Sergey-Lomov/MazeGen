@@ -1,5 +1,5 @@
 import React from "react";
-import { ui, font } from "../styles/theme";
+import { ui, typography } from "../styles/theme";
 
 export function HoverIconButton({ onClick, title, children }: {
   onClick: () => void;
@@ -21,11 +21,11 @@ export function HoverIconButton({ onClick, title, children }: {
 
 const styles: Record<string, React.CSSProperties> = {
   button: {
+    ...typography.icon,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     borderRadius: 3,
     color: ui.text.secondary,
-    fontSize: font.xl,
     cursor: "pointer",
     padding: "4px 6px",
     lineHeight: "normal",

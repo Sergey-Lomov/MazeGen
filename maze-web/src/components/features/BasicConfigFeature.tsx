@@ -111,6 +111,5 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 4,
     ...buttonStyle("primary"),
     padding: "6px 0",
-    fontWeight: 600,
   },
 };

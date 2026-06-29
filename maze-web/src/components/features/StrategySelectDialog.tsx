@@ -4,7 +4,7 @@ import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { ParamFields } from "./ParamFields";
 import { useParamEditor } from "./useParamEditor";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, NO_FIX_STRATEGY_ID } from "./qualityI18n";
-import { ui, font, radius } from "../../styles/theme";
+import { ui, radius, typography } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
 
@@ -99,8 +99,7 @@ function StrategyParamPanel({ strategyId, params }: { strategyId: string; params
 
 const styles: Record<string, React.CSSProperties> = {
   description: {
-    fontSize: font.lg,
-    color: ui.text.tertiary,
+    ...typography.body,
     lineHeight: 1.6,
   },
   paramsSection: {
@@ -113,21 +112,21 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4,
   },
   btnPrimary: {
+    ...typography.control,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
   btnSecondary: {
+    ...typography.control,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
 };

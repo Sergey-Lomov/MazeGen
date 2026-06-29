@@ -1,5 +1,5 @@
 import React from "react";
-import { ui, font, radius } from "../../../styles/theme";
+import { ui, radius, typography, muted, disabled } from "../../../styles/theme";
 
 export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   root: {
@@ -25,10 +25,10 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
   },
   addRuleBtn: {
+    ...typography.control,
     background: "none",
     border: `1px dashed ${ui.border.strong}`,
     color: ui.text.tertiary,
-    fontSize: font.md,
     cursor: "pointer",
     padding: "8px 0",
     borderRadius: radius.md,
@@ -43,8 +43,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     gap: 4,
   },
   cardLabel: {
-    fontSize: font.md,
-    color: ui.text.secondary,
+    ...typography.body,
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
@@ -61,20 +60,19 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     alignItems: "center",
   },
   emptyHint: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
+    ...disabled(typography.caption),
     padding: "4px 2px",
   },
   strategyDisabled: {
     opacity: 0.5,
   },
   editBtn: {
+    ...typography.icon,
     background: "none",
     border: "none",
     color: ui.text.tertiary,
     padding: "0 2px",
     cursor: "pointer",
-    fontSize: 18,
     lineHeight: 1,
     flexShrink: 0,
     opacity: 0.7,
@@ -118,9 +116,8 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     opacity: 0.5,
   },
   ruleCardTitleText: {
-    fontSize: font.lg,
+    ...muted(typography.field),
     fontWeight: 600,
-    color: ui.text.secondary,
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
@@ -128,9 +125,8 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap" as const,
   },
   ruleCardTitleInput: {
-    fontSize: font.lg,
+    ...typography.field,
     fontWeight: 600,
-    color: ui.text.primary,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     borderRadius: radius.sm,
@@ -171,6 +167,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     background: ui.bg.hover,
   },
   ruleAddCheckRow: {
+    ...typography.body,
     display: "flex",
     alignItems: "center",
     gap: 6,
@@ -179,7 +176,6 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     userSelect: "none" as const,
     minHeight: 28,
     color: ui.text.tertiary,
-    fontSize: font.sm,
   },
   ruleCardDivider: {
     width: 1,
@@ -229,30 +225,24 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     borderLeft: `1px solid ${ui.border.default}`,
   },
   detailEmpty: {
-    fontSize: font.sm,
-    color: ui.text.disabled,
+    ...disabled(typography.caption),
     marginTop: 8,
   },
   detailTitle: {
-    fontSize: font.xl,
-    fontWeight: 700,
-    color: ui.text.secondary,
+    ...typography.title,
   },
   detailDesc: {
-    fontSize: font.lg,
-    color: ui.text.tertiary,
+    ...muted(typography.body),
     lineHeight: 1.5,
   },
   detailSectionLabel: {
-    fontSize: font.sm,
-    color: ui.text.tertiary,
+    ...typography.caption,
     textTransform: "uppercase" as const,
     letterSpacing: 0.5,
     marginTop: 4,
   },
   detailListItem: {
-    fontSize: font.md,
-    color: ui.text.secondary,
+    ...muted(typography.body),
     padding: "2px 0",
   },
   detailDivider: {

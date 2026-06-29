@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "./ItemSelectDialog";
-import { ui, font, radius } from "../../styles/theme";
+import { ui, radius, typography } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
 import { SliderRow } from "../SliderRow";
 import * as m from "~/paraglide/messages";
@@ -109,8 +109,7 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
 
 const styles: Record<string, React.CSSProperties> = {
   description: {
-    fontSize: font.lg,
-    color: ui.text.tertiary,
+    ...typography.body,
     lineHeight: 1.6,
   },
   paramsSection: {
@@ -123,21 +122,21 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4,
   },
   btnPrimary: {
+    ...typography.control,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
   btnSecondary: {
+    ...typography.control,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
 };

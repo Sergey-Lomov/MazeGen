@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { resolveIssueLabel, resolveIssueDescription } from "./qualityI18n";
-import { ui, font, radius } from "../../styles/theme";
+import { ui, radius, typography, disabled } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -58,31 +58,29 @@ export function IssueSelectDialog({ onSelect, onClose }: Props) {
 
 const styles: Record<string, React.CSSProperties> = {
   description: {
-    fontSize: font.lg,
-    color: ui.text.tertiary,
+    ...typography.body,
     lineHeight: 1.6,
   },
   empty: {
-    fontSize: font.lg,
-    color: ui.text.disabled,
+    ...disabled(typography.caption),
   },
   btnPrimary: {
+    ...typography.control,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
   btnSecondary: {
+    ...typography.control,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
-    fontSize: font.lg,
   },
   btnDisabled: {
     opacity: 0.4,

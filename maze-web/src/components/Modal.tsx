@@ -1,7 +1,7 @@
 import React from "react";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { ui, font, radius, overlay, shadow, dialogSpacing, dialogSize } from "../styles/theme";
+import { ui, radius, overlay, shadow, dialogSpacing, dialogSize, typography } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 
 type DialogSizeKey = keyof typeof dialogSize;
@@ -73,9 +73,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   title: {
-    fontSize: font.xl,
-    fontWeight: "bold" as const,
-    color: ui.text.primary,
+    ...typography.title,
   },
   closeBtn: sharedStyles.closeBtn,
   body: {

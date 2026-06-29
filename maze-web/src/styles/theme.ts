@@ -56,12 +56,81 @@ export const radius = {
 } as const;
 
 export const font = {
-  xs: 9,
-  sm: 11,
-  md: 12,
-  lg: 13,
-  xl: 14,
+  xs: 11,
+  sm: 12,
+  md: 13,
+  lg: 14,
+  xl: 15,
 } as const;
+
+// Combined size+color presets. Font family is set globally (styles/global.css).
+// Components should use one of these instead of composing fontSize/color/fontWeight ad hoc.
+export const typography = {
+  // Modal/section titles.
+  title: {
+    fontSize: font.xl,
+    fontWeight: 600,
+    color: ui.text.primary,
+    lineHeight: "18px",
+    letterSpacing: 0,
+  },
+
+  // Base UI text layer — most neutral, most readable.
+  body: {
+    fontSize: font.lg,
+    fontWeight: 400,
+    color: ui.text.primary,
+    lineHeight: "17px",
+  },
+
+  // Dialog/confirmation/system message copy. Same size as body but lower-contrast color — an
+  // instructive layer, not content, so it shouldn't compete visually.
+  message: {
+    fontSize: font.lg,
+    fontWeight: 400,
+    color: ui.text.secondary,
+    lineHeight: "17px",
+  },
+
+  // Hints, captions, meta info.
+  caption: {
+    fontSize: font.sm,
+    fontWeight: 400,
+    color: ui.text.tertiary,
+    letterSpacing: 0.3,
+    lineHeight: "14px",
+  },
+
+  // Button label text. Color is intentionally not part of this token — buttons vary it by
+  // variant (primary/secondary/destructive), unlike the content presets above.
+  control: {
+    fontSize: font.lg,
+  },
+
+  // Icon-only buttons (close/info/edit icons).
+  icon: {
+    fontSize: font.xl,
+  },
+
+  // Text input / select fields. Same size as `control` — one unified field size, no
+  // separate "Sm" variant.
+  field: {
+    fontSize: font.lg,
+    color: ui.text.primary,
+  },
+} as const;
+
+type TypographyToken = (typeof typography)[keyof typeof typography];
+
+// Color modifiers — apply to any typography token instead of overriding `color` ad hoc at
+// the call site. Usage: `{ ...muted(typography.body) }`.
+export function muted<T extends TypographyToken>(token: T): T & { color: string } {
+  return { ...token, color: ui.text.secondary };
+}
+
+export function disabled<T extends TypographyToken>(token: T): T & { color: string } {
+  return { ...token, color: ui.text.disabled };
+}
 
 export const overlay = {
   bg: "rgba(0,0,0,0.6)",

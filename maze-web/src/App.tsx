@@ -5,7 +5,7 @@ import { FeaturesPanel } from "./components/FeaturesPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { GenerationDebugBar } from "./components/GenerationDebugBar";
 import { useMazeStore } from "./store/mazeStore";
-import { ui, font } from "./styles/theme";
+import { ui, typography, disabled } from "./styles/theme";
 import { canvas } from "./pixi/colorUtils";
 import { useLocale } from "./i18n/useLocale";
 import * as m from "~/paraglide/messages";
@@ -78,5 +78,5 @@ const styles: Record<string, React.CSSProperties> = {
   },
   canvasColumn: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   canvas: { flex: 1, overflow: "hidden" },
-  loading: { padding: 12, fontSize: font.sm, color: ui.text.disabled },
+  loading: { padding: 12, ...disabled(typography.body) },
 };
