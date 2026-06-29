@@ -1,11 +1,11 @@
 import type React from "react";
-import { colors, font, radius } from "./theme";
+import { ui, font, radius } from "./theme";
 
 const selectArrow = {
   appearance: "none",
   WebkitAppearance: "none",
   MozAppearance: "none",
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='${colors.textDim.replace("#", "%23")}'/%3E%3C/svg%3E")`,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='${ui.text.tertiary.replace("#", "%23")}'/%3E%3C/svg%3E")`,
   backgroundRepeat: "no-repeat",
   backgroundPosition: "right 6px center",
   backgroundSize: "9px 6px",
@@ -14,9 +14,9 @@ const selectArrow = {
 export const sharedStyles = {
   // Input / select field
   input: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textPrimary,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.primary,
     padding: "3px 6px",
     fontSize: font.md,
     borderRadius: radius.sm,
@@ -24,18 +24,18 @@ export const sharedStyles = {
 
   // Same as input but used in contexts where fontSize: 11 is needed
   inputSm: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textPrimary,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.primary,
     fontSize: font.sm,
     borderRadius: radius.sm,
     padding: "2px 6px",
   } satisfies React.CSSProperties,
 
   select: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textPrimary,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.primary,
     padding: "3px 20px 3px 6px",
     fontSize: font.md,
     borderRadius: radius.sm,
@@ -43,9 +43,9 @@ export const sharedStyles = {
   } satisfies React.CSSProperties,
 
   selectSm: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textPrimary,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.primary,
     fontSize: font.sm,
     borderRadius: radius.sm,
     padding: "1px 18px 1px 4px",
@@ -58,23 +58,23 @@ export const sharedStyles = {
     flexDirection: "column",
     gap: 3,
     fontSize: font.sm,
-    color: colors.textFaint,
+    color: ui.text.tertiary,
   } satisfies React.CSSProperties,
 
   // Section header: uppercase, bold, dim
   sectionHeader: {
     fontSize: font.sm,
     fontWeight: "bold" as const,
-    color: colors.textDim,
+    color: ui.text.tertiary,
     textTransform: "uppercase" as const,
     letterSpacing: 1,
   } satisfies React.CSSProperties,
 
   // Primary action button
   btnPrimary: {
-    background: colors.bgBtnPrimary,
+    background: ui.accent.base,
     border: "none",
-    color: colors.textWhite,
+    color: ui.text.inverse,
     padding: "5px 0",
     cursor: "pointer",
     borderRadius: radius.sm,
@@ -83,9 +83,9 @@ export const sharedStyles = {
 
   // Muted / secondary button
   btnMuted: {
-    background: colors.bgBtnMuted,
+    background: ui.border.strong,
     border: "none",
-    color: colors.textWhite,
+    color: ui.text.inverse,
     padding: "5px 0",
     cursor: "pointer",
     borderRadius: radius.sm,
@@ -97,25 +97,25 @@ export const sharedStyles = {
     flex: 1,
     padding: "4px 0",
     fontSize: font.sm,
-    border: `1px solid ${colors.borderStrong}`,
-    background: colors.bgInput,
-    color: colors.textDim,
+    border: `1px solid ${ui.border.strong}`,
+    background: ui.bg.input,
+    color: ui.text.tertiary,
     borderRadius: radius.sm,
     cursor: "pointer",
   } satisfies React.CSSProperties,
 
   // Toggle button active state
   toggleBtnActive: {
-    background: colors.bgBtnPrimary,
-    color: colors.textWhite,
-    border: `1px solid ${colors.bgBtnPrimary}`,
+    background: ui.accent.base,
+    color: ui.text.inverse,
+    border: `1px solid ${ui.accent.base}`,
   } satisfies React.CSSProperties,
 
   // Icon/close button (no bg/border)
   closeBtn: {
     background: "none",
     border: "none",
-    color: colors.textDim,
+    color: ui.text.tertiary,
     cursor: "pointer",
     fontSize: font.xl,
     padding: "0 2px",
@@ -137,14 +137,14 @@ export const sharedStyles = {
 
   sliderRowLabel: {
     fontSize: font.sm,
-    color: colors.textMuted,
+    color: ui.text.secondary,
     width: 110,
     flexShrink: 0,
   } satisfies React.CSSProperties,
 
   sliderRowValue: {
     fontSize: font.sm,
-    color: colors.textDim,
+    color: ui.text.tertiary,
     width: 32,
     textAlign: "right" as const,
     flexShrink: 0,
@@ -152,22 +152,21 @@ export const sharedStyles = {
 
   sliderInput: {
     flex: 1,
-    accentColor: colors.accentSlider,
   } satisfies React.CSSProperties,
 
   // Error / warning messages
   errorMsg: {
     fontSize: font.sm,
-    color: colors.textError,
-    background: colors.bgError,
+    color: ui.text.error,
+    background: ui.bg.error,
     padding: "4px 6px",
     borderRadius: radius.sm,
   } satisfies React.CSSProperties,
 
   warningMsg: {
     fontSize: font.sm,
-    color: colors.textWarning,
-    background: colors.bgWarning,
+    color: ui.text.warning,
+    background: ui.bg.warning,
     padding: "4px 6px",
     borderRadius: radius.sm,
   } satisfies React.CSSProperties,
@@ -176,7 +175,7 @@ export const sharedStyles = {
   panelTitle: {
     fontSize: font.lg,
     fontWeight: "bold" as const,
-    color: colors.textFaint,
+    color: ui.text.tertiary,
     marginBottom: 4,
   } satisfies React.CSSProperties,
 } as const;
@@ -187,9 +186,9 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
   switch (variant) {
     case "primary":
       return {
-        background: colors.bgBtnPrimary,
+        background: ui.accent.base,
         border: "none",
-        color: colors.textWhite,
+        color: ui.text.inverse,
         padding: "5px 0",
         cursor: "pointer",
         borderRadius: radius.sm,
@@ -200,9 +199,9 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
         flex: 1,
         padding: "4px 0",
         fontSize: font.sm,
-        border: `1px solid ${colors.borderStrong}`,
-        background: colors.bgInput,
-        color: colors.textDim,
+        border: `1px solid ${ui.border.strong}`,
+        background: ui.bg.input,
+        color: ui.text.tertiary,
         borderRadius: radius.sm,
         cursor: "pointer",
       };
@@ -211,9 +210,9 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
         flex: 1,
         padding: "4px 0",
         fontSize: font.sm,
-        border: `1px solid ${colors.bgBtnPrimary}`,
-        background: colors.bgBtnPrimary,
-        color: colors.textWhite,
+        border: `1px solid ${ui.accent.base}`,
+        background: ui.accent.base,
+        color: ui.text.inverse,
         borderRadius: radius.sm,
         cursor: "pointer",
       };
@@ -221,9 +220,9 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
       return {
         padding: "4px 0",
         fontSize: font.sm,
-        border: `1px solid ${colors.textError}`,
-        background: colors.bgInput,
-        color: colors.textError,
+        border: `1px solid ${ui.text.error}`,
+        background: ui.bg.input,
+        color: ui.text.error,
         borderRadius: radius.sm,
         cursor: "pointer",
       };

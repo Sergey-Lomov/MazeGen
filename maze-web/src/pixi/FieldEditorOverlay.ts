@@ -8,10 +8,10 @@ import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { OriginRenderer } from "./renderers/OriginRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { buildActiveCells } from "./selectors/fieldSelectors";
-import { ACTIVE_CELL_COLOR, ACTIVE_CELL_ALPHA } from "./colorUtils";
+import { canvas, ACTIVE_CELL_ALPHA } from "./colorUtils";
 import type { Viewport } from "./renderers/types";
 
-const HOVER_COLOR = 0x888888;
+const CELL_HOVER_COLOR = 0x888888;
 const HOVER_ALPHA = 0.3;
 
 export class FieldEditorOverlay {
@@ -79,9 +79,9 @@ export class FieldEditorOverlay {
 
   updateHover(cell: [number, number] | null, cfg: TessellationConfig): void {
     if (!cell) {
-      this.hover.render({ cells: [], color: HOVER_COLOR, alpha: HOVER_ALPHA }, cfg);
+      this.hover.render({ cells: [], color: CELL_HOVER_COLOR, alpha: HOVER_ALPHA }, cfg);
     } else {
-      this.hover.render({ cells: [cell], color: HOVER_COLOR, alpha: HOVER_ALPHA }, cfg);
+      this.hover.render({ cells: [cell], color: CELL_HOVER_COLOR, alpha: HOVER_ALPHA }, cfg);
     }
   }
 
@@ -102,7 +102,7 @@ export class FieldEditorOverlay {
 
   private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {
     const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg);
-    this.floor.render({ cells, color: ACTIVE_CELL_COLOR, alpha: ACTIVE_CELL_ALPHA }, cfg);
+    this.floor.render({ cells, color: canvas.fieldEditor.activeCell, alpha: ACTIVE_CELL_ALPHA }, cfg);
   }
 
   private redrawOrigin(show: boolean, cfg: TessellationConfig): void {

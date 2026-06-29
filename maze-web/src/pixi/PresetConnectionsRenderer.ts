@@ -20,7 +20,7 @@ import {
   buildInvalidEdgeHighlights,
   buildHoverEdgeHighlight,
 } from "./selectors/presetSelectors";
-import { FLOOR_COLOR, INVALID_COLOR } from "./colorUtils";
+import { canvas } from "./colorUtils";
 import type { Viewport } from "./renderers/types";
 
 const ISOLATED_HL_ALPHA = 0.35;
@@ -206,7 +206,7 @@ export class PresetConnectionsRenderer {
     const cells = this.cachedCells;
 
     this.grid.render({ viewport: this.viewport }, cfg);
-    this.floor.render({ cells, color: FLOOR_COLOR, alpha: 1 }, cfg);
+    this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
     const { undecided, preset, invalidPassages, invalidKeys } = buildPresetWallGroups(cells, state.presetConnections, cfg);
     this.invalidPassages.render({ edges: invalidPassages }, cfg);
@@ -246,11 +246,11 @@ export class PresetConnectionsRenderer {
   private redrawIsolatedHL(state: ReturnType<typeof useMazeStore.getState>): void {
     if (!this.cfg) return;
     if (!state.highlightIsolatedNodes) {
-      this.isolatedHL.render({ cells: [], color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+      this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
       return;
     }
     const cells = buildIsolatedCellHighlights(state.lockedNodes, state.autoLockedNodes, state.presetConnections);
-    this.isolatedHL.render({ cells, color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+    this.isolatedHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
   }
 
   private redrawInvalidHL(state: ReturnType<typeof useMazeStore.getState>): void {
@@ -268,7 +268,7 @@ export class PresetConnectionsRenderer {
     if (!this.cfg) return;
     const cfg = this.cfg;
     this.grid.render({ viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 } }, cfg);
-    this.floor.render({ cells: [], color: FLOOR_COLOR, alpha: 1 }, cfg);
+    this.floor.render({ cells: [], color: canvas.floor.default, alpha: 1 }, cfg);
     this.invalidPassages.render({ edges: [] }, cfg);
     this.undecidedWalls.render({ edges: [] }, cfg);
     this.presetWalls.render({ edges: [] }, cfg);
@@ -276,7 +276,7 @@ export class PresetConnectionsRenderer {
     this.markers.render({ markers: [] });
     this.origin.render({ show: false, vpScale: this.viewport.scale }, cfg);
     this.genSource.render({ source: null, vpScale: this.viewport.scale }, cfg);
-    this.isolatedHL.render({ cells: [], color: INVALID_COLOR, alpha: ISOLATED_HL_ALPHA }, cfg);
+    this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
     this.invalidHL.render({ highlights: [] });
     this.hover.render({ highlights: [] });
   }

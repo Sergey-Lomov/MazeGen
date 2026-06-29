@@ -12,7 +12,7 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { buildMazeWalls, buildMazeMarkers, postEditEdgesToDto, buildClosedCells } from "./selectors/mazeSelectors";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
-import { FLOOR_COLOR, WALL_COLOR } from "./colorUtils";
+import { canvas } from "./colorUtils";
 import type { Viewport } from "./renderers/types";
 import type { NodeDto } from "../wasm/types";
 
@@ -142,10 +142,10 @@ export class PostEditRenderer {
     const activeEdges = postEditEdgesToDto(postEditDraftEdges);
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
-    this.floor.render({ cells, color: FLOOR_COLOR, alpha: 1 }, cfg);
+    this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
     const closed = buildClosedCells(nodes, activeEdges);
-    this.closedCells.render({ cells: closed, color: WALL_COLOR, alpha: 1 }, cfg);
+    this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
 
     const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);
@@ -161,8 +161,8 @@ export class PostEditRenderer {
     if (!this.cfg) return;
     const cfg = this.cfg;
     this.grid.render({ viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 } }, cfg);
-    this.floor.render({ cells: [], color: FLOOR_COLOR, alpha: 1 }, cfg);
-    this.closedCells.render({ cells: [], color: WALL_COLOR, alpha: 1 }, cfg);
+    this.floor.render({ cells: [], color: canvas.floor.default, alpha: 1 }, cfg);
+    this.closedCells.render({ cells: [], color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: [] }, cfg);
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });

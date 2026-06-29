@@ -1,5 +1,5 @@
 import React from "react";
-import { colors, font } from "../styles/theme";
+import { ui, font } from "../styles/theme";
 
 export function HoverIconButton({ onClick, title, children }: {
   onClick: () => void;
@@ -11,8 +11,8 @@ export function HoverIconButton({ onClick, title, children }: {
       onClick={onClick}
       style={styles.button}
       title={title}
-      onMouseEnter={e => (e.currentTarget.style.background = colors.bgBtnMuted)}
-      onMouseLeave={e => (e.currentTarget.style.background = colors.bgInput)}
+      onMouseEnter={e => (e.currentTarget.style.background = ui.border.strong)}
+      onMouseLeave={e => (e.currentTarget.style.background = ui.bg.input)}
     >
       {children}
     </button>
@@ -21,10 +21,10 @@ export function HoverIconButton({ onClick, title, children }: {
 
 const styles: Record<string, React.CSSProperties> = {
   button: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
     borderRadius: 3,
-    color: colors.textMuted,
+    color: ui.text.secondary,
     fontSize: font.xl,
     cursor: "pointer",
     padding: "4px 6px",

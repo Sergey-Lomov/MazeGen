@@ -5,7 +5,8 @@ import { FeaturesPanel } from "./components/FeaturesPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { GenerationDebugBar } from "./components/GenerationDebugBar";
 import { useMazeStore } from "./store/mazeStore";
-import { colors, font } from "./styles/theme";
+import { ui, font } from "./styles/theme";
+import { canvas } from "./pixi/colorUtils";
 import { useLocale } from "./i18n/useLocale";
 import * as m from "~/paraglide/messages";
 
@@ -34,7 +35,7 @@ export function App() {
     const app = new Application();
 
     app
-      .init({ resizeTo: canvasRef.current, background: 0x111111, antialias: true })
+      .init({ resizeTo: canvasRef.current, background: canvas.stage.background, antialias: true })
       .then(() => {
         if (cancelled) { app.destroy(); return; }
         canvasRef.current!.appendChild(app.canvas);
@@ -69,13 +70,13 @@ const styles: Record<string, React.CSSProperties> = {
   panel: {
     width: PANEL_WIDTH,
     minWidth: PANEL_WIDTH,
-    background: colors.bgPanel,
-    borderRight: `1px solid ${colors.borderMid}`,
+    background: ui.bg.panel,
+    borderRight: `1px solid ${ui.border.default}`,
     display: "flex",
     flexDirection: "column",
     overflowY: "auto",
   },
   canvasColumn: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   canvas: { flex: 1, overflow: "hidden" },
-  loading: { padding: 12, fontSize: font.sm, color: colors.textVeryDim },
+  loading: { padding: 12, fontSize: font.sm, color: ui.text.disabled },
 };

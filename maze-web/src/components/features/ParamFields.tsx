@@ -1,7 +1,7 @@
 import React from "react";
 import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
-import { colors, font } from "../../styles/theme";
+import { ui, font } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
 
 interface Props {
@@ -100,19 +100,19 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
   },
   label: {
-    color: colors.textMuted,
+    color: ui.text.secondary,
     flex: 1,
   },
   description: {
     fontSize: font.sm,
-    color: colors.textDim,
+    color: ui.text.tertiary,
     lineHeight: 1.4,
   },
   optionList: {
     margin: "2px 0 0",
     paddingLeft: 16,
     fontSize: font.sm,
-    color: colors.textDim,
+    color: ui.text.tertiary,
     lineHeight: 1.4,
   },
   optionListItem: {

@@ -18,7 +18,7 @@ import type { TessellationKind, FeatureId } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
-import { colors } from "../styles/theme";
+import { ui } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
 
@@ -314,7 +314,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     width: "100%",
     height: "100%",
-    background: colors.bgPanel,
+    background: ui.bg.panel,
   },
   scrollArea: {
     display: "flex",
@@ -328,7 +328,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "center",
     padding: "8px 10px",
-    borderTop: `1px solid ${colors.borderDim}`,
+    borderTop: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
   footerRight: {

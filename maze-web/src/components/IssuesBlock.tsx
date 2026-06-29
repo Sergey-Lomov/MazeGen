@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { colors, font } from "../styles/theme";
+import { ui, font } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
@@ -39,8 +39,8 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // flagged regions, not every contributing check's regions combined.
   const regionNodes = sourceCheck != null ? issue.region_needs_expansion_nodes[sourceCheck] ?? null : null;
   const palette = severity === "critical"
-    ? { bg: colors.bgError, text: colors.textError }
-    : { bg: colors.bgWarning, text: colors.textWarning };
+    ? { bg: ui.bg.error, text: ui.text.error }
+    : { bg: ui.bg.warning, text: ui.text.warning };
 
   const handleMouseEnter = loopEdges != null
     ? () => setHoveredIssueLoopEdges(loopEdges.flat())
@@ -125,12 +125,12 @@ const issueStyles: Record<string, React.CSSProperties> = {
   description: {
     margin: 0,
     fontSize: font.md,
-    color: colors.textMuted,
+    color: ui.text.secondary,
     lineHeight: 1.5,
   },
   divider: {
     borderTop: `1px solid`,
-    borderColor: colors.borderMid,
+    borderColor: ui.border.default,
     margin: "4px 0",
   },
 };

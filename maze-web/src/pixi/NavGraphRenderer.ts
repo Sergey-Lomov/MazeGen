@@ -1,6 +1,6 @@
 import type { NodeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { EDGE_COLOR } from "./colorUtils";
+import { canvas } from "./colorUtils";
 import { cellCenter } from "./hexGeometry";
 import { BaseGraphRenderer, buildPathRenderEdges } from "./BaseGraphRenderer";
 import type { Pos, RenderNode } from "./BaseGraphRenderer";
@@ -24,7 +24,7 @@ export class NavGraphRenderer extends BaseGraphRenderer {
     for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
 
     const renderEdges = buildPathRenderEdges(navEdges, nodePos);
-    this.drawEdges(renderEdges, EDGE_COLOR);
+    this.drawEdges(renderEdges, canvas.edge.default);
 
     const navNodeIds = new Set(navNodes.map(n => n.node_id));
     const renderNodes: RenderNode[] = [];

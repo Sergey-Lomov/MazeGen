@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
-import { colors, font, radius } from "../styles/theme";
+import { ui, font, radius } from "../styles/theme";
 import { Switch } from "./Switch";
 import { StepSlider } from "./StepSlider";
 import * as m from "~/paraglide/messages";
@@ -124,14 +124,14 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 10,
     padding: "7px 16px",
-    background: colors.bgPanelAlt,
-    borderBottom: `1px solid ${colors.borderMid}`,
+    background: ui.bg.panelAlt,
+    borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
   iconBtn: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textMuted,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.secondary,
     cursor: "pointer",
     padding: "0 10px",
     fontSize: font.lg,
@@ -147,9 +147,9 @@ const styles: Record<string, React.CSSProperties> = {
     paddingBottom: 2,
   },
   playBtn: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textMuted,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.secondary,
     cursor: "pointer",
     padding: "0 12px",
     fontSize: font.lg,
@@ -165,9 +165,9 @@ const styles: Record<string, React.CSSProperties> = {
     paddingBottom: 2,
   },
   delayInput: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textMuted,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.secondary,
     fontSize: font.md,
     padding: "0 6px",
     width: 60,
@@ -180,26 +180,26 @@ const styles: Record<string, React.CSSProperties> = {
   divider: {
     width: 1,
     height: 20,
-    background: colors.borderStrong,
+    background: ui.border.strong,
     flexShrink: 0,
     margin: "0 4px",
   },
   label: {
     fontSize: font.md,
-    color: colors.textMuted,
+    color: ui.text.secondary,
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
   },
   stepLabel: {
     fontSize: font.md,
-    color: colors.textMuted,
+    color: ui.text.secondary,
     whiteSpace: "nowrap" as const,
     flexShrink: 0,
     width: 150,
     overflow: "hidden" as const,
   },
   edgeCount: {
-    color: colors.textVeryDim,
+    color: ui.text.disabled,
   },
   slider: {
     flex: 1,
@@ -208,7 +208,7 @@ const styles: Record<string, React.CSSProperties> = {
   closeBtn: {
     background: "none",
     border: "none",
-    color: colors.textDim,
+    color: ui.text.tertiary,
     cursor: "pointer",
     fontSize: font.xl,
     padding: "0 2px",
@@ -216,8 +216,8 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1,
   },
   staleAlert: {
-    background: "#3a1010",
-    color: "#ff6b6b",
+    background: ui.bg.error,
+    color: ui.text.error,
     fontSize: font.sm,
     padding: "4px 12px",
     flexShrink: 0,

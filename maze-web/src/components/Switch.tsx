@@ -1,5 +1,5 @@
 import React from "react";
-import { colors } from "../styles/theme";
+import { ui } from "../styles/theme";
 
 interface Props {
   checked: boolean;
@@ -46,13 +46,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-block",
     width: 32,
     height: 18,
-    background: colors.borderStrong,
+    background: ui.border.strong,
     borderRadius: 9,
     position: "relative",
     transition: "background 0.2s",
   },
   trackOn: {
-    background: colors.bgBtnPrimary,
+    background: ui.accent.base,
   },
   thumb: {
     position: "absolute",
@@ -60,7 +60,7 @@ const styles: Record<string, React.CSSProperties> = {
     left: 2,
     width: 14,
     height: 14,
-    background: colors.textWhite,
+    background: ui.text.inverse,
     borderRadius: "50%",
     transition: "left 0.2s",
   },

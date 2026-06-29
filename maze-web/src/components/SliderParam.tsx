@@ -1,5 +1,5 @@
 import React from "react";
-import { colors, font } from "../styles/theme";
+import { ui, font } from "../styles/theme";
 
 interface Props {
   label: string;
@@ -40,10 +40,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   label: {
     fontSize: font.sm,
-    color: colors.textVeryDim,
+    color: ui.text.disabled,
   },
   value: {
     fontSize: font.sm,
-    color: colors.textDim,
+    color: ui.text.tertiary,
   },
 };

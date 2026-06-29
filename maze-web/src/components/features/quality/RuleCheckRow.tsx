@@ -4,7 +4,7 @@ import { ParamFields } from "../ParamFields";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { X } from "lucide-react";
-import { colors } from "../../../styles/theme";
+import { ui } from "../../../styles/theme";
 import type { CheckVM } from "../useQualityViewModel";
 
 // Stable reference for the lookup-miss fallback — a fresh `{}` literal on every selector call
@@ -60,7 +60,7 @@ export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onH
             onRemove();
           }}
         >
-          <X size={18} color={colors.textDim} />
+          <X size={18} color={ui.text.tertiary} />
         </button>
       </div>
       {check.params.length > 0 && (

@@ -1,5 +1,5 @@
 import React from "react";
-import { colors, font } from "../styles/theme";
+import { ui, font } from "../styles/theme";
 
 export type FeatureStatus = "unavailable" | "set" | "warning" | "critical";
 
@@ -15,16 +15,16 @@ export interface FeatureCardProps {
 
 const STATUS_FILL: Record<FeatureStatus, string> = {
   unavailable: "transparent",
-  set: colors.featureStatusSet,
-  warning: colors.featureStatusWarning,
-  critical: colors.featureStatusCritical,
+  set: ui.status.set,
+  warning: ui.status.warning,
+  critical: ui.status.critical,
 };
 
 const STATUS_BORDER_COLOR: Record<FeatureStatus, string> = {
-  unavailable: colors.featureStatusUnavailable,
-  set: colors.featureStatusSet,
-  warning: colors.featureStatusWarning,
-  critical: colors.featureStatusCritical,
+  unavailable: ui.status.unavailable,
+  set: ui.status.set,
+  warning: ui.status.warning,
+  critical: ui.status.critical,
 };
 
 export function StatusDot({ status }: { status: FeatureStatus }) {
@@ -77,10 +77,10 @@ const dotStyle: React.CSSProperties = {
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
-    borderBottom: `1px solid ${colors.borderDim}`,
+    borderBottom: `1px solid ${ui.border.default}`,
   },
   cardExpanded: {
-    background: colors.bgPanelAlt,
+    background: ui.bg.panelAlt,
   },
   header: {
     width: "100%",
@@ -115,15 +115,15 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: font.lg,
     fontWeight: 600,
-    color: colors.textSecondary,
+    color: ui.text.secondary,
   },
   comment: {
     fontSize: font.sm,
-    color: colors.textVeryDim,
+    color: ui.text.disabled,
   },
   subtitle: {
     fontSize: font.sm,
-    color: colors.textFaint,
+    color: ui.text.tertiary,
   },
   body: {
     padding: "0 12px 12px",

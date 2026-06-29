@@ -3,7 +3,7 @@ import type { NodeDto, RegionClass } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import type { CellFillGroup } from "./renderers/CellFillRenderer";
-import { REGION_CLASS_COLORS, REGION_CLASS_MASK_ALPHA } from "./colorUtils";
+import { canvas, REGION_CLASS_MASK_ALPHA } from "./colorUtils";
 
 export interface RegionClassesData {
   nodes: NodeDto[];
@@ -38,7 +38,7 @@ export class RegionClassesRenderer {
         if (node) cells.push([node.x, node.y]);
       }
       const cls = regionClasses[String(i)];
-      const color = cls != null ? REGION_CLASS_COLORS[cls] : REGION_CLASS_COLORS.unreachable;
+      const color = cls != null ? canvas.region[cls] : canvas.region.unreachable;
       return { cells, color, alpha: REGION_CLASS_MASK_ALPHA };
     });
 

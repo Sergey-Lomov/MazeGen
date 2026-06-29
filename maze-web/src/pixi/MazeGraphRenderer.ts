@@ -1,12 +1,13 @@
 import { Graphics, Text, TextStyle } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { NODE_RADIUS, EDGE_COLOR, NODE_SELECTED_COLOR } from "./colorUtils";
+import { NODE_RADIUS, canvas } from "./colorUtils";
+import { base, hexToNumber } from "../styles/palette";
 import { cellCenter } from "./hexGeometry";
 import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges } from "./BaseGraphRenderer";
 import type { Pos, RenderNode } from "./BaseGraphRenderer";
 
-const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: 0xffffff });
+const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: hexToNumber(base.textInverse) });
 
 export interface MazeGraphData {
   nodes: NodeDto[];
@@ -65,7 +66,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
 
     const renderEdges = buildPairedRenderEdges(edges, nodePos);
-    this.drawEdges(renderEdges, EDGE_COLOR);
+    this.drawEdges(renderEdges, canvas.edge.default);
 
     const renderNodes: RenderNode[] = nodes.map(n => ({ id: n.id, pos: nodePos.get(n.id)! }));
     this.nodeViews = this.drawNodes(renderNodes, selectedNode, start, finish, interactive);
@@ -113,7 +114,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     }
     if (nextId !== null) {
       const g = this.nodeViews.get(nextId);
-      if (g) this.redrawNode(g, nodeRadius(nextId, start, finish), NODE_SELECTED_COLOR);
+      if (g) this.redrawNode(g, nodeRadius(nextId, start, finish), canvas.node.selected);
     }
   }
 

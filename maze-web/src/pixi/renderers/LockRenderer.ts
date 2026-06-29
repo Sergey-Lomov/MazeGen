@@ -3,7 +3,7 @@ import type { LockEntry } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
 import { TILE_SIZE } from "../constants";
-import { LOCK_COLOR, FLOOR_COLOR } from "../colorUtils";
+import { canvas } from "../colorUtils";
 
 export class LockRenderer {
   private readonly g: Graphics;
@@ -34,9 +34,9 @@ function drawLockIcon(g: Graphics, cx: number, cy: number, type: "in" | "out" | 
   const bodyTop = cy - totalH / 2 + arcR;
   const bodyCy = bodyTop + bh / 2;
 
-  g.roundRect(cx - bw / 2, bodyTop, bw, bh, bw * 0.12).fill(LOCK_COLOR);
+  g.roundRect(cx - bw / 2, bodyTop, bw, bh, bw * 0.12).fill(canvas.lock.default);
 
-  g.setStrokeStyle({ width: bw * 0.14, color: LOCK_COLOR, cap: "round" as const });
+  g.setStrokeStyle({ width: bw * 0.14, color: canvas.lock.default, cap: "round" as const });
   g.moveTo(cx - arcR, bodyTop);
   g.arc(cx, bodyTop, arcR, Math.PI, 0);
   g.stroke();
@@ -47,11 +47,11 @@ function drawLockIcon(g: Graphics, cx: number, cy: number, type: "in" | "out" | 
     const offset = bw * 0.22;
 
     if (type === "out") {
-      g.poly([cx - offset, bodyCy - s / 2, cx - offset, bodyCy + s / 2, cx - offset - h, bodyCy]).fill(FLOOR_COLOR);
-      g.poly([cx + offset, bodyCy - s / 2, cx + offset, bodyCy + s / 2, cx + offset + h, bodyCy]).fill(FLOOR_COLOR);
+      g.poly([cx - offset, bodyCy - s / 2, cx - offset, bodyCy + s / 2, cx - offset - h, bodyCy]).fill(canvas.floor.default);
+      g.poly([cx + offset, bodyCy - s / 2, cx + offset, bodyCy + s / 2, cx + offset + h, bodyCy]).fill(canvas.floor.default);
     } else {
-      g.poly([cx - offset - h, bodyCy - s / 2, cx - offset - h, bodyCy + s / 2, cx - offset, bodyCy]).fill(FLOOR_COLOR);
-      g.poly([cx + offset + h, bodyCy - s / 2, cx + offset + h, bodyCy + s / 2, cx + offset, bodyCy]).fill(FLOOR_COLOR);
+      g.poly([cx - offset - h, bodyCy - s / 2, cx - offset - h, bodyCy + s / 2, cx - offset, bodyCy]).fill(canvas.floor.default);
+      g.poly([cx + offset + h, bodyCy - s / 2, cx + offset + h, bodyCy + s / 2, cx + offset, bodyCy]).fill(canvas.floor.default);
     }
   }
 }

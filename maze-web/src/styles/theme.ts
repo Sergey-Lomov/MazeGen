@@ -1,45 +1,52 @@
-export const colors = {
-  // Backgrounds
-  bgApp: "#111111",
-  bgPanel: "#181818",
-  bgPanelAlt: "#222",
-  bgHover: "#272727",
-  bgInput: "#2a2a2a",
-  bgBtnPrimary: "#3a6ea8",
-  bgBtnPrimaryActive: "#2a5080",
-  bgBtnSecondary: "#555",
-  bgBtnMuted: "#444",
+import { base, lighten, darken, disabledOf } from "./palette";
 
-  // Borders
-  borderStrong: "#444",
-  borderMid: "#333",
-  borderDim: "#2a2a2a",
-  borderSelected: "#666",
+export const ui = {
+  bg: {
+    app: base.bgApp,
+    panel: base.bgPanel,
+    panelAlt: base.bgPanelAlt,
+    hover: base.bgSurfaceRaised,
+    input: base.bgSurfaceRaised,
+    error: base.errorBg,
+    warning: base.warningBg,
+  },
 
-  // Text
-  textPrimary: "#e0e0e0",
-  textSecondary: "#ddd",
-  textMuted: "#ccc",
-  textFaint: "#aaa",
-  textDim: "#888",
-  textVeryDim: "#666",
-  textDisabled: "#555",
-  textWhite: "#fff",
+  border: {
+    strong: base.borderStrong,
+    default: base.borderDefault,
+  },
 
-  // Semantic
-  textError: "#ff6b6b",
-  bgError: "#2a1a1a",
-  textWarning: "#ffaa44",
-  bgWarning: "#2a2010",
-  textAccent: "#4a9eff",
-  textSuccess: "#6dbf7e",
-  accentSlider: "#5a9",
+  text: {
+    primary: base.textPrimary,
+    secondary: base.textSecondary,
+    tertiary: base.textTertiary,
+    disabled: base.textDisabled,
+    inverse: base.textInverse,
+    error: base.error,
+    warning: base.warning,
+    success: base.success,
+  },
 
-  // Feature card status
-  featureStatusUnavailable: "#666",
-  featureStatusSet: "#6dbf7e",
-  featureStatusWarning: "#ffaa44",
-  featureStatusCritical: "#ff6b6b",
+  // Active accent (primary buttons, etc.) plus state modifiers derived from it.
+  accent: {
+    base: base.accent,
+    hover: lighten(base.accent, 0.15),
+    active: darken(base.accent, 0.15),
+    disabled: disabledOf(base.accent),
+  },
+
+  // Selection state — reuses the strongest border tone, not a dedicated hue.
+  state: {
+    selected: base.borderStrong,
+  },
+
+  // Feature card status — aliases of the semantic text tokens above.
+  status: {
+    unavailable: base.textDisabled,
+    set: base.success,
+    warning: base.warning,
+    critical: base.error,
+  },
 } as const;
 
 export const radius = {

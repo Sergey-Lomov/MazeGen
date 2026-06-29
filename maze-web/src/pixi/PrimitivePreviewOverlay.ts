@@ -4,8 +4,9 @@ import { hexCenter, hexVertices } from "./hexGeometry";
 import { triVertices } from "./triGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { TessellationKind } from "./primitiveGeometry";
+import { canvas } from "./colorUtils";
 
-const ADD_COLOR = 0x4488ff;
+const ADD_COLOR = canvas.debug.active;
 const REMOVE_COLOR = 0xff4444;
 const PREVIEW_ALPHA = 0.5;
 

@@ -7,11 +7,7 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildClosedCells } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport } from "./renderers/types";
-import {
-  FLOOR_COLOR, WALL_COLOR,
-  DEBUG_ACTIVE_COLOR, DEBUG_CURRENT_SRC_COLOR,
-  DEBUG_ACTIVE_ALPHA,
-} from "./colorUtils";
+import { canvas, DEBUG_ACTIVE_ALPHA } from "./colorUtils";
 
 export class GenerationRenderer {
   private readonly gridContainer: Container;
@@ -135,12 +131,12 @@ export class GenerationRenderer {
     const view = this.debugView(state);
 
     const cells: [number, number][] = view.nodes.map(n => [n.x, n.y]);
-    this.floor.render({ cells, color: FLOOR_COLOR, alpha: 1 }, cfg);
+    this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
     if (!this.closedCellsCache || this.closedCellsCache.nodes !== view.nodes || this.closedCellsCache.edges !== view.edges) {
       this.closedCellsCache = { nodes: view.nodes, edges: view.edges, result: buildClosedCells(view.nodes, view.edges) };
     }
-    this.closedCells.render({ cells: this.closedCellsCache.result, color: WALL_COLOR, alpha: 1 }, cfg);
+    this.closedCells.render({ cells: this.closedCellsCache.result, color: canvas.wall.default, alpha: 1 }, cfg);
 
     const wallEdges = buildMazeWalls(view.nodes, view.edges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);
@@ -153,8 +149,8 @@ export class GenerationRenderer {
 
     const debugVisible = state.debugMode && !!view.currentStep;
     if (!debugVisible || view.nodes.length === 0) {
-      this.debugActive.render({ cells: [], color: DEBUG_ACTIVE_COLOR, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
-      this.debugSrc.render({ cells: [], color: DEBUG_CURRENT_SRC_COLOR, alpha: 0.8 }, cfg);
+      this.debugActive.render({ cells: [], color: canvas.debug.active, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
+      this.debugSrc.render({ cells: [], color: canvas.debug.currentSrc, alpha: 0.8 }, cfg);
       return;
     }
 
@@ -163,14 +159,14 @@ export class GenerationRenderer {
       const node = nodeById.get(nodeId);
       if (node) activeCells.push([node.x, node.y]);
     }
-    this.debugActive.render({ cells: activeCells, color: DEBUG_ACTIVE_COLOR, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
+    this.debugActive.render({ cells: activeCells, color: canvas.debug.active, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
 
     const srcCells: [number, number][] = [];
     if (view.currentStep!.current_src !== null) {
       const srcNode = nodeById.get(view.currentStep!.current_src);
       if (srcNode) srcCells.push([srcNode.x, srcNode.y]);
     }
-    this.debugSrc.render({ cells: srcCells, color: DEBUG_CURRENT_SRC_COLOR, alpha: 0.8 }, cfg);
+    this.debugSrc.render({ cells: srcCells, color: canvas.debug.currentSrc, alpha: 0.8 }, cfg);
   }
 
   destroy(): void {

@@ -5,10 +5,7 @@ import type { PresetConnectionEntry, FieldEdge } from "../presetConnectionsUtils
 import { edgeKey, canonicalize, computeInvalidKeysFromCells } from "../presetConnectionsUtils";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
-import {
-  NODE_START_COLOR, NODE_FINISH_COLOR, NODE_RADIUS,
-  INVALID_COLOR, HOVER_COLOR, WALL_THICKNESS,
-} from "../colorUtils";
+import { NODE_RADIUS, WALL_THICKNESS, canvas } from "../colorUtils";
 
 export function buildPresetWallGroups(
   cells: [number, number][],
@@ -108,11 +105,11 @@ export function buildPresetMarkers(
   const markers: MarkerData[] = [];
   if (start) {
     const c = getCellCenter(start[0], start[1], cfg);
-    markers.push({ pos: [c.x, c.y], color: NODE_START_COLOR, radius: NODE_RADIUS * 1.5 });
+    markers.push({ pos: [c.x, c.y], color: canvas.node.start, radius: NODE_RADIUS * 1.5 });
   }
   if (finish) {
     const c = getCellCenter(finish[0], finish[1], cfg);
-    markers.push({ pos: [c.x, c.y], color: NODE_FINISH_COLOR, radius: NODE_RADIUS * 1.5 });
+    markers.push({ pos: [c.x, c.y], color: canvas.node.finish, radius: NODE_RADIUS * 1.5 });
   }
   return markers;
 }
@@ -171,7 +168,7 @@ export function buildInvalidEdgeHighlights(
       result.push({
         from: [seg.v0.x, seg.v0.y] as [number, number],
         to: [seg.v1.x, seg.v1.y] as [number, number],
-        color: INVALID_COLOR,
+        color: canvas.preset.invalid,
         alpha: 0.9,
         width: WALL_THICKNESS * 2.5,
       });
@@ -181,7 +178,7 @@ export function buildInvalidEdgeHighlights(
       result.push({
         from: [cA.x, cA.y],
         to: [cB.x, cB.y],
-        color: INVALID_COLOR,
+        color: canvas.preset.invalid,
         alpha: 0.9,
         width: WALL_THICKNESS * 2.5,
       });
@@ -200,7 +197,7 @@ export function buildHoverEdgeHighlight(
   return [{
     from: [seg.v0.x, seg.v0.y],
     to: [seg.v1.x, seg.v1.y],
-    color: HOVER_COLOR,
+    color: canvas.fieldEditor.hover,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,
   }];

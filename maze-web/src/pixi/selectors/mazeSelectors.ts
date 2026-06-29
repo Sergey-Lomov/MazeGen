@@ -4,7 +4,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, PassageKind } from "../renderers/types";
 import { getCellCenter, getNeighborData } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
-import { NODE_START_COLOR, NODE_FINISH_COLOR, NODE_RADIUS } from "../colorUtils";
+import { NODE_RADIUS, canvas } from "../colorUtils";
 
 export function postEditEdgesToDto(postEditEdges: Record<string, PostEditEdge> | null): EdgeDto[] {
   if (postEditEdges === null) return [];
@@ -139,14 +139,14 @@ export function buildMazeMarkers(
     const n = nodeById.get(start);
     if (n) {
       const c = getCellCenter(n.x, n.y, cfg);
-      markers.push({ pos: [c.x, c.y], color: NODE_START_COLOR, radius: NODE_RADIUS * 1.5 });
+      markers.push({ pos: [c.x, c.y], color: canvas.node.start, radius: NODE_RADIUS * 1.5 });
     }
   }
   if (finish !== null) {
     const n = nodeById.get(finish);
     if (n) {
       const c = getCellCenter(n.x, n.y, cfg);
-      markers.push({ pos: [c.x, c.y], color: NODE_FINISH_COLOR, radius: NODE_RADIUS * 1.5 });
+      markers.push({ pos: [c.x, c.y], color: canvas.node.finish, radius: NODE_RADIUS * 1.5 });
     }
   }
   return markers;

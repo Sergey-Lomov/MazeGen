@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { buttonStyle } from "../../styles/shared";
-import { colors, font } from "../../styles/theme";
+import { ui, font } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import { IssuesBlock } from "../IssuesBlock";
@@ -130,7 +130,7 @@ const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 8 },
   sectionLabel: {
     fontSize: font.sm,
-    color: colors.textVeryDim,
+    color: ui.text.disabled,
     textTransform: "uppercase" as const,
     letterSpacing: 0.5,
   },
@@ -140,15 +140,15 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     fontSize: font.sm,
-    color: colors.textDim,
+    color: ui.text.tertiary,
   },
   autoConfirmLabel: {
     fontSize: font.sm,
-    color: colors.textMuted,
+    color: ui.text.secondary,
   },
   hint: {
     fontSize: 10,
-    color: colors.textVeryDim,
+    color: ui.text.disabled,
     marginTop: -4,
   },
   statusBlock: {
@@ -161,15 +161,15 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     fontSize: font.sm,
-    color: colors.textDim,
-    background: colors.bgInput,
+    color: ui.text.tertiary,
+    background: ui.bg.input,
     borderRadius: 4,
     padding: "6px 8px",
   },
   clearTag: {
     background: "none",
     border: "none",
-    color: colors.textDim,
+    color: ui.text.tertiary,
     cursor: "pointer",
     fontSize: font.md,
     padding: "0 2px",

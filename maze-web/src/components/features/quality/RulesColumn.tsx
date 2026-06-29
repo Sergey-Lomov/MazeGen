@@ -11,7 +11,7 @@ import { RuleCheckRow } from "./RuleCheckRow";
 import { ConfirmModal } from "../../ConfirmModal";
 import { AlertModal } from "../../AlertModal";
 import { Switch } from "../../Switch";
-import { colors } from "../../../styles/theme";
+import { ui } from "../../../styles/theme";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
@@ -142,7 +142,7 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
                     disabled={isFirst}
                     onClick={() => moveRule(slot.ruleId, "up")}
                   >
-                    <ChevronUp size={16} color={colors.textDim} />
+                    <ChevronUp size={16} color={ui.text.tertiary} />
                   </button>
                   <button
                     style={{ ...styles.moveBtn, ...(isLast ? styles.moveBtnDisabled : {}) }}
@@ -150,7 +150,7 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
                     disabled={isLast}
                     onClick={() => moveRule(slot.ruleId, "down")}
                   >
-                    <ChevronDown size={16} color={colors.textDim} />
+                    <ChevronDown size={16} color={ui.text.tertiary} />
                   </button>
                   <div
                     style={styles.toggleWrap}
@@ -164,7 +164,7 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
                     title={m["quality.remove_rule"]()}
                     onClick={() => setRemoveConfirmRuleId(slot.ruleId)}
                   >
-                    <X size={18} color={colors.textDim} />
+                    <X size={18} color={ui.text.tertiary} />
                   </button>
                 </div>
               </div>

@@ -5,11 +5,7 @@ import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { buildMazeWalls, buildMazeMarkers } from "./selectors/mazeSelectors";
-import {
-  FLOOR_COLOR,
-  DEBUG_ACTIVE_COLOR, DEBUG_CURRENT_SRC_COLOR,
-  DEBUG_ACTIVE_ALPHA,
-} from "./colorUtils";
+import { canvas, DEBUG_ACTIVE_ALPHA } from "./colorUtils";
 
 export interface MazeTileData {
   nodes: NodeDto[];
@@ -59,7 +55,7 @@ export class MazeTileRenderer {
     const { nodes, edges, start, finish, cfg, debugVisible, activeNodes, currentSrc } = data;
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
-    this.floor.render({ cells, color: FLOOR_COLOR, alpha: 1 }, cfg);
+    this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
     const wallEdges = buildMazeWalls(nodes, edges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);
@@ -69,8 +65,8 @@ export class MazeTileRenderer {
     this.markers.render({ markers: markerData });
 
     if (!debugVisible || nodes.length === 0) {
-      this.debugActive.render({ cells: [], color: DEBUG_ACTIVE_COLOR, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
-      this.debugSrc.render({ cells: [], color: DEBUG_CURRENT_SRC_COLOR, alpha: 0.8 }, cfg);
+      this.debugActive.render({ cells: [], color: canvas.debug.active, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
+      this.debugSrc.render({ cells: [], color: canvas.debug.currentSrc, alpha: 0.8 }, cfg);
       return;
     }
 
@@ -79,14 +75,14 @@ export class MazeTileRenderer {
       const node = nodeById.get(nodeId);
       if (node) activeCells.push([node.x, node.y]);
     }
-    this.debugActive.render({ cells: activeCells, color: DEBUG_ACTIVE_COLOR, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
+    this.debugActive.render({ cells: activeCells, color: canvas.debug.active, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
 
     const srcCells: [number, number][] = [];
     if (currentSrc !== null) {
       const srcNode = nodeById.get(currentSrc);
       if (srcNode) srcCells.push([srcNode.x, srcNode.y]);
     }
-    this.debugSrc.render({ cells: srcCells, color: DEBUG_CURRENT_SRC_COLOR, alpha: 0.8 }, cfg);
+    this.debugSrc.render({ cells: srcCells, color: canvas.debug.currentSrc, alpha: 0.8 }, cfg);
   }
 
   destroy(): void {

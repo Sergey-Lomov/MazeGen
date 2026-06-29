@@ -2,16 +2,16 @@ import React from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import { colors, font } from "../../styles/theme";
+import { ui, font } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { Switch } from "../Switch";
 import { Modal } from "../Modal";
-import { REGION_CLASS_COLORS } from "../../pixi/colorUtils";
+import { canvas } from "../../pixi/colorUtils";
 import * as m from "~/paraglide/messages";
 
-const REGION_CLASS_LEGEND: { cls: keyof typeof REGION_CLASS_COLORS; label: () => string; desc: () => string }[] = [
+const REGION_CLASS_LEGEND: { cls: keyof typeof canvas.region; label: () => string; desc: () => string }[] = [
   { cls: "path", label: () => m["analytics.region_class_path"](), desc: () => m["analytics.region_class_path_desc"]() },
   { cls: "alternative", label: () => m["analytics.region_class_alternative"](), desc: () => m["analytics.region_class_alternative_desc"]() },
   { cls: "unreachable", label: () => m["analytics.region_class_unreachable"](), desc: () => m["analytics.region_class_unreachable_desc"]() },
@@ -27,7 +27,7 @@ function RegionClassLegendModal({ onClose }: { onClose: () => void }) {
     <Modal title={m["analytics.region_class_legend_title"]()} onClose={onClose}>
       {REGION_CLASS_LEGEND.map(({ cls, label, desc }) => (
         <div key={cls} style={styles.legendRow}>
-          <span style={{ ...styles.legendSwatch, background: colorToCss(REGION_CLASS_COLORS[cls]) }} />
+          <span style={{ ...styles.legendSwatch, background: colorToCss(canvas.region[cls]) }} />
           <div>
             <div style={styles.legendLabel}>{label()}</div>
             <div style={styles.legendDesc}>{desc()}</div>
@@ -41,7 +41,7 @@ function RegionClassLegendModal({ onClose }: { onClose: () => void }) {
 function SectionHeader({ label, expanded, onToggle }: { label: string; expanded: boolean; onToggle: () => void }) {
   return (
     <div style={styles.sectionHeaderRow} onClick={onToggle}>
-      {expanded ? <ChevronDown size={14} color={colors.textDim} /> : <ChevronRight size={14} color={colors.textDim} />}
+      {expanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
       <div style={sharedStyles.sectionHeader}>{label}</div>
     </div>
   );
@@ -265,18 +265,18 @@ const styles: Record<string, React.CSSProperties> = {
   sectionHeaderRow: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer" },
   statBlock: { display: "flex", flexDirection: "column", gap: 3 },
   statRow: { display: "flex", alignItems: "center", gap: 6 },
-  statLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },
-  statCount: { fontSize: font.sm, color: colors.textDim, minWidth: 32, textAlign: "right" },
-  statPct: { fontSize: font.sm, color: colors.textVeryDim, minWidth: 44, textAlign: "right" },
-  timingSubheader: { fontSize: font.sm, color: colors.textVeryDim, marginTop: 4 },
+  statLabel: { flex: 1, fontSize: font.sm, color: ui.text.secondary },
+  statCount: { fontSize: font.sm, color: ui.text.tertiary, minWidth: 32, textAlign: "right" },
+  statPct: { fontSize: font.sm, color: ui.text.disabled, minWidth: 44, textAlign: "right" },
+  timingSubheader: { fontSize: font.sm, color: ui.text.disabled, marginTop: 4 },
   scoreRow: { display: "flex", alignItems: "center", gap: 6 },
-  divider: { borderTop: `1px solid ${colors.borderMid}`, margin: "4px 0" },
+  divider: { borderTop: `1px solid ${ui.border.default}`, margin: "4px 0" },
   toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },
   toggleRow: { display: "flex", alignItems: "center", gap: 8 },
-  toggleLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },
-  infoIcon: { fontSize: font.xl, lineHeight: 1, flexShrink: 0, cursor: "pointer", color: colors.textDim },
+  toggleLabel: { flex: 1, fontSize: font.sm, color: ui.text.secondary },
+  infoIcon: { fontSize: font.xl, lineHeight: 1, flexShrink: 0, cursor: "pointer", color: ui.text.tertiary },
   legendRow: { display: "flex", alignItems: "flex-start", gap: 8 },
   legendSwatch: { width: 14, height: 14, borderRadius: 3, marginTop: 2, flexShrink: 0 },
-  legendLabel: { fontSize: font.sm, color: colors.textPrimary, fontWeight: "bold" as const },
-  legendDesc: { fontSize: font.sm, color: colors.textMuted },
+  legendLabel: { fontSize: font.sm, color: ui.text.primary, fontWeight: "bold" as const },
+  legendDesc: { fontSize: font.sm, color: ui.text.secondary },
 };

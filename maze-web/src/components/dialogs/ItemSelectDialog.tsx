@@ -1,7 +1,7 @@
 import React from "react";
 import { Modal } from "../Modal";
 import { Switch } from "../Switch";
-import { colors, font, dialogSpacing } from "../../styles/theme";
+import { ui, font, dialogSpacing } from "../../styles/theme";
 
 interface Item {
   id: string;
@@ -76,7 +76,7 @@ const styles: Record<string, React.CSSProperties> = {
   leftCol: {
     width: 260,
     flexShrink: 0,
-    borderRight: `1px solid ${colors.borderMid}`,
+    borderRight: `1px solid ${ui.border.default}`,
     overflowY: "auto" as const,
     padding: "8px 0",
     display: "flex",
@@ -89,7 +89,7 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: "left" as const,
     padding: `6px ${dialogSpacing.paddingX}px`,
     fontSize: font.lg,
-    color: colors.textMuted,
+    color: ui.text.secondary,
     cursor: "pointer",
     width: "100%",
     display: "flex",
@@ -97,12 +97,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   itemSelected: {
-    background: colors.bgBtnPrimary,
-    color: colors.textWhite,
+    background: ui.accent.base,
+    color: ui.text.inverse,
   },
   itemSelectedNeutral: {
-    background: colors.bgBtnSecondary,
-    color: colors.textWhite,
+    background: ui.text.disabled,
+    color: ui.text.inverse,
   },
   itemDisabled: {
     opacity: 0.4,
@@ -131,7 +131,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "flex-end",
     gap: 6,
     padding: `${dialogSpacing.paddingY}px ${dialogSpacing.paddingX}px`,
-    borderTop: `1px solid ${colors.borderMid}`,
+    borderTop: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
 };

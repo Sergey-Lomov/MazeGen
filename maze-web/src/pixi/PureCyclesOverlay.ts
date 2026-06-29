@@ -2,12 +2,12 @@ import { Container, Graphics } from "pixi.js";
 import type { NodeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { cellCenter } from "./hexGeometry";
-import { NODE_RADIUS } from "./colorUtils";
+import { NODE_RADIUS, canvas } from "./colorUtils";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
 
-const PURE_NODE_COLOR = 0x44dd88;
-const PURE_EDGE_COLOR = 0x44dd88;
+const PURE_NODE_COLOR = canvas.node.start;
+const PURE_EDGE_COLOR = canvas.node.start;
 const PURE_NODE_ALPHA = 1.0;
 const PURE_EDGE_WIDTH = 2;
 

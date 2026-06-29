@@ -1,65 +1,76 @@
-// Node rendering
+import { base, hexToNumber } from "../styles/palette";
+
 export const NODE_RADIUS = 6;
-export const NODE_COLOR = 0x4a9eff;
-export const NODE_HOVER_COLOR = 0xff9f4a;
-export const NODE_SELECTED_COLOR = 0xff4a4a;
-export const NODE_START_COLOR = 0x44dd88;
-export const NODE_FINISH_COLOR = 0xdd4466;
-
-// Edge rendering
-export const EDGE_COLOR = 0x888888;
-
-// Wall rendering
-export const WALL_COLOR = 0xcccccc;
-export const WALL_COLOR_UNDECIDED = 0x666666;
 export const WALL_THICKNESS = 3;
-
-// Floor rendering
-export const FLOOR_COLOR = 0x2a2a2a;
-
-// Pixi stage/canvas background color (outside any field/floor area)
-export const STAGE_BACKGROUND_COLOR = 0x111111;
-
-// One-way passage marker
-export const ONE_WAY_COLOR = 0xffaa00;
-
-// Lock icon
-export const LOCK_COLOR = 0x888888;
-
-// Invalid preset highlight
-export const INVALID_COLOR = 0xddaa00;
-
-// Hover highlight
-export const HOVER_COLOR = 0x44aaff;
-
-// Grid overlay
-export const GRID_LINE_COLOR = 0x383838;
 export const GRID_LINE_ALPHA = 1.0;
-
-// Origin crosshair
-export const ORIGIN_COLOR = 0xff6600;
 export const ORIGIN_ALPHA = 0.9;
-
-// Field editor active cell
-export const ACTIVE_CELL_COLOR = 0x666666;
 export const ACTIVE_CELL_ALPHA = 0.7;
-
-// Component overlay
 export const COMPONENT_MASK_ALPHA = 0.45;
-
-// Region class overlay — fixed per-class colors (not the rotating component palette)
-export const REGION_CLASS_COLORS: Record<"path" | "alternative" | "unreachable" | "trap", number> = {
-  path: 0x44dd88,
-  alternative: 0x4a9eff,
-  unreachable: 0x888888,
-  trap: 0xdd4466,
-};
 export const REGION_CLASS_MASK_ALPHA = 0.45;
-
-// Debug overlay
-export const DEBUG_ACTIVE_COLOR = 0x4488ff;
-export const DEBUG_CURRENT_SRC_COLOR = 0xcccc22;
 export const DEBUG_ACTIVE_ALPHA = 0.5;
+
+// Canvas color tokens, namespaced by render entity (mirrors `ui.*` on the DOM side).
+export const canvas = {
+  node: {
+    default: hexToNumber(base.canvasAccent),
+    hover: hexToNumber(base.nodeHover),
+    selected: hexToNumber(base.nodeSelected),
+    start: hexToNumber(base.nodeStart),
+    finish: hexToNumber(base.nodeFinish),
+  },
+
+  edge: {
+    default: hexToNumber(base.edge),
+    oneWay: hexToNumber(base.oneWay),
+  },
+
+  wall: {
+    default: hexToNumber(base.textSecondary),
+    undecided: hexToNumber(base.textDisabled),
+  },
+
+  floor: {
+    default: hexToNumber(base.bgSurfaceRaised),
+  },
+
+  stage: {
+    background: hexToNumber(base.bgApp),
+  },
+
+  lock: {
+    default: hexToNumber(base.edge),
+  },
+
+  preset: {
+    invalid: hexToNumber(base.invalid),
+  },
+
+  fieldEditor: {
+    hover: hexToNumber(base.canvasHover),
+    activeCell: hexToNumber(base.textDisabled),
+  },
+
+  grid: {
+    line: hexToNumber(base.borderDefault),
+  },
+
+  origin: {
+    default: hexToNumber(base.origin),
+  },
+
+  // Region class overlay — fixed per-class colors (not the rotating component palette)
+  region: {
+    path: hexToNumber(base.nodeStart),
+    alternative: hexToNumber(base.canvasAccent),
+    unreachable: hexToNumber(base.edge),
+    trap: hexToNumber(base.nodeFinish),
+  },
+
+  debug: {
+    active: hexToNumber(base.debugActive),
+    currentSrc: hexToNumber(base.debugCurrentSrc),
+  },
+} as const;
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 

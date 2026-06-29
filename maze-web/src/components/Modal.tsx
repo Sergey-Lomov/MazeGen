@@ -1,7 +1,7 @@
 import React from "react";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { colors, font, radius, overlay, shadow, dialogSpacing, dialogSize } from "../styles/theme";
+import { ui, font, radius, overlay, shadow, dialogSpacing, dialogSize } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 
 type DialogSizeKey = keyof typeof dialogSize;
@@ -56,8 +56,8 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: overlay.zIndex,
   },
   modal: {
-    background: colors.bgPanel,
-    border: `1px solid ${colors.borderStrong}`,
+    background: ui.bg.panel,
+    border: `1px solid ${ui.border.strong}`,
     borderRadius: radius.lg,
     maxHeight: dialogSpacing.maxHeight,
     display: "flex",
@@ -69,13 +69,13 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: `${dialogSpacing.paddingY}px ${dialogSpacing.paddingX}px`,
-    borderBottom: `1px solid ${colors.borderMid}`,
+    borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
   title: {
     fontSize: font.xl,
     fontWeight: "bold" as const,
-    color: colors.textPrimary,
+    color: ui.text.primary,
   },
   closeBtn: sharedStyles.closeBtn,
   body: {

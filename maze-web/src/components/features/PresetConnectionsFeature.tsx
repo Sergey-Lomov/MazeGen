@@ -4,7 +4,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/presetConnectionsUtils";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { buttonStyle } from "../../styles/shared";
-import { colors, font } from "../../styles/theme";
+import { ui, font } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
@@ -234,7 +234,7 @@ const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 8 },
   sectionLabel: {
     fontSize: font.sm,
-    color: colors.textVeryDim,
+    color: ui.text.disabled,
     textTransform: "uppercase" as const,
     letterSpacing: 0.5,
   },
@@ -251,16 +251,16 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     fontSize: font.sm,
-    color: colors.textDim,
-    background: colors.bgInput,
+    color: ui.text.tertiary,
+    background: ui.bg.input,
     borderRadius: 4,
     padding: "6px 8px",
   },
   warningBubble: {
     fontSize: font.sm,
-    color: "#ffaa33",
+    color: ui.text.warning,
     cursor: "default",
-    background: colors.bgInput,
+    background: ui.bg.input,
     borderRadius: 4,
     padding: "4px 6px",
   },
@@ -269,7 +269,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     fontSize: font.sm,
-    color: colors.textDim,
+    color: ui.text.tertiary,
   },
   autoLockLeft: {
     display: "flex",
@@ -278,12 +278,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   autoLockLabel: {
     fontSize: font.sm,
-    color: colors.textMuted,
+    color: ui.text.secondary,
   },
   autoLockCount: {
     fontSize: 10,
-    color: colors.textVeryDim,
-    background: colors.bgInput,
+    color: ui.text.disabled,
+    background: ui.bg.input,
     borderRadius: 3,
     padding: "1px 5px",
   },
@@ -292,16 +292,16 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     fontSize: font.sm,
-    color: colors.textDim,
+    color: ui.text.tertiary,
   },
   originLabel: {
     fontSize: font.sm,
-    color: colors.textMuted,
+    color: ui.text.secondary,
   },
   clearTag: {
     background: "none",
     border: "none",
-    color: colors.textDim,
+    color: ui.text.tertiary,
     cursor: "pointer",
     padding: "0 0 0 4px",
     fontSize: 13,

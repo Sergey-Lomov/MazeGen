@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
-import { colors, font } from "../../styles/theme";
+import { ui, font } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
@@ -304,8 +304,8 @@ const styles: Record<string, React.CSSProperties> = {
   label: sharedStyles.fieldLabel,
   select: sharedStyles.select,
   input: sharedStyles.input,
-  sectionLabel: { fontSize: 11, color: colors.textFaint },
+  sectionLabel: { fontSize: 11, color: ui.text.tertiary },
   primitiveGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: font.sm, color: colors.textMuted },
-  originLabel: { fontSize: font.sm, color: colors.textMuted },
+  originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: font.sm, color: ui.text.secondary },
+  originLabel: { fontSize: font.sm, color: ui.text.secondary },
 };

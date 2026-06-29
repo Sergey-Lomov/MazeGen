@@ -5,7 +5,7 @@ import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { buildMazeWalls, buildMazeMarkers } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { FLOOR_COLOR, WALL_COLOR } from "./colorUtils";
+import { canvas } from "./colorUtils";
 
 export interface MazeOverlayData {
   nodes: NodeDto[];
@@ -39,12 +39,12 @@ export class MazeOverlayRenderer {
     const { nodes, edges, start, finish, cfg } = data;
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
-    this.floor.render({ cells, color: FLOOR_COLOR, alpha: 1 }, cfg);
+    this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
     const connected = new Set<number>();
     for (const e of edges) { connected.add(e.from); connected.add(e.to); }
     const closed: [number, number][] = nodes.filter(n => !connected.has(n.id)).map(n => [n.x, n.y]);
-    this.closedCells.render({ cells: closed, color: WALL_COLOR, alpha: 1 }, cfg);
+    this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
 
     const wallEdges = buildMazeWalls(nodes, edges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);

@@ -3,7 +3,7 @@ import type { Viewport } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
 import { getCellVertices } from "../tessellationGeometry";
-import { GRID_LINE_COLOR, GRID_LINE_ALPHA } from "../colorUtils";
+import { canvas, GRID_LINE_ALPHA } from "../colorUtils";
 
 export class GridRenderer {
   private readonly g: Graphics;
@@ -19,7 +19,7 @@ export class GridRenderer {
     const proj = makeProjection(cfg);
     const bounds = proj.gridBounds(x, y, w, h, scale);
 
-    this.g.setStrokeStyle({ width: 1 / scale, color: GRID_LINE_COLOR, alpha: GRID_LINE_ALPHA });
+    this.g.setStrokeStyle({ width: 1 / scale, color: canvas.grid.line, alpha: GRID_LINE_ALPHA });
 
     for (let xi = bounds.minX; xi <= bounds.maxX; xi++) {
       for (let yi = bounds.minY; yi <= bounds.maxY; yi++) {

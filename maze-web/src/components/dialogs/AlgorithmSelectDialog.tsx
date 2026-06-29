@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "./ItemSelectDialog";
-import { colors, font, radius } from "../../styles/theme";
+import { ui, font, radius } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
 import { SliderRow } from "../SliderRow";
 import * as m from "~/paraglide/messages";
@@ -110,7 +110,7 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
 const styles: Record<string, React.CSSProperties> = {
   description: {
     fontSize: font.lg,
-    color: colors.textFaint,
+    color: ui.text.tertiary,
     lineHeight: 1.6,
   },
   paramsSection: {
@@ -119,22 +119,22 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
   },
   paramsSeparator: {
-    borderTop: `1px solid ${colors.borderDim}`,
+    borderTop: `1px solid ${ui.border.default}`,
     marginBottom: 4,
   },
   btnPrimary: {
-    background: colors.bgBtnPrimary,
+    background: ui.accent.base,
     border: "none",
-    color: colors.textWhite,
+    color: ui.text.inverse,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,
     fontSize: font.lg,
   },
   btnSecondary: {
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textMuted,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.secondary,
     padding: "5px 12px",
     cursor: "pointer",
     borderRadius: radius.sm,

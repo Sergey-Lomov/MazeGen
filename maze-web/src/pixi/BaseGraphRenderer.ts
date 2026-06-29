@@ -1,16 +1,16 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { NODE_RADIUS, NODE_START_COLOR, NODE_FINISH_COLOR, NODE_COLOR, NODE_HOVER_COLOR, NODE_SELECTED_COLOR } from "./colorUtils";
+import { NODE_RADIUS, canvas } from "./colorUtils";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
 
 export interface Pos { x: number; y: number; }
 
 export function nodeColor(id: number, selectedNode: number | null, start: number | null, finish: number | null): number {
-  if (id === selectedNode) return NODE_SELECTED_COLOR;
-  if (id === start) return NODE_START_COLOR;
-  if (id === finish) return NODE_FINISH_COLOR;
-  return NODE_COLOR;
+  if (id === selectedNode) return canvas.node.selected;
+  if (id === start) return canvas.node.start;
+  if (id === finish) return canvas.node.finish;
+  return canvas.node.default;
 }
 
 export function nodeRadius(id: number, start: number | null, finish: number | null): number {
@@ -181,7 +181,7 @@ export abstract class BaseGraphRenderer {
           const s = useMazeStore.getState();
           if (s.selectedNode !== id) {
             const base = nodeColor(id, null, s.start, s.finish);
-            this.redrawNode(g, nodeRadius(id, s.start, s.finish), base !== NODE_COLOR ? base : NODE_HOVER_COLOR);
+            this.redrawNode(g, nodeRadius(id, s.start, s.finish), base !== canvas.node.default ? base : canvas.node.hover);
           }
         });
         g.on("pointerout", () => {

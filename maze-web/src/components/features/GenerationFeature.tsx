@@ -3,7 +3,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { ConfirmModal } from "../ConfirmModal";
 import { sharedStyles } from "../../styles/shared";
-import { colors, font, radius } from "../../styles/theme";
+import { ui, font, radius } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
 import { Switch } from "../Switch";
 import { SliderParam } from "../SliderParam";
@@ -166,13 +166,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   seedLabel: {
     fontSize: font.sm,
-    color: colors.textMuted,
+    color: ui.text.secondary,
     flexShrink: 0,
     whiteSpace: "nowrap" as const,
   },
   switchLabel: {
     fontSize: font.sm,
-    color: colors.textMuted,
+    color: ui.text.secondary,
     flexShrink: 0,
   },
   switchRight: {
@@ -185,19 +185,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sectionCaption: {
     fontSize: font.sm,
-    color: colors.textVeryDim,
+    color: ui.text.disabled,
     textTransform: "uppercase" as const,
     letterSpacing: 0.5,
   },
   algorithmLabel: {
     flex: 1,
     fontSize: font.lg,
-    color: colors.textMuted,
+    color: ui.text.secondary,
   },
   editBtn: {
     background: "none",
     border: "none",
-    color: colors.textDim,
+    color: ui.text.tertiary,
     padding: "0 2px",
     cursor: "pointer",
     fontSize: 16,
@@ -212,12 +212,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   divider: {
-    borderTop: `1px solid ${colors.borderMid}`,
+    borderTop: `1px solid ${ui.border.default}`,
     margin: "2px 0",
   },
   statusError: {
     fontSize: font.sm,
-    color: colors.textError,
+    color: ui.text.error,
   },
   btnRow: {
     display: "flex",
@@ -225,9 +225,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnGenerate: {
     flex: 1,
-    background: colors.bgBtnPrimary,
+    background: ui.accent.base,
     border: "none",
-    color: colors.textWhite,
+    color: ui.text.inverse,
     padding: "5px 0",
     cursor: "pointer",
     borderRadius: radius.sm,
@@ -235,9 +235,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnRegenerate: {
     flex: 1,
-    background: colors.bgInput,
-    border: `1px solid ${colors.borderStrong}`,
-    color: colors.textMuted,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.secondary,
     padding: "5px 0",
     cursor: "pointer",
     borderRadius: radius.sm,

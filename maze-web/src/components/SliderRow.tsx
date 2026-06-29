@@ -1,5 +1,5 @@
 import { sharedStyles } from "../styles/shared";
-import { colors, font } from "../styles/theme";
+import { ui, font } from "../styles/theme";
 
 interface Props {
   label: string;
@@ -25,7 +25,7 @@ export function SliderRow({ label, value, onChange, description }: Props) {
         />
         <span style={sharedStyles.sliderRowValue}>{value.toFixed(2)}</span>
       </div>
-      {description && <div style={{ fontSize: font.sm, color: colors.textDim, lineHeight: 1.4 }}>{description}</div>}
+      {description && <div style={{ fontSize: font.sm, color: ui.text.tertiary, lineHeight: 1.4 }}>{description}</div>}
     </div>
   );
 }

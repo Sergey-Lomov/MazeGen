@@ -1,9 +1,9 @@
 import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
-import { ONE_WAY_COLOR } from "../colorUtils";
+import { canvas } from "../colorUtils";
 
 // Draws a direction arrow triangle centered at (cx, cy), pointing in (dx, dy) direction.
-// size controls the scale. Color defaults to ONE_WAY_COLOR.
+// size controls the scale. Color defaults to canvas.edge.oneWay.
 export function drawDirectionArrow(
   g: Graphics,
   cx: number,
@@ -24,7 +24,7 @@ export function drawDirectionArrow(
     baseX + px * size * 0.6, baseY + py * size * 0.6,
     baseX - px * size * 0.6, baseY - py * size * 0.6,
   ]);
-  g.fill(color ?? ONE_WAY_COLOR);
+  g.fill(color ?? canvas.edge.oneWay);
 }
 
 export function drawOneWayTriangle(
