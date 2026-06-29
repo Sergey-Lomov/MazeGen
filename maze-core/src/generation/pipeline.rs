@@ -33,17 +33,41 @@ impl Default for RepairLimits {
 /// one `build_maze` call, never compared across calls. `std::time::Instant` panics on
 /// `wasm32-unknown-unknown` (no syscall backing it), so the wasm target reads `Performance.now()`
 /// via `js-sys` instead; native (including `cargo test`) uses the monotonic `Instant` clock.
+/// `pub(crate)` (not private) so `maze-wasm`'s `runner.rs` can time the initial `generate_maze`
+/// stage with the same clock before calling `build_maze` — see `GenerationTiming::initial_build_ms`.
 #[cfg(target_arch = "wasm32")]
-fn now_ms() -> f64 {
+pub fn now_ms() -> f64 {
     js_sys::Date::now()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn now_ms() -> f64 {
+pub fn now_ms() -> f64 {
     use std::sync::OnceLock;
     use std::time::Instant;
     static START: OnceLock<Instant> = OnceLock::new();
     START.get_or_init(Instant::now).elapsed().as_secs_f64() * 1000.0
+}
+
+/// One check/strategy type's aggregated timing across an entire `build_maze` call (all repair
+/// iterations summed) — see GitHub issue #56.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct TimingEntry {
+    pub total_ms: f64,
+    pub calls: u32,
+}
+
+/// Per-stage and per-check/per-strategy timing breakdown for one `build_maze` call — see GitHub
+/// issue #56. `initial_build_ms` is left at `0.0` by `build_maze` itself (it only runs QC/repair,
+/// not the initial `generate_maze` stage) — `maze-wasm::run_generate` fills it in after the fact,
+/// since it's the only caller that also runs `generate_maze`/`generate_maze_steps` before
+/// `build_maze`. Every other field is fully populated by `build_maze`.
+#[derive(Debug, Clone, Default)]
+pub struct GenerationTiming {
+    pub initial_build_ms: f64,
+    pub qc_total_ms: f64,
+    pub repair_total_ms: f64,
+    pub per_check: HashMap<&'static str, TimingEntry>,
+    pub per_strategy: HashMap<&'static str, TimingEntry>,
 }
 
 pub fn build_maze<T: Tessellation>(
@@ -54,13 +78,14 @@ pub fn build_maze<T: Tessellation>(
     repair_engine: RepairEngine<T>,
     preset_state: &PresetState,
     limits: RepairLimits,
-) -> (Maze<T>, Vec<crate::quality_control::Issue>) {
+) -> (Maze<T>, Vec<crate::quality_control::Issue>, GenerationTiming) {
     let mut maze = Maze::new(field, graph);
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut failed: HashSet<String> = HashSet::new();
     let mut previous_active: Option<Vec<(String, Issue)>> = None;
     let check_id_to_rule = repair_engine.check_id_to_rule();
     let start_ms = now_ms();
+    let mut timing = GenerationTiming::default();
 
     let mut iterations_done = 0usize;
     let mut limit_reached: Option<RepairLimitKind> = None;
@@ -74,7 +99,15 @@ pub fn build_maze<T: Tessellation>(
         }
         iterations_done += 1;
 
-        let issues = qc_engine.run(&maze, &mut rng);
+        let qc_start = now_ms();
+        let mut per_check_ms: HashMap<&'static str, (f64, u32)> = HashMap::new();
+        let issues = qc_engine.run_timed(&maze, &mut rng, &mut per_check_ms, now_ms);
+        timing.qc_total_ms += now_ms() - qc_start;
+        for (id, (total_ms, calls)) in per_check_ms {
+            let entry = timing.per_check.entry(id).or_default();
+            entry.total_ms += total_ms;
+            entry.calls += calls;
+        }
         // Merge (not drop) issues that share a rule — multiple checks in the same rule may
         // legitimately produce the same IssueKind (e.g. several reasons a cycle can be invalid).
         // See merge_issue. An issue this loop can't route to any rule (zero source checks, e.g.
@@ -124,7 +157,15 @@ pub fn build_maze<T: Tessellation>(
         }
         previous_active = Some(active.clone());
 
-        let results = repair_engine.run(&active, &mut maze, &mut rng, preset_state);
+        let repair_start = now_ms();
+        let mut per_strategy_ms: HashMap<&'static str, (f64, u32)> = HashMap::new();
+        let results = repair_engine.run_timed(&active, &mut maze, &mut rng, preset_state, &mut per_strategy_ms, now_ms);
+        timing.repair_total_ms += now_ms() - repair_start;
+        for (id, (total_ms, calls)) in per_strategy_ms {
+            let entry = timing.per_strategy.entry(id).or_default();
+            entry.total_ms += total_ms;
+            entry.calls += calls;
+        }
         for outcome in &results {
             match &outcome.result {
                 RepairResult::Failed => { failed.insert(outcome.rule_id.clone()); }
@@ -138,7 +179,15 @@ pub fn build_maze<T: Tessellation>(
         }
     }
 
-    let mut remaining = qc_engine.run(&maze, &mut rng);
+    let final_qc_start = now_ms();
+    let mut final_per_check_ms: HashMap<&'static str, (f64, u32)> = HashMap::new();
+    let mut remaining = qc_engine.run_timed(&maze, &mut rng, &mut final_per_check_ms, now_ms);
+    timing.qc_total_ms += now_ms() - final_qc_start;
+    for (id, (total_ms, calls)) in final_per_check_ms {
+        let entry = timing.per_check.entry(id).or_default();
+        entry.total_ms += total_ms;
+        entry.calls += calls;
+    }
     // `limit_reached` is only `Some` when the loop's own cap (not convergence, not no-progress)
     // cut the repair short — surfaced as its own issue (rather than silently folded into
     // whatever QC issues remain) so the user can tell "still broken because the cap fired" apart
@@ -154,7 +203,7 @@ pub fn build_maze<T: Tessellation>(
     if let Some(rule_ids) = no_progress_rules {
         remaining.push(Issue::with_data(QC_NO_PROGRESS, IssueData::QcNoProgress { rule_ids }));
     }
-    (maze, remaining)
+    (maze, remaining, timing)
 }
 
 /// Merges `incoming` into `existing` — both share `existing.kind`. Used when two checks

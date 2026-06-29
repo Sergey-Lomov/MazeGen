@@ -92,6 +92,43 @@ impl<T: Tessellation> RepairEngine<T> {
         }
         results
     }
+
+    /// Same as `run`, but also times each `RepairStrategy::apply` call, accumulating elapsed
+    /// milliseconds and call count per `strategy_id` into `timing` — see
+    /// `QualityControlEngine::run_timed`'s analogous role for checks (GitHub issue #56).
+    /// `now_ms` is injected (not `std::time::Instant` directly) so this stays usable from
+    /// `pipeline::build_maze`'s own wasm/native-aware clock.
+    pub fn run_timed(
+        &self,
+        issues: &[(String, Issue)],
+        maze: &mut Maze<T>,
+        rng: &mut impl RngCore,
+        preset_state: &PresetState,
+        timing: &mut HashMap<&'static str, (f64, u32)>,
+        now_ms: impl Fn() -> f64,
+    ) -> Vec<RepairOutcome> {
+        // Precomputed once per call rather than `self.rules.iter().find(...)` per issue — same
+        // rationale as `strategy_rule_ids` above: this loop runs once per repair-loop iteration
+        // against every active rule that iteration, so a per-issue linear scan over `self.rules`
+        // is O(rules × issues) for no reason when a HashMap lookup is O(1).
+        let by_id: HashMap<&str, &RepairRuleConfig<T>> =
+            self.rules.iter().map(|cfg| (cfg.rule.id.as_str(), cfg)).collect();
+        let mut results = Vec::new();
+        for (rule_id, issue) in issues {
+            let Some(&cfg) = by_id.get(rule_id.as_str()) else { continue };
+            let overrides = Some(&cfg.param_overrides);
+            let params: StrategyParams = build_params(cfg.strategy.params(), overrides);
+            let mut snapshots = SnapshotStack::new();
+            let start = now_ms();
+            let result = cfg.strategy.apply(issue, maze, &mut snapshots, rng, &params, preset_state);
+            let elapsed = now_ms() - start;
+            let entry = timing.entry(cfg.strategy.strategy_id()).or_insert((0.0, 0));
+            entry.0 += elapsed;
+            entry.1 += 1;
+            results.push(RepairOutcome { rule_id: rule_id.clone(), result });
+        }
+        results
+    }
 }
 
 #[cfg(test)]

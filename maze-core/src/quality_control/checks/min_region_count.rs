@@ -22,6 +22,8 @@ pub struct MinRegionCountCheck {
 }
 
 impl<T: Tessellation> Check<T> for MinRegionCountCheck {
+    fn check_type_id(&self) -> &'static str { "min_region_count" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let (Some(start), Some(finish)) = (maze.meta.start, maze.meta.finish) else {
             return;

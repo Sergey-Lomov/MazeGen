@@ -111,6 +111,20 @@ Shown only when `graphAnalytics != null`. Statistics from `graphAnalytics: Graph
 | Min cycle length | `min_cycle_length` — hidden when null |
 | Max cycle density | `max_cycle_density` (2 decimal places) — shown as "—" when null |
 
+### Timing Block
+
+Shown only when `timing != null` — see GitHub issue #56 and `repair.md`'s "Timing Instrumentation" section for the core data source. `timing` comes straight from the store's generation-run value (`MazeSnapshot.timing`), with **no `postEditAnalytics` fallback** — post-edit/`compute_analytics` snapshots never run the generation pipeline, so they carry no timing data; this is the one analytics block that doesn't follow the `postEditAnalytics?.x ?? state.x` pattern used everywhere else in this file.
+
+| Row | Value |
+|---|---|
+| Initial build | `timing.initial_build_ms` |
+| Quality control | `timing.qc_total_ms` |
+| Repair | `timing.repair_total_ms` |
+| Per check (one row per entry) | `timing.per_check[id].total_ms` and `.calls`, keyed by check type id |
+| Per strategy (one row per entry) | `timing.per_strategy[id].total_ms` and `.calls`, keyed by strategy id |
+
+Per-check/per-strategy rows are rendered directly from the raw type/strategy id string (no i18n label lookup) — unlike `IssuesBlock`'s check-label resolution, this is a diagnostics view, not user-facing terminology.
+
 ## Canvas Renderer — AnalyticsRenderer
 
 Owns all analytics canvas layers. Lives in `analyticsContainer` which is a synced layer in `MazeScene` (position and scale kept in sync with viewport). No other renderer may use `AnalyticsRenderer`'s layers.

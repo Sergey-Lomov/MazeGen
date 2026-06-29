@@ -13,6 +13,8 @@ use super::cycle_cut_set::{edge_to_cycles_map, discard_cycles_with_edge, candida
 pub struct InvalidLoopRandomStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for InvalidLoopRandomStrategy {
+    fn strategy_id(&self) -> &'static str { "invalid_loop_random" }
+
     fn apply(
         &self,
         issue: &Issue,

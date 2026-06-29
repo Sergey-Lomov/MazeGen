@@ -25,6 +25,8 @@ pub struct MinLoopDensityCheck {
 }
 
 impl<T: Tessellation> Check<T> for MinLoopDensityCheck {
+    fn check_type_id(&self) -> &'static str { "min_loop_density" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let field_cells = maze.field.node_count();
         if field_cells == 0 {

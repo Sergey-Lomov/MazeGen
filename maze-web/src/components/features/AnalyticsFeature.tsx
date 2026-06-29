@@ -47,14 +47,18 @@ function SectionHeader({ label, expanded, onToggle }: { label: string; expanded:
   );
 }
 
-function StatRow({ label, count, pct }: { label: string; count: number; pct?: number }) {
+function StatRow({ label, count, pct, valueText }: { label: string; count?: number; pct?: number; valueText?: string }) {
   return (
     <div style={styles.statRow}>
       <span style={styles.statLabel}>{label}</span>
-      <span style={styles.statCount}>{count}</span>
+      <span style={styles.statCount}>{valueText ?? count}</span>
       {pct !== undefined && <span style={styles.statPct}>{pct.toFixed(1)}%</span>}
     </div>
   );
+}
+
+function formatMs(ms: number): string {
+  return `${ms.toFixed(1)} ms`;
 }
 
 function ToggleRow({ label, checked, onChange, disabled, info }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; info?: () => void }) {
@@ -75,6 +79,7 @@ export function AnalyticsFeature() {
   const generatedEdgeStats = useMazeStore((s) => s.edgeStats);
   const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
   const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
+  const timing = useMazeStore((s) => s.timing);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
   const issues = useMazeStore(useShallow(selectAnalyticsIssues));
 
@@ -220,6 +225,37 @@ export function AnalyticsFeature() {
         </>
       )}
 
+      {/* Timing block — generation runs only, see GitHub issue #56 */}
+      {timing != null && (
+        <>
+          <div style={styles.divider} />
+          <SectionHeader label={m["analytics.timing"]()} expanded={isExpanded("timing")} onToggle={() => toggleSection("timing")} />
+          {isExpanded("timing") && (
+            <div style={styles.statBlock}>
+              <StatRow label={m["analytics.timing_initial_build"]()} valueText={formatMs(timing.initial_build_ms)} />
+              <StatRow label={m["analytics.timing_qc_total"]()} valueText={formatMs(timing.qc_total_ms)} />
+              <StatRow label={m["analytics.timing_repair_total"]()} valueText={formatMs(timing.repair_total_ms)} />
+              {Object.entries(timing.per_check).length > 0 && (
+                <>
+                  <div style={styles.timingSubheader}>{m["analytics.timing_per_check"]()}</div>
+                  {Object.entries(timing.per_check).map(([id, entry]) => (
+                    <StatRow key={id} label={id} valueText={`${formatMs(entry.total_ms)} (${entry.calls}×)`} />
+                  ))}
+                </>
+              )}
+              {Object.entries(timing.per_strategy).length > 0 && (
+                <>
+                  <div style={styles.timingSubheader}>{m["analytics.timing_per_strategy"]()}</div>
+                  {Object.entries(timing.per_strategy).map(([id, entry]) => (
+                    <StatRow key={id} label={id} valueText={`${formatMs(entry.total_ms)} (${entry.calls}×)`} />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
     </div>
   );
 }
@@ -232,6 +268,7 @@ const styles: Record<string, React.CSSProperties> = {
   statLabel: { flex: 1, fontSize: font.sm, color: colors.textMuted },
   statCount: { fontSize: font.sm, color: colors.textDim, minWidth: 32, textAlign: "right" },
   statPct: { fontSize: font.sm, color: colors.textVeryDim, minWidth: 44, textAlign: "right" },
+  timingSubheader: { fontSize: font.sm, color: colors.textVeryDim, marginTop: 4 },
   scoreRow: { display: "flex", alignItems: "center", gap: 6 },
   divider: { borderTop: `1px solid ${colors.borderMid}`, margin: "4px 0" },
   toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },

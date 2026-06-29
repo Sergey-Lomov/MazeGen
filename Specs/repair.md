@@ -335,6 +335,39 @@ Two rules producing the same `IssueKind` are fully independent through this loop
 
 **Note:** `generate_maze` must be called **before** `build_maze`. `build_maze` only handles metadata, not graph structure.
 
+## Timing Instrumentation
+
+See GitHub issue #56. `build_maze` collects a per-call timing breakdown — stage totals plus per-check/per-strategy aggregates (total time and call count) — and returns it as a third tuple element:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct TimingEntry {
+    pub total_ms: f64,
+    pub calls: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct GenerationTiming {
+    pub initial_build_ms: f64,
+    pub qc_total_ms: f64,
+    pub repair_total_ms: f64,
+    pub per_check: HashMap<&'static str, TimingEntry>,
+    pub per_strategy: HashMap<&'static str, TimingEntry>,
+}
+
+pub fn build_maze<T: Tessellation>(...) -> (Maze<T>, Vec<Issue>, GenerationTiming)
+```
+
+- `initial_build_ms` is left at `0.0` by `build_maze` itself — it only runs the QC/repair fixpoint loop, not the initial `generate_maze`/`generate_maze_steps` call. `maze-wasm::run_generate` is the only caller that also runs that stage; it times it with the same `now_ms()` clock and fills `timing.initial_build_ms` in after `build_maze` returns.
+- `qc_total_ms`/`per_check` cover every `QualityControlEngine::run` call across the whole `build_maze` call — every fixpoint iteration's QC pass plus the final post-loop QC pass that computes `remaining`.
+- `repair_total_ms`/`per_strategy` cover every `RepairEngine::run` call (one per fixpoint iteration that has active issues).
+- `per_check` is keyed by **check type id** (`Check::check_type_id()`, e.g. `"min_loop_length"` — the same string as `available_checks()`'s `CheckDescriptor.id`), not by instance id — two active instances of the same type (GitHub issue #60) aggregate into one entry, since the issue calls for per-check-*type* timing, not per-configured-instance.
+- `per_strategy` is keyed by **strategy id** (`RepairStrategy::strategy_id()`, e.g. `"invalid_loop_random"` — the same string as `StrategyConfig.id`), not by rule id — two rules backed by the same strategy aggregate into one entry.
+- `QualityControlEngine::run_timed`/`RepairEngine::run_timed` are the timed variants `build_maze` calls instead of the plain `run` — they take an `&mut HashMap<&'static str, (f64, u32)>` accumulator and a `now_ms: impl Fn() -> f64` clock (injected so the same wasm/native-aware clock from `pipeline.rs` is reused), and wrap each `Check::check`/`RepairStrategy::apply` call. Every other caller of `run` (e.g. `build_analytics_snapshot`'s analytics-only QC pass, which has no generation to time) is unaffected — `run` keeps its original untimed signature.
+- `now_ms()` (`pipeline.rs`) is `pub`, not private, specifically so `maze-wasm::run_generate` can time the initial-build stage with the same clock.
+
+`maze-wasm`'s `GenerationTimingDto` (see `analytics-web.md`) is the serialized form, surfaced on `MazeSnapshot.timing` — `Some` only for snapshots from a full generation run (`run_generate`); `None` for analytics-only paths (post-edit, `compute_analytics`) that never call `build_maze`.
+
 ## Determinism Contract
 
 A `build_maze` call is fully deterministic if:

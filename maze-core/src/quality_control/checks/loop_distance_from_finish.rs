@@ -22,6 +22,8 @@ pub struct LoopDistanceFromFinishCheck {
 }
 
 impl<T: Tessellation> Check<T> for LoopDistanceFromFinishCheck {
+    fn check_type_id(&self) -> &'static str { "loop_distance_from_finish" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let Some(dist_from_finish) = maze.analysis.distance_from_finish(&maze.graph, &maze.meta) else { return };
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);

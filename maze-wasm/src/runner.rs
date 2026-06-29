@@ -260,7 +260,7 @@ pub fn run_generate<T: Tessellation>(
     config: &GenerateConfig,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
 ) -> Result<JsValue, JsValue> {
-    use maze_core::generation::pipeline::build_maze;
+    use maze_core::generation::pipeline::{build_maze, now_ms};
 
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
@@ -276,16 +276,19 @@ pub fn run_generate<T: Tessellation>(
         &gen_config.locked_nodes,
         |x, y| field.all_points().find(|&p| point_to_xy(p) == (x, y)).unwrap_or(start),
     );
+    let initial_build_start = now_ms();
     let raw_steps: Vec<GenerationStep> = if config.debug {
         generate_maze_steps(&mut graph, &field, seed, start_id, gen_config, &preset_state)
     } else {
         generate_maze(&mut graph, &field, seed, start_id, gen_config, &preset_state);
         vec![]
     };
+    let initial_build_ms = now_ms() - initial_build_start;
 
     let (qc_engine, repair_engine, check_types) = build_qc_and_repair::<T>(config)?;
 
-    let (mut maze, issues) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, build_repair_limits(config));
+    let (mut maze, issues, mut timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, build_repair_limits(config));
+    timing.initial_build_ms = initial_build_ms;
 
     if let Some([fx, fy]) = config.preset_finish {
         if let Some(finish_id) = maze.field.all_points()
@@ -309,10 +312,27 @@ pub fn run_generate<T: Tessellation>(
     let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, point_to_xy)
         .map_err(|e| JsValue::from_str(&e))?;
     snapshot.debug_steps = debug_steps;
+    snapshot.timing = Some(timing_to_dto(timing));
 
     use serde::Serialize;
     snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+fn timing_to_dto(timing: maze_core::GenerationTiming) -> crate::dto::GenerationTimingDto {
+    use crate::dto::{GenerationTimingDto, TimingEntryDto};
+    let to_dto_map = |map: std::collections::HashMap<&'static str, maze_core::TimingEntry>| {
+        map.into_iter()
+            .map(|(id, entry)| (id.to_string(), TimingEntryDto { total_ms: entry.total_ms, calls: entry.calls }))
+            .collect()
+    };
+    GenerationTimingDto {
+        initial_build_ms: timing.initial_build_ms,
+        qc_total_ms: timing.qc_total_ms,
+        repair_total_ms: timing.repair_total_ms,
+        per_check: to_dto_map(timing.per_check),
+        per_strategy: to_dto_map(timing.per_strategy),
+    }
 }
 
 fn steps_to_dto(raw: Vec<GenerationStep>) -> Vec<GenerationStepDto> {

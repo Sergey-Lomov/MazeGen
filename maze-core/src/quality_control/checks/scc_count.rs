@@ -12,6 +12,8 @@ pub struct SccCountCheck {
 }
 
 impl<T: Tessellation> Check<T> for SccCountCheck {
+    fn check_type_id(&self) -> &'static str { "scc_count" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let scc = maze.analysis.scc(&maze.graph);
         let count = scc.components.len() as u32;

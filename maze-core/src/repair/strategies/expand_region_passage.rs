@@ -40,6 +40,8 @@ static PARAMS: &[StrategyParam] = &[
 pub struct ExpandRegionPassageStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for ExpandRegionPassageStrategy {
+    fn strategy_id(&self) -> &'static str { "expand_region_passage" }
+
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
     }

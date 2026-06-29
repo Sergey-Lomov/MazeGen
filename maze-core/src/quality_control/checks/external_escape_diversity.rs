@@ -21,6 +21,8 @@ pub struct ExternalEscapeDiversityCheck {
 }
 
 impl<T: Tessellation> Check<T> for ExternalEscapeDiversityCheck {
+    fn check_type_id(&self) -> &'static str { "external_escape_diversity" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;

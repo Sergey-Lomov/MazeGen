@@ -31,7 +31,7 @@ fn main() {
         vec![rule],
     );
 
-    let (maze, warnings) = build_maze(field, graph, seed, qc_engine, repair_engine, &PresetState::empty(), RepairLimits::default());
+    let (maze, warnings, _timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &PresetState::empty(), RepairLimits::default());
     if !warnings.is_empty() {
         eprintln!("warnings: {:?}", warnings.iter().map(|i| i.kind).collect::<Vec<_>>());
     }

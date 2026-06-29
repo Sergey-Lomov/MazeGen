@@ -15,6 +15,7 @@ export const mockSnapshot = {
   edge_stats: { bidirectional: 0, one_way: 1, walls: 0 },
   route_info: null,
   debug_steps: [],
+  timing: null,
 };
 
 export function baseStoreState() {

@@ -14,6 +14,8 @@ pub struct MinRegionSizeCheck {
 }
 
 impl<T: Tessellation> Check<T> for MinRegionSizeCheck {
+    fn check_type_id(&self) -> &'static str { "min_region_size" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let scc = maze.analysis.scc(&maze.graph);
         let invalid: Vec<usize> = scc.components.iter().enumerate()

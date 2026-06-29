@@ -237,6 +237,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         route_info,
         graph_analytics: graph_analytics_dto,
         debug_steps: vec![],
+        timing: None,
     })
 }
 

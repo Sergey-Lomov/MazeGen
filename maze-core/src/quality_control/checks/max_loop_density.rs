@@ -25,6 +25,8 @@ pub struct MaxLoopDensityCheck {
 }
 
 impl<T: Tessellation> Check<T> for MaxLoopDensityCheck {
+    fn check_type_id(&self) -> &'static str { "max_loop_density" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, rng: &mut dyn RngCore) {
         let field_cells = maze.field.node_count();
         if field_cells == 0 {

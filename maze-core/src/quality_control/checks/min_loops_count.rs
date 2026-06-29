@@ -13,6 +13,8 @@ pub struct MinLoopsCountCheck {
 }
 
 impl<T: Tessellation> Check<T> for MinLoopsCountCheck {
+    fn check_type_id(&self) -> &'static str { "min_loops_count" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         // Uses the same independent-cycle count (Euler: E - V + C on the pure-cycle core) shown
         // to the user as the "Cycle count" analytics stat — not `find_deduped_simple_cycles`'s

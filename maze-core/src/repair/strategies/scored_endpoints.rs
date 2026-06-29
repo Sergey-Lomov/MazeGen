@@ -36,6 +36,8 @@ static PARAMS: &[StrategyParam] = &[
 pub struct ScoredEndpointsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
+    fn strategy_id(&self) -> &'static str { "scored_endpoints" }
+
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
     }

@@ -15,6 +15,8 @@ pub struct MinLoopLengthCheck {
 }
 
 impl<T: Tessellation> Check<T> for MinLoopLengthCheck {
+    fn check_type_id(&self) -> &'static str { "min_loop_length" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;

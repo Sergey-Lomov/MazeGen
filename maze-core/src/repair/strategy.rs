@@ -8,6 +8,11 @@ use super::result::RepairResult;
 use super::snapshot::SnapshotStack;
 
 pub trait RepairStrategy<T: Tessellation> {
+    /// Strategy id — matches `maze-wasm`'s `StrategyConfig.id` (e.g. `"invalid_loop_random"`).
+    /// Used to aggregate per-strategy timing, distinct from `rule_id` (a rule may use any
+    /// registered strategy, and the same strategy can back multiple rules).
+    fn strategy_id(&self) -> &'static str;
+
     fn params(&self) -> &'static [StrategyParam] {
         &[]
     }

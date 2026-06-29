@@ -31,6 +31,8 @@ static PARAMS: &[StrategyParam] = &[
 pub struct MissingLoopsRandomStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for MissingLoopsRandomStrategy {
+    fn strategy_id(&self) -> &'static str { "missing_loops_random" }
+
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
     }

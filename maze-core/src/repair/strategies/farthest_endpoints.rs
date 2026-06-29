@@ -14,6 +14,8 @@ use crate::generation::PresetState;
 pub struct FarthestEndpointsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for FarthestEndpointsStrategy {
+    fn strategy_id(&self) -> &'static str { "farthest_endpoints" }
+
     fn apply(&self, _issue: &Issue, maze: &mut Maze<T>, _snapshots: &mut SnapshotStack, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
             return RepairResult::Fixed { score: None };

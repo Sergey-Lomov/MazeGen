@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, GenerationStepsSnapshot, NodeLockKind, IssueDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, GenerationStepsSnapshot, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
 
@@ -217,6 +217,9 @@ export interface GenerationState {
   nodeStats: NodeStatsDto | null;
   edgeStats: SpatialEdgeStatsDto | null;
   routeInfo: RouteInfoDto | null;
+  /** Per-stage and per-check/per-strategy timing breakdown — only set from a generation run, no
+   *  post-edit fallback (post-edit/`compute_analytics` snapshots never run the generation pipeline). */
+  timing: GenerationTimingDto | null;
   // Runtime generation state
   randomSeed: boolean;
   lastUsedSeed: number | null;

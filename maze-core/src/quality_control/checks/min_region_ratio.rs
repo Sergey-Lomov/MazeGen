@@ -17,6 +17,8 @@ pub struct MinRegionRatioCheck {
 }
 
 impl<T: Tessellation> Check<T> for MinRegionRatioCheck {
+    fn check_type_id(&self) -> &'static str { "min_region_ratio" }
+
     fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let field_cells = maze.field.node_count();
         if field_cells == 0 {

@@ -96,6 +96,24 @@ export interface IssueDto {
   details: Record<string, Record<string, string>>;
 }
 
+export interface TimingEntryDto {
+  total_ms: number;
+  calls: number;
+}
+
+/** Per-stage and per-check/per-strategy timing breakdown for one generation run — only present
+ *  on snapshots from `runGenerate` (the full generate→QC→repair pipeline). Post-edit/
+ *  compute-analytics snapshots never run generation, so `MazeSnapshot.timing` is `null` there. */
+export interface GenerationTimingDto {
+  initial_build_ms: number;
+  qc_total_ms: number;
+  repair_total_ms: number;
+  /** Keyed by check type id (e.g. "min_loop_length"), aggregated across every active instance. */
+  per_check: Record<string, TimingEntryDto>;
+  /** Keyed by strategy id (e.g. "invalid_loop_random"). */
+  per_strategy: Record<string, TimingEntryDto>;
+}
+
 export interface MazeSnapshot {
   nodes: NodeDto[];
   edges: EdgeDto[];
@@ -109,6 +127,7 @@ export interface MazeSnapshot {
   route_info: RouteInfoDto | null;
   graph_analytics: GraphAnalyticsDto;
   debug_steps: GenerationStepDto[];
+  timing: GenerationTimingDto | null;
 }
 
 export interface CheckDescriptor {
