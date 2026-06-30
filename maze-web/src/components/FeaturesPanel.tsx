@@ -1,6 +1,6 @@
 ﻿import React, { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Save, FolderOpen, Maximize2 } from "lucide-react";
+import { Save, FolderOpen, Maximize2, Bug } from "lucide-react";
 import { FeatureCard } from "./FeatureCard";
 import type { FeatureStatus } from "./FeatureCard";
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -16,6 +16,7 @@ import { resolveIssue } from "./issueRegistry";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
+import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui } from "../styles/theme";
@@ -116,6 +117,18 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
 
   function handleSave() {
     downloadProjectFile(useMazeStore.getState());
+  }
+
+  function handleSaveDebugConfig() {
+    const payload = buildExactGenerateCallPayload(useMazeStore.getState);
+    if (!payload) return;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `maze-debug-call-${payload.seed}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function handleLoadClick() {
@@ -294,6 +307,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
         <div style={styles.footerRight}>
           <HoverIconButton onClick={handleSave} title={m["project.save"]()}><Save size={16} /></HoverIconButton>
           <HoverIconButton onClick={handleLoadClick} title={m["project.load"]()}><FolderOpen size={16} /></HoverIconButton>
+          <HoverIconButton onClick={handleSaveDebugConfig} title={m["generation.save_debug_config_tooltip"]()}><Bug size={16} /></HoverIconButton>
           <HoverIconButton onClick={onRefit} title="Fit to screen"><Maximize2 size={16} /></HoverIconButton>
         </div>
         <input

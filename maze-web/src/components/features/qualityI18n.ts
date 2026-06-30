@@ -127,6 +127,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.expand_region_passage.label"] as MessageFn,
     description: m["strategy.expand_region_passage.description"] as MessageFn,
   },
+  missing_regions: {
+    label: m["strategy.missing_regions.label"] as MessageFn,
+    description: m["strategy.missing_regions.description"] as MessageFn,
+  },
 };
 
 export const paramI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -205,6 +209,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   target_mode: {
     label: m["param.target_mode.label"] as MessageFn,
     description: m["param.target_mode.description"] as MessageFn,
+  },
+  locality: {
+    label: m["param.locality.label"] as MessageFn,
+    description: m["param.locality.description"] as MessageFn,
   },
   region_class: {
     label: m["param.region_class.label"] as MessageFn,

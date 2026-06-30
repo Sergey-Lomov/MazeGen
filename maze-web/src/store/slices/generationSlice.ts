@@ -473,3 +473,21 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
     set({ error: msg, generationStatus: "error" });
   }
 }
+
+/**
+ * Builds the exact `{ seed, config }` payload that `generateWithSeed` would send into
+ * `generateMaze` right now -- same `buildGenerateConfig(state)` call, same seed resolution
+ * (the last seed actually used, falling back to the configured one) -- but instead of calling
+ * the wasm core, returns it for download. Lets a bug report attach the literal input the core
+ * received, without anyone hand-reconstructing the JS->wasm config-building logic (tessellation
+ * point centering/ordering, rule composition, etc.) by hand and risking drift from the real
+ * code path. Returns `null` under the same precondition `generateWithSeed` bails out on.
+ */
+export function buildExactGenerateCallPayload(get: StoreGet): { seed: number; config: GenerateConfig } | null {
+  const state = get();
+  if (state.isEditingField && state.fieldPoints.size < 2) return null;
+  const seed = state.lastUsedSeed ?? state.seed;
+  const config = buildGenerateConfig(state);
+  if (!config) return null;
+  return { seed, config };
+}

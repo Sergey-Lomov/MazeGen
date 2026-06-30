@@ -5,7 +5,7 @@ use maze_core::{
     space::{Field, Tessellation},
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
     quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT, MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, SccCountCheck, MAX_SCC_COUNT_DEFAULT, MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT, MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT, MinRegionCountCheck, MIN_REGION_COUNT_DEFAULT, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS},
-    repair::{QcRule, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy},
+    repair::{QcRule, RepairEngine, RepairRuleConfig, RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy},
     RegionClass,
 };
 use crate::generation_config::{GenerateConfig, CheckInstanceConfig, build_generation_config, build_repair_limits};
@@ -246,6 +246,7 @@ fn build_qc_and_repair_impl<T: Tessellation>(
                 "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
                 "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
                 "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
+                "missing_regions" => Box::new(MissingRegionsStrategy),
                 other => return Err(format!("unknown strategy: {other}")),
             };
             repair_rules.push(RepairRuleConfig {

@@ -93,3 +93,111 @@ pub(crate) fn build_outgoing_index(
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{Graph, EdgeKind};
+    use crate::graph::nav::build_nav_graph_pinned;
+    use std::collections::HashSet;
+    use crate::ids::NodeId;
+
+    fn bidir(g: &mut Graph, a: NodeId, b: NodeId) {
+        g.add_edge(a, b, EdgeKind::Basic);
+        g.add_edge(b, a, EdgeKind::Basic);
+    }
+
+    fn pinned(nodes: &[NodeId]) -> HashSet<NodeId> {
+        nodes.iter().copied().collect()
+    }
+
+    #[test]
+    fn dijkstra_forward_finds_shortest_distance() {
+        let mut g = Graph::new();
+        for id in [1u64, 2, 3, 4] { g.add_node(id); }
+        bidir(&mut g, 1, 2);
+        bidir(&mut g, 2, 3);
+        bidir(&mut g, 1, 4);
+        bidir(&mut g, 4, 3);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2, 3, 4]));
+        let source = nav.nav_node_for(1).unwrap();
+        let dist = dijkstra_forward(&nav, source);
+        let target = nav.nav_node_for(3).unwrap();
+        assert_eq!(dist[target], 2, "both 1->2->3 and 1->4->3 are 2 hops");
+    }
+
+    #[test]
+    fn dijkstra_forward_unreachable_node_is_max() {
+        let mut g = Graph::new();
+        for id in [1u64, 2] { g.add_node(id); }
+        // no edges -- disconnected.
+        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2]));
+        let source = nav.nav_node_for(1).unwrap();
+        let dist = dijkstra_forward(&nav, source);
+        let target = nav.nav_node_for(2).unwrap();
+        assert_eq!(dist[target], usize::MAX);
+    }
+
+    #[test]
+    fn dijkstra_forward_respects_edge_direction() {
+        let mut g = Graph::new();
+        for id in [1u64, 2] { g.add_node(id); }
+        g.add_edge(1, 2, EdgeKind::Basic); // one-way only
+        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2]));
+        let source = nav.nav_node_for(2).unwrap();
+        let dist = dijkstra_forward(&nav, source);
+        let target = nav.nav_node_for(1).unwrap();
+        assert_eq!(dist[target], usize::MAX, "forward Dijkstra from 2 must not reach 1 via a 1->2-only edge");
+    }
+
+    #[test]
+    fn dijkstra_reverse_finds_nodes_that_can_reach_target() {
+        let mut g = Graph::new();
+        for id in [1u64, 2, 3] { g.add_node(id); }
+        g.add_edge(1, 2, EdgeKind::Basic);
+        g.add_edge(2, 3, EdgeKind::Basic);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2, 3]));
+        let target = nav.nav_node_for(3).unwrap();
+        let dist = dijkstra_reverse(&nav, target);
+        let source = nav.nav_node_for(1).unwrap();
+        assert_eq!(dist[source], 2, "1 can reach 3 in 2 hops via incoming-edge traversal");
+    }
+
+    #[test]
+    fn dijkstra_with_prev_reconstructs_correct_predecessor_chain() {
+        let mut g = Graph::new();
+        for id in [1u64, 2, 3] { g.add_node(id); }
+        bidir(&mut g, 1, 2);
+        bidir(&mut g, 2, 3);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2, 3]));
+        let all_edges: Vec<_> = nav.edges().collect();
+        let outgoing = build_outgoing_index(&nav, &all_edges);
+        let source = nav.nav_node_for(1).unwrap();
+        let (dist, prev_edge) = dijkstra_with_prev(&nav, source, &all_edges, &outgoing);
+        let target = nav.nav_node_for(3).unwrap();
+        assert_eq!(dist[target], 2);
+        // Walk prev_edge back from target to source.
+        let mut cur = target;
+        let mut hops = 0;
+        while cur != source {
+            let ei = prev_edge[cur].expect("path must exist");
+            cur = all_edges[ei].from;
+            hops += 1;
+            assert!(hops <= 3, "predecessor chain must not loop");
+        }
+        assert_eq!(hops, 2);
+    }
+
+    #[test]
+    fn build_outgoing_index_groups_edges_by_source() {
+        let mut g = Graph::new();
+        for id in [1u64, 2, 3] { g.add_node(id); }
+        g.add_edge(1, 2, EdgeKind::Basic);
+        g.add_edge(1, 3, EdgeKind::Basic);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2, 3]));
+        let all_edges: Vec<_> = nav.edges().collect();
+        let outgoing = build_outgoing_index(&nav, &all_edges);
+        let source = nav.nav_node_for(1).unwrap();
+        assert_eq!(outgoing[source].len(), 2, "node 1 has 2 outgoing nav edges");
+    }
+}

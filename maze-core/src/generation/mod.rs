@@ -299,6 +299,25 @@ pub(crate) fn try_remove_edge(
     true
 }
 
+/// try_add_directed_edge: adds a single one-way edge `from -> to`, respecting PresetState.
+/// Unlike `try_add_bidirectional_edge`, never adds the reverse direction — for repair
+/// strategies that need an explicit one-way connection (e.g. `MissingRegionsStrategy`).
+/// Returns true if the edge was added or already present; false if blocked by preset state.
+pub(crate) fn try_add_directed_edge(
+    graph: &mut Graph,
+    from: NodeId,
+    to: NodeId,
+    preset_state: &PresetState,
+) -> bool {
+    if preset_state.locked_out.contains(&from) { return false; }
+    if preset_state.locked_in.contains(&to) { return false; }
+    if preset_state.blocked.contains(&(from, to)) { return false; }
+    if graph.edge_between(from, to).is_none() {
+        graph.add_edge(from, to, EdgeKind::Basic);
+    }
+    true
+}
+
 #[cfg(test)]
 pub(crate) mod test_utils {
     use crate::graph::Graph;
