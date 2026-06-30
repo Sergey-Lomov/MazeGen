@@ -255,7 +255,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap as StdHashMap;
     use rand::SeedableRng;
-    use rand::rngs::SmallRng;
+    use crate::random::MazeRng;
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, Field, SquarePoint};
@@ -288,7 +288,7 @@ mod tests {
         (maze, ordered)
     }
 
-    fn rng() -> SmallRng { SmallRng::seed_from_u64(7) }
+    fn rng() -> MazeRng { MazeRng::seed_from_u64(7) }
 
     fn issue() -> Issue { Issue::new(MISSING_ENDPOINTS) }
 
@@ -410,11 +410,11 @@ mod tests {
     #[test]
     fn apply_is_deterministic_for_fixed_seed() {
         let (mut maze_a, _) = make_connected_maze(5);
-        let mut rng_a = SmallRng::seed_from_u64(123);
+        let mut rng_a = MazeRng::seed_from_u64(123);
         ScoredEndpointsStrategy.apply(&issue(), &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &default_params(), &PresetState::empty());
 
         let (mut maze_b, _) = make_connected_maze(5);
-        let mut rng_b = SmallRng::seed_from_u64(123);
+        let mut rng_b = MazeRng::seed_from_u64(123);
         ScoredEndpointsStrategy.apply(&issue(), &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &default_params(), &PresetState::empty());
 
         assert_eq!(maze_a.meta.start, maze_b.meta.start);

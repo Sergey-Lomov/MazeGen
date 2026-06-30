@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use rand::SeedableRng;
+use maze_core::random::MazeRng;
 use maze_core::{
     space::Tessellation,
     quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED},
@@ -32,7 +33,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         // No generation seed exists on this path (the maze is already built, e.g. loaded from
         // the editor) — a fixed seed keeps a randomized check (MaxLoopDensityCheck) at least
         // deterministic per call, consistent with every other check's no-side-effects contract.
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = MazeRng::seed_from_u64(0);
         engine.run(maze, &mut rng)
     } else {
         vec![]

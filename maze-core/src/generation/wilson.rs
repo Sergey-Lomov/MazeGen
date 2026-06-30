@@ -1,6 +1,6 @@
 use std::collections::{HashSet, HashMap};
 use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
+use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
@@ -17,7 +17,7 @@ pub fn generate<T: Tessellation>(
 ) {
     let all_nodes: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
     let mut visited: HashSet<NodeId> = HashSet::new();
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = MazeRng::seed_from_u64(seed);
 
     for &pc in &preset_state.preset_connected {
         visited.insert(pc);

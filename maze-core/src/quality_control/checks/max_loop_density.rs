@@ -91,8 +91,8 @@ mod tests {
 
     const TEST_ID: &str = "max_loop_density";
 
-    fn rng() -> rand::rngs::SmallRng {
-        rand::rngs::SmallRng::seed_from_u64(0)
+    fn rng() -> crate::random::MazeRng {
+        crate::random::MazeRng::seed_from_u64(0)
     }
 
     /// 10 cells in a line, two disjoint triangles (6 distinct cells covered) -> 60% density.

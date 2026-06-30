@@ -20,7 +20,7 @@ fn make_empty_square_maze() -> Maze<SquareTessellation> {
 fn missing_endpoints_check_detects_when_both_missing() {
     let maze = make_empty_square_maze();
     let engine = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
-    let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+    let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].kind, MISSING_ENDPOINTS);
@@ -32,7 +32,7 @@ fn missing_endpoints_check_detects_when_only_start_missing() {
     let nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
     maze.meta.finish = Some(nodes[1]);
     let engine = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
-    let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+    let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].kind, MISSING_ENDPOINTS);
@@ -44,7 +44,7 @@ fn missing_endpoints_check_detects_when_only_finish_missing() {
     let nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
     maze.meta.start = Some(nodes[0]);
     let engine = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
-    let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+    let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].kind, MISSING_ENDPOINTS);
@@ -57,7 +57,7 @@ fn missing_endpoints_check_no_false_positive_when_both_set() {
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
     let engine = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
-    let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+    let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
     assert!(issues.is_empty());
 }
@@ -73,7 +73,7 @@ fn unreachable_finish_check_detects_when_not_reachable() {
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
     let engine = QualityControlEngine::new(vec![Box::new(UnreachableFinishCheck { instance_id: "unreachable_finish".to_string() })]);
-    let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+    let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].kind, UNREACHABLE_FINISH);
@@ -83,7 +83,7 @@ fn unreachable_finish_check_detects_when_not_reachable() {
 fn unreachable_finish_check_skips_when_endpoints_missing() {
     let maze = make_empty_square_maze();
     let engine = QualityControlEngine::new(vec![Box::new(UnreachableFinishCheck { instance_id: "unreachable_finish".to_string() })]);
-    let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+    let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
     assert!(issues.is_empty());
 }
@@ -100,7 +100,7 @@ fn unreachable_finish_check_no_false_positive_when_reachable() {
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
     let engine = QualityControlEngine::new(vec![Box::new(UnreachableFinishCheck { instance_id: "unreachable_finish".to_string() })]);
-    let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+    let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
     assert!(issues.is_empty());
 }
@@ -130,7 +130,7 @@ fn two_min_region_count_instances_with_different_classes_both_fire_independently
         Box::new(MinRegionCountCheck { instance_id: "rule_a:0".to_string(), region_class: RegionClass::Trap, min_count: 2 }),
         Box::new(MinRegionCountCheck { instance_id: "rule_b:0".to_string(), region_class: RegionClass::Alternative, min_count: 2 }),
     ]);
-    let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+    let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
 
     assert_eq!(issues.len(), 2, "each instance fires its own issue, not deduplicated by type");

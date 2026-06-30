@@ -151,7 +151,7 @@ fn apply_cut<T: Tessellation>(
 mod tests {
     use super::*;
     use rand::SeedableRng;
-    use rand::rngs::SmallRng;
+    use crate::random::MazeRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{SquareTessellation, square_rect, Field};
@@ -197,7 +197,7 @@ mod tests {
     fn check_finds_short_loop(maze: &Maze<SquareTessellation>) -> bool {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
-        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(maze, &mut issues, &mut check_rng);
         !issues.is_empty()
     }
@@ -207,7 +207,7 @@ mod tests {
         let maze = maze_with_shared_edge_triangles();
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
-        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
@@ -216,7 +216,7 @@ mod tests {
         // belongs to only one.
         for seed in 0..20 {
             let mut maze_try = maze_with_shared_edge_triangles();
-            let mut rng = SmallRng::seed_from_u64(seed);
+            let mut rng = MazeRng::seed_from_u64(seed);
             let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
             assert!(matches!(result, RepairResult::Fixed { score: None }));
 
@@ -237,7 +237,7 @@ mod tests {
         let maze = maze_with_shared_edge_triangles();
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
-        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
@@ -246,7 +246,7 @@ mod tests {
 
         for seed in 0..20 {
             let mut maze_try = maze_with_shared_edge_triangles();
-            let mut rng = SmallRng::seed_from_u64(seed);
+            let mut rng = MazeRng::seed_from_u64(seed);
             let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
             assert!(matches!(result, RepairResult::Fixed { score: None }));
             let d_degree = maze_try.graph.edges().filter(|e| e.from == d || e.to == d).count();
@@ -258,7 +258,7 @@ mod tests {
     fn apply_fails_when_data_is_missing() {
         let mut maze = maze_with_shared_edge_triangles();
         let issue = Issue::new(crate::quality_control::issue::INVALID_LOOP);
-        let mut rng = SmallRng::seed_from_u64(7);
+        let mut rng = MazeRng::seed_from_u64(7);
         let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
@@ -267,7 +267,7 @@ mod tests {
     fn apply_succeeds_on_empty_cycle_list() {
         let mut maze = maze_with_shared_edge_triangles();
         let issue = Issue::with_data(crate::quality_control::issue::INVALID_LOOP, IssueData::InvalidLoops { all: vec![], invalid: vec![], invalid_sources: Default::default() });
-        let mut rng = SmallRng::seed_from_u64(7);
+        let mut rng = MazeRng::seed_from_u64(7);
         let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
@@ -305,7 +305,7 @@ mod tests {
         let maze = maze_with_plain_edge_and_penalized_edge();
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
-        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
         let Some(IssueData::InvalidLoops { invalid, .. }) = &issue.data else { panic!("expected InvalidLoops") };
@@ -316,7 +316,7 @@ mod tests {
 
         for seed in 0..20 {
             let mut maze_try = maze_with_plain_edge_and_penalized_edge();
-            let mut rng = SmallRng::seed_from_u64(seed);
+            let mut rng = MazeRng::seed_from_u64(seed);
             let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
             assert!(matches!(result, RepairResult::Fixed { score: None }));
             assert!(maze_try.graph.edge_between(c, a).is_some(), "seed {seed}: C->A must survive, it's shared with a valid loop");
@@ -331,7 +331,7 @@ mod tests {
         let maze = maze_with_shared_edge_triangles();
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
-        let mut check_rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
@@ -341,7 +341,7 @@ mod tests {
         let mut preset_state = PresetState::empty();
         preset_state.preset_edges.insert((a, b));
 
-        let mut rng = SmallRng::seed_from_u64(1);
+        let mut rng = MazeRng::seed_from_u64(1);
         let mut maze_try = maze_with_shared_edge_triangles();
         let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state);
         assert!(matches!(result, RepairResult::Fixed { score: None }));

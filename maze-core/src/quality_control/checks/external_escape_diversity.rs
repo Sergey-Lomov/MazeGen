@@ -129,7 +129,7 @@ mod tests {
         let maze = maze_with_trapped_ring();
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
@@ -149,7 +149,7 @@ mod tests {
         let maze = maze_with_diverse_ring();
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "8 distinct exit destinations should clear a threshold of 3");
     }
@@ -159,7 +159,7 @@ mod tests {
         let maze = maze_with_trapped_ring();
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 0 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
     }
@@ -187,7 +187,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
@@ -204,7 +204,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }

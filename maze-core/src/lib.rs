@@ -1,4 +1,5 @@
 pub mod math;
+pub mod random;
 pub mod dsu;
 pub mod ids;
 pub mod graph;

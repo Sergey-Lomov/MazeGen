@@ -314,7 +314,7 @@ Time is measured via a small internal `now_ms()` helper, not `std::time::Instant
 Logic:
 
 1. Construct `Maze` via `Maze::new(field, graph)` — sets `MazeMeta::empty()` and `MazeAnalysis::default()`.
-2. Create `rng = SmallRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations for cross-iteration determinism.
+2. Create `rng = MazeRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations for cross-iteration determinism.
 3. Build `check_id_to_rule: HashMap<String, String>` once via `repair_engine.check_id_to_rule()` — maps every check instance's composite routing id (see `QcRule.checks` above) across every configured rule (strategy or not) to its rule id.
 4. Track `failed: HashSet<String>` — rule ids whose strategy returned `Failed`.
 5. Track `previous_fingerprint: Option<Vec<String>>` (sorted rule ids) for progress detection.
@@ -377,3 +377,5 @@ A `build_maze` call is fully deterministic if:
 4. The same `param_overrides` are provided.
 
 `RandomEndpointsStrategy` sorts candidate lists before sampling, making results independent of node insertion order. `FarthestEndpointsStrategy` breaks distance ties by minimum `node_id` for determinism.
+
+This also requires a platform-independent RNG: `crate::random::MazeRng` fixes `rand_xoshiro::Xoshiro256PlusPlus` directly rather than using `rand::rngs::SmallRng`, whose backing algorithm depends on `target_pointer_width` (different on native vs wasm32) and would otherwise make the same seed produce a different maze in-browser than in `cargo test`.

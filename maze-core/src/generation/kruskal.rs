@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
+use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
@@ -15,7 +15,7 @@ pub fn generate<T: Tessellation>(
     preset_state: &PresetState,
     mut on_step: Option<&mut super::StepCallback<'_>>,
 ) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = MazeRng::seed_from_u64(seed);
 
     // Collect all unique undirected edges in sorted order for determinism.
     let mut edge_set: BTreeSet<(NodeId, NodeId)> = BTreeSet::new();

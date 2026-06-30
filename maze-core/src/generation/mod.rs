@@ -9,7 +9,7 @@ mod preset_state;
 
 pub use preset_state::{PresetState, build_preset_state};
 
-use rand::rngs::SmallRng;
+use crate::random::MazeRng;
 use rand::Rng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
@@ -137,7 +137,7 @@ pub struct GenerationStep {
     pub current_src:  NodeId,
 }
 
-pub(crate) fn gaussian_weighted_index(len: usize, depth_first: f64, rng: &mut SmallRng) -> usize {
+pub(crate) fn gaussian_weighted_index(len: usize, depth_first: f64, rng: &mut MazeRng) -> usize {
     crate::math::sample_by_position(len, depth_first, rng)
 }
 
@@ -197,7 +197,7 @@ pub fn generate_maze_steps<T: Tessellation>(
 // One-way edges consume two RNG samples (one for the chance check, one for direction),
 // while bidirectional edges consume only one. This means maze topology differs between
 // runs with one_way_chance > 0 and runs with one_way_chance == 0, even at the same seed.
-pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &ElementsConfig, rng: &mut SmallRng) {
+pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &ElementsConfig, rng: &mut MazeRng) {
     if rng.random::<f64>() < elements.one_way_chance {
         if rng.random::<bool>() {
             graph.add_edge(src, dst, EdgeKind::Basic);
@@ -230,7 +230,7 @@ pub(crate) fn try_add_edge(
     dst: NodeId,
     elements: &ElementsConfig,
     preset_state: &PresetState,
-    rng: &mut SmallRng,
+    rng: &mut MazeRng,
 ) {
     if preset_state.locked_out.contains(&src) { return; }
     if preset_state.locked_in.contains(&dst)  { return; }

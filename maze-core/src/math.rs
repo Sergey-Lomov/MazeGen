@@ -1,5 +1,5 @@
 use rand::Rng;
-use rand::rngs::SmallRng;
+use crate::random::MazeRng;
 
 /// Sample a weighted index from a collection of `len` elements using a
 /// gaussian distribution centred at `target` ∈ [0,1] (mapped to index space).
@@ -14,7 +14,7 @@ use rand::rngs::SmallRng;
 const SIGMA_MAX: f64 = 0.4;
 const SIGMA_MIN: f64 = 1e-3; // avoid division by zero at extremes
 
-pub fn sample_by_position(len: usize, target: f64, rng: &mut SmallRng) -> usize {
+pub fn sample_by_position(len: usize, target: f64, rng: &mut MazeRng) -> usize {
     debug_assert!(len > 0);
     if len == 1 { return 0; }
 
@@ -46,7 +46,7 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
 
-    fn rng(seed: u64) -> SmallRng { SmallRng::seed_from_u64(seed) }
+    fn rng(seed: u64) -> MazeRng { MazeRng::seed_from_u64(seed) }
 
     #[test]
     fn target_zero_always_returns_first() {

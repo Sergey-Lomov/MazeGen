@@ -73,8 +73,8 @@ mod tests {
 
     const TEST_ID: &str = "min_region_ratio";
 
-    fn rng() -> rand::rngs::SmallRng {
-        rand::rngs::SmallRng::seed_from_u64(0)
+    fn rng() -> crate::random::MazeRng {
+        crate::random::MazeRng::seed_from_u64(0)
     }
 
     /// 10 cells: a 3-node SCC (30%) + 7 singleton SCCs (10% each).

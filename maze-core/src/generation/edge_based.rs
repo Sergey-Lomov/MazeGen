@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
+use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
@@ -31,7 +31,7 @@ pub fn generate<T: Tessellation>(
     preset_state: &PresetState,
     mut on_step: Option<&mut StepCallback<'_>>,
 ) {
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = MazeRng::seed_from_u64(seed);
 
     let mut nodes: HashMap<NodeId, NodeEntry> = graph.nodes()
         .map(|n| (n.id, NodeEntry::unseen()))
@@ -130,7 +130,7 @@ fn choose_src<T: Tessellation>(
     params: &EdgeBasedParams,
     preset_state: &PresetState,
     field: &Field<T>,
-    rng: &mut SmallRng,
+    rng: &mut MazeRng,
 ) -> NodeId {
     // Corridor attempt — continue from last dst (chain: A→B→C→...)
     if let Some(prev) = last_dst {
@@ -146,7 +146,7 @@ fn choose_src<T: Tessellation>(
     active[idx]
 }
 
-fn weighted_sample_index(weights: &[f64], rng: &mut SmallRng) -> usize {
+fn weighted_sample_index(weights: &[f64], rng: &mut MazeRng) -> usize {
     let total: f64 = weights.iter().sum();
     let mut r = rng.random::<f64>() * total;
     for (i, &w) in weights.iter().enumerate() {
@@ -172,7 +172,7 @@ mod tests {
     use crate::space::{SquareTessellation, square_rect};
     use rand::SeedableRng;
 
-    fn rng(seed: u64) -> SmallRng { SmallRng::seed_from_u64(seed) }
+    fn rng(seed: u64) -> MazeRng { MazeRng::seed_from_u64(seed) }
 
     #[test]
     fn choose_src_returns_last_dst_when_corridor_length_one() {

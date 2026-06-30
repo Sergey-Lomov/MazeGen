@@ -178,7 +178,7 @@ pub trait Check<T: Tessellation> {
 
 - **Read-only**: `maze` is immutable. A `Check` must not mutate any state.
 - **No side effects**: `check` must not access global state or perform I/O.
-- **`rng` is the one sanctioned source of non-determinism**: most checks ignore it (`_rng`) and stay fully deterministic, but a check whose contract is inherently randomized — currently only `MaxLoopDensityCheck` (below), which must pick *which* excess loops to flag without a deterministic ordering rule — draws from it instead of seeding its own. `QualityControlEngine::run` takes the `rng` from its caller (the pipeline's per-`build_maze`-call `SmallRng`, seeded from the generation seed) rather than each check owning one, so a whole QC pass stays reproducible for a given seed.
+- **`rng` is the one sanctioned source of non-determinism**: most checks ignore it (`_rng`) and stay fully deterministic, but a check whose contract is inherently randomized — currently only `MaxLoopDensityCheck` (below), which must pick *which* excess loops to flag without a deterministic ordering rule — draws from it instead of seeding its own. `QualityControlEngine::run` takes the `rng` from its caller (the pipeline's per-`build_maze`-call `MazeRng`, seeded from the generation seed) rather than each check owning one, so a whole QC pass stays reproducible for a given seed.
 - A check may produce zero or more issues per call.
 - A check may read `maze.analysis` to avoid redundant computation.
 

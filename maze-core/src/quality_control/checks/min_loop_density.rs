@@ -78,8 +78,8 @@ mod tests {
 
     const TEST_ID: &str = "min_loop_density";
 
-    fn rng() -> rand::rngs::SmallRng {
-        rand::rngs::SmallRng::seed_from_u64(0)
+    fn rng() -> crate::random::MazeRng {
+        crate::random::MazeRng::seed_from_u64(0)
     }
 
     /// 10 cells in a line, one triangle (3 distinct cells covered) -> 30% density.

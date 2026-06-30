@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use rand::SeedableRng;
-use rand::rngs::SmallRng;
+use maze_core::random::MazeRng;
 use maze_core::{Graph, IdGenerator, Maze, NodeId};
 use maze_core::generation::PresetState;
 use maze_core::graph::EdgeKind;
@@ -30,8 +30,8 @@ fn make_connected_maze(n_cols: usize) -> (Maze<SquareTessellation>, Vec<NodeId>)
     (maze, ordered)
 }
 
-fn make_rng() -> SmallRng {
-    SmallRng::seed_from_u64(42)
+fn make_rng() -> MazeRng {
+    MazeRng::seed_from_u64(42)
 }
 
 fn no_params() -> StrategyParams {
@@ -170,7 +170,7 @@ fn farthest_endpoints_idempotent_when_both_set() {
 fn farthest_endpoints_deterministic() {
     let run = || {
         let (mut maze, _) = make_connected_maze(5);
-        let mut rng = SmallRng::seed_from_u64(99);
+        let mut rng = MazeRng::seed_from_u64(99);
         let issue = Issue::new(MISSING_ENDPOINTS);
         FarthestEndpointsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty());
         (maze.meta.start, maze.meta.finish)

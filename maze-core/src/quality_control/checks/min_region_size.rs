@@ -65,8 +65,8 @@ mod tests {
 
     const TEST_ID: &str = "min_region_size";
 
-    fn rng() -> rand::rngs::SmallRng {
-        rand::rngs::SmallRng::seed_from_u64(0)
+    fn rng() -> crate::random::MazeRng {
+        crate::random::MazeRng::seed_from_u64(0)
     }
 
     /// 4 cells, one 3-node SCC (triangle) + one singleton (no mutual reachability).

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
+use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
@@ -26,7 +26,7 @@ pub fn generate<T: Tessellation>(
     let mut frontier:    Vec<FrontierEntry> = Vec::new();
     let mut reserve:     Vec<NodeId> = Vec::new();
     let mut in_reserve:  HashSet<NodeId> = HashSet::new();
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = MazeRng::seed_from_u64(seed);
 
     // preset_connected nodes are NOT added to visited upfront — this keeps them visible
     // as connection targets for free_neighbors. Exception: start itself may be preset_connected
@@ -174,7 +174,7 @@ fn pop_reserve(
     reserve: &mut Vec<NodeId>,
     in_reserve: &mut HashSet<NodeId>,
     params: &GenerationParams,
-    rng: &mut SmallRng,
+    rng: &mut MazeRng,
 ) -> Option<NodeId> {
     if reserve.is_empty() { return None; }
     let idx = gaussian_weighted_index(reserve.len(), params.depth_first, rng);
@@ -183,12 +183,12 @@ fn pop_reserve(
     Some(node)
 }
 
-fn choose_from_frontier(frontier: &[FrontierEntry], params: &GenerationParams, rng: &mut SmallRng) -> usize {
+fn choose_from_frontier(frontier: &[FrontierEntry], params: &GenerationParams, rng: &mut MazeRng) -> usize {
     if frontier.len() == 1 { return 0; }
     gaussian_weighted_index(frontier.len(), params.depth_first, rng)
 }
 
-pub(super) fn junction_count(max: usize, params: &GenerationParams, rng: &mut SmallRng) -> usize {
+pub(super) fn junction_count(max: usize, params: &GenerationParams, rng: &mut MazeRng) -> usize {
     debug_assert!(max >= 2, "junction_count requires max >= 2, got {max}");
     let mut count = 2;
     for _ in 0..max.saturating_sub(2) {
@@ -204,7 +204,7 @@ fn choose_candidate<T: Tessellation>(
     parent: Option<NodeId>,
     src: NodeId,
     params: &GenerationParams,
-    rng: &mut SmallRng,
+    rng: &mut MazeRng,
     field: &Field<T>,
 ) -> NodeId {
     if candidates.len() == 1 { return candidates[0]; }
@@ -224,7 +224,7 @@ fn choose_junction_candidates<T: Tessellation>(
     src: NodeId,
     count: usize,
     params: &GenerationParams,
-    rng: &mut SmallRng,
+    rng: &mut MazeRng,
     field: &Field<T>,
 ) -> Vec<NodeId> {
     let mut pool: Vec<NodeId> = candidates.to_vec();
@@ -248,7 +248,7 @@ mod tests {
     use crate::generation::test_utils::{default_elements, make_field_and_graph};
     use rand::SeedableRng;
 
-    fn rng(seed: u64) -> SmallRng { SmallRng::seed_from_u64(seed) }
+    fn rng(seed: u64) -> MazeRng { MazeRng::seed_from_u64(seed) }
     fn default_params() -> GenerationParams { GenerationParams::default() }
 
     #[test]

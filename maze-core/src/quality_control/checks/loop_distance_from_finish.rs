@@ -94,7 +94,7 @@ mod tests {
         let maze = maze_with_triangle_at_distance(3);
         let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
@@ -114,7 +114,7 @@ mod tests {
         let maze = maze_with_triangle_at_distance(10);
         let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "cycle is 10 tiles out, threshold is 5");
     }
@@ -155,7 +155,7 @@ mod tests {
         let maze = maze_with_two_triangles(20);
         let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         match &issues[0].data {
@@ -172,7 +172,7 @@ mod tests {
         let maze = maze_with_triangle_at_distance(0);
         let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 0 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
     }
@@ -183,7 +183,7 @@ mod tests {
         maze.meta.finish = None;
         let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "missing finish is MissingEndpointsCheck's job");
     }
@@ -201,7 +201,7 @@ mod tests {
         maze.meta.finish = Some(nodes[2]);
         let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
@@ -230,7 +230,7 @@ mod tests {
         maze.meta.finish = Some(maze.field.node_at(SquarePoint { x: SIDE - 1, y: SIDE - 1 }).unwrap());
         let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }

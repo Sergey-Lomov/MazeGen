@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
+use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
@@ -16,7 +16,7 @@ pub fn generate<T: Tessellation>(
     mut on_step: Option<&mut super::StepCallback<'_>>,
 ) {
     let mut visited: HashSet<NodeId> = HashSet::new();
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = MazeRng::seed_from_u64(seed);
 
     let preset_connected = &preset_state.preset_connected;
     visited.insert(start);

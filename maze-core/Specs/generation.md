@@ -77,7 +77,7 @@ Classic randomized DFS. Stack-based traversal: always extends from the most rece
 ```
 visited: HashSet<NodeId> = {start}
 stack: Vec<NodeId> = [start]
-rng = SmallRng::seed_from_u64(seed)
+rng = MazeRng::seed_from_u64(seed)
 
 while stack not empty:
   current = stack.last()
@@ -164,7 +164,7 @@ Note: `start` is part of the public API for all algorithms but is only meaningfu
 
 ## RNG
 
-`rand::rngs::SmallRng` (xoshiro256) seeded via `SeedableRng::seed_from_u64(seed)`. Fast, deterministic, no external entropy.
+`crate::random::MazeRng` (`rand_xoshiro::Xoshiro256PlusPlus`, fixed directly — not `rand::rngs::SmallRng`, whose algorithm choice depends on `target_pointer_width` and would diverge between native and wasm32) seeded via `SeedableRng::seed_from_u64(seed)`. Fast, deterministic, no external entropy.
 
 ## Future
 

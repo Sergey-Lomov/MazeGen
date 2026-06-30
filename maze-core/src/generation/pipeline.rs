@@ -1,7 +1,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use rand::SeedableRng;
-use rand::rngs::SmallRng;
+use crate::random::MazeRng;
 use crate::{Graph, Maze};
 use crate::ids::EdgeId;
 use crate::space::{Field, Tessellation};
@@ -80,7 +80,7 @@ pub fn build_maze<T: Tessellation>(
     limits: RepairLimits,
 ) -> (Maze<T>, Vec<crate::quality_control::Issue>, GenerationTiming) {
     let mut maze = Maze::new(field, graph);
-    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut rng = MazeRng::seed_from_u64(seed);
     let mut failed: HashSet<String> = HashSet::new();
     let mut previous_active: Option<Vec<(String, Issue)>> = None;
     let check_id_to_rule = repair_engine.check_id_to_rule();

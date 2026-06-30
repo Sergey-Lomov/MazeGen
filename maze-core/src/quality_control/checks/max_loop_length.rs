@@ -78,7 +78,7 @@ mod tests {
         let maze = maze_with_triangle();
         let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 2 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
@@ -98,7 +98,7 @@ mod tests {
         let maze = maze_with_triangle();
         let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 3 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "triangle has 3 tile-hops, not > 3");
     }
@@ -128,7 +128,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 10 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
@@ -145,7 +145,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 10 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }

@@ -55,8 +55,8 @@ mod tests {
 
     const TEST_ID: &str = "min_region_count";
 
-    fn rng() -> rand::rngs::SmallRng {
-        rand::rngs::SmallRng::seed_from_u64(0)
+    fn rng() -> crate::random::MazeRng {
+        crate::random::MazeRng::seed_from_u64(0)
     }
 
     /// 5 cells in a line, all one-way: 0 -> 1 -> 2 -> 3 -> 4. Each node its own SCC.

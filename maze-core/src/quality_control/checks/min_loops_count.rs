@@ -63,7 +63,7 @@ mod tests {
         let maze = maze_with_triangle();
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
@@ -73,7 +73,7 @@ mod tests {
         let maze = maze_with_triangle();
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 3 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, MISSING_LOOPS);
@@ -100,7 +100,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         match &issues[0].data {
@@ -135,7 +135,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }

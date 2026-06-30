@@ -66,7 +66,7 @@ mod tests {
         let maze = maze_with_one_scc();
         let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 1 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
@@ -76,7 +76,7 @@ mod tests {
         let maze = maze_with_two_isolated_components();
         let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 1 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, EXCESSIVE_SCC_COUNT);
@@ -96,7 +96,7 @@ mod tests {
         let maze = maze_with_two_isolated_components();
         let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 4 };
         let mut issues = Vec::new();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
