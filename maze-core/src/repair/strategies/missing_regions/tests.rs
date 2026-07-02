@@ -2,6 +2,7 @@ use super::*;
 use super::grow::{grow_front, try_open_excess_neighbor, sever_from_parent, OpenedNeighbor};
 use super::reuse::{filter_by_border, absorb_until_min_size, prioritize_candidates};
 use super::convert::{convert_region, membership_matches};
+use super::GrowContext;
 use std::collections::HashMap as StdHashMap;
 use rand::SeedableRng;
 use crate::random::MazeRng;
@@ -17,6 +18,10 @@ fn default_params() -> StrategyParams {
         <MissingRegionsStrategy as RepairStrategy<SquareTessellation>>::params(&MissingRegionsStrategy),
         None,
     )
+}
+
+fn test_ctx<'a>(committed_nodes: &'a HashSet<NodeId>, preset_state: &'a PresetState) -> GrowContext<'a> {
+    GrowContext { committed_nodes, preset_state, inbound_requires_geometry: true, outbound_requires_geometry: true }
 }
 
 /// Builds a `MISSING_REGIONS` issue from shortfall counts — `missing` values are how many
@@ -866,7 +871,7 @@ fn absorb_until_min_size_absorbs_a_neighbor_of_a_different_class_when_it_has_bud
     let mut budget = HashMap::from([(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
 
-    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &HashSet::new(), &PresetState::empty(), &mut rng);
+    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng);
 
     assert!(members.contains(&trap_neighbor), "trap_neighbor has its own budget -- must be absorbed despite being a different class");
     assert_eq!(budget.get(&RegionClass::Trap), None, "trap_neighbor's budget (1) fully spent on its own 1-node size -- entry removed");
@@ -888,7 +893,7 @@ fn absorb_until_min_size_does_not_absorb_when_the_neighbor_has_no_budget() {
     let mut budget: HashMap<RegionClass, i32> = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
 
-    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &HashSet::new(), &PresetState::empty(), &mut rng);
+    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng);
 
     assert!(!members.contains(&trap_neighbor), "no budget entry for Trap at all -- trap_neighbor must remain outside members");
     assert_eq!(members.len(), 1, "members must stay at just the candidate's own node");
@@ -937,7 +942,7 @@ fn absorb_until_min_size_skips_a_blocked_edge_and_succeeds_via_another_in_the_po
     let mut budget = HashMap::from([(RegionClass::Trap, 2)]);
     let mut rng = MazeRng::seed_from_u64(1);
 
-    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &HashSet::new(), &preset_state, &mut rng);
+    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &preset_state), &mut rng);
 
     assert!(members.contains(&trap_a) && members.contains(&trap_b), "the component must still be absorbed via the non-blocked edge");
     assert!(maze.graph.edge_between(candidate, trap_a).is_none(), "the blocked edge must never have been added");
@@ -1350,7 +1355,7 @@ fn grow_front_with_locality_one_stays_depth_first_on_a_single_arm() {
 
     let result = grow_front(
         &mut maze, hub, seed_component, &scc, &region_classes, &mut budget,
-        1.0, 5, &critical, &HashSet::new(), &PresetState::empty(), &mut rng,
+        1.0, 5, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     let members = result.expect("must grow to min_region_size within a single 4-node arm + hub");
@@ -1377,7 +1382,7 @@ fn grow_front_with_locality_zero_spreads_breadth_first_across_arms() {
         let mut rng = MazeRng::seed_from_u64(seed);
         let result = grow_front(
             &mut maze, hub, seed_component, &scc, &region_classes, &mut budget,
-            0.0, 4, &critical, &HashSet::new(), &PresetState::empty(), &mut rng,
+            0.0, 4, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
         );
         let members = result.expect("must grow to min_region_size");
         let arms_touched = arms.iter().filter(|arm| arm.iter().any(|n| members.contains(n))).count();
@@ -1428,7 +1433,7 @@ fn grow_front_only_expands_through_bidirectional_edges() {
 
     let result = grow_front(
         &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
-        0.5, 2, &critical, &HashSet::new(), &PresetState::empty(), &mut rng,
+        0.5, 2, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     let members = result.expect("two_way is a valid bidirectional candidate");
@@ -1453,7 +1458,7 @@ fn grow_front_fails_when_only_one_way_neighbors_are_available() {
 
     let result = grow_front(
         &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
-        0.5, 3, &critical, &HashSet::new(), &PresetState::empty(), &mut rng,
+        0.5, 3, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     assert!(result.is_none(), "no excess budget to cross into one_way's component -- must fail, never take a one-way edge");
@@ -1490,8 +1495,8 @@ fn try_open_excess_neighbor_bridges_a_single_node_and_debits_full_component_size
     let mut rng = MazeRng::seed_from_u64(1);
 
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical, &HashSet::new(),
-        &HashSet::from([seed_component]), &PresetState::empty(), &mut rng,
+        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     assert_eq!(opened, Some(OpenedNeighbor { node: neighbor, component: neighbor_component }));
@@ -1514,8 +1519,8 @@ fn try_open_excess_neighbor_returns_none_without_budget_for_the_bordering_class(
     let mut rng = MazeRng::seed_from_u64(1);
 
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical, &HashSet::new(),
-        &HashSet::from([seed_component]), &PresetState::empty(), &mut rng,
+        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     assert_eq!(opened, None, "no excess budget for neighbor's class -- must not cross");
@@ -1539,8 +1544,8 @@ fn try_open_excess_neighbor_skips_a_critical_bordering_node() {
     let mut rng = MazeRng::seed_from_u64(1);
 
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical, &HashSet::new(),
-        &HashSet::from([seed_component]), &PresetState::empty(), &mut rng,
+        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     assert_eq!(opened, None, "neighbor is on the critical path -- must never be crossed into");
@@ -1562,8 +1567,8 @@ fn try_open_excess_neighbor_skips_a_committed_bordering_node() {
     let mut rng = MazeRng::seed_from_u64(1);
 
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical, &committed,
-        &HashSet::from([seed_component]), &PresetState::empty(), &mut rng,
+        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &HashSet::from([seed_component]), &test_ctx(&committed, &PresetState::empty()), &mut rng,
     );
 
     assert_eq!(opened, None, "neighbor was already committed by an earlier region item -- must never be crossed into");
@@ -1586,8 +1591,8 @@ fn try_open_excess_neighbor_respects_preset_blocked_bridge() {
     let mut rng = MazeRng::seed_from_u64(1);
 
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical, &HashSet::new(),
-        &HashSet::from([seed_component]), &preset_state, &mut rng,
+        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &preset_state), &mut rng,
     );
 
     assert_eq!(opened, None, "the only bordering candidate's bridge is preset-blocked -- must fail without leaking a partial edge");
@@ -1615,8 +1620,8 @@ fn try_open_excess_neighbor_respects_preset_blocked_return_direction() {
     let mut rng = MazeRng::seed_from_u64(1);
 
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical, &HashSet::new(),
-        &HashSet::from([seed_component]), &preset_state, &mut rng,
+        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &preset_state), &mut rng,
     );
 
     assert_eq!(opened, None, "return direction blocked -- whole candidate must be rejected");
@@ -1653,7 +1658,7 @@ fn grow_front_crosses_into_excess_budgeted_neighbor_component_and_continues_grow
 
     let result = grow_front(
         &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
-        0.5, 3, &critical, &HashSet::new(), &PresetState::empty(), &mut rng,
+        0.5, 3, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     let members = result.expect("must cross into neighbor's component and keep growing to reach size 3");
@@ -1717,7 +1722,7 @@ fn grow_front_does_not_cross_into_a_neighbor_component_while_other_frontier_node
         let mut rng = MazeRng::seed_from_u64(seed_val);
         let result = grow_front(
             &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
-            0.0, 4, &critical, &HashSet::new(), &PresetState::empty(), &mut rng,
+            0.0, 4, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
         );
         let members = result.unwrap_or_else(|| panic!("seed {seed_val}: same-component set alone reaches min_region_size=4, must not need to cross"));
         assert_eq!(members, HashSet::from([seed, dead_end, long_a, long_b]), "seed {seed_val}: must consume all 4 same-component nodes, never touching bridgeable");
@@ -1739,7 +1744,7 @@ fn grow_front_fails_when_frontier_exhausted_and_no_excess_budget_to_cross() {
 
     let result = grow_front(
         &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
-        0.5, 2, &critical, &HashSet::new(), &PresetState::empty(), &mut rng,
+        0.5, 2, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     assert!(result.is_none(), "seed is a singleton component with no bidirectional neighbor and no excess budget -- must fail");
@@ -1855,9 +1860,13 @@ fn try_grow_border_priority_on_always_picks_the_bordering_seed_first() {
         let bordering = nodes[2];
         let mut rng = MazeRng::seed_from_u64(seed);
         let mut excess_budget: HashMap<RegionClass, i32> = HashMap::new();
+        let ctx = GrowContext {
+            committed_nodes: &HashSet::new(), preset_state: &PresetState::empty(),
+            inbound_requires_geometry: true, outbound_requires_geometry: true,
+        };
         let result = try_grow(
             &mut maze, &mut SnapshotStack::new(), RegionClass::Trap, 0.5, 1,
-            &HashSet::new(), &mut excess_budget, true, true, &PresetState::empty(), &mut rng,
+            &mut excess_budget, &ctx, &mut rng,
         );
         let members = result.unwrap_or_else(|| panic!("seed {seed}: growth must succeed with MAX_GROW_ATTEMPTS covering the bordering seed when priority is ON"));
         assert!(members.contains(&bordering), "seed {seed}: border priority ON must always land on the bordering seed");
@@ -1877,9 +1886,13 @@ fn try_grow_border_priority_off_sometimes_fails_by_missing_the_bordering_seed() 
         let (mut maze, _) = maze_with_one_bordering_seed_and_decoys();
         let mut rng = MazeRng::seed_from_u64(seed);
         let mut excess_budget: HashMap<RegionClass, i32> = HashMap::new();
+        let ctx = GrowContext {
+            committed_nodes: &HashSet::new(), preset_state: &PresetState::empty(),
+            inbound_requires_geometry: false, outbound_requires_geometry: false,
+        };
         let result = try_grow(
             &mut maze, &mut SnapshotStack::new(), RegionClass::Trap, 0.5, 1,
-            &HashSet::new(), &mut excess_budget, false, false, &PresetState::empty(), &mut rng,
+            &mut excess_budget, &ctx, &mut rng,
         );
         if result.is_none() {
             saw_a_failure = true;

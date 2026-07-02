@@ -54,6 +54,19 @@ const MAX_TOTAL_FAILURES: u32 = 10;
 const INBOUND_REQUIRES_GEOMETRY: bool = true;
 const OUTBOUND_REQUIRES_GEOMETRY: bool = true;
 
+/// Bundles the read-only, per-`apply`-call context shared by `try_reuse`/`try_grow` and their
+/// helpers — nodes already committed to an earlier region this call, the preset guard, and the
+/// (currently fixed) geometry-requirement flags. Cuts the shared param tail from every function
+/// signature in this module down to one reference; each function still takes its own
+/// mutable/hot-changing params (`maze`, `snapshots`, `rng`, `excess_budget`, `target`,
+/// `min_region_size`, ...) separately.
+pub(super) struct GrowContext<'a> {
+    pub(super) committed_nodes: &'a HashSet<NodeId>,
+    pub(super) preset_state: &'a PresetState,
+    pub(super) inbound_requires_geometry: bool,
+    pub(super) outbound_requires_geometry: bool,
+}
+
 /// Handles `MISSING_REGIONS` — see GitHub issue #59. For each region class short of its
 /// configured minimum (`issue.data`'s `missing_by_class`), tries to either reuse an existing
 /// region or grow a new one (front-expansion from a seed inside an existing non-critical-path
@@ -135,9 +148,14 @@ impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
                 }
 
                 snapshots.snapshot(maze);
+                let ctx = GrowContext {
+                    committed_nodes: &committed_nodes,
+                    preset_state,
+                    inbound_requires_geometry: INBOUND_REQUIRES_GEOMETRY,
+                    outbound_requires_geometry: OUTBOUND_REQUIRES_GEOMETRY,
+                };
                 let outcome = attempt_one_region(
-                    maze, snapshots, class, locality, min_region_size,
-                    &committed_nodes, &mut excess_budget, preset_state, rng,
+                    maze, snapshots, class, locality, min_region_size, &mut excess_budget, &ctx, rng,
                 );
 
                 match outcome {
@@ -165,26 +183,18 @@ impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
 /// One full region-item attempt: try reuse first, fall back to growth. Returns the committed
 /// region's `members` on success (caller is responsible for NOT restoring the snapshot in that
 /// case), or `None` on failure (caller restores).
-#[allow(clippy::too_many_arguments)]
 fn attempt_one_region<T: Tessellation>(
     maze: &mut Maze<T>,
     snapshots: &mut SnapshotStack,
     target: RegionClass,
     locality: f64,
     min_region_size: usize,
-    committed_nodes: &HashSet<NodeId>,
     excess_budget: &mut HashMap<RegionClass, i32>,
-    preset_state: &PresetState,
+    ctx: &GrowContext,
     rng: &mut dyn RngCore,
 ) -> Option<HashSet<NodeId>> {
-    if let Some(members) = try_reuse(
-        maze, snapshots, target, min_region_size, committed_nodes, excess_budget,
-        INBOUND_REQUIRES_GEOMETRY, OUTBOUND_REQUIRES_GEOMETRY, preset_state, rng,
-    ) {
+    if let Some(members) = try_reuse(maze, snapshots, target, min_region_size, excess_budget, ctx, rng) {
         return Some(members);
     }
-    try_grow(
-        maze, snapshots, target, locality, min_region_size, committed_nodes, excess_budget,
-        INBOUND_REQUIRES_GEOMETRY, OUTBOUND_REQUIRES_GEOMETRY, preset_state, rng,
-    )
+    try_grow(maze, snapshots, target, locality, min_region_size, excess_budget, ctx, rng)
 }

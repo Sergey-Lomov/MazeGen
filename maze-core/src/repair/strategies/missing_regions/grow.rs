@@ -8,23 +8,21 @@ use crate::space::Tessellation;
 use crate::generation::{PresetState, try_add_directed_edge, try_remove_edge};
 use crate::repair::snapshot::SnapshotStack;
 
-use super::MAX_GROW_ATTEMPTS;
+use super::{MAX_GROW_ATTEMPTS, GrowContext};
 use super::convert::convert_region;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn try_grow<T: Tessellation>(
     maze: &mut Maze<T>,
     snapshots: &mut SnapshotStack,
     target: RegionClass,
     locality: f64,
     min_region_size: usize,
-    committed_nodes: &HashSet<NodeId>,
     excess_budget: &mut HashMap<RegionClass, i32>,
-    inbound_requires_geometry: bool,
-    outbound_requires_geometry: bool,
-    preset_state: &PresetState,
+    ctx: &GrowContext,
     rng: &mut dyn RngCore,
 ) -> Option<HashSet<NodeId>> {
+    let committed_nodes = ctx.committed_nodes;
+    let preset_state = ctx.preset_state;
     let scc = maze.analysis.scc(&maze.graph);
     let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
     let route = maze.analysis.route_info(&maze.graph, &maze.meta);
@@ -69,8 +67,8 @@ pub(super) fn try_grow<T: Tessellation>(
     // order, same as `filter_by_border`'s `false` case in `try_reuse`).
     let reachable_from_start = maze.analysis.reachable_from_start(&maze.graph, &maze.meta).unwrap_or_default();
     let reachable_to_finish = maze.analysis.reachable_to_finish(&maze.graph, &maze.meta).unwrap_or_default();
-    let needs_inbound = inbound_requires_geometry && matches!(target, RegionClass::Trap | RegionClass::Alternative);
-    let needs_outbound = outbound_requires_geometry && matches!(target, RegionClass::Alternative);
+    let needs_inbound = ctx.inbound_requires_geometry && matches!(target, RegionClass::Trap | RegionClass::Alternative);
+    let needs_outbound = ctx.outbound_requires_geometry && matches!(target, RegionClass::Alternative);
     let border_score = |n: NodeId| -> usize {
         if !needs_inbound && !needs_outbound {
             return 0;
@@ -103,7 +101,7 @@ pub(super) fn try_grow<T: Tessellation>(
         snapshots.snapshot(maze);
         let budget_before = excess_budget.clone();
 
-        if let Some(members) = grow_front(maze, seed, seed_component, &scc, &region_classes, excess_budget, locality, min_region_size, &critical, committed_nodes, preset_state, rng) {
+        if let Some(members) = grow_front(maze, seed, seed_component, &scc, &region_classes, excess_budget, locality, min_region_size, &critical, ctx, rng) {
             // Sever members from the rest of their parent region(s) before conversion — part of
             // this growth attempt's budget, not a separate connect step. Internal connectivity
             // of `members` is guaranteed by construction (every node was added via a real
@@ -143,7 +141,7 @@ pub(super) fn try_grow<T: Tessellation>(
 /// old accounting rule) even though growth may stop before consuming every one of its nodes —
 /// once a class's budget entry is spent, no more crossings into that class are allowed regardless
 /// of how many of its nodes actually ended up in `members`.
-/// Crossing never touches `critical`/`committed_nodes`, same as same-component growth.
+/// Crossing never touches `critical`/`ctx.committed_nodes`, same as same-component growth.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn grow_front<T: Tessellation>(
     maze: &mut Maze<T>,
@@ -155,10 +153,10 @@ pub(super) fn grow_front<T: Tessellation>(
     locality: f64,
     min_region_size: usize,
     critical: &HashSet<NodeId>,
-    committed_nodes: &HashSet<NodeId>,
-    preset_state: &PresetState,
+    ctx: &GrowContext,
     rng: &mut dyn RngCore,
 ) -> Option<HashSet<NodeId>> {
+    let committed_nodes = ctx.committed_nodes;
     let mut in_region: HashSet<NodeId> = HashSet::new();
     in_region.insert(seed);
     let mut frontier: Vec<NodeId> = vec![seed];
@@ -168,7 +166,7 @@ pub(super) fn grow_front<T: Tessellation>(
         if frontier.is_empty() {
             // Same-component front-expansion has nowhere left to go -- try crossing into a
             // bordering component with spare excess budget before giving up entirely.
-            let Some(opened) = try_open_excess_neighbor(maze, &in_region, scc, region_classes, excess_budget, critical, committed_nodes, &allowed_components, preset_state, rng) else {
+            let Some(opened) = try_open_excess_neighbor(maze, &in_region, scc, region_classes, excess_budget, critical, &allowed_components, ctx, rng) else {
                 return None;
             };
             allowed_components.insert(opened.component);
@@ -230,11 +228,12 @@ pub(super) fn try_open_excess_neighbor<T: Tessellation>(
     region_classes: &HashMap<ComponentId, RegionClass>,
     excess_budget: &mut HashMap<RegionClass, i32>,
     critical: &HashSet<NodeId>,
-    committed_nodes: &HashSet<NodeId>,
     allowed_components: &HashSet<ComponentId>,
-    preset_state: &PresetState,
+    ctx: &GrowContext,
     rng: &mut dyn RngCore,
 ) -> Option<OpenedNeighbor> {
+    let committed_nodes = ctx.committed_nodes;
+    let preset_state = ctx.preset_state;
     let mut bordering: Vec<(NodeId, NodeId, ComponentId)> = in_region.iter()
         .flat_map(|&m| maze.field.neighbors(m).into_iter().map(move |nb| (m, nb)))
         .filter(|(_, nb)| !critical.contains(nb) && !committed_nodes.contains(nb))

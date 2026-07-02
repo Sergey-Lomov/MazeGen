@@ -8,7 +8,7 @@ use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::repair::snapshot::SnapshotStack;
 
-use super::MAX_REUSE_ATTEMPTS;
+use super::{MAX_REUSE_ATTEMPTS, GrowContext};
 use super::convert::convert_region;
 use crate::generation::{try_add_directed_edge, try_remove_edge};
 
@@ -18,13 +18,12 @@ pub(super) fn try_reuse<T: Tessellation>(
     snapshots: &mut SnapshotStack,
     target: RegionClass,
     min_region_size: usize,
-    committed_nodes: &HashSet<NodeId>,
     excess_budget: &mut HashMap<RegionClass, i32>,
-    inbound_requires_geometry: bool,
-    outbound_requires_geometry: bool,
-    preset_state: &PresetState,
+    ctx: &GrowContext,
     rng: &mut dyn RngCore,
 ) -> Option<HashSet<NodeId>> {
+    let committed_nodes = ctx.committed_nodes;
+    let preset_state = ctx.preset_state;
     let scc = maze.analysis.scc(&maze.graph);
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
     let route = maze.analysis.route_info(&maze.graph, &maze.meta);
@@ -56,7 +55,7 @@ pub(super) fn try_reuse<T: Tessellation>(
     let reachable_to_finish = maze.analysis.reachable_to_finish(&maze.graph, &maze.meta).unwrap_or_default();
     let border_count = filter_by_border(
         maze, &mut candidates, target, &classes, &scc, &reachable_from_start, &reachable_to_finish,
-        inbound_requires_geometry, outbound_requires_geometry,
+        ctx.inbound_requires_geometry, ctx.outbound_requires_geometry,
     );
 
     if candidates.is_empty() {
@@ -82,7 +81,7 @@ pub(super) fn try_reuse<T: Tessellation>(
         let budget_before = excess_budget.clone();
 
         absorb_until_min_size(
-            maze, &mut members, idx, min_region_size, &scc, &classes, excess_budget, &critical, committed_nodes, preset_state, rng,
+            maze, &mut members, idx, min_region_size, &scc, &classes, excess_budget, &critical, ctx, rng,
         );
 
         let converted = convert_region(maze, &members, target, preset_state, rng);
@@ -104,7 +103,8 @@ pub(super) fn try_reuse<T: Tessellation>(
 ///    that merely has a bigger border-count, since the smaller one may still fail to absorb
 ///    enough budget to even reach `min_region_size` in the first place.
 /// 2. Within each size tier, descending `border_count` — a candidate with more border has
-///    better odds of landing the bridging edge within `MAX_CONNECT_ATTEMPTS`. Candidates absent
+///    better odds of landing a bridging edge (see `convert_region`'s uncapped shuffle-then-try-all
+///    candidate search). Candidates absent
 ///    from `border_count` are cut-transitions (border irrelevant to them, see
 ///    `filter_by_border`) — treated as highest border-count (`usize::MAX`), since their success
 ///    odds never depended on border-count to begin with.
@@ -163,10 +163,11 @@ pub(super) fn absorb_until_min_size<T: Tessellation>(
     classes: &HashMap<ComponentId, RegionClass>,
     excess_budget: &mut HashMap<RegionClass, i32>,
     critical: &HashSet<NodeId>,
-    committed_nodes: &HashSet<NodeId>,
-    preset_state: &PresetState,
+    ctx: &GrowContext,
     rng: &mut dyn RngCore,
 ) {
+    let committed_nodes = ctx.committed_nodes;
+    let preset_state = ctx.preset_state;
     let mut allowed_components: HashSet<ComponentId> = HashSet::from([candidate_idx]);
     'outer: while members.len() < min_region_size {
         let mut edge_pool: Vec<(NodeId, NodeId, ComponentId)> = members.iter()
