@@ -29,6 +29,17 @@ pub struct QcRuleConfig {
     pub strategy: Option<StrategyConfig>,
 }
 
+/// A named, ordered group of rules — see `Specs/repair.md`'s "Stages" section and issue #65.
+/// `id` is opaque, must be unique across every stage in a `GenerateConfig`. `rules` is this
+/// stage's own rule list (not a separate id-reference list) — see plan's "Отдельное 'stages',
+/// check_rules уходит" decision.
+#[derive(Deserialize)]
+pub struct StageConfig {
+    pub id: String,
+    pub name: String,
+    pub rules: Vec<QcRuleConfig>,
+}
+
 #[derive(Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TessellationType {
@@ -128,7 +139,7 @@ pub struct GenerateConfig {
     #[serde(default)]
     pub tessellation: TessellationConfig,
     #[serde(default)]
-    pub check_rules: Vec<QcRuleConfig>,
+    pub stages: Vec<StageConfig>,
     #[serde(default)]
     pub repair_max_iterations: Option<usize>,
     #[serde(default)]
@@ -154,27 +165,33 @@ impl Default for GenerateConfig {
     fn default() -> Self {
         Self {
             tessellation: TessellationConfig::default(),
-            check_rules: vec![
-                QcRuleConfig {
-                    id: "default_missing_endpoints".to_string(),
-                    checks: vec![CheckInstanceConfig {
-                        local_id: MISSING_ENDPOINTS.as_str().to_string(),
-                        type_id: MISSING_ENDPOINTS.as_str().to_string(),
-                        params: HashMap::new(),
-                    }],
-                    strategy: Some(StrategyConfig {
-                        id: "farthest_endpoints".to_string(),
-                        params: HashMap::new(),
-                    }),
-                },
-                QcRuleConfig {
-                    id: "default_unreachable_finish".to_string(),
-                    checks: vec![CheckInstanceConfig {
-                        local_id: UNREACHABLE_FINISH.as_str().to_string(),
-                        type_id: UNREACHABLE_FINISH.as_str().to_string(),
-                        params: HashMap::new(),
-                    }],
-                    strategy: None,
+            stages: vec![
+                StageConfig {
+                    id: "stage_1".to_string(),
+                    name: "Stage 1".to_string(),
+                    rules: vec![
+                        QcRuleConfig {
+                            id: "default_missing_endpoints".to_string(),
+                            checks: vec![CheckInstanceConfig {
+                                local_id: MISSING_ENDPOINTS.as_str().to_string(),
+                                type_id: MISSING_ENDPOINTS.as_str().to_string(),
+                                params: HashMap::new(),
+                            }],
+                            strategy: Some(StrategyConfig {
+                                id: "farthest_endpoints".to_string(),
+                                params: HashMap::new(),
+                            }),
+                        },
+                        QcRuleConfig {
+                            id: "default_unreachable_finish".to_string(),
+                            checks: vec![CheckInstanceConfig {
+                                local_id: UNREACHABLE_FINISH.as_str().to_string(),
+                                type_id: UNREACHABLE_FINISH.as_str().to_string(),
+                                params: HashMap::new(),
+                            }],
+                            strategy: None,
+                        },
+                    ],
                 },
             ],
             repair_max_iterations: RepairLimits::default().max_iterations,

@@ -18,9 +18,11 @@ const check: CheckVM = {
 };
 
 function makeVm(overrides: Partial<QualityViewModel> = {}): QualityViewModel {
+  const slots = [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [check] }];
   return {
     checks: [check],
-    strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [check] }],
+    stages: [{ stageId: "stage_1", name: "Stage 1", slots, disabled: false }],
+    strategySlots: slots,
     ...overrides,
   };
 }

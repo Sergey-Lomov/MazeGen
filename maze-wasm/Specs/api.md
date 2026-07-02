@@ -39,11 +39,7 @@ Returns `Array<StrategyDescriptor>` — list of all registered repair strategies
 ```ts
 {
   tessellation: TessellationConfig,   // default: { type: "square", width: 10, height: 10 }
-  checks: string[],                   // default: ["missing_endpoints", "unreachable_finish"]
-  strategies: Record<string, {        // default: { missing_endpoints: { id: "farthest_endpoints" } }
-    id: string,
-    params: Record<string, string>
-  }>,
+  stages: StageConfig[],              // default: one stage with missing_endpoints/unreachable_finish rules
   repair_max_iterations?: number,     // default: 10 — caps the repair fixpoint loop's iteration count
   repair_time_budget_secs?: number,   // default: undefined (no time cap) — wall-clock budget for the repair loop
   initial: InitialGenerationConfig,   // default: { method: "custom_vertex_based" }
@@ -51,7 +47,19 @@ Returns `Array<StrategyDescriptor>` — list of all registered repair strategies
 }
 ```
 
-`repair_max_iterations` and `repair_time_budget_secs` are both optional and independent — whichever limit is hit first stops the repair loop early, returning whatever issues remain unresolved at that point (see `Specs/repair.md`'s `RepairLimits`). Both `null`/omitted means no cap at all.
+`repair_max_iterations` and `repair_time_budget_secs` are both optional and independent — whichever limit is hit first stops the repair loop early, returning whatever issues remain unresolved at that point (see `Specs/repair.md`'s `RepairLimits`). Both `null`/omitted means no cap at all. This budget is shared across every stage in `stages`, not reset per stage.
+
+### `StageConfig`
+
+A named, ordered group of QC rules — see `Specs/repair.md`'s "Stages" section and `Specs/quality_control.md`'s "QcRuleConfig" section (GitHub issue #65). `RepairEngine` dispatches one stage at a time, in `stages` array order — only rules belonging to the current stage repair-dispatch until it has no more active issues, then the next stage starts. A rule with a strategy must appear in exactly one stage's `rules`; a rule with no strategy has no such requirement.
+
+```ts
+{
+  id: string,
+  name: string,
+  rules: QcRuleConfig[],   // see quality_control.md's "QcRuleConfig" section for its shape
+}
+```
 
 ### `InitialGenerationConfig`
 

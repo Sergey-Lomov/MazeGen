@@ -44,11 +44,25 @@ export interface StrategySlotVM {
   producedBy: CheckVM[];
 }
 
+/** One stage's rule cards, in `RepairStageState.ruleIds` order — see GitHub issue #65. */
+export interface QualityStageVM {
+  stageId: string;
+  name: string;
+  slots: StrategySlotVM[];
+  /** Whole-stage toggle — when true, every member rule is excluded from generation entirely.
+   * Independent of any member rule's own `ruleDisabled`. */
+  disabled: boolean;
+}
+
 export interface QualityViewModel {
   /** All active check instances, across all rules. */
   checks: CheckVM[];
-  /** One per rule in the store — not deduplicated by kind, since rules are how the user
-   * splits/merges checks sharing a kind into independent or shared strategy slots. */
+  /** Rule cards grouped by stage, in `state.stages` order — the source of truth for rendering
+   * (`RulesColumn` renders through this, not `strategySlots`). */
+  stages: QualityStageVM[];
+  /** `stages.flatMap(s => s.slots)` — one per rule in the store, not deduplicated by kind, in
+   * combined stage-then-rule order. Derived from `stages`, not an independent list — kept for
+   * consumers outside `RulesColumn` that don't need the stage grouping itself. */
   strategySlots: StrategySlotVM[];
 }
 
@@ -70,11 +84,12 @@ export function useQualityViewModel(): QualityViewModel {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const rules = useMazeStore((s) => s.rules);
+  const storeStages = useMazeStore((s) => s.stages);
 
   return useMemo(() => {
     const descriptorById = new Map(availableChecks.map((c) => [c.id, c]));
 
-    const strategySlots: StrategySlotVM[] = rules.map((r) => {
+    function buildSlot(r: (typeof rules)[number]): StrategySlotVM {
       const s = r.strategyId ? availableStrategies.find((s) => s.id === r.strategyId) : undefined;
       const producedBy: CheckVM[] = r.checks
         .map((check) => {
@@ -103,10 +118,27 @@ export function useQualityViewModel(): QualityViewModel {
         ruleDisabled: r.ruleDisabled,
         producedBy,
       };
-    });
+    }
 
+    const ruleById = new Map(rules.map((r) => [r.id, r]));
+
+    // `stages` is the source of truth for both grouping and order — a `ruleId` with no matching
+    // rule (stale reference) is silently dropped, same defensive pattern `producedBy` above uses
+    // for an unknown `typeId`: not an expected path under the store's own invariants, but a
+    // render-time guard against a momentarily inconsistent state rather than a thrown error.
+    const stages: QualityStageVM[] = storeStages.map((stage) => ({
+      stageId: stage.id,
+      name: stage.name,
+      disabled: stage.disabled,
+      slots: stage.ruleIds
+        .map((id) => ruleById.get(id))
+        .filter((r): r is NonNullable<typeof r> => r !== undefined)
+        .map(buildSlot),
+    }));
+
+    const strategySlots = stages.flatMap((s) => s.slots);
     const checks = strategySlots.flatMap((slot) => slot.producedBy);
 
-    return { checks, strategySlots };
-  }, [availableChecks, availableStrategies, rules]);
+    return { checks, stages, strategySlots };
+  }, [availableChecks, availableStrategies, rules, storeStages]);
 }

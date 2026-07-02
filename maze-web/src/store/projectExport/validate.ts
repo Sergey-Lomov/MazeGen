@@ -10,6 +10,7 @@ import {
   type ProjectFileDebug,
   type ProjectFileUi,
   type ProjectFileQcRule,
+  type ProjectFileStage,
 } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
@@ -259,6 +260,21 @@ function validateQcRule(v: unknown, path: string, index: number): ProjectFileQcR
   return { id, name, kind, checks, strategyId, disabled, ruleDisabled };
 }
 
+// See GitHub issue #65. Shape-only validation here — cross-stage integrity (duplicate rule id
+// across stages, unknown rule id referenced, rule missing from every stage) is checked once, in
+// `parseAndValidate`, after every rule and stage has been individually validated (needs the full
+// `rules` list to check against, not available per-stage).
+// `disabled` defaults to `false` for stages saved before the whole-stage toggle existed (see
+// GitHub issue #65's UI follow-up) — same pattern as `ruleDisabled`'s default in `validateQcRule`.
+function validateQcStage(v: unknown, path: string): ProjectFileStage {
+  const obj = assertObject(v, path);
+  const id = assertString(obj.id, `${path}.id`);
+  const name = assertString(obj.name, `${path}.name`);
+  const ruleIds = assertArray(obj.ruleIds, `${path}.ruleIds`).map((r, i) => assertString(r, `${path}.ruleIds[${i}]`));
+  const disabled = typeof obj.disabled === "boolean" ? obj.disabled : false;
+  return { id, name, ruleIds, disabled };
+}
+
 function validateNodeLockKind(v: unknown, path: string): NodeLockKind {
   const kind = assertString(v, path);
   if (kind !== "in" && kind !== "out" && kind !== "both")
@@ -300,6 +316,38 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const rules = assertArray(qualObj.rules, "quality.rules")
     .map((v, i) => validateQcRule(v, `quality.rules[${i}]`, i))
     .filter((r) => r.kind !== "");
+  // See GitHub issue #65 and Specs/quality-feature.md's "Project file persistence" section.
+  // Two cases: the key is absent entirely (file saved before this feature — recovery synthesizes
+  // one stage covering every rule, not a registered migration, same pattern as
+  // repairMaxIterations/ruleDisabled below) vs. the key is present (validated for full
+  // consistency against `rules` — any violation is a hard parse error, not a silent recovery,
+  // since a present-but-inconsistent key means the file is corrupted, not merely old).
+  const ruleIds = new Set(rules.map((r) => r.id));
+  let stages: ProjectFileStage[];
+  if (!("stages" in qualObj)) {
+    stages = [{ id: "stage_1", name: "Stage 1", ruleIds: rules.map((r) => r.id), disabled: false }];
+  } else {
+    const parsedStages = assertArray(qualObj.stages, "quality.stages").map((v, i) => validateQcStage(v, `quality.stages[${i}]`));
+    // A `ruleId` in a stage that doesn't resolve to a surviving rule is only ever a rule dropped
+    // by the kind-drop recovery above (see "Rules with no kind" comment) — that rule never
+    // reaches `rules`/`ruleIds`, so a strict "unknown rule id" error here would fire on every
+    // legacy file exercising that same recovery path. Scrub it silently instead; genuinely
+    // unknown ids (never present in the file's own `quality.rules` at all) are indistinguishable
+    // from this case at this point and get the same silent scrub — a stricter check would need to
+    // track "known but kind-dropped" separately, which isn't worth the complexity for a
+    // stale-reference cleanup that's a no-op either way.
+    stages = parsedStages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => ruleIds.has(id)) }));
+    const seenInStage = new Set<string>();
+    for (const stage of stages) {
+      for (const ruleId of stage.ruleIds) {
+        if (seenInStage.has(ruleId)) throw new Error(`quality.stages: rule id ${ruleId} appears in more than one stage`);
+        seenInStage.add(ruleId);
+      }
+    }
+    for (const r of rules) {
+      if (!seenInStage.has(r.id)) throw new Error(`quality.stages: rule id ${r.id} is not assigned to any stage`);
+    }
+  }
   const strategyParams = assertStringRecordRecord(qualObj.strategyParams, "quality.strategyParams");
   // Optional — files saved before this setting existed (key absent entirely) default to the same
   // values as a fresh store (see generationSlice's initial state): max_iterations capped, no time
@@ -378,7 +426,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     version: CURRENT_VERSION,
     tessellation: { config, savedConfigs },
     generation: { seed, randomSeed, initial, elements },
-    quality: { rules, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
+    quality: { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
     presets: {
       connections,
       lockedNodes,

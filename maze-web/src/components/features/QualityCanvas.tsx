@@ -18,7 +18,7 @@ export function QualityCanvas() {
   return (
     <div style={styles.root}>
       <RulesColumn
-        slots={vm.strategySlots}
+        stages={vm.stages}
         selection={selection}
         onSelect={handleSelect}
       />

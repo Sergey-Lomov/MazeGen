@@ -11,6 +11,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: {},
     rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" } }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false }],
+    stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }],
     strategyParams: { strategy_a: { param_b: "2" } },
     repairMaxIterations: 10,
     repairTimeBudgetSecs: null,
@@ -231,6 +232,45 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     const check = (rule.checks as Record<string, unknown>[])[0];
     rule.checks = [check, { ...check, typeId: "check_b" }];
     expect(() => parseAndValidate(data)).toThrow(/Duplicate localId/);
+  });
+
+  // --- Stages (GitHub issue #65) ---
+
+  it("recovers a single stage covering every rule when quality.stages is absent (legacy file)", () => {
+    const data = valid_without_optional_sections();
+    delete (data.quality as { stages?: unknown }).stages;
+    const result = parseAndValidate(data);
+    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }]);
+  });
+
+  it("rejects quality.stages when a known rule is not assigned to any stage", () => {
+    const data = valid_without_optional_sections();
+    (data.quality as { stages: unknown }).stages = [{ id: "stage_1", name: "Stage 1", ruleIds: [] }];
+    expect(() => parseAndValidate(data)).toThrow(/not assigned to any stage/);
+  });
+
+  it("rejects quality.stages when a rule id appears in more than one stage", () => {
+    const data = valid_without_optional_sections();
+    (data.quality as { stages: unknown }).stages = [
+      { id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"] },
+      { id: "stage_2", name: "Stage 2", ruleIds: ["rule_1"] },
+    ];
+    expect(() => parseAndValidate(data)).toThrow(/appears in more than one stage/);
+  });
+
+  it("silently scrubs a stage's reference to a rule dropped by the kind-drop recovery", () => {
+    const data = valid_without_optional_sections();
+    delete (data.quality as { rules: Record<string, unknown>[] }).rules[0].kind;
+    (data.quality as { stages: unknown }).stages = [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"] }];
+    const result = parseAndValidate(data);
+    expect(result.quality.rules).toEqual([]);
+    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: [], disabled: false }]);
+  });
+
+  it("round-trips quality.stages", () => {
+    const data = valid_without_optional_sections();
+    const result = parseAndValidate(data);
+    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }]);
   });
 
   function valid_without_optional_sections(): Record<string, unknown> {

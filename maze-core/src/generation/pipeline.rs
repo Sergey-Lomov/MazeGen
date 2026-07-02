@@ -82,7 +82,6 @@ pub fn build_maze<T: Tessellation>(
     let mut maze = Maze::new(field, graph);
     let mut rng = MazeRng::seed_from_u64(seed);
     let mut failed: HashSet<String> = HashSet::new();
-    let mut previous_active: Option<Vec<(String, Issue)>> = None;
     let check_id_to_rule = repair_engine.check_id_to_rule();
     let start_ms = now_ms();
     let mut timing = GenerationTiming::default();
@@ -90,91 +89,114 @@ pub fn build_maze<T: Tessellation>(
     let mut iterations_done = 0usize;
     let mut limit_reached: Option<RepairLimitKind> = None;
     let mut no_progress_rules: Option<Vec<String>> = None;
-    loop {
-        if let Some(max) = limits.max_iterations {
-            if iterations_done >= max { limit_reached = Some(RepairLimitKind::MaxIterations); break; }
+    // Stages are dispatched one at a time, in order — see `Specs/repair.md`'s "Stages" section.
+    // `failed`, iteration/time budget, and `limit_reached` are shared across every stage in this
+    // `build_maze` call. `previous_active` (no-progress fingerprint) resets at each stage
+    // boundary — a fresh stage's differing active-rule set must never look like "no progress" on
+    // the previous stage, nor mask genuine no-progress within the new stage. No-progress and the
+    // iteration/time budget both stop the whole `for` loop (labeled `'stages`), not just the
+    // current stage — see plan's "Контекст" section for why.
+    'stages: for stage in repair_engine.stages() {
+        let dispatchable = repair_engine.strategy_rule_ids_for_stage(&stage.id);
+        let Some(dispatchable) = dispatchable else { continue };
+        if dispatchable.is_empty() {
+            // No rule in this stage has a registered strategy — nothing to dispatch, but QC
+            // still needs to run once so this stage's own no-strategy rules get attributed in
+            // `remaining` via the final QC pass below. No repair-loop iteration is needed here;
+            // moving straight to the next stage is equivalent (see plan's "Stage без
+            // dispatchable-правил").
+            continue;
         }
-        if let Some(budget_secs) = limits.time_budget_secs {
-            if now_ms() - start_ms >= budget_secs * 1000.0 { limit_reached = Some(RepairLimitKind::TimeBudget); break; }
-        }
-        iterations_done += 1;
-
-        let qc_start = now_ms();
-        let mut per_check_ms: HashMap<&'static str, (f64, u32)> = HashMap::new();
-        let issues = qc_engine.run_timed(&maze, &mut rng, &mut per_check_ms, now_ms);
-        timing.qc_total_ms += now_ms() - qc_start;
-        for (id, (total_ms, calls)) in per_check_ms {
-            let entry = timing.per_check.entry(id).or_default();
-            entry.total_ms += total_ms;
-            entry.calls += calls;
-        }
-        // Merge (not drop) issues that share a rule — multiple checks in the same rule may
-        // legitimately produce the same IssueKind (e.g. several reasons a cycle can be invalid).
-        // See merge_issue. An issue this loop can't route to any rule (zero source checks, e.g.
-        // CYCLE_ANALYSIS_OVERFLOWED, or a check id with no configured rule) is dropped from this
-        // iteration's `by_rule` map entirely — it plays no part in this iteration's repair pass.
-        // It is not lost from the maze's perspective: the final `qc_engine.run` call after the
-        // loop (see `remaining` below) recomputes issues fresh and will surface it there if it's
-        // still present, the same way CYCLE_ANALYSIS_OVERFLOWED (never routed, never repaired)
-        // does today.
-        let mut by_rule: HashMap<String, Issue> = HashMap::new();
-        for issue in issues {
-            // `single_source_check` returns `None` both for the legitimate zero-source case and
-            // for a malformed 2+-source raw issue (debug_assert below catches the latter in
-            // debug builds) — either way, routing as "no rule" is the safe outcome: a release
-            // build never silently misroutes by an arbitrary first source.
-            debug_assert!(issue.source_checks().len() <= 1,
-                "raw issue must have at most one source check before merge — \
-                 Issue::new_from_check/with_data_from_check always set exactly one, \
-                 Issue::new/with_data set none");
-            let Some(rule_id) = issue.single_source_check()
-                .and_then(|check_id| check_id_to_rule.get(check_id))
-            else { continue };
-            if failed.contains(rule_id) { continue; }
-            match by_rule.entry(rule_id.clone()) {
-                Entry::Occupied(mut e) => merge_issue(e.get_mut(), issue),
-                Entry::Vacant(e) => { e.insert(issue); }
+        let mut previous_active: Option<Vec<(String, Issue)>> = None;
+        loop {
+            if let Some(max) = limits.max_iterations {
+                if iterations_done >= max { limit_reached = Some(RepairLimitKind::MaxIterations); break 'stages; }
             }
-        }
-        // Rules with no registered strategy still merge their issues (for attribution), but
-        // must not participate in fingerprint/progress-tracking or repair dispatch — same final
-        // effect as today's "kind without a strategy is skipped", just keyed by rule now.
-        let strategy_rule_ids = repair_engine.strategy_rule_ids();
-        let mut active: Vec<(String, Issue)> = by_rule.into_iter()
-            .filter(|(rule_id, _)| strategy_rule_ids.contains(rule_id.as_str()))
-            .collect();
-        if active.is_empty() {
-            break;
-        }
-        active.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
-        // Progress guard compares full (rule_id, Issue) content, not just the set of active rule
-        // ids — two iterations producing the same rule with genuinely different issue data (e.g.
-        // different cycles flagged invalid) must not look like a no-progress oscillation. See
-        // https://github.com/Sergey-Lomov/MazeGen/issues/27.
-        if Some(&active) == previous_active.as_ref() {
-            no_progress_rules = Some(active.iter().map(|(rule_id, _)| rule_id.clone()).collect());
-            break;
-        }
-        previous_active = Some(active.clone());
+            if let Some(budget_secs) = limits.time_budget_secs {
+                if now_ms() - start_ms >= budget_secs * 1000.0 { limit_reached = Some(RepairLimitKind::TimeBudget); break 'stages; }
+            }
+            iterations_done += 1;
 
-        let repair_start = now_ms();
-        let mut per_strategy_ms: HashMap<&'static str, (f64, u32)> = HashMap::new();
-        let results = repair_engine.run_timed(&active, &mut maze, &mut rng, preset_state, &mut per_strategy_ms, now_ms);
-        timing.repair_total_ms += now_ms() - repair_start;
-        for (id, (total_ms, calls)) in per_strategy_ms {
-            let entry = timing.per_strategy.entry(id).or_default();
-            entry.total_ms += total_ms;
-            entry.calls += calls;
-        }
-        for outcome in &results {
-            match &outcome.result {
-                RepairResult::Failed => { failed.insert(outcome.rule_id.clone()); }
-                RepairResult::Fixed { score: Some(s) } => {
-                    if maze.meta.route_score.is_none() {
-                        maze.meta.route_score = Some(*s);
-                    }
+            let qc_start = now_ms();
+            let mut per_check_ms: HashMap<&'static str, (f64, u32)> = HashMap::new();
+            let issues = qc_engine.run_timed(&maze, &mut rng, &mut per_check_ms, now_ms);
+            timing.qc_total_ms += now_ms() - qc_start;
+            for (id, (total_ms, calls)) in per_check_ms {
+                let entry = timing.per_check.entry(id).or_default();
+                entry.total_ms += total_ms;
+                entry.calls += calls;
+            }
+            // Merge (not drop) issues that share a rule — multiple checks in the same rule may
+            // legitimately produce the same IssueKind (e.g. several reasons a cycle can be invalid).
+            // See merge_issue. An issue this loop can't route to any rule (zero source checks, e.g.
+            // CYCLE_ANALYSIS_OVERFLOWED, or a check id with no configured rule) is dropped from this
+            // iteration's `by_rule` map entirely — it plays no part in this iteration's repair pass.
+            // It is not lost from the maze's perspective: the final `qc_engine.run` call after the
+            // loop (see `remaining` below) recomputes issues fresh and will surface it there if it's
+            // still present, the same way CYCLE_ANALYSIS_OVERFLOWED (never routed, never repaired)
+            // does today. This merge is stage-agnostic — it processes every rule's issues, including
+            // rules belonging to stages not yet reached, so nothing here changes with staging (see
+            // `strategy_rule_ids_for_stage` filter below, which is where staging actually applies).
+            let mut by_rule: HashMap<String, Issue> = HashMap::new();
+            for issue in issues {
+                // `single_source_check` returns `None` both for the legitimate zero-source case and
+                // for a malformed 2+-source raw issue (debug_assert below catches the latter in
+                // debug builds) — either way, routing as "no rule" is the safe outcome: a release
+                // build never silently misroutes by an arbitrary first source.
+                debug_assert!(issue.source_checks().len() <= 1,
+                    "raw issue must have at most one source check before merge — \
+                     Issue::new_from_check/with_data_from_check always set exactly one, \
+                     Issue::new/with_data set none");
+                let Some(rule_id) = issue.single_source_check()
+                    .and_then(|check_id| check_id_to_rule.get(check_id))
+                else { continue };
+                if failed.contains(rule_id) { continue; }
+                match by_rule.entry(rule_id.clone()) {
+                    Entry::Occupied(mut e) => merge_issue(e.get_mut(), issue),
+                    Entry::Vacant(e) => { e.insert(issue); }
                 }
-                RepairResult::Fixed { score: None } => {}
+            }
+            // Filtered to the current stage's dispatchable rules — not `strategy_rule_ids()`
+            // (every stage's dispatchable rules). A rule belonging to a later stage may have an
+            // active issue here already; it is simply dropped from `active` this iteration and
+            // recomputed fresh by QC once its own stage is reached (no caching across stages).
+            let mut active: Vec<(String, Issue)> = by_rule.into_iter()
+                .filter(|(rule_id, _)| dispatchable.contains(rule_id.as_str()))
+                .collect();
+            if active.is_empty() {
+                // This stage is done — advance to the next one via the outer `for`.
+                continue 'stages;
+            }
+            active.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+            // Progress guard compares full (rule_id, Issue) content, not just the set of active rule
+            // ids — two iterations producing the same rule with genuinely different issue data (e.g.
+            // different cycles flagged invalid) must not look like a no-progress oscillation. See
+            // https://github.com/Sergey-Lomov/MazeGen/issues/27.
+            if Some(&active) == previous_active.as_ref() {
+                no_progress_rules = Some(active.iter().map(|(rule_id, _)| rule_id.clone()).collect());
+                break 'stages;
+            }
+            previous_active = Some(active.clone());
+
+            let repair_start = now_ms();
+            let mut per_strategy_ms: HashMap<&'static str, (f64, u32)> = HashMap::new();
+            let results = repair_engine.run_timed(&active, &mut maze, &mut rng, preset_state, &mut per_strategy_ms, now_ms);
+            timing.repair_total_ms += now_ms() - repair_start;
+            for (id, (total_ms, calls)) in per_strategy_ms {
+                let entry = timing.per_strategy.entry(id).or_default();
+                entry.total_ms += total_ms;
+                entry.calls += calls;
+            }
+            for outcome in &results {
+                match &outcome.result {
+                    RepairResult::Failed => { failed.insert(outcome.rule_id.clone()); }
+                    RepairResult::Fixed { score: Some(s) } => {
+                        if maze.meta.route_score.is_none() {
+                            maze.meta.route_score = Some(*s);
+                        }
+                    }
+                    RepairResult::Fixed { score: None } => {}
+                }
             }
         }
     }

@@ -7,6 +7,11 @@ import type { ShapePrimitive, TessellationKind } from "./primitiveGeometry";
 import type { FieldPrimitive } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+}
+
 interface PanCallbacks {
   startPan: (x: number, y: number) => void;
   movePan: (x: number, y: number) => void;
@@ -42,6 +47,10 @@ export class FieldEditController {
   private primitiveCallbacks: PrimitiveCallbacks;
 
   private onKeyDown = (e: KeyboardEvent) => {
+    // Space-to-pan is a canvas-only gesture — must not swallow a literal space typed into a
+    // text input/textarea elsewhere on the page (e.g. renaming a rule/stage), which this
+    // listener would otherwise do globally via `window`, regardless of focus.
+    if (isTypingTarget(e.target)) return;
     if (e.code === "Space") { e.preventDefault(); this.spaceHeld = true; }
     if (e.code === "Escape") this.cancelGesture();
   };

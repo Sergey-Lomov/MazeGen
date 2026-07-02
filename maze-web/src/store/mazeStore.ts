@@ -78,6 +78,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         ...rule,
         nextLocalCheckId: rule.checks.length === 0 ? 0 : Math.max(...rule.checks.map((c) => c.localId)) + 1,
       })),
+      stages: file.quality.stages,
       strategyParams: file.quality.strategyParams,
       repairMaxIterations: file.quality.repairMaxIterations,
       repairTimeBudgetSecs: file.quality.repairTimeBudgetSecs,

@@ -59,6 +59,15 @@ export interface ProjectFileQcRule {
   ruleDisabled: boolean;
 }
 
+/** A named, ordered group of rule ids — see GitHub issue #65 and `RepairStageState`'s doc
+ * comment in storeTypes.ts. Flat sibling of `ProjectFileQcRule[]`, nothing computed on load. */
+export interface ProjectFileStage {
+  id: string;
+  name: string;
+  ruleIds: string[];
+  disabled: boolean;
+}
+
 export interface ProjectFile {
   version: number;
   tessellation: { config: TessellationConfig; savedConfigs: TessellationConfig[] };
@@ -70,6 +79,7 @@ export interface ProjectFile {
   };
   quality: {
     rules: ProjectFileQcRule[];
+    stages: ProjectFileStage[];
     strategyParams: Record<string, Record<string, string>>;
     repairMaxIterations: number | null;
     repairTimeBudgetSecs: number | null;

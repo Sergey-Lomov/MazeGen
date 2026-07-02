@@ -6,7 +6,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated } from "../../pixi/postEditUtils";
-import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance } from "../storeTypes";
+import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance, RepairStageState } from "../storeTypes";
 import { activeTessellationOf, buildResetMazeState, debugStaleOf } from "../storeHelpers";
 import * as m from "~/paraglide/messages";
 
@@ -68,6 +68,36 @@ function newRule(kind: string, checks: CheckInstance[], strategyId: string | nul
   };
 }
 
+// Default stage name — the very first stage (index 0) is seeded as "Путевые точки" ("Waypoints"),
+// since it's the one every fresh project starts with and typically holds the endpoint-placement
+// rules; later stages fall back to "Stage N" by creation-order position, not renumbered on
+// rename/reorder (same pattern as `defaultRuleName`'s "Rule N" fallback in `validateQcRule`, see
+// projectExport). `id` is a UUID for the same reason `newRule`'s `id` is — see that function's
+// doc comment.
+function newStage(index: number, ruleIds: string[] = []): RepairStageState {
+  return {
+    id: `stage_${crypto.randomUUID()}`,
+    name: index === 0 ? m["quality.default_stage_name"]() : `Stage ${index + 1}`,
+    ruleIds,
+    disabled: false,
+  };
+}
+
+// Appends `ruleId` to a stage's `ruleIds` — the "new rule goes at the end" placement used by
+// `addCheck` (singleton path), `createRule`, and `removeCheckFromRule`'s new-singleton path.
+// `targetStageId`, when given and resolving to a known stage, receives the rule (the per-stage
+// "+ Add rule" toolbar button — see RulesColumn); otherwise falls back to the last stage. `stages`
+// can legitimately be empty (there is no "at least one stage" invariant — a stage is only ever
+// created explicitly via `addStage`, or implicitly here) — in that case a fresh stage is created
+// to hold the new rule, rather than the rule ending up in no stage at all.
+function appendRuleToStage(stages: RepairStageState[], ruleId: string, targetStageId?: string): RepairStageState[] {
+  if (stages.length === 0) return [newStage(0, [ruleId])];
+  if (targetStageId && stages.some((s) => s.id === targetStageId)) {
+    return stages.map((s) => s.id === targetStageId ? { ...s, ruleIds: [...s.ruleIds, ruleId] } : s);
+  }
+  return stages.map((s, i) => i === stages.length - 1 ? { ...s, ruleIds: [...s.ruleIds, ruleId] } : s);
+}
+
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (set, get) => ({
   nodes: [],
   edges: [],
@@ -86,6 +116,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   availableChecks: [],
   availableStrategies: [],
   rules: [],
+  stages: [newStage(0)],
   strategyParams: {},
   initialConfig: { method: "recursive_backtracker" as const },
   elementsConfig: { one_way_chance: 0.04 },
@@ -128,12 +159,23 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       });
       const knownIds = new Set(checks.map((c) => c.id));
       set((state) => {
-        const rules = state.registryLoaded
-          ? state.rules
-              .map((g) => ({ ...g, checks: g.checks.filter((c) => knownIds.has(c.typeId)) }))
-              .filter((g) => g.checks.length > 0)
-          : defaultRules;
-        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, rules };
+        if (!state.registryLoaded) {
+          // First load: default rules go into the sole (default) stage created by initial state.
+          const stages = state.stages.length > 0
+            ? [{ ...state.stages[0], ruleIds: defaultRules.map((r) => r.id) }, ...state.stages.slice(1)]
+            : [newStage(0, defaultRules.map((r) => r.id))];
+          return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, rules: defaultRules, stages };
+        }
+        // Reload: rules left empty by the registry filter are dropped (see
+        // Specs/quality-feature.md's "Default State") — their ids must also be scrubbed from
+        // every stage's `ruleIds`, or a stage would keep a stale reference to a rule that no
+        // longer exists.
+        const rules = state.rules
+          .map((g) => ({ ...g, checks: g.checks.filter((c) => knownIds.has(c.typeId)) }))
+          .filter((g) => g.checks.length > 0);
+        const survivingIds = new Set(rules.map((r) => r.id));
+        const stages = state.stages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => survivingIds.has(id)) }));
+        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, rules, stages };
       });
     }).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -194,15 +236,20 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     // dialogs that call `addCheck` with a ruleId already pre-filter candidates by kind (see
     // `RulesColumn.candidatesFor`), but the store must not rely on that being the only caller.
     const targetRule = ruleId ? state.rules.find((g) => g.id === ruleId && g.kind === checkKind) : undefined;
-    const rules = targetRule
-      ? state.rules.map((g) => g.id === ruleId
-          ? { ...g, checks: [...g.checks, { localId: g.nextLocalCheckId, typeId, params }], nextLocalCheckId: g.nextLocalCheckId + 1 }
-          : g)
-      : [...state.rules, newRule(checkKind, [{ localId: 0, typeId, params }], null, false)];
-    return { rules, debugStale: debugStaleOf(state) };
+    if (targetRule) {
+      const rules = state.rules.map((g) => g.id === ruleId
+        ? { ...g, checks: [...g.checks, { localId: g.nextLocalCheckId, typeId, params }], nextLocalCheckId: g.nextLocalCheckId + 1 }
+        : g);
+      return { rules, debugStale: debugStaleOf(state) };
+    }
+    // New singleton rule — goes into the last stage (a fresh one is created if `stages` is
+    // currently empty — see `appendRuleToStage`).
+    const rule = newRule(checkKind, [{ localId: 0, typeId, params }], null, false);
+    const stages = appendRuleToStage(state.stages, rule.id);
+    return { rules: [...state.rules, rule], stages, debugStale: debugStaleOf(state) };
   }),
 
-  createRule: (typeIds, strategyId, initialCheckParams, initialStrategyParams) => set((state) => {
+  createRule: (typeIds, strategyId, initialCheckParams, initialStrategyParams, targetStageId) => set((state) => {
     if (typeIds.length === 0) return {};
     const descriptors = typeIds
       .map((id) => state.availableChecks.find((c) => c.id === id))
@@ -230,9 +277,12 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
         })
       );
     }
+    const rule = newRule(checkKind, checks, strategyId, false);
+    const stages = appendRuleToStage(state.stages, rule.id, targetStageId);
     return {
       strategyParams,
-      rules: [...state.rules, newRule(checkKind, checks, strategyId, false)],
+      rules: [...state.rules, rule],
+      stages,
       debugStale: debugStaleOf(state),
     };
   }),
@@ -262,8 +312,13 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       .map((g) => g.id === ruleId ? { ...g, checks: g.checks.filter((c) => c.localId !== localId) } : g)
       .filter((g) => g.checks.length > 0);
     const descriptor = state.availableChecks.find((c) => c.id === moved.typeId);
-    rules.push(newRule(descriptor ? resolveCheckKind(descriptor) : "", [{ ...moved, localId: 0 }], null, false));
-    return { rules, debugStale: debugStaleOf(state) };
+    const newSingleton = newRule(descriptor ? resolveCheckKind(descriptor) : "", [{ ...moved, localId: 0 }], null, false);
+    rules.push(newSingleton);
+    // Source rule left empty by this move is not dropped (see `QcRuleState`'s doc comment) —
+    // its own stage membership is untouched. The new singleton rule goes into the last stage,
+    // same placement `addCheck`/`createRule` use for a freshly created rule.
+    const stages = appendRuleToStage(state.stages, newSingleton.id);
+    return { rules, stages, debugStale: debugStaleOf(state) };
   }),
 
   setStrategy: (ruleId, strategyId) => set((state) => ({
@@ -292,17 +347,96 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   removeRule: (ruleId) => set((state) => ({
     rules: state.rules.filter((g) => g.id !== ruleId),
+    stages: state.stages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => id !== ruleId) })),
     debugStale: debugStaleOf(state),
   })),
 
+  // See `Specs/quality-feature.md`'s "moveRule and stages" section for the full algorithm this
+  // implements. Within one stage: adjacent swap in that stage's `ruleIds` (unchanged from before
+  // staging existed). At a stage boundary: the rule physically moves to the neighboring stage,
+  // inserted at its near edge — front for "down" (moving into the next stage), back for "up"
+  // (moving into the previous stage) — including into an empty neighboring stage. No-op only at
+  // the global boundary.
   moveRule: (ruleId, direction) => set((state) => {
-    const idx = state.rules.findIndex((g) => g.id === ruleId);
-    const swapWith = direction === "up" ? idx - 1 : idx + 1;
-    if (idx === -1 || swapWith < 0 || swapWith >= state.rules.length) return {};
-    const rules = [...state.rules];
-    [rules[idx], rules[swapWith]] = [rules[swapWith], rules[idx]];
-    return { rules, debugStale: debugStaleOf(state) };
+    const stageIdx = state.stages.findIndex((s) => s.ruleIds.includes(ruleId));
+    if (stageIdx === -1) return {};
+    const stage = state.stages[stageIdx];
+    const ruleIdx = stage.ruleIds.indexOf(ruleId);
+
+    if (direction === "up" && ruleIdx > 0) {
+      const ruleIds = [...stage.ruleIds];
+      [ruleIds[ruleIdx - 1], ruleIds[ruleIdx]] = [ruleIds[ruleIdx], ruleIds[ruleIdx - 1]];
+      const stages = state.stages.map((s, i) => i === stageIdx ? { ...s, ruleIds } : s);
+      return { stages, debugStale: debugStaleOf(state) };
+    }
+    if (direction === "down" && ruleIdx < stage.ruleIds.length - 1) {
+      const ruleIds = [...stage.ruleIds];
+      [ruleIds[ruleIdx], ruleIds[ruleIdx + 1]] = [ruleIds[ruleIdx + 1], ruleIds[ruleIdx]];
+      const stages = state.stages.map((s, i) => i === stageIdx ? { ...s, ruleIds } : s);
+      return { stages, debugStale: debugStaleOf(state) };
+    }
+
+    // At the stage's own boundary — cross into the neighboring stage, if any.
+    const neighborIdx = direction === "up" ? stageIdx - 1 : stageIdx + 1;
+    if (neighborIdx < 0 || neighborIdx >= state.stages.length) return {}; // global boundary
+    const sourceRuleIds = stage.ruleIds.filter((id) => id !== ruleId);
+    const neighbor = state.stages[neighborIdx];
+    const neighborRuleIds = direction === "up" ? [...neighbor.ruleIds, ruleId] : [ruleId, ...neighbor.ruleIds];
+    const stages = state.stages.map((s, i) => {
+      if (i === stageIdx) return { ...s, ruleIds: sourceRuleIds };
+      if (i === neighborIdx) return { ...s, ruleIds: neighborRuleIds };
+      return s;
+    });
+    return { stages, debugStale: debugStaleOf(state) };
   }),
+
+  // Default name index is the highest "Stage N" suffix seen among current stages, not
+  // `stages.length` — using length alone can reproduce an already-used name after a stage in
+  // the middle was removed (e.g. remove "Stage 2" out of ["Waypoints", "Stage 2", "Stage 3"],
+  // then Add stage would otherwise mint another "Stage 3").
+  addStage: () => set((state) => {
+    const usedIndices = state.stages
+      .map((s) => /^Stage (\d+)$/.exec(s.name)?.[1])
+      .filter((n): n is string => n !== undefined)
+      .map(Number);
+    const nextIndex = usedIndices.length > 0 ? Math.max(...usedIndices) : state.stages.length;
+    return { stages: [...state.stages, newStage(nextIndex)] };
+  }),
+
+  renameStage: (stageId, name) => set((state) => ({
+    stages: state.stages.map((s) => s.id === stageId ? { ...s, name } : s),
+  })),
+
+  // Removes the stage and every rule it holds (cascading delete) — same "explicit, confirmed
+  // destructive action" pattern as `removeRule` (RulesColumn gates this behind a ConfirmModal,
+  // whose message calls out that member rules are removed too when the stage isn't empty). No
+  // "last remaining stage" restriction — `stages` can legitimately be empty (see
+  // `appendRuleToStage`, which creates a fresh one on demand if a rule needs a home and none
+  // exists).
+  removeStage: (stageId) => set((state) => {
+    const stage = state.stages.find((s) => s.id === stageId);
+    if (!stage) return {};
+    const removedRuleIds = new Set(stage.ruleIds);
+    return {
+      stages: state.stages.filter((s) => s.id !== stageId),
+      rules: state.rules.filter((r) => !removedRuleIds.has(r.id)),
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  moveStage: (stageId, direction) => set((state) => {
+    const idx = state.stages.findIndex((s) => s.id === stageId);
+    const swapWith = direction === "up" ? idx - 1 : idx + 1;
+    if (idx === -1 || swapWith < 0 || swapWith >= state.stages.length) return {};
+    const stages = [...state.stages];
+    [stages[idx], stages[swapWith]] = [stages[swapWith], stages[idx]];
+    return { stages, debugStale: debugStaleOf(state) };
+  }),
+
+  toggleStageDisabled: (stageId) => set((state) => ({
+    stages: state.stages.map((s) => s.id === stageId ? { ...s, disabled: !s.disabled } : s),
+    debugStale: debugStaleOf(state),
+  })),
 
   setStrategyParam: (strategyId, paramId, value) => set((state) => ({
     strategyParams: {
@@ -362,30 +496,51 @@ export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConf
   return { tessellation_type, points };
 }
 
+// Builds one `QcRuleConfig` from a `QcRuleState` — `ruleDisabled` filtering happens in
+// `buildGenerateConfig` before this is called (per-stage, per rule), not here.
+function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: { local_id: string; type_id: string; params: Record<string, string> }[]; strategy: { id: string; params: Record<string, string> } | null } {
+  let strategy: { id: string; params: Record<string, string> } | null = null;
+  if (g.strategyId && !g.disabled) {
+    const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
+    const paramOverrides = state.strategyParams[g.strategyId] ?? {};
+    const params: Record<string, string> = {};
+    if (descriptor) {
+      for (const p of descriptor.params) {
+        if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
+      }
+    }
+    strategy = { id: g.strategyId, params };
+  }
+  // Order preserved from `QcRuleState.checks` — no resorting, so serialization/test
+  // determinism doesn't depend on Map/object iteration order at this layer.
+  const checks = g.checks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params }));
+  return { id: g.id, checks, strategy };
+}
+
 export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   if (state.isEditingField && state.fieldPoints.size < 2) return null;
-  const activeRules = state.rules.filter((g) => !g.ruleDisabled);
-  // Every remaining rule is sent, including ones with no strategy or disabled — `strategy: null`
-  // for those, not an omitted entry. The wasm layer still needs the rule's check composition to
-  // merge/attribute issues correctly even when nothing repairs them (see Specs/repair.md).
-  const check_rules = activeRules.map((g) => {
-    let strategy: { id: string; params: Record<string, string> } | null = null;
-    if (g.strategyId && !g.disabled) {
-      const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
-      const paramOverrides = state.strategyParams[g.strategyId] ?? {};
-      const params: Record<string, string> = {};
-      if (descriptor) {
-        for (const p of descriptor.params) {
-          if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
-        }
-      }
-      strategy = { id: g.strategyId, params };
-    }
-    // Order preserved from `QcRuleState.checks` — no resorting, so serialization/test
-    // determinism doesn't depend on Map/object iteration order at this layer.
-    const checks = g.checks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params }));
-    return { id: g.id, checks, strategy };
-  });
+  const ruleById = new Map(state.rules.map((g) => [g.id, g]));
+  // A `disabled` stage is omitted entirely — as if it didn't exist for this run, same as a
+  // `ruleDisabled` rule being omitted from its stage's `rules` below (not sent with an empty
+  // `rules: []`, which would still be a real, dispatchable-if-non-empty stage entry).
+  // `ruleDisabled` filtering happens here, per stage, before any config crosses the wasm
+  // boundary — a disabled rule is simply absent from `stage.rules`, not sent as `strategy: null`
+  // (that shape is reserved for a rule that legitimately has no strategy assigned). Every
+  // remaining rule is sent, including ones with no strategy — `strategy: null` for those, not an
+  // omitted entry. The wasm layer still needs the rule's check composition to merge/attribute
+  // issues correctly even when nothing repairs them (see Specs/repair.md). An empty stage after
+  // this filtering is sent as-is (`rules: []`) — core handles a stage with no dispatchable rules
+  // as a trivial degenerate case (see Specs/repair.md's "Stages" section).
+  const stages = state.stages
+    .filter((s) => !s.disabled)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      rules: s.ruleIds
+        .map((id) => ruleById.get(id))
+        .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled)
+        .map((g) => ruleToConfig(state, g)),
+    }));
   const activeTessellation = activeTessellationOf(state);
   const customPts = state.isEditingField ? state.fieldPoints : undefined;
   const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
@@ -402,7 +557,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   });
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
-    check_rules,
+    stages,
     ...(state.repairMaxIterations != null ? { repair_max_iterations: state.repairMaxIterations } : {}),
     ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
     initial: state.initialConfig,

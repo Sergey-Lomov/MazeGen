@@ -19,7 +19,7 @@ use maze_core::{
         EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS,
     },
     repair::{
-        QcRule, RepairEngine, RepairRuleConfig, RepairStrategy,
+        QcRule, RepairEngine, RepairRuleConfig, RepairStage, RepairStrategy,
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
         ExpandRegionPassageStrategy, MissingRegionsStrategy,
@@ -187,54 +187,80 @@ pub fn build_qc_and_repair<T: Tessellation>(
     let mut checks: Vec<Box<dyn maze_core::quality_control::Check<T>>> = Vec::new();
     let mut all_rules: Vec<QcRule> = Vec::new();
     let mut repair_rules: Vec<RepairRuleConfig<T>> = Vec::new();
+    let mut stages: Vec<RepairStage> = Vec::new();
+    let mut seen_stage_ids: HashSet<&str> = HashSet::new();
+    let mut seen_rule_ids: HashSet<&str> = HashSet::new();
 
-    for rule_cfg in &config.check_rules {
-        if rule_cfg.checks.is_empty() {
-            return Err(format!("rule {} has no checks", rule_cfg.id));
+    for stage_cfg in &config.stages {
+        if !seen_stage_ids.insert(stage_cfg.id.as_str()) {
+            return Err(format!("duplicate stage id: {}", stage_cfg.id));
         }
-        let mut kind: Option<IssueKind> = None;
-        let mut composite_ids: Vec<String> = Vec::with_capacity(rule_cfg.checks.len());
-        let mut seen_local_ids: HashSet<&str> = HashSet::new();
-        for instance in &rule_cfg.checks {
-            if !seen_local_ids.insert(instance.local_id.as_str()) {
-                return Err(format!("rule {} has duplicate local_id: {}", rule_cfg.id, instance.local_id));
-            }
-            let this_kind = check_kind_for_type(&instance.type_id);
-            match kind {
-                None => kind = Some(this_kind),
-                Some(k) if k == this_kind => {}
-                Some(_) => return Err(format!("checks in rule {} produce different issue kinds", rule_cfg.id)),
-            }
-            let instance_id = composite_check_id(&rule_cfg.id, &instance.local_id);
-            checks.push(build_check::<T>(instance, instance_id.clone())?);
-            composite_ids.push(instance_id);
-        }
-        let kind = kind.expect("non-empty rule always resolves a kind");
-        let rule = QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids.clone() };
+        let mut stage_rule_ids: Vec<String> = Vec::with_capacity(stage_cfg.rules.len());
 
-        if let Some(strategy_cfg) = &rule_cfg.strategy {
-            let strategy: Box<dyn RepairStrategy<T>> = match strategy_cfg.id.as_str() {
-                "random_endpoints"    => Box::new(RandomEndpointsStrategy),
-                "farthest_endpoints"  => Box::new(FarthestEndpointsStrategy),
-                "scored_endpoints"    => Box::new(ScoredEndpointsStrategy),
-                "invalid_loop_random" => Box::new(InvalidLoopRandomStrategy),
-                "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
-                "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
-                "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
-                "missing_regions"     => Box::new(MissingRegionsStrategy),
-                other => return Err(format!("unknown strategy: {other}")),
-            };
-            repair_rules.push(RepairRuleConfig {
-                rule: QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids },
-                strategy,
-                param_overrides: strategy_cfg.params.clone(),
-            });
+        for rule_cfg in &stage_cfg.rules {
+            if !seen_rule_ids.insert(rule_cfg.id.as_str()) {
+                return Err(format!("duplicate rule id: {}", rule_cfg.id));
+            }
+            if rule_cfg.checks.is_empty() {
+                return Err(format!("rule {} has no checks", rule_cfg.id));
+            }
+            let mut kind: Option<IssueKind> = None;
+            let mut composite_ids: Vec<String> = Vec::with_capacity(rule_cfg.checks.len());
+            let mut seen_local_ids: HashSet<&str> = HashSet::new();
+            for instance in &rule_cfg.checks {
+                if !seen_local_ids.insert(instance.local_id.as_str()) {
+                    return Err(format!("rule {} has duplicate local_id: {}", rule_cfg.id, instance.local_id));
+                }
+                let this_kind = check_kind_for_type(&instance.type_id);
+                match kind {
+                    None => kind = Some(this_kind),
+                    Some(k) if k == this_kind => {}
+                    Some(_) => return Err(format!("checks in rule {} produce different issue kinds", rule_cfg.id)),
+                }
+                let instance_id = composite_check_id(&rule_cfg.id, &instance.local_id);
+                checks.push(build_check::<T>(instance, instance_id.clone())?);
+                composite_ids.push(instance_id);
+            }
+            let kind = kind.expect("non-empty rule always resolves a kind");
+            let rule = QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids.clone() };
+
+            if let Some(strategy_cfg) = &rule_cfg.strategy {
+                let strategy: Box<dyn RepairStrategy<T>> = match strategy_cfg.id.as_str() {
+                    "random_endpoints"    => Box::new(RandomEndpointsStrategy),
+                    "farthest_endpoints"  => Box::new(FarthestEndpointsStrategy),
+                    "scored_endpoints"    => Box::new(ScoredEndpointsStrategy),
+                    "invalid_loop_random" => Box::new(InvalidLoopRandomStrategy),
+                    "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
+                    "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
+                    "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
+                    "missing_regions"     => Box::new(MissingRegionsStrategy),
+                    other => return Err(format!("unknown strategy: {other}")),
+                };
+                repair_rules.push(RepairRuleConfig {
+                    rule: QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids },
+                    strategy,
+                    param_overrides: strategy_cfg.params.clone(),
+                });
+            }
+            stage_rule_ids.push(rule_cfg.id.clone());
+            all_rules.push(rule);
         }
-        all_rules.push(rule);
+
+        stages.push(RepairStage { id: stage_cfg.id.clone(), name: stage_cfg.name.clone(), rule_ids: stage_rule_ids });
+    }
+
+    // Every rule with a registered strategy must belong to exactly one stage — a rule with no
+    // strategy has nothing to dispatch, so it has no such requirement (see `Specs/repair.md`'s
+    // "Stages" section / plan's "Модель данных").
+    let staged_rule_ids: HashSet<&str> = stages.iter().flat_map(|s| s.rule_ids.iter().map(|id| id.as_str())).collect();
+    for cfg in &repair_rules {
+        if !staged_rule_ids.contains(cfg.rule.id.as_str()) {
+            return Err(format!("rule {} not assigned to any stage", cfg.rule.id));
+        }
     }
 
     let qc_engine = QualityControlEngine::new(checks);
-    let repair_engine = RepairEngine::new(repair_rules, all_rules);
+    let repair_engine = RepairEngine::new(repair_rules, all_rules, stages);
     Ok((qc_engine, repair_engine))
 }
 

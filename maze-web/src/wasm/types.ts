@@ -183,6 +183,14 @@ export interface QcRuleConfig {
   strategy: StrategyConfig | null;
 }
 
+/** A named, ordered group of rules — see `Specs/repair.md`'s "Stages" section and GitHub issue
+ * #65. `RepairEngine` dispatches one stage at a time, in `GenerateConfig.stages` array order. */
+export interface StageConfig {
+  id: string;
+  name: string;
+  rules: QcRuleConfig[];
+}
+
 export type TessellationKindWasm = "square" | "hex" | "tri";
 
 export interface WasmTessellationConfig {
@@ -245,7 +253,7 @@ export interface LockedNodeDto {
 
 export interface GenerateConfig {
   tessellation: WasmTessellationConfig;
-  check_rules: QcRuleConfig[];
+  stages: StageConfig[];
   repair_max_iterations?: number;
   repair_time_budget_secs?: number;
   initial: InitialGenerationConfig;

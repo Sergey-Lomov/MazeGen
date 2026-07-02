@@ -44,6 +44,7 @@ export function baseStoreState() {
     initialConfig: { method: "custom_vertex_based" as const, depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
     elementsConfig: { one_way_chance: 0.04 },
     rules: [],
+    stages: [{ id: "stage_1", name: "Stage 1", ruleIds: [], disabled: false }],
     strategyParams: {},
     registryLoaded: false,
     availableChecks: [],

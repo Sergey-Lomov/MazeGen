@@ -5,7 +5,7 @@ use maze_core::generation::{generate_maze, GenerationConfig, PresetState, pipeli
 use maze_core::validation::is_connected;
 use maze_core::io::render_ascii;
 use maze_core::quality_control::{QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck, MISSING_ENDPOINTS};
-use maze_core::repair::{QcRule, RepairEngine, RepairRuleConfig, FarthestEndpointsStrategy};
+use maze_core::repair::{QcRule, RepairEngine, RepairRuleConfig, RepairStage, FarthestEndpointsStrategy};
 
 fn main() {
     let seed = 3u64;
@@ -29,6 +29,7 @@ fn main() {
             param_overrides: HashMap::new(),
         }],
         vec![rule],
+        vec![RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["g".to_string()] }],
     );
 
     let (maze, warnings, _timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &PresetState::empty(), RepairLimits::default());

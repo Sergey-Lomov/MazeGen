@@ -75,6 +75,31 @@ export interface QcRuleState {
   ruleDisabled: boolean;
 }
 
+/** A named, ordered group of rule ids — see `Specs/repair.md`'s "Stages" section and GitHub
+ * issue #65. Core dispatches repair one stage at a time, in `GenerationState.stages` array
+ * order — only rules belonging to the current stage repair-dispatch until it has no more active
+ * issues, then the next stage starts. Rule membership lives here (`ruleIds`), not as a field on
+ * `QcRuleState` — see plan's "Stage — контейнер со списком rule id" decision. `stages` can be
+ * empty — no "at least one stage" invariant (a stage is only ever created explicitly via
+ * `addStage`, or implicitly by `appendRuleToStage` if a rule needs a home and none exists). */
+export interface RepairStageState {
+  id: string;
+  /** User-facing name, shown as the section header. Defaults to "Stage N" at creation time (see
+   * `newStage` in generationSlice.ts) — the very first stage instead defaults to a fixed
+   * "Waypoints" name (`quality.default_stage_name`). Editable via the section header's edit button. */
+  name: string;
+  /** Order is significant — it's both this stage's rule dispatch grouping and its UI/
+   * serialization order. Not deduplicated against other stages' `ruleIds` by this type itself —
+   * the store's actions (`moveRule`, `removeRule`, etc.) are responsible for keeping each rule id
+   * in exactly one stage's `ruleIds` at a time. */
+  ruleIds: string[];
+  /** Whole-stage toggle — when true, every member rule's checks are excluded entirely from the
+   * next `generate()` call (the whole stage is omitted from `GenerateConfig.stages`, not sent
+   * with an empty `rules` list), as if the stage didn't exist for this run. Independent of any
+   * member rule's own `ruleDisabled`. */
+  disabled: boolean;
+}
+
 export const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
 export const DEFAULT_TRI_ORI: TriOrientation = "r0";
 
@@ -210,6 +235,9 @@ export interface GenerationState {
    * There is no separate flat "active checks" list (see `CheckInstance`'s doc comment) — wherever
    * one is needed (UI filters, analytics), it's derived as `rules.flatMap(r => r.checks)`. */
   rules: QcRuleState[];
+  /** Named, ordered rule groups — see `RepairStageState`'s doc comment and GitHub issue #65.
+   * Always non-empty (see `generationSlice.ts`'s initial state and `removeStage`). */
+  stages: RepairStageState[];
   /** strategyParams[strategyId][paramId] = raw string value */
   strategyParams: Record<string, Record<string, string>>;
   initialConfig: InitialGenerationConfig;
@@ -264,12 +292,15 @@ export interface GenerationActions {
    * this never creates intermediate singleton rules for ids after the first. All ids must share
    * one issue kind (validated by the caller's candidate filtering, same as `addCheck`). Drops
    * any `typeId` whose descriptor has `allow_multiple_instances: false` and is already active
-   * in some existing rule — same restriction as `addCheck`, see GitHub issue #60. */
+   * in some existing rule — same restriction as `addCheck`, see GitHub issue #60. `targetStageId`,
+   * when given and resolving to a known stage, places the new rule there (the per-stage toolbar's
+   * "+ Add rule" button — see RulesColumn); otherwise falls back to the last stage. */
   createRule: (
     typeIds: string[],
     strategyId: string | null,
     initialCheckParams?: Record<string, Record<string, string>>,
     initialStrategyParams?: Record<string, string>,
+    targetStageId?: string,
   ) => void;
   removeCheck: (ruleId: string, localId: number) => void;
   setCheckParam: (ruleId: string, localId: number, paramId: string, value: string) => void;
@@ -283,13 +314,34 @@ export interface GenerationActions {
   toggleRuleDisabled: (ruleId: string) => void;
   renameRule: (ruleId: string, name: string) => void;
   /** Removes a rule entirely along with its member checks — the inverse of a rule existing
-   * only ever meaning its checks are active. */
+   * only ever meaning its checks are active. Also removes the rule's id from whichever stage's
+   * `ruleIds` currently holds it. */
   removeRule: (ruleId: string) => void;
-  /** Swaps `ruleId` with its neighbor in `rules` order ("up" = earlier, "down" = later). Purely
-   * organizational — core's repair dispatch is order-agnostic (see `repair.md`), so this only
-   * affects how rules are listed in the UI and serialized in `check_rules`, not repair behavior.
-   * No-op at either end of the list. */
+  /** Moves the rule at `(stageId, ruleId)` one step in the combined stage-then-rule order — see
+   * `Specs/quality-feature.md`'s "moveRule and stages" section for the full boundary-crossing
+   * algorithm. Within one stage: an adjacent swap in that stage's `ruleIds` (same as before
+   * staging existed). At a stage boundary: the rule physically moves into the neighboring stage
+   * (its own `ruleIds`, not just a different rendered position) — inserted at that stage's near
+   * edge (front for "down", back for "up"), including into an empty neighboring stage. No-op
+   * only at the global boundary (first rule of the first stage moving "up", or last rule of the
+   * last stage moving "down"). This *does* affect repair dispatch now — unlike before staging
+   * existed, order across a stage boundary changes which stage a rule belongs to. */
   moveRule: (ruleId: string, direction: "up" | "down") => void;
+  /** Appends a new empty stage, default name `Stage N` (N = current stage count + 1 at creation
+   * time, not renumbered later). */
+  addStage: () => void;
+  renameStage: (stageId: string, name: string) => void;
+  /** Removes the stage and every rule it holds (cascading delete) — see `RepairStageState`'s
+   * doc comment on the "no minimum stage count" invariant. `RulesColumn` gates this behind a
+   * confirmation dialog, since it can delete member rules along with the stage. */
+  removeStage: (stageId: string) => void;
+  /** Swaps `stageId` with its neighbor in `stages` order ("up" = earlier, "down" = later) — an
+   * adjacent swap of the whole stage, `ruleIds` untouched. No-op at either end of the list; no
+   * other restriction (an empty stage, or the sole stage, is still swappable like any other —
+   * the "sole stage" case is naturally a no-op anyway, since it has no neighbor). */
+  moveStage: (stageId: string, direction: "up" | "down") => void;
+  /** Flips the stage's `disabled` — see `RepairStageState`'s doc comment. */
+  toggleStageDisabled: (stageId: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
   setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;

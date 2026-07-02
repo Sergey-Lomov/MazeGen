@@ -6,11 +6,13 @@ use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationAlgorithm, EdgeBasedParams, ElementsConfig, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{QualityControlEngine, Check, Issue, IssueData, IssueKind, MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck, MISSING_ENDPOINTS, INVALID_LOOP, REPAIR_LIMIT_REACHED, RepairLimitKind};
-use maze_core::repair::{QcRule, RepairEngine, RepairRuleConfig, RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, SnapshotStack};
+use maze_core::repair::{QcRule, RepairEngine, RepairRuleConfig, RepairStage, RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, SnapshotStack};
 
 /// Builds a single-rule `RepairEngine`: one rule containing all of `checks`, sharing `kind`,
 /// dispatching to `strategy`. Covers the common single-strategy-per-kind test shape without
-/// repeating the `RepairRuleConfig`/`QcRule` boilerplate at every call site.
+/// repeating the `RepairRuleConfig`/`QcRule` boilerplate at every call site. Puts the rule in a
+/// single default stage so it dispatches under the staged pipeline exactly like the pre-#65
+/// single-loop pipeline did.
 fn engine_with_rule<T: maze_core::space::Tessellation>(
     kind: IssueKind,
     checks: &[&str],
@@ -21,10 +23,12 @@ fn engine_with_rule<T: maze_core::space::Tessellation>(
     RepairEngine::new(
         vec![RepairRuleConfig { rule: QcRule { id: "g".to_string(), kind, checks: checks.clone() }, strategy, param_overrides: HashMap::new() }],
         vec![rule],
+        vec![RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["g".to_string()] }],
     )
 }
 
-/// Builds a `RepairEngine` with two independent single-check rules, each with its own strategy.
+/// Builds a `RepairEngine` with two independent single-check rules, each with its own strategy,
+/// both in the same single default stage (same rationale as `engine_with_rule`).
 fn two_rules<T: maze_core::space::Tessellation>(
     a: (IssueKind, &[&str], Box<dyn RepairStrategy<T>>),
     b: (IssueKind, &[&str], Box<dyn RepairStrategy<T>>),
@@ -41,6 +45,7 @@ fn two_rules<T: maze_core::space::Tessellation>(
             RepairRuleConfig { rule: QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() }, strategy: strategy_b, param_overrides: HashMap::new() },
         ],
         vec![rule_a, rule_b],
+        vec![RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["ga".to_string(), "gb".to_string()] }],
     )
 }
 
@@ -93,7 +98,7 @@ fn pipeline_deterministic() {
 fn pipeline_warns_when_no_strategy_for_issue() {
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
-    let repair: RepairEngine<SquareTessellation> = RepairEngine::new(vec![], vec![]);
+    let repair: RepairEngine<SquareTessellation> = RepairEngine::new(vec![], vec![], vec![]);
     let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
     assert!(!warnings.is_empty());
 }
@@ -527,4 +532,314 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     let triangle_b_intact = maze.graph.edge(e3).is_some() && maze.graph.edge(e4).is_some() && maze.graph.edge(e5).is_some();
     assert!(!triangle_a_intact, "triangle A must have been broken on iteration 1");
     assert!(!triangle_b_intact, "triangle B must have been broken on a later iteration, not skipped by a false oscillation stop");
+}
+
+// --- Stages (issue #65) ---
+
+/// Builds a two-stage `RepairEngine`: stage 1 has `rule_a` (strategy `strategy_a`), stage 2 has
+/// `rule_b` (strategy `strategy_b`) — same `RepairRuleConfig`/`QcRule` shape `two_rules` uses,
+/// but split across two `RepairStage`s instead of one.
+fn two_stages<T: maze_core::space::Tessellation>(
+    a: (IssueKind, &[&str], Box<dyn RepairStrategy<T>>),
+    b: (IssueKind, &[&str], Box<dyn RepairStrategy<T>>),
+) -> RepairEngine<T> {
+    let (kind_a, checks_a, strategy_a) = a;
+    let (kind_b, checks_b, strategy_b) = b;
+    let checks_a: Vec<String> = checks_a.iter().map(|s| s.to_string()).collect();
+    let checks_b: Vec<String> = checks_b.iter().map(|s| s.to_string()).collect();
+    let rule_a = QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.clone() };
+    let rule_b = QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() };
+    RepairEngine::new(
+        vec![
+            RepairRuleConfig { rule: QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.clone() }, strategy: strategy_a, param_overrides: HashMap::new() },
+            RepairRuleConfig { rule: QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() }, strategy: strategy_b, param_overrides: HashMap::new() },
+        ],
+        vec![rule_a, rule_b],
+        vec![
+            RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["ga".to_string()] },
+            RepairStage { id: "stage_2".to_string(), name: "Stage 2".to_string(), rule_ids: vec!["gb".to_string()] },
+        ],
+    )
+}
+
+#[test]
+fn stage_2_rule_does_not_dispatch_until_stage_1_resolves() {
+    // Stage 1: MissingEndpointsCheck/farthest_endpoints, sets start/finish.
+    // Stage 2: a strategy that only succeeds once start/finish are both set — records every
+    // call so the test can assert it was never invoked before stage 1 finished.
+    use maze_core::repair::{RepairResult, RepairStrategy};
+
+    struct RequiresEndpoints {
+        calls_before_endpoints_set: Arc<AtomicUsize>,
+    }
+    impl RepairStrategy<SquareTessellation> for RequiresEndpoints {
+        fn strategy_id(&self) -> &'static str { "requires_endpoints" }
+
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+            if maze.meta.start.is_none() || maze.meta.finish.is_none() {
+                self.calls_before_endpoints_set.fetch_add(1, Ordering::SeqCst);
+            }
+            RepairResult::Fixed { score: None }
+        }
+    }
+
+    struct AlwaysUnreachableFinishIssueCheck;
+    impl maze_core::quality_control::Check<SquareTessellation> for AlwaysUnreachableFinishIssueCheck {
+        fn check_type_id(&self) -> &'static str { "always_unreachable_finish_check" }
+
+        fn check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<Issue>, _rng: &mut dyn rand::RngCore) {
+            // Stand-in "stage 2" issue: fires every QC pass regardless of maze state, so the
+            // test can observe whether stage 2 ever dispatches before stage 1 is done — the
+            // real gate is `calls_before_endpoints_set` above, not this check's own logic.
+            if maze.meta.start.is_none() || maze.meta.finish.is_none() {
+                issues.push(Issue::new_from_check(MISSING_ENDPOINTS, "stage2_check"));
+            }
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }),
+        Box::new(AlwaysUnreachableFinishIssueCheck),
+    ]);
+    let calls_before_endpoints_set = Arc::new(AtomicUsize::new(0));
+    let repair = two_stages(
+        (MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(FarthestEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation>>),
+        (MISSING_ENDPOINTS, &["stage2_check"], Box::new(RequiresEndpoints { calls_before_endpoints_set: Arc::clone(&calls_before_endpoints_set) })),
+    );
+
+    let (maze, _, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    assert!(maze.meta.start.is_some() && maze.meta.finish.is_some(), "stage 1 must have resolved endpoints");
+    assert_eq!(calls_before_endpoints_set.load(Ordering::SeqCst), 0,
+        "stage 2's strategy must never be dispatched before stage 1 finished resolving endpoints");
+}
+
+#[test]
+fn failed_rule_in_stage_1_does_not_block_stage_2() {
+    use maze_core::repair::{RepairResult, RepairStrategy};
+
+    struct AlwaysFail;
+    impl RepairStrategy<SquareTessellation> for AlwaysFail {
+        fn strategy_id(&self) -> &'static str { "always_fail" }
+
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+            RepairResult::Failed
+        }
+    }
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    struct CountingFix {
+        count: Arc<AtomicUsize>,
+    }
+    impl RepairStrategy<SquareTessellation> for CountingFix {
+        fn strategy_id(&self) -> &'static str { "counting_fix" }
+
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            RepairResult::Fixed { score: None }
+        }
+    }
+
+    // Unconditional issue, independent of maze state — stage 1's rule (`missing_endpoints`)
+    // never resolves (AlwaysFail), so a check gated on start/finish being set (like the real
+    // UnreachableFinishCheck) would never fire at all; this check fires regardless, isolating
+    // the thing under test (does stage 2 dispatch despite stage 1's failure) from whether stage
+    // 1's failure incidentally also starves stage 2's own check of its precondition.
+    struct AlwaysFinishUnreachableIssueCheck;
+    impl maze_core::quality_control::Check<SquareTessellation> for AlwaysFinishUnreachableIssueCheck {
+        fn check_type_id(&self) -> &'static str { "always_finish_unreachable_check" }
+
+        fn check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<Issue>, _rng: &mut dyn rand::RngCore) {
+            issues.push(Issue::new_from_check(MISSING_ENDPOINTS, "unreachable_finish"));
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }),
+        Box::new(AlwaysFinishUnreachableIssueCheck),
+    ]);
+    let repair = two_stages(
+        (MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(AlwaysFail) as Box<dyn RepairStrategy<SquareTessellation>>),
+        (MISSING_ENDPOINTS, &["unreachable_finish"], Box::new(CountingFix { count: Arc::clone(&call_count) })),
+    );
+
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    assert!(warnings.iter().any(|i| i.kind == MISSING_ENDPOINTS), "stage 1's rule must remain unresolved (Failed)");
+    assert!(call_count.load(Ordering::SeqCst) > 0, "stage 2 must still have been dispatched despite stage 1's failure");
+}
+
+#[test]
+fn no_progress_in_stage_1_aborts_stage_2_entirely() {
+    use maze_core::quality_control::QC_NO_PROGRESS;
+    use maze_core::repair::{RepairResult, RepairStrategy};
+
+    struct AlwaysSameIssueCheck;
+    impl maze_core::quality_control::Check<SquareTessellation> for AlwaysSameIssueCheck {
+        fn check_type_id(&self) -> &'static str { "always_same_issue_check" }
+
+        fn check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<Issue>, _rng: &mut dyn rand::RngCore) {
+            issues.push(Issue::new_from_check(MISSING_ENDPOINTS, "missing_endpoints"));
+        }
+    }
+    struct NoOpFix;
+    impl RepairStrategy<SquareTessellation> for NoOpFix {
+        fn strategy_id(&self) -> &'static str { "no_op_fix" }
+
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+            RepairResult::Fixed { score: None }
+        }
+    }
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    struct CountingFix {
+        count: Arc<AtomicUsize>,
+    }
+    impl RepairStrategy<SquareTessellation> for CountingFix {
+        fn strategy_id(&self) -> &'static str { "counting_fix" }
+
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            RepairResult::Fixed { score: None }
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![Box::new(AlwaysSameIssueCheck)]);
+    let repair = two_stages(
+        (MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(NoOpFix) as Box<dyn RepairStrategy<SquareTessellation>>),
+        (MISSING_ENDPOINTS, &["unreachable_finish"], Box::new(CountingFix { count: Arc::clone(&call_count) })),
+    );
+
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    assert!(warnings.iter().any(|i| i.kind == QC_NO_PROGRESS), "must surface QC_NO_PROGRESS for stuck stage 1");
+    assert_eq!(call_count.load(Ordering::SeqCst), 0, "stage 2 must never be reached once stage 1 no-progresses");
+}
+
+#[test]
+fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
+    use maze_core::repair::{RepairResult, RepairStrategy};
+
+    struct OneShotFix;
+    impl RepairStrategy<SquareTessellation> for OneShotFix {
+        fn strategy_id(&self) -> &'static str { "one_shot_fix" }
+
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+            let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
+            nodes.sort_unstable();
+            maze.meta.start = nodes.first().copied();
+            maze.meta.finish = nodes.last().copied();
+            RepairResult::Fixed { score: None }
+        }
+    }
+
+    struct NeverConvergingCheck2 {
+        counter: Arc<AtomicUsize>,
+    }
+    impl maze_core::quality_control::Check<SquareTessellation> for NeverConvergingCheck2 {
+        fn check_type_id(&self) -> &'static str { "never_converging_check_2" }
+
+        fn check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<Issue>, _rng: &mut dyn rand::RngCore) {
+            let n = self.counter.fetch_add(1, Ordering::SeqCst);
+            issues.push(
+                Issue::new_from_check(MISSING_ENDPOINTS, "unreachable_finish")
+                    .with_detail("unreachable_finish", "tick", n.to_string()),
+            );
+        }
+    }
+    struct NoOpFix2;
+    impl RepairStrategy<SquareTessellation> for NoOpFix2 {
+        fn strategy_id(&self) -> &'static str { "no_op_fix_2" }
+
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+            RepairResult::Fixed { score: None }
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }),
+        Box::new(NeverConvergingCheck2 { counter: Arc::new(AtomicUsize::new(0)) }),
+    ]);
+    let repair = two_stages(
+        (MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(OneShotFix) as Box<dyn RepairStrategy<SquareTessellation>>),
+        (MISSING_ENDPOINTS, &["unreachable_finish"], Box::new(NoOpFix2)),
+    );
+
+    let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), limits);
+    let limit_issue = warnings.iter().find(|i| i.kind == REPAIR_LIMIT_REACHED).expect("must surface REPAIR_LIMIT_REACHED once budget exhausts mid stage 2");
+    assert_eq!(limit_issue.data, Some(IssueData::RepairLimitReached { limit: RepairLimitKind::MaxIterations }));
+    // Final QC pass still ran (it's unconditional) — endpoints resolved by stage 1 remain
+    // visible in the maze even though stage 2 never converged.
+    assert!(warnings.iter().any(|i| i.kind == MISSING_ENDPOINTS), "final QC must still surface stage 2's unresolved issue");
+}
+
+#[test]
+fn empty_stage_list_skips_repair_and_goes_straight_to_final_qc() {
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
+    let repair: RepairEngine<SquareTessellation> = RepairEngine::new(vec![], vec![], vec![]);
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    assert!(warnings.iter().any(|i| i.kind == MISSING_ENDPOINTS), "no stages means no repair, issue surfaces via the final QC pass");
+}
+
+#[test]
+fn stage_with_only_no_strategy_rules_is_skipped_instantly_between_dispatchable_stages() {
+    // Stage 1 resolves endpoints; stage 2 is entirely no-strategy rules (logging-only); stage 3
+    // has a real strategy that requires endpoints to already be set. Stage 2 must not block or
+    // delay stage 3.
+    use maze_core::repair::{RepairResult, RepairStrategy};
+
+    struct RequiresEndpoints {
+        called_with_endpoints_set: Arc<AtomicUsize>,
+    }
+    impl RepairStrategy<SquareTessellation> for RequiresEndpoints {
+        fn strategy_id(&self) -> &'static str { "requires_endpoints" }
+
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+            if maze.meta.start.is_some() && maze.meta.finish.is_some() {
+                self.called_with_endpoints_set.fetch_add(1, Ordering::SeqCst);
+            }
+            RepairResult::Fixed { score: None }
+        }
+    }
+    struct AlwaysIssueCheck;
+    impl maze_core::quality_control::Check<SquareTessellation> for AlwaysIssueCheck {
+        fn check_type_id(&self) -> &'static str { "stage3_check" }
+
+        fn check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<Issue>, _rng: &mut dyn rand::RngCore) {
+            if maze.meta.start.is_some() && maze.meta.finish.is_some() {
+                issues.push(Issue::new_from_check(MISSING_ENDPOINTS, "stage3_check"));
+            }
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }),
+        Box::new(AlwaysIssueCheck),
+    ]);
+    let checks_1: Vec<String> = vec!["missing_endpoints".to_string()];
+    let rule_1 = QcRule { id: "g1".to_string(), kind: MISSING_ENDPOINTS, checks: checks_1.clone() };
+    let no_strategy_rule = QcRule { id: "g_logging".to_string(), kind: MISSING_ENDPOINTS, checks: vec!["some_other_check".to_string()] };
+    let called_with_endpoints_set = Arc::new(AtomicUsize::new(0));
+    let checks_3: Vec<String> = vec!["stage3_check".to_string()];
+    let rule_3 = QcRule { id: "g3".to_string(), kind: MISSING_ENDPOINTS, checks: checks_3.clone() };
+    let repair: RepairEngine<SquareTessellation> = RepairEngine::new(
+        vec![
+            RepairRuleConfig { rule: QcRule { id: "g1".to_string(), kind: MISSING_ENDPOINTS, checks: checks_1 }, strategy: Box::new(FarthestEndpointsStrategy), param_overrides: HashMap::new() },
+            RepairRuleConfig { rule: QcRule { id: "g3".to_string(), kind: MISSING_ENDPOINTS, checks: checks_3 }, strategy: Box::new(RequiresEndpoints { called_with_endpoints_set: Arc::clone(&called_with_endpoints_set) }), param_overrides: HashMap::new() },
+        ],
+        vec![rule_1, no_strategy_rule, rule_3],
+        vec![
+            RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["g1".to_string()] },
+            RepairStage { id: "stage_2".to_string(), name: "Stage 2".to_string(), rule_ids: vec!["g_logging".to_string()] },
+            RepairStage { id: "stage_3".to_string(), name: "Stage 3".to_string(), rule_ids: vec!["g3".to_string()] },
+        ],
+    );
+
+    let (maze, _, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    assert!(maze.meta.start.is_some() && maze.meta.finish.is_some());
+    assert!(called_with_endpoints_set.load(Ordering::SeqCst) > 0, "stage 3 must dispatch after stage 1, unaffected by no-strategy stage 2");
 }

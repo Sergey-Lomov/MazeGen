@@ -120,6 +120,30 @@ pub struct RepairOutcome {
     pub result: RepairResult,
 }
 
+### RepairStage
+
+See GitHub issue #65. A **stage** is a named, ordered group of rule ids — `RepairEngine` dispatches one stage at a time, only rules belonging to the current stage, in stage order. This lets a rule needing another rule's fix as a precondition (e.g. a rule reading `maze.meta.start`/`finish`) be placed in a later stage than the rule that sets them, guaranteeing it never dispatches before its precondition holds.
+
+```rust
+/// A user-defined, named, ordered group of `QcRule` ids. Caller-supplied configuration (built
+/// by `maze-wasm`/`maze-runner` from `GenerateConfig.stages`, see `quality_control.md`'s
+/// `StageConfig`), not generated or interpreted by core beyond grouping. `id` is opaque, same
+/// role as `QcRule.id`.
+pub struct RepairStage {
+    pub id: String,
+    pub name: String,
+    /// Order is significant for UI/serialization round-trip, not for repair dispatch order
+    /// within the stage — `RepairEngine::run` resolves rules by id via `HashMap` lookup
+    /// regardless of `rule_ids` order. Includes every rule in this stage, strategy or not (same
+    /// role `RepairEngine.all_rules` plays for the whole engine) — a rule without a strategy has
+    /// no dispatch consequence but still needs a stage for merge/attribution routing.
+    pub rule_ids: Vec<String>,
+}
+```
+
+**Unassigned rule = caller-side config error, but only if the rule has a strategy.** A rule with a strategy that doesn't appear in any stage's `rule_ids` is a configuration bug — `maze-wasm/src/runner.rs::build_qc_and_repair` rejects it (`"rule {id} not assigned to any stage"`), the same way it already rejects `"checks in rule {id} produce different issue kinds"`. Core itself (`RepairEngine`/`build_maze`) never validates or recovers this — it is a caller-guaranteed invariant of the `stages` argument to `RepairEngine::new`, same as `rules` being a subset of `all_rules` already was. A rule with **no** strategy has nothing to dispatch, so it has no such requirement — its stage membership (if any) only affects UI/serialization, never `build_maze`'s repair loop. An empty `stages: Vec<RepairStage>` (no stage at all) is a valid degenerate case, not an error, when no rule in the config has a strategy.
+
+```rust
 pub struct RepairEngine<F: Field> {
     /// Rules with a registered strategy — these are actually dispatched by `run`.
     rules: Vec<RepairRuleConfig<F>>,
@@ -127,18 +151,23 @@ pub struct RepairEngine<F: Field> {
     /// route every check id, not just the repaired ones. A rule without a strategy still needs
     /// correct merge/attribution upstream in `build_maze`.
     all_rules: Vec<QcRule>,
+    /// Ordered stages — `build_maze` dispatches one stage at a time, in this order.
+    stages: Vec<RepairStage>,
 }
 
 impl<F: Field> RepairEngine<F> {
     /// `rules` — strategy assignments (only for rules with a strategy). `all_rules` — full rule
     /// list, including rules with no strategy. Every rule in `rules` must also appear in
     /// `all_rules` (by `id`); callers (`maze-wasm/src/runner.rs::build_qc_and_repair`) are
-    /// responsible for this invariant.
-    pub fn new(rules: Vec<RepairRuleConfig<F>>, all_rules: Vec<QcRule>) -> Self;
+    /// responsible for this invariant. `stages` — every rule in `rules` (i.e. every rule with a
+    /// strategy) must appear in exactly one stage's `rule_ids`; a rule with no strategy may or
+    /// may not appear in a stage. Callers are responsible for both invariants — core does not
+    /// validate them (see "Unassigned rule" above).
+    pub fn new(rules: Vec<RepairRuleConfig<F>>, all_rules: Vec<QcRule>, stages: Vec<RepairStage>) -> Self;
 
     /// All check instance ids (composite routing ids, see `QcRule.checks` above) across every
     /// rule (strategy or not), mapped to their rule id. Used by `build_maze` to route raw issues
-    /// to their rule before merging.
+    /// to their rule before merging. Stage-agnostic — does not change with staging.
     pub fn check_id_to_rule(&self) -> HashMap<String, String>;
 
     /// Rule ids with a registered strategy, as a lookup set — precomputed once per call rather
@@ -146,6 +175,20 @@ impl<F: Field> RepairEngine<F> {
     /// tests it against every active rule that iteration. Rules without a strategy still merge
     /// issues for attribution but must not enter fingerprint tracking or repair dispatch.
     pub fn strategy_rule_ids(&self) -> HashSet<&str>;
+
+    /// Ordered stages this engine dispatches, in dispatch order.
+    pub fn stages(&self) -> &[RepairStage];
+
+    /// Rule ids with a registered strategy, belonging to the given stage — precomputed
+    /// intersection of `strategy_rule_ids()` and `stage.rule_ids` (precomputed once in `new`,
+    /// same rationale as `strategy_rule_ids()`'s own precomputation — `build_maze` calls this
+    /// once per fixpoint-loop iteration, not once per stage). `None` only for a `stage_id`
+    /// unknown to this engine (never happens for ids obtained via `self.stages()` in the same
+    /// call). A known stage with no dispatchable rules (no-strategy-only, or empty) returns
+    /// `Some(&empty_set)` — a legitimate degenerate case, not an error. Callers treat "no
+    /// dispatchable rules" and "unknown stage" the same way (e.g. `unwrap_or_default()`), since
+    /// both mean "nothing to dispatch this iteration".
+    pub fn strategy_rule_ids_for_stage(&self, stage_id: &str) -> Option<&HashSet<String>>;
 
     /// `issues` are `(rule_id, Issue)` pairs — the rule-aware merge result built by `build_maze`
     /// (see "Pipeline" below). For each pair: looks up the rule's strategy, calls
@@ -164,6 +207,7 @@ impl<F: Field> RepairEngine<F> {
 - If a `rule_id` in `issues` has no entry in `rules` (no strategy registered): skipped, not included in the result. The pipeline detects unresolved rules via the progress fingerprint guard, same mechanism as before, just keyed by rule id instead of kind.
 - Returns one `RepairOutcome` per issue that had a matching rule+strategy.
 - Multiple checks may produce the same `IssueKind`; which ones share a rule (and therefore a strategy) is caller-configured, not engine-decided. The pipeline merges issues sharing a *rule* (not a kind) into one `Issue` before calling `RepairEngine::run` — see "Pipeline" below.
+- `run`/`run_timed` are unaware of stages — dispatch is by `rule_id` lookup regardless of which stage owns it. Stage filtering happens entirely in `build_maze`, before `run` is ever called (see "Pipeline" below).
 
 ## Built-in Strategies
 
@@ -362,24 +406,32 @@ Time is measured via a small internal `now_ms()` helper, not `std::time::Instant
 Logic:
 
 1. Construct `Maze` via `Maze::new(field, graph)` — sets `MazeMeta::empty()` and `MazeAnalysis::default()`.
-2. Create `rng = MazeRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations for cross-iteration determinism.
-3. Build `check_id_to_rule: HashMap<String, String>` once via `repair_engine.check_id_to_rule()` — maps every check instance's composite routing id (see `QcRule.checks` above) across every configured rule (strategy or not) to its rule id.
-4. Track `failed: HashSet<String>` — rule ids whose strategy returned `Failed`.
-5. Track `previous_fingerprint: Option<Vec<String>>` (sorted rule ids) for progress detection.
-6. Record `start_ms = now_ms()` before the loop. Loop, checking at the top of each iteration (before running QC):
-   - If `limits.max_iterations` is `Some(max)` and the iteration count already reached `max`: break.
-   - If `limits.time_budget_secs` is `Some(budget)` and `now_ms() - start_ms >= budget * 1000.0`: break.
-   - Run QC.
-   - **Merge, not drop, issues sharing a rule** — multiple checks in the same rule may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). For each raw issue, route by `issue.single_source_check()` — `Some(check_id)` only when the issue carries exactly one source check, looked up via `check_id_to_rule`; `None` (zero sources, e.g. `CYCLE_ANALYSIS_OVERFLOWED`, or — should never happen for a raw pre-merge issue, guarded by `debug_assert!` — two or more) routes to no rule and the issue is dropped from this iteration's merge map. This is a deliberate fail-safe: a malformed 2+-source raw issue is routed as "no rule" rather than silently picked by an arbitrary single source id, which is what indexing `source_checks()` directly would do in a release build with `debug_assert!` compiled out. An issue with no matching rule isn't lost from the maze's perspective — the final `qc_engine.run` after the loop recomputes fresh and will surface it again if still present. Group routed issues by rule id into a `HashMap<String, Issue>`: the first issue for a rule seeds the entry, any further issue for the same rule is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions sources via `Issue::push_source` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice; `invalid_sources` (per-cycle check attribution) is unioned by canonical key alongside it. The remap step uses `.get()` on the old→new index map, not direct indexing — an out-of-range `invalid` index from a malformed future `Check` is dropped (debug-asserted, not panicked) rather than crashing the pipeline. `IssueData::RegionsNeedingExpansion` (see `quality_control.md`) merges more simply via `merge_regions_needing_expansion` — no remap needed, since `invalid`'s indices are into the one `maze.analysis.scc(&maze.graph)` cache entry shared by every check in the pass, so the same index already means the same region on both sides; only a plain dedup-union of `invalid` and `invalid_sources` is required. `IssueData::MissingRegions` merges via `merge_missing_regions` — folds the incoming `balance_by_class` map into the existing one, entry by entry; a class present in both takes the value **further from zero** (the stricter demand/surplus — not the sum, since both checks describe the same underlying shortfall/surplus against the same threshold), a class present in only one side is carried over unchanged. A shortfall and a surplus on the same class from two different instances in one pass is a configuration conflict the merge can't resolve (`debug_assert!`, not silently picked). In practice this merge rarely runs: GitHub issue #60's multi-instance design is retired, so there is normally exactly one active `MinRegionCountCheck` instance, which already reports every off-target class in one issue. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces. Then filter out `failed` rule ids. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
-   - **Rules with no registered strategy still merge their issues** (for attribution) but are filtered out before the fingerprint/dispatch step via `repair_engine.strategy_rule_ids()` (a precomputed `HashSet`, not a per-lookup scan) — same final effect as a kind without a strategy being skipped in the old design, just keyed by rule now.
-   - If no active issues: break (all resolved).
-   - Progress guard: sort `active` by rule id and compare the full `(rule_id, Issue)` list against the previous iteration's, by value (`Issue` derives `PartialEq`, covering `data`/`source_checks`/`details`). Catches true "no progress" (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid).
-   - If equal to previous: break (no progress possible).
-   - Run repair on active `(rule_id, Issue)` pairs, passing through `preset_state`.
-   - Add `Failed` outcomes' `rule_id` to `failed` set.
-7. Final QC: return `(maze, remaining_issues)`.
+2. Create `rng = MazeRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations, across every stage, for cross-iteration determinism.
+3. Build `check_id_to_rule: HashMap<String, String>` once via `repair_engine.check_id_to_rule()` — maps every check instance's composite routing id (see `QcRule.checks` above) across every configured rule (strategy or not) to its rule id. Stage-agnostic — built once for the whole call.
+4. Track `failed: HashSet<String>` — rule ids whose strategy returned `Failed`. Shared across every stage in this call — a rule that failed in an earlier stage stays excluded when a later stage's fixpoint loop merges its issues too (it never will dispatch again, but see below: it's still routed by `check_id_to_rule` for attribution purposes if some other rule shares its `IssueKind`).
+5. Record `start_ms = now_ms()` and `iterations_done = 0` once, before any stage — both shared across every stage (see "Stages and the repair budget" below).
+6. **Iterate `repair_engine.stages()` in order** (`'stages: for stage in repair_engine.stages()`). For each stage:
+   - Look up `dispatchable = repair_engine.strategy_rule_ids_for_stage(&stage.id).unwrap_or_default()` — the `HashSet` of this stage's rule ids that have a registered strategy. If empty (stage is entirely no-strategy rules, or has no rules at all): skip straight to the next stage — QC for this stage's own rules still happens as part of the *next* stage's iteration's QC pass (QC is stage-agnostic, see below), so nothing is lost; just no repair-loop iteration is spent here.
+   - Track `previous_fingerprint: Option<Vec<(String, Issue)>>` **reset to `None` at the start of each stage** — the progress guard (below) only compares within the current stage's own iterations; a fresh stage's differing active-rule set must never look like "no progress" carried over from the previous stage, nor mask genuine no-progress within the new stage.
+   - Loop, checking at the top of each iteration (before running QC):
+     - If `limits.max_iterations` is `Some(max)` and `iterations_done` already reached `max`: record `limit_reached`, **break out of the stage loop entirely** (not just this stage) — the budget is shared across all stages (see below).
+     - If `limits.time_budget_secs` is `Some(budget)` and `now_ms() - start_ms >= budget * 1000.0`: same — record `limit_reached`, break out of the stage loop entirely.
+     - `iterations_done += 1`.
+     - **Run QC — stage-agnostic.** `qc_engine.run` covers every registered check across every rule in every stage, not just the current stage's — the QC engine itself has no concept of stages at all (it's the same `QualityControlEngine` built once for the whole `build_maze` call).
+     - **Merge, not drop, issues sharing a rule — also stage-agnostic.** Multiple checks in the same rule may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). For each raw issue, route by `issue.single_source_check()` — `Some(check_id)` only when the issue carries exactly one source check, looked up via `check_id_to_rule`; `None` (zero sources, e.g. `CYCLE_ANALYSIS_OVERFLOWED`, or — should never happen for a raw pre-merge issue, guarded by `debug_assert!` — two or more) routes to no rule and the issue is dropped from this iteration's merge map. This is a deliberate fail-safe: a malformed 2+-source raw issue is routed as "no rule" rather than silently picked by an arbitrary single source id, which is what indexing `source_checks()` directly would do in a release build with `debug_assert!` compiled out. An issue with no matching rule isn't lost from the maze's perspective — the final `qc_engine.run` after the loop recomputes fresh and will surface it again if still present. Group routed issues by rule id into a `HashMap<String, Issue>`: the first issue for a rule seeds the entry, any further issue for the same rule is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions sources via `Issue::push_source` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice; `invalid_sources` (per-cycle check attribution) is unioned by canonical key alongside it. The remap step uses `.get()` on the old→new index map, not direct indexing — an out-of-range `invalid` index from a malformed future `Check` is dropped (debug-asserted, not panicked) rather than crashing the pipeline. `IssueData::RegionsNeedingExpansion` (see `quality_control.md`) merges more simply via `merge_regions_needing_expansion` — no remap needed, since `invalid`'s indices are into the one `maze.analysis.scc(&maze.graph)` cache entry shared by every check in the pass, so the same index already means the same region on both sides; only a plain dedup-union of `invalid` and `invalid_sources` is required. `IssueData::MissingRegions` merges via `merge_missing_regions` — folds the incoming `balance_by_class` map into the existing one, entry by entry; a class present in both takes the value **further from zero** (the stricter demand/surplus — not the sum, since both checks describe the same underlying shortfall/surplus against the same threshold), a class present in only one side is carried over unchanged. A shortfall and a surplus on the same class from two different instances in one pass is a configuration conflict the merge can't resolve (`debug_assert!`, not silently picked). In practice this merge rarely runs: GitHub issue #60's multi-instance design is retired, so there is normally exactly one active `MinRegionCountCheck` instance, which already reports every off-target class in one issue. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces. Then filter out `failed` rule ids. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
+     - **This is where staging actually applies**: filter the merged `by_rule` map to `dispatchable` (this stage's own `strategy_rule_ids_for_stage` result) — **not** `repair_engine.strategy_rule_ids()` (every stage's dispatchable rules combined). A rule belonging to a *later*, not-yet-reached stage may already have an active issue at this point (QC found it, merge routed it) — it is simply dropped by this filter for this iteration, not cached or deferred; once that rule's own stage is reached, QC recomputes fresh on the then-current graph and the issue (if still present) passes the filter normally. Rules with no registered strategy are excluded by the same filter regardless of stage (they were never in `dispatchable` to begin with) — same final effect as before staging existed, just narrower per iteration now.
+     - If `active` (post-filter) is empty: **this stage is done** — advance to the next stage (`continue 'stages`), *not* a break out of the whole loop. This is the only way a stage completes normally.
+     - Progress guard: sort `active` by rule id and compare the full `(rule_id, Issue)` list against `previous_fingerprint` (this stage's own, reset at stage start — see above), by value (`Issue` derives `PartialEq`, covering `data`/`source_checks`/`details`). Catches true "no progress" (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid).
+     - **If equal to previous: no-progress — break out of the stage loop entirely, not just this stage.** Unlike a normal "active is empty" stage completion, no-progress means the current stage's own issues were never actually resolved through the loop — its state is not fully settled. Continuing to a later stage on top of that would repair-dispatch against a maze whose current stage never reached a clean "done" state, so the whole `build_maze` repair pass stops here instead. (This mirrors the pre-#65 behavior exactly: before stages existed, no-progress always stopped the single loop outright — staging changes *what dispatches when*, not this stopping condition.)
+     - Run repair on active `(rule_id, Issue)` pairs, passing through `preset_state`.
+     - Add `Failed` outcomes' `rule_id` to the shared `failed` set.
+7. Final QC (unconditional, regardless of how the stage loop ended — all stages completed, or a limit/no-progress broke out of it early): return `(maze, remaining_issues)`.
 
-Two rules producing the same `IssueKind` are fully independent through this loop — each gets its own entry in `check_id_to_rule`, its own slot in the merge map, its own fingerprint entry, and its own `failed` tracking. A failure or no-progress break on one rule does not affect the other's repair dispatch.
+Two rules producing the same `IssueKind` are fully independent through this loop — each gets its own entry in `check_id_to_rule`, its own slot in the merge map, its own fingerprint entry (within whichever stage owns it), and its own `failed` tracking. A failure on one rule does not affect another rule's repair dispatch, in the same or a different stage. A no-progress break, however, *does* stop every later stage — see above.
+
+### Stages and the repair budget
+
+`RepairLimits` (`max_iterations`/`time_budget_secs`) is shared across every stage in one `build_maze` call, not reset per stage — `iterations_done`/`start_ms` are declared once, before the first stage, and never reset at a stage boundary. If the budget is exhausted mid-stage, the whole stage loop stops (not just the current stage) — the same `REPAIR_LIMIT_REACHED` issue construction as before staging existed applies unchanged; it just may now fire while a later stage never even got a chance to start. `QC_NO_PROGRESS` similarly always names whichever stage's rules were stuck when the break happened.
 
 **Note:** `generate_maze` must be called **before** `build_maze`. `build_maze` only handles metadata, not graph structure.
 

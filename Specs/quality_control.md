@@ -507,16 +507,36 @@ enum ParamKindDto {
 
 ```rust
 pub struct GenerateConfig {
-    pub check_rules: Vec<QcRuleConfig>, // rule configs — see below
+    pub stages: Vec<StageConfig>, // named, ordered rule groups — see below and GitHub issue #65
     // ...
 }
 ```
 
-Checks exist only inside `check_rules` — there is no separate flat check list or global param
+Checks exist only inside a stage's `rules` — there is no separate flat check list or global param
 dict (removed as part of GitHub issue #60; see `quality-feature.md`'s store-side model for the
 matching web-side shape). The runner matches each check instance by its `type_id` string
 (`match type_id.as_str()`), not by `IssueKind`. Unknown `type_id` values return an error. Unknown
 param keys are silently ignored; missing params fall back to the check's default constant.
+
+### StageConfig
+
+```rust
+#[derive(Deserialize)]
+pub struct StageConfig {
+    pub id: String,               // opaque stage id, unique across every stage in the config
+    pub name: String,              // user-facing name, e.g. "Stage 1"
+    pub rules: Vec<QcRuleConfig>,  // this stage's own rules
+}
+```
+
+A named, ordered group of rules — `RepairEngine` (`maze-core`) dispatches one stage at a time, in
+`stages` array order, only rules belonging to the current stage, until it has no more active
+issues, then moves to the next stage. See `repair.md`'s "Stages" section for the full dispatch
+semantics and the shared `RepairLimits` budget across stages. `maze-wasm/src/runner.rs::build_qc_and_repair`
+rejects a config where a rule with a `strategy` doesn't appear in any stage's `rules`
+(`"rule {id} not assigned to any stage"`), a duplicate `stage.id` across the config
+(`"duplicate stage id: {id}"`), or a duplicate rule `id` across stages
+(`"duplicate rule id: {id}"`).
 
 ### QcRuleConfig
 
@@ -549,7 +569,7 @@ already guarantees this never happens via normal UI flow. See `repair.md`'s "QcR
 rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turned into core's
 `QcRule`/`RepairRuleConfig`.
 
-`GenerateConfig::default()` ships one default rule: `{ id: "default_missing_endpoints", checks: [{ local_id: "missing_endpoints", type_id: "missing_endpoints", params: {} }], strategy: Some(farthest_endpoints) }` — `local_id == type_id` here is a deliberate special case for this fixed bootstrap singleton, not a general pattern. `unreachable_finish` has no default rule.
+`GenerateConfig::default()` ships one default stage (`{ id: "stage_1", name: "Stage 1" }`) containing one default rule: `{ id: "default_missing_endpoints", checks: [{ local_id: "missing_endpoints", type_id: "missing_endpoints", params: {} }], strategy: Some(farthest_endpoints) }` — `local_id == type_id` here is a deliberate special case for this fixed bootstrap singleton, not a general pattern. `unreachable_finish` has no default rule (but does default to the same one stage, with `strategy: None`).
 
 ### Available checks
 

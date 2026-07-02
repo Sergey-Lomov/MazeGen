@@ -5,6 +5,7 @@ use crate::space::Tessellation;
 use crate::quality_control::issue::Issue;
 use crate::generation::PresetState;
 use super::rule::QcRule;
+use super::stage::RepairStage;
 use super::params::{build_params, StrategyParams};
 use super::result::RepairResult;
 use super::strategy::RepairStrategy;
@@ -32,15 +33,33 @@ pub struct RepairEngine<T: Tessellation> {
     /// can route every check id, not just the repaired ones. A rule without a strategy still
     /// needs correct merge/attribution upstream in `build_maze`.
     all_rules: Vec<QcRule>,
+    /// Ordered stages — `build_maze` dispatches one stage at a time, in this order. See
+    /// `Specs/repair.md`'s "Stages" section.
+    stages: Vec<RepairStage>,
+    /// Precomputed once in `new` — stage id → (strategy_rule_ids() ∩ stage.rule_ids). Same
+    /// rationale as `strategy_rule_ids()`'s own precomputation: `build_maze` calls
+    /// `strategy_rule_ids_for_stage` once per fixpoint-loop iteration, not once per stage.
+    strategy_rule_ids_by_stage: HashMap<String, HashSet<String>>,
 }
 
 impl<T: Tessellation> RepairEngine<T> {
     /// `rules` — strategy assignments (only for rules with a strategy).
     /// `all_rules` — full rule list, including rules with no strategy. Every rule in
     /// `rules` must also appear in `all_rules` (by `id`); callers (`runner.rs::build_qc_and_repair`)
-    /// are responsible for this invariant.
-    pub fn new(rules: Vec<RepairRuleConfig<T>>, all_rules: Vec<QcRule>) -> Self {
-        Self { rules, all_rules }
+    /// are responsible for this invariant. `stages` — every rule in `rules` (i.e. every rule with
+    /// a strategy) must appear in exactly one stage's `rule_ids`; a rule with no strategy may or
+    /// may not appear in a stage (its stage membership only affects UI/serialization, not repair
+    /// dispatch) — callers are responsible for both invariants, core does not validate them.
+    pub fn new(rules: Vec<RepairRuleConfig<T>>, all_rules: Vec<QcRule>, stages: Vec<RepairStage>) -> Self {
+        let strategy_ids: HashSet<&str> = rules.iter().map(|cfg| cfg.rule.id.as_str()).collect();
+        let strategy_rule_ids_by_stage = stages.iter().map(|stage| {
+            let ids: HashSet<String> = stage.rule_ids.iter()
+                .filter(|id| strategy_ids.contains(id.as_str()))
+                .cloned()
+                .collect();
+            (stage.id.clone(), ids)
+        }).collect();
+        Self { rules, all_rules, stages, strategy_rule_ids_by_stage }
     }
 
     /// All check ids across every rule (strategy or not), mapped to their rule id. Used by
@@ -62,6 +81,23 @@ impl<T: Tessellation> RepairEngine<T> {
     /// loop iteration and tests it against every active rule that iteration.
     pub fn strategy_rule_ids(&self) -> HashSet<&str> {
         self.rules.iter().map(|cfg| cfg.rule.id.as_str()).collect()
+    }
+
+    /// Ordered stages this engine dispatches, in dispatch order.
+    pub fn stages(&self) -> &[RepairStage] {
+        &self.stages
+    }
+
+    /// Rule ids with a registered strategy, belonging to the given stage — precomputed
+    /// intersection of `strategy_rule_ids()` and `stage.rule_ids`. Returns `None` only for a
+    /// `stage_id` unknown to this engine (never happens for ids obtained via `self.stages()` in
+    /// the same call); a known stage with no dispatchable rules (no-strategy-only or empty)
+    /// returns `Some(&empty_set)`, not `None` — that is a legitimate degenerate case, not an
+    /// error (see `Specs/repair.md`). Callers should treat "no dispatchable rules" and "unknown
+    /// stage" the same way (`unwrap_or_default()`), since both mean "nothing to dispatch this
+    /// iteration" from the caller's perspective.
+    pub fn strategy_rule_ids_for_stage(&self, stage_id: &str) -> Option<&HashSet<String>> {
+        self.strategy_rule_ids_by_stage.get(stage_id)
     }
 
     /// `issues` are `(rule_id, Issue)` pairs — the rule-aware merge result built by
@@ -145,6 +181,7 @@ mod tests {
         let engine = RepairEngine::<crate::space::SquareTessellation>::new(
             vec![],
             vec![rule("rule_a", &["rule_a:0", "rule_a:1"]), rule("rule_b", &["rule_b:0"])],
+            vec![],
         );
         let map = engine.check_id_to_rule();
         assert_eq!(map.get("rule_a:0"), Some(&"rule_a".to_string()));
@@ -155,7 +192,7 @@ mod tests {
 
     #[test]
     fn check_id_to_rule_empty_when_no_rules() {
-        let engine = RepairEngine::<crate::space::SquareTessellation>::new(vec![], vec![]);
+        let engine = RepairEngine::<crate::space::SquareTessellation>::new(vec![], vec![], vec![]);
         assert!(engine.check_id_to_rule().is_empty());
     }
 
@@ -164,9 +201,28 @@ mod tests {
         let engine = RepairEngine::<crate::space::SquareTessellation>::new(
             vec![],
             vec![rule("rule_a", &["rule_a:0"]), rule("rule_b", &["rule_b:0"])],
+            vec![],
         );
         // Neither rule has a strategy here (empty `rules` vec) — both still route via
         // `check_id_to_rule` for attribution, but neither is dispatched for repair.
         assert!(engine.strategy_rule_ids().is_empty());
+    }
+
+    #[test]
+    fn strategy_rule_ids_for_stage_intersects_stage_and_strategy_rules() {
+        let engine = RepairEngine::<crate::space::SquareTessellation>::new(
+            vec![],
+            vec![rule("rule_a", &["rule_a:0"]), rule("rule_b", &["rule_b:0"])],
+            vec![RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["rule_a".to_string(), "rule_b".to_string()] }],
+        );
+        // Neither rule has a strategy (empty `rules` vec) — intersection is empty even though
+        // both belong to the stage.
+        assert!(engine.strategy_rule_ids_for_stage("stage_1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn strategy_rule_ids_for_stage_none_for_unknown_stage() {
+        let engine = RepairEngine::<crate::space::SquareTessellation>::new(vec![], vec![], vec![]);
+        assert!(engine.strategy_rule_ids_for_stage("no_such_stage").is_none());
     }
 }

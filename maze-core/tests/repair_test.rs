@@ -232,6 +232,7 @@ fn repair_engine_routes_by_rule() {
             param_overrides: HashMap::new(),
         }],
         vec![rule("g1", MISSING_ENDPOINTS, &["missing_endpoints"])],
+        vec![],
     );
     let issues = vec![("g1".to_string(), Issue::new(MISSING_ENDPOINTS))];
     let results = engine.run(&issues, &mut maze, &mut rng, &PresetState::empty());
@@ -245,7 +246,7 @@ fn repair_engine_routes_by_rule() {
 fn repair_engine_no_strategy_leaves_unresolved() {
     let mut maze = make_maze(2, 1);
     let mut rng = make_rng();
-    let engine: RepairEngine<SquareTessellation> = RepairEngine::new(vec![], vec![]);
+    let engine: RepairEngine<SquareTessellation> = RepairEngine::new(vec![], vec![], vec![]);
     let issues = vec![("g1".to_string(), Issue::new(MISSING_ENDPOINTS))];
     let results = engine.run(&issues, &mut maze, &mut rng, &PresetState::empty());
     assert!(results.is_empty());
@@ -277,6 +278,7 @@ fn repair_engine_two_rules_same_kind_get_different_strategies() {
             rule("g_random", MISSING_ENDPOINTS, &["missing_endpoints"]),
             rule("g_farthest", MISSING_ENDPOINTS, &["unreachable_finish"]),
         ],
+        vec![],
     );
     let issues_a = vec![("g_random".to_string(), Issue::new(MISSING_ENDPOINTS))];
     let issues_b = vec![("g_farthest".to_string(), Issue::new(MISSING_ENDPOINTS))];

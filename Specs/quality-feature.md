@@ -64,6 +64,26 @@ single-instance type as addable.
 - `disabled` (strategy-only toggle) vs `ruleDisabled` (whole-rule toggle) are independent: `disabled` skips the fix but the rule's checks still run (QC still reports the issue, just unfixed); `ruleDisabled` excludes the rule's checks from generation entirely, as if never selected.
 - `nextLocalCheckId` starts at the rule's initial check count, increments on every check added to this rule, and never resets or reuses a previously-issued `localId` even after that check is removed — addressing a check is always the pair `(ruleId, localId)`, never a bare `localId` searched across all rules. Not serialized to project files (see "Project file persistence" below) — recomputed on load as `max(checks.map(c => c.localId)) + 1` (or `0` if `checks` is empty).
 
+## What a stage is
+
+See GitHub issue #65. A **stage** (`RepairStageState` in the store) is a named, ordered group of rule ids — repair dispatches one stage at a time, in `state.stages` array order, so a rule needing another rule's fix as a precondition can be placed in a later stage than the rule providing it (see `Specs/repair.md`'s "Stages" section for the core-side dispatch semantics). Rule membership lives on the stage (`ruleIds`), not as a field on `QcRuleState` — a rule doesn't know which stage it belongs to; the store answers that by scanning `state.stages` for the rule's id.
+
+```typescript
+interface RepairStageState {
+  id: string;       // opaque, client-generated (stage_${uuid})
+  name: string;      // user-facing; the very first stage defaults to "Waypoints"
+                      // (quality.default_stage_name), later stages to "Stage N" at creation time — editable
+  ruleIds: string[]; // order = dispatch order within this stage AND UI/serialization order
+  disabled: boolean; // whole-stage toggle — see below
+}
+```
+
+- **No minimum stage count.** `state.stages` can become empty (e.g. after removing every stage) — there is no "at least one stage" invariant. A rule-creating action needing a stage to put its new rule in (`addCheck`'s singleton path, `createRule`, `removeCheckFromRule`'s new-singleton path) creates a fresh one on demand if `state.stages` is currently empty; otherwise it appends to the *last* stage (or a caller-specified target stage — see `createRule`'s `targetStageId` below) — the user reorganizes stages manually afterward.
+- A rule can be in **at most one** stage's `ruleIds` at a time — `moveRule` (below) is the only action that relocates a rule between stages; every other rule-removing action (`removeRule`) scrubs the id from whichever stage held it.
+- A stage's `ruleIds` **can be empty** (e.g. `addStage()`, or after `moveRule` moves its last rule out) — this is a normal, permanent state, not auto-cleaned-up. `RulesColumn` renders an empty stage as a visible section with a hint (`status.stage_empty`) rather than hiding it, since it's still a valid drop target for `moveRule`.
+- **`disabled`** — a whole-stage toggle, independent of any member rule's own `ruleDisabled`. A `disabled` stage is omitted entirely from `GenerateConfig.stages` (not sent with an empty `rules: []`), as if the stage didn't exist for this run — see `toggleStageDisabled` and "Generate pipeline" below.
+- `GenerateConfig.stages` (see `quality_control.md`'s `StageConfig`) is built from `state.stages` by `buildGenerateConfig` — `ruleDisabled` filtering happens per-stage there, before any config crosses the wasm boundary (see "Generate pipeline" below), not by sending a disabled rule through as `strategy: null`.
+
 ## QualityCanvas layout
 
 Two columns + detail panel, full height, flex row:
@@ -257,11 +277,12 @@ useParamEditor(options: {
 ```typescript
 // State
 rules: QcRuleState[]
+stages: RepairStageState[]   // see "What a stage is" above — no minimum count
 strategyParams: Record<string, Record<string, string>>   // strategyId → paramId → value
 
 // Actions
 addCheck(typeId: string, ruleId?: string, initialParams?: Record<string, string>): void
-createRule(typeIds: string[], strategyId: string | null, initialCheckParams?: Record<string, Record<string, string>>, initialStrategyParams?: Record<string, string>): void
+createRule(typeIds: string[], strategyId: string | null, initialCheckParams?: Record<string, Record<string, string>>, initialStrategyParams?: Record<string, string>, targetStageId?: string): void
 removeCheck(ruleId: string, localId: number): void
 setCheckParam(ruleId: string, localId: number, paramId: string, value: string): void
 removeCheckFromRule(ruleId: string, localId: number): void
@@ -272,6 +293,11 @@ toggleRuleDisabled(ruleId: string): void
 renameRule(ruleId: string, name: string): void
 removeRule(ruleId: string): void
 moveRule(ruleId: string, direction: "up" | "down"): void
+addStage(): void
+renameStage(stageId: string, name: string): void
+removeStage(stageId: string): void
+moveStage(stageId: string, direction: "up" | "down"): void
+toggleStageDisabled(stageId: string): void
 setStrategyParam(strategyId: string, paramId: string, value: string): void
 ```
 
@@ -324,7 +350,7 @@ id searched across all rules.
 
 - Flips the rule's `disabled` (absent/`false` ↔ `true`).
 - Does **not** touch `strategyId` or `strategyParams` — the strategy choice and its parameter overrides survive toggling.
-- A disabled rule's strategy is sent as `strategy: null` in `GenerateConfig.check_rules` (not an omitted rule entry — the rule's check composition is still needed for merge/attribution), equivalent to the rule having no strategy assigned.
+- A disabled rule's strategy is sent as `strategy: null` in its stage's `GenerateConfig.stages[].rules` (not an omitted rule entry — the rule's check composition is still needed for merge/attribution), equivalent to the rule having no strategy assigned. Distinct from `ruleDisabled` (below), which omits the rule entirely rather than sending it with `strategy: null`.
 
 ### toggleRuleDisabled(ruleId)
 
@@ -334,20 +360,41 @@ id searched across all rules.
 ### renameRule(ruleId, name) / removeRule(ruleId)
 
 - `renameRule`: sets the rule's `name`.
-- `removeRule`: deletes the rule and all its member check instances — there is no separate flat "active checks" list for them to also be removed from (see "What a rule is" above). Triggered via a `ConfirmModal` in `RulesColumn`, since it's destructive to more than just the rule card.
+- `removeRule`: deletes the rule and all its member check instances — there is no separate flat "active checks" list for them to also be removed from (see "What a rule is" above). Also scrubs `ruleId` from whichever stage's `ruleIds` currently holds it (see "What a stage is" above) — a stage never keeps a stale reference to a deleted rule. Triggered via a `ConfirmModal` in `RulesColumn`, since it's destructive to more than just the rule card.
 
 ### moveRule(ruleId, direction)
 
-- Swaps `ruleId` with its neighbor in `rules` order (`"up"` = earlier index, `"down"` = later index). No-op if the rule is already at that end of the list, or if `ruleId` is unknown.
-- Purely organizational: core's `RepairEngine` dispatches rules independently via a `HashMap`-keyed lookup, not by array position (see `repair.md`'s "QcRule and rule-based RepairEngine" — order has no effect on which rule's strategy runs first or on fixpoint convergence). `moveRule` only changes how rules are listed in the UI and serialized into `check_rules` — surfaced in `RulesColumn` as ▲/▼ buttons in each rule card's title row, disabled at the respective end of the list.
+See GitHub issue #65 — this action's semantics changed with stage grouping: order **now affects repair dispatch** (crossing a stage boundary moves the rule to a different stage, which core dispatches at a different time — see `repair.md`'s "Stages" section), unlike the pre-#65 flat-list version where reordering was purely cosmetic.
+
+Operates directly on `state.stages` (not a derived flat list):
+1. Find the stage containing `ruleId` and its index within that stage's `ruleIds`.
+2. **Within the stage** (not already at that stage's own edge in the given direction): adjacent swap within `ruleIds`, stage membership unchanged.
+3. **At the stage's own edge**: the rule crosses into the neighboring stage (`"up"` → previous stage, `"down"` → next stage) — physically removed from the source stage's `ruleIds` and inserted into the neighbor's, at the edge nearest the crossing point (front for `"down"`, back for `"up"`), including into an empty neighboring stage. The source stage is not auto-removed even if this empties it (see "What a stage is" above).
+4. **No-op only at the global boundary** — the first rule of the first stage moving `"up"`, or the last rule of the last stage moving `"down"` (no neighboring stage exists). Also a no-op if `ruleId` is unknown.
+
+Surfaced in `RulesColumn` as ▲/▼ buttons in each rule card's title row — `isFirst`/`isLast` are computed against the combined stage-then-rule flat order (`stages.flatMap(s => s.slots)`), not per-stage position, so the buttons only disable at the true global boundary.
+
+`createRule`'s optional `targetStageId` — when given and resolving to a known stage, places the new rule there instead of the last stage; used by each stage's own toolbar "+ Add rule" button (see "Stage toolbar" below) so a rule created from within a specific stage's section actually lands in that stage, not always the last one. The three-step new-rule dialog flow (`IssueSelectDialog` → `CheckSelectDialog` → `NewRuleStrategyDialog`) threads this id through every step.
+
+### Stage toolbar: addStage() / renameStage(stageId, name) / removeStage(stageId) / moveStage(stageId, direction) / toggleStageDisabled(stageId)
+
+Each stage section in `RulesColumn` has its own toolbar (below the stage's name header, above its rule cards) with five controls: add-rule, move up, move down, rename, remove — plus a disabled-toggle switch alongside them.
+
+- `addStage`: appends a new empty stage. Default name `"Stage N"` where N = the stage count at creation time + 1 — not renumbered later if stages are added/removed/reordered afterward (same pattern as a rule's default name); the very first stage ever created instead defaults to `"Waypoints"` (`quality.default_stage_name`).
+- `renameStage`: sets the stage's `name`.
+- `removeStage`: **cascading delete** — removes the stage and every rule it holds (their `CheckInstance`s go with them, same as `removeRule`). No "non-empty" or "last remaining stage" restriction (see "What a stage is" above) — `RulesColumn` gates this behind a `ConfirmModal`, whose message calls out "and all its rules" specifically when the stage isn't empty (`quality.confirm_remove_stage_with_rules` vs. the plain `quality.confirm_remove_stage`). If the removed stage held the currently-selected rule (detail-panel `selection`), the selection is cleared.
+- `moveStage`: swaps the stage with its neighbor in `state.stages` order (`"up"` = earlier, `"down"` = later) — a plain adjacent swap of the whole stage, `ruleIds` untouched. No-op only at the global boundary (first/last stage); no other restriction — an empty stage, or the sole stage (naturally a no-op, no neighbor to swap with), moves the same way any other stage does.
+- `toggleStageDisabled`: flips the stage's `disabled`. See "What a stage is" above and "Generate pipeline" below for the effect on `buildGenerateConfig`.
 
 ## Default State
 
-On `loadRegistry`, checks without params are auto-selected: `missing_endpoints` and `unreachable_finish`, each given its own singleton rule with a default strategy for its kind (if any) — preserves the old "auto-pick a strategy" behavior for checks without params. The default is `scored_endpoints` when it handles the kind (currently true only for `missing_endpoints`/start-finish placement, since it produces better-scored placements than the first-listed random/farthest strategies); otherwise the first strategy handling the kind. `NewRuleStrategyDialog`'s own initial selection (step 3 of "Add new rule") uses the same `scored_endpoints`-first preference. Checks with params (`min_loops_count`, `min_loop_length`, `max_loop_length`) are not auto-selected.
+On first `loadRegistry`, checks without params are auto-selected: `missing_endpoints` and `unreachable_finish`, each given its own singleton rule with a default strategy for its kind (if any) — preserves the old "auto-pick a strategy" behavior for checks without params. The default is `scored_endpoints` when it handles the kind (currently true only for `missing_endpoints`/start-finish placement, since it produces better-scored placements than the first-listed random/farthest strategies); otherwise the first strategy handling the kind. `NewRuleStrategyDialog`'s own initial selection (step 3 of "Add new rule") uses the same `scored_endpoints`-first preference. Checks with params (`min_loops_count`, `min_loop_length`, `max_loop_length`) are not auto-selected. These default rules' ids are placed into `state.stages`' sole (initial-state) stage — see "What a stage is" above.
 
 If `loadRegistry` is called again, `rules` are preserved (each rule's `checks` is filtered to
 still-known `typeId`s; a rule left empty by that filter is dropped — this is the registry-reload
-path, distinct from the empty-rule-stays policy for direct user actions like `removeCheck`).
+path, distinct from the empty-rule-stays policy for direct user actions like `removeCheck`). Any
+dropped rule's id is also scrubbed from every stage's `ruleIds` in the same update, so a stage
+never keeps a stale reference to a rule the reload just removed.
 
 ## Project file persistence
 
@@ -358,6 +405,26 @@ as on `loadRegistry`'s own rule construction. `CheckInstance.localId` itself **i
 the only contract is uniqueness within its rule's `checks` at any given moment, not identity
 across time.
 
+`RepairStageState[]` is serialized as `quality.stages` (`{ id, name, ruleIds, disabled }[]`), a
+flat sibling of `quality.rules` — plain structure, nothing computed on load. Two load-time cases:
+
+- **`quality.stages` key absent** (file saved before GitHub issue #65): recovery synthesizes one
+  stage containing every loaded rule's id, in `rules` array order — `{ id: "stage_1", name: "Stage 1",
+  ruleIds: rules.map(r => r.id), disabled: false }`. This satisfies "every rule belongs to exactly
+  one stage" by construction, so no further validation is needed for this path. This is *not* a
+  registered file migration (see this repo's "no migrations without an explicit user request"
+  policy) — it's a same-shape default-fill for a field that plainly didn't exist yet, the same
+  pattern `repairMaxIterations`/`ruleDisabled` already use in this file for their own
+  pre-existing-field gaps.
+- **`quality.stages` key present**: each entry's `disabled` defaults to `false` if absent (files
+  saved before the whole-stage toggle existed — same pattern as `ruleDisabled`'s own default in
+  `validateQcRule`). The list is then validated for three integrity properties, each a hard parse
+  error (not a silent recovery) if violated — a `quality.stages` key that exists but is
+  inconsistent means the file is corrupted, not merely old: (1) no `ruleId` appears in two
+  different stages' `ruleIds`; (2) every `ruleId` in every stage's `ruleIds` resolves to a rule
+  actually present in `quality.rules`; (3) every rule in `quality.rules` appears in at least one
+  stage's `ruleIds`. Together (1)+(3) mean every rule appears in **exactly** one stage.
+
 ## Generate pipeline
 
 Each `CheckInstance.params` is sent inline as part of its `CheckInstanceConfig` — there is no
@@ -367,11 +434,13 @@ descriptor defaults. Values are clamped server-side.
 
 `buildGenerateConfig` (`generationSlice.ts`):
 
-1. Excludes `ruleDisabled` rules' checks entirely from `check_rules` — as if never selected.
-2. Builds `check_rules: QcRuleConfig[]` — **every** remaining rule is sent, including ones with no strategy or with `disabled: true` (`strategy: null` for those, not an omitted entry). The wasm layer needs the rule's check composition to merge/attribute issues correctly even when nothing repairs them — see `Specs/repair.md`. Each rule's `checks` is mapped to `CheckInstanceConfig[]` via `c => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })` — order preserved from `QcRuleState.checks`, never resorted, so serialization stays deterministic. `localId` is a `number` in the store but crosses the wasm boundary as a `string` (`CheckInstanceConfig.local_id: string`) — the numeric type never crosses; only this conversion point.
-3. For a rule with a strategy: resolves the strategy's param overrides from `strategyParams[strategyId]`, filtered to keys the strategy descriptor actually declares.
+1. Filters out every stage with `disabled: true` entirely — a disabled stage is absent from `stages: StageConfig[]`, not sent as an entry with an empty `rules: []` (that shape means "stage exists but nothing to dispatch", a different thing from "stage doesn't exist for this run").
+2. Builds `stages: StageConfig[]` from the remaining (enabled) stages, one entry per stage, **in `state.stages` order** — order is significant now (see `moveRule`'s doc comment above and `repair.md`'s "Stages" section for why).
+3. Within each stage: excludes `ruleDisabled` rules entirely from that stage's `rules` — as if never selected, not sent as `strategy: null` (that shape means something different — see below). **Every** remaining rule is sent, including ones with no strategy or with `disabled: true` (`strategy: null` for those, not an omitted entry). The wasm layer needs the rule's check composition to merge/attribute issues correctly even when nothing repairs them — see `Specs/repair.md`. Each rule's `checks` is mapped to `CheckInstanceConfig[]` via `c => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })` — order preserved from `QcRuleState.checks`, never resorted, so serialization stays deterministic. `localId` is a `number` in the store but crosses the wasm boundary as a `string` (`CheckInstanceConfig.local_id: string`) — the numeric type never crosses; only this conversion point.
+4. For a rule with a strategy: resolves the strategy's param overrides from `strategyParams[strategyId]`, filtered to keys the strategy descriptor actually declares.
+5. A stage left with an empty `rules` array after step 3's filtering is sent as-is (`{ id, name, rules: [] }`) — core treats a stage with no dispatchable rules as a trivial degenerate case (see `repair.md`'s "Stages" section), no special-casing needed here.
 
-See `quality_control.md`'s "QcRuleConfig" section for the wasm-side shape this maps onto, and `repair.md`'s "QcRule and rule-based RepairEngine" section for how core turns it into a `RepairEngine`.
+See `quality_control.md`'s "StageConfig"/"QcRuleConfig" sections for the wasm-side shapes this maps onto, and `repair.md`'s "Stages" / "QcRule and rule-based RepairEngine" sections for how core turns it into a `RepairEngine`.
 
 ## Issue rendering: IssuesBlock / IssueBubble
 
