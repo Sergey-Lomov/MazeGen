@@ -5,7 +5,7 @@ import { QualityDetailPanel } from "../components/features/quality/QualityDetail
 import { useMazeStore } from "../store/mazeStore";
 import type { CheckVM, StrategyVM, QualityViewModel } from "../components/features/useQualityViewModel";
 
-const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "i1", params: [] };
+const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false };
 
 const check: CheckVM = {
   id: "g1:0",

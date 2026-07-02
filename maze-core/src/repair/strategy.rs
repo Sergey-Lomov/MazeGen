@@ -17,6 +17,13 @@ pub trait RepairStrategy<T: Tessellation> {
         &[]
     }
 
+    /// Whether this strategy is experimental — its results or performance may still be
+    /// unpredictable. Surfaced to the UI (see `maze-wasm`'s `StrategyDescriptor`) as a warning,
+    /// not enforced by core itself. Default `false`.
+    fn is_experimental(&self) -> bool {
+        false
+    }
+
     fn apply(
         &self,
         issue: &Issue,

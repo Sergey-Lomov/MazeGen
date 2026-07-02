@@ -66,6 +66,12 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   strategyDisabled: {
     opacity: 0.5,
   },
+  strategyWarningIcon: {
+    ...typography.icon,
+    color: ui.text.warning,
+    flexShrink: 0,
+    lineHeight: 1,
+  },
   editBtn: {
     ...typography.icon,
     background: "none",
@@ -234,6 +240,15 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   detailDesc: {
     ...muted(typography.body),
     lineHeight: 1.5,
+  },
+  detailExperimentalWarning: {
+    ...typography.body,
+    lineHeight: 1.4,
+    background: ui.bg.warning,
+    color: ui.text.warning,
+    border: `1px solid ${ui.text.warning}`,
+    borderRadius: radius.sm,
+    padding: "6px 10px",
   },
   detailSectionLabel: {
     ...typography.caption,

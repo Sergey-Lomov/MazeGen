@@ -309,6 +309,8 @@
   "issue.missing_regions.description": "Проверяет, что в лабиринте достаточно регионов определённого класса (например, тупиков или альтернативных маршрутов) для структурного разнообразия.",
   "issue.missing_regions.min_region_count_label": "Дисбаланс регионов по классам: {region_classes}",
   "issue.missing_regions.min_region_count_single_label": "Кол-во регионов класса «{region_class}» меньше требуемого ({min_count})",
+  "strategy.experimental_badge": "Экспериментальная",
+  "strategy.experimental_warning": "Это экспериментальная стратегия - результаты и производительность могут оказаться непредсказуемыми.",
   "strategy.no_fix.label": "Логирование",
   "strategy.no_fix.description": "Проблема заносится в отчёт без попытки исправления. Это базовое поведение — именно оно применяется автоматически, когда стратегия правила отключена, поэтому само логирование отключить нельзя.",
   "strategy.random_endpoints.label": "Случайные точки",

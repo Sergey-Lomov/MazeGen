@@ -176,6 +176,7 @@ describe("mazeStore.generate", () => {
           { id: "path_weight", label: "Path length weight", kind: { type: "float", default: 1, min: 0, max: 100 } },
           { id: "junction_weight", label: "Junction weight", kind: { type: "float", default: 3, min: 0, max: 100 } },
         ],
+        experimental: false,
       }],
     });
     useMazeStore.getState().generate();
@@ -205,6 +206,7 @@ describe("mazeStore.generate", () => {
         params: [
           { id: "path_weight", label: "Path length weight", kind: { type: "float", default: 1, min: 0, max: 100 } },
         ],
+        experimental: false,
       }],
     });
     useMazeStore.getState().generate();
@@ -285,7 +287,7 @@ describe("mazeStore.selectNode", () => {
 describe("mazeStore.loadRegistry", () => {
   it("stores available checks and strategies", async () => {
     const checks = [{ id: "missing_endpoints", label: "Missing endpoints", description: "", issue_kinds: ["missing_endpoints"], params: [], allow_multiple_instances: false }];
-    const strategies = [{ id: "farthest_endpoints", handles: "missing_endpoints", params: [] }];
+    const strategies = [{ id: "farthest_endpoints", handles: "missing_endpoints", params: [], experimental: false }];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
     await useMazeStore.getState().loadRegistry();
@@ -337,8 +339,8 @@ describe("mazeStore.loadRegistry", () => {
   it("auto-creates one singleton rule per default-selected check, with first matching strategy", async () => {
     const checks = [{ id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [], allow_multiple_instances: false }];
     const strategies = [
-      { id: "strategy_first", handles: "kind_a", params: [] },
-      { id: "strategy_second", handles: "kind_a", params: [] },
+      { id: "strategy_first", handles: "kind_a", params: [], experimental: false },
+      { id: "strategy_second", handles: "kind_a", params: [], experimental: false },
     ];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);
@@ -360,9 +362,9 @@ describe("mazeStore.loadRegistry", () => {
   it("prefers scored_endpoints over earlier-listed strategies for the missing_endpoints kind", async () => {
     const checks = [{ id: "missing_endpoints", label: "Missing endpoints", description: "", issue_kinds: ["missing_endpoints"], params: [], allow_multiple_instances: false }];
     const strategies = [
-      { id: "random_endpoints", handles: "missing_endpoints", params: [] },
-      { id: "farthest_endpoints", handles: "missing_endpoints", params: [] },
-      { id: "scored_endpoints", handles: "missing_endpoints", params: [] },
+      { id: "random_endpoints", handles: "missing_endpoints", params: [], experimental: false },
+      { id: "farthest_endpoints", handles: "missing_endpoints", params: [], experimental: false },
+      { id: "scored_endpoints", handles: "missing_endpoints", params: [], experimental: false },
     ];
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue(strategies);

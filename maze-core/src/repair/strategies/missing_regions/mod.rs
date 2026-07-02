@@ -71,6 +71,8 @@ impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
         PARAMS
     }
 
+    fn is_experimental(&self) -> bool { true }
+
     fn apply(
         &self,
         issue: &Issue,

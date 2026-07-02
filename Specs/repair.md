@@ -51,9 +51,14 @@ pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
 ```rust
 pub trait RepairStrategy<F: Field> {
     fn params(&self) -> &'static [StrategyParam] { &[] }
+    /// Whether this strategy is experimental (results/performance may be unpredictable).
+    /// Surfaced to the UI as a warning, not enforced by core. Default `false`.
+    fn is_experimental(&self) -> bool { false }
     fn apply(&self, issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState) -> RepairResult;
 }
 ```
+
+`MissingRegionsStrategy` is the only strategy currently marked experimental (`is_experimental() -> true`) — its region reuse/growth heuristics are new (GitHub issue #59) and less predictable in result quality and performance than the other built-in strategies.
 
 - `preset_state` carries the same `PresetState` built before generation (`blocked`, `locked_out`, `locked_in`, `preset_connected`, `preset_edges`). Strategies that mutate edges must not remove a directed edge present in `preset_state.preset_edges` — those are Passage/OneWay connections the user placed explicitly. Strategies that don't touch edges (e.g. the endpoint strategies) ignore this parameter.
 

@@ -159,6 +159,8 @@ export interface StrategyDescriptor {
   id: string;
   handles: string;
   params: ParamDescriptor[];
+  /** Strategy's results/performance may be unpredictable — UI shows a warning. */
+  experimental: boolean;
 }
 
 export interface StrategyConfig {

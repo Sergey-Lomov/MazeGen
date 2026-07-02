@@ -37,12 +37,13 @@ vi.mock("../components/features/StrategySelectDialog", () => ({
   ),
 }));
 
-const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "k1", params: [] };
+const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "k1", params: [], experimental: false };
 const strategyWithParams: StrategyVM = {
   id: "s2",
   label: "Strategy Two",
   handles: "k1",
   params: [{ id: "weight", label: "Weight", kind: { type: "float", default: 1, min: 0, max: 10 } }],
+  experimental: false,
 };
 const checkA: CheckVM = { id: "g1:0", ruleId: "g1", localId: 0, typeId: "c1", label: "Check One", description: "", params: [] };
 const checkB: CheckVM = { id: "g1:1", ruleId: "g1", localId: 1, typeId: "c2", label: "Check Two", description: "", params: [] };
@@ -290,7 +291,7 @@ describe("RulesColumn", () => {
   it("advances to the strategy dialog after picking checks, when a strategy handles the kind", () => {
     useMazeStore.setState({
       availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
-      availableStrategies: [{ id: "s1", handles: "k1", params: [] }],
+      availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false }],
     });
     render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getByText("Add new rule"));
@@ -303,7 +304,7 @@ describe("RulesColumn", () => {
   it("Back from the strategy dialog returns to the check dialog", () => {
     useMazeStore.setState({
       availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
-      availableStrategies: [{ id: "s1", handles: "k1", params: [] }],
+      availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false }],
     });
     render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getByText("Add new rule"));
@@ -317,7 +318,7 @@ describe("RulesColumn", () => {
   it("creates the rule with the picked checks and strategy on strategy-dialog confirm", () => {
     useMazeStore.setState({
       availableChecks: [{ id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false }],
-      availableStrategies: [{ id: "s1", handles: "k1", params: [] }],
+      availableStrategies: [{ id: "s1", handles: "k1", params: [], experimental: false }],
       rules: [],
     });
     render(<RulesColumn slots={[]} selection={null} onSelect={vi.fn()} />);

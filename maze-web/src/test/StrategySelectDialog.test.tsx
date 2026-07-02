@@ -4,9 +4,9 @@ import { StrategySelectDialog } from "../components/features/StrategySelectDialo
 import { useMazeStore } from "../store/mazeStore";
 
 const availableStrategies = [
-  { id: "random_endpoints", handles: "missing_endpoints", params: [] },
-  { id: "farthest_endpoints", handles: "missing_endpoints", params: [] },
-  { id: "invalid_loop_random", handles: "invalid_loop", params: [] },
+  { id: "random_endpoints", handles: "missing_endpoints", params: [], experimental: false },
+  { id: "farthest_endpoints", handles: "missing_endpoints", params: [], experimental: false },
+  { id: "invalid_loop_random", handles: "invalid_loop", params: [], experimental: false },
 ];
 
 beforeEach(() => {

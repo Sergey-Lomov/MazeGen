@@ -62,6 +62,7 @@ export function QualityDetailPanel({ selection, vm, flushRef }: Props) {
         id={strategy.id}
         label={strategy.label}
         description={resolveStrategyDescription(strategy.id)}
+        warning={strategy.experimental ? m["strategy.experimental_warning"]() : undefined}
         params={strategy.params}
         storeValues={strategyParams[strategy.id] ?? {}}
         onCommit={(paramId, value) => setStrategyParam(strategy.id, paramId, value)}

@@ -57,6 +57,9 @@ export function RuleStrategyPanel({ slot, selected, onSelect, onEdit }: Props) {
         >
           {strategy ? strategy.label : m["strategy.no_fix.label"]()}
         </span>
+        {strategy?.experimental && (
+          <span style={styles.strategyWarningIcon} title={m["strategy.experimental_warning"]()}>⚠</span>
+        )}
         {strategy && (
           <div
             style={styles.toggleWrap}

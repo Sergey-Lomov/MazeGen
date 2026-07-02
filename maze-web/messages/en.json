@@ -299,6 +299,8 @@
   "issue.missing_regions.description": "Checks the maze has enough regions of a specific class (e.g. trap or alternative-route regions) for structural variety.",
   "issue.missing_regions.min_region_count_label": "Region count imbalance by class: {region_classes}",
   "issue.missing_regions.min_region_count_single_label": "{region_class} region count is below the required minimum ({min_count})",
+  "strategy.experimental_badge": "Experimental",
+  "strategy.experimental_warning": "This is an experimental strategy — its results and performance may be unpredictable.",
   "strategy.no_fix.label": "Logging",
   "strategy.no_fix.description": "Records the issue in the report without attempting to fix it. This is the base behavior — it's what happens automatically whenever a rule's fix strategy is disabled, so it can't be disabled itself.",
   "strategy.random_endpoints.label": "Random endpoints",

@@ -10,6 +10,8 @@ interface Item {
   /** When given (multiselect mode), renders a checkbox before the label, toggled via
    * `onToggleChecked` independent of row-click (which only changes `selectedId`/preview). */
   checked?: boolean;
+  /** Shows a warning icon after the label (e.g. an experimental strategy). */
+  warning?: boolean;
 }
 
 interface Props {
@@ -44,6 +46,7 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, onToggl
             onClick={() => onSelectId(item.id)}
           >
             <span style={styles.itemLabel}>{item.label}</span>
+            {item.warning && <span style={styles.itemWarningIcon}>⚠</span>}
             {onToggleChecked && (
               <span onClick={(e) => e.stopPropagation()}>
                 <Switch
@@ -110,6 +113,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   itemLabel: {
     flex: 1,
+  },
+  itemWarningIcon: {
+    ...typography.icon,
+    color: ui.text.warning,
+    flexShrink: 0,
+    lineHeight: 1,
   },
   rightCol: {
     flex: 1,

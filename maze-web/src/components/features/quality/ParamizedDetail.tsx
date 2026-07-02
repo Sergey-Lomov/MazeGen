@@ -9,13 +9,15 @@ interface Props {
   id: string;
   label: string;
   description?: string;
+  /** Shows a warning bubble under the description (e.g. an experimental strategy). */
+  warning?: string;
   params: ParamDescriptor[];
   storeValues: Record<string, string>;
   onCommit: (paramId: string, value: string) => void;
   flushRef: React.MutableRefObject<() => void>;
 }
 
-export function ParamizedDetail({ id, label, description, params, storeValues, onCommit, flushRef }: Props) {
+export function ParamizedDetail({ id, label, description, warning, params, storeValues, onCommit, flushRef }: Props) {
   const { values, onChange, flushRef: localFlushRef } = useParamEditor({
     entityId: id,
     params,
@@ -29,6 +31,7 @@ export function ParamizedDetail({ id, label, description, params, storeValues, o
     <div style={styles.detailPanel}>
       <div style={styles.detailTitle}>{label}</div>
       {description && <div style={styles.detailDesc}>{description}</div>}
+      {warning && <div style={styles.detailExperimentalWarning}>{warning}</div>}
       {params.length > 0 && (
         <>
           <div style={styles.detailDivider} />

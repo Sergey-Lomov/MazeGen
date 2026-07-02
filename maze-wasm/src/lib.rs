@@ -61,6 +61,9 @@ struct StrategyDescriptor {
     id: &'static str,
     handles: &'static str,
     params: Vec<ParamDescriptor>,
+    /// Whether this strategy is experimental — see `RepairStrategy::is_experimental` in
+    /// `maze-core`. UI shows a warning badge/bubble for these.
+    experimental: bool,
 }
 
 // Helper to turn IssueKind into a &'static str for JSON serialization.
@@ -316,41 +319,49 @@ pub fn available_strategies() -> JsValue {
             id: "random_endpoints",
             handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<RandomEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&RandomEndpointsStrategy)),
+            experimental: <RandomEndpointsStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&RandomEndpointsStrategy),
         },
         StrategyDescriptor {
             id: "farthest_endpoints",
             handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<FarthestEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&FarthestEndpointsStrategy)),
+            experimental: <FarthestEndpointsStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&FarthestEndpointsStrategy),
         },
         StrategyDescriptor {
             id: "scored_endpoints",
             handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy)),
+            experimental: <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&ScoredEndpointsStrategy),
         },
         StrategyDescriptor {
             id: "invalid_loop_random",
             handles: kind_str(INVALID_LOOP),
             params: strategy_params_dto(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation>>::params(&InvalidLoopRandomStrategy)),
+            experimental: <InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&InvalidLoopRandomStrategy),
         },
         StrategyDescriptor {
             id: "invalid_loop_scored",
             handles: kind_str(INVALID_LOOP),
             params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation>>::params(&InvalidLoopScoredStrategy)),
+            experimental: <InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&InvalidLoopScoredStrategy),
         },
         StrategyDescriptor {
             id: "missing_loops_random",
             handles: kind_str(MISSING_LOOPS),
             params: strategy_params_dto(<MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation>>::params(&MissingLoopsRandomStrategy)),
+            experimental: <MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&MissingLoopsRandomStrategy),
         },
         StrategyDescriptor {
             id: "expand_region_passage",
             handles: kind_str(REGION_NEEDS_EXPANSION),
             params: strategy_params_dto(<ExpandRegionPassageStrategy as RepairStrategy<SquareTessellation>>::params(&ExpandRegionPassageStrategy)),
+            experimental: <ExpandRegionPassageStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&ExpandRegionPassageStrategy),
         },
         StrategyDescriptor {
             id: "missing_regions",
             handles: kind_str(MISSING_REGIONS),
             params: strategy_params_dto(<MissingRegionsStrategy as RepairStrategy<SquareTessellation>>::params(&MissingRegionsStrategy)),
+            experimental: <MissingRegionsStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&MissingRegionsStrategy),
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()

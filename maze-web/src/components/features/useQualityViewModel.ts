@@ -8,6 +8,7 @@ export interface StrategyVM {
   label: string;
   handles: string;
   params: ParamDescriptor[];
+  experimental: boolean;
 }
 
 /** One active `CheckInstance`, addressed by `(ruleId, localId)` — see GitHub issue #60. `id` is
@@ -96,7 +97,7 @@ export function useQualityViewModel(): QualityViewModel {
         kind: r.kind,
         label: resolveIssueLabel(r.kind),
         strategy: s
-          ? { id: s.id, label: resolveStrategyLabel(s.id), handles: s.handles, params: localizeParams(s.params) }
+          ? { id: s.id, label: resolveStrategyLabel(s.id), handles: s.handles, params: localizeParams(s.params), experimental: s.experimental }
           : null,
         disabled: r.disabled,
         ruleDisabled: r.ruleDisabled,

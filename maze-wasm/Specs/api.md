@@ -146,7 +146,8 @@ Each step is a snapshot of all edges present after that generation step.
     kind: { type: "float", default: number, min: number, max: number }
           | { type: "bool", default: boolean }
           | { type: "enum", options: string[], default: string }
-  }>
+  }>,
+  experimental: boolean,  // strategy's results/performance may be unpredictable
 }
 ```
 

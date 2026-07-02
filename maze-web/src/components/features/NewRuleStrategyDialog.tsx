@@ -53,12 +53,15 @@ export function NewRuleStrategyDialog({ kind, onBack, onConfirm, onClose }: Prop
 
   const items = [
     { id: NO_FIX_STRATEGY_ID, label: resolveStrategyLabel(NO_FIX_STRATEGY_ID) },
-    ...candidates.map((s) => ({ id: s.id, label: resolveStrategyLabel(s.id) })),
+    ...candidates.map((s) => ({ id: s.id, label: resolveStrategyLabel(s.id), warning: s.experimental })),
   ];
 
   const rightPanel = (
     <>
       {description && <div style={styles.description}>{description}</div>}
+      {selectedStrategy?.experimental && (
+        <div style={styles.experimentalWarning}>{m["strategy.experimental_warning"]()}</div>
+      )}
       {selectedStrategy && selectedStrategy.params.length > 0 && (
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
@@ -99,6 +102,15 @@ const styles: Record<string, React.CSSProperties> = {
   description: {
     ...typography.body,
     lineHeight: 1.6,
+  },
+  experimentalWarning: {
+    ...typography.body,
+    lineHeight: 1.4,
+    background: ui.bg.warning,
+    color: ui.text.warning,
+    border: `1px solid ${ui.text.warning}`,
+    borderRadius: radius.sm,
+    padding: "6px 10px",
   },
   paramsSection: {
     display: "flex",
