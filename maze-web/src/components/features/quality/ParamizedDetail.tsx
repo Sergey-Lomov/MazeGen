@@ -1,6 +1,7 @@
 import React from "react";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
+import { WarningBubble } from "../../WarningBubble";
 import { resolveParamDescription } from "../qualityI18n";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import type { ParamDescriptor } from "../../../wasm/types";
@@ -10,7 +11,7 @@ interface Props {
   label: string;
   description?: string;
   /** Shows a warning bubble under the description (e.g. an experimental strategy). */
-  warning?: string;
+  warning?: boolean;
   params: ParamDescriptor[];
   storeValues: Record<string, string>;
   onCommit: (paramId: string, value: string) => void;
@@ -31,7 +32,7 @@ export function ParamizedDetail({ id, label, description, warning, params, store
     <div style={styles.detailPanel}>
       <div style={styles.detailTitle}>{label}</div>
       {description && <div style={styles.detailDesc}>{description}</div>}
-      {warning && <div style={styles.detailExperimentalWarning}>{warning}</div>}
+      {warning && <WarningBubble />}
       {params.length > 0 && (
         <>
           <div style={styles.detailDivider} />

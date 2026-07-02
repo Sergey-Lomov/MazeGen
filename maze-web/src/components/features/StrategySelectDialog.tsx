@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
+import { WarningBubble } from "../WarningBubble";
 import { ParamFields } from "./ParamFields";
 import { useParamEditor } from "./useParamEditor";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, NO_FIX_STRATEGY_ID } from "./qualityI18n";
@@ -45,9 +46,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   const rightPanel = (
     <>
       {description && <div style={styles.description}>{description}</div>}
-      {selectedStrategy?.experimental && (
-        <div style={styles.experimentalWarning}>{m["strategy.experimental_warning"]()}</div>
-      )}
+      {selectedStrategy?.experimental && <WarningBubble />}
       {selectedStrategy && selectedStrategy.params.length > 0 && (
         <StrategyParamPanel strategyId={selectedStrategy.id} params={selectedStrategy.params} />
       )}
@@ -104,15 +103,6 @@ const styles: Record<string, React.CSSProperties> = {
   description: {
     ...typography.body,
     lineHeight: 1.6,
-  },
-  experimentalWarning: {
-    ...typography.body,
-    lineHeight: 1.4,
-    background: ui.bg.warning,
-    color: ui.text.warning,
-    border: `1px solid ${ui.text.warning}`,
-    borderRadius: radius.sm,
-    padding: "6px 10px",
   },
   paramsSection: {
     display: "flex",

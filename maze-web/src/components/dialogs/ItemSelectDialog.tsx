@@ -1,6 +1,7 @@
 import React from "react";
 import { Modal } from "../Modal";
 import { Switch } from "../Switch";
+import { WarningIcon } from "../WarningIcon";
 import { ui, dialogSpacing, typography } from "../../styles/theme";
 
 interface Item {
@@ -46,7 +47,7 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, onToggl
             onClick={() => onSelectId(item.id)}
           >
             <span style={styles.itemLabel}>{item.label}</span>
-            {item.warning && <span style={styles.itemWarningIcon}>⚠</span>}
+            {item.warning && <WarningIcon />}
             {onToggleChecked && (
               <span onClick={(e) => e.stopPropagation()}>
                 <Switch
@@ -113,12 +114,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   itemLabel: {
     flex: 1,
-  },
-  itemWarningIcon: {
-    ...typography.icon,
-    color: ui.text.warning,
-    flexShrink: 0,
-    lineHeight: 1,
   },
   rightCol: {
     flex: 1,

@@ -3,6 +3,7 @@ import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
 import { Switch } from "../../Switch";
+import { WarningIcon } from "../../WarningIcon";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import type { StrategySlotVM } from "../useQualityViewModel";
@@ -57,9 +58,7 @@ export function RuleStrategyPanel({ slot, selected, onSelect, onEdit }: Props) {
         >
           {strategy ? strategy.label : m["strategy.no_fix.label"]()}
         </span>
-        {strategy?.experimental && (
-          <span style={styles.strategyWarningIcon} title={m["strategy.experimental_warning"]()}>⚠</span>
-        )}
+        {strategy?.experimental && <WarningIcon />}
         {strategy && (
           <div
             style={styles.toggleWrap}

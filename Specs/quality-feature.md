@@ -101,7 +101,7 @@ There is no separate "Checks" column — each rule card shows its own member che
 One card per rule (`slots: StrategySlotVM[]`, one entry per rule in the store, not deduplicated by kind). Each card is split left/right:
 
 - **Left half — checks list** (`RuleCheckRow`, one per member check instance): label, params shown always-expanded directly under the row (mirrors the strategy half's param layout — see below), `✖` remove button (calls `removeCheck(ruleId, localId)`, which deletes this `CheckInstance` from the rule's `checks`). Below the member checks: a `+ Add check` row — opens `AddCheckToRuleDialog` listing this rule's `kind`'s check descriptors via `RulesColumn.candidatesFor` (see "AddCheckToRuleDialog" below for which types are offered); if `candidatesFor` returns empty, opens an `AlertModal` instead (`quality.no_checks_for_kind`).
-- **Right half — strategy panel** (`RuleStrategyPanel`): strategy label (or `strategy.no_fix.label` if `strategyId` is null), its params shown always-expanded underneath (same layout as the checks side), a `Switch` toggle (visible only when a strategy is set) bound to `disabled`, and a `✎` edit button opening `StrategySelectDialog`.
+- **Right half — strategy panel** (`RuleStrategyPanel`): strategy label (or `strategy.no_fix.label` if `strategyId` is null), a `WarningIcon` (⚠, shared component) next to the label when `strategy.experimental` is true, its params shown always-expanded underneath (same layout as the checks side), a `Switch` toggle (visible only when a strategy is set) bound to `disabled`, and a `✎` edit button opening `StrategySelectDialog`.
 - **Card title row**: rule name (or inline rename input), a `Switch` bound to `ruleDisabled`, `✎` rename button, `✖` remove button (opens a `ConfirmModal` before calling `removeRule`, since it deletes member checks too).
 
 Split rather than stacked so disabling/configuring the fix reads as independent from the checks — the checks still run regardless of whether their rule's fix is enabled.
@@ -159,7 +159,8 @@ Modal using `ItemSelectDialog` in multiselect mode (per-row checkbox, toggled in
 Modal using `ItemSelectDialog`, takes a required `kind` prop. Shows `no_fix` plus strategies where `handles === kind` — same candidate filter as `StrategySelectDialog`, but this dialog targets no existing rule (nothing in the store yet) and stages strategy params locally instead of writing through `setStrategyParam`.
 
 - This step is skipped entirely (by `RulesColumn`, before opening it) when `availableStrategies` has no entry with `handles === kind` — the rule is created directly with `strategyId: null`.
-- Right panel: strategy description + param fields (local state, not `useParamEditor`).
+- Item list: each candidate whose `experimental` is true shows a `WarningIcon` (⚠) after its label — see "Experimental strategies" below.
+- Right panel: strategy description + a `WarningBubble` when the selected strategy's `experimental` is true + param fields (local state, not `useParamEditor`).
 - Footer: `[Back]` (returns to `CheckSelectDialog`, step 2) `[Cancel]` `[Add]`.
 - Add: calls `onConfirm(strategyId, params)` (`strategyId` is `null` for `no_fix`) — `RulesColumn` then calls `createRule(checkIds, strategyId, checkParamOverrides, strategyParams)` to commit the whole rule atomically, closes the flow.
 
@@ -179,8 +180,17 @@ Modal using `ItemSelectDialog`. Targets one rule (`ruleId`, `kind` props). Shows
 
 - Selecting `no_fix` calls `clearStrategy(ruleId)` → sets the rule's `strategyId` to `null` and `disabled` to `false`.
 - Selecting a real strategy calls `setStrategy(ruleId, strategyId)`.
-- Right panel: strategy description + param fields (via `useParamEditor` inside `StrategyParamPanel`).
+- Item list: same `WarningIcon` badge on experimental candidates as `NewRuleStrategyDialog` above.
+- Right panel: strategy description + a `WarningBubble` when the selected strategy is experimental + param fields (via `useParamEditor` inside `StrategyParamPanel`).
 - Footer: `[Cancel]` `[Select]`.
+
+## Experimental strategies
+
+`StrategyDescriptor.experimental` (see `maze-wasm/Specs/api.md`, backed by `RepairStrategy::is_experimental` in `maze-core`, see `Specs/repair.md`) flags a strategy whose results or performance may be unpredictable — currently only `missing_regions`. Three UI surfaces read it, all via the shared `WarningIcon`/`WarningBubble` components (`maze-web/src/components/WarningIcon.tsx`, `WarningBubble.tsx`), both rendering the same fixed `strategy.experimental_warning` message:
+
+- `StrategySelectDialog` / `NewRuleStrategyDialog`: `WarningIcon` next to each experimental candidate's label in the item list; `WarningBubble` under the description in the right panel when the selected candidate is experimental.
+- `RuleStrategyPanel` (rule card, right half): `WarningIcon` next to the assigned strategy's label.
+- `QualityDetailPanel` → `ParamizedDetail`: `WarningBubble` under the description when the selected strategy is experimental.
 
 ## ViewModel: useQualityViewModel
 
