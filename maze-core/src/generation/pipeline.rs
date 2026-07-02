@@ -224,9 +224,9 @@ fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
          Some(IssueData::RegionsNeedingExpansion { invalid: incoming_invalid, invalid_sources: incoming_sources })) => {
             merge_regions_needing_expansion(invalid, invalid_sources, incoming_invalid, incoming_sources);
         }
-        (Some(IssueData::MissingRegions { missing_by_class }),
-         Some(IssueData::MissingRegions { missing_by_class: incoming_by_class })) => {
-            merge_missing_regions(missing_by_class, incoming_by_class);
+        (Some(IssueData::MissingRegions { balance_by_class }),
+         Some(IssueData::MissingRegions { balance_by_class: incoming_by_class })) => {
+            merge_missing_regions(balance_by_class, incoming_by_class);
         }
         (None, None) => {}
         (existing_data, incoming_data) => {
@@ -345,17 +345,28 @@ fn merge_regions_needing_expansion(
     }
 }
 
-/// Canonical merge for `IssueData::MissingRegions` — see GitHub issue #60. Two
-/// `MinRegionCountCheck` instances in one rule can target different `RegionClass`es (union both
-/// into the merged map) or, less commonly, the same class with different `min_count` thresholds
-/// (take the **max** of the two `missing` counts, not the sum — both describe the same
-/// underlying shortfall against that class's population, summing would double-count it).
+/// Canonical merge for `IssueData::MissingRegions`. A single `MinRegionCountCheck` instance now
+/// reports every off-target class's balance in one issue (see GitHub issue #60's multi-instance
+/// design, retired — there is normally exactly one active instance, so this merge rarely runs in
+/// practice), but stays defined for the rare case of two instances active at once. Two entries
+/// for the same class take the value **further from zero** (the stricter demand/surplus): for a
+/// shared shortfall (`-N`) that's the more negative value; a shortfall and a surplus on the same
+/// class in the same pass is a configuration conflict between instances, not something this
+/// merge can resolve — `debug_assert!` against it rather than silently picking one side.
 fn merge_missing_regions(
-    missing_by_class: &mut HashMap<crate::graph::region_class::RegionClass, u32>,
-    incoming: HashMap<crate::graph::region_class::RegionClass, u32>,
+    balance_by_class: &mut HashMap<crate::graph::region_class::RegionClass, i32>,
+    incoming: HashMap<crate::graph::region_class::RegionClass, i32>,
 ) {
-    for (class, missing) in incoming {
-        missing_by_class.entry(class).and_modify(|m| *m = (*m).max(missing)).or_insert(missing);
+    for (class, balance) in incoming {
+        balance_by_class.entry(class)
+            .and_modify(|b| {
+                debug_assert!(
+                    (*b < 0) == (balance < 0),
+                    "merge_missing_regions: class {class:?} has conflicting-sign balances ({b} vs {balance}) from two instances in one rule"
+                );
+                *b = if b.abs() >= balance.abs() { *b } else { balance };
+            })
+            .or_insert(balance);
     }
 }
 
@@ -548,10 +559,10 @@ mod merge_tests {
         assert!(sources.contains(&"min_region_ratio".to_string()));
     }
 
-    fn missing_regions_issue(source_check: &str, class: crate::graph::region_class::RegionClass, missing: u32) -> Issue {
+    fn missing_regions_issue(source_check: &str, class: crate::graph::region_class::RegionClass, balance: i32) -> Issue {
         Issue::with_data_from_check(
             crate::quality_control::MISSING_REGIONS,
-            IssueData::MissingRegions { missing_by_class: HashMap::from([(class, missing)]) },
+            IssueData::MissingRegions { balance_by_class: HashMap::from([(class, balance)]) },
             source_check,
         )
     }
@@ -559,23 +570,23 @@ mod merge_tests {
     #[test]
     fn merge_missing_regions_unions_different_classes() {
         use crate::graph::region_class::RegionClass;
-        let mut a = missing_regions_issue("min_region_count_1", RegionClass::Trap, 2);
+        let mut a = missing_regions_issue("min_region_count_1", RegionClass::Trap, -2);
         let b = missing_regions_issue("min_region_count_2", RegionClass::Alternative, 1);
         merge_issue(&mut a, b);
 
-        let Some(IssueData::MissingRegions { missing_by_class }) = &a.data else { panic!() };
-        assert_eq!(missing_by_class, &HashMap::from([(RegionClass::Trap, 2), (RegionClass::Alternative, 1)]));
+        let Some(IssueData::MissingRegions { balance_by_class }) = &a.data else { panic!() };
+        assert_eq!(balance_by_class, &HashMap::from([(RegionClass::Trap, -2), (RegionClass::Alternative, 1)]));
     }
 
     #[test]
-    fn merge_missing_regions_takes_max_for_same_class() {
+    fn merge_missing_regions_takes_stricter_for_same_class() {
         use crate::graph::region_class::RegionClass;
-        let mut a = missing_regions_issue("min_region_count_1", RegionClass::Trap, 2);
-        let b = missing_regions_issue("min_region_count_2", RegionClass::Trap, 5);
+        let mut a = missing_regions_issue("min_region_count_1", RegionClass::Trap, -2);
+        let b = missing_regions_issue("min_region_count_2", RegionClass::Trap, -5);
         merge_issue(&mut a, b);
 
-        let Some(IssueData::MissingRegions { missing_by_class }) = &a.data else { panic!() };
-        assert_eq!(missing_by_class, &HashMap::from([(RegionClass::Trap, 5)]),
-            "same-class shortfalls describe one underlying demand — take the stricter (max), not the sum");
+        let Some(IssueData::MissingRegions { balance_by_class }) = &a.data else { panic!() };
+        assert_eq!(balance_by_class, &HashMap::from([(RegionClass::Trap, -5)]),
+            "same-class shortfalls describe one underlying demand — take the stricter (further from zero), not the sum");
     }
 }

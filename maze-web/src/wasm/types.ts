@@ -137,9 +137,9 @@ export interface CheckDescriptor {
   issue_kinds: string[];
   params: ParamDescriptor[];
   /** Whether more than one independent instance of this check type may be active at once
-   * (across rules, or within the same rule) — see GitHub issue #60. `true` only for
-   * `min_region_count` (different `region_class` per instance is a legitimate use case); every
-   * other check is `false`. */
+   * (across rules, or within the same rule) — see GitHub issue #60, retired: no check currently
+   * sets this `true` (`min_region_count` now evaluates all four region classes in one instance
+   * instead of needing one instance per class). */
   allow_multiple_instances: boolean;
 }
 

@@ -105,13 +105,13 @@ fn unreachable_finish_check_no_false_positive_when_reachable() {
     assert!(issues.is_empty());
 }
 
-// Two independent `MinRegionCountCheck` instances (different `region_class` each) active in the
-// same `QualityControlEngine` run — the real-check end-to-end counterpart to GitHub issue #60,
-// not just the synthetic-issue merge unit tests in pipeline.rs's `merge_tests` module. Layout:
-// start(0) -> 1 -> finish(2), 1 -> 3 -> 2 (alternative route), 1 -> 6 (trap dead end) — same
-// shape as region_class.rs's own `classifies_all_four_kinds` test.
+// A single `MinRegionCountCheck` instance evaluating two classes (Trap and Alternative) at once
+// — GitHub issue #60's multi-instance design (one instance per `region_class`) is retired, since
+// one instance now reports every off-target class's balance in one issue. Layout: start(0) -> 1
+// -> finish(2), 1 -> 3 -> 2 (alternative route), 1 -> 6 (trap dead end) — same shape as
+// region_class.rs's own `classifies_all_four_kinds` test.
 #[test]
-fn two_min_region_count_instances_with_different_classes_both_fire_independently() {
+fn one_min_region_count_instance_reports_multiple_classes_at_once() {
     let mut ids = IdGenerator::new();
     let field = Field::<SquareTessellation>::new(square_rect(7, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
@@ -127,27 +127,20 @@ fn two_min_region_count_instances_with_different_classes_both_fire_independently
     maze.meta.finish = Some(nodes[2]);
 
     let engine = QualityControlEngine::new(vec![
-        Box::new(MinRegionCountCheck { instance_id: "rule_a:0".to_string(), region_class: RegionClass::Trap, min_count: 2 }),
-        Box::new(MinRegionCountCheck { instance_id: "rule_b:0".to_string(), region_class: RegionClass::Alternative, min_count: 2 }),
+        Box::new(MinRegionCountCheck {
+            instance_id: "rule_a:0".to_string(),
+            min_counts: HashMap::from([(RegionClass::Trap, 2), (RegionClass::Alternative, 2)]),
+        }),
     ]);
     let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let issues = engine.run(&maze, &mut rng);
 
-    assert_eq!(issues.len(), 2, "each instance fires its own issue, not deduplicated by type");
-    for issue in &issues {
-        assert_eq!(issue.kind, MISSING_REGIONS);
-    }
-    let by_source: HashMap<String, &IssueData> = issues.iter()
-        .map(|i| (i.single_source_check().unwrap().to_string(), i.data.as_ref().unwrap()))
-        .collect();
-    match by_source.get("rule_a:0") {
-        Some(IssueData::MissingRegions { missing_by_class }) =>
-            assert_eq!(missing_by_class, &HashMap::from([(RegionClass::Trap, 1)]), "1 trap region found, 2 required"),
+    assert_eq!(issues.len(), 1, "one instance, one issue, even with multiple classes off-target");
+    assert_eq!(issues[0].kind, MISSING_REGIONS);
+    match &issues[0].data {
+        Some(IssueData::MissingRegions { balance_by_class }) =>
+            assert_eq!(balance_by_class, &HashMap::from([(RegionClass::Trap, -1), (RegionClass::Alternative, -1)]),
+                "1 trap region found (2 required) and 1 alternative region found (2 required) -> both -1"),
         other => panic!("expected rule_a:0 to report MissingRegions, got {other:?}"),
-    }
-    match by_source.get("rule_b:0") {
-        Some(IssueData::MissingRegions { missing_by_class }) =>
-            assert_eq!(missing_by_class, &HashMap::from([(RegionClass::Alternative, 1)]), "1 alternative region found, 2 required"),
-        other => panic!("expected rule_b:0 to report MissingRegions, got {other:?}"),
     }
 }

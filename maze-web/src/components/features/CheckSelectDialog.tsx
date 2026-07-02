@@ -30,9 +30,9 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const rules = useMazeStore((s) => s.rules);
 
   const availableChecks = allChecks.filter((c) => c.issue_kinds[0] === kind);
-  // A type without `allow_multiple_instances` (every check except `min_region_count`, see
-  // GitHub issue #60) can't be picked here if it's already active in some existing rule —
-  // adding it anyway would be silently rejected by `createRule`.
+  // A type without `allow_multiple_instances` (every check, currently — see GitHub issue #60,
+  // retired) can't be picked here if it's already active in some existing rule — adding it
+  // anyway would be silently rejected by `createRule`.
   const isAlreadyActive = (id: string) => isTypeAlreadyActive(rules, id);
 
   const [selectedId, setSelectedId] = useState<string>(availableChecks[0]?.id ?? "");

@@ -218,9 +218,21 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.region_class.label"] as MessageFn,
     description: m["param.region_class.description"] as MessageFn,
   },
-  count: {
-    label: m["param.count.label"] as MessageFn,
-    description: m["param.count.description"] as MessageFn,
+  path_count: {
+    label: m["param.path_count.label"] as MessageFn,
+    description: m["param.path_count.description"] as MessageFn,
+  },
+  alternative_count: {
+    label: m["param.alternative_count.label"] as MessageFn,
+    description: m["param.alternative_count.description"] as MessageFn,
+  },
+  unreachable_count: {
+    label: m["param.unreachable_count.label"] as MessageFn,
+    description: m["param.unreachable_count.description"] as MessageFn,
+  },
+  trap_count: {
+    label: m["param.trap_count.label"] as MessageFn,
+    description: m["param.trap_count.description"] as MessageFn,
   },
 };
 

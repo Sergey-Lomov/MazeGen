@@ -22,8 +22,8 @@ function resolveCheckKind(descriptor: CheckDescriptor): string {
 }
 
 // Most checks may only have one active instance at a time, across all rules — only checks with
-// `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue #60) can have
-// several independent configurations active simultaneously. Exported so component-layer
+// `allow_multiple_instances` (none currently — see GitHub issue #60, retired) can have several
+// independent configurations active simultaneously. Exported so component-layer
 // candidate filters (RulesColumn, CheckSelectDialog) apply the exact same predicate the store
 // itself enforces, instead of each re-implementing it.
 export function isTypeAlreadyActive(rules: QcRuleState[], typeId: string): boolean {
@@ -40,7 +40,6 @@ function defaultParamsFor(descriptor: CheckDescriptor): Record<string, string> {
   );
 }
 
-let ruleIdCounter = 0;
 // Default rule name = the issue kind's own label (the same text shown in IssueSelectDialog's
 // picker), mirroring `qualityI18n.resolveIssueLabel`'s fallback to the raw kind — duplicated
 // here rather than imported to keep the store layer free of component-layer imports.
@@ -51,14 +50,14 @@ function defaultRuleName(kind: string): string {
 
 // `name` is plain user-editable text seeded from the current locale at creation time (renaming
 // UI not implemented yet) — it does not re-translate later, same as any other user-entered
-// string would not. The counter is shared with `id` so a rule's number stays stable as other
-// rules are added/removed (not derived from array position, which would shift on removal).
-// `nextLocalCheckId` starts at `checks.length` (the lowest id not already in use among the
-// member checks passed in at creation).
+// string would not. `id` is a UUID, not a counter-derived string — a module-level counter resets
+// on store re-initialization (HMR, project load, undo/redo replay) while previously-created rules
+// (e.g. from an imported project) keep their old ids, so a fresh counter can mint an id that
+// collides with one already in use. `nextLocalCheckId` starts at `checks.length` (the lowest id
+// not already in use among the member checks passed in at creation).
 function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean): QcRuleState {
-  ruleIdCounter += 1;
   return {
-    id: `rule_${ruleIdCounter}`,
+    id: `rule_${crypto.randomUUID()}`,
     name: defaultRuleName(kind),
     kind,
     checks,
@@ -180,8 +179,8 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   selectNode: (id) => set({ selectedNode: id }),
 
-  // A check type with `allow_multiple_instances` (currently only `min_region_count`, see GitHub
-  // issue #60) can always be added, including one already active elsewhere — each call mints a
+  // A check type with `allow_multiple_instances` (none currently — see GitHub issue #60,
+  // retired) could always be added, including one already active elsewhere — each call mints a
   // fresh, independent `CheckInstance`. Every other check type is still limited to one active
   // instance at a time, across all rules.
   addCheck: (typeId, ruleId, initialParams) => set((state) => {

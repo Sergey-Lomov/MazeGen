@@ -494,9 +494,10 @@ describe("mazeStore.setGenerationMethod", () => {
 describe("mazeStore.addCheck", () => {
   const paramKind = { type: "integer" as const, default: 3, min: 1, max: 100 };
   const descriptor = { id: "min_loops", label: "Min loops", description: "", issue_kinds: ["missing_loops"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }], allow_multiple_instances: false };
-  // Only `min_region_count` has `allow_multiple_instances: true` (see GitHub issue #60) — used
-  // below to verify the multi-instance-allowed path specifically.
-  const multiInstanceDescriptor = { id: "min_region_count", label: "Min region count", description: "", issue_kinds: ["missing_loops"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }], allow_multiple_instances: true };
+  // No real check type sets `allow_multiple_instances: true` any more (GitHub issue #60's
+  // multi-instance design was retired) — this synthetic descriptor exercises the store's
+  // multi-instance-allowed branch in isolation, independent of which (if any) real check uses it.
+  const multiInstanceDescriptor = { id: "multi_instance_test_check", label: "Multi-instance test check", description: "", issue_kinds: ["missing_loops"], params: [{ id: "min_loops", label: "Min loops", kind: paramKind }], allow_multiple_instances: true };
 
   it("adds the check as a new rule's instance", () => {
     useMazeStore.setState({ availableChecks: [descriptor], rules: [] });
@@ -511,11 +512,11 @@ describe("mazeStore.addCheck", () => {
   it("mints an independent instance on each call, even for an already-active type", () => {
     useMazeStore.setState({
       availableChecks: [multiInstanceDescriptor],
-      rules: [{ id: "g1", name: "Rule 1", kind: "missing_loops", checks: [{ localId: 0, typeId: "min_region_count", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "missing_loops", checks: [{ localId: 0, typeId: "multi_instance_test_check", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false }],
     });
-    useMazeStore.getState().addCheck("min_region_count", "g1");
+    useMazeStore.getState().addCheck("multi_instance_test_check", "g1");
     const typeIds = useMazeStore.getState().rules.find((r) => r.id === "g1")?.checks.map((c) => c.typeId);
-    expect(typeIds).toEqual(["min_region_count", "min_region_count"]);
+    expect(typeIds).toEqual(["multi_instance_test_check", "multi_instance_test_check"]);
   });
 
   it("is a no-op when the type is already active and allow_multiple_instances is false", () => {

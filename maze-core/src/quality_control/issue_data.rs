@@ -73,20 +73,23 @@ pub enum IssueData {
         /// remapped on merge because cycle enumeration has no equivalent stable identity).
         invalid_sources: HashMap<usize, Vec<String>>,
     },
-    /// Produced by any check that flags the maze as short on regions of a specific `RegionClass`
-    /// (paired with `MISSING_REGIONS`; currently only `MinRegionCountCheck`) — see GitHub issue
-    /// #60 for why this is a per-class map rather than a single `{region_class, missing}` pair:
-    /// multiple `MinRegionCountCheck` instances (different `region_class` each, or even the same
-    /// one) can be active in one rule and merge into a single issue. `missing_by_class` is how
-    /// many regions of each class are short of that class's requirement. Invariant: a single,
-    /// not-yet-merged `Issue` (as produced directly by one `MinRegionCountCheck::check()` call)
-    /// always carries **at most one** entry — its own `region_class`; multiple entries only ever
-    /// arise as the result of `merge_missing_regions` (`generation/pipeline.rs`) combining two
-    /// checks' issues, never as a single check's primary output. `HashMap` iteration order is
-    /// not stable — callers that surface this map (analytics DTOs, UI rendering) must sort by
-    /// `RegionClass::as_str()` before display/comparison if order matters there.
+    /// Produced by `MinRegionCountCheck` (paired with `MISSING_REGIONS`) — carries the region
+    /// balance per `RegionClass` (Specs/repair.md's "Region Balance" data model): `-N` means the
+    /// maze is short N regions of that class against its configured minimum (a repair strategy
+    /// must create/convert regions into it), `+N` means the class has N regions *above* its
+    /// minimum, a spendable surplus a repair strategy may consume (reuse or grow-through) when
+    /// fixing a different class's shortfall. A class sitting exactly at its minimum, or with no
+    /// minimum configured, carries no entry at all (not a `0` entry) — absence means "nothing to
+    /// fix, nothing to spend" for that class. Since a single `MinRegionCountCheck` instance now
+    /// evaluates all four classes in one pass (see GitHub issue #60's multi-instance design,
+    /// retired in favor of this), one check call produces one `Issue` with every off-target
+    /// class's balance already in `balance_by_class` — no cross-instance merge is needed in the
+    /// common case, though `merge_issue` still unions two instances' output if more than one is
+    /// ever active at once. `HashMap` iteration order is not stable — callers that surface this
+    /// map (analytics DTOs, UI rendering) must sort by `RegionClass::as_str()` before
+    /// display/comparison if order matters there.
     MissingRegions {
-        missing_by_class: HashMap<RegionClass, u32>,
+        balance_by_class: HashMap<RegionClass, i32>,
     },
 }
 

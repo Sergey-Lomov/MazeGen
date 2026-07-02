@@ -50,15 +50,37 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   scc_count: (d) => d.scc_count !== undefined && d.max_scc_count !== undefined
     ? m["issue.excessive_scc_count.scc_count_label"]({ scc_count: d.scc_count, max_scc_count: d.max_scc_count })
     : undefined,
-  min_region_size: (d) => d.min_region_size !== undefined
-    ? m["issue.region_needs_expansion.min_region_size_label"]({ min_region_size: d.min_region_size })
-    : undefined,
-  min_region_ratio: (d) => d.min_region_ratio !== undefined
-    ? m["issue.region_needs_expansion.min_region_ratio_label"]({ min_region_ratio: d.min_region_ratio })
-    : undefined,
-  min_region_count: (d) => d.region_class !== undefined && d.count !== undefined
-    ? m["issue.missing_regions.min_region_count_label"]({ region_class: resolveParamOptionLabel("region_class", d.region_class), min_count: d.count })
-    : undefined,
+  min_region_size: (d) => {
+    if (d.min_region_size === undefined) return undefined;
+    if (d.region_classes !== undefined) {
+      const classes = d.region_classes.split(",").map((c) => resolveParamOptionLabel("region_class", c)).join(", ");
+      return m["issue.region_needs_expansion.min_region_size_with_classes_label"]({ region_classes: classes, min_region_size: d.min_region_size });
+    }
+    return m["issue.region_needs_expansion.min_region_size_label"]({ min_region_size: d.min_region_size });
+  },
+  min_region_ratio: (d) => {
+    if (d.min_region_ratio === undefined) return undefined;
+    if (d.region_classes !== undefined) {
+      const classes = d.region_classes.split(",").map((c) => resolveParamOptionLabel("region_class", c)).join(", ");
+      return m["issue.region_needs_expansion.min_region_ratio_with_classes_label"]({ region_classes: classes, min_region_ratio: d.min_region_ratio });
+    }
+    return m["issue.region_needs_expansion.min_region_ratio_label"]({ min_region_ratio: d.min_region_ratio });
+  },
+  min_region_count: (d) => {
+    if (d.region_classes === undefined) return undefined;
+    const classes = d.region_classes.split(",");
+    // Single deficit class: exact configured minimum is available (`min_count` detail) -- show
+    // it. Multiple classes short at once have no single N to show, fall back to the class list.
+    if (classes.length === 1 && d.min_count !== undefined) {
+      return m["issue.missing_regions.min_region_count_single_label"]({
+        region_class: resolveParamOptionLabel("region_class", classes[0]),
+        min_count: d.min_count,
+      });
+    }
+    return m["issue.missing_regions.min_region_count_label"]({
+      region_classes: classes.map((c) => resolveParamOptionLabel("region_class", c)).join(", "),
+    });
+  },
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

@@ -173,14 +173,9 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         })
         .collect();
 
-    let region_classes: HashMap<String, String> = match (maze.meta.start, maze.meta.finish) {
-        (Some(s), Some(f)) => {
-            maze.analysis.region_classes(&maze.graph, s, f).into_iter()
-                .map(|(comp_id, class)| (comp_id.to_string(), class.as_str().to_string()))
-                .collect()
-        }
-        _ => HashMap::new(),
-    };
+    let region_classes: HashMap<String, String> = maze.analysis.region_classes(&maze.graph, &maze.meta).into_iter()
+        .map(|(comp_id, class)| (comp_id.to_string(), class.as_str().to_string()))
+        .collect();
 
     let graph_analytics_dto = GraphAnalyticsDto {
         node_count:        graph_analytics.node_count,
@@ -212,18 +207,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         walls:         raw_edge_stats.walls,
     };
 
-    let route_info = match (maze.meta.start, maze.meta.finish) {
-        (Some(s), Some(f)) => {
-            maze.analysis.route_info(&maze.graph, s, f).map(|r| RouteInfoDto {
-                path_length:    r.path_length,
-                junction_count: r.junction_count,
-                one_way_count:  r.one_way_count,
-                score:          maze.meta.route_score,
-                path:           r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
-            })
-        }
-        _ => None,
-    };
+    let route_info = maze.analysis.route_info(&maze.graph, &maze.meta).map(|r| RouteInfoDto {
+        path_length:    r.path_length,
+        junction_count: r.junction_count,
+        one_way_count:  r.one_way_count,
+        score:          maze.meta.route_score,
+        path:           r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
+    });
 
     Ok(MazeSnapshot {
         nodes,

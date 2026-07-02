@@ -31,11 +31,13 @@ pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS, RepairLimits, 
 pub struct MazeAnalysis {
     nav_graph: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, graph::nav::NavGraph)>>,
     scc: std::cell::RefCell<Option<(u64, graph::scc::ConnectedComponents)>>,
-    route_info: std::cell::RefCell<Option<(u64, ids::NodeId, ids::NodeId, Option<graph::routing::RouteInfo>)>>,
+    route_info: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, Option<graph::routing::RouteInfo>)>>,
     graph_analytics: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, GraphAnalytics)>>,
     distance_from_start: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashMap<graph::nav::NavNodeId, usize>)>>,
     distance_from_finish: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashMap<graph::nav::NavNodeId, usize>)>>,
-    region_classes: std::cell::RefCell<Option<(u64, ids::NodeId, ids::NodeId, std::collections::HashMap<graph::scc::ComponentId, RegionClass>)>>,
+    region_classes: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, std::collections::HashMap<graph::scc::ComponentId, RegionClass>)>>,
+    reachable_from_start: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
+    reachable_to_finish: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
 }
 
 impl Default for MazeAnalysis {
@@ -48,6 +50,8 @@ impl Default for MazeAnalysis {
             distance_from_start: std::cell::RefCell::new(None),
             distance_from_finish: std::cell::RefCell::new(None),
             region_classes: std::cell::RefCell::new(None),
+            reachable_from_start: std::cell::RefCell::new(None),
+            reachable_to_finish: std::cell::RefCell::new(None),
         }
     }
 }
@@ -85,40 +89,44 @@ impl MazeAnalysis {
         cache.as_ref().unwrap().1.clone()
     }
 
-    /// Computes (and caches per `(graph.version(), start, finish)` key) the route between two
-    /// maze nodes, pinning exactly those two nodes — independent of `nav_graph()`'s own pinned
-    /// cache, since the route's pinned set may differ from `meta.start`/`meta.finish` (e.g. a
-    /// strategy probing a candidate pair before committing it to `meta`).
+    /// Computes (and caches per `(graph.version(), meta.start, meta.finish)` key) the route
+    /// between `meta.start` and `meta.finish`, pinning exactly those two nodes — independent of
+    /// `nav_graph()`'s own pinned cache, since callers may want the route without pinning every
+    /// other consumer's nav graph to this specific pair.
     ///
-    /// Single-slot cache: only the most recently requested key is kept. Calling this with
-    /// alternating pairs (e.g. probing several candidates in a loop) defeats the cache entirely
-    /// — every call rebuilds. Fine for the current single-pair use (route display), but a caller
-    /// comparing many candidate pairs should build its own nav graph once rather than calling
-    /// this in a loop.
-    pub fn route_info(&self, graph: &Graph, start: ids::NodeId, finish: ids::NodeId) -> Option<graph::routing::RouteInfo> {
+    /// Returns `None` if either `meta.start` or `meta.finish` is unset, or if no route exists
+    /// between them.
+    pub fn route_info(&self, graph: &Graph, meta: &MazeMeta) -> Option<graph::routing::RouteInfo> {
+        let (start, finish) = (meta.start?, meta.finish?);
         let version = graph.version();
         let mut cache = self.route_info.borrow_mut();
-        if !matches!(&*cache, Some((v, s, f, _)) if *v == version && *s == start && *f == finish) {
+        if !matches!(&*cache, Some((v, s, f, _)) if *v == version && *s == Some(start) && *f == Some(finish)) {
             let mut pinned = std::collections::HashSet::new();
             pinned.insert(start);
             pinned.insert(finish);
             let nav = graph::nav::build_nav_graph_pinned(graph, &pinned);
             let info = graph::routing::compute_route_info(&nav, start, finish);
-            *cache = Some((version, start, finish, info));
+            *cache = Some((version, Some(start), Some(finish), info));
         }
         cache.as_ref().unwrap().3.clone()
     }
 
-    /// Classifies every SCC region relative to `start`/`finish` (see `graph::region_class`).
-    /// Keyed on `(graph.version(), start, finish)` — same invalidation shape as `route_info`/
-    /// `scc`, since classification depends on both. Reuses `scc()` and `route_info()`, both
-    /// independently cached, so repeated calls within the same key are cheap.
-    pub fn region_classes(&self, graph: &Graph, start: ids::NodeId, finish: ids::NodeId) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
-        let key = (graph.version(), start, finish);
+    /// Classifies every SCC region relative to `meta.start`/`meta.finish` (see
+    /// `graph::region_class`). Keyed on `(graph.version(), meta.start, meta.finish)` — same
+    /// invalidation shape as `route_info`/`scc`, since classification depends on both. Reuses
+    /// `scc()` and `route_info()`, both independently cached, so repeated calls within the same
+    /// key are cheap.
+    ///
+    /// Returns an empty map if either `meta.start` or `meta.finish` is unset — there is no
+    /// start/finish to classify regions relative to.
+    pub fn region_classes(&self, graph: &Graph, meta: &MazeMeta) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
+        let Some(start) = meta.start else { return std::collections::HashMap::new(); };
+        let Some(finish) = meta.finish else { return std::collections::HashMap::new(); };
+        let key = (graph.version(), Some(start), Some(finish));
         let mut cache = self.region_classes.borrow_mut();
         if !matches!(&*cache, Some((v, s, f, _)) if (*v, *s, *f) == key) {
             let scc = self.scc(graph);
-            let route = self.route_info(graph, start, finish);
+            let route = self.route_info(graph, meta);
             let classes = graph::region_class::classify_regions(graph, &scc, route.as_ref(), start, finish);
             *cache = Some((key.0, key.1, key.2, classes));
         }
@@ -184,6 +192,41 @@ impl MazeAnalysis {
                 .expect("nav_graph always pins meta.finish as a NavNode when meta.finish is Some");
             let dist = graph::distance_map::compute_distance_map(&nav, source, graph::distance_map::DistanceDirection::Reverse);
             *cache = Some((version, finish, dist));
+        }
+        Some(cache.as_ref().unwrap().2.clone())
+    }
+
+    /// Builds and caches the set of maze nodes reachable FROM `meta.start` (graph-domain
+    /// `NodeId`, directed forward traversal via `Graph::reachable_from`) — keyed on
+    /// `(graph.version(), meta.start)`, invalidated whenever the graph changes or `start` is
+    /// moved. Returns `None` if `meta.start` isn't set.
+    ///
+    /// Independent of `meta.finish` — unlike `route_info`/`region_classes`, which need both
+    /// endpoints, this is single-node reachability and stays useful with only `start` set (e.g.
+    /// `RandomEndpointsStrategy` searching for a `finish` candidate before one is chosen).
+    pub fn reachable_from_start(&self, graph: &Graph, meta: &MazeMeta) -> Option<std::collections::HashSet<ids::NodeId>> {
+        let start = meta.start?;
+        let version = graph.version();
+        let mut cache = self.reachable_from_start.borrow_mut();
+        if !matches!(&*cache, Some((v, s, _)) if *v == version && *s == start) {
+            let reachable: std::collections::HashSet<ids::NodeId> = graph.reachable_from(start).into_iter().collect();
+            *cache = Some((version, start, reachable));
+        }
+        Some(cache.as_ref().unwrap().2.clone())
+    }
+
+    /// Builds and caches the set of maze nodes that can reach `meta.finish` (graph-domain
+    /// `NodeId`, directed reverse traversal via `Graph::reachable_to`) — keyed on
+    /// `(graph.version(), meta.finish)`, same invalidation contract as `reachable_from_start`.
+    /// Returns `None` if `meta.finish` isn't set. Independent of `meta.start`, for the same
+    /// reason as `reachable_from_start`.
+    pub fn reachable_to_finish(&self, graph: &Graph, meta: &MazeMeta) -> Option<std::collections::HashSet<ids::NodeId>> {
+        let finish = meta.finish?;
+        let version = graph.version();
+        let mut cache = self.reachable_to_finish.borrow_mut();
+        if !matches!(&*cache, Some((v, f, _)) if *v == version && *f == finish) {
+            let reachable: std::collections::HashSet<ids::NodeId> = graph.reachable_to(finish).into_iter().collect();
+            *cache = Some((version, finish, reachable));
         }
         Some(cache.as_ref().unwrap().2.clone())
     }
@@ -272,8 +315,8 @@ mod distance_cache_tests {
         let (mut maze, nodes) = line_maze(4);
         maze.meta.start = Some(nodes[0]);
         maze.meta.finish = Some(nodes[3]);
-        let first = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
-        let second = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        let first = maze.analysis.region_classes(&maze.graph, &maze.meta);
+        let second = maze.analysis.region_classes(&maze.graph, &maze.meta);
         assert_eq!(first, second, "repeated call with unchanged graph/start/finish must return identical map");
     }
 
@@ -306,7 +349,7 @@ mod distance_cache_tests {
         maze.graph.remove_edge(cut);
 
         let scc = maze.analysis.scc(&maze.graph);
-        let before = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        let before = maze.analysis.region_classes(&maze.graph, &maze.meta);
         assert_eq!(before[&scc.component_of(nodes[2]).unwrap()], RegionClass::Unreachable);
 
         // Reconnect — cached entry for nodes[2]'s region must reflect the new reachability
@@ -314,7 +357,7 @@ mod distance_cache_tests {
         // graph.version() bumped.
         maze.graph.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let scc_after = maze.analysis.scc(&maze.graph);
-        let after = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        let after = maze.analysis.region_classes(&maze.graph, &maze.meta);
         assert_eq!(after[&scc_after.component_of(nodes[2]).unwrap()], RegionClass::Path, "cache must invalidate after graph.version() changes");
     }
 
@@ -329,12 +372,13 @@ mod distance_cache_tests {
         let scc = maze.analysis.scc(&maze.graph);
 
         // nodes[0] is start here, so its own region is Path by definition.
-        let with_node0_as_start = maze.analysis.region_classes(&maze.graph, nodes[0], nodes[3]);
+        let with_node0_as_start = maze.analysis.region_classes(&maze.graph, &maze.meta);
         assert_eq!(with_node0_as_start[&scc.component_of(nodes[0]).unwrap()], RegionClass::Path);
 
         // Same graph.version(), nodes[0] is no longer start — with no incoming edge into
         // nodes[0], it's unreachable from nodes[1]. Confirms the cache key includes start.
-        let with_node1_as_start = maze.analysis.region_classes(&maze.graph, nodes[1], nodes[3]);
+        let meta_with_node1_as_start = MazeMeta { start: Some(nodes[1]), finish: Some(nodes[3]), route_score: None };
+        let with_node1_as_start = maze.analysis.region_classes(&maze.graph, &meta_with_node1_as_start);
         assert_eq!(with_node1_as_start[&scc.component_of(nodes[0]).unwrap()], RegionClass::Unreachable);
     }
 }

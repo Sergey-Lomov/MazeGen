@@ -60,10 +60,10 @@ export function RulesColumn({ slots, selection, onSelect }: Props) {
   const [hoveredCheckId, setHoveredCheckId] = useState<string | null>(null);
 
   // Candidates to add into an existing rule: check types of the same issue kind. A type with
-  // `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue #60) is
-  // always offered, including one already active elsewhere or in this same rule. Every other
-  // type is filtered out once it's already active anywhere — adding a second instance of it
-  // would be silently rejected by the store anyway (see `addCheck`), so it's not offered here.
+  // `allow_multiple_instances` (none currently — see GitHub issue #60, retired) would always be
+  // offered, including one already active elsewhere or in this same rule. Every other type is
+  // filtered out once it's already active anywhere — adding a second instance of it would be
+  // silently rejected by the store anyway (see `addCheck`), so it's not offered here.
   function candidatesFor(slot: StrategySlotVM): CheckCandidateVM[] {
     return availableChecks
       .filter((c) => c.issue_kinds[0] === slot.kind)

@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "maze-core",
-    "maze-wasm"
+    "maze-wasm",
+    "maze-runner"
 ]
 
 resolver = "2"

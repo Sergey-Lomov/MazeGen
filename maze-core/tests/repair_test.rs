@@ -445,24 +445,24 @@ fn restore_invalidates_scc_cache() {
 #[test]
 fn restore_invalidates_route_info_cache() {
     let (mut maze, ordered) = make_connected_maze(4);
-    let start = ordered[0];
-    let finish = ordered[3];
+    maze.meta.start = Some(ordered[0]);
+    maze.meta.finish = Some(ordered[3]);
     let mut stack = SnapshotStack::new();
     stack.snapshot(&maze);
 
-    let intermediate_route = maze.analysis.route_info(&maze.graph, start, finish);
+    let intermediate_route = maze.analysis.route_info(&maze.graph, &maze.meta);
     assert!(intermediate_route.is_some(), "route must exist before the bridge is cut");
 
     let e = maze.graph.edge_between(ordered[1], ordered[2]).unwrap();
     maze.graph.remove_initial_edge(e);
     let e_rev = maze.graph.edge_between(ordered[2], ordered[1]).unwrap();
     maze.graph.remove_initial_edge(e_rev);
-    let cut_route = maze.analysis.route_info(&maze.graph, start, finish);
+    let cut_route = maze.analysis.route_info(&maze.graph, &maze.meta);
     assert!(cut_route.is_none(), "route must be gone once the only bridge is cut");
 
     stack.restore(&mut maze);
 
-    let restored_route = maze.analysis.route_info(&maze.graph, start, finish);
+    let restored_route = maze.analysis.route_info(&maze.graph, &maze.meta);
     assert!(restored_route.is_some(), "route_info must reflect the restored topology, not the cached cut-bridge state");
 }
 

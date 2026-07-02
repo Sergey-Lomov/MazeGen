@@ -205,29 +205,34 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
         CheckDescriptor {
             id: "min_region_count",
             label: "Minimum region count",
-            description: "Fires if the maze has fewer regions of the selected class (path/alternative/unreachable/trap) than the required minimum.",
+            description: "Fires if the maze has too few (or, for repair purposes, more than enough) regions of any class (path/alternative/unreachable/trap) against its configured minimum.",
             issue_kinds: vec![kind_str(MISSING_REGIONS)],
             params: vec![
                 ParamDescriptor {
-                    id: "region_class",
-                    label: "Region class",
-                    kind: ParamKindDto::Enum {
-                        options: vec![
-                            RegionClass::Path.as_str(),
-                            RegionClass::Alternative.as_str(),
-                            RegionClass::Unreachable.as_str(),
-                            RegionClass::Trap.as_str(),
-                        ],
-                        default: RegionClass::Trap.as_str(),
-                    },
+                    id: "path_count",
+                    label: "Min Path region count",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
                 ParamDescriptor {
-                    id: "count",
-                    label: "Min region count",
+                    id: "alternative_count",
+                    label: "Min Alternative region count",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+                ParamDescriptor {
+                    id: "unreachable_count",
+                    label: "Min Unreachable region count",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+                ParamDescriptor {
+                    id: "trap_count",
+                    label: "Min Trap region count",
                     kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
             ],
-            allow_multiple_instances: true,
+            // A single instance now evaluates all four classes at once (see GitHub issue #60's
+            // multi-instance design, retired — `MinRegionCountCheck` no longer needs more than
+            // one active instance to express "different minimums per class").
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "min_loop_length",
@@ -454,7 +459,8 @@ where
         check_rules,
         ..GenerateConfig::default()
     };
-    let (qc_engine, _, check_types) = runner::build_qc_and_repair::<T>(&qc_config)?;
+    let (qc_engine, _, check_types) = runner::build_qc_and_repair_with_types::<T>(&qc_config)
+        .map_err(|e| JsValue::from_str(&e))?;
 
     let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, point_to_xy)
         .map_err(|e| JsValue::from_str(&e))?;
@@ -469,13 +475,16 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn exactly_one_check_descriptor_allows_multiple_instances() {
+    fn no_check_descriptor_allows_multiple_instances() {
+        // GitHub issue #60's multi-instance design (min_region_count being the one check that
+        // could run more than once at a time, for different region_class values) is retired:
+        // a single min_region_count instance now evaluates all four classes' balances at once.
         let checks = available_checks_list();
         let allowing: Vec<&str> = checks.iter()
             .filter(|c| c.allow_multiple_instances)
             .map(|c| c.id)
             .collect();
-        assert_eq!(allowing, vec!["min_region_count"], "see GitHub issue #60 — only min_region_count supports multiple active instances");
+        assert!(allowing.is_empty(), "no check should need multiple active instances any more, got: {allowing:?}");
     }
 
     #[test]

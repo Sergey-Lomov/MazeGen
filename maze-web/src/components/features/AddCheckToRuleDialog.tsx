@@ -27,8 +27,8 @@ interface Props {
   /** Issue kind shared by `candidates` and the target rule — shown in the dialog title. */
   kind: string;
   /** Check types sharing the rule's kind, already filtered by `RulesColumn.candidatesFor` — a
-   * type with `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue
-   * #60) is offered even if already active elsewhere; every other type is excluded once active
+   * type with `allow_multiple_instances` (none currently — see GitHub issue #60, retired) would
+   * be offered even if already active elsewhere; every other type is excluded once active
    * anywhere. */
   candidates: CheckCandidateVM[];
   onClose: () => void;

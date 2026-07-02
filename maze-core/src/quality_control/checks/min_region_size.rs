@@ -30,10 +30,10 @@ impl<T: Tessellation> Check<T> for MinRegionSizeCheck {
         let classes = if self.region_classes.len() == ALL_REGION_CLASSES.len() {
             None
         } else {
-            let (Some(start), Some(finish)) = (maze.meta.start, maze.meta.finish) else {
+            if maze.meta.start.is_none() || maze.meta.finish.is_none() {
                 return;
-            };
-            Some(maze.analysis.region_classes(&maze.graph, start, finish))
+            }
+            Some(maze.analysis.region_classes(&maze.graph, &maze.meta))
         };
         let invalid: Vec<usize> = scc.components.iter().enumerate()
             .filter(|(idx, region)| {
@@ -49,9 +49,33 @@ impl<T: Tessellation> Check<T> for MinRegionSizeCheck {
         for &idx in &invalid {
             invalid_sources.entry(idx).or_default().push(self.instance_id.clone());
         }
-        let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, &self.instance_id)
-            .with_detail(&self.instance_id, "min_region_size", self.min_region_size.to_string());
-        issues.push(issue);
+
+        // `region_classes` detail: the actual `RegionClass`es among the flagged regions (not the
+        // full configured filter — a filter covering several classes may still have only one of
+        // them actually undersized this pass), so the UI can name which region class is short
+        // instead of a generic "region(s) below N tiles". Needs `classes` computed even when the
+        // filter is "all classes" (where the fast `None` path above skips it) — falls back to no
+        // detail (generic label) if start/finish aren't set yet, same as the `None`-filter case
+        // above already tolerates for detection itself.
+        if let Some(classes) = classes.or_else(|| {
+            (maze.meta.start.is_some() && maze.meta.finish.is_some())
+                .then(|| maze.analysis.region_classes(&maze.graph, &maze.meta))
+        }) {
+            let mut detail_classes: Vec<&'static str> = invalid.iter()
+                .filter_map(|idx| classes.get(idx))
+                .map(|c| c.as_str())
+                .collect();
+            detail_classes.sort_unstable();
+            detail_classes.dedup();
+            let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, &self.instance_id)
+                .with_detail(&self.instance_id, "min_region_size", self.min_region_size.to_string())
+                .with_detail(&self.instance_id, "region_classes", detail_classes.join(","));
+            issues.push(issue);
+        } else {
+            let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, &self.instance_id)
+                .with_detail(&self.instance_id, "min_region_size", self.min_region_size.to_string());
+            issues.push(issue);
+        }
     }
 }
 
@@ -166,5 +190,24 @@ mod tests {
             Some(IssueData::RegionsNeedingExpansion { invalid, .. }) => assert_eq!(invalid.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1"),
             other => panic!("expected RegionsNeedingExpansion, got {other:?}"),
         }
+        assert_eq!(
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("region_classes")),
+            Some(&"unreachable".to_string()),
+            "region_classes detail should name the actual flagged region's class, not the whole configured filter",
+        );
+    }
+
+    #[test]
+    fn region_classes_detail_omitted_without_endpoints() {
+        let maze = maze_with_small_region();
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let mut issues = Vec::new();
+        check.check(&maze, &mut issues, &mut rng());
+        assert_eq!(issues.len(), 1);
+        assert_eq!(
+            issues[0].details().get(TEST_ID).and_then(|kv| kv.get("region_classes")),
+            None,
+            "start/finish unset -> RegionClass can't be computed, so no region_classes detail is added",
+        );
     }
 }

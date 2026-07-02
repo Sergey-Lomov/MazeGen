@@ -38,3 +38,16 @@ IMPORTANT: These rules override the default commit behavior.
 ## Specs
 
 `Specs/` — markdown descriptions of systems and data structures, authoritative source of intent. Check before implementing or modifying a feature.
+
+## Integration tests (`maze-runner`)
+
+`maze-runner` is a native-Rust crate (no wasm) that parses the same JSON config the browser sends and runs the full `build_maze` pipeline. Use it for all reproduction and regression tests.
+
+**Workflow:**
+1. Export config from the browser (debug toolbar → "Copy config JSON")
+2. Save to `maze-runner/tests/fixtures/<name>.json`
+3. Copy `maze-runner/tests/repro.rs`'s template function, rename it, add assertions on `MazeRunResult`
+
+**For browser-repro tests: never hardcode generation params** — seed, tessellation, checks, strategies, repair limits all come from the fixture JSON. This guarantees the test reproduces exactly what the browser ran. Regular unit tests with hand-crafted mazes may hardcode params as usual.
+
+`MazeRunResult` fields: `remaining_issues`, `region_sizes` (`HashMap<RegionClass, Vec<usize>>` sorted desc), `start`, `finish`, `timing`.

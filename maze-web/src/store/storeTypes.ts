@@ -253,8 +253,8 @@ export interface GenerationActions {
    * target rule's `nextLocalCheckId`. If `ruleId` is omitted, creates a fresh singleton rule for
    * it (the top-level "+ Add check" path). If given, activates the check directly into that
    * existing rule instead of creating a new one (the per-rule "+ Add check to rule" path).
-   * No-op if `typeId`'s descriptor has `allow_multiple_instances: false` (every type except
-   * `min_region_count`) and it's already active in some rule — see GitHub issue #60.
+   * No-op if `typeId`'s descriptor has `allow_multiple_instances: false` (every type, currently
+   * — see GitHub issue #60, retired) and it's already active in some rule.
    * `initialParams` overrides the descriptor defaults (e.g. values edited in the select dialog
    * before confirming). */
   addCheck: (typeId: string, ruleId?: string, initialParams?: Record<string, string>) => void;
