@@ -21,20 +21,26 @@ describe("CheckSelectDialog", () => {
     expect(screen.queryByText("Minimum loop count")).not.toBeInTheDocument();
   });
 
-  it("Next is disabled until at least one check is toggled on", () => {
+  it("Next is enabled with the first check selected by default", () => {
     render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByText("Next")).toBeDisabled();
-    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     expect(screen.getByText("Next")).not.toBeDisabled();
   });
 
-  it("Next hands the toggled-on check ids to onNext, without touching the store", () => {
+  it("Next stays disabled when the default-selected check is already active elsewhere", () => {
+    useMazeStore.setState({
+      availableChecks,
+      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "min_loop_length", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false }],
+    });
+    render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText("Next")).toBeDisabled();
+  });
+
+  it("Next hands the selected check id to onNext, without touching the store", () => {
     const onNext = vi.fn();
     render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={onNext} onClose={vi.fn()} />);
-    fireEvent.click(screen.getAllByRole("checkbox")[0]);
-    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    fireEvent.click(screen.getByText("Maximum loop length"));
     fireEvent.click(screen.getByText("Next"));
-    expect(onNext).toHaveBeenCalledWith(["min_loop_length", "max_loop_length"], {});
+    expect(onNext).toHaveBeenCalledWith("max_loop_length", {});
     expect(useMazeStore.getState().rules).toEqual([]);
   });
 

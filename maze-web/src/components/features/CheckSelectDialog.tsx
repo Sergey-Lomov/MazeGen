@@ -13,10 +13,10 @@ interface Props {
   kind: string;
   /** Shows a Back button that returns to step 1 (IssueSelectDialog) instead of closing. */
   onBack: () => void;
-  /** Step 2 confirm — hands the chosen check ids (with any param overrides) to step 3
+  /** Step 2 confirm — hands the chosen check id (with any param overrides) to step 3
    * (strategy pick), not the store. Nothing commits until the whole "Add new rule" flow
    * finishes (see `RulesColumn`'s `createRule` call). */
-  onNext: (ids: string[], paramOverrides: Record<string, Record<string, string>>) => void;
+  onNext: (id: string, paramOverrides: Record<string, Record<string, string>>) => void;
   onClose: () => void;
 }
 
@@ -36,19 +36,12 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   const isAlreadyActive = (id: string) => isTypeAlreadyActive(rules, id);
 
   const [selectedId, setSelectedId] = useState<string>(availableChecks[0]?.id ?? "");
-  const [checkedIds, setCheckedIds] = useState<string[]>([]);
   // Param edits made in this dialog before the check is actually added — keyed by check id so
   // switching the selection and coming back preserves what was typed (mirrors useParamEditor's
   // per-entity values, but nothing commits to the store until the flow finishes).
   const [paramOverrides, setParamOverrides] = useState<Record<string, Record<string, string>>>({});
 
   const selectedCheck = availableChecks.find((c) => c.id === selectedId);
-
-  function toggleChecked(id: string) {
-    const descriptor = availableChecks.find((c) => c.id === id);
-    if (descriptor && !descriptor.allow_multiple_instances && isAlreadyActive(id)) return;
-    setCheckedIds((prev) => prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]);
-  }
 
   function handleParamChange(paramId: string, value: string) {
     setParamOverrides((prev) => ({
@@ -58,8 +51,8 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
   }
 
   function handleNext() {
-    if (checkedIds.length > 0) {
-      onNext(checkedIds, paramOverrides);
+    if (selectedId) {
+      onNext(selectedId, paramOverrides);
     }
   }
 
@@ -67,7 +60,6 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
     id: c.id,
     label: resolveCheckLabel(c.id, c.label),
     disabled: !c.allow_multiple_instances && isAlreadyActive(c.id),
-    checked: checkedIds.includes(c.id),
   }));
 
   const rightPanel = selectedCheck ? (
@@ -94,7 +86,7 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
     <div style={styles.empty}>{m["check.not_selected"]()}</div>
   );
 
-  const canProceed = checkedIds.length > 0;
+  const canProceed = !!selectedId && !(selectedCheck && !selectedCheck.allow_multiple_instances && isAlreadyActive(selectedCheck.id));
 
   const footer = (
     <>
@@ -116,7 +108,6 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
       items={items}
       selectedId={selectedId}
       onSelectId={setSelectedId}
-      onToggleChecked={toggleChecked}
       selectedVariant="neutral"
       rightPanel={rightPanel}
       footer={footer}

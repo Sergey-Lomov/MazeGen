@@ -20,7 +20,7 @@ import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
 import { isTypeAlreadyActive } from "../../../store/slices/generationSlice";
 
-// Three-step "Add new rule" flow: pick an issue kind, then checks of that kind (multiselect),
+// Three-step "Add new rule" flow: pick an issue kind, then a check of that kind,
 // then a fix strategy for the new rule — nothing commits to the store until step 3 confirms
 // (see `createRule`). Step 3 is skipped when no strategy handles the kind (logging-only kinds).
 // `targetStageId` carries which stage's "+ Add rule" toolbar button started the flow — threaded
@@ -100,11 +100,11 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
 
   // Step 2 confirm: skip the strategy step entirely when no strategy handles this kind
   // (logging-only kinds), creating the rule right away with `strategyId: null`.
-  function handleChecksNext(kind: string, checkIds: string[], paramOverrides: Record<string, Record<string, string>>, targetStageId: string) {
+  function handleChecksNext(kind: string, checkId: string, paramOverrides: Record<string, Record<string, string>>, targetStageId: string) {
     if (availableStrategies.some((s) => s.handles === kind)) {
-      setNewRuleStep({ stage: "strategy", kind, checkIds, paramOverrides, targetStageId });
+      setNewRuleStep({ stage: "strategy", kind, checkIds: [checkId], paramOverrides, targetStageId });
     } else {
-      createRule(checkIds, null, paramOverrides, undefined, targetStageId);
+      createRule([checkId], null, paramOverrides, undefined, targetStageId);
       setNewRuleStep(null);
     }
   }
@@ -322,7 +322,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
         <CheckSelectDialog
           kind={newRuleStep.kind}
           onBack={() => setNewRuleStep({ stage: "issue", targetStageId: newRuleStep.targetStageId })}
-          onNext={(ids, paramOverrides) => handleChecksNext(newRuleStep.kind, ids, paramOverrides, newRuleStep.targetStageId)}
+          onNext={(id, paramOverrides) => handleChecksNext(newRuleStep.kind, id, paramOverrides, newRuleStep.targetStageId)}
           onClose={() => setNewRuleStep(null)}
         />
       )}

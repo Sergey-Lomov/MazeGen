@@ -13,11 +13,11 @@ function wrapStage(slots: StrategySlotVM[]): QualityStageVM[] {
 }
 
 vi.mock("../components/features/CheckSelectDialog", () => ({
-  CheckSelectDialog: ({ kind, onBack, onNext }: { kind: string; onBack: () => void; onNext: (ids: string[], paramOverrides: Record<string, Record<string, string>>) => void }) => (
+  CheckSelectDialog: ({ kind, onBack, onNext }: { kind: string; onBack: () => void; onNext: (id: string, paramOverrides: Record<string, Record<string, string>>) => void }) => (
     <div data-testid="check-select-dialog">
       {kind}
       <button onClick={onBack}>go-back</button>
-      <button onClick={() => onNext(["c1"], {})}>pick-checks</button>
+      <button onClick={() => onNext("c1", {})}>pick-checks</button>
     </div>
   ),
 }));

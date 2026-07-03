@@ -1,6 +1,5 @@
 import React from "react";
 import { Modal } from "../Modal";
-import { Switch } from "../Switch";
 import { WarningIcon } from "../WarningIcon";
 import { ui, dialogSpacing, typography } from "../../styles/theme";
 
@@ -8,9 +7,6 @@ interface Item {
   id: string;
   label: string;
   disabled?: boolean;
-  /** When given (multiselect mode), renders a checkbox before the label, toggled via
-   * `onToggleChecked` independent of row-click (which only changes `selectedId`/preview). */
-  checked?: boolean;
   /** Shows a warning icon after the label (e.g. an experimental strategy). */
   warning?: boolean;
 }
@@ -20,8 +16,6 @@ interface Props {
   items: Item[];
   selectedId: string;
   onSelectId: (id: string) => void;
-  /** Multiselect mode when given — shows a checkbox per item (see `Item.checked`). */
-  onToggleChecked?: (id: string) => void;
   /** Selected-row highlight color — "primary" (blue, default) for dialogs that target an
    * existing rule/strategy, "neutral" (grey) for the "Add new rule" flow's own dialogs, where
    * blue would wrongly read as "already committed" before the flow finishes. */
@@ -31,7 +25,7 @@ interface Props {
   onClose: () => void;
 }
 
-export function ItemSelectDialog({ title, items, selectedId, onSelectId, onToggleChecked, selectedVariant = "primary", rightPanel, footer, onClose }: Props) {
+export function ItemSelectDialog({ title, items, selectedId, onSelectId, selectedVariant = "primary", rightPanel, footer, onClose }: Props) {
   const body = (
     <div style={styles.content}>
       <div style={styles.leftCol}>
@@ -48,15 +42,6 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, onToggl
           >
             <span style={styles.itemLabel}>{item.label}</span>
             {item.warning && <WarningIcon />}
-            {onToggleChecked && (
-              <span onClick={(e) => e.stopPropagation()}>
-                <Switch
-                  checked={item.checked ?? false}
-                  disabled={item.disabled}
-                  onChange={() => onToggleChecked(item.id)}
-                />
-              </span>
-            )}
           </button>
         ))}
       </div>

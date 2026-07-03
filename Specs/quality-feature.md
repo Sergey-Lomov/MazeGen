@@ -147,12 +147,12 @@ Modal using `ItemSelectDialog`. Lists distinct issue kinds — `Array.from(new S
 
 ## CheckSelectDialog ("Add new rule", step 2)
 
-Modal using `ItemSelectDialog` in multiselect mode (per-row checkbox, toggled independent of row-click which only changes the right-panel preview), takes a required `kind` prop from step 1. Shows available checks of that kind only.
+Modal using `ItemSelectDialog` in single-select mode (row click selects and previews), takes a required `kind` prop from step 1. Shows available checks of that kind only.
 
-- A check type with `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue #60) can always be checked, including one already active elsewhere. Every other type: checkbox disabled, red error text `check.already_active` shown in right panel when previewed, once it's already active in some existing rule.
-- Right panel (for the previewed/clicked row, not necessarily checked): check label, description, params (edited locally in this dialog's own state — `paramOverrides` — nothing commits to the store here).
-- Footer: `[Back]` (returns to `IssueSelectDialog`) `[Cancel]` `[Next]` (disabled until at least one checkbox is on).
-- Next: calls `onNext(checkedIds, paramOverrides)` — hands the picked ids to step 3, no store mutation.
+- A check type with `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue #60) can always be selected, including one already active elsewhere. Every other type: row disabled, red error text `check.already_active` shown in right panel when previewed, once it's already active in some existing rule.
+- Right panel (for the selected row): check label, description, params (edited locally in this dialog's own state — `paramOverrides` — nothing commits to the store here).
+- Footer: `[Back]` (returns to `IssueSelectDialog`) `[Cancel]` `[Next]` (disabled when no check is selected or the selected one is already active elsewhere).
+- Next: calls `onNext(id, paramOverrides)` — hands the picked id to step 3, no store mutation.
 
 ## NewRuleStrategyDialog ("Add new rule", step 3)
 
