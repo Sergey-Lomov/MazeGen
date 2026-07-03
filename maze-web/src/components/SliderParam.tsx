@@ -1,17 +1,18 @@
 import React from "react";
-import { typography, disabled } from "../styles/theme";
+import { typography, muted, disabled } from "../styles/theme";
 
 interface Props {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  variant?: "primary" | "secondary";
 }
 
-export function SliderParam({ label, value, onChange }: Props) {
+export function SliderParam({ label, value, onChange, variant = "secondary" }: Props) {
   return (
     <div style={styles.row}>
       <div style={styles.header}>
-        <span style={styles.label}>{label}</span>
+        <span style={variant === "primary" ? styles.labelPrimary : styles.label}>{label}</span>
         <span style={styles.value}>{value.toFixed(2)}</span>
       </div>
       <input
@@ -40,6 +41,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   label: {
     ...disabled(typography.body),
+  },
+  labelPrimary: {
+    ...muted(typography.body),
   },
   value: {
     ...typography.caption,

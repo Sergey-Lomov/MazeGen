@@ -81,6 +81,8 @@
   "generation.desc.directionality": "Controls how often the maze continues straight ahead instead of turning, making corridors feel more linear.",
   "generation.desc.cyclicity": "Controls how often extra connections are added that create loops in the maze, instead of a single branching path.",
   "generation.desc.corridor_length": "Controls how long corridors tend to be before the maze branches off in a new direction.",
+  "generation.elements": "Elements",
+  "generation.one_way_chance": "One-way passage",
   "debug.outdated_warning": "Debug snapshot is outdated — re-generate to update",
   "debug.prev_step": "Previous step",
   "debug.next_step": "Next step",

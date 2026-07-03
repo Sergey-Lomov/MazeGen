@@ -22,12 +22,14 @@ export function GenerationFeature({ canGenerate }: Props) {
   const debugMode = useMazeStore((s) => s.debugMode);
   const error = useMazeStore((s) => s.error);
   const initialConfig = useMazeStore((s) => s.initialConfig);
+  const elementsConfig = useMazeStore((s) => s.elementsConfig);
 
   const setSeed = useMazeStore((s) => s.setSeed);
   const setRandomSeed = useMazeStore((s) => s.setRandomSeed);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
   const setGenerationParam = useMazeStore((s) => s.setGenerationParam);
   const setEdgeBasedParam = useMazeStore((s) => s.setEdgeBasedParam);
+  const setElementsParam = useMazeStore((s) => s.setElementsParam);
   const generate = useMazeStore((s) => s.generate);
   const regenerate = useMazeStore((s) => s.regenerate);
   const postEditDirty = useMazeStore(selectPostEditDirty);
@@ -82,7 +84,7 @@ export function GenerationFeature({ canGenerate }: Props) {
       {/* Algorithm block */}
       <div style={styles.algorithmBlock}>
         <span style={styles.sectionCaption}>{m["generation.algorithm"]()}</span>
-        <div style={styles.row}>
+        <div style={{ ...styles.row, paddingLeft: 8 }}>
           <span style={styles.algorithmLabel}>{getAlgorithmLabel(method)}</span>
           <button style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
         </div>
@@ -104,6 +106,14 @@ export function GenerationFeature({ canGenerate }: Props) {
             <SliderParam label={m["generation.cyclicity"]()} value={edgeParams.cyclicity ?? 0.0} onChange={(v) => setEdgeBasedParam("cyclicity", v)} />
           </div>
         )}
+      </div>
+
+      {/* Elements block */}
+      <div style={styles.algorithmBlock}>
+        <span style={styles.sectionCaption}>{m["generation.elements"]()}</span>
+        <div style={styles.paramValues}>
+          <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.04} onChange={(v) => setElementsParam("one_way_chance", v)} />
+        </div>
       </div>
 
       {/* Status line */}
@@ -201,7 +211,7 @@ const styles: Record<string, React.CSSProperties> = {
     opacity: 0.7,
   },
   paramValues: {
-    paddingLeft: 8,
+    paddingLeft: 16,
     display: "flex",
     flexDirection: "column",
     gap: 8,
