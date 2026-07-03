@@ -87,6 +87,23 @@ describe("mazeStore post-edit actions", () => {
     expect(call?.edges).toEqual([{ from: 0, to: 1, kind: "basic" }]);
   });
 
+  it("confirmPostEdit excludes rules belonging to a disabled stage from checks", async () => {
+    useMazeStore.setState({
+      rules: [
+        { id: "rule_1", name: "Rule 1", kind: "unreachable", checks: [{ localId: 0, typeId: "check_a", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [] },
+        { id: "rule_2", name: "Rule 2", kind: "unreachable", checks: [{ localId: 0, typeId: "check_b", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [] },
+      ],
+      stages: [
+        { id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false },
+        { id: "stage_2", name: "Stage 2", ruleIds: ["rule_2"], disabled: true },
+      ],
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.checks).toEqual([{ local_id: "0", type_id: "check_a", params: {} }]);
+  });
+
   it("confirmPostEdit is no-op when there is no draft", async () => {
     useMazeStore.setState({ postEditDraftEdges: null });
     await useMazeStore.getState().confirmPostEdit();
