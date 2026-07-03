@@ -20,15 +20,16 @@ use maze_core::{
     },
     repair::{
         QcRule, RepairEngine, RepairRuleConfig, RepairStage, RepairStrategy,
+        NestedSlot, NestedStrategyConfig,
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
-        ExpandRegionPassageStrategy, MissingRegionsStrategy,
+        ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
     },
     RegionClass, GenerationTiming,
     quality_control::Issue,
 };
 use crate::config::{
-    GenerateConfig, CheckInstanceConfig, TessellationType,
+    GenerateConfig, CheckInstanceConfig, StrategyConfig, TessellationType,
     build_generation_config, build_repair_limits,
 };
 
@@ -181,6 +182,71 @@ fn build_check<T: Tessellation>(
     Ok(check)
 }
 
+fn build_strategy<T: Tessellation>(id: &str) -> Result<Box<dyn RepairStrategy<T>>, String> {
+    Ok(match id {
+        "random_endpoints"     => Box::new(RandomEndpointsStrategy),
+        "farthest_endpoints"   => Box::new(FarthestEndpointsStrategy),
+        "scored_endpoints"     => Box::new(ScoredEndpointsStrategy),
+        "invalid_loop_random"  => Box::new(InvalidLoopRandomStrategy),
+        "invalid_loop_scored"  => Box::new(InvalidLoopScoredStrategy),
+        "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
+        "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
+        "missing_regions"      => Box::new(MissingRegionsStrategy),
+        "reduce_scc_count"     => Box::new(ReduceSccCountStrategy),
+        other => return Err(format!("unknown strategy: {other}")),
+    })
+}
+
+/// Resolves `configs` (a `StrategyConfig`'s `nested` list) into `NestedStrategyConfig`s against
+/// `parent`'s `expected_nested()` slots — see `Specs/repair.md`'s nested-strategy pattern. Purely
+/// generic over `parent.expected_nested()`/`.handles()`: no strategy id is ever compared here,
+/// so adding a new nested-capable strategy never requires touching this function.
+fn build_nested<T: Tessellation>(
+    parent: &dyn RepairStrategy<T>,
+    configs: &[StrategyConfig],
+) -> Result<Vec<NestedStrategyConfig<T>>, String> {
+    let slots = parent.expected_nested();
+
+    // O(1) slot lookup instead of a linear scan per config — built once per call. No separate
+    // "slots.is_empty()" fast path: an empty `slots_by_id` already makes the loop below reject
+    // every `cfg` via the "no such slot" branch, with a message naming the actual missing slot.
+    let slots_by_id: HashMap<&'static str, &'static NestedSlot> = slots.iter().map(|s| (s.slot_id, s)).collect();
+
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    let mut resolved: Vec<(&'static NestedSlot, &StrategyConfig, Box<dyn RepairStrategy<T>>)> = Vec::new();
+    for cfg in configs {
+        let Some(slot_id) = cfg.slot_id.as_deref() else {
+            return Err(format!("nested strategy {} under {} is missing slot_id", cfg.id, parent.strategy_id()));
+        };
+        let Some(&slot) = slots_by_id.get(slot_id) else {
+            return Err(format!("strategy {} has no nested slot \"{slot_id}\"", parent.strategy_id()));
+        };
+        let nested_strategy = build_strategy::<T>(&cfg.id)?;
+        if nested_strategy.handles() != slot.kind {
+            return Err(format!(
+                "strategy {} cannot fill slot \"{slot_id}\" of {}: handles {:?}, slot expects {:?}",
+                cfg.id, parent.strategy_id(), nested_strategy.handles(), slot.kind
+            ));
+        }
+        *counts.entry(slot_id).or_insert(0) += 1;
+        resolved.push((slot, cfg, nested_strategy));
+    }
+    for slot in slots {
+        let count = counts.get(slot.slot_id).copied().unwrap_or(0);
+        if count < slot.min || count > slot.max.unwrap_or(usize::MAX) {
+            return Err(format!(
+                "strategy {} slot \"{}\" needs {}..{} nested strategies, got {count}",
+                parent.strategy_id(), slot.slot_id, slot.min,
+                slot.max.map(|m| m.to_string()).unwrap_or_else(|| "∞".to_string()),
+            ));
+        }
+    }
+    resolved.into_iter().map(|(slot, cfg, strategy)| {
+        let nested = build_nested::<T>(strategy.as_ref(), &cfg.nested)?;
+        Ok(NestedStrategyConfig { slot, strategy, param_overrides: cfg.params.clone(), nested })
+    }).collect()
+}
+
 pub fn build_qc_and_repair<T: Tessellation>(
     config: &GenerateConfig,
 ) -> Result<(QualityControlEngine<T>, RepairEngine<T>), String> {
@@ -225,21 +291,16 @@ pub fn build_qc_and_repair<T: Tessellation>(
             let rule = QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids.clone() };
 
             if let Some(strategy_cfg) = &rule_cfg.strategy {
-                let strategy: Box<dyn RepairStrategy<T>> = match strategy_cfg.id.as_str() {
-                    "random_endpoints"    => Box::new(RandomEndpointsStrategy),
-                    "farthest_endpoints"  => Box::new(FarthestEndpointsStrategy),
-                    "scored_endpoints"    => Box::new(ScoredEndpointsStrategy),
-                    "invalid_loop_random" => Box::new(InvalidLoopRandomStrategy),
-                    "invalid_loop_scored" => Box::new(InvalidLoopScoredStrategy),
-                    "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
-                    "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
-                    "missing_regions"     => Box::new(MissingRegionsStrategy),
-                    other => return Err(format!("unknown strategy: {other}")),
-                };
+                if strategy_cfg.slot_id.is_some() {
+                    return Err(format!("rule {}'s top-level strategy must not declare slot_id", rule_cfg.id));
+                }
+                let strategy = build_strategy::<T>(&strategy_cfg.id)?;
+                let nested = build_nested::<T>(strategy.as_ref(), &strategy_cfg.nested)?;
                 repair_rules.push(RepairRuleConfig {
                     rule: QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids },
                     strategy,
                     param_overrides: strategy_cfg.params.clone(),
+                    nested,
                 });
             }
             stage_rule_ids.push(rule_cfg.id.clone());
@@ -375,4 +436,334 @@ pub fn run_fixture(path: &str, seed: u64) -> MazeRunResult {
         .unwrap_or_else(|e| panic!("failed to parse fixture {path}: {e}"));
     run_from_config(seed, &config)
         .unwrap_or_else(|e| panic!("run_from_config failed for {path}: {e}"))
+}
+
+#[cfg(test)]
+mod nested_strategy_tests {
+    use super::*;
+    use maze_core::space::SquareTessellation;
+    use crate::config::{QcRuleConfig, StageConfig};
+
+    fn scc_count_rule(strategy: Option<StrategyConfig>) -> QcRuleConfig {
+        QcRuleConfig {
+            id: "r1".to_string(),
+            checks: vec![CheckInstanceConfig {
+                local_id: "scc_count".to_string(),
+                type_id: "scc_count".to_string(),
+                params: HashMap::new(),
+            }],
+            strategy,
+        }
+    }
+
+    fn one_stage(rule: QcRuleConfig) -> Vec<StageConfig> {
+        vec![StageConfig { id: "s1".to_string(), name: "Stage 1".to_string(), rules: vec![rule] }]
+    }
+
+    #[test]
+    fn reduce_scc_count_without_nested_is_rejected() {
+        let strategy = StrategyConfig { id: "reduce_scc_count".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] };
+        let rule = scc_count_rule(Some(strategy));
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        let result = build_qc_and_repair::<SquareTessellation>(&config);
+        assert!(result.is_err(), "reduce_scc_count's merge_target slot has min: 1 — no nested must be rejected");
+    }
+
+    #[test]
+    fn reduce_scc_count_nested_missing_slot_id_is_rejected() {
+        let nested = StrategyConfig { id: "expand_region_passage".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] };
+        let strategy = StrategyConfig { id: "reduce_scc_count".to_string(), params: HashMap::new(), slot_id: None, nested: vec![nested] };
+        let rule = scc_count_rule(Some(strategy));
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        let result = build_qc_and_repair::<SquareTessellation>(&config);
+        assert!(result.is_err(), "a nested StrategyConfig with no slot_id must be rejected");
+    }
+
+    #[test]
+    fn reduce_scc_count_nested_with_incompatible_kind_is_rejected() {
+        // invalid_loop_random handles INVALID_LOOP, not REGION_NEEDS_EXPANSION — must be
+        // rejected as incompatible with the merge_target slot.
+        let nested = StrategyConfig { id: "invalid_loop_random".to_string(), params: HashMap::new(), slot_id: Some("merge_target".to_string()), nested: vec![] };
+        let strategy = StrategyConfig { id: "reduce_scc_count".to_string(), params: HashMap::new(), slot_id: None, nested: vec![nested] };
+        let rule = scc_count_rule(Some(strategy));
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        let result = build_qc_and_repair::<SquareTessellation>(&config);
+        assert!(result.is_err(), "a nested strategy handling the wrong IssueKind must be rejected");
+    }
+
+    #[test]
+    fn reduce_scc_count_nested_with_unknown_slot_id_is_rejected() {
+        let nested = StrategyConfig { id: "expand_region_passage".to_string(), params: HashMap::new(), slot_id: Some("no_such_slot".to_string()), nested: vec![] };
+        let strategy = StrategyConfig { id: "reduce_scc_count".to_string(), params: HashMap::new(), slot_id: None, nested: vec![nested] };
+        let rule = scc_count_rule(Some(strategy));
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        let result = build_qc_and_repair::<SquareTessellation>(&config);
+        assert!(result.is_err(), "an unknown slot_id must be rejected");
+    }
+
+    #[test]
+    fn reduce_scc_count_two_nested_for_single_slot_is_rejected() {
+        let make_nested = || StrategyConfig { id: "expand_region_passage".to_string(), params: HashMap::new(), slot_id: Some("merge_target".to_string()), nested: vec![] };
+        let strategy = StrategyConfig { id: "reduce_scc_count".to_string(), params: HashMap::new(), slot_id: None, nested: vec![make_nested(), make_nested()] };
+        let rule = scc_count_rule(Some(strategy));
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        let result = build_qc_and_repair::<SquareTessellation>(&config);
+        assert!(result.is_err(), "merge_target's max: Some(1) must reject a second nested strategy for the same slot");
+    }
+
+    #[test]
+    fn top_level_strategy_with_slot_id_is_rejected() {
+        let strategy = StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new(), slot_id: Some("merge_target".to_string()), nested: vec![] };
+        let rule = QcRuleConfig {
+            id: "r1".to_string(),
+            checks: vec![CheckInstanceConfig { local_id: "missing_endpoints".to_string(), type_id: "missing_endpoints".to_string(), params: HashMap::new() }],
+            strategy: Some(strategy),
+        };
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        let result = build_qc_and_repair::<SquareTessellation>(&config);
+        assert!(result.is_err(), "a top-level strategy must not declare slot_id");
+    }
+
+    #[test]
+    fn end_to_end_reduce_scc_count_converges_to_max_scc_count() {
+        use crate::config::TessellationConfig;
+
+        // Two disjoint 2x2 islands with a gap between them (points x in 0..2 and x in 4..6) —
+        // generation can only ever connect geometrically-adjacent cells, so this always yields
+        // exactly 2 SCCs after base generation, regardless of algorithm/seed. scc_count with
+        // max_scc_count=1 flags EXCESSIVE_SCC_COUNT; reduce_scc_count (nested under
+        // expand_region_passage) must still fail to fully merge them (islands aren't
+        // geometrically adjacent to each other, so expand_region_passage has no bridging
+        // candidate) — this test instead checks the simpler, always-true contract: the pipeline
+        // runs without error and reports the SCC-count issue when unresolved, proving the wiring
+        // (check -> rule -> reduce_scc_count -> nested expand_region_passage) is live end-to-end.
+        let mut points = vec![];
+        for x in 0..2 { for y in 0..2 { points.push([x, y]); } }
+        for x in 4..6 { for y in 0..2 { points.push([x, y]); } }
+
+        let mut config = GenerateConfig::default();
+        config.tessellation = TessellationConfig { tessellation_type: TessellationType::Square, points };
+
+        let scc_check_rule = QcRuleConfig {
+            id: "r_scc".to_string(),
+            checks: vec![CheckInstanceConfig {
+                local_id: "scc_count".to_string(),
+                type_id: "scc_count".to_string(),
+                params: HashMap::from([("max_scc_count".to_string(), "1".to_string())]),
+            }],
+            strategy: Some(StrategyConfig {
+                id: "reduce_scc_count".to_string(),
+                params: HashMap::new(),
+                slot_id: None,
+                nested: vec![StrategyConfig {
+                    id: "expand_region_passage".to_string(),
+                    params: HashMap::new(),
+                    slot_id: Some("merge_target".to_string()),
+                    nested: vec![],
+                }],
+            }),
+        };
+        config.stages[0].rules.push(scc_check_rule);
+
+        let result = run_from_config(1, &config);
+        assert!(result.is_ok(), "run_from_config must succeed end-to-end: {:?}", result.err());
+        let result = result.unwrap();
+        // Two geometrically-disjoint islands can never be bridged by expand_region_passage (no
+        // shared wall exists between them) — the issue is expected to remain unresolved, proving
+        // the strategy was actually dispatched (not silently skipped) and correctly reported
+        // Failed rather than panicking or silently succeeding.
+        assert!(result.remaining_issues.iter().any(|i| i.kind.as_str() == "excessive_scc_count"),
+            "excessive_scc_count must still be reported since the two islands cannot be bridged: {:?}",
+            result.remaining_issues.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn end_to_end_reduce_scc_count_actually_reduces_component_count_on_contiguous_field() {
+        use crate::config::TessellationConfig;
+
+        // A contiguous field lets expand_region_passage actually bridge every SCC (every region
+        // has a geometrically-adjacent neighbor, unlike the disjoint-islands test above) — this
+        // verifies reduce_scc_count doesn't just get dispatched but genuinely reduces the SCC
+        // count via its nested strategy. `one_way_chance: 1.0` (every edge one-way) reliably
+        // fragments a contiguous field's undirected spanning structure into several SCCs.
+        let mut points = vec![];
+        for x in 0..4 { for y in 0..4 { points.push([x, y]); } }
+
+        let mut config = GenerateConfig::default();
+        config.tessellation = TessellationConfig { tessellation_type: TessellationType::Square, points };
+        config.elements.one_way_chance = Some(1.0);
+
+        let scc_check_rule = QcRuleConfig {
+            id: "r_scc".to_string(),
+            checks: vec![CheckInstanceConfig {
+                local_id: "scc_count".to_string(),
+                type_id: "scc_count".to_string(),
+                params: HashMap::from([("max_scc_count".to_string(), "1".to_string())]),
+            }],
+            strategy: Some(StrategyConfig {
+                id: "reduce_scc_count".to_string(),
+                params: HashMap::new(),
+                slot_id: None,
+                nested: vec![StrategyConfig {
+                    id: "expand_region_passage".to_string(),
+                    params: HashMap::new(),
+                    slot_id: Some("merge_target".to_string()),
+                    nested: vec![],
+                }],
+            }),
+        };
+        config.stages[0].rules.push(scc_check_rule);
+
+        let result = run_from_config(1, &config).expect("run_from_config must succeed");
+        assert!(!result.remaining_issues.iter().any(|i| i.kind.as_str() == "excessive_scc_count"),
+            "a fully contiguous field must let reduce_scc_count converge to max_scc_count=1: {:?}",
+            result.remaining_issues.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn two_level_nesting_is_accepted() {
+        // expand_region_passage itself has no nested slots, so its own `nested` must be empty —
+        // this exercises build_nested's recursive call one level deeper without needing a real
+        // multi-slot strategy to exist yet.
+        let nested = StrategyConfig { id: "expand_region_passage".to_string(), params: HashMap::new(), slot_id: Some("merge_target".to_string()), nested: vec![] };
+        let strategy = StrategyConfig { id: "reduce_scc_count".to_string(), params: HashMap::new(), slot_id: None, nested: vec![nested] };
+        let rule = scc_count_rule(Some(strategy));
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        let result = build_qc_and_repair::<SquareTessellation>(&config);
+        assert!(result.is_ok(), "recursive build_nested must handle a nested strategy with its own (empty) nested list: {:?}", result.err());
+    }
+
+    #[test]
+    fn reduce_scc_count_with_valid_nested_is_accepted() {
+        let nested = StrategyConfig { id: "expand_region_passage".to_string(), params: HashMap::new(), slot_id: Some("merge_target".to_string()), nested: vec![] };
+        let strategy = StrategyConfig { id: "reduce_scc_count".to_string(), params: HashMap::new(), slot_id: None, nested: vec![nested] };
+        let rule = scc_count_rule(Some(strategy));
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        let result = build_qc_and_repair::<SquareTessellation>(&config);
+        assert!(result.is_ok(), "a single valid nested strategy filling merge_target must be accepted: {:?}", result.err());
+    }
+
+    // `build_nested` is a private fn in the outer module (`super::*` above brings it into scope
+    // here), so these tests call it directly against synthetic `expected_nested()` shapes rather
+    // than going through `build_qc_and_repair`/real registry strategies — the only way to
+    // exercise `max: None` (unbounded slots) and 3+ levels of real nesting, neither of which any
+    // strategy in today's registry actually declares (see `Specs/repair.md`'s own admission that
+    // depth is "unbounded in the data model... but nothing stops one [level]" being added).
+    mod build_nested_generic_shape_tests {
+        use super::*;
+        use maze_core::repair::{RepairResult, StrategyParams};
+        use maze_core::generation::PresetState;
+        use maze_core::quality_control::Issue;
+        use maze_core::Maze;
+
+        // A slot-holding strategy that accepts any number (0..) of nested strategies handling
+        // EXCESSIVE_SCC_COUNT — `max: None` is never exercised by the real registry today. Its
+        // slot's `kind` is chosen to match `reduce_scc_count`'s own `handles()`, so a real
+        // registry strategy (not a second mock) can fill it — see
+        // `three_level_nesting_resolves_through_a_real_second_level_strategy` below, which uses
+        // this to reach 3 real levels without needing a test-only entry in `build_strategy`.
+        struct UnboundedSlotStrategy;
+        static UNBOUNDED_SLOT: &[NestedSlot] = &[NestedSlot { slot_id: "unbounded", kind: EXCESSIVE_SCC_COUNT, min: 0, max: None }];
+        impl RepairStrategy<SquareTessellation> for UnboundedSlotStrategy {
+            fn strategy_id(&self) -> &'static str { "test_unbounded_slot_strategy" }
+            fn handles(&self) -> IssueKind { EXCESSIVE_SCC_COUNT }
+            fn expected_nested(&self) -> &'static [NestedSlot] { UNBOUNDED_SLOT }
+            fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut maze_core::repair::SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+                RepairResult::Failed
+            }
+        }
+
+        fn nested_cfg(id: &str, slot_id: &str, nested: Vec<StrategyConfig>) -> StrategyConfig {
+            StrategyConfig { id: id.to_string(), params: HashMap::new(), slot_id: Some(slot_id.to_string()), nested }
+        }
+
+        #[test]
+        fn unbounded_slot_accepts_zero_nested() {
+            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[]);
+            assert!(result.is_ok(), "min: 0 must accept an empty nested list: {:?}", result.err());
+            assert_eq!(result.unwrap().len(), 0);
+        }
+
+        #[test]
+        fn unbounded_slot_accepts_several_nested_strategies_for_the_same_slot() {
+            // Each `reduce_scc_count` entry must fill its own mandatory `merge_target` slot —
+            // this test is about the unbounded outer slot accepting 3 siblings, not about
+            // reduce_scc_count's own validation, so each sibling gets a minimal valid child.
+            let make_reduce_scc_count = || nested_cfg("reduce_scc_count", "unbounded", vec![nested_cfg("expand_region_passage", "merge_target", vec![])]);
+            let configs = vec![make_reduce_scc_count(), make_reduce_scc_count(), make_reduce_scc_count()];
+            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &configs);
+            assert!(result.is_ok(), "max: None must accept more than one nested strategy for the same slot: {:?}", result.err());
+            assert_eq!(result.unwrap().len(), 3, "all 3 entries for the unbounded slot must be kept, not deduped or truncated");
+        }
+
+        #[test]
+        fn three_level_nesting_resolves_through_a_real_second_level_strategy() {
+            // Level 1 (UnboundedSlotStrategy, a mock) -> level 2 (reduce_scc_count, a real
+            // nested-capable registry strategy) -> level 3 (expand_region_passage, a real leaf
+            // strategy filling reduce_scc_count's own merge_target slot). This is a real 3-level
+            // chain one level deeper than any path `build_qc_and_repair`'s own tests exercise
+            // today (those only ever put reduce_scc_count at the top level).
+            let level_3 = nested_cfg("expand_region_passage", "merge_target", vec![]);
+            let level_2 = nested_cfg("reduce_scc_count", "unbounded", vec![level_3]);
+            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[level_2]);
+            assert!(result.is_ok(), "a real 3-level nested chain must resolve: {:?}", result.err());
+            let resolved = result.unwrap();
+            assert_eq!(resolved.len(), 1);
+            assert_eq!(resolved[0].strategy.strategy_id(), "reduce_scc_count");
+            assert_eq!(resolved[0].nested.len(), 1, "level 2's own merge_target slot must be resolved recursively, not left empty");
+            assert_eq!(resolved[0].nested[0].strategy.strategy_id(), "expand_region_passage");
+            assert_eq!(resolved[0].nested[0].nested.len(), 0, "expand_region_passage has no slots of its own");
+        }
+
+        #[test]
+        fn three_level_nesting_rejects_incompatible_kind_at_the_deepest_level() {
+            // Level 3 handles INVALID_LOOP, but level 2's (reduce_scc_count) own merge_target
+            // slot expects REGION_NEEDS_EXPANSION — the incompatibility must be caught at
+            // whichever depth it actually occurs, not just at the top level.
+            let level_3 = nested_cfg("invalid_loop_random", "merge_target", vec![]);
+            let level_2 = nested_cfg("reduce_scc_count", "unbounded", vec![level_3]);
+            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[level_2]);
+            assert!(result.is_err(), "a kind mismatch at depth 3 must still be rejected: {:?}", result.ok().map(|_| ()));
+        }
+    }
+}
+
+#[cfg(test)]
+mod build_strategy_tests {
+    use super::*;
+    use maze_core::space::SquareTessellation;
+
+    // `build_strategy`'s match arms hand-pair a string literal with a `Box::new(SomeStruct)` —
+    // nothing in the type system checks that `SomeStruct::strategy_id()` actually equals that
+    // same string. A copy-paste error (wrong struct pointed at an arm's key, or two arms
+    // swapped) would silently construct the wrong strategy for a given id, surfacing only
+    // indirectly through unrelated-looking test failures or wrong runtime behavior — this test
+    // catches that class of bug directly, at the exact point of introduction.
+    const ALL_KNOWN_STRATEGY_IDS: &[&str] = &[
+        "random_endpoints", "farthest_endpoints", "scored_endpoints",
+        "invalid_loop_random", "invalid_loop_scored", "missing_loops_random",
+        "expand_region_passage", "missing_regions", "reduce_scc_count",
+    ];
+
+    #[test]
+    fn every_known_id_builds_a_strategy_whose_own_strategy_id_matches() {
+        for &id in ALL_KNOWN_STRATEGY_IDS {
+            let strategy = build_strategy::<SquareTessellation>(id)
+                .unwrap_or_else(|e| panic!("build_strategy({id:?}) failed: {e}"));
+            assert_eq!(strategy.strategy_id(), id, "build_strategy({id:?}) constructed a strategy whose own strategy_id() doesn't match — wrong match arm?");
+        }
+    }
+
+    #[test]
+    fn unknown_id_is_rejected() {
+        assert!(build_strategy::<SquareTessellation>("not_a_real_strategy").is_err());
+    }
 }

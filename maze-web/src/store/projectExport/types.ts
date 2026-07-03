@@ -49,6 +49,14 @@ export interface ProjectFileCheckInstance {
   params: Record<string, string>;
 }
 
+/** Mirrors `NestedStrategyState` — see its doc comment in storeTypes.ts. Recursive. */
+export interface ProjectFileNestedStrategy {
+  slotId: string;
+  strategyId: string;
+  params: Record<string, string>;
+  nested: ProjectFileNestedStrategy[];
+}
+
 export interface ProjectFileQcRule {
   id: string;
   name: string;
@@ -57,6 +65,7 @@ export interface ProjectFileQcRule {
   strategyId: string | null;
   disabled: boolean;
   ruleDisabled: boolean;
+  nestedStrategies: ProjectFileNestedStrategy[];
 }
 
 /** A named, ordered group of rule ids — see GitHub issue #65 and `RepairStageState`'s doc

@@ -27,6 +27,7 @@ fn main() {
             rule: QcRule { id: "g".to_string(), kind: MISSING_ENDPOINTS, checks: vec!["missing_endpoints".to_string()] },
             strategy: Box::new(FarthestEndpointsStrategy),
             param_overrides: HashMap::new(),
+            nested: vec![],
         }],
         vec![rule],
         vec![RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["g".to_string()] }],

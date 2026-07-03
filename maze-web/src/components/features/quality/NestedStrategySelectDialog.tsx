@@ -1,0 +1,222 @@
+import React, { useState } from "react";
+import { useMazeStore } from "../../../store/mazeStore";
+import { ItemSelectDialog } from "../../dialogs/ItemSelectDialog";
+import { WarningBubble } from "../../WarningBubble";
+import { ParamFields } from "../ParamFields";
+import { useParamEditor } from "../useParamEditor";
+import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription } from "../qualityI18n";
+import { ui, radius, typography } from "../../../styles/theme";
+import * as m from "~/paraglide/messages";
+import type { ParamDescriptor } from "../../../wasm/types";
+import type { NestedStrategyState, QcRuleState } from "../../../store/storeTypes";
+
+interface Props {
+  ruleId: string;
+  path: string[];
+  /** `IssueKind` this slot accepts — candidates are filtered to strategies handling it. */
+  slotKind: string;
+  currentStrategyId: string | null;
+  onClose: () => void;
+}
+
+// Same shape as `StrategySelectDialog`, minus the "no fix" / logging-only entry — a nested slot
+// always needs an actual strategy to delegate to, unlike a top-level rule (which may legitimately
+// have no fix at all). Commit semantics also mirror `StrategySelectDialog`: `selectedId` is local
+// state only, and `setNestedStrategy` fires once, on "Select" — not per-click in the list.
+//
+// Params work differently from the top-level dialog, though: `StrategySelectDialog` can write a
+// not-yet-assigned candidate's params straight to the store because `strategyParams` is a global
+// `strategyId`-keyed map, independent of whether any rule currently uses that strategy. Nested
+// params are per-`(rule, path)` by design (two rules nesting the same strategy need independent
+// values — the whole reason `nested` is stored per-node instead of reusing `strategyParams`), so
+// there is no node to write into until `setNestedStrategy` creates one. Editing a not-yet-selected
+// candidate's params is therefore held in local `drafts` state here (plain synchronous state, not
+// `useParamEditor` — there is no store write to debounce yet), keyed by strategy id, and flushed
+// into the store right after `setNestedStrategy` on "Select" — discarded on "Cancel" like the
+// rest of the dialog's uncommitted state. The currently-assigned strategy's params still edit the
+// real store value live (via `useParamEditor`), same as `StrategyParamPanel` for the top-level
+// dialog.
+export function NestedStrategySelectDialog({ ruleId, path, slotKind, currentStrategyId, onClose }: Props) {
+  const availableStrategies = useMazeStore((s) => s.availableStrategies);
+  const nestedParams = useMazeStore((s) => findRawNestedParams(s.rules.find((r) => r.id === ruleId), path));
+  const setNestedStrategy = useMazeStore((s) => s.setNestedStrategy);
+  const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
+
+  const candidates = availableStrategies.filter((s) => s.handles === slotKind);
+  const [selectedId, setSelectedId] = useState<string>(currentStrategyId ?? candidates[0]?.id ?? "");
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+
+  function handleSelect() {
+    if (selectedId !== currentStrategyId) {
+      setNestedStrategy(ruleId, path, selectedId);
+      for (const [paramId, value] of Object.entries(drafts[selectedId] ?? {})) {
+        setNestedStrategyParam(ruleId, path, paramId, value);
+      }
+    }
+    onClose();
+  }
+
+  const items = candidates.map((s) => ({ id: s.id, label: resolveStrategyLabel(s.id), warning: s.experimental }));
+
+  const selectedStrategy = candidates.find((s) => s.id === selectedId);
+  const description = resolveStrategyDescription(selectedId);
+
+  const rightPanel = (
+    <>
+      {description && <div style={styles.description}>{description}</div>}
+      {selectedStrategy?.experimental && <WarningBubble />}
+      {selectedStrategy && selectedStrategy.params.length > 0 && (
+        selectedId === currentStrategyId ? (
+          <NestedStrategyParamPanel
+            ruleId={ruleId}
+            path={path}
+            strategyId={selectedStrategy.id}
+            params={selectedStrategy.params}
+            storeValues={nestedParams}
+            onCommit={(paramId, value) => setNestedStrategyParam(ruleId, path, paramId, value)}
+          />
+        ) : (
+          <DraftStrategyParamPanel
+            strategyId={selectedStrategy.id}
+            params={selectedStrategy.params}
+            draftValues={drafts[selectedStrategy.id] ?? EMPTY_PARAMS}
+            onChange={(paramId, value) => setDrafts((prev) => ({
+              ...prev,
+              [selectedStrategy.id]: { ...prev[selectedStrategy.id], [paramId]: value },
+            }))}
+          />
+        )
+      )}
+    </>
+  );
+
+  const footer = (
+    <>
+      <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
+      <button style={styles.btnPrimary} onClick={handleSelect}>{m["common.select"]()}</button>
+    </>
+  );
+
+  return (
+    <ItemSelectDialog
+      title={m["quality.select_strategy"]()}
+      items={items}
+      selectedId={selectedId}
+      onSelectId={setSelectedId}
+      rightPanel={rightPanel}
+      footer={footer}
+      onClose={onClose}
+    />
+  );
+}
+
+function NestedStrategyParamPanel({ ruleId, path, strategyId, params, storeValues, onCommit }: {
+  ruleId: string;
+  path: string[];
+  strategyId: string;
+  params: ParamDescriptor[];
+  storeValues: Record<string, string>;
+  onCommit: (paramId: string, value: string) => void;
+}) {
+  const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }));
+  const { values, onChange } = useParamEditor({
+    entityId: `${ruleId}:${path.join(".")}:${strategyId}`,
+    params: localizedParams,
+    storeValues,
+    onCommit,
+  });
+
+  return (
+    <div style={styles.paramsSection}>
+      <div style={styles.paramsSeparator} />
+      <ParamFields
+        params={localizedParams}
+        values={values}
+        onChange={onChange}
+        getDescription={(p) => resolveParamDescription(p.id)}
+      />
+    </div>
+  );
+}
+
+// Not-yet-committed candidate's params — plain controlled inputs over `draftValues`, no
+// `useParamEditor`/debounce (nothing to protect the store from, since nothing writes to the
+// store here; see this file's header comment). Falls back to each param's own default when the
+// draft has no entry yet, so the panel shows real defaults immediately, not blank inputs.
+function DraftStrategyParamPanel({ strategyId, params, draftValues, onChange }: {
+  strategyId: string;
+  params: ParamDescriptor[];
+  draftValues: Record<string, string>;
+  onChange: (paramId: string, value: string) => void;
+}) {
+  const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }));
+
+  function getValue(p: ParamDescriptor): string {
+    if (draftValues[p.id] !== undefined) return draftValues[p.id];
+    const k = p.kind;
+    return k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
+  }
+
+  return (
+    <div key={strategyId} style={styles.paramsSection}>
+      <div style={styles.paramsSeparator} />
+      <ParamFields
+        params={localizedParams}
+        getValue={getValue}
+        onChange={onChange}
+        getDescription={(p) => resolveParamDescription(p.id)}
+      />
+    </div>
+  );
+}
+
+// Stable empty-object reference — a fresh `{}` literal on every call would break
+// zustand's `useSyncExternalStore` reference-equality check and cause an infinite render loop.
+const EMPTY_PARAMS: Record<string, string> = {};
+
+// Mirrors `NestedStrategyPanel.findRawNested`, but returns the raw param overrides directly
+// (`{}` if the slot has no assignment yet) — this dialog only ever needs the values, not the
+// whole node.
+function findRawNestedParams(rule: QcRuleState | undefined, path: string[]): Record<string, string> {
+  let list = rule?.nestedStrategies;
+  let found: NestedStrategyState | undefined;
+  for (const slotId of path) {
+    found = list?.find((n) => n.slotId === slotId);
+    list = found?.nested;
+  }
+  return found?.params ?? EMPTY_PARAMS;
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  description: {
+    ...typography.body,
+    lineHeight: 1.6,
+  },
+  paramsSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  paramsSeparator: {
+    borderTop: `1px solid ${ui.border.default}`,
+    marginBottom: 4,
+  },
+  btnPrimary: {
+    ...typography.control,
+    background: ui.accent.base,
+    border: "none",
+    color: ui.text.inverse,
+    padding: "5px 12px",
+    cursor: "pointer",
+    borderRadius: radius.sm,
+  },
+  btnSecondary: {
+    ...typography.control,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    color: ui.text.secondary,
+    padding: "5px 12px",
+    cursor: "pointer",
+    borderRadius: radius.sm,
+  },
+};

@@ -4,15 +4,15 @@ import { StrategySelectDialog } from "../components/features/StrategySelectDialo
 import { useMazeStore } from "../store/mazeStore";
 
 const availableStrategies = [
-  { id: "random_endpoints", handles: "missing_endpoints", params: [], experimental: false },
-  { id: "farthest_endpoints", handles: "missing_endpoints", params: [], experimental: false },
-  { id: "invalid_loop_random", handles: "invalid_loop", params: [], experimental: false },
+  { id: "random_endpoints", handles: "missing_endpoints", params: [], experimental: false, nested_slots: [] },
+  { id: "farthest_endpoints", handles: "missing_endpoints", params: [], experimental: false, nested_slots: [] },
+  { id: "invalid_loop_random", handles: "invalid_loop", params: [], experimental: false, nested_slots: [] },
 ];
 
 beforeEach(() => {
   useMazeStore.setState({
     availableStrategies,
-    rules: [{ id: "g1", name: "Rule 1", kind: "missing_endpoints", checks: [{ localId: 0, typeId: "missing_endpoints", params: {} }], nextLocalCheckId: 1, strategyId: "random_endpoints", disabled: false, ruleDisabled: false }],
+    rules: [{ id: "g1", name: "Rule 1", kind: "missing_endpoints", checks: [{ localId: 0, typeId: "missing_endpoints", params: {} }], nextLocalCheckId: 1, strategyId: "random_endpoints", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     strategyParams: {},
   });
 });

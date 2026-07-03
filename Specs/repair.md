@@ -49,16 +49,36 @@ pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
 ### RepairStrategy trait
 
 ```rust
-pub trait RepairStrategy<F: Field> {
+pub trait RepairStrategy<T: Tessellation> {
+    /// Strategy id — matches `maze-wasm`'s `StrategyConfig.id` (e.g. `"invalid_loop_random"`).
+    fn strategy_id(&self) -> &'static str;
+    /// The `IssueKind` this strategy itself expects in `issue.kind` when `apply()` is called.
+    fn handles(&self) -> IssueKind;
     fn params(&self) -> &'static [StrategyParam] { &[] }
     /// Whether this strategy is experimental (results/performance may be unpredictable).
     /// Surfaced to the UI as a warning, not enforced by core. Default `false`.
     fn is_experimental(&self) -> bool { false }
-    fn apply(&self, issue: &Issue, maze: &mut Maze<F>, rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState) -> RepairResult;
+    /// Nested-strategy slots this strategy accepts, if any — see "Nested strategies" below.
+    /// Default: none.
+    fn expected_nested(&self) -> &'static [NestedSlot] { &[] }
+    fn apply(
+        &self,
+        issue: &Issue,
+        maze: &mut Maze<T>,
+        snapshots: &mut SnapshotStack,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult;
 }
 ```
 
 `MissingRegionsStrategy` is the only strategy currently marked experimental (`is_experimental() -> true`) — its region reuse/growth heuristics are new (GitHub issue #59) and less predictable in result quality and performance than the other built-in strategies.
+
+`snapshots: &mut SnapshotStack` lets a strategy push/pop `(Graph, MazeMeta)` rollback points around a sequence of mutating actions it wants to be able to undo (see `MissingRegionsStrategy`'s reuse/growth attempts) — opt-in, most strategies never call it. One `SnapshotStack` is constructed per `apply()` call by `RepairEngine::run`/`run_timed`, threaded through unchanged into any nested `apply()` call (see below) — nested calls never get their own stack.
+
+`nested: &[NestedStrategyConfig<T>]` carries this rule's configured nested strategies (empty for every strategy without nested slots — the overwhelming majority, which simply ignore the parameter). See "Nested strategies" below.
 
 - `preset_state` carries the same `PresetState` built before generation (`blocked`, `locked_out`, `locked_in`, `preset_connected`, `preset_edges`). Strategies that mutate edges must not remove a directed edge present in `preset_state.preset_edges` — those are Passage/OneWay connections the user placed explicitly. Strategies that don't touch edges (e.g. the endpoint strategies) ignore this parameter.
 
@@ -71,6 +91,50 @@ pub trait RepairStrategy<F: Field> {
 - May read `maze.analysis` but must not write to it.
 - **Idempotency**: if the relevant meta field is already set, return `Fixed` immediately without modifying state or consuming `rng`. This ensures safe re-invocation.
 - May read `issue.data` (see `quality_control.md`) — findings the matching `Check` already computed during detection. Whether `data` is optional (cheap to recompute, so `None` falls back gracefully) or effectively required (the data *is* the expensive result, with no other channel to get it) is a **per-`IssueKind` decision**, documented by each strategy for its own kind — there is no blanket rule across all strategies.
+
+### Nested strategies
+
+See GitHub issue #68. A repair strategy can delegate part of its work to other, nested strategies instead of only handling its own issue directly — e.g. a strategy that picks *which* regions need merging, then hands the actual merge off to a strategy that already knows how to merge two regions (`ReduceSccCountStrategy` delegating to `ExpandRegionPassageStrategy`, see "Built-in Strategies" below). The mechanism is general: it also covers a future strategy that owns *several* nested slots (e.g. picking one of N nested strategies at random, or choosing between a "direct passage" and a "teleport" nested strategy depending on region size).
+
+```rust
+/// Describes one nested-strategy slot a parent strategy accepts — what `IssueKind` the
+/// synthetic `Issue` the parent builds for it will carry, and how many strategies may fill
+/// this slot. A strategy with no nested slots (the overwhelming majority) returns `&[]` from
+/// `expected_nested()`.
+pub struct NestedSlot {
+    pub slot_id: &'static str,
+    pub kind: IssueKind,
+    pub min: usize,
+    /// `None` = no upper bound.
+    pub max: Option<usize>,
+}
+
+/// One nested strategy assignment — same shape as a `RepairRuleConfig`'s own strategy binding,
+/// minus the `QcRule` (a nested call has no independent QC rule; its `Issue` is synthesized by
+/// the parent, never derived from a check).
+pub struct NestedStrategyConfig<T: Tessellation> {
+    /// Which of the parent's `expected_nested()` slots this fills — the full slot descriptor,
+    /// not just its id. Points into the `&'static [NestedSlot]` the parent's
+    /// `expected_nested()` returned — never owned/cloned.
+    pub slot: &'static NestedSlot,
+    pub strategy: Box<dyn RepairStrategy<T>>,
+    pub param_overrides: HashMap<String, String>,
+    /// Recursive — a nested strategy can itself have nested strategies.
+    pub nested: Vec<NestedStrategyConfig<T>>,
+}
+```
+
+**`slot_id` is part of a strategy's public configuration API**, not an internal detail — `StrategyConfig.slot_id` (config JSON, `maze-runner`), `maze-wasm`'s `NestedSlotDto.slot_id`, and the web store's `path: string[]` addressing all key off this exact string. Once a strategy ships with a given `slot_id`, renaming it is a breaking config-format change (same stability bar as `strategy_id()`/`IssueKind::as_str()`) — never renamed casually. Within `maze-core`, always reference it via the owning strategy's own exported constant, never a repeated string literal. `slot_id` distinguishes multiple slots that share the same `kind` but play different roles for the parent (e.g. a future "direct passage" slot and a separate "teleport" slot, both `REGION_NEEDS_EXPANSION`, not interchangeable alternatives of one "pick any" slot).
+
+**Dispatch**: `RepairEngine::run`/`run_timed` always pass `&cfg.nested` into `apply()`, for every strategy, whether or not it declares any `expected_nested()` slots — the engine itself carries no per-strategy special-casing; a strategy that has nothing to do with nesting simply never reads the parameter.
+
+**Building `nested` (`maze-runner`)**: `maze-runner/src/runner.rs::build_nested` resolves a `StrategyConfig`'s `nested: Vec<StrategyConfig>` against the parent's `expected_nested()` — purely generically over `expected_nested()`/`handles()`, no strategy id ever compared in this validation logic (only the unavoidable id→struct `match` in `build_strategy` mentions ids at all). For each nested `StrategyConfig`: `slot_id` must be present and match one of the parent's declared slots; the resolved strategy's `handles()` must equal that slot's `kind`; and, once every entry is resolved, each slot's filled count must fall within `[slot.min, slot.max]`. A slot's own nested strategies are validated the same way, recursively — depth is unbounded in the data model (a real second-level nested-capable strategy doesn't exist yet, but nothing stops one).
+
+**Synthesized issues never join the shared issue pool.** A parent strategy that delegates to a nested one builds its own `Issue` for the nested call (e.g. `ReduceSccCountStrategy` builds a `RegionsNeedingExpansion` issue naming the regions it picked) — this issue exists only as a local variable inside the parent's `apply()`, is passed straight into the nested strategy's `apply()`, and is discarded afterward. It is never added to `remaining_issues`, never surfaces in `maze-wasm`'s `IssueDto` list, and never reaches the web UI. The user only ever sees the original top-level issue (e.g. `EXCESSIVE_SCC_COUNT`) that the parent strategy itself was dispatched for.
+
+**Rollback stays the mutating strategy's own responsibility.** A nested call does not introduce a second snapshot mechanism or double bookkeeping — the same `&mut SnapshotStack` passed into the parent's `apply()` is passed straight through into the nested call, unchanged. If the nested strategy mutates the graph and then returns `Failed`, the parent does not roll those mutations back on the nested strategy's behalf; that is exactly the same contract every `RepairStrategy` already has today (e.g. `ExpandRegionPassageStrategy` does not snapshot around its own `try_add_bidirectional_edge` calls) — nesting changes nothing about who owns rollback.
+
+**Debug contract**: every `apply()` should start with `debug_assert_eq!(issue.kind, self.handles())` — a caller-side invariant (the `Issue` passed in must match what the strategy declared it handles), checked defensively in debug builds. Not retroactively added to every pre-existing strategy, but expected of new code (see `ReduceSccCountStrategy` for the pattern) and enforced going forward.
 
 ### QcRule and rule-based RepairEngine
 
@@ -110,6 +174,10 @@ pub struct RepairRuleConfig<F: Field> {
     pub rule: QcRule,
     pub strategy: Box<dyn RepairStrategy<F>>,
     pub param_overrides: HashMap<String, String>,
+    /// Nested strategy assignments for `strategy`'s `expected_nested()` slots, if any — empty
+    /// for every strategy without nested slots (the overwhelming majority). See "Nested
+    /// strategies" above.
+    pub nested: Vec<NestedStrategyConfig<F>>,
 }
 
 /// Result of running one rule's strategy. Named struct, not a tuple, so `rule_id` (an internal
@@ -364,6 +432,27 @@ Handles `MISSING_REGIONS` — see GitHub issue #59. For each `RegionClass` short
 - If `issue.data` is missing or the wrong variant, or `maze.meta.start`/`finish` is unset: returns `Failed`.
 - Returns `Fixed` if at least one shortfall item across all classes was successfully created; `Failed` if none were (including the case where every class's item exhausted `MAX_TOTAL_FAILURES` before succeeding).
 
+### ReduceSccCountStrategy
+
+Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far only) user of the nested-strategy mechanism (see "Nested strategies" above): `SccCountCheck`'s issue carries no specific regions to fix (unlike `REGION_NEEDS_EXPANSION`'s `RegionsNeedingExpansion`), so this strategy picks which regions to merge itself, then delegates the actual merge to a nested strategy.
+
+**`issue.data` is mandatory for this kind**: `IssueData::ExcessiveSccCount { max_scc_count }` is the producing check's configured threshold — there is no other channel to learn it.
+
+**Parameters:**
+
+| id | type | default | options | description |
+|----|------|---------|---------|-------------|
+| `merge_priority` | Enum | `smallest` | `smallest`, `largest`, `random` | Which regions to pick for merging first |
+
+**Nested slots**: exactly one, `slot_id = "merge_target"` (exported as `SLOT_MERGE_TARGET`), `kind = REGION_NEEDS_EXPANSION`, `min = 1`, `max = Some(1)` — a single nested strategy, typically `ExpandRegionPassageStrategy`, does the actual merge.
+
+- `scc = maze.analysis.scc(&maze.graph)`; `count = scc.components.len()`. If `count <= max_scc_count`: returns `Fixed { score: None }` immediately (idempotency) without touching `nested` or `rng`.
+- Otherwise selects exactly `count - max_scc_count` components to merge, ordered by `merge_priority`: `smallest`/`largest` sort by `(component size, component id)` for deterministic tie-breaking; `random` performs a seeded Fisher-Yates shuffle over component ids via `rng`. Only the first `count - max_scc_count` selected ids are used.
+- Builds a synthetic `Issue::with_data(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid: chosen, invalid_sources: {} })` — never published anywhere outside this `apply` call (see "Nested strategies"' synthesized-issues rule above).
+- Looks up the nested strategy filling `merge_target` in the `nested` slice passed into `apply` (defensive `debug_assert!` that at most one entry fills the slot, even though `build_nested` already enforces `max: Some(1)` at config-build time) — if none is present, returns `Failed`.
+- Delegates: builds the nested strategy's own `StrategyParams` from its `param_overrides`, then calls its `apply()` with the synthetic issue, the same `maze`/`snapshots`/`rng`/`preset_state`, and its own `nested` list (empty for `ExpandRegionPassageStrategy` today, but recursion is supported). Returns whatever `RepairResult` the nested call produces, unchanged — a merge failure (e.g. every candidate region has no geometrically-adjacent neighbor, or every candidate pair is preset-blocked) propagates as `Failed` the same way it would for a direct `ExpandRegionPassageStrategy` dispatch.
+- **Does not itself guarantee full convergence to `max_scc_count` in one call** — like every other strategy that delegates region selection to `ExpandRegionPassageStrategy`, chosen regions can end up merging into each other rather than into fresh neighbors, so the net component-count reduction from one `apply()` call can be less than the number of regions picked. Full convergence is the pipeline's fixpoint loop's job across iterations, not a single `apply()` call's contract — same accepted imprecision `ExpandRegionPassageStrategy` itself already documents for its own `invalid` set.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.
@@ -463,6 +552,7 @@ pub fn build_maze<T: Tessellation>(...) -> (Maze<T>, Vec<Issue>, GenerationTimin
 - `repair_total_ms`/`per_strategy` cover every `RepairEngine::run` call (one per fixpoint iteration that has active issues).
 - `per_check` is keyed by **check type id** (`Check::check_type_id()`, e.g. `"min_loop_length"` — the same string as `available_checks()`'s `CheckDescriptor.id`), not by instance id — two active instances of the same type (GitHub issue #60) aggregate into one entry, since the issue calls for per-check-*type* timing, not per-configured-instance.
 - `per_strategy` is keyed by **strategy id** (`RepairStrategy::strategy_id()`, e.g. `"invalid_loop_random"` — the same string as `StrategyConfig.id`), not by rule id — two rules backed by the same strategy aggregate into one entry.
+- **Nested strategies (see "Nested strategies" above) are not timed separately.** `RepairEngine::run_timed` only wraps the top-level `cfg.strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` entry, with no separate entry for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading `per_strategy` cannot distinguish a parent's own work from its nested delegate's.
 - `QualityControlEngine::run_timed`/`RepairEngine::run_timed` are the timed variants `build_maze` calls instead of the plain `run` — they take an `&mut HashMap<&'static str, (f64, u32)>` accumulator and a `now_ms: impl Fn() -> f64` clock (injected so the same wasm/native-aware clock from `pipeline.rs` is reused), and wrap each `Check::check`/`RepairStrategy::apply` call. Every other caller of `run` (e.g. `build_analytics_snapshot`'s analytics-only QC pass, which has no generation to time) is unaffected — `run` keeps its original untimed signature.
 - `now_ms()` (`pipeline.rs`) is `pub`, not private, specifically so `maze-wasm::run_generate` can time the initial-build stage with the same clock.
 

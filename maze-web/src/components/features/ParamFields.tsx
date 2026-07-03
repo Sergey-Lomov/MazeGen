@@ -1,7 +1,7 @@
 import React from "react";
 import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
-import { ui, typography } from "../../styles/theme";
+import { typography } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
 
 interface Props {
@@ -24,13 +24,13 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
   }
 
   return (
-    <div style={{ ...styles.fieldsWrap, gap: getDescription ? 10 : 4 }}>
+    <div style={{ ...styles.fieldsWrap, gap: getDescription ? 16 : 4 }}>
       {params.map((p) => {
         const description = getDescription?.(p);
         return (
           <div key={p.id} style={styles.field}>
             <div style={styles.row}>
-              <label style={{ ...typography.body, ...styles.label }}>{p.label}</label>
+              <label style={styles.label}>{p.label}</label>
               {(p.kind.type === "float" || p.kind.type === "integer") && (
                 <input
                   type="number"
@@ -98,8 +98,10 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: 10,
   },
+  // `typography.message` — the theme's own "label"-weight token (body size, secondary color) —
+  // see theme.ts's own guidance against composing fontSize/color ad hoc.
   label: {
-    color: ui.text.secondary,
+    ...typography.message,
     flex: 1,
   },
   description: {

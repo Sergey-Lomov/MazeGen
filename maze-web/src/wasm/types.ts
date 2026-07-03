@@ -155,17 +155,36 @@ export interface ParamDescriptor {
   kind: ParamKind;
 }
 
+/** Mirrors core's `NestedSlot` — one nested-strategy slot a strategy accepts. `slot_id` is a
+ * stable, opaque identifier (part of the strategy's public config API — see
+ * `Specs/repair.md`'s nested-strategy pattern), not meant for display. */
+export interface NestedSlotDescriptor {
+  slot_id: string;
+  kind: string;
+  min: number;
+  max: number | null;
+}
+
 export interface StrategyDescriptor {
   id: string;
   handles: string;
   params: ParamDescriptor[];
   /** Strategy's results/performance may be unpredictable — UI shows a warning. */
   experimental: boolean;
+  /** Nested-strategy slots this strategy accepts, if any — empty for every strategy without
+   * nested slots (the overwhelming majority). */
+  nested_slots: NestedSlotDescriptor[];
 }
 
 export interface StrategyConfig {
   id: string;
   params: Record<string, string>;
+  /** Which parent slot this fills — required when this `StrategyConfig` is nested inside
+   * another one's `nested`, must be absent for a rule's top-level strategy. */
+  slot_id?: string;
+  /** Nested strategy assignments, in configured order — empty for strategies without nested
+   * slots. Recursive. */
+  nested?: StrategyConfig[];
 }
 
 /** One active check, declared inline inside the `QcRuleConfig` it belongs to — see GitHub issue

@@ -16,9 +16,12 @@ interface Props {
   storeValues: Record<string, string>;
   onCommit: (paramId: string, value: string) => void;
   flushRef: React.MutableRefObject<() => void>;
+  /** Extra content rendered after the params (e.g. nested-strategy slots) — only a strategy with
+   * nested slots passes this; a plain check never has any. */
+  children?: React.ReactNode;
 }
 
-export function ParamizedDetail({ id, label, description, warning, params, storeValues, onCommit, flushRef }: Props) {
+export function ParamizedDetail({ id, label, description, warning, params, storeValues, onCommit, flushRef, children }: Props) {
   const { values, onChange, flushRef: localFlushRef } = useParamEditor({
     entityId: id,
     params,
@@ -44,6 +47,7 @@ export function ParamizedDetail({ id, label, description, warning, params, store
           />
         </>
       )}
+      {children}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry } from "../../pixi/presetConnectionsUtils";
 import type { PostEditEdge, FeatureId } from "../mazeStore";
+import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import {
   CURRENT_VERSION,
   type ProjectFile,
@@ -11,6 +12,7 @@ import {
   type ProjectFileUi,
   type ProjectFileQcRule,
   type ProjectFileStage,
+  type ProjectFileNestedStrategy,
 } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
@@ -236,6 +238,25 @@ function validateCheckInstance(v: unknown, path: string): { localId: number; typ
   };
 }
 
+// Mirrors `NestedStrategyState` — absent entirely for project files saved before nested
+// strategies existed, same recovery pattern `ruleDisabled`/stage `disabled` already use.
+// `depth` guards against a maliciously or accidentally deep `nested` chain in a loaded file —
+// this is the one nested-strategy recursion that crosses a real trust boundary (an arbitrary
+// file from disk, not web-UI-generated state), so it's the one that must not blow the call stack.
+function validateNestedStrategy(v: unknown, path: string, depth = 0): ProjectFileNestedStrategy {
+  if (depth >= MAX_NESTED_STRATEGY_DEPTH) {
+    throw new Error(`${path}: nested strategy chain exceeds max depth of ${MAX_NESTED_STRATEGY_DEPTH}`);
+  }
+  const obj = assertObject(v, path);
+  const slotId = assertString(obj.slotId, `${path}.slotId`);
+  const strategyId = assertString(obj.strategyId, `${path}.strategyId`);
+  const params = assertStringRecord(obj.params ?? {}, `${path}.params`);
+  const nested = obj.nested != null
+    ? assertArray(obj.nested, `${path}.nested`).map((n, i) => validateNestedStrategy(n, `${path}.nested[${i}]`, depth + 1))
+    : [];
+  return { slotId, strategyId, params, nested };
+}
+
 // `name` defaults by array position for project files saved before rule naming existed —
 // keeps old files loadable without a migration entry for what is a purely cosmetic field.
 // `ruleDisabled` defaults to false for the same reason (files saved before the whole-rule
@@ -257,7 +278,10 @@ function validateQcRule(v: unknown, path: string, index: number): ProjectFileQcR
   const strategyId = obj.strategyId === null || obj.strategyId === undefined ? null : assertString(obj.strategyId, `${path}.strategyId`);
   const disabled = assertBoolean(obj.disabled, `${path}.disabled`);
   const ruleDisabled = typeof obj.ruleDisabled === "boolean" ? obj.ruleDisabled : false;
-  return { id, name, kind, checks, strategyId, disabled, ruleDisabled };
+  const nestedStrategies = obj.nestedStrategies != null
+    ? assertArray(obj.nestedStrategies, `${path}.nestedStrategies`).map((n, i) => validateNestedStrategy(n, `${path}.nestedStrategies[${i}]`))
+    : [];
+  return { id, name, kind, checks, strategyId, disabled, ruleDisabled, nestedStrategies };
 }
 
 // See GitHub issue #65. Shape-only validation here — cross-stage integrity (duplicate rule id

@@ -10,7 +10,6 @@ use crate::graph::{Graph as G, EdgeKind as EK};
 use crate::IdGenerator;
 use crate::space::{SquareTessellation, square_rect, Field};
 use crate::repair::params::build_params;
-use crate::quality_control::issue::MISSING_REGIONS;
 use crate::graph::scc::ComponentId;
 
 fn default_params() -> StrategyParams {
@@ -63,7 +62,7 @@ fn apply_fails_on_missing_data() {
     let (mut maze, _) = maze_with_path_and_unreachables();
     let issue = Issue::new(MISSING_REGIONS);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }
 
@@ -73,7 +72,7 @@ fn apply_fails_without_start_or_finish() {
     maze.meta.start = None;
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }
 
@@ -82,7 +81,7 @@ fn apply_reuses_unreachable_region_into_trap() {
     let (mut maze, nodes) = maze_with_path_and_unreachables();
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(7);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
@@ -98,7 +97,7 @@ fn apply_path_class_is_skipped_not_failed() {
     let issue = issue_for(vec![(RegionClass::Path, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
     let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_before, edges_after, "Path-only request must not mutate the graph");
@@ -121,7 +120,7 @@ fn apply_fails_when_no_candidates_at_all() {
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
     let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_before, edges_after, "failed attempts must leave the graph untouched");
@@ -141,7 +140,7 @@ fn apply_respects_preset_blocked_pairs_during_reuse() {
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(3);
     let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &preset_state);
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &preset_state, &[]);
     assert!(matches!(result, RepairResult::Failed));
     let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_before, edges_after);
@@ -152,12 +151,12 @@ fn apply_is_deterministic_for_fixed_seed() {
     let (mut maze_a, _) = maze_with_path_and_unreachables();
     let issue_a = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng_a = MazeRng::seed_from_u64(99);
-    MissingRegionsStrategy.apply(&issue_a, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &default_params(), &PresetState::empty());
+    MissingRegionsStrategy.apply(&issue_a, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &default_params(), &PresetState::empty(), &[]);
 
     let (mut maze_b, _) = maze_with_path_and_unreachables();
     let issue_b = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng_b = MazeRng::seed_from_u64(99);
-    MissingRegionsStrategy.apply(&issue_b, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &default_params(), &PresetState::empty());
+    MissingRegionsStrategy.apply(&issue_b, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &default_params(), &PresetState::empty(), &[]);
 
     let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
     let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();
@@ -169,7 +168,7 @@ fn apply_never_uses_critical_path_nodes_as_seed_or_bridge_target() {
     let (mut maze, nodes) = maze_with_path_and_unreachables();
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(11);
-    MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     // Critical path nodes (0,1,2) must keep their original outgoing edges only to each
     // other -- they should not have been absorbed into the new Trap region's component.
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -205,7 +204,7 @@ fn apply_grows_when_no_reusable_unreachable_region_exists() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(5);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -268,7 +267,7 @@ fn apply_grows_from_a_tree_shaped_maze_with_no_non_path_regions_at_all() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(5);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }), "growth must succeed even with zero pre-existing non-Path regions");
 
     let classes_after = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -297,7 +296,7 @@ fn apply_two_trap_regions_both_succeed_via_reuse() {
     let (mut maze, nodes) = maze_with_many_unreachables();
     let issue = issue_for(vec![(RegionClass::Trap, 2)]);
     let mut rng = MazeRng::seed_from_u64(13);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -313,7 +312,7 @@ fn apply_second_item_never_reuses_first_items_committed_nodes() {
     let (mut maze, nodes) = maze_with_many_unreachables();
     let issue = issue_for(vec![(RegionClass::Trap, 2)]);
     let mut rng = MazeRng::seed_from_u64(13);
-    MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
 
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
@@ -349,7 +348,7 @@ fn apply_partial_success_within_one_class_is_fixed() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 2)]);
     let mut rng = MazeRng::seed_from_u64(21);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -365,7 +364,7 @@ fn apply_max_total_failures_aborts_remaining_classes() {
     let issue = issue_for(vec![(RegionClass::Trap, 1), (RegionClass::Alternative, 1)]);
     let mut rng = MazeRng::seed_from_u64(21);
     let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
     let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_before, edges_after, "every attempted mutation must have been rolled back");
@@ -399,7 +398,7 @@ fn apply_growth_never_crosses_into_a_different_scc_component() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(17);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     // node 5 must remain its own untouched Unreachable singleton -- not absorbed into the
     // grown/converted Trap region, and not connected to anything.
@@ -489,7 +488,7 @@ fn apply_merges_a_too_small_region_with_an_excess_budgeted_neighbor_to_reach_min
 
     let issue = issue_with_balance(vec![(RegionClass::Trap, -1), (RegionClass::Unreachable, 1)]);
     let mut rng = MazeRng::seed_from_u64(17);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }), "must succeed by merging region6 with {{n3,n4,n5}} using the Unreachable surplus budget");
 
     // All 4 nodes must now be one single Trap region -- proves both the cross-component
@@ -526,7 +525,7 @@ fn apply_reuses_undersized_region_alone_without_excess_budget() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(17);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }), "no excess budget -- region6 must still be reusable alone, below min_region_size");
 
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -569,7 +568,7 @@ fn apply_does_not_leak_inbound_edge_from_a_failed_unreachable_to_alternative_can
 
         let issue = issue_for(vec![(RegionClass::Alternative, 1)]);
         let mut rng = MazeRng::seed_from_u64(seed);
-        let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &preset_state);
+        let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &preset_state, &[]);
         if matches!(result, RepairResult::Fixed { score: None }) {
             // Whatever succeeded, node 3 must never have gained an inbound edge unless it
             // is itself the final committed Alternative region (in which case it would also
@@ -619,7 +618,7 @@ fn apply_reuse_prioritizes_the_region_actually_bordering_the_path() {
         let (mut maze, _) = maze_with_one_bordering_region_and_decoys();
         let issue = issue_for(vec![(RegionClass::Trap, 1)]);
         let mut rng = MazeRng::seed_from_u64(seed);
-        let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+        let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }), "seed {seed}: must succeed by prioritizing the bordering region over decoys");
     }
 }
@@ -656,7 +655,7 @@ fn apply_makes_trap_from_unreachable_region_with_existing_outbound_edge_to_finis
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(990043);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let classes_after = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -719,7 +718,7 @@ fn apply_undo_does_not_destroy_a_pre_existing_edge_shared_by_two_candidates() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(990043);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -1926,7 +1925,7 @@ fn apply_end_to_end_grown_region_has_no_leftover_edge_to_its_original_neighborho
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(5);
-    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty());
+    let result = MissingRegionsStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     // The Trap region must be exactly one SCC -- nothing left half-connected to the rest of

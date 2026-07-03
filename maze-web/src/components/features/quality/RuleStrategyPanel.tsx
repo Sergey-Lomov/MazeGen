@@ -6,12 +6,16 @@ import { Switch } from "../../Switch";
 import { WarningIcon } from "../../WarningIcon";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
+import { NestedStrategyPanel } from "./NestedStrategyPanel";
 import type { StrategySlotVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
 interface Props {
   slot: StrategySlotVM;
   selected: boolean;
+  /** Current whole-canvas selection — passed through to `NestedStrategyPanel` so it can
+   * independently compute whether one of its own nested slots is selected. */
+  selection: QualitySelection;
   onSelect: (s: QualitySelection) => void;
   onEdit: () => void;
 }
@@ -20,7 +24,7 @@ interface Props {
 // way GenerationFeature shows the active method's params under it — kept separate from the
 // checks list so disabling/configuring the fix is visually independent from the checks
 // themselves (the checks still run; only the repair step is what gets toggled here).
-export function RuleStrategyPanel({ slot, selected, onSelect, onEdit }: Props) {
+export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit }: Props) {
   const toggleStrategyDisabled = useMazeStore((s) => s.toggleStrategyDisabled);
   const strategyParams = useMazeStore((s) => s.strategyParams);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
@@ -69,9 +73,21 @@ export function RuleStrategyPanel({ slot, selected, onSelect, onEdit }: Props) {
         )}
         <button style={styles.editBtn} title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }}>✎</button>
       </div>
-      {strategy && strategy.params.length > 0 && (
+      {strategy && (strategy.params.length > 0 || strategy.nestedSlots.length > 0) && (
         <div style={styles.ruleStrategyParams}>
           <ParamFields params={strategy.params} values={values} onChange={onChange} />
+          {strategy.nestedSlots.map((slotDesc) => (
+            <NestedStrategyPanel
+              key={slotDesc.slotId}
+              ruleId={slot.ruleId}
+              path={[slotDesc.slotId]}
+              slotDesc={slotDesc}
+              node={slot.nestedStrategies.find((n) => n.slotId === slotDesc.slotId) ?? null}
+              depth={1}
+              selection={selection}
+              onSelect={onSelect}
+            />
+          ))}
         </div>
       )}
     </div>

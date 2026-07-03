@@ -1,12 +1,13 @@
 import type { StateCreator } from "zustand";
 import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../../wasm/mazeService";
 import { initWasm } from "../../wasm/wasmLoader";
-import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot, CheckDescriptor } from "../../wasm/types";
+import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot, CheckDescriptor, StrategyConfig, StrategyDescriptor } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated } from "../../pixi/postEditUtils";
-import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance, RepairStageState } from "../storeTypes";
+import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
+import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance, RepairStageState, NestedStrategyState } from "../storeTypes";
 import { activeTessellationOf, buildResetMazeState, debugStaleOf } from "../storeHelpers";
 import * as m from "~/paraglide/messages";
 
@@ -30,7 +31,7 @@ export function isTypeAlreadyActive(rules: QcRuleState[], typeId: string): boole
   return rules.some((g) => g.checks.some((c) => c.typeId === typeId));
 }
 
-function defaultParamsFor(descriptor: CheckDescriptor): Record<string, string> {
+function defaultParamsFor(descriptor: { params: CheckDescriptor["params"] }): Record<string, string> {
   return Object.fromEntries(
     descriptor.params.map((p) => {
       const k = p.kind;
@@ -38,6 +39,35 @@ function defaultParamsFor(descriptor: CheckDescriptor): Record<string, string> {
       return [p.id, def];
     })
   );
+}
+
+// Auto-fills every mandatory nested slot (`min >= 1`) of `strategyId` with the first available
+// strategy that handles the slot's kind, recursively — so a nested-capable strategy is never left
+// in a state where its own `apply()` is guaranteed to fail for lack of a nested assignment (see
+// GitHub issue #68's `ReduceSccCountStrategy`). "First compatible candidate" is a placeholder the
+// user is expected to review/change on the rule's own card (`NestedStrategyPanel`'s edit button)
+// — not a considered recommendation. A slot with no compatible candidate at all is left unfilled
+// (defensive: shouldn't happen for any shipped strategy, but this must not crash if it did).
+// `depth` guards against a future registry addition where two nested-capable strategies end up
+// mutually compatible (A's slot resolves to B, B's slot resolves back to A) — nothing in the
+// registry shape itself rules that out, so this recursion isn't otherwise provably finite.
+function buildDefaultNestedStrategies(strategyId: string, availableStrategies: StrategyDescriptor[], depth = 0): NestedStrategyState[] {
+  if (depth >= MAX_NESTED_STRATEGY_DEPTH) return [];
+  const descriptor = availableStrategies.find((s) => s.id === strategyId);
+  if (!descriptor) return [];
+  return descriptor.nested_slots
+    .filter((slot) => slot.min >= 1)
+    .map((slot): NestedStrategyState | undefined => {
+      const candidate = availableStrategies.find((s) => s.handles === slot.kind);
+      if (!candidate) return undefined;
+      return {
+        slotId: slot.slot_id,
+        strategyId: candidate.id,
+        params: defaultParamsFor(candidate),
+        nested: buildDefaultNestedStrategies(candidate.id, availableStrategies, depth + 1),
+      };
+    })
+    .filter((n): n is NestedStrategyState => n !== undefined);
 }
 
 // Default rule name = the issue kind's own label (the same text shown in IssueSelectDialog's
@@ -55,7 +85,7 @@ function defaultRuleName(kind: string): string {
 // (e.g. from an imported project) keep their old ids, so a fresh counter can mint an id that
 // collides with one already in use. `nextLocalCheckId` starts at `checks.length` (the lowest id
 // not already in use among the member checks passed in at creation).
-function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean): QcRuleState {
+function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[]): QcRuleState {
   return {
     id: `rule_${crypto.randomUUID()}`,
     name: defaultRuleName(kind),
@@ -65,6 +95,7 @@ function newRule(kind: string, checks: CheckInstance[], strategyId: string | nul
     strategyId,
     disabled,
     ruleDisabled: false,
+    nestedStrategies: strategyId ? buildDefaultNestedStrategies(strategyId, availableStrategies) : [],
   };
 }
 
@@ -155,7 +186,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
         const kind = resolveCheckKind(descriptor);
         const candidates = strategies.filter((s) => s.handles === kind);
         const match = candidates.find((s) => s.id === "scored_endpoints") ?? candidates[0];
-        return newRule(kind, [{ localId: 0, typeId: checkId, params: defaultParamsFor(descriptor) }], match?.id ?? null, false);
+        return newRule(kind, [{ localId: 0, typeId: checkId, params: defaultParamsFor(descriptor) }], match?.id ?? null, false, strategies);
       });
       const knownIds = new Set(checks.map((c) => c.id));
       set((state) => {
@@ -244,7 +275,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     }
     // New singleton rule — goes into the last stage (a fresh one is created if `stages` is
     // currently empty — see `appendRuleToStage`).
-    const rule = newRule(checkKind, [{ localId: 0, typeId, params }], null, false);
+    const rule = newRule(checkKind, [{ localId: 0, typeId, params }], null, false, state.availableStrategies);
     const stages = appendRuleToStage(state.stages, rule.id);
     return { rules: [...state.rules, rule], stages, debugStale: debugStaleOf(state) };
   }),
@@ -277,7 +308,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
         })
       );
     }
-    const rule = newRule(checkKind, checks, strategyId, false);
+    const rule = newRule(checkKind, checks, strategyId, false, state.availableStrategies);
     const stages = appendRuleToStage(state.stages, rule.id, targetStageId);
     return {
       strategyParams,
@@ -312,7 +343,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       .map((g) => g.id === ruleId ? { ...g, checks: g.checks.filter((c) => c.localId !== localId) } : g)
       .filter((g) => g.checks.length > 0);
     const descriptor = state.availableChecks.find((c) => c.id === moved.typeId);
-    const newSingleton = newRule(descriptor ? resolveCheckKind(descriptor) : "", [{ ...moved, localId: 0 }], null, false);
+    const newSingleton = newRule(descriptor ? resolveCheckKind(descriptor) : "", [{ ...moved, localId: 0 }], null, false, state.availableStrategies);
     rules.push(newSingleton);
     // Source rule left empty by this move is not dropped (see `QcRuleState`'s doc comment) —
     // its own stage membership is untouched. The new singleton rule goes into the last stage,
@@ -321,15 +352,61 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     return { rules, stages, debugStale: debugStaleOf(state) };
   }),
 
+  // Changing the top-level strategy drops any previously-configured `nestedStrategies` — a
+  // different strategy generally has a different (or no) set of nested slots, so a stale nested
+  // config left over from the old strategy would be meaningless at best, misleading at worst.
+  // Every mandatory slot of the new strategy is auto-filled with a default nested strategy (see
+  // `buildDefaultNestedStrategies`) rather than left empty.
   setStrategy: (ruleId, strategyId) => set((state) => ({
-    rules: state.rules.map((g) => g.id === ruleId ? { ...g, strategyId } : g),
+    rules: state.rules.map((g) => g.id === ruleId
+      ? { ...g, strategyId, nestedStrategies: buildDefaultNestedStrategies(strategyId, state.availableStrategies) }
+      : g),
     debugStale: debugStaleOf(state),
   })),
 
   clearStrategy: (ruleId) => set((state) => ({
-    rules: state.rules.map((g) => g.id === ruleId ? { ...g, strategyId: null, disabled: false } : g),
+    rules: state.rules.map((g) => g.id === ruleId ? { ...g, strategyId: null, disabled: false, nestedStrategies: [] } : g),
     debugStale: debugStaleOf(state),
   })),
+
+  // `path` is a chain of slot ids, each resolved relative to the currently selected nested
+  // strategy, not globally — `path[0]` is looked up in the rule's own top-level strategy's
+  // `nestedStrategies`, `path[1]` is looked up in *that* entry's own `nested`, and so on. The
+  // same `slot_id` string appearing at two different depths never collides, since each lookup
+  // only ever searches within its own parent's list, never the whole tree.
+  setNestedStrategy: (ruleId, path, strategyId) => set((state) => {
+    function updateList(list: NestedStrategyState[], remainingPath: string[]): NestedStrategyState[] {
+      const [slotId, ...rest] = remainingPath;
+      if (rest.length === 0) {
+        const withoutSlot = list.filter((n) => n.slotId !== slotId);
+        if (strategyId === null) return withoutSlot;
+        const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
+        const params = descriptor ? defaultParamsFor(descriptor) : {};
+        const nested = buildDefaultNestedStrategies(strategyId, state.availableStrategies);
+        return [...withoutSlot, { slotId, strategyId, params, nested }];
+      }
+      return list.map((n) => n.slotId === slotId ? { ...n, nested: updateList(n.nested, rest) } : n);
+    }
+    return {
+      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  setNestedStrategyParam: (ruleId, path, paramId, value) => set((state) => {
+    function updateList(list: NestedStrategyState[], remainingPath: string[]): NestedStrategyState[] {
+      const [slotId, ...rest] = remainingPath;
+      return list.map((n) => {
+        if (n.slotId !== slotId) return n;
+        if (rest.length === 0) return { ...n, params: { ...n.params, [paramId]: value } };
+        return { ...n, nested: updateList(n.nested, rest) };
+      });
+    }
+    return {
+      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
+      debugStale: debugStaleOf(state),
+    };
+  }),
 
   toggleStrategyDisabled: (ruleId) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId ? { ...g, disabled: !g.disabled } : g),
@@ -496,10 +573,34 @@ export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConf
   return { tessellation_type, points };
 }
 
+// Recursively builds one nested `StrategyConfig` from a `NestedStrategyState` — mirrors
+// `ruleToConfig`'s param-filtering (only descriptor-known param ids are forwarded), plus its own
+// `slot_id` and recursively-built `nested` list. Unlike top-level strategies, nested params are
+// per-node (`n.params`), not looked up in the global `strategyParams` map — see
+// `NestedStrategyState`'s doc comment for why (two rules must be able to configure the same
+// nested strategy independently). `depth` guards against a pathologically deep tree (e.g. loaded
+// from a project file) blowing the call stack on every `generate()` call — see
+// `MAX_NESTED_STRATEGY_DEPTH`'s doc comment.
+function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): StrategyConfig {
+  const descriptor = state.availableStrategies.find((s) => s.id === n.strategyId);
+  const params: Record<string, string> = {};
+  if (descriptor) {
+    for (const p of descriptor.params) {
+      if (n.params[p.id] !== undefined) params[p.id] = n.params[p.id];
+    }
+  }
+  return {
+    id: n.strategyId,
+    params,
+    slot_id: n.slotId,
+    nested: depth >= MAX_NESTED_STRATEGY_DEPTH ? [] : n.nested.map((child) => nestedToConfig(state, child, depth + 1)),
+  };
+}
+
 // Builds one `QcRuleConfig` from a `QcRuleState` — `ruleDisabled` filtering happens in
 // `buildGenerateConfig` before this is called (per-stage, per rule), not here.
-function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: { local_id: string; type_id: string; params: Record<string, string> }[]; strategy: { id: string; params: Record<string, string> } | null } {
-  let strategy: { id: string; params: Record<string, string> } | null = null;
+function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: { local_id: string; type_id: string; params: Record<string, string> }[]; strategy: StrategyConfig | null } {
+  let strategy: StrategyConfig | null = null;
   if (g.strategyId && !g.disabled) {
     const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
     const paramOverrides = state.strategyParams[g.strategyId] ?? {};
@@ -509,7 +610,8 @@ function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: {
         if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
       }
     }
-    strategy = { id: g.strategyId, params };
+    const nested = g.nestedStrategies.map((n) => nestedToConfig(state, n));
+    strategy = { id: g.strategyId, params, ...(nested.length > 0 ? { nested } : {}) };
   }
   // Order preserved from `QcRuleState.checks` — no resorting, so serialization/test
   // determinism doesn't depend on Map/object iteration order at this layer.

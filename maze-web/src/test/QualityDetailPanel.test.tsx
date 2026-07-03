@@ -5,7 +5,7 @@ import { QualityDetailPanel } from "../components/features/quality/QualityDetail
 import { useMazeStore } from "../store/mazeStore";
 import type { CheckVM, StrategyVM, QualityViewModel } from "../components/features/useQualityViewModel";
 
-const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false };
+const strategy: StrategyVM = { id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false, nestedSlots: [] };
 
 const check: CheckVM = {
   id: "g1:0",
@@ -18,7 +18,7 @@ const check: CheckVM = {
 };
 
 function makeVm(overrides: Partial<QualityViewModel> = {}): QualityViewModel {
-  const slots = [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [check] }];
+  const slots = [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [check], nestedStrategies: [] }];
   return {
     checks: [check],
     stages: [{ stageId: "stage_1", name: "Stage 1", slots, disabled: false }],
@@ -29,7 +29,7 @@ function makeVm(overrides: Partial<QualityViewModel> = {}): QualityViewModel {
 
 function Harness({ selection, vm }: { selection: Parameters<typeof QualityDetailPanel>[0]["selection"]; vm: QualityViewModel }) {
   const flushRef = useRef<() => void>(() => {});
-  return <QualityDetailPanel selection={selection} vm={vm} flushRef={flushRef} />;
+  return <QualityDetailPanel selection={selection} vm={vm} flushRef={flushRef} onSelect={() => {}} />;
 }
 
 beforeEach(() => {
@@ -53,7 +53,7 @@ describe("QualityDetailPanel", () => {
 
   it("renders strategy detail when a strategy is selected", () => {
     const vm = makeVm({
-      strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy, disabled: false, ruleDisabled: false, producedBy: [check] }],
+      strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy, disabled: false, ruleDisabled: false, producedBy: [check], nestedStrategies: [] }],
     });
     render(
       <Harness selection={{ type: "strategy", ruleId: "g1", strategyId: "s1" }} vm={vm} />
@@ -64,5 +64,30 @@ describe("QualityDetailPanel", () => {
   it("renders empty panel when selected check no longer exists", () => {
     render(<Harness selection={{ type: "check", id: "missing" }} vm={makeVm()} />);
     expect(screen.queryByText("Check One")).not.toBeInTheDocument();
+  });
+
+  it("renders nested strategy detail when a nested_strategy slot is selected", () => {
+    const nestedStrategy: StrategyVM = { id: "n1", label: "Nested One", handles: "k2", params: [], experimental: false, nestedSlots: [] };
+    const topLevel: StrategyVM = {
+      id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1 }],
+    };
+    const vm = makeVm({
+      strategySlots: [{
+        ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: topLevel,
+        disabled: false, ruleDisabled: false, producedBy: [check],
+        nestedStrategies: [{ slotId: "slot_a", strategy: nestedStrategy, params: [], nested: [] }],
+      }],
+    });
+    render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: ["slot_a"] }} vm={vm} />);
+    expect(screen.getByText("Nested One")).toBeInTheDocument();
+  });
+
+  it("renders empty panel when the selected nested_strategy path no longer resolves", () => {
+    const vm = makeVm({
+      strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy, disabled: false, ruleDisabled: false, producedBy: [check], nestedStrategies: [] }],
+    });
+    render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: ["slot_a"] }} vm={vm} />);
+    expect(screen.queryByText("Strategy One")).not.toBeInTheDocument();
   });
 });

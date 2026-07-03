@@ -1,10 +1,10 @@
 use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::quality_control::Issue;
+use crate::quality_control::{Issue, MISSING_ENDPOINTS, IssueKind};
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::RepairStrategy;
+use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::snapshot::SnapshotStack;
 use crate::generation::PresetState;
 
@@ -12,8 +12,9 @@ pub struct RandomEndpointsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for RandomEndpointsStrategy {
     fn strategy_id(&self) -> &'static str { "random_endpoints" }
+    fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-    fn apply(&self, _issue: &Issue, maze: &mut Maze<T>, _snapshots: &mut SnapshotStack, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState) -> RepairResult {
+    fn apply(&self, _issue: &Issue, maze: &mut Maze<T>, _snapshots: &mut SnapshotStack, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>]) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
             return RepairResult::Fixed { score: None };
         }

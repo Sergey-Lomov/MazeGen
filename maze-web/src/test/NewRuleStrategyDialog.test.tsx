@@ -4,15 +4,15 @@ import { NewRuleStrategyDialog } from "../components/features/NewRuleStrategyDia
 import { useMazeStore } from "../store/mazeStore";
 
 const availableStrategies = [
-  { id: "s1", handles: "k1", params: [], experimental: false },
-  { id: "s2", handles: "k1", params: [], experimental: false },
-  { id: "s3", handles: "k2", params: [], experimental: false },
+  { id: "s1", handles: "k1", params: [], experimental: false, nested_slots: [] },
+  { id: "s2", handles: "k1", params: [], experimental: false, nested_slots: [] },
+  { id: "s3", handles: "k2", params: [], experimental: false, nested_slots: [] },
 ];
 
 const endpointStrategies = [
-  { id: "random_endpoints", handles: "missing_endpoints", params: [], experimental: false },
-  { id: "farthest_endpoints", handles: "missing_endpoints", params: [], experimental: false },
-  { id: "scored_endpoints", handles: "missing_endpoints", params: [], experimental: false },
+  { id: "random_endpoints", handles: "missing_endpoints", params: [], experimental: false, nested_slots: [] },
+  { id: "farthest_endpoints", handles: "missing_endpoints", params: [], experimental: false, nested_slots: [] },
+  { id: "scored_endpoints", handles: "missing_endpoints", params: [], experimental: false, nested_slots: [] },
 ];
 
 beforeEach(() => {

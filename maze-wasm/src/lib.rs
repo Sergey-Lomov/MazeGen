@@ -14,7 +14,7 @@ use maze_core::{
     Maze,
     quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS},
     RegionClass,
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
@@ -64,6 +64,28 @@ struct StrategyDescriptor {
     /// Whether this strategy is experimental — see `RepairStrategy::is_experimental` in
     /// `maze-core`. UI shows a warning badge/bubble for these.
     experimental: bool,
+    /// Mirrors `RepairStrategy::expected_nested()` — one entry per nested-strategy slot this
+    /// strategy accepts. Empty for every strategy without nested slots (the overwhelming
+    /// majority). The web UI resolves candidate nested strategies for a slot as
+    /// `availableStrategies.filter(s => s.handles === slot.kind)`.
+    nested_slots: Vec<NestedSlotDto>,
+}
+
+#[derive(Serialize)]
+struct NestedSlotDto {
+    slot_id: &'static str,
+    kind: &'static str,
+    min: usize,
+    max: Option<usize>,
+}
+
+fn nested_slots_dto(slots: &[maze_core::repair::NestedSlot]) -> Vec<NestedSlotDto> {
+    slots.iter().map(|s| NestedSlotDto {
+        slot_id: s.slot_id,
+        kind: kind_str(s.kind),
+        min: s.min,
+        max: s.max,
+    }).collect()
 }
 
 // Helper to turn IssueKind into a &'static str for JSON serialization.
@@ -320,48 +342,63 @@ pub fn available_strategies() -> JsValue {
             handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<RandomEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&RandomEndpointsStrategy)),
             experimental: <RandomEndpointsStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&RandomEndpointsStrategy),
+            nested_slots: vec![],
         },
         StrategyDescriptor {
             id: "farthest_endpoints",
             handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<FarthestEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&FarthestEndpointsStrategy)),
             experimental: <FarthestEndpointsStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&FarthestEndpointsStrategy),
+            nested_slots: vec![],
         },
         StrategyDescriptor {
             id: "scored_endpoints",
             handles: kind_str(MISSING_ENDPOINTS),
             params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy)),
             experimental: <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&ScoredEndpointsStrategy),
+            nested_slots: vec![],
         },
         StrategyDescriptor {
             id: "invalid_loop_random",
             handles: kind_str(INVALID_LOOP),
             params: strategy_params_dto(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation>>::params(&InvalidLoopRandomStrategy)),
             experimental: <InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&InvalidLoopRandomStrategy),
+            nested_slots: vec![],
         },
         StrategyDescriptor {
             id: "invalid_loop_scored",
             handles: kind_str(INVALID_LOOP),
             params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation>>::params(&InvalidLoopScoredStrategy)),
             experimental: <InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&InvalidLoopScoredStrategy),
+            nested_slots: vec![],
         },
         StrategyDescriptor {
             id: "missing_loops_random",
             handles: kind_str(MISSING_LOOPS),
             params: strategy_params_dto(<MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation>>::params(&MissingLoopsRandomStrategy)),
             experimental: <MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&MissingLoopsRandomStrategy),
+            nested_slots: vec![],
         },
         StrategyDescriptor {
             id: "expand_region_passage",
             handles: kind_str(REGION_NEEDS_EXPANSION),
             params: strategy_params_dto(<ExpandRegionPassageStrategy as RepairStrategy<SquareTessellation>>::params(&ExpandRegionPassageStrategy)),
             experimental: <ExpandRegionPassageStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&ExpandRegionPassageStrategy),
+            nested_slots: vec![],
         },
         StrategyDescriptor {
             id: "missing_regions",
             handles: kind_str(MISSING_REGIONS),
             params: strategy_params_dto(<MissingRegionsStrategy as RepairStrategy<SquareTessellation>>::params(&MissingRegionsStrategy)),
             experimental: <MissingRegionsStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&MissingRegionsStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "reduce_scc_count",
+            handles: kind_str(EXCESSIVE_SCC_COUNT),
+            params: strategy_params_dto(<ReduceSccCountStrategy as RepairStrategy<SquareTessellation>>::params(&ReduceSccCountStrategy)),
+            experimental: <ReduceSccCountStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&ReduceSccCountStrategy),
+            nested_slots: nested_slots_dto(<ReduceSccCountStrategy as RepairStrategy<SquareTessellation>>::expected_nested(&ReduceSccCountStrategy)),
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()

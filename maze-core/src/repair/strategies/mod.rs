@@ -7,6 +7,7 @@ pub mod invalid_loop_scored;
 pub mod missing_loops_random;
 pub mod expand_region_passage;
 pub mod missing_regions;
+pub mod reduce_scc_count;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -16,3 +17,4 @@ pub use invalid_loop_scored::InvalidLoopScoredStrategy;
 pub use missing_loops_random::MissingLoopsRandomStrategy;
 pub use expand_region_passage::ExpandRegionPassageStrategy;
 pub use missing_regions::MissingRegionsStrategy;
+pub use reduce_scc_count::ReduceSccCountStrategy;

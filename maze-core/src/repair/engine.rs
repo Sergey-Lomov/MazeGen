@@ -8,7 +8,7 @@ use super::rule::QcRule;
 use super::stage::RepairStage;
 use super::params::{build_params, StrategyParams};
 use super::result::RepairResult;
-use super::strategy::RepairStrategy;
+use super::strategy::{RepairStrategy, NestedStrategyConfig};
 use super::snapshot::SnapshotStack;
 
 /// One rule's strategy assignment — `RepairEngine`'s caller-supplied configuration unit.
@@ -16,6 +16,10 @@ pub struct RepairRuleConfig<T: Tessellation> {
     pub rule: QcRule,
     pub strategy: Box<dyn RepairStrategy<T>>,
     pub param_overrides: HashMap<String, String>,
+    /// Nested strategy assignments for `strategy`'s `expected_nested()` slots, if any — empty
+    /// for every strategy without nested slots (the overwhelming majority). Built by the caller
+    /// (`maze-runner/src/runner.rs::build_nested`) the same way `strategy` itself is built.
+    pub nested: Vec<NestedStrategyConfig<T>>,
 }
 
 /// Result of running one rule's strategy. Named struct, not a tuple — keeps `rule_id`
@@ -123,7 +127,7 @@ impl<T: Tessellation> RepairEngine<T> {
             let overrides = Some(&cfg.param_overrides);
             let params: StrategyParams = build_params(cfg.strategy.params(), overrides);
             let mut snapshots = SnapshotStack::new();
-            let result = cfg.strategy.apply(issue, maze, &mut snapshots, rng, &params, preset_state);
+            let result = cfg.strategy.apply(issue, maze, &mut snapshots, rng, &params, preset_state, &cfg.nested);
             results.push(RepairOutcome { rule_id: rule_id.clone(), result });
         }
         results
@@ -134,6 +138,15 @@ impl<T: Tessellation> RepairEngine<T> {
     /// `QualityControlEngine::run_timed`'s analogous role for checks (GitHub issue #56).
     /// `now_ms` is injected (not `std::time::Instant` directly) so this stays usable from
     /// `pipeline::build_maze`'s own wasm/native-aware clock.
+    ///
+    /// **Nested strategies are not timed separately.** Only the top-level `cfg.strategy.apply`
+    /// call is wrapped in a timer; any nested `apply()` call a parent strategy makes internally
+    /// (see `RepairStrategy::expected_nested`) happens entirely inside that window and is
+    /// attributed wholesale to the parent's own `strategy_id` entry — there is no separate
+    /// timing entry for the nested strategy's own contribution, even if that same strategy is
+    /// also independently registered elsewhere as a top-level strategy. Splitting this out would
+    /// require threading a timing accumulator through every `RepairStrategy::apply` signature;
+    /// not done given how niche per-nested-call profiling is against that cost.
     pub fn run_timed(
         &self,
         issues: &[(String, Issue)],
@@ -156,7 +169,7 @@ impl<T: Tessellation> RepairEngine<T> {
             let params: StrategyParams = build_params(cfg.strategy.params(), overrides);
             let mut snapshots = SnapshotStack::new();
             let start = now_ms();
-            let result = cfg.strategy.apply(issue, maze, &mut snapshots, rng, &params, preset_state);
+            let result = cfg.strategy.apply(issue, maze, &mut snapshots, rng, &params, preset_state, &cfg.nested);
             let elapsed = now_ms() - start;
             let entry = timing.entry(cfg.strategy.strategy_id()).or_insert((0.0, 0));
             entry.0 += elapsed;

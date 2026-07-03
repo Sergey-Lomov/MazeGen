@@ -21,7 +21,7 @@ fn engine_with_rule<T: maze_core::space::Tessellation>(
     let checks: Vec<String> = checks.iter().map(|s| s.to_string()).collect();
     let rule = QcRule { id: "g".to_string(), kind, checks: checks.clone() };
     RepairEngine::new(
-        vec![RepairRuleConfig { rule: QcRule { id: "g".to_string(), kind, checks: checks.clone() }, strategy, param_overrides: HashMap::new() }],
+        vec![RepairRuleConfig { rule: QcRule { id: "g".to_string(), kind, checks: checks.clone() }, strategy, param_overrides: HashMap::new(), nested: vec![] }],
         vec![rule],
         vec![RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["g".to_string()] }],
     )
@@ -41,8 +41,8 @@ fn two_rules<T: maze_core::space::Tessellation>(
     let rule_b = QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() };
     RepairEngine::new(
         vec![
-            RepairRuleConfig { rule: QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.clone() }, strategy: strategy_a, param_overrides: HashMap::new() },
-            RepairRuleConfig { rule: QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() }, strategy: strategy_b, param_overrides: HashMap::new() },
+            RepairRuleConfig { rule: QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.clone() }, strategy: strategy_a, param_overrides: HashMap::new(), nested: vec![] },
+            RepairRuleConfig { rule: QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() }, strategy: strategy_b, param_overrides: HashMap::new(), nested: vec![] },
         ],
         vec![rule_a, rule_b],
         vec![RepairStage { id: "stage_1".to_string(), name: "Stage 1".to_string(), rule_ids: vec!["ga".to_string(), "gb".to_string()] }],
@@ -113,8 +113,9 @@ fn pipeline_warns_when_strategy_always_fails() {
     struct AlwaysFail;
     impl RepairStrategy<SquareTessellation> for AlwaysFail {
         fn strategy_id(&self) -> &'static str { "always_fail" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             RepairResult::Failed
         }
     }
@@ -158,8 +159,9 @@ fn never_converging_setup(
     }
     impl<F: Fn() + Send + Sync> RepairStrategy<SquareTessellation> for NoOpFix<F> {
         fn strategy_id(&self) -> &'static str { "no_op_fix" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             (self.on_apply)();
             RepairResult::Fixed { score: None }
         }
@@ -223,8 +225,9 @@ fn pipeline_surfaces_qc_no_progress_with_stuck_rule_id() {
     struct NoOpFix;
     impl RepairStrategy<SquareTessellation> for NoOpFix {
         fn strategy_id(&self) -> &'static str { "no_op_fix" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             RepairResult::Fixed { score: None }
         }
     }
@@ -258,8 +261,9 @@ fn pipeline_merges_issues_from_duplicate_checks_into_one_strategy_call() {
     }
     impl RepairStrategy<SquareTessellation> for CountingStrategy {
         fn strategy_id(&self) -> &'static str { "counting_strategy" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             self.count.fetch_add(1, Ordering::SeqCst);
             let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
             nodes.sort_unstable();
@@ -551,8 +555,8 @@ fn two_stages<T: maze_core::space::Tessellation>(
     let rule_b = QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() };
     RepairEngine::new(
         vec![
-            RepairRuleConfig { rule: QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.clone() }, strategy: strategy_a, param_overrides: HashMap::new() },
-            RepairRuleConfig { rule: QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() }, strategy: strategy_b, param_overrides: HashMap::new() },
+            RepairRuleConfig { rule: QcRule { id: "ga".to_string(), kind: kind_a, checks: checks_a.clone() }, strategy: strategy_a, param_overrides: HashMap::new(), nested: vec![] },
+            RepairRuleConfig { rule: QcRule { id: "gb".to_string(), kind: kind_b, checks: checks_b.clone() }, strategy: strategy_b, param_overrides: HashMap::new(), nested: vec![] },
         ],
         vec![rule_a, rule_b],
         vec![
@@ -574,8 +578,9 @@ fn stage_2_rule_does_not_dispatch_until_stage_1_resolves() {
     }
     impl RepairStrategy<SquareTessellation> for RequiresEndpoints {
         fn strategy_id(&self) -> &'static str { "requires_endpoints" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             if maze.meta.start.is_none() || maze.meta.finish.is_none() {
                 self.calls_before_endpoints_set.fetch_add(1, Ordering::SeqCst);
             }
@@ -621,8 +626,9 @@ fn failed_rule_in_stage_1_does_not_block_stage_2() {
     struct AlwaysFail;
     impl RepairStrategy<SquareTessellation> for AlwaysFail {
         fn strategy_id(&self) -> &'static str { "always_fail" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             RepairResult::Failed
         }
     }
@@ -633,8 +639,9 @@ fn failed_rule_in_stage_1_does_not_block_stage_2() {
     }
     impl RepairStrategy<SquareTessellation> for CountingFix {
         fn strategy_id(&self) -> &'static str { "counting_fix" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             self.count.fetch_add(1, Ordering::SeqCst);
             RepairResult::Fixed { score: None }
         }
@@ -685,8 +692,9 @@ fn no_progress_in_stage_1_aborts_stage_2_entirely() {
     struct NoOpFix;
     impl RepairStrategy<SquareTessellation> for NoOpFix {
         fn strategy_id(&self) -> &'static str { "no_op_fix" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             RepairResult::Fixed { score: None }
         }
     }
@@ -697,8 +705,9 @@ fn no_progress_in_stage_1_aborts_stage_2_entirely() {
     }
     impl RepairStrategy<SquareTessellation> for CountingFix {
         fn strategy_id(&self) -> &'static str { "counting_fix" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             self.count.fetch_add(1, Ordering::SeqCst);
             RepairResult::Fixed { score: None }
         }
@@ -723,8 +732,9 @@ fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
     struct OneShotFix;
     impl RepairStrategy<SquareTessellation> for OneShotFix {
         fn strategy_id(&self) -> &'static str { "one_shot_fix" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
             nodes.sort_unstable();
             maze.meta.start = nodes.first().copied();
@@ -750,8 +760,9 @@ fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
     struct NoOpFix2;
     impl RepairStrategy<SquareTessellation> for NoOpFix2 {
         fn strategy_id(&self) -> &'static str { "no_op_fix_2" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             RepairResult::Fixed { score: None }
         }
     }
@@ -796,8 +807,9 @@ fn stage_with_only_no_strategy_rules_is_skipped_instantly_between_dispatchable_s
     }
     impl RepairStrategy<SquareTessellation> for RequiresEndpoints {
         fn strategy_id(&self) -> &'static str { "requires_endpoints" }
+        fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState) -> RepairResult {
+        fn apply(&self, _: &Issue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
             if maze.meta.start.is_some() && maze.meta.finish.is_some() {
                 self.called_with_endpoints_set.fetch_add(1, Ordering::SeqCst);
             }
@@ -828,8 +840,8 @@ fn stage_with_only_no_strategy_rules_is_skipped_instantly_between_dispatchable_s
     let rule_3 = QcRule { id: "g3".to_string(), kind: MISSING_ENDPOINTS, checks: checks_3.clone() };
     let repair: RepairEngine<SquareTessellation> = RepairEngine::new(
         vec![
-            RepairRuleConfig { rule: QcRule { id: "g1".to_string(), kind: MISSING_ENDPOINTS, checks: checks_1 }, strategy: Box::new(FarthestEndpointsStrategy), param_overrides: HashMap::new() },
-            RepairRuleConfig { rule: QcRule { id: "g3".to_string(), kind: MISSING_ENDPOINTS, checks: checks_3 }, strategy: Box::new(RequiresEndpoints { called_with_endpoints_set: Arc::clone(&called_with_endpoints_set) }), param_overrides: HashMap::new() },
+            RepairRuleConfig { rule: QcRule { id: "g1".to_string(), kind: MISSING_ENDPOINTS, checks: checks_1 }, strategy: Box::new(FarthestEndpointsStrategy), param_overrides: HashMap::new(), nested: vec![] },
+            RepairRuleConfig { rule: QcRule { id: "g3".to_string(), kind: MISSING_ENDPOINTS, checks: checks_3 }, strategy: Box::new(RequiresEndpoints { called_with_endpoints_set: Arc::clone(&called_with_endpoints_set) }), param_overrides: HashMap::new(), nested: vec![] },
         ],
         vec![rule_1, no_strategy_rule, rule_3],
         vec![

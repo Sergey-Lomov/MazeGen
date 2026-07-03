@@ -131,6 +131,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_regions.label"] as MessageFn,
     description: m["strategy.missing_regions.description"] as MessageFn,
   },
+  reduce_scc_count: {
+    label: m["strategy.reduce_scc_count.label"] as MessageFn,
+    description: m["strategy.reduce_scc_count.description"] as MessageFn,
+  },
 };
 
 export const paramI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -234,6 +238,19 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.trap_count.label"] as MessageFn,
     description: m["param.trap_count.description"] as MessageFn,
   },
+  merge_priority: {
+    label: m["param.merge_priority.label"] as MessageFn,
+    description: m["param.merge_priority.description"] as MessageFn,
+  },
+};
+
+// Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
+// but for a slot rather than a param, since a slot has its own explanatory text independent of
+// whichever strategy currently fills it.
+export const nestedSlotI18n: Record<string, { description: MessageFn }> = {
+  merge_target: {
+    description: m["quality.nested_slot.merge_target.description"] as MessageFn,
+  },
 };
 
 // Labels for individual option values of Enum-kind params, keyed by `${paramId}.${value}`.
@@ -247,6 +264,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "region_class.alternative": m["param.region_class.option.alternative"] as MessageFn,
   "region_class.unreachable": m["param.region_class.option.unreachable"] as MessageFn,
   "region_class.trap": m["param.region_class.option.trap"] as MessageFn,
+  "merge_priority.smallest": m["param.merge_priority.option.smallest"] as MessageFn,
+  "merge_priority.largest": m["param.merge_priority.option.largest"] as MessageFn,
+  "merge_priority.random": m["param.merge_priority.option.random"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -261,6 +281,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "region_class.alternative": m["param.region_class.option.alternative.explanation"] as MessageFn,
   "region_class.unreachable": m["param.region_class.option.unreachable.explanation"] as MessageFn,
   "region_class.trap": m["param.region_class.option.trap.explanation"] as MessageFn,
+  "merge_priority.smallest": m["param.merge_priority.option.smallest.explanation"] as MessageFn,
+  "merge_priority.largest": m["param.merge_priority.option.largest.explanation"] as MessageFn,
+  "merge_priority.random": m["param.merge_priority.option.random.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {
@@ -301,4 +324,8 @@ export function resolveParamOptionLabel(paramId: string, value: string): string 
 
 export function resolveParamOptionExplanation(paramId: string, value: string): string | undefined {
   return paramOptionExplanationI18n[`${paramId}.${value}`]?.();
+}
+
+export function resolveNestedSlotDescription(slotId: string): string | undefined {
+  return nestedSlotI18n[slotId]?.description();
 }

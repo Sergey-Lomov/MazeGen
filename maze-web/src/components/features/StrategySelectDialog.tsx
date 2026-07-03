@@ -4,7 +4,7 @@ import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { WarningBubble } from "../WarningBubble";
 import { ParamFields } from "./ParamFields";
 import { useParamEditor } from "./useParamEditor";
-import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, NO_FIX_STRATEGY_ID } from "./qualityI18n";
+import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { ui, radius, typography } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
@@ -42,13 +42,39 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
 
   const selectedStrategy = candidates.find((s) => s.id === selectedId);
   const description = resolveStrategyDescription(selectedId);
+  // A candidate with a mandatory nested slot (`min >= 1`) gets a default nested strategy assigned
+  // automatically once selected (see `setStrategy` in generationSlice.ts — it fills every
+  // mandatory slot with the first compatible candidate, recursively). This dialog can't show
+  // which strategy that will be here (no rule assignment exists yet for the preview to read),
+  // so it just names the slot and notes that a default will be used, changeable afterwards on
+  // the rule's own card. Shown in the same params section as regular params, after them — same
+  // order the rule's own card uses (`RuleStrategyPanel`: `ParamFields` then nested slots).
+  const requiredNestedSlots = selectedStrategy?.nested_slots.filter((s) => s.min >= 1) ?? [];
 
   const rightPanel = (
     <>
       {description && <div style={styles.description}>{description}</div>}
       {selectedStrategy?.experimental && <WarningBubble />}
-      {selectedStrategy && selectedStrategy.params.length > 0 && (
-        <StrategyParamPanel strategyId={selectedStrategy.id} params={selectedStrategy.params} />
+      {selectedStrategy && (selectedStrategy.params.length > 0 || requiredNestedSlots.length > 0) && (
+        <div style={styles.paramsSection}>
+          <div style={styles.paramsSeparator} />
+          {selectedStrategy.params.length > 0 && (
+            <StrategyParamPanel strategyId={selectedStrategy.id} params={selectedStrategy.params} />
+          )}
+          {requiredNestedSlots.map((slot) => (
+            <div key={slot.slot_id} style={styles.field}>
+              <div style={styles.row}>
+                <label style={styles.label}>{m["quality.nested_strategy.label"]()}</label>
+              </div>
+              {resolveNestedSlotDescription(slot.slot_id) && (
+                <div style={styles.fieldDescription}>{resolveNestedSlotDescription(slot.slot_id)}</div>
+              )}
+              <div style={styles.nestedWarning}>
+                <WarningBubble message={m["quality.nested_strategy.unconfigured_warning"]()} />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </>
   );
@@ -87,15 +113,12 @@ function StrategyParamPanel({ strategyId, params }: { strategyId: string; params
   });
 
   return (
-    <div style={styles.paramsSection}>
-      <div style={styles.paramsSeparator} />
-      <ParamFields
-        params={localizedParams}
-        values={values}
-        onChange={onChange}
-        getDescription={(p) => resolveParamDescription(p.id)}
-      />
-    </div>
+    <ParamFields
+      params={localizedParams}
+      values={values}
+      onChange={onChange}
+      getDescription={(p) => resolveParamDescription(p.id)}
+    />
   );
 }
 
@@ -104,10 +127,38 @@ const styles: Record<string, React.CSSProperties> = {
     ...typography.body,
     lineHeight: 1.6,
   },
+  row: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  // `typography.message` — the theme's own "label"-weight token (body size, secondary color).
+  label: {
+    ...typography.message,
+    flex: 1,
+  },
+  // Mirrors `ParamFields`'s own `field`/`description` styles, so the nested-slot row reads
+  // like just another param row in the same list.
+  field: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  fieldDescription: {
+    ...typography.caption,
+    lineHeight: 1.4,
+  },
+  nestedWarning: {
+    marginTop: 4,
+  },
+  // `gap: 16` matches `ParamFields`'s own inter-param gap (when descriptions are shown) — the
+  // nested-slot row below renders as a sibling of `StrategyParamPanel`'s `ParamFields`, not
+  // inside it, so this section's own gap is what separates the last param from that row.
   paramsSection: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    gap: 16,
   },
   paramsSeparator: {
     borderTop: `1px solid ${ui.border.default}`,

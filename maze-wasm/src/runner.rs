@@ -205,7 +205,7 @@ mod build_qc_and_repair_tests {
             stages: one_stage(vec![QcRuleConfig {
                 id: "r1".to_string(),
                 checks: vec![check("a", "missing_endpoints")],
-                strategy: Some(StrategyConfig { id: "not_a_real_strategy".to_string(), params: HashMap::new() }),
+                strategy: Some(StrategyConfig { id: "not_a_real_strategy".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
             }]),
             ..GenerateConfig::default()
         };
@@ -236,7 +236,7 @@ mod build_qc_and_repair_tests {
                 QcRuleConfig {
                     id: "r1".to_string(),
                     checks: vec![check("a", "missing_endpoints")],
-                    strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new() }),
+                    strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
                 },
                 QcRuleConfig {
                     id: "r2".to_string(),
@@ -358,7 +358,7 @@ mod build_qc_and_repair_tests {
                     rules: vec![QcRuleConfig {
                         id: "r1".to_string(),
                         checks: vec![check("a", "missing_endpoints")],
-                        strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new() }),
+                        strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
                     }],
                 },
                 StageConfig {

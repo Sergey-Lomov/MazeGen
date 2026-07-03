@@ -48,6 +48,33 @@ export interface CheckInstance {
   params: Record<string, string>;
 }
 
+/** Hard cap on nested-strategy tree depth, shared by every function that recurses over
+ * `NestedStrategyState`/`ProjectFileNestedStrategy`/`NestedStrategyVM` trees (project-file
+ * validation, view-model construction, default-strategy auto-fill, generate-config
+ * serialization, and the recursive `NestedStrategyPanel` render). Today's registry never nests
+ * more than one level deep and cannot form a cycle (no nested-capable strategy accepts its own
+ * `handles()` kind), but nothing in the data model itself prevents a future registry addition
+ * from doing so, and a project file loaded from disk is not otherwise bounded at all — an
+ * unguarded recursive walk over a maliciously or accidentally deep `nested` array would overflow
+ * the call stack. 32 is far beyond any realistic use (today's deepest real tree is 1) while still
+ * generous enough that legitimate deep nesting, if it's ever added, would have to be deliberately
+ * pathological to hit it.
+ */
+export const MAX_NESTED_STRATEGY_DEPTH = 32;
+
+/** One nested strategy assignment, filling one of the parent strategy's `nested_slots` (see
+ * `StrategyDescriptor.nested_slots` and `Specs/repair.md`'s nested-strategy pattern). Recursive —
+ * a nested strategy can itself have nested strategies. Lives per-rule (on `QcRuleState`), not in
+ * the global `strategyParams` map — two rules using the same nesting-capable top-level strategy
+ * (e.g. two `reduce_scc_count` rules) must be able to pick independent nested strategies/params. */
+export interface NestedStrategyState {
+  /** Which parent slot this fills — matches `StrategyDescriptor.nested_slots[].slot_id`. */
+  slotId: string;
+  strategyId: string;
+  params: Record<string, string>;
+  nested: NestedStrategyState[];
+}
+
 /** A user-defined rule: a group of active checks producing the same issue kind, sharing one
  * strategy. `id` is opaque (client-generated), not derived from `checks` — rule identity
  * survives adding/removing member checks. `checks` can become empty (e.g. after removing its
@@ -73,6 +100,9 @@ export interface QcRuleState {
    * generate() call (not sent to core at all), as if they were never selected. Distinct from
    * `disabled` (which only skips the fix, checks still run). */
   ruleDisabled: boolean;
+  /** Nested strategy assignments for `strategyId`'s nested slots, keyed by slot — empty for
+   * strategies without nested slots (the overwhelming majority). */
+  nestedStrategies: NestedStrategyState[];
 }
 
 /** A named, ordered group of rule ids — see `Specs/repair.md`'s "Stages" section and GitHub
@@ -310,6 +340,13 @@ export interface GenerationActions {
   removeCheckFromRule: (ruleId: string, localId: number) => void;
   setStrategy: (ruleId: string, strategyId: string) => void;
   clearStrategy: (ruleId: string) => void;
+  /** Sets, replaces, or removes (`strategyId: null`) the nested strategy at `path` — a chain of
+   * slot ids, each resolved relative to the node selected by the previous element (see
+   * `NestedStrategyState`'s doc comment). `path: ["merge_target"]` addresses the slot directly
+   * under the rule's own top-level strategy; `path: ["merge_target", "some_deeper_slot"]`
+   * addresses a slot under that nested strategy, and so on. */
+  setNestedStrategy: (ruleId: string, path: string[], strategyId: string | null) => void;
+  setNestedStrategyParam: (ruleId: string, path: string[], paramId: string, value: string) => void;
   toggleStrategyDisabled: (ruleId: string) => void;
   toggleRuleDisabled: (ruleId: string) => void;
   renameRule: (ruleId: string, name: string) => void;

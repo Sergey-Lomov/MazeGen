@@ -250,6 +250,15 @@ fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
          Some(IssueData::MissingRegions { balance_by_class: incoming_by_class })) => {
             merge_missing_regions(balance_by_class, incoming_by_class);
         }
+        (Some(IssueData::ExcessiveSccCount { max_scc_count }),
+         Some(IssueData::ExcessiveSccCount { max_scc_count: incoming_max })) => {
+            // In practice there is normally exactly one active `scc_count` instance (see
+            // Specs/quality_control.md), so two differing thresholds reaching this merge would
+            // be a caller configuration conflict, not a case this merge can meaningfully
+            // resolve — same debug-only signal as `merge_missing_regions`'s analogous conflict.
+            debug_assert_eq!(*max_scc_count, incoming_max,
+                "merge_issue: two ExcessiveSccCount instances disagree on max_scc_count ({max_scc_count} vs {incoming_max})");
+        }
         (None, None) => {}
         (existing_data, incoming_data) => {
             debug_assert!(false,

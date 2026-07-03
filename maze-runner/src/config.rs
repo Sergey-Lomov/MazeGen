@@ -11,6 +11,18 @@ pub struct StrategyConfig {
     pub id: String,
     #[serde(default)]
     pub params: HashMap<String, String>,
+    /// Which of the parent strategy's `expected_nested()` slots this fills. Required (`Some`)
+    /// whenever this `StrategyConfig` appears inside another one's `nested`; must be `None` for
+    /// the top-level entry in `QcRuleConfig.strategy`, which has no parent slot to fill.
+    /// `Option`, not a plain `String` with `#[serde(default)]` — a missing/empty value must be
+    /// a visible `None`, not silently coerced to `""` and only failing later inside
+    /// `build_nested` (see `Specs/repair.md`'s nested-strategy pattern).
+    #[serde(default)]
+    pub slot_id: Option<String>,
+    /// Nested strategy assignments, in configured order — empty for every strategy without
+    /// nested slots. Recursive.
+    #[serde(default)]
+    pub nested: Vec<StrategyConfig>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -180,6 +192,8 @@ impl Default for GenerateConfig {
                             strategy: Some(StrategyConfig {
                                 id: "farthest_endpoints".to_string(),
                                 params: HashMap::new(),
+                                slot_id: None,
+                                nested: vec![],
                             }),
                         },
                         QcRuleConfig {

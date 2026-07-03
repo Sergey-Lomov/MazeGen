@@ -91,6 +91,15 @@ pub enum IssueData {
     MissingRegions {
         balance_by_class: HashMap<RegionClass, i32>,
     },
+    /// Produced by `SccCountCheck` (paired with `EXCESSIVE_SCC_COUNT`) — mandatory for this
+    /// kind, same contract as `RegionsNeedingExpansion`/`InvalidLoops`: `max_scc_count` is the
+    /// configured threshold the check compared against, needed by `ReduceSccCountStrategy` to
+    /// compute how many regions to merge (`current_scc_count - max_scc_count`) — there is no
+    /// other channel to learn it (the check's own `max_scc_count` field isn't visible to a
+    /// strategy, only what it attaches to the `Issue`).
+    ExcessiveSccCount {
+        max_scc_count: u32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

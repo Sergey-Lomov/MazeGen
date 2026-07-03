@@ -1,23 +1,42 @@
 import React from "react";
 import { useMazeStore } from "../../../store/mazeStore";
 import { ParamizedDetail } from "./ParamizedDetail";
+import { NestedStrategyPanel, findRawNested } from "./NestedStrategyPanel";
 import { resolveStrategyDescription } from "../qualityI18n";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
-import type { useQualityViewModel } from "../useQualityViewModel";
+import type { useQualityViewModel, NestedStrategyVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
 interface Props {
   selection: QualitySelection;
   vm: ReturnType<typeof useQualityViewModel>;
   flushRef: React.MutableRefObject<() => void>;
+  onSelect: (s: QualitySelection) => void;
 }
 
-export function QualityDetailPanel({ selection, vm, flushRef }: Props) {
+// Walks a `StrategySlotVM`'s `nestedStrategies` tree down `path`, the same slot-id chain
+// `NestedStrategyPanel.findRawNested` walks over the raw store state — this one resolves the
+// view-model side instead, since the detail panel needs the fully-resolved `NestedStrategyVM`
+// (label/description/params), not the raw store node. Exported for direct unit testing — pure,
+// no React/store involved.
+export function resolveNestedStrategyVM(topLevel: NestedStrategyVM[], path: string[]): NestedStrategyVM | undefined {
+  let list = topLevel;
+  let found: NestedStrategyVM | undefined;
+  for (const slotId of path) {
+    found = list.find((n) => n.slotId === slotId);
+    if (!found) return undefined;
+    list = found.nested;
+  }
+  return found;
+}
+
+export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props) {
   const rules = useMazeStore((s) => s.rules);
   const setCheckParam = useMazeStore((s) => s.setCheckParam);
   const strategyParams = useMazeStore((s) => s.strategyParams);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
+  const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
 
   if (!selection) {
     return (
@@ -67,7 +86,64 @@ export function QualityDetailPanel({ selection, vm, flushRef }: Props) {
         storeValues={strategyParams[strategy.id] ?? {}}
         onCommit={(paramId, value) => setStrategyParam(strategy.id, paramId, value)}
         flushRef={flushRef}
-      />
+      >
+        {strategy.nestedSlots.length > 0 && (
+          // Same visual gap as between two params in `ParamFields` (`gap: 16` when descriptions
+          // are shown) — `detailPanel`'s own `gap: 8` between direct children already accounts
+          // for half of it, so only 8px more is added here, not a divider.
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
+            {strategy.nestedSlots.map((slotDesc) => (
+              <NestedStrategyPanel
+                key={slotDesc.slotId}
+                ruleId={slot.ruleId}
+                path={[slotDesc.slotId]}
+                slotDesc={slotDesc}
+                node={slot.nestedStrategies.find((n) => n.slotId === slotDesc.slotId) ?? null}
+                depth={1}
+                selection={selection}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        )}
+      </ParamizedDetail>
+    );
+  }
+
+  if (selection.type === "nested_strategy") {
+    const slot = vm.strategySlots.find((s) => s.ruleId === selection.ruleId);
+    const node = slot ? resolveNestedStrategyVM(slot.nestedStrategies, selection.path) : undefined;
+    if (!slot || !node) return <div style={styles.detailPanel} />;
+    const { path } = selection;
+    const rawNested = findRawNested(rules.find((r) => r.id === selection.ruleId), path);
+    return (
+      <ParamizedDetail
+        id={`${selection.ruleId}:${path.join(".")}`}
+        label={node.strategy.label}
+        description={resolveStrategyDescription(node.strategy.id)}
+        warning={node.strategy.experimental}
+        params={node.params}
+        storeValues={rawNested?.params ?? {}}
+        onCommit={(paramId, value) => setNestedStrategyParam(selection.ruleId, path, paramId, value)}
+        flushRef={flushRef}
+      >
+        {node.strategy.nestedSlots.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
+            {node.strategy.nestedSlots.map((childSlotDesc) => (
+              <NestedStrategyPanel
+                key={childSlotDesc.slotId}
+                ruleId={selection.ruleId}
+                path={[...path, childSlotDesc.slotId]}
+                slotDesc={childSlotDesc}
+                node={node.nested.find((n) => n.slotId === childSlotDesc.slotId) ?? null}
+                depth={1}
+                selection={selection}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        )}
+      </ParamizedDetail>
     );
   }
 

@@ -4,11 +4,11 @@ use crate::Maze;
 use crate::ids::NodeId;
 use crate::graph::region_class::RegionClass;
 use crate::space::Tessellation;
-use crate::quality_control::{Issue, IssueData};
+use crate::quality_control::{Issue, IssueData, MISSING_REGIONS, IssueKind};
 use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::RepairStrategy;
+use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::snapshot::SnapshotStack;
 
 mod convert;
@@ -79,6 +79,7 @@ pub struct MissingRegionsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
     fn strategy_id(&self) -> &'static str { "missing_regions" }
+    fn handles(&self) -> IssueKind { MISSING_REGIONS }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -94,6 +95,7 @@ impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
+        _nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult {
         let Some(IssueData::MissingRegions { balance_by_class }) = &issue.data else {
             return RepairResult::Failed;

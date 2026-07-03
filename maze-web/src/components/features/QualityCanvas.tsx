@@ -27,6 +27,7 @@ export function QualityCanvas() {
         selection={selection}
         vm={vm}
         flushRef={flushRef}
+        onSelect={handleSelect}
       />
     </div>
   );

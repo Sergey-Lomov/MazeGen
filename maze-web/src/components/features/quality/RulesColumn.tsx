@@ -15,7 +15,7 @@ import { ui } from "../../../styles/theme";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
-import type { StrategySlotVM, QualityStageVM } from "../useQualityViewModel";
+import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewModel";
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
 import { isTypeAlreadyActive } from "../../../store/slices/generationSlice";
@@ -30,6 +30,17 @@ type NewRuleStep =
   | { stage: "checks"; kind: string; targetStageId: string }
   | { stage: "strategy"; kind: string; checkIds: string[]; paramOverrides: Record<string, Record<string, string>>; targetStageId: string }
   | null;
+
+// True when `selection` refers to something inside `ruleId` — any of the four `QualitySelection`
+// variants can be scoped to a rule (`check` via its composite id's owning check, the rest via
+// their own `ruleId` field directly), so a caller clearing selection on rule removal must check
+// all four, not just the ones it happened to think of first (`"nested_strategy"` was originally
+// missed here, along with `"check"` — both left a selection dangling on a since-removed rule).
+function selectionBelongsToRule(selection: QualitySelection, ruleId: string, checks: CheckVM[]): boolean {
+  if (!selection) return false;
+  if (selection.type === "check") return checks.some((c) => c.id === selection.id && c.ruleId === ruleId);
+  return selection.ruleId === ruleId;
+}
 
 interface Props {
   stages: QualityStageVM[];
@@ -291,6 +302,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                         <RuleStrategyPanel
                           slot={slot}
                           selected={strategySelected}
+                          selection={selection}
                           onSelect={onSelect}
                           onEdit={() => setStrategyDialogRuleId(slot.ruleId)}
                         />
@@ -363,7 +375,8 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
         <ConfirmModal
           message={m["quality.confirm_remove_rule"]()}
           onConfirm={() => {
-            if ((selection?.type === "strategy" || selection?.type === "logging") && selection.ruleId === removeConfirmRuleId) onSelect(null);
+            const removedSlot = slots.find((s) => s.ruleId === removeConfirmRuleId);
+            if (selectionBelongsToRule(selection, removeConfirmRuleId, removedSlot?.producedBy ?? [])) onSelect(null);
             removeRule(removeConfirmRuleId);
             setRemoveConfirmRuleId(null);
           }}
@@ -377,7 +390,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
           <ConfirmModal
             message={hasRules ? m["quality.confirm_remove_stage_with_rules"]() : m["quality.confirm_remove_stage"]()}
             onConfirm={() => {
-              if ((selection?.type === "strategy" || selection?.type === "logging") && stage?.slots.some((s) => s.ruleId === selection.ruleId)) onSelect(null);
+              if (stage?.slots.some((s) => selectionBelongsToRule(selection, s.ruleId, s.producedBy))) onSelect(null);
               removeStage(removeConfirmStageId);
               setRemoveConfirmStageId(null);
             }}

@@ -1,7 +1,17 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { ParamDescriptor } from "../../wasm/types";
+import type { ParamDescriptor, StrategyDescriptor } from "../../wasm/types";
+import { MAX_NESTED_STRATEGY_DEPTH, type NestedStrategyState } from "../../store/storeTypes";
 import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
+
+/** Mirrors `NestedSlotDescriptor` with a camelCase field, consistent with every other VM type
+ * in this module (the raw wasm DTO shape is snake_case; VM types are not). */
+export interface NestedSlotVM {
+  slotId: string;
+  kind: string;
+  min: number;
+  max: number | null;
+}
 
 export interface StrategyVM {
   id: string;
@@ -9,6 +19,19 @@ export interface StrategyVM {
   handles: string;
   params: ParamDescriptor[];
   experimental: boolean;
+  /** Nested-strategy slots this strategy accepts, if any — empty for every strategy without
+   * nested slots (the overwhelming majority). Mirrors `StrategyDescriptor.nested_slots`. */
+  nestedSlots: NestedSlotVM[];
+}
+
+/** One nested strategy assignment, resolved into a `StrategyVM` — mirrors `NestedStrategyState`
+ * but with the strategy id resolved to its full descriptor (label, params, own nested slots),
+ * same relationship `StrategySlotVM.strategy` has to `QcRuleState.strategyId`. Recursive. */
+export interface NestedStrategyVM {
+  slotId: string;
+  strategy: StrategyVM;
+  params: ParamDescriptor[];
+  nested: NestedStrategyVM[];
 }
 
 /** One active `CheckInstance`, addressed by `(ruleId, localId)` — see GitHub issue #60. `id` is
@@ -42,6 +65,10 @@ export interface StrategySlotVM {
   ruleDisabled: boolean;
   /** Active checks that make up this rule. */
   producedBy: CheckVM[];
+  /** Resolved nested strategy assignments for `strategy`'s nested slots, one entry per filled
+   * slot (matched by `slotId`) — empty when `strategy` has no nested slots or none are
+   * configured yet. */
+  nestedStrategies: NestedStrategyVM[];
 }
 
 /** One stage's rule cards, in `RepairStageState.ruleIds` order — see GitHub issue #65. */
@@ -88,9 +115,42 @@ export function useQualityViewModel(): QualityViewModel {
 
   return useMemo(() => {
     const descriptorById = new Map(availableChecks.map((c) => [c.id, c]));
+    const strategyById = new Map(availableStrategies.map((s) => [s.id, s]));
+
+    function buildStrategyVM(d: StrategyDescriptor): StrategyVM {
+      return {
+        id: d.id,
+        label: resolveStrategyLabel(d.id),
+        handles: d.handles,
+        params: localizeParams(d.params),
+        experimental: d.experimental,
+        nestedSlots: d.nested_slots.map((s) => ({ slotId: s.slot_id, kind: s.kind, min: s.min, max: s.max })),
+      };
+    }
+
+    // Recursive — resolves each `NestedStrategyState` into a `NestedStrategyVM`, dropping any
+    // entry whose `strategyId` no longer resolves to a known descriptor (same defensive stale-
+    // reference handling `producedBy`/`buildSlot` use elsewhere in this module). `depth` guards
+    // against a pathologically deep tree (e.g. loaded from a project file) blowing the call
+    // stack — see `MAX_NESTED_STRATEGY_DEPTH`'s doc comment.
+    function buildNested(list: NestedStrategyState[], depth = 0): NestedStrategyVM[] {
+      if (depth >= MAX_NESTED_STRATEGY_DEPTH) return [];
+      return list
+        .map((n): NestedStrategyVM | undefined => {
+          const d = strategyById.get(n.strategyId);
+          if (!d) return undefined;
+          return {
+            slotId: n.slotId,
+            strategy: buildStrategyVM(d),
+            params: localizeParams(d.params),
+            nested: buildNested(n.nested, depth + 1),
+          };
+        })
+        .filter((n): n is NestedStrategyVM => n !== undefined);
+    }
 
     function buildSlot(r: (typeof rules)[number]): StrategySlotVM {
-      const s = r.strategyId ? availableStrategies.find((s) => s.id === r.strategyId) : undefined;
+      const s = r.strategyId ? strategyById.get(r.strategyId) : undefined;
       const producedBy: CheckVM[] = r.checks
         .map((check) => {
           const descriptor = descriptorById.get(check.typeId);
@@ -111,12 +171,11 @@ export function useQualityViewModel(): QualityViewModel {
         name: r.name,
         kind: r.kind,
         label: resolveIssueLabel(r.kind),
-        strategy: s
-          ? { id: s.id, label: resolveStrategyLabel(s.id), handles: s.handles, params: localizeParams(s.params), experimental: s.experimental }
-          : null,
+        strategy: s ? buildStrategyVM(s) : null,
         disabled: r.disabled,
         ruleDisabled: r.ruleDisabled,
         producedBy,
+        nestedStrategies: s ? buildNested(r.nestedStrategies) : [],
       };
     }
 

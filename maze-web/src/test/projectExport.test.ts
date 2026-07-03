@@ -10,7 +10,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     randomSeed: false,
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: {},
-    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" } }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false }],
+    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" } }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }],
     strategyParams: { strategy_a: { param_b: "2" } },
     repairMaxIterations: 10,
@@ -209,7 +209,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
   it("round-trips quality.rules", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" } }], strategyId: "strategy_a", disabled: false, ruleDisabled: false }]);
+    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" } }], strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [] }]);
   });
 
   it("defaults rule name by array position when absent (pre-naming project files)", () => {
