@@ -4,7 +4,7 @@ export { emptyFreePoints };
 
 export const mockSnapshot = {
   nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }],
-  edges: [{ from: 0, to: 1 }],
+  edges: [{ from: 0, to: 1, kind: "basic" as const }],
   start: 0,
   finish: 1,
   issues: [],
@@ -42,7 +42,7 @@ export function baseStoreState() {
     selectedNode: null,
     error: null,
     initialConfig: { method: "custom_vertex_based" as const, depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0 },
-    elementsConfig: { one_way_chance: 0.04 },
+    elementsConfig: { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
     rules: [],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: [], disabled: false }],
     strategyParams: {},

@@ -27,4 +27,6 @@ export type EdgeHL = {
 
 export type MarkerData = { pos: [number, number]; color: number; radius: number };
 
+export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean };
+
 export type LockEntry = { x: number; y: number; type: "in" | "out" | "both" };

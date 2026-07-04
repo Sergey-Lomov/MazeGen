@@ -19,6 +19,7 @@ export class AnalyticsRenderer {
   private readonly regionsContainer: Container;
   private readonly regionClassesContainer: Container;
   private readonly wallsContainer: Container;
+  private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
   private readonly graphContainer: Container;
   private readonly navGraphContainer: Container;
@@ -46,6 +47,7 @@ export class AnalyticsRenderer {
     this.regionsContainer     = new Container();
     this.regionClassesContainer = new Container();
     this.wallsContainer       = new Container();
+    this.teleportContainer    = new Container();
     this.markersContainer     = new Container();
     this.graphContainer       = new Container();
     this.navGraphContainer    = new Container();
@@ -59,6 +61,7 @@ export class AnalyticsRenderer {
     container.addChild(this.regionsContainer);
     container.addChild(this.regionClassesContainer);
     container.addChild(this.wallsContainer);
+    container.addChild(this.teleportContainer);
     container.addChild(this.markersContainer);
     container.addChild(this.graphContainer);
     container.addChild(this.navGraphContainer);
@@ -71,6 +74,7 @@ export class AnalyticsRenderer {
       floor: this.floorContainer,
       closedCells: this.closedCellsContainer,
       walls: this.wallsContainer,
+      teleports: this.teleportContainer,
       markers: this.markersContainer,
     });
     this.regionsRenderer = new RegionsRenderer(this.regionsContainer);
@@ -112,6 +116,7 @@ export class AnalyticsRenderer {
         state.activeTessellationConfig !== prev.activeTessellationConfig ||
         state.postEditAnalytics !== prev.postEditAnalytics ||
         state.postEditEdges !== prev.postEditEdges ||
+        state.postEditTeleportEdges !== prev.postEditTeleportEdges ||
         state.postEditMeta !== prev.postEditMeta;
 
       if (visibilityChanged || dataChanged) {
@@ -132,7 +137,7 @@ export class AnalyticsRenderer {
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
     const navEdges   = postEditAnalytics?.navEdges   ?? state.navEdges;
     const routeInfo  = postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo;
-    const edges  = postEditEdgesToDto(state.postEditEdges);
+    const edges  = [...postEditEdgesToDto(state.postEditEdges), ...state.postEditTeleportEdges];
     const start  = state.postEditMeta != null ? state.postEditMeta.start : state.start;
     const finish = state.postEditMeta != null ? state.postEditMeta.finish : state.finish;
 
@@ -142,6 +147,7 @@ export class AnalyticsRenderer {
     this.floorContainer.visible       = showMaze;
     this.closedCellsContainer.visible = showMaze;
     this.wallsContainer.visible       = showMaze;
+    this.teleportContainer.visible    = showMaze;
     this.markersContainer.visible     = showMaze;
     if (showMaze) {
       this.grid.render({ viewport: this.viewport }, cfg);
@@ -256,6 +262,7 @@ export class AnalyticsRenderer {
     this.regionsContainer.destroy();
     this.regionClassesContainer.destroy();
     this.wallsContainer.destroy();
+    this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.graphContainer.destroy();
     this.navGraphContainer.destroy();

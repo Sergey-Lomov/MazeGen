@@ -1,16 +1,21 @@
 ﻿import type { NodeDto, EdgeDto, IssueDto } from "../../wasm/types";
 import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { WallEdge, MarkerData, PassageKind } from "../renderers/types";
+import type { WallEdge, MarkerData, PassageKind, TeleportEdge } from "../renderers/types";
 import { getCellCenter, getNeighborData } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS, canvas } from "../colorUtils";
 
+// Teleport edges are never part of `postEditEdges` — they're tracked separately (see
+// `postEditDraftTeleportEdges`/`postEditTeleportEdges` in storeTypes.ts) since a Teleport and a
+// Basic edge can coexist in the same direction between the same pair, which the `Record<from-to,
+// PostEditEdge>` shape used here can't represent. Callers needing both must concatenate
+// `postEditEdgesToDto(...)` with the teleport list themselves.
 export function postEditEdgesToDto(postEditEdges: Record<string, PostEditEdge> | null): EdgeDto[] {
   if (postEditEdges === null) return [];
   return Object.values(postEditEdges)
     .filter(e => e.kind !== "wall")
-    .map(e => ({ from: e.from, to: e.to }));
+    .map(e => ({ from: e.from, to: e.to, kind: "basic" as const }));
 }
 
 export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[]): [number, number][] {
@@ -126,6 +131,41 @@ export function selectAnalyticsIssues(s: Pick<MazeState, "issues" | "postEditAna
     ...s.issues.filter((i) => PIPELINE_ONLY_ISSUE_KINDS.includes(i.kind)),
     ...(s.postEditAnalytics?.issues ?? s.issues),
   ];
+}
+
+// Collapses opposite-direction teleport-edge pairs into one entity so a two-way teleport never
+// renders as two overlapping lines/arrows. `oneWay: false` when both directions exist between
+// the pair; `oneWay: true` (with from/to = that edge's actual direction) when only one does.
+export function buildTeleportEdges(
+  nodeById: Map<number, NodeDto>,
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+): TeleportEdge[] {
+  const teleports = edges.filter((e) => e.kind === "teleport");
+  const byPair = new Set(teleports.map((e) => `${e.from}->${e.to}`));
+  const seenPairKey = new Set<string>();
+  const result: TeleportEdge[] = [];
+
+  for (const e of teleports) {
+    const pairKey = e.from < e.to ? `${e.from},${e.to}` : `${e.to},${e.from}`;
+    if (seenPairKey.has(pairKey)) continue;
+    seenPairKey.add(pairKey);
+
+    const reverseExists = byPair.has(`${e.to}->${e.from}`);
+    const fromNode = nodeById.get(e.from);
+    const toNode = nodeById.get(e.to);
+    if (!fromNode || !toNode) continue;
+
+    const fromCenter = getCellCenter(fromNode.x, fromNode.y, cfg);
+    const toCenter = getCellCenter(toNode.x, toNode.y, cfg);
+    result.push({
+      from: [fromCenter.x, fromCenter.y],
+      to: [toCenter.x, toCenter.y],
+      oneWay: !reverseExists,
+    });
+  }
+
+  return result;
 }
 
 export function buildMazeMarkers(

@@ -6,7 +6,7 @@ use maze_core::{
     generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
-use crate::dto::{EdgeDto, GenerationStepDto};
+use crate::dto::{EdgeDto, EdgeKindDto, GenerationStepDto};
 use crate::analytics::build_analytics_snapshot;
 
 pub fn run_generate<T: Tessellation>(
@@ -118,9 +118,14 @@ fn timing_to_dto(timing: maze_core::GenerationTiming) -> crate::dto::GenerationT
 fn steps_to_dto(raw: Vec<GenerationStep>) -> Vec<GenerationStepDto> {
     raw.into_iter().map(|s| {
         let edges = s.edges.into_iter().filter_map(|e| {
+            let kind = match e.kind {
+                maze_core::graph::EdgeKind::Basic => EdgeKindDto::Basic,
+                maze_core::graph::EdgeKind::Teleport => EdgeKindDto::Teleport,
+            };
             Some(EdgeDto {
                 from: u32::try_from(e.from).ok()?,
                 to:   u32::try_from(e.to).ok()?,
+                kind,
             })
         }).collect();
         let active_nodes = s.active_nodes.into_iter()

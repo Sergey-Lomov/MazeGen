@@ -88,6 +88,8 @@
   "generation.desc.corridor_length": "Влияет на то, насколько длинными бывают коридоры, прежде чем лабиринт сворачивает в новом направлении.",
   "generation.elements": "Элементы",
   "generation.one_way_chance": "Односторонний переход",
+  "generation.teleport_chance": "Шанс телепорта",
+  "generation.teleport_one_way_chance": "Шанс одностороннего телепорта",
 
   "debug.outdated_warning": "Снимок отладки устарел — пересгенерируйте для обновления",
   "debug.prev_step": "Предыдущий шаг",

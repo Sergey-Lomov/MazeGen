@@ -26,6 +26,10 @@ IMPORTANT: These rules override the default commit behavior.
 
 - Always ask clarifying questions if anything in the task is ambiguous or underspecified before writing code
 
+## Code exploration
+
+- Before reaching for Grep/Glob/Explore agent in this repo, check whether `code-index` MCP tools (`search_code_advanced`, `get_symbol_body`, `find_files`, `get_file_summary`) fit better — not a hard rule, but easy to forget mid-session, so check it as a reflex. Fall back to Grep/Glob freely when code-index is unavailable (`needs_deep_index`) or clearly the wrong tool for the search.
+
 ## Debugging
 
 - Temporary diagnostic logs must be prefixed with `// DIAG` comment on the same line:

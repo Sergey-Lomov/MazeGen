@@ -10,9 +10,20 @@ pub struct NodeDto {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeKindDto {
+    Basic,
+    Teleport,
+}
+
+/// One directed graph edge. Note: `(from, to)` is not unique in `MazeSnapshot.edges` — a
+/// `Basic` and a `Teleport` edge can coexist in the same direction between the same pair (see
+/// `maze_core::graph::Graph::add_edge`'s kind-aware dedup), each appearing as its own entry here.
+#[derive(Serialize)]
 pub struct EdgeDto {
     pub from: u32,
     pub to: u32,
+    pub kind: EdgeKindDto,
 }
 
 #[derive(Serialize)]
@@ -158,7 +169,9 @@ pub struct GraphAnalyticsDto {
 pub struct PostEditEdgeDto {
     pub from: u32,
     pub to: u32,
-    /// "basic" | "one_way" — direction already normalized: from→to is the actual passage direction.
+    /// "basic" | "one_way" | "teleport" — direction already normalized: from→to is the actual
+    /// passage/teleport direction. See `build_graph_from_post_edit_edges` (lib.rs) for exactly
+    /// how each kind is applied.
     pub kind: String,
 }
 

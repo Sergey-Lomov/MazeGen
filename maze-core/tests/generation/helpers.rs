@@ -13,7 +13,7 @@ pub fn build(width: usize, height: usize) -> (Graph, Field<SquareTessellation>, 
 
 pub fn empty_preset() -> PresetState { PresetState::empty() }
 
-pub fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0 } }
+pub fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 } }
 
 pub fn default_config() -> GenerationConfig {
     GenerationConfig::default()
@@ -22,7 +22,7 @@ pub fn default_config() -> GenerationConfig {
 pub fn config_with_params(params: GenerationParams) -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::CustomVertexBased(params),
-        elements: ElementsConfig { one_way_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
         ..GenerationConfig::default()
     }
 }
@@ -38,7 +38,7 @@ pub fn config_with_elements(elements: ElementsConfig) -> GenerationConfig {
 pub fn edge_based_config(params: EdgeBasedParams) -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::CustomEdgeBased(params),
-        elements: ElementsConfig { one_way_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
         ..GenerationConfig::default()
     }
 }
@@ -46,7 +46,7 @@ pub fn edge_based_config(params: EdgeBasedParams) -> GenerationConfig {
 pub fn kruskal_config() -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::KruskalAlgorithm,
-        elements: ElementsConfig { one_way_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
         ..GenerationConfig::default()
     }
 }

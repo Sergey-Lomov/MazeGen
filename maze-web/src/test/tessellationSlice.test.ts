@@ -481,7 +481,7 @@ describe("mazeStore preview/confirm flow", () => {
       previewHexOrientation: "flat_top",
       previewTriOrientation: "r0",
       nodes: [{ id: 0, x: 0, y: 0 }],
-      edges: [{ from: 0, to: 0 }],
+      edges: [{ from: 0, to: 0, kind: "basic" }],
       start: 0,
       finish: 0,
     });

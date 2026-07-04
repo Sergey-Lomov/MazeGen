@@ -18,7 +18,7 @@ use maze_core::{
 };
 use generation_config::{GenerateConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
-use dto::ComputeAnalyticsConfig;
+use dto::{ComputeAnalyticsConfig, PostEditEdgeDto};
 use analytics::build_analytics_snapshot;
 
 #[derive(Serialize)]
@@ -461,6 +461,35 @@ fn analytics_only_stages(checks: Vec<generation_config::CheckInstanceConfig>) ->
     vec![generation_config::StageConfig { id: "analytics_only_stage".to_string(), name: "Analytics".to_string(), rules }]
 }
 
+/// Builds post-edit's passages (and read-only pass-through teleports) into `graph` — split out
+/// from `run_compute_analytics` so the edge-kind matching itself can be unit-tested without a
+/// `JsValue`/wasm context. "basic" adds both directions (bidirectional passage); "one_way" adds
+/// only `from→to` (direction already normalized by the caller); "teleport" adds a single directed
+/// `EdgeKind::Teleport` edge — a two-way teleport arrives as two separate "teleport" entries (one
+/// per direction), matching how the web side extracts them 1:1 from the generated `EdgeDto` list
+/// (see `extractTeleportEdges`), the same way "one_way" already represents only one direction
+/// per entry unlike "basic".
+fn build_graph_from_post_edit_edges(graph: &mut Graph, edges: &[PostEditEdgeDto]) -> Result<(), String> {
+    for e in edges {
+        let from_id = e.from as u64;
+        let to_id   = e.to   as u64;
+        match e.kind.as_str() {
+            "basic" => {
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
+                graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
+            }
+            "one_way" => {
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
+            }
+            "teleport" => {
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
+            }
+            other => return Err(format!("unknown edge kind: {other}")),
+        }
+    }
+    Ok(())
+}
+
 fn run_compute_analytics<T: Tessellation>(
     cfg: ComputeAnalyticsConfig,
     pts: Vec<T::Point>,
@@ -480,22 +509,8 @@ where
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
 
-    // Build graph from post-edit edges (passages only; walls = absence of edge)
-    for e in &cfg.edges {
-        let from_id = e.from as u64;
-        let to_id   = e.to   as u64;
-        match e.kind.as_str() {
-            "basic" => {
-                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
-                graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
-            }
-            "one_way" => {
-                // Direction already normalized: from→to is the actual passage direction
-                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
-            }
-            other => return Err(JsValue::from_str(&format!("unknown edge kind: {other}"))),
-        }
-    }
+    build_graph_from_post_edit_edges(&mut graph, &cfg.edges)
+        .map_err(|e| JsValue::from_str(&e))?;
 
     let mut maze = Maze::<T>::new(field, graph);
     maze.meta.start  = cfg.start.map(|id| id as u64);
@@ -555,6 +570,74 @@ mod tests {
             assert_eq!(rule.checks.len(), 1, "one check per synthetic rule");
             assert!(rule.strategy.is_none(), "analytics-only path never runs RepairEngine");
         }
+    }
+
+    fn edge(from: u32, to: u32, kind: &str) -> PostEditEdgeDto {
+        PostEditEdgeDto { from, to, kind: kind.to_string() }
+    }
+
+    fn graph_with_nodes(ids: &[u64]) -> Graph {
+        let mut graph = Graph::new();
+        for &id in ids { graph.add_node(id); }
+        graph
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_basic_adds_both_directions() {
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "basic")]).unwrap();
+        assert!(graph.edge_between(1, 2).is_some());
+        assert!(graph.edge_between(2, 1).is_some());
+        assert_eq!(graph.edges().count(), 2);
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_one_way_adds_only_forward() {
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "one_way")]).unwrap();
+        assert!(graph.edge_between(1, 2).is_some());
+        assert!(graph.edge_between(2, 1).is_none());
+        assert_eq!(graph.edges().count(), 1);
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_teleport_adds_only_forward_as_teleport_kind() {
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "teleport")]).unwrap();
+        let e = graph.edges().find(|e| e.from == 1 && e.to == 2).expect("teleport edge must exist");
+        assert_eq!(e.kind, EdgeKind::Teleport);
+        assert!(graph.edge_between(2, 1).is_none(), "one \"teleport\" entry must add only one direction");
+        assert_eq!(graph.edges().count(), 1);
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_two_teleport_entries_produce_two_way_teleport() {
+        // A two-way teleport is represented as two separate "teleport" entries (one per
+        // direction), not a single entry that auto-adds both — mirrors how the web side
+        // extracts each directed EdgeDto from generation 1:1 (see extractTeleportEdges).
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "teleport"), edge(2, 1, "teleport")]).unwrap();
+        assert!(graph.edges().any(|e| e.from == 1 && e.to == 2 && e.kind == EdgeKind::Teleport));
+        assert!(graph.edges().any(|e| e.from == 2 && e.to == 1 && e.kind == EdgeKind::Teleport));
+        assert_eq!(graph.edges().count(), 2);
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_teleport_coexists_with_parallel_basic() {
+        // A Basic and a Teleport edge in the same direction between the same pair must both
+        // survive — kind-aware dedup in Graph::add_edge allows this (see graph::parallel_edges_tests).
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "basic"), edge(1, 2, "teleport")]).unwrap();
+        assert!(graph.edges().any(|e| e.from == 1 && e.to == 2 && e.kind == EdgeKind::Basic));
+        assert!(graph.edges().any(|e| e.from == 1 && e.to == 2 && e.kind == EdgeKind::Teleport));
+        assert_eq!(graph.edges().count(), 3, "basic(2 directions) + teleport(1 direction) = 3 edges");
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_unknown_kind_is_rejected() {
+        let mut graph = graph_with_nodes(&[1, 2]);
+        let err = build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "wall")]).unwrap_err();
+        assert!(err.contains("wall"), "error must mention the offending kind, got: {err}");
     }
 }
 

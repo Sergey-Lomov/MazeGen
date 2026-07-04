@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -28,7 +29,7 @@ describe("postEditEdgesToDto", () => {
     };
     const result = postEditEdgesToDto(input);
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({ from: 1, to: 2 });
+    expect(result[0]).toEqual({ from: 1, to: 2, kind: "basic" });
   });
 
   it("includes basic and one_way edges", () => {
@@ -42,11 +43,11 @@ describe("postEditEdgesToDto", () => {
     expect(result).toHaveLength(4);
   });
 
-  it("returns only from/to fields", () => {
+  it("returns from/to plus a basic kind, dropping the post-edit tool kind", () => {
     const input = { "5-6": pe(5, 6, "basic") };
     const result = postEditEdgesToDto(input);
-    expect(result[0]).toEqual({ from: 5, to: 6 });
-    expect(Object.keys(result[0])).toEqual(["from", "to"]);
+    expect(result[0]).toEqual({ from: 5, to: 6, kind: "basic" });
+    expect(Object.keys(result[0]).sort()).toEqual(["from", "kind", "to"]);
   });
 
   it("empty record returns empty array", () => {
@@ -65,7 +66,7 @@ describe("postEditEdgesToDto", () => {
 // --- buildClosedCells ---
 
 const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y });
-const e = (from: number, to: number): EdgeDto => ({ from, to });
+const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 
 describe("buildClosedCells", () => {
   it("no edges — all nodes are closed", () => {
@@ -103,5 +104,57 @@ describe("buildClosedCells", () => {
     const nodes = [n(0, 0, 0)];
     const result = buildClosedCells(nodes, [e(0, 99)]);
     expect(result).toEqual([]);
+  });
+});
+
+// --- buildTeleportEdges ---
+
+const squareCfg: TessellationConfig = { type: "square", width: 4, height: 4 };
+const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
+
+describe("buildTeleportEdges", () => {
+  it("one-way teleport: single directed edge produces one entity with oneWay=true", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 3, 3)]]);
+    const result = buildTeleportEdges(nodeById, [teleport(0, 1)], squareCfg);
+    expect(result).toHaveLength(1);
+    expect(result[0].oneWay).toBe(true);
+  });
+
+  it("two-way teleport: both directions present collapse into one entity with oneWay=false", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 3, 3)]]);
+    const result = buildTeleportEdges(nodeById, [teleport(0, 1), teleport(1, 0)], squareCfg);
+    expect(result).toHaveLength(1);
+    expect(result[0].oneWay).toBe(false);
+  });
+
+  it("non-teleport edges are ignored", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 3, 3)]]);
+    const result = buildTeleportEdges(nodeById, [e(0, 1)], squareCfg);
+    expect(result).toEqual([]);
+  });
+
+  it("multiple independent teleport pairs each produce their own entity", () => {
+    const nodeById = new Map<number, NodeDto>([
+      [0, n(0, 0, 0)], [1, n(1, 1, 0)], [2, n(2, 2, 0)], [3, n(3, 3, 0)],
+    ]);
+    const result = buildTeleportEdges(nodeById, [teleport(0, 1), teleport(2, 3)], squareCfg);
+    expect(result).toHaveLength(2);
+  });
+
+  it("skips a teleport edge whose endpoint is missing from nodeById", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)]]); // node 1 missing
+    const result = buildTeleportEdges(nodeById, [teleport(0, 1)], squareCfg);
+    expect(result).toEqual([]);
+  });
+
+  it("empty edges returns empty array", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)]]);
+    expect(buildTeleportEdges(nodeById, [], squareCfg)).toEqual([]);
+  });
+
+  it("resolves from/to to actual cell-center positions", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 2, 0)]]);
+    const result = buildTeleportEdges(nodeById, [teleport(0, 1)], squareCfg);
+    expect(result[0].from).not.toEqual(result[0].to);
   });
 });

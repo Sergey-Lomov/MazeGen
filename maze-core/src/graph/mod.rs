@@ -20,6 +20,7 @@ pub struct Node {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EdgeKind {
     Basic,
+    Teleport,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +76,7 @@ impl Graph {
     pub(crate) fn add_edge(&mut self, from: NodeId, to: NodeId, kind: EdgeKind) -> EdgeId {
         debug_assert!(self.outgoing.contains_key(&from), "add_edge: node {from} not in graph");
         debug_assert!(self.incoming.contains_key(&to), "add_edge: node {to} not in graph");
-        if let Some(existing) = self.edge_between(from, to) {
+        if let Some(existing) = self.edge_between_kind(from, to, &kind) {
             return existing;
         }
         let id = self.edges.len();
@@ -84,6 +85,16 @@ impl Graph {
         self.incoming.entry(to).or_default().push(id);
         self.version += 1;
         id
+    }
+
+    /// Dedup lookup used by `add_edge` — only matches an existing edge of the same `kind`,
+    /// so a `Teleport` edge can coexist with a `Basic` edge in the same direction between the
+    /// same pair (e.g. a tile already reachable by a normal passage can also have a teleport
+    /// into it). Private: callers needing "any kind" use the public `edge_between` instead.
+    fn edge_between_kind(&self, from: NodeId, to: NodeId, kind: &EdgeKind) -> Option<EdgeId> {
+        self.outgoing.get(&from)?.iter().find(|&&eid| {
+            self.edges[eid].as_ref().map_or(false, |e| e.to == to && &e.kind == kind)
+        }).copied()
     }
 
     pub(crate) fn add_bidirectional_edge(&mut self, a: NodeId, b: NodeId, kind: EdgeKind) -> (EdgeId, EdgeId) {
@@ -145,6 +156,11 @@ impl Graph {
         self.edges.get(id).and_then(Option::as_ref)
     }
 
+    /// Returns the first edge between the pair, of any `EdgeKind` — since `Teleport` edges may
+    /// coexist with a `Basic` edge in the same direction (see `add_edge`'s kind-aware dedup),
+    /// this can return an arbitrary one of possibly several matching edges. Callers that need a
+    /// specific kind must filter `edges()` themselves; the private `edge_between_kind` is used
+    /// internally by `add_edge` for that purpose.
     pub fn edge_between(&self, from: NodeId, to: NodeId) -> Option<EdgeId> {
         self.outgoing.get(&from)?.iter().find(|&&eid| {
             self.edges[eid].as_ref().map_or(false, |e| e.to == to)
@@ -240,5 +256,43 @@ mod force_bump_past_tests {
     fn panics_on_u64_overflow() {
         let mut g = Graph::new();
         g.force_bump_past(u64::MAX);
+    }
+}
+
+#[cfg(test)]
+mod parallel_edges_tests {
+    use super::*;
+
+    #[test]
+    fn teleport_coexists_with_basic_same_direction() {
+        let mut g = Graph::new();
+        g.add_node(0);
+        g.add_node(1);
+        let basic_id = g.add_edge(0, 1, EdgeKind::Basic);
+        let teleport_id = g.add_edge(0, 1, EdgeKind::Teleport);
+        assert_ne!(basic_id, teleport_id);
+        assert_eq!(g.edges().count(), 2);
+    }
+
+    #[test]
+    fn adding_second_teleport_same_direction_is_noop() {
+        let mut g = Graph::new();
+        g.add_node(0);
+        g.add_node(1);
+        let first = g.add_edge(0, 1, EdgeKind::Teleport);
+        let second = g.add_edge(0, 1, EdgeKind::Teleport);
+        assert_eq!(first, second);
+        assert_eq!(g.edges().count(), 1);
+    }
+
+    #[test]
+    fn bidirectional_teleport_over_existing_bidirectional_basic_yields_four_edges() {
+        let mut g = Graph::new();
+        g.add_node(0);
+        g.add_node(1);
+        g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
+        let (ab, ba) = g.add_bidirectional_edge(0, 1, EdgeKind::Teleport);
+        assert_ne!(ab, ba);
+        assert_eq!(g.edges().count(), 4);
     }
 }

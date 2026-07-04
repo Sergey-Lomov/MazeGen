@@ -3,8 +3,9 @@ import { useMazeStore } from "../store/mazeStore";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
+import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildClosedCells } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport } from "./renderers/types";
 import { canvas, DEBUG_ACTIVE_ALPHA } from "./colorUtils";
@@ -14,6 +15,7 @@ export class GenerationRenderer {
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
+  private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
   private readonly debugActiveContainer: Container;
   private readonly debugSrcContainer: Container;
@@ -22,6 +24,7 @@ export class GenerationRenderer {
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
+  private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly debugActive: CellFillRenderer;
   private readonly debugSrc: CellFillRenderer;
@@ -35,6 +38,7 @@ export class GenerationRenderer {
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer = new Container();
+    this.teleportContainer = new Container();
     this.markersContainer = new Container();
     this.debugActiveContainer = new Container();
     this.debugSrcContainer = new Container();
@@ -43,6 +47,7 @@ export class GenerationRenderer {
     viewport.addChild(this.floorContainer);
     viewport.addChild(this.closedCellsContainer);
     viewport.addChild(this.wallsContainer);
+    viewport.addChild(this.teleportContainer);
     viewport.addChild(this.markersContainer);
     viewport.addChild(this.debugActiveContainer);
     viewport.addChild(this.debugSrcContainer);
@@ -51,6 +56,7 @@ export class GenerationRenderer {
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls = new WallRenderer(this.wallsContainer);
+    this.teleports = new TeleportRenderer(this.teleportContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.debugActive = new CellFillRenderer(this.debugActiveContainer);
     this.debugSrc = new CellFillRenderer(this.debugSrcContainer);
@@ -97,6 +103,7 @@ export class GenerationRenderer {
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
     this.wallsContainer.visible = visible;
+    this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
     this.debugActiveContainer.visible = visible && state.showDebugFrontier;
     this.debugSrcContainer.visible = visible && state.showDebugFrontier;
@@ -142,6 +149,9 @@ export class GenerationRenderer {
     this.walls.render({ edges: wallEdges }, cfg);
 
     const nodeById = new Map(view.nodes.map(n => [n.id, n]));
+    const teleportEdges = buildTeleportEdges(nodeById, view.edges, cfg);
+    this.teleports.render({ edges: teleportEdges });
+
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
     this.markers.render({ markers: markerData });
 
@@ -175,6 +185,7 @@ export class GenerationRenderer {
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
+    this.teleports.destroy();
     this.markers.destroy();
     this.debugActive.destroy();
     this.debugSrc.destroy();
@@ -182,6 +193,7 @@ export class GenerationRenderer {
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();
+    this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.debugActiveContainer.destroy();
     this.debugSrcContainer.destroy();

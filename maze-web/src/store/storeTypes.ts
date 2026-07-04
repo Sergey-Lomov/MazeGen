@@ -436,10 +436,19 @@ export interface PostEditState {
   postEditTool: PostEditTool;
   /** Working copy — updated on every tool click. Read by PostEditRenderer. */
   postEditDraftEdges: Record<string, PostEditEdge> | null;
+  /** Teleport edges carried through from generation, kept separate from `postEditDraftEdges`
+   * (a `Record` keyed by `from-to` — one slot per directed pair) since a Teleport and a Basic
+   * edge can coexist in the same direction between the same pair (see `Graph::add_edge`'s
+   * kind-aware dedup) and would otherwise collide in that Record. No post-edit tool operates on
+   * these yet — they are read-only pass-through, kept as a plain list so a future "edit teleport"
+   * tool has a natural place to add without re-touching the Basic/one-way Record shape. */
+  postEditDraftTeleportEdges: EdgeDto[];
   /** Working copy — updated on endpoint changes. Read by PostEditRenderer. */
   postEditDraftMeta: PostEditMeta | null;
   /** Confirmed snapshot of postEditDraftEdges. Read by AnalyticsRenderer. */
   postEditEdges: Record<string, PostEditEdge> | null;
+  /** Confirmed snapshot of postEditDraftTeleportEdges. Read by AnalyticsRenderer. */
+  postEditTeleportEdges: EdgeDto[];
   /** Confirmed snapshot of postEditDraftMeta. Read by AnalyticsRenderer. */
   postEditMeta: PostEditMeta | null;
   /** Analytics over confirmed graph. null until first confirmPostEdit completes. */

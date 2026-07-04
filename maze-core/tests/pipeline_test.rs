@@ -333,7 +333,7 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
                 directionality: 0.0,
                 cyclicity: 0.8,
             }),
-            elements: ElementsConfig { one_way_chance: 0.04 },
+            elements: ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
             preset_connections: vec![],
             locked_nodes: vec![],
         };
@@ -377,7 +377,7 @@ fn exact_issue_23_seed_never_isolates_a_node() {
             directionality: 0.0,
             cyclicity: 0.8,
         }),
-        elements: ElementsConfig { one_way_chance: 0.04 },
+        elements: ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
         preset_connections: vec![],
         locked_nodes: vec![],
     };

@@ -13,7 +13,7 @@ vi.mock("../store/mazeStore", () => ({
 
 const squareCfg = { type: "square" as const, width: 11, height: 11 };
 const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y });
-const e = (from: number, to: number): EdgeDto => ({ from, to });
+const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 
 function kindOf(walls: ReturnType<typeof buildMazeWalls>, ax: number, ay: number, bx: number, by: number) {
   const key = `${Math.min(ax, bx)},${Math.min(ay, by)}:${Math.max(ax, bx)},${Math.max(ay, by)}`;

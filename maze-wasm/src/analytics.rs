@@ -9,7 +9,7 @@ use maze_core::{
     Maze,
 };
 use crate::dto::{
-    EdgeDto, IssueDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
+    EdgeDto, EdgeKindDto, IssueDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
     NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
 };
 
@@ -125,9 +125,14 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let edges: Vec<EdgeDto> = maze.graph
         .edges()
         .filter_map(|e| {
+            let kind = match e.kind {
+                maze_core::graph::EdgeKind::Basic => EdgeKindDto::Basic,
+                maze_core::graph::EdgeKind::Teleport => EdgeKindDto::Teleport,
+            };
             Some(EdgeDto {
                 from: u32::try_from(e.from).ok()?,
                 to:   u32::try_from(e.to).ok()?,
+                kind,
             })
         })
         .collect();

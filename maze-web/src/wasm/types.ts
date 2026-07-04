@@ -4,9 +4,12 @@ export interface NodeDto {
   y: number;
 }
 
+// Note: (from, to) is not unique across MazeSnapshot.edges — a Basic and a Teleport edge
+// can coexist in the same direction between the same pair, each as its own entry.
 export interface EdgeDto {
   from: number;
   to: number;
+  kind: "basic" | "teleport";
 }
 
 export interface NavNodeDto {
@@ -235,6 +238,8 @@ export interface EdgeBasedParams {
 
 export interface ElementsConfig {
   one_way_chance?: number;
+  teleport_chance?: number;
+  teleport_one_way_chance?: number;
 }
 
 export interface GenerationStepDto {
@@ -285,12 +290,13 @@ export interface GenerateConfig {
   debug?: boolean;
 }
 
-export type PostEditEdgeKind = "basic" | "one_way";
+export type PostEditEdgeKind = "basic" | "one_way" | "teleport";
 
 export interface PostEditEdgeWasmDto {
   from: number;
   to: number;
-  /** Direction already normalized: from→to is the actual passage direction. */
+  /** Direction already normalized: from→to is the actual passage/teleport direction. "teleport"
+   * adds only that one direction — a two-way teleport is sent as two separate entries. */
   kind: PostEditEdgeKind;
 }
 

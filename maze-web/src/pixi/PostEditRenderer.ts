@@ -8,9 +8,10 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
+import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
-import { buildMazeWalls, buildMazeMarkers, postEditEdgesToDto, buildClosedCells } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells } from "./selectors/mazeSelectors";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorUtils";
 import type { Viewport } from "./renderers/types";
@@ -23,6 +24,7 @@ export class PostEditRenderer {
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
+  private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
   private readonly hoverContainer: Container;
 
@@ -30,6 +32,7 @@ export class PostEditRenderer {
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
+  private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly hover: EdgeHighlightRenderer;
 
@@ -47,6 +50,7 @@ export class PostEditRenderer {
     this.floorContainer       = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer       = new Container();
+    this.teleportContainer    = new Container();
     this.markersContainer     = new Container();
     this.hoverContainer       = new Container();
 
@@ -54,6 +58,7 @@ export class PostEditRenderer {
     this.root.addChild(this.floorContainer);
     this.root.addChild(this.closedCellsContainer);
     this.root.addChild(this.wallsContainer);
+    this.root.addChild(this.teleportContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.hoverContainer);
 
@@ -61,6 +66,7 @@ export class PostEditRenderer {
     this.floor       = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls       = new WallRenderer(this.wallsContainer);
+    this.teleports   = new TeleportRenderer(this.teleportContainer);
     this.markers     = new WaypointsRenderer(this.markersContainer);
     this.hover       = new EdgeHighlightRenderer(this.hoverContainer);
 
@@ -93,6 +99,7 @@ export class PostEditRenderer {
 
       if (
         state.postEditDraftEdges !== prev.postEditDraftEdges ||
+        state.postEditDraftTeleportEdges !== prev.postEditDraftTeleportEdges ||
         state.nodes !== prev.nodes ||
         state.postEditDraftMeta !== prev.postEditDraftMeta
       ) {
@@ -136,10 +143,10 @@ export class PostEditRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
 
-    const { nodes, postEditDraftEdges, postEditDraftMeta } = state;
+    const { nodes, postEditDraftEdges, postEditDraftTeleportEdges, postEditDraftMeta } = state;
     const start = postEditDraftMeta?.start ?? null;
     const finish = postEditDraftMeta?.finish ?? null;
-    const activeEdges = postEditEdgesToDto(postEditDraftEdges);
+    const activeEdges = [...postEditEdgesToDto(postEditDraftEdges), ...postEditDraftTeleportEdges];
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
@@ -151,6 +158,9 @@ export class PostEditRenderer {
     this.walls.render({ edges: wallEdges }, cfg);
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
+    const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);
+    this.teleports.render({ edges: teleportEdges });
+
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg);
     this.markers.render({ markers: markerData });
 
@@ -164,6 +174,7 @@ export class PostEditRenderer {
     this.floor.render({ cells: [], color: canvas.floor.default, alpha: 1 }, cfg);
     this.closedCells.render({ cells: [], color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: [] }, cfg);
+    this.teleports.render({ edges: [] });
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });
   }
@@ -174,12 +185,14 @@ export class PostEditRenderer {
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
+    this.teleports.destroy();
     this.markers.destroy();
     this.hover.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();
+    this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.hoverContainer.destroy();
   }

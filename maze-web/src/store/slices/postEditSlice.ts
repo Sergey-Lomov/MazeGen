@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import { computeAnalytics } from "../../wasm/mazeService";
 import type { PostEditEdgeWasmDto } from "../../wasm/types";
-import { applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated } from "../../pixi/postEditUtils";
+import { applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated, extractTeleportEdges } from "../../pixi/postEditUtils";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool } from "../storeTypes";
 import { fieldConfigToWasm } from "./generationSlice";
 
@@ -9,8 +9,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditAutoConfirm: true,
   postEditTool: "wall" as PostEditTool,
   postEditDraftEdges: null,
+  postEditDraftTeleportEdges: [],
   postEditDraftMeta: null,
   postEditEdges: null,
+  postEditTeleportEdges: [],
   postEditMeta: null,
   postEditAnalytics: null,
   _postEditRequestId: 0,
@@ -43,21 +45,25 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     set({ _postEditRequestId: requestId });
 
     const state = get();
-    const { postEditDraftEdges, postEditDraftMeta, activeTessellationConfig, nodes, start, finish, stages } = state;
+    const { postEditDraftEdges, postEditDraftTeleportEdges, postEditDraftMeta, activeTessellationConfig, nodes, start, finish, stages } = state;
     if (postEditDraftEdges === null) return;
     const edgesSnapshot = postEditDraftEdges;
+    const teleportEdgesSnapshot = postEditDraftTeleportEdges;
     const metaSnapshot = postEditDraftMeta;
 
     const effectiveStart = postEditDraftMeta != null ? postEditDraftMeta.start : start;
     const effectiveFinish = postEditDraftMeta != null ? postEditDraftMeta.finish : finish;
 
-    const wasmEdges: PostEditEdgeWasmDto[] = Object.values(postEditDraftEdges)
-      .filter(e => e.kind !== "wall")
-      .map(e => ({
-        from: e.from,
-        to: e.to,
-        kind: e.kind === "basic" ? "basic" as const : "one_way" as const,
-      }));
+    const wasmEdges: PostEditEdgeWasmDto[] = [
+      ...Object.values(postEditDraftEdges)
+        .filter(e => e.kind !== "wall")
+        .map(e => ({
+          from: e.from,
+          to: e.to,
+          kind: e.kind === "basic" ? "basic" as const : "one_way" as const,
+        })),
+      ...postEditDraftTeleportEdges.map(e => ({ from: e.from, to: e.to, kind: "teleport" as const })),
+    ];
 
     // ruleDisabled rules and rules belonging to a disabled stage excluded — same semantics
     // as buildGenerateConfig (see generationSlice.ts).
@@ -91,6 +97,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           issues: snapshot.issues,
         },
         postEditEdges: edgesSnapshot,
+        postEditTeleportEdges: teleportEdgesSnapshot,
         postEditMeta: metaSnapshot,
         showRouteOverlay: snapshot.route_info != null ? state.showRouteOverlay : false,
       }));
@@ -104,7 +111,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   resetPostEdit: () => {
     set((state) => ({
       postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state.edges),
+      postEditDraftTeleportEdges: extractTeleportEdges(state.edges),
       postEditEdges: null,
+      postEditTeleportEdges: [],
       postEditMeta: null,
       postEditAnalytics: null,
       postEditDraftMeta: { start: state._generatedStart, finish: state._generatedFinish },

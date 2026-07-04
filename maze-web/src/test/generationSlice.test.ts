@@ -48,7 +48,7 @@ describe("mazeStore.generate", () => {
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 10,
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
-      elements: { one_way_chance: 0.04 },
+      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
     });
@@ -67,7 +67,7 @@ describe("mazeStore.generate", () => {
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 10,
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
-      elements: { one_way_chance: 0.04 },
+      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
     });
@@ -86,7 +86,7 @@ describe("mazeStore.generate", () => {
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 10,
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
-      elements: { one_way_chance: 0.04 },
+      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
     });
@@ -195,7 +195,7 @@ describe("mazeStore.generate", () => {
       }],
       repair_max_iterations: 10,
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
-      elements: { one_way_chance: 0.04 },
+      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
     });

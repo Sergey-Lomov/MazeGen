@@ -5,7 +5,7 @@ import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, G
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
-import { buildPostEditDraftEdgesFromGenerated } from "../../pixi/postEditUtils";
+import { buildPostEditDraftEdgesFromGenerated, extractTeleportEdges } from "../../pixi/postEditUtils";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance, RepairStageState, NestedStrategyState } from "../storeTypes";
 import { activeTessellationOf, buildResetMazeState, debugStaleOf } from "../storeHelpers";
@@ -150,7 +150,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   stages: [newStage(0)],
   strategyParams: {},
   initialConfig: { method: "recursive_backtracker" as const },
-  elementsConfig: { one_way_chance: 0.04 },
+  elementsConfig: { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
   nodeStats: null,
   edgeStats: null,
   routeInfo: null,
@@ -246,7 +246,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   setDebugAutoPlayDelay: (ms) => set({ debugAutoPlayDelay: ms }),
   setShowDebugFrontier: (v) => set({ showDebugFrontier: v }),
 
-  reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftMeta: null, postEditEdges: null, postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
+  reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftTeleportEdges: [], postEditDraftMeta: null, postEditEdges: null, postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
@@ -713,7 +713,9 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       debugStep: lastStep,
       debugStale: false,
       postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(snapshot.edges),
+      postEditDraftTeleportEdges: extractTeleportEdges(snapshot.edges),
       postEditEdges: null,
+      postEditTeleportEdges: [],
       postEditMeta: null,
       postEditAnalytics: null,
       postEditDraftMeta: { start: snapshot.start, finish: snapshot.finish },

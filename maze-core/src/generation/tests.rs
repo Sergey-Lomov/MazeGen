@@ -158,7 +158,7 @@ fn try_add_edge_rng_parity_matches_add_edge_when_unconstrained() {
     let (_, mut graph_b) = make_field_and_graph(3, 3);
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
-    let elements = ElementsConfig { one_way_chance: 1.0 };
+    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 };
 
     let mut preset_state = PresetState::empty();
     preset_state.blocked.insert((b, a)); // force reverse_blocked branch
@@ -182,5 +182,72 @@ fn try_add_edge_normal_path_delegates_to_add_edge() {
     try_add_edge(&mut graph, a, b, &elements, &preset_state, &mut rng(1));
     assert!(graph.edge_between(a, b).is_some());
     assert!(graph.edge_between(b, a).is_some());
+}
+
+// ─── try_add_edge_kind / add_edge_kind ─────────────────────────────────────
+
+#[test]
+fn add_edge_kind_zero_chance_always_bidirectional_with_given_kind() {
+    let (field, mut graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    add_edge_kind(&mut graph, a, b, EdgeKind::Teleport, 0.0, &mut rng(1));
+    assert!(graph.edges().any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport));
+    assert!(graph.edges().any(|e| e.from == b && e.to == a && e.kind == EdgeKind::Teleport));
+}
+
+#[test]
+fn add_edge_kind_one_chance_always_one_way_with_given_kind() {
+    let (field, mut graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    add_edge_kind(&mut graph, a, b, EdgeKind::Teleport, 1.0, &mut rng(1));
+    let ab = graph.edges().any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport);
+    let ba = graph.edges().any(|e| e.from == b && e.to == a && e.kind == EdgeKind::Teleport);
+    assert!(ab ^ ba, "one_way_chance=1.0 must produce exactly one direction, got ab={ab} ba={ba}");
+}
+
+#[test]
+fn try_add_edge_kind_respects_preset_state_for_teleport_kind() {
+    let (field, mut graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    let mut preset_state = PresetState::empty();
+    preset_state.locked_out.insert(a);
+    try_add_edge_kind(&mut graph, a, b, EdgeKind::Teleport, 0.0, &preset_state, &mut rng(1));
+    assert!(graph.edges().count() == 0, "locked_out source must block a Teleport edge exactly like a Basic one");
+}
+
+#[test]
+fn try_add_edge_kind_forces_forward_only_when_reverse_blocked_for_teleport_kind() {
+    let (field, mut graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((b, a));
+    try_add_edge_kind(&mut graph, a, b, EdgeKind::Teleport, 0.0, &preset_state, &mut rng(1));
+    assert!(graph.edges().any(|e| e.from == a && e.to == b && e.kind == EdgeKind::Teleport));
+    assert!(!graph.edges().any(|e| e.from == b && e.to == a));
+}
+
+#[test]
+fn try_add_edge_delegates_to_try_add_edge_kind_with_basic_and_one_way_chance() {
+    // try_add_edge must behave identically to try_add_edge_kind(..., EdgeKind::Basic,
+    // elements.one_way_chance, ...) — same seed must produce the same result via both paths.
+    let (field, mut graph_a) = make_field_and_graph(3, 3);
+    let (_, mut graph_b) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    let elements = ElementsConfig { one_way_chance: 0.5, teleport_chance: 0.0, teleport_one_way_chance: 0.0 };
+    let preset_state = PresetState::empty();
+
+    try_add_edge(&mut graph_a, a, b, &elements, &preset_state, &mut rng(3));
+    try_add_edge_kind(&mut graph_b, a, b, EdgeKind::Basic, elements.one_way_chance, &preset_state, &mut rng(3));
+
+    let mut ea: Vec<_> = graph_a.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
+    let mut eb: Vec<_> = graph_b.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
+    ea.sort_by_key(|(f, t, _)| (*f, *t));
+    eb.sort_by_key(|(f, t, _)| (*f, *t));
+    assert_eq!(ea, eb);
 }
 

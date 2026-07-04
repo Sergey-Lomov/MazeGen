@@ -127,6 +127,7 @@ export const base = {
   invalid: "#ddaa00",
   canvasHover: "#44aaff",
   origin: "#ff6600",
+  teleport: "#3399ff",
   debugActive: "#4488ff",
   debugCurrentSrc: "#cccc22",
 } as const;

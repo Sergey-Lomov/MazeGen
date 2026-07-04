@@ -92,7 +92,7 @@ fn generate_maze_params_affect_structure() {
 
 #[test]
 fn generated_maze_is_connected_with_all_one_way_edges() {
-    let elements = ElementsConfig { one_way_chance: 1.0 };
+    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 };
     for seed in [1, 42, 99, 1234, 9999] {
         let (mut graph, field, start) = build(8, 8);
         generate_maze(&mut graph, &field, seed, start, config_with_elements(elements.clone()), &empty_preset());

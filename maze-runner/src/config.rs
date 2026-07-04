@@ -98,6 +98,8 @@ pub struct EdgeBasedParamsConfig {
 #[derive(Deserialize, Default)]
 pub struct ElementsConfigDto {
     pub one_way_chance: Option<f64>,
+    pub teleport_chance: Option<f64>,
+    pub teleport_one_way_chance: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -287,5 +289,7 @@ fn build_edge_params(cfg: &EdgeBasedParamsConfig) -> EdgeBasedParams {
 fn build_elements_config(dto: &ElementsConfigDto) -> ElementsConfig {
     let mut e = ElementsConfig::default();
     if let Some(v) = dto.one_way_chance { e.one_way_chance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.teleport_chance { e.teleport_chance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.teleport_one_way_chance { e.teleport_one_way_chance = v.clamp(0.0, 1.0); }
     e
 }

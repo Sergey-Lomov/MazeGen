@@ -10,7 +10,7 @@ mod preset_state;
 pub use preset_state::{PresetState, build_preset_state};
 
 use crate::random::MazeRng;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
@@ -18,11 +18,17 @@ use crate::space::{Field, Tessellation};
 #[derive(Debug, Clone)]
 pub struct ElementsConfig {
     pub one_way_chance: f64,
+    /// Probability that, at each edge-addition opportunity `advance` handles, the edge is a
+    /// teleport instead of a normal (geometrically-adjacent) connection.
+    pub teleport_chance: f64,
+    /// Probability that an added teleport is one-way rather than two-way. Only consulted when
+    /// `teleport_chance` already hit — mirrors `one_way_chance`'s role but scoped to teleports.
+    pub teleport_one_way_chance: f64,
 }
 
 impl Default for ElementsConfig {
     fn default() -> Self {
-        ElementsConfig { one_way_chance: 0.04 }
+        ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 }
     }
 }
 
@@ -128,6 +134,7 @@ impl Default for GenerationConfig {
 pub struct GenerationEdge {
     pub from: NodeId,
     pub to:   NodeId,
+    pub kind: EdgeKind,
 }
 
 #[derive(Debug, Clone)]
@@ -150,7 +157,7 @@ fn dispatch<T: Tessellation>(
     start: NodeId,
     config: GenerationConfig,
     preset_state: &PresetState,
-    on_step: Option<&mut StepCallback<'_>>,
+    mut on_step: Option<&mut StepCallback<'_>>,
 ) {
     match config.algorithm {
         GenerationAlgorithm::CustomVertexBased(params) =>
@@ -187,7 +194,7 @@ pub fn generate_maze_steps<T: Tessellation>(
 ) -> Vec<GenerationStep> {
     let mut steps: Vec<GenerationStep> = Vec::new();
     let mut on_step = |g: &Graph, src: NodeId, active: &[NodeId]| {
-        let edges = g.edges().map(|e| GenerationEdge { from: e.from, to: e.to }).collect();
+        let edges = g.edges().map(|e| GenerationEdge { from: e.from, to: e.to, kind: e.kind.clone() }).collect();
         steps.push(GenerationStep { edges, active_nodes: active.to_vec(), current_src: src });
     };
     dispatch(graph, field, seed, start, config, preset_state, Some(&mut on_step));
@@ -196,17 +203,24 @@ pub fn generate_maze_steps<T: Tessellation>(
 
 // One-way edges consume two RNG samples (one for the chance check, one for direction),
 // while bidirectional edges consume only one. This means maze topology differs between
-// runs with one_way_chance > 0 and runs with one_way_chance == 0, even at the same seed.
-pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &ElementsConfig, rng: &mut MazeRng) {
-    if rng.random::<f64>() < elements.one_way_chance {
+// runs with `one_way_chance` > 0 and runs with `one_way_chance` == 0, even at the same seed.
+// `kind`/`one_way_chance` are caller-supplied so this same sample-consumption contract applies
+// identically whether `kind` is `Basic` (driven by `elements.one_way_chance`) or `Teleport`
+// (driven by `elements.teleport_one_way_chance`) — there is no kind-specific special-casing here.
+pub(crate) fn add_edge_kind(graph: &mut Graph, src: NodeId, dst: NodeId, kind: EdgeKind, one_way_chance: f64, rng: &mut MazeRng) {
+    if rng.random::<f64>() < one_way_chance {
         if rng.random::<bool>() {
-            graph.add_edge(src, dst, EdgeKind::Basic);
+            graph.add_edge(src, dst, kind);
         } else {
-            graph.add_edge(dst, src, EdgeKind::Basic);
+            graph.add_edge(dst, src, kind);
         }
     } else {
-        graph.add_bidirectional_edge(src, dst, EdgeKind::Basic);
+        graph.add_bidirectional_edge(src, dst, kind);
     }
+}
+
+pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &ElementsConfig, rng: &mut MazeRng) {
+    add_edge_kind(graph, src, dst, EdgeKind::Basic, elements.one_way_chance, rng);
 }
 
 /// Returns true if the algorithm is allowed to add an edge src→dst (at least one direction).
@@ -222,13 +236,16 @@ pub(crate) fn can_connect(src: NodeId, dst: NodeId, preset_state: &PresetState) 
     !(fwd_blocked && bwd_blocked)
 }
 
-/// try_add_edge: respects PresetState constraints before delegating to add_edge.
-/// Returns true if the edge was added (at least one direction).
-pub(crate) fn try_add_edge(
+/// try_add_edge_kind: respects PresetState constraints before delegating to add_edge_kind.
+/// Same contract as `try_add_edge`, but lets the caller pick `kind` and the one-way chance to
+/// use — the mechanism `try_add_edge` uses for `Basic` edges with `elements.one_way_chance`
+/// applies identically to `Teleport` edges with `elements.teleport_one_way_chance`.
+pub(crate) fn try_add_edge_kind(
     graph: &mut Graph,
     src: NodeId,
     dst: NodeId,
-    elements: &ElementsConfig,
+    kind: EdgeKind,
+    one_way_chance: f64,
     preset_state: &PresetState,
     rng: &mut MazeRng,
 ) {
@@ -243,13 +260,26 @@ pub(crate) fn try_add_edge(
 
     if reverse_blocked {
         // Can only go src→dst
-        graph.add_edge(src, dst, EdgeKind::Basic);
-        // Still consume RNG samples to preserve seed parity with normal add_edge.
+        graph.add_edge(src, dst, kind);
+        // Still consume RNG samples to preserve seed parity with normal add_edge_kind.
         let _ = rng.random::<f64>();
         let _ = rng.random::<bool>();
     } else {
-        add_edge(graph, src, dst, elements, rng);
+        add_edge_kind(graph, src, dst, kind, one_way_chance, rng);
     }
+}
+
+/// try_add_edge: respects PresetState constraints before delegating to add_edge.
+/// Returns true if the edge was added (at least one direction).
+pub(crate) fn try_add_edge(
+    graph: &mut Graph,
+    src: NodeId,
+    dst: NodeId,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    rng: &mut MazeRng,
+) {
+    try_add_edge_kind(graph, src, dst, EdgeKind::Basic, elements.one_way_chance, preset_state, rng);
 }
 
 /// try_add_bidirectional_edge: strict "both directions free, or skip the pair" connect for
@@ -325,7 +355,7 @@ pub(crate) mod test_utils {
     use crate::space::{Field, SquareTessellation, square_rect};
     use super::ElementsConfig;
 
-    pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0 } }
+    pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 } }
 
     pub fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
