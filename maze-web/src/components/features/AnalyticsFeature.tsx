@@ -47,12 +47,12 @@ function SectionHeader({ label, expanded, onToggle }: { label: string; expanded:
   );
 }
 
-function StatRow({ label, count, pct, valueText }: { label: string; count?: number; pct?: number; valueText?: string }) {
+function StatRow({ label, count, pct, valueText }: { label: string; count?: number; pct?: number | null; valueText?: string }) {
   return (
     <div style={styles.statRow}>
       <span style={styles.statLabel}>{label}</span>
       <span style={styles.statCount}>{valueText ?? count}</span>
-      {pct !== undefined && <span style={styles.statPct}>{pct.toFixed(1)}%</span>}
+      {pct !== undefined && <span style={styles.statPct}>{pct == null ? "—" : `${pct.toFixed(1)}%`}</span>}
     </div>
   );
 }
@@ -77,6 +77,7 @@ function ToggleRow({ label, checked, onChange, disabled, info }: { label: string
 export function AnalyticsFeature() {
   const generatedNodeStats = useMazeStore((s) => s.nodeStats);
   const generatedEdgeStats = useMazeStore((s) => s.edgeStats);
+  const generatedTeleportEdgeStats = useMazeStore((s) => s.teleportEdgeStats);
   const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
   const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
   const timing = useMazeStore((s) => s.timing);
@@ -85,6 +86,7 @@ export function AnalyticsFeature() {
 
   const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
   const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
+  const teleportEdgeStats = postEditAnalytics?.teleportEdgeStats ?? generatedTeleportEdgeStats;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
   const graphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
   // Backend leaves region_classes empty whenever start or finish is unset — the same condition
@@ -184,6 +186,7 @@ export function AnalyticsFeature() {
                 pct={pct(j.count)}
               />
             ))}
+            <StatRow label={m["analytics.teleport_entries"]()} count={nodeStats.teleport_entries} pct={pct(nodeStats.teleport_entries)} />
           </div>
         );
       })() : null}
@@ -193,13 +196,19 @@ export function AnalyticsFeature() {
       {/* Edges block */}
       <SectionHeader label={m["analytics.edge_elements"]()} expanded={isExpanded("edges")} onToggle={() => toggleSection("edges")} />
       {isExpanded("edges") && edgeStats ? (() => {
-        const total = edgeStats.bidirectional + edgeStats.one_way + edgeStats.walls;
+        const total = edgeStats.bidirectional + edgeStats.one_way_passages + edgeStats.walls;
         const pct = (n: number) => total > 0 ? (n / total) * 100 : 0;
         return (
           <div style={styles.statBlock}>
             <StatRow label={m["analytics.passages"]()} count={edgeStats.bidirectional} pct={pct(edgeStats.bidirectional)} />
-            <StatRow label={m["analytics.one_way_edges"]()} count={edgeStats.one_way} pct={pct(edgeStats.one_way)} />
+            <StatRow label={m["analytics.one_way_edges"]()} count={edgeStats.one_way_passages} pct={pct(edgeStats.one_way_passages)} />
             <StatRow label={m["analytics.walls"]()} count={edgeStats.walls} pct={pct(edgeStats.walls)} />
+            {teleportEdgeStats ? (
+              <>
+                <StatRow label={m["analytics.two_way_teleports"]()} count={teleportEdgeStats.two_way} pct={null} />
+                <StatRow label={m["analytics.one_way_teleports"]()} count={teleportEdgeStats.one_way} pct={null} />
+              </>
+            ) : null}
           </div>
         );
       })() : null}

@@ -14,7 +14,7 @@ pub mod repair;
 pub use ids::{NodeId, IdGenerator};
 pub use graph::Graph;
 pub use graph::classify::{GeometricNodeClass, classify_node};
-pub use graph::stats::{GeometricNodeStats, SpatialEdgeStats, compute_node_stats, compute_spatial_edge_stats};
+pub use graph::stats::{GeometricNodeStats, SpatialEdgeStats, TeleportEdgeStats, compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats};
 pub use graph::routing::{RouteInfo, compute_route_info};
 pub use graph::graph_analytics::{GraphAnalytics, compute_graph_analytics};
 pub use graph::region_class::{RegionClass, classify_regions};

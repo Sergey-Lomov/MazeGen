@@ -5,12 +5,12 @@ use maze_core::{
     space::Tessellation,
     quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED},
     quality_control::issue_data::canonical_cycle_key,
-    compute_node_stats, compute_spatial_edge_stats,
+    compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
     Maze,
 };
 use crate::dto::{
     EdgeDto, EdgeKindDto, IssueDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
-    NodeStatsDto, SpatialEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
+    NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
 };
 
 /// Compute analytics snapshot from a fully-built maze (GraphInput).
@@ -203,13 +203,20 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         junctions: raw_node_stats.junctions.iter()
             .map(|&(degree, count)| JunctionBucket { degree, count })
             .collect(),
+        teleport_entries: raw_node_stats.teleport_entries,
     };
 
     let raw_edge_stats = compute_spatial_edge_stats(&maze.graph, &maze.field);
     let edge_stats = SpatialEdgeStatsDto {
-        bidirectional: raw_edge_stats.bidirectional,
-        one_way:       raw_edge_stats.one_way,
-        walls:         raw_edge_stats.walls,
+        bidirectional:    raw_edge_stats.bidirectional,
+        one_way_passages: raw_edge_stats.one_way_passages,
+        walls:            raw_edge_stats.walls,
+    };
+
+    let raw_teleport_stats = compute_teleport_edge_stats(&maze.graph);
+    let teleport_edge_stats = TeleportEdgeStatsDto {
+        two_way: raw_teleport_stats.two_way,
+        one_way: raw_teleport_stats.one_way,
     };
 
     let route_info = maze.analysis.route_info(&maze.graph, &maze.meta).map(|r| RouteInfoDto {
@@ -230,6 +237,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         nav_edges,
         node_stats,
         edge_stats,
+        teleport_edge_stats,
         route_info,
         graph_analytics: graph_analytics_dto,
         debug_steps: vec![],

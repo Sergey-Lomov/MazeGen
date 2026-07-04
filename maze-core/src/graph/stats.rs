@@ -9,14 +9,26 @@ pub struct GeometricNodeStats {
     pub straight: usize,
     pub turns: usize,
     pub junctions: Vec<(usize, usize)>, // (degree, count), sorted by degree
+    // Distinct nodes that are the destination of at least one `EdgeKind::Teleport` edge — a
+    // two-way teleport pair counts both ends, each being the other's destination. Not part of
+    // the dead_ends/straight/turns/junctions partition (a node can be both a teleport entry and
+    // e.g. a junction), so not included in that sum invariant.
+    pub teleport_entries: usize,
 }
 
 // Spatial edge statistics. Walls are a spatial concept (adjacent node pair with no edge),
 // not a graph property. Computed via field neighbors, not graph edges alone.
 pub struct SpatialEdgeStats {
     pub bidirectional: usize,
-    pub one_way: usize,
+    pub one_way_passages: usize,
     pub walls: usize,
+}
+
+// Teleport edge statistics — teleports link non-adjacent tiles, so they fall outside
+// `adjacency_pairs` and need their own pairing pass over `EdgeKind::Teleport` edges.
+pub struct TeleportEdgeStats {
+    pub two_way: usize,
+    pub one_way: usize,
 }
 
 pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &Field<T>) -> GeometricNodeStats {
@@ -37,7 +49,12 @@ pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &Field<T>) -> G
     let mut junctions: Vec<(usize, usize)> = junction_map.into_iter().collect();
     junctions.sort_unstable_by_key(|&(deg, _)| deg);
 
-    let stats = GeometricNodeStats { dead_ends, straight, turns, junctions };
+    let teleport_entries: HashSet<NodeId> = graph.edges()
+        .filter(|e| e.kind == super::EdgeKind::Teleport)
+        .map(|e| e.to)
+        .collect();
+
+    let stats = GeometricNodeStats { dead_ends, straight, turns, junctions, teleport_entries: teleport_entries.len() };
 
     debug_assert!(
         stats.dead_ends
@@ -72,7 +89,7 @@ pub fn compute_spatial_edge_stats<T: Tessellation>(graph: &Graph, field: &Field<
     let pairs = adjacency_pairs(graph, field);
     let total = pairs.len();
     let mut bidirectional = 0usize;
-    let mut one_way = 0usize;
+    let mut one_way_passages = 0usize;
     let mut walls = 0usize;
 
     for (a, b) in &pairs {
@@ -81,13 +98,39 @@ pub fn compute_spatial_edge_stats<T: Tessellation>(graph: &Graph, field: &Field<
         match (ab, ba) {
             (true, true)   => bidirectional += 1,
             (false, false) => walls += 1,
-            _              => one_way += 1,
+            _              => one_way_passages += 1,
         }
     }
 
-    debug_assert!(bidirectional + one_way + walls == total);
+    debug_assert!(bidirectional + one_way_passages + walls == total);
 
-    SpatialEdgeStats { bidirectional, one_way, walls }
+    SpatialEdgeStats { bidirectional, one_way_passages, walls }
+}
+
+pub fn compute_teleport_edge_stats(graph: &Graph) -> TeleportEdgeStats {
+    let mut seen: HashSet<(NodeId, NodeId)> = HashSet::new();
+    let mut two_way = 0usize;
+    let mut one_way = 0usize;
+
+    for edge in graph.edges() {
+        if edge.kind != super::EdgeKind::Teleport {
+            continue;
+        }
+        let pair = if edge.from < edge.to { (edge.from, edge.to) } else { (edge.to, edge.from) };
+        if !seen.insert(pair) {
+            continue;
+        }
+        let reverse = graph.edges().any(|e| {
+            e.kind == super::EdgeKind::Teleport && e.from == edge.to && e.to == edge.from
+        });
+        if reverse {
+            two_way += 1;
+        } else {
+            one_way += 1;
+        }
+    }
+
+    TeleportEdgeStats { two_way, one_way }
 }
 
 #[cfg(test)]
@@ -117,6 +160,40 @@ mod tests {
         assert_eq!(stats.straight, 0);
         assert_eq!(stats.turns, 0);
         assert!(stats.junctions.is_empty());
+        assert_eq!(stats.teleport_entries, 0);
+    }
+
+    #[test]
+    fn compute_node_stats_teleport_entries_one_way() {
+        let (field, mut graph) = make_field_and_graph(4, 1);
+        let a = node_at(&field, 0, 0);
+        let b = node_at(&field, 3, 0);
+        graph.add_edge(a, b, EdgeKind::Teleport);
+        let stats = compute_node_stats(&graph, &field);
+        assert_eq!(stats.teleport_entries, 1, "only b is a teleport destination");
+    }
+
+    #[test]
+    fn compute_node_stats_teleport_entries_two_way_counts_both_ends() {
+        let (field, mut graph) = make_field_and_graph(4, 1);
+        let a = node_at(&field, 0, 0);
+        let b = node_at(&field, 3, 0);
+        graph.add_edge(a, b, EdgeKind::Teleport);
+        graph.add_edge(b, a, EdgeKind::Teleport);
+        let stats = compute_node_stats(&graph, &field);
+        assert_eq!(stats.teleport_entries, 2, "both a and b are destinations of a two-way teleport");
+    }
+
+    #[test]
+    fn compute_node_stats_teleport_entries_dedups_multiple_incoming_to_same_node() {
+        let (field, mut graph) = make_field_and_graph(4, 1);
+        let a = node_at(&field, 0, 0);
+        let b = node_at(&field, 1, 0);
+        let c = node_at(&field, 3, 0);
+        graph.add_edge(a, c, EdgeKind::Teleport);
+        graph.add_edge(b, c, EdgeKind::Teleport);
+        let stats = compute_node_stats(&graph, &field);
+        assert_eq!(stats.teleport_entries, 1, "c counted once despite two incoming teleports");
     }
 
     #[test]
@@ -165,7 +242,7 @@ mod tests {
         let stats = compute_spatial_edge_stats(&graph, &field);
         assert_eq!(stats.walls, 1, "single adjacent pair, no edges -> 1 wall");
         assert_eq!(stats.bidirectional, 0);
-        assert_eq!(stats.one_way, 0);
+        assert_eq!(stats.one_way_passages, 0);
     }
 
     #[test]
@@ -178,7 +255,7 @@ mod tests {
         let stats = compute_spatial_edge_stats(&graph, &field);
         assert_eq!(stats.bidirectional, 1);
         assert_eq!(stats.walls, 0);
-        assert_eq!(stats.one_way, 0);
+        assert_eq!(stats.one_way_passages, 0);
     }
 
     #[test]
@@ -188,7 +265,7 @@ mod tests {
         let b = node_at(&field, 1, 0);
         graph.add_edge(a, b, EdgeKind::Basic);
         let stats = compute_spatial_edge_stats(&graph, &field);
-        assert_eq!(stats.one_way, 1);
+        assert_eq!(stats.one_way_passages, 1);
         assert_eq!(stats.bidirectional, 0);
         assert_eq!(stats.walls, 0);
     }
@@ -202,7 +279,7 @@ mod tests {
         graph.add_edge(b, a, EdgeKind::Basic);
         // (1,0)-(2,0) stays a wall.
         let stats = compute_spatial_edge_stats(&graph, &field);
-        assert_eq!(stats.bidirectional + stats.one_way + stats.walls, 2, "3x1 field has 2 adjacent pairs");
+        assert_eq!(stats.bidirectional + stats.one_way_passages + stats.walls, 2, "3x1 field has 2 adjacent pairs");
         assert_eq!(stats.bidirectional, 1);
         assert_eq!(stats.walls, 1);
     }
@@ -212,5 +289,63 @@ mod tests {
         let (field, graph) = make_field_and_graph(2, 1);
         let pairs = adjacency_pairs(&graph, &field);
         assert_eq!(pairs.len(), 1, "one adjacent pair, not counted twice from each direction");
+    }
+
+    #[test]
+    fn compute_teleport_edge_stats_no_teleports() {
+        let (_, graph) = make_field_and_graph(3, 1);
+        let stats = compute_teleport_edge_stats(&graph);
+        assert_eq!(stats.two_way, 0);
+        assert_eq!(stats.one_way, 0);
+    }
+
+    #[test]
+    fn compute_teleport_edge_stats_two_way_pair() {
+        let (field, mut graph) = make_field_and_graph(4, 1);
+        let a = node_at(&field, 0, 0);
+        let b = node_at(&field, 3, 0);
+        graph.add_edge(a, b, EdgeKind::Teleport);
+        graph.add_edge(b, a, EdgeKind::Teleport);
+        let stats = compute_teleport_edge_stats(&graph);
+        assert_eq!(stats.two_way, 1);
+        assert_eq!(stats.one_way, 0);
+    }
+
+    #[test]
+    fn compute_teleport_edge_stats_one_way_pair() {
+        let (field, mut graph) = make_field_and_graph(4, 1);
+        let a = node_at(&field, 0, 0);
+        let b = node_at(&field, 3, 0);
+        graph.add_edge(a, b, EdgeKind::Teleport);
+        let stats = compute_teleport_edge_stats(&graph);
+        assert_eq!(stats.one_way, 1);
+        assert_eq!(stats.two_way, 0);
+    }
+
+    #[test]
+    fn compute_teleport_edge_stats_ignores_basic_edges() {
+        let (field, mut graph) = make_field_and_graph(2, 1);
+        let a = node_at(&field, 0, 0);
+        let b = node_at(&field, 1, 0);
+        graph.add_edge(a, b, EdgeKind::Basic);
+        graph.add_edge(b, a, EdgeKind::Basic);
+        let stats = compute_teleport_edge_stats(&graph);
+        assert_eq!(stats.two_way, 0);
+        assert_eq!(stats.one_way, 0);
+    }
+
+    #[test]
+    fn compute_teleport_edge_stats_counts_multiple_pairs() {
+        let (field, mut graph) = make_field_and_graph(4, 1);
+        let a = node_at(&field, 0, 0);
+        let b = node_at(&field, 1, 0);
+        let c = node_at(&field, 2, 0);
+        let d = node_at(&field, 3, 0);
+        graph.add_edge(a, d, EdgeKind::Teleport);
+        graph.add_edge(d, a, EdgeKind::Teleport);
+        graph.add_edge(b, c, EdgeKind::Teleport);
+        let stats = compute_teleport_edge_stats(&graph);
+        assert_eq!(stats.two_way, 1);
+        assert_eq!(stats.one_way, 1);
     }
 }

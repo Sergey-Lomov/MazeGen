@@ -118,13 +118,20 @@ pub struct NodeStatsDto {
     pub straight: usize,
     pub turns: usize,
     pub junctions: Vec<JunctionBucket>,
+    pub teleport_entries: usize,
 }
 
 #[derive(Serialize)]
 pub struct SpatialEdgeStatsDto {
     pub bidirectional: usize,
-    pub one_way: usize,
+    pub one_way_passages: usize,
     pub walls: usize,
+}
+
+#[derive(Serialize)]
+pub struct TeleportEdgeStatsDto {
+    pub two_way: usize,
+    pub one_way: usize,
 }
 
 #[derive(Serialize)]
@@ -205,6 +212,7 @@ pub struct MazeSnapshot {
     pub nav_edges: Vec<NavEdgeDto>,
     pub node_stats: NodeStatsDto,
     pub edge_stats: SpatialEdgeStatsDto,
+    pub teleport_edge_stats: TeleportEdgeStatsDto,
     pub route_info: Option<RouteInfoDto>,
     pub graph_analytics: GraphAnalyticsDto,
     pub debug_steps: Vec<GenerationStepDto>,

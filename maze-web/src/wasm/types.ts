@@ -32,12 +32,18 @@ export interface NodeStatsDto {
   straight: number;
   turns: number;
   junctions: JunctionBucket[];
+  teleport_entries: number;
 }
 
 export interface SpatialEdgeStatsDto {
   bidirectional: number;
-  one_way: number;
+  one_way_passages: number;
   walls: number;
+}
+
+export interface TeleportEdgeStatsDto {
+  two_way: number;
+  one_way: number;
 }
 
 export interface RouteInfoDto {
@@ -127,6 +133,7 @@ export interface MazeSnapshot {
   nav_edges: NavEdgeDto[];
   node_stats: NodeStatsDto;
   edge_stats: SpatialEdgeStatsDto;
+  teleport_edge_stats: TeleportEdgeStatsDto;
   route_info: RouteInfoDto | null;
   graph_analytics: GraphAnalyticsDto;
   debug_steps: GenerationStepDto[];

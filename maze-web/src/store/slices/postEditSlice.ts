@@ -90,6 +90,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         postEditAnalytics: {
           nodeStats: snapshot.node_stats,
           edgeStats: snapshot.edge_stats,
+          teleportEdgeStats: snapshot.teleport_edge_stats,
           routeInfo: snapshot.route_info,
           navNodes: snapshot.nav_nodes,
           navEdges: snapshot.nav_edges,
