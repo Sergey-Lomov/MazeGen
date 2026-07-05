@@ -20,6 +20,7 @@ pub enum IssueKind {
     RegionNeedsExpansion,
     MissingRegions,
     InvalidTeleport,
+    TeleportGroupProximity,
 }
 ```
 
@@ -50,6 +51,8 @@ pub const INVALID_TELEPORT:  IssueKind = IssueKind::InvalidTeleport;
 `MissingRegions` mirrors `MissingLoops`'s role, but for a deficit in the count of regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap — see "Region Classes" in `graph-analytics.md`) instead of overall loop count — currently produced only by `MinRegionCountCheck`.
 
 `InvalidTeleport` mirrors `InvalidLoop`'s role, but for a `Teleport` edge (`EdgeKind::Teleport`) flagged invalid for a check-specific reason instead of a cycle — see GitHub issue #74. Currently produced by `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport), `TeleportWaypointDistanceCheck` (the teleport sits too close to a waypoint), `TeleportMinGeometricLengthCheck`/`TeleportMaxGeometricLengthCheck` (the teleport's geometric length is out of the configured range), and `TeleportSuperHubAvoidanceCheck` (an endpoint vertex already has too many outgoing connections). Carries `IssueData::InvalidTeleports` — see that variant's doc comment. Repaired by `RemoveTeleportStrategy` (see `repair.md`).
+
+`TeleportGroupProximity` is a distinct kind from `InvalidTeleport`, not a reuse — see GitHub issue #75. Where `InvalidTeleport` flags a single teleport edge invalid on its own, `TeleportGroupProximity` flags a *relationship* between two teleport edges (neither individually invalid). Currently produced only by `TeleportGroupProximityCheck`. Carries `IssueData::TeleportProximityPairs` — see that variant's doc comment. Repaired by `TeleportGroupProximityStrategy` (see `repair.md`).
 
 Always use the named constant — never use string literals or enum variants inline.
 
@@ -157,6 +160,9 @@ pub enum IssueData {
     InvalidTeleports {             // produced by any check flagging teleport edges invalid, see below
         invalid: Vec<EdgeId>,
     },
+    TeleportProximityPairs {       // produced by TeleportGroupProximityCheck, see below
+        pairs: Vec<(EdgeId, EdgeId)>,
+    },
 }
 ```
 
@@ -174,6 +180,7 @@ pub enum IssueData {
 - **`ExcessiveSccCount { max_scc_count }`**: produced by `SccCountCheck` (paired with `EXCESSIVE_SCC_COUNT`) — **mandatory** for this kind, see `ReduceSccCountStrategy` in `repair.md`. `max_scc_count` is the check's configured threshold, needed by the strategy to compute how many regions to merge (`current_scc_count - max_scc_count`) — there is no other channel to learn it (the check's own field isn't visible to a strategy, only what it attaches to the `Issue`). No merge rule exercised in practice — `SccCountCheck` has no multi-instance use case (see `allow_multiple_instances` in the WASM Interface section below), so two instances producing this kind in one pass never happens; `merge_issue` still defines the rule (`debug_assert_eq!` on matching `max_scc_count`, keeping the existing side) for consistency with every other `IssueData` variant.
 - **`MissingRegions { balance_by_class }`**: produced by `MinRegionCountCheck` (paired with `MISSING_REGIONS`) — carries the **region balance** per `RegionClass` (Path/Alternative/Unreachable/Trap, see `graph-analytics.md`'s "Region Classes" section). `-N` means the maze is short `N` regions of that class against its configured minimum — a repair strategy must create or convert regions into it. `+N` means the class has `N` regions *above* its minimum — a spendable surplus a repair strategy may consume (reuse outright, or merge into an undersized candidate of the same class) when fixing a different class's shortfall. A class sitting exactly at its minimum, or with no minimum configured (`min_count == 0`), carries **no entry at all** — absence means "nothing to fix, nothing to spend" for that class, not a `0` entry. Since GitHub issue #60's multi-instance design is retired, a single `MinRegionCountCheck` instance now evaluates all four classes' counts in one pass and produces one `Issue` with every off-target class's balance already in `balance_by_class` — no cross-instance merge happens in the common case (there's normally exactly one active instance), though `merge_missing_regions` (see `repair.md`'s "Pipeline" section) still unions two instances' output if more than one is ever active at once, taking the value **further from zero** for a class present on both sides. `HashMap` iteration order is not stable — code that serializes or displays `balance_by_class` (the wasm DTO layer, the web UI) sorts by `RegionClass::as_str()` at the point of use rather than relying on map order, without needing an `Ord` derive on `RegionClass` itself for this one call site.
 - **`InvalidTeleports { invalid }`**: produced by any check that flags a teleport edge invalid for a check-specific reason (paired with `INVALID_TELEPORT`) — currently `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport in the same direction) and `TeleportWaypointDistanceCheck` (the teleport sits too close to a configured waypoint). **Mandatory** for this kind, see `RemoveTeleportStrategy` in `repair.md`. `invalid` holds the base-`Graph` `EdgeId` of each flagged teleport edge directly — unlike `InvalidLoops`, there is no `all`/index-into-`all` indirection, since a teleport is a single edge, not a cycle of edges, so there is nothing to resolve an index against. Merge (see `merge_issue` in `repair.md`'s "Pipeline" section) is a plain dedup-union of `EdgeId`s across the contributing checks.
+- **`TeleportProximityPairs { pairs }`**: produced by any check that flags a pair of teleport edges as topologically too close to each other (paired with `TELEPORT_GROUP_PROXIMITY`) — currently only `TeleportGroupProximityCheck`, see GitHub issue #75. Unlike `InvalidTeleports`, neither edge in a `pairs` entry is individually invalid — the problem is the relationship between the two, so this variant carries pair membership instead of a flat edge-id set. **Mandatory** for this kind, see `TeleportGroupProximityStrategy` in `repair.md`, whose `problematic` priority needs pair membership to score which teleport to remove. `pairs` holds every problematic pair found, each as the two flagged `EdgeId`s — order carries no meaning, `(a, b)` and `(b, a)` are the same pair. Merge (see `merge_issue` in `repair.md`'s "Pipeline" section) dedups by unordered pair identity, so a pair found from both directions (once while scanning from each side) or independently by two check instances collapses to one entry.
 - **`data` is not exposed over WASM**: the WASM layer serializes `IssueKind`, `source_checks`, and `details` (see `IssueDto` in `quality-feature.md`) but never `Issue.data` itself — that field stays internal, Check-to-Strategy plumbing only.
 - **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` and `details` (on `Issue`, see above) are unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 
@@ -516,6 +523,38 @@ If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPOR
 
 The wire-level (WASM/web) param id for `edge` is `edge_hub`, not `edge` — despite matching `TeleportWaypointDistanceCheck`'s Rust field name, it's a deliberately distinct param id so the two checks don't share i18n text (`edge`'s label/description talk about distance-to-waypoint, which makes no sense for a connection-count check — see GitHub issue #74's follow-up fix).
 
+### TeleportGroupProximityCheck
+
+```rust
+pub const TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
+
+pub enum TeleportProximityEdge { Entry, Exit, EntryOrExit }
+
+pub struct TeleportGroupProximityCheck {
+    pub instance_id: String,
+    /// `f64`, not an integer type — a fractional value (e.g. `1.5`) cleanly separates an integer
+    /// tile-hop count (`1` fails, `2` passes) without off-by-one ambiguity. Compared as
+    /// `(tile_hop_count as f64) < distance`.
+    pub distance: f64,
+    pub own_edge: TeleportProximityEdge,
+    pub other_edge: TeleportProximityEdge,
+}
+```
+
+Flags a *pair* of teleport edges placed topologically too close to each other — see GitHub issue #75. Every other teleport check (issue #74) evaluates one teleport edge in isolation; this one instead catches problems that only emerge from the relationship between two teleports, which no single-edge check can detect. Produces `TELEPORT_GROUP_PROXIMITY`, a distinct `IssueKind` from `INVALID_TELEPORT` — neither edge in a flagged pair is individually invalid, so reusing `INVALID_TELEPORT`/`IssueData::InvalidTeleports` (a flat set of "remove this edge" ids) would lose the pair membership `TeleportGroupProximityStrategy`'s `problematic` priority needs.
+
+Distance is topological (tile-hops via the shared nav-graph distance map, same `compute_distance_map` mechanism as `TeleportWaypointDistanceCheck`), `min(forward, reverse)` between the two configured endpoints — the graph stays directed-only (each direction computed via its own Dijkstra pass), but a pair close in *either* direction is equally a proximity problem, so neither direction is preferred (same "either-direction" rationale as `LoopDistanceFromStartCheck`/`TeleportWaypointDistanceCheck`'s own reductions).
+
+`own_edge`/`other_edge` are two independent selectors — the two ends of the *pair* being compared are independently configurable (e.g. "exit of the scanned teleport vs. entry of the other teleport"). `EntryOrExit` considers both ends of that side of the pair and takes the closest combination — same "min across every relevant combination" reduction `TeleportWaypointDistanceCheck`'s own `EntryOrExit` uses; e.g. `own_edge = EntryOrExit`, `other_edge = Entry` checks both (own entry, other entry) and (own exit, other entry) and keeps the smaller distance. When *both* sides are `EntryOrExit`, all four combinations are checked — (own entry, other entry), (own entry, other exit), (own exit, other entry), (own exit, other exit) — and the overall minimum across all four wins; this is the same rule applied twice, not a special case.
+
+For each teleport edge, scans every other teleport edge for the first one whose `other_edge` endpoint(s) are closer than `distance` to the scanned teleport's `own_edge` endpoint(s) (closest combination, per the `EntryOrExit` rule above) — as soon as one problematic pair is found for a teleport, it's recorded and the scan moves to the next teleport (no need to enumerate every pair a teleport participates in, per the issue's own spec). Each direction of a two-way teleport is its own independent element of this scan, same as every other per-teleport check from issue #74 — so a pair `(a, b)` found while scanning from `a`'s side and the symmetric `(b, a)` found while scanning from `b`'s side are both recorded (not deduplicated within one check call; `merge_issue`'s unordered-pair dedup, see `repair.md`'s "Pipeline" section, only applies across *merged* issues from different check instances).
+
+Default `distance` of `0` never fires on its own, same as every other teleport distance check. If no pair is found, the check is silent. Otherwise fires `Issue::with_data_from_check(TELEPORT_GROUP_PROXIMITY, IssueData::TeleportProximityPairs { pairs }, "teleport_group_proximity")` with `.with_detail("teleport_group_proximity", "distance", self.distance.to_string())` chained on.
+
+Multiple instances may be active at once (`allow_multiple_instances: true`) — distinct `own_edge`/`other_edge`/`distance` combinations are a legitimate simultaneous configuration, same rationale as `TeleportWaypointDistanceCheck`.
+
+`TeleportGroupProximityStrategy` (see `repair.md`) is the registered `RepairStrategy` for `TELEPORT_GROUP_PROXIMITY`.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -709,6 +748,7 @@ rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turne
 | `teleport_min_geometric_length` | `invalid_teleport` | `min_length: Float(default=0.0, min=0.0, max=100_000.0)` | no |
 | `teleport_max_geometric_length` | `invalid_teleport` | `max_length: Float(default=1_000.0, min=0.0, max=1_000_000.0)` | no |
 | `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` | no |
+| `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

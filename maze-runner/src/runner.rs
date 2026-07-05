@@ -22,6 +22,8 @@ use maze_core::{
         TeleportMinGeometricLengthCheck, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT,
         TeleportMaxGeometricLengthCheck, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT,
         TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
+        TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
+        TELEPORT_GROUP_PROXIMITY,
     },
     repair::{
         QcRule, RepairEngine, RepairRuleConfig, RepairStage, RepairStrategy,
@@ -29,7 +31,7 @@ use maze_core::{
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
         ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
-        RemoveTeleportStrategy,
+        RemoveTeleportStrategy, TeleportGroupProximityStrategy,
     },
     RegionClass, GenerationTiming,
     quality_control::Issue,
@@ -70,6 +72,7 @@ fn check_kind_for_type(type_id: &str) -> IssueKind {
         "teleport_min_geometric_length" => INVALID_TELEPORT,
         "teleport_max_geometric_length" => INVALID_TELEPORT,
         "teleport_super_hub_avoidance" => INVALID_TELEPORT,
+        "teleport_group_proximity" => TELEPORT_GROUP_PROXIMITY,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -105,6 +108,14 @@ fn parse_teleport_hub_edge_selector(param: Option<&String>) -> TeleportHubEdgeSe
         Some("entry") => TeleportHubEdgeSelector::Entry,
         Some("exit") => TeleportHubEdgeSelector::Exit,
         _ => TeleportHubEdgeSelector::EntryOrExit,
+    }
+}
+
+fn parse_teleport_proximity_edge(param: Option<&String>) -> TeleportProximityEdge {
+    match param.map(String::as_str) {
+        Some("entry") => TeleportProximityEdge::Entry,
+        Some("exit") => TeleportProximityEdge::Exit,
+        _ => TeleportProximityEdge::EntryOrExit,
     }
 }
 
@@ -245,6 +256,16 @@ fn build_check<T: Tessellation>(
             let edge = parse_teleport_hub_edge_selector(instance.params.get("edge_hub"));
             Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge })
         }
+        "teleport_group_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT);
+            let own_edge = parse_teleport_proximity_edge(instance.params.get("own_edge"));
+            let other_edge = parse_teleport_proximity_edge(instance.params.get("other_edge"));
+            Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge })
+        }
         other => return Err(format!("unknown check: {other}")),
     };
     Ok(check)
@@ -262,6 +283,7 @@ fn build_strategy<T: Tessellation>(id: &str) -> Result<Box<dyn RepairStrategy<T>
         "missing_regions"      => Box::new(MissingRegionsStrategy),
         "reduce_scc_count"     => Box::new(ReduceSccCountStrategy),
         "remove_teleport"      => Box::new(RemoveTeleportStrategy),
+        "teleport_group_proximity" => Box::new(TeleportGroupProximityStrategy),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }
@@ -820,6 +842,7 @@ mod build_strategy_tests {
         "random_endpoints", "farthest_endpoints", "scored_endpoints",
         "invalid_loop_random", "invalid_loop_scored", "missing_loops_random",
         "expand_region_passage", "missing_regions", "reduce_scc_count",
+        "remove_teleport", "teleport_group_proximity",
     ];
 
     #[test]
@@ -856,7 +879,7 @@ mod build_check_tests {
         "max_loop_density", "scc_count", "min_region_size", "min_region_ratio", "min_region_count",
         "teleport_duplicates_connection", "teleport_waypoint_distance",
         "teleport_min_geometric_length", "teleport_max_geometric_length",
-        "teleport_super_hub_avoidance",
+        "teleport_super_hub_avoidance", "teleport_group_proximity",
     ];
 
     #[test]
@@ -875,5 +898,42 @@ mod build_check_tests {
     fn unknown_id_is_rejected() {
         let instance = CheckInstanceConfig { local_id: "0".to_string(), type_id: "not_a_real_check".to_string(), params: HashMap::new() };
         assert!(build_check::<SquareTessellation>(&instance, "instance".to_string()).is_err());
+    }
+
+    #[test]
+    fn teleport_group_proximity_parses_a_fractional_distance_string() {
+        // Regression guard: "distance" used to be parsed as i64, silently dropping any
+        // fractional config value (e.g. "1.1") to the 0.0 default via .ok() -- teleports meant
+        // to be flagged at distance 1 were never caught because the effective threshold fell
+        // back to 0. Now parsed as f64: build a check with distance="1.1" from a raw config
+        // string (as the web layer would send it) and confirm it actually flags a gap of 1.
+        use maze_core::graph::EdgeKind;
+        use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+        use maze_core::{Graph, IdGenerator, Maze};
+        use rand::SeedableRng;
+
+        let mut params = HashMap::new();
+        params.insert("distance".to_string(), "1.1".to_string());
+        let instance = CheckInstanceConfig { local_id: "0".to_string(), type_id: "teleport_group_proximity".to_string(), params };
+        let check = build_check::<SquareTessellation>(&instance, "instance".to_string())
+            .expect("build_check must accept a fractional distance string");
+
+        // Two teleports whose entries sit exactly 1 tile-hop apart -- must be flagged against
+        // threshold 1.1 (1 < 1.1), but would NOT be flagged against the old silently-truncated
+        // fallback of 0.0.
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        g.build_initial_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
+        g.build_initial_edge(p(0), p(2), EdgeKind::Teleport);
+        g.build_initial_edge(p(1), p(3), EdgeKind::Teleport);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let mut issues = Vec::new();
+        let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert_eq!(issues.len(), 1, "distance=1.1 must flag a pair of teleports 1 tile-hop apart, proving the fractional value wasn't truncated to 0 or 1");
     }
 }

@@ -464,6 +464,26 @@ Handles `INVALID_TELEPORT` — see GitHub issue #74. The single, fixed fix strat
 - **Preset protection is `Basic`-only**: `try_remove_edge_by_id` checks `preset_state.preset_edges` only when the edge being removed is itself `EdgeKind::Basic`. A `Teleport` edge can never be a preset connection (only Passage/OneWay presets exist, and both always build `EdgeKind::Basic` edges — see `preset_state.rs`/`Specs/post-edit.md`), so a `Teleport` duplicating a preset-protected `Basic` connection is still removable: the protection belongs to the `Basic` edge, not to the `(from, to)` pair as a whole.
 - Returns `Fixed { score: None }` whether or not any edges were actually removed (a preset-protected `Basic` edge is never a candidate here in the first place, since `invalid` only ever contains `Teleport` ids).
 
+### TeleportGroupProximityStrategy
+
+Handles `TELEPORT_GROUP_PROXIMITY` — see GitHub issue #75. Distinct from `RemoveTeleportStrategy`: that one removes every flagged teleport edge outright (each edge individually invalid); this one instead resolves a *pair* by removing exactly one of the two teleports it references, since neither edge in a flagged pair is individually invalid on its own.
+
+**Parameters:**
+
+| id | type | default | options | description |
+|----|------|---------|---------|-------------|
+| `priority` | Enum | `problematic` | `random`, `problematic` | Which teleport of a problematic pair to remove |
+
+- `random` — removes a random teleport from the pair.
+- `problematic` — removes whichever teleport in the pair belongs to more *other* problematic pairs (computed once up front over the full pair set the check found, not a running count — so the choice reflects the check's original findings, not whichever edge happens to be processed first).
+
+**`issue.data` is mandatory for this kind**: `IssueData::TeleportProximityPairs { pairs }` is the producing check's result (which teleport pairs are too close) — there is no other channel to learn them.
+
+- If `issue.data` is `Some(IssueData::TeleportProximityPairs { pairs })`: iterates `pairs` in order. Removing a teleport immediately drops every problematic pair that references it — if either side of the current pair was already removed while resolving an earlier pair in the same `apply()` call, that pair is skipped rather than acted on a second time (removal is idempotent by construction, but skipping avoids a pointless `try_remove_edge_by_id` call and keeps `problematic`'s membership counts meaningful as a static snapshot). An empty `pairs` is valid — nothing to remove, returns `Fixed` immediately.
+- If `data` is missing or the wrong variant: malformed call — returns `Failed`, not "already fixed", same contract as `RemoveTeleportStrategy`.
+- Uses `try_remove_edge_by_id` (`generation::mod`) for the actual removal — same preset-protection semantics as `RemoveTeleportStrategy` (`Basic`-only; a `Teleport` edge can never itself be preset-protected).
+- Returns `Fixed { score: None }` regardless of how many pairs actually needed a removal.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

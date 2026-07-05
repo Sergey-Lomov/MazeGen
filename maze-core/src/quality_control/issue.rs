@@ -14,6 +14,7 @@ pub enum IssueKind {
     RegionNeedsExpansion,
     MissingRegions,
     InvalidTeleport,
+    TeleportGroupProximity,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -72,6 +73,12 @@ pub const MISSING_REGIONS: IssueKind = IssueKind::MissingRegions;
 /// other reasons and reuse this same kind. Carries `IssueData::InvalidTeleports` — see that
 /// variant's doc comment.
 pub const INVALID_TELEPORT: IssueKind = IssueKind::InvalidTeleport;
+/// A pair of teleport edges sit topologically closer than a check's configured minimum distance
+/// (currently only `TeleportGroupProximityCheck`) — see GitHub issue #75. Distinct from
+/// `INVALID_TELEPORT`: that kind flags a single teleport edge invalid on its own; this one flags
+/// a *relationship* between two teleport edges, neither of which is individually invalid. Carries
+/// `IssueData::TeleportProximityPairs` — see that variant's doc comment.
+pub const TELEPORT_GROUP_PROXIMITY: IssueKind = IssueKind::TeleportGroupProximity;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -87,6 +94,7 @@ impl IssueKind {
             IssueKind::RegionNeedsExpansion => "region_needs_expansion",
             IssueKind::MissingRegions => "missing_regions",
             IssueKind::InvalidTeleport => "invalid_teleport",
+            IssueKind::TeleportGroupProximity => "teleport_group_proximity",
         }
     }
 
@@ -111,6 +119,7 @@ impl IssueKind {
             "region_needs_expansion" => Some(IssueKind::RegionNeedsExpansion),
             "missing_regions" => Some(IssueKind::MissingRegions),
             "invalid_teleport" => Some(IssueKind::InvalidTeleport),
+            "teleport_group_proximity" => Some(IssueKind::TeleportGroupProximity),
             _ => None,
         }
     }
@@ -320,6 +329,7 @@ mod tests {
             IssueKind::RegionNeedsExpansion,
             IssueKind::MissingRegions,
             IssueKind::InvalidTeleport,
+            IssueKind::TeleportGroupProximity,
         ];
         for kind in kinds {
             assert_eq!(IssueKind::from_str(kind.as_str()), Some(kind));

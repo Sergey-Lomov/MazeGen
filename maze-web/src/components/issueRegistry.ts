@@ -20,6 +20,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   region_needs_expansion: () => ({ label: m["issue.region_needs_expansion.label"](), description: m["issue.region_needs_expansion.description"](), severity: "warning" }),
   missing_regions: () => ({ label: m["issue.missing_regions.label"](), description: m["issue.missing_regions.description"](), severity: "warning" }),
   invalid_teleport: () => ({ label: m["issue.invalid_teleport.label"](), description: m["issue.invalid_teleport.description"](), severity: "warning" }),
+  teleport_group_proximity: () => ({ label: m["issue.teleport_group_proximity.label"](), description: m["issue.teleport_group_proximity.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -86,6 +87,7 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   teleport_min_geometric_length: (d) => d.min_length !== undefined ? m["issue.invalid_teleport.teleport_min_geometric_length_label"]({ min_length: d.min_length }) : undefined,
   teleport_max_geometric_length: (d) => d.max_length !== undefined ? m["issue.invalid_teleport.teleport_max_geometric_length_label"]({ max_length: d.max_length }) : undefined,
   teleport_super_hub_avoidance: (d) => d.max_connections !== undefined ? m["issue.invalid_teleport.teleport_super_hub_avoidance_label"]({ max_connections: d.max_connections }) : undefined,
+  teleport_group_proximity: (d) => d.distance !== undefined ? m["issue.teleport_group_proximity.teleport_group_proximity_label"]({ distance: d.distance }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

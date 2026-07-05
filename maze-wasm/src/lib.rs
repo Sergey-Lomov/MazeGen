@@ -12,9 +12,9 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, TELEPORT_GROUP_PROXIMITY, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT},
     RegionClass,
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy},
 };
 use generation_config::{GenerateConfig, TessellationConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
@@ -409,6 +409,34 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             allow_multiple_instances: false,
         },
+        CheckDescriptor {
+            id: "teleport_group_proximity",
+            label: "Teleport group proximity",
+            description: "Fires if a pair of teleport edges sit topologically closer to each other than the required minimum distance.",
+            issue_kinds: vec![kind_str(TELEPORT_GROUP_PROXIMITY)],
+            params: vec![
+                ParamDescriptor {
+                    id: "distance",
+                    label: "Min distance",
+                    kind: ParamKindDto::Float { default: TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                },
+                ParamDescriptor {
+                    id: "own_edge",
+                    label: "This teleport's end",
+                    kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
+                },
+                ParamDescriptor {
+                    id: "other_edge",
+                    label: "Other teleport's end",
+                    kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
+                },
+            ],
+            // Multiple instances with different own_edge/other_edge/distance combinations are a
+            // legitimate simultaneous configuration (e.g. "entries close to each other" AND
+            // separately "exits close to each other") -- same rationale as
+            // teleport_waypoint_distance's allow_multiple_instances.
+            allow_multiple_instances: true,
+        },
     ]
 }
 
@@ -483,6 +511,13 @@ pub fn available_strategies() -> JsValue {
             handles: kind_str(INVALID_TELEPORT),
             params: strategy_params_dto(<RemoveTeleportStrategy as RepairStrategy<SquareTessellation>>::params(&RemoveTeleportStrategy)),
             experimental: <RemoveTeleportStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&RemoveTeleportStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "teleport_group_proximity",
+            handles: kind_str(TELEPORT_GROUP_PROXIMITY),
+            params: strategy_params_dto(<TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation>>::params(&TeleportGroupProximityStrategy)),
+            experimental: <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&TeleportGroupProximityStrategy),
             nested_slots: vec![],
         },
     ];

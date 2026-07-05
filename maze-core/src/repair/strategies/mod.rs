@@ -9,6 +9,7 @@ pub mod expand_region_passage;
 pub mod missing_regions;
 pub mod reduce_scc_count;
 pub mod remove_teleport;
+pub mod teleport_group_proximity;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -20,3 +21,4 @@ pub use expand_region_passage::ExpandRegionPassageStrategy;
 pub use missing_regions::MissingRegionsStrategy;
 pub use reduce_scc_count::ReduceSccCountStrategy;
 pub use remove_teleport::RemoveTeleportStrategy;
+pub use teleport_group_proximity::{TeleportGroupProximityStrategy, PARAM_PRIORITY, PRIORITY_RANDOM, PRIORITY_PROBLEMATIC};

@@ -79,6 +79,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.teleport_super_hub_avoidance.label"] as MessageFn,
     description: m["check.teleport_super_hub_avoidance.description"] as MessageFn,
   },
+  teleport_group_proximity: {
+    label: m["check.teleport_group_proximity.label"] as MessageFn,
+    description: m["check.teleport_group_proximity.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -113,6 +117,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   invalid_teleport: {
     label: m["issue.invalid_teleport.label"] as MessageFn,
     description: m["issue.invalid_teleport.description"] as MessageFn,
+  },
+  teleport_group_proximity: {
+    label: m["issue.teleport_group_proximity.label"] as MessageFn,
+    description: m["issue.teleport_group_proximity.description"] as MessageFn,
   },
 };
 
@@ -162,6 +170,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   remove_teleport: {
     label: m["strategy.remove_teleport.label"] as MessageFn,
     description: m["strategy.remove_teleport.description"] as MessageFn,
+  },
+  teleport_group_proximity: {
+    label: m["strategy.teleport_group_proximity.label"] as MessageFn,
+    description: m["strategy.teleport_group_proximity.description"] as MessageFn,
   },
 };
 
@@ -298,6 +310,18 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.edge_hub.label"] as MessageFn,
     description: m["param.edge_hub.description"] as MessageFn,
   },
+  own_edge: {
+    label: m["param.own_edge.label"] as MessageFn,
+    description: m["param.own_edge.description"] as MessageFn,
+  },
+  other_edge: {
+    label: m["param.other_edge.label"] as MessageFn,
+    description: m["param.other_edge.description"] as MessageFn,
+  },
+  priority: {
+    label: m["param.priority.label"] as MessageFn,
+    description: m["param.priority.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -331,6 +355,14 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "edge_hub.entry": m["param.edge_hub.option.entry"] as MessageFn,
   "edge_hub.exit": m["param.edge_hub.option.exit"] as MessageFn,
   "edge_hub.entry_or_exit": m["param.edge_hub.option.entry_or_exit"] as MessageFn,
+  "own_edge.entry": m["param.own_edge.option.entry"] as MessageFn,
+  "own_edge.exit": m["param.own_edge.option.exit"] as MessageFn,
+  "own_edge.entry_or_exit": m["param.own_edge.option.entry_or_exit"] as MessageFn,
+  "other_edge.entry": m["param.other_edge.option.entry"] as MessageFn,
+  "other_edge.exit": m["param.other_edge.option.exit"] as MessageFn,
+  "other_edge.entry_or_exit": m["param.other_edge.option.entry_or_exit"] as MessageFn,
+  "priority.random": m["param.priority.option.random"] as MessageFn,
+  "priority.problematic": m["param.priority.option.problematic"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -356,6 +388,14 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "edge_hub.entry": m["param.edge_hub.option.entry.explanation"] as MessageFn,
   "edge_hub.exit": m["param.edge_hub.option.exit.explanation"] as MessageFn,
   "edge_hub.entry_or_exit": m["param.edge_hub.option.entry_or_exit.explanation"] as MessageFn,
+  "own_edge.entry": m["param.own_edge.option.entry.explanation"] as MessageFn,
+  "own_edge.exit": m["param.own_edge.option.exit.explanation"] as MessageFn,
+  "own_edge.entry_or_exit": m["param.own_edge.option.entry_or_exit.explanation"] as MessageFn,
+  "other_edge.entry": m["param.other_edge.option.entry.explanation"] as MessageFn,
+  "other_edge.exit": m["param.other_edge.option.exit.explanation"] as MessageFn,
+  "other_edge.entry_or_exit": m["param.other_edge.option.entry_or_exit.explanation"] as MessageFn,
+  "priority.random": m["param.priority.option.random.explanation"] as MessageFn,
+  "priority.problematic": m["param.priority.option.problematic.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

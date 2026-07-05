@@ -110,6 +110,17 @@ pub enum IssueData {
     InvalidTeleports {
         invalid: Vec<EdgeId>,
     },
+    /// Produced by any check that flags a pair of teleport edges as topologically too close to
+    /// each other (paired with `TELEPORT_GROUP_PROXIMITY`) — currently `TeleportGroupProximityCheck`
+    /// (see GitHub issue #75). Unlike `InvalidTeleports`, neither edge in a pair is individually
+    /// invalid — the problem is the *relationship* between the two, so the data must carry pair
+    /// membership, not a flat set of edge ids. `pairs` holds every problematic pair found, each as
+    /// the two flagged `EdgeId`s (order carries no meaning — `(a, b)` and `(b, a)` are the same
+    /// pair). **Mandatory** for this kind, see `TeleportGroupProximityStrategy`, whose `problematic`
+    /// priority needs pair membership to score which teleport to remove.
+    TeleportProximityPairs {
+        pairs: Vec<(EdgeId, EdgeId)>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

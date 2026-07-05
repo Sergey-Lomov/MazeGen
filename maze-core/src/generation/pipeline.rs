@@ -268,6 +268,21 @@ fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
             let seen: HashSet<EdgeId> = invalid.iter().copied().collect();
             invalid.extend(incoming_invalid.into_iter().filter(|id| !seen.contains(id)));
         }
+        (Some(IssueData::TeleportProximityPairs { pairs }),
+         Some(IssueData::TeleportProximityPairs { pairs: incoming_pairs })) => {
+            // A pair's order carries no meaning (see IssueData::TeleportProximityPairs's doc
+            // comment) — dedup by unordered identity so (a, b) and (b, a) from two different
+            // checks collapse to one entry instead of being kept as duplicates.
+            let mut seen: HashSet<(EdgeId, EdgeId)> = pairs.iter()
+                .map(|&(a, b)| if a <= b { (a, b) } else { (b, a) })
+                .collect();
+            for (a, b) in incoming_pairs {
+                let key = if a <= b { (a, b) } else { (b, a) };
+                if seen.insert(key) {
+                    pairs.push((a, b));
+                }
+            }
+        }
         (None, None) => {}
         (existing_data, incoming_data) => {
             debug_assert!(false,
@@ -662,5 +677,47 @@ mod merge_tests {
 
         let Some(IssueData::InvalidTeleports { invalid }) = &a.data else { panic!() };
         assert_eq!(invalid, &vec![0], "the same edge id flagged by both checks must not be duplicated");
+    }
+
+    fn teleport_proximity_pairs_issue(source_check: &str, pairs: Vec<(crate::ids::EdgeId, crate::ids::EdgeId)>) -> Issue {
+        Issue::with_data_from_check(
+            crate::quality_control::TELEPORT_GROUP_PROXIMITY,
+            IssueData::TeleportProximityPairs { pairs },
+            source_check,
+        )
+    }
+
+    #[test]
+    fn merge_teleport_proximity_pairs_unions_disjoint_pairs() {
+        let mut a = teleport_proximity_pairs_issue("rule_1:a", vec![(0, 1)]);
+        let b = teleport_proximity_pairs_issue("rule_1:b", vec![(2, 3)]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::TeleportProximityPairs { pairs }) = &a.data else { panic!() };
+        assert_eq!(pairs.len(), 2);
+        assert!(pairs.contains(&(0, 1)));
+        assert!(pairs.contains(&(2, 3)));
+    }
+
+    #[test]
+    fn merge_teleport_proximity_pairs_deduplicates_identical_pair() {
+        let mut a = teleport_proximity_pairs_issue("rule_1:a", vec![(0, 1)]);
+        let b = teleport_proximity_pairs_issue("rule_1:b", vec![(0, 1)]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::TeleportProximityPairs { pairs }) = &a.data else { panic!() };
+        assert_eq!(pairs, &vec![(0, 1)], "the same pair flagged by both checks must not be duplicated");
+    }
+
+    #[test]
+    fn merge_teleport_proximity_pairs_deduplicates_reversed_pair() {
+        // (a, b) and (b, a) are the same pair (order carries no meaning) -- must collapse to one
+        // entry, not be kept as two "different" pairs.
+        let mut a = teleport_proximity_pairs_issue("rule_1:a", vec![(0, 1)]);
+        let b = teleport_proximity_pairs_issue("rule_1:b", vec![(1, 0)]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::TeleportProximityPairs { pairs }) = &a.data else { panic!() };
+        assert_eq!(pairs.len(), 1, "(0,1) and (1,0) must collapse to a single unordered pair: {pairs:?}");
     }
 }
