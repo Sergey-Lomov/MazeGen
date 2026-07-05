@@ -15,12 +15,86 @@ export interface PresetConnectionEntry {
   source: "user" | "default";
 }
 
-export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source";
+export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way";
 
 export interface FieldEdge {
   key: string;
   from: [number, number];
   to: [number, number];
+}
+
+export type PresetTeleportDirection = "forward" | "backward" | "two_way";
+
+export interface PresetTeleportEntry {
+  id: number;
+  from: [number, number];
+  to: [number, number];
+  direction: PresetTeleportDirection;
+}
+
+export function presetTeleportEntryToState(direction: PresetTeleportDirection): PresetConnectionState {
+  if (direction === "forward") return "teleport_forward";
+  if (direction === "backward") return "teleport_backward";
+  return "teleport_two_way";
+}
+
+/** Endpoint of a preset teleport, identified for hit-testing/drag by the owning entry's id and which end it is. */
+export interface PresetTeleportEndpointHit {
+  id: number;
+  end: "from" | "to";
+}
+
+const TELEPORT_ENDPOINT_HIT_RADIUS = TILE_SIZE * 0.3;
+
+export function pickTeleportEndpointAt(
+  viewportX: number,
+  viewportY: number,
+  cfg: TessellationConfig,
+  teleports: PresetTeleportEntry[],
+): PresetTeleportEndpointHit | null {
+  const proj = makeProjection(cfg);
+  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  let best: PresetTeleportEndpointHit | null = null;
+  let bestDistSq = Infinity;
+  for (const t of teleports) {
+    for (const end of ["from", "to"] as const) {
+      const [cx, cy] = end === "from" ? t.from : t.to;
+      const { x: px, y: py } = proj.gridToScreen(cx, cy);
+      const dx = px - viewportX;
+      const dy = py - viewportY;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < thresholdSq && distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = { id: t.id, end };
+      }
+    }
+  }
+  return best;
+}
+
+export function cycleTeleportDirection(
+  teleports: PresetTeleportEntry[],
+  id: number,
+): PresetTeleportEntry[] {
+  return teleports.map(t => {
+    if (t.id !== id || t.direction === "two_way") return t;
+    return { ...t, direction: t.direction === "forward" ? "backward" : "forward" };
+  });
+}
+
+export function removeTeleport(teleports: PresetTeleportEntry[], id: number): PresetTeleportEntry[] {
+  return teleports.filter(t => t.id !== id);
+}
+
+export function moveTeleportEndpoint(
+  teleports: PresetTeleportEntry[],
+  hit: PresetTeleportEndpointHit,
+  cell: [number, number],
+): PresetTeleportEntry[] {
+  return teleports.map(t => {
+    if (t.id !== hit.id) return t;
+    return { ...t, [hit.end]: cell };
+  });
 }
 
 export function canonicalize(
@@ -64,6 +138,24 @@ export function computeInvalidKeysFromCells(
     const aIn = fieldSet.has(encodePoint(entry.from[0], entry.from[1]));
     const bIn = fieldSet.has(encodePoint(entry.to[0], entry.to[1]));
     if (!aIn || !bIn) invalid.add(key);
+  }
+  return invalid;
+}
+
+export function computeInvalidTeleportIds(
+  teleports: PresetTeleportEntry[],
+  cfg: TessellationConfig,
+  customPoints?: Set<number>,
+): Set<number> {
+  const cells = resolveCells(cfg, customPoints);
+  const fieldSet = new Set<number>();
+  for (const [x, y] of cells) fieldSet.add(encodePoint(x, y));
+
+  const invalid = new Set<number>();
+  for (const t of teleports) {
+    const aIn = fieldSet.has(encodePoint(t.from[0], t.from[1]));
+    const bIn = fieldSet.has(encodePoint(t.to[0], t.to[1]));
+    if (!aIn || !bIn) invalid.add(t.id);
   }
   return invalid;
 }

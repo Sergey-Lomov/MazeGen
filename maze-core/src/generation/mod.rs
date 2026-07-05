@@ -89,6 +89,14 @@ pub enum PresetConnectionState {
     Passage,
     OneWayForward,
     OneWayBackward,
+    Teleport(TeleportDirection),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TeleportDirection {
+    Forward,
+    Backward,
+    TwoWay,
 }
 
 #[derive(Debug, Clone)]

@@ -93,6 +93,11 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       presetStart: file.presets.start,
       presetFinish: file.presets.finish,
       presetGenSource: file.presets.genSource,
+      presetTeleports: file.presets.teleports,
+      presetTeleportPendingFrom: null,
+      _nextPresetTeleportId: file.presets.teleports.length === 0
+        ? 1
+        : Math.max(...file.presets.teleports.map((t) => t.id)) + 1,
       // reset maze state — will be populated by generate below
       ...buildResetMazeState(),
       generationStatus: "idle" as const,

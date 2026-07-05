@@ -1,6 +1,6 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
-import type { PresetConnectionEntry } from "../../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/presetConnectionsUtils";
 import type { PostEditEdge, PostEditMeta, FeatureId } from "../mazeStore";
 
 export interface ProjectFilePostEdit {
@@ -101,6 +101,7 @@ export interface ProjectFile {
     start: [number, number] | null;
     finish: [number, number] | null;
     genSource: [number, number] | null;
+    teleports: PresetTeleportEntry[];
   };
   postEdit: ProjectFilePostEdit | null;
   dirtyFlags: ProjectFileDirtyFlags;

@@ -1,17 +1,25 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeLockKind } from "../wasm/types";
 import type { Container } from "pixi.js";
-import { pickEdgeAtPosition } from "./presetConnectionsUtils";
-import { makeProjection } from "./tessellationProjection";
+import { pickEdgeAtPosition, pickTeleportEndpointAt, type PresetTeleportEndpointHit } from "./presetConnectionsUtils";
+import { makeProjection, encodePoint } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { BaseController } from "./BaseController";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
+const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
 
 export class PresetConnectionsController extends BaseController {
   private renderer: PresetConnectionsRenderer;
   private dragActive = false;
   private dragVisited = new Set<string>();
+  private draggingTeleportEndpoint: PresetTeleportEndpointHit | null = null;
+  private teleportDragMoved = false;
+  private lastViewportPos = { x: 0, y: 0 };
+
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (e.code === "Escape") this.cancelPendingTeleport();
+  };
 
   constructor(
     getViewport: () => Container,
@@ -20,6 +28,7 @@ export class PresetConnectionsController extends BaseController {
   ) {
     super(getViewport, onViewportPan);
     this.renderer = renderer;
+    window.addEventListener("keydown", this.onKeyDown);
   }
 
   onPointerMove(canvasX: number, canvasY: number): void {
@@ -29,6 +38,38 @@ export class PresetConnectionsController extends BaseController {
     if (state.openCard !== "preset_connections") return;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
+    this.lastViewportPos = { x: vpX, y: vpY };
+
+    if (this.draggingTeleportEndpoint) {
+      const proj = makeProjection(state.tessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      const teleport = state.presetTeleports.find(t => t.id === this.draggingTeleportEndpoint!.id);
+      if (!teleport) return;
+      const current = this.draggingTeleportEndpoint.end === "from" ? teleport.from : teleport.to;
+      const other = this.draggingTeleportEndpoint.end === "from" ? teleport.to : teleport.from;
+      const movedToOther = other[0] === cell.x && other[1] === cell.y;
+      if (current[0] !== cell.x || current[1] !== cell.y) {
+        // Cursor left the original cell — this is a drag gesture even if landing on the other
+        // endpoint's cell is rejected below, so pointerup must not reinterpret it as a click.
+        this.teleportDragMoved = true;
+        if (!movedToOther) {
+          useMazeStore.getState().movePresetTeleportEndpoint(this.draggingTeleportEndpoint.id, this.draggingTeleportEndpoint.end, [cell.x, cell.y]);
+        }
+      }
+      return;
+    }
+
+    if (TELEPORT_TOOLS.has(state.presetConnectionsTool)) {
+      if (state.presetTeleportPendingFrom) {
+        this.renderer.updateTeleportPreview(state.presetTeleportPendingFrom, vpX, vpY);
+      } else {
+        this.renderer.updateTeleportPreview(null, 0, 0);
+      }
+      return;
+    }
+    this.renderer.updateTeleportPreview(null, 0, 0);
+
     const edge = pickEdgeAtPosition(vpX, vpY, state.tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     this.renderer.updateHover(edge);
 
@@ -72,6 +113,30 @@ export class PresetConnectionsController extends BaseController {
       return;
     }
 
+    if (TELEPORT_TOOLS.has(tool)) {
+      const store = useMazeStore.getState();
+      const hit = pickTeleportEndpointAt(vpX, vpY, state.tessellationConfig, store.presetTeleports);
+
+      if (button === 2) {
+        if (hit) store.removePresetTeleport(hit.id);
+        else if (store.presetTeleportPendingFrom) this.cancelPendingTeleport();
+        return;
+      }
+      if (button !== 0) return;
+
+      if (hit) {
+        // Arm as a drag candidate — resolved on pointerup: if the cursor never moved to a
+        // different cell, treat it as a plain click (start/complete a new teleport) instead of
+        // a drag, so clicking an existing endpoint's cell can still begin/finish a new link there.
+        this.draggingTeleportEndpoint = hit;
+        this.teleportDragMoved = false;
+        return;
+      }
+
+      this.tryTeleportClick(vpX, vpY, tool, state);
+      return;
+    }
+
     if (tool === "lock_in" || tool === "lock_out" || tool === "full_lock") {
       const proj = makeProjection(state.tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
@@ -112,10 +177,59 @@ export class PresetConnectionsController extends BaseController {
     if (button === 0) {
       this.dragActive = false;
       this.dragVisited.clear();
+
+      if (this.draggingTeleportEndpoint) {
+        if (!this.teleportDragMoved) {
+          const state = useMazeStore.getState();
+          if (TELEPORT_TOOLS.has(state.presetConnectionsTool)) {
+            if (state.presetTeleportPendingFrom) {
+              // A placement is already in progress — clicking an existing endpoint's cell
+              // completes the new link there rather than cycling that endpoint's direction.
+              this.tryTeleportClick(this.lastViewportPos.x, this.lastViewportPos.y, state.presetConnectionsTool, state);
+            } else {
+              state.cyclePresetTeleportDirection(this.draggingTeleportEndpoint.id);
+            }
+          }
+        }
+        this.draggingTeleportEndpoint = null;
+        this.teleportDragMoved = false;
+      }
     }
+  }
+
+  /** Starts or completes a two-click teleport placement at the cell under (vpX, vpY). No-op if
+   * the cell is outside the field, or (on completion) equal to the pending origin cell. */
+  private tryTeleportClick(vpX: number, vpY: number, tool: string, state: ReturnType<typeof useMazeStore.getState>): void {
+    const proj = makeProjection(state.tessellationConfig);
+    const cell = proj.screenToGrid(vpX, vpY);
+    if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+
+    const coords: [number, number] = [cell.x, cell.y];
+    const store = useMazeStore.getState();
+    const pendingFrom = store.presetTeleportPendingFrom;
+    if (pendingFrom) {
+      if (pendingFrom[0] === coords[0] && pendingFrom[1] === coords[1]) return;
+      const direction = tool === "teleport_two_way" ? "two_way" : "forward";
+      store.addPresetTeleport(pendingFrom, coords, direction);
+      this.renderer.updateTeleportPreview(null, 0, 0);
+    } else {
+      store.setPresetTeleportPendingFrom(coords);
+    }
+  }
+
+  private cancelPendingTeleport(): void {
+    const state = useMazeStore.getState();
+    if (!state.presetTeleportPendingFrom) return;
+    state.setPresetTeleportPendingFrom(null);
+    this.renderer.updateTeleportPreview(null, 0, 0);
   }
 
   clearHover(): void {
     this.renderer.updateHover(null);
+    this.renderer.updateTeleportPreview(null, 0, 0);
+  }
+
+  destroy(): void {
+    window.removeEventListener("keydown", this.onKeyDown);
   }
 }

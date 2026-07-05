@@ -1,8 +1,8 @@
-import { Container } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { resolveCells, computeInvalidKeysFromCells } from "./presetConnectionsUtils";
-import type { FieldEdge } from "./presetConnectionsUtils";
-import { encodePoint } from "./tessellationProjection";
+import { resolveCells, computeInvalidKeysFromCells, computeInvalidTeleportIds } from "./presetConnectionsUtils";
+import type { FieldEdge, PresetTeleportEntry } from "./presetConnectionsUtils";
+import { encodePoint, makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
@@ -12,6 +12,8 @@ import { OriginRenderer } from "./renderers/OriginRenderer";
 import { GenSourceRenderer } from "./renderers/GenSourceRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
+import { TeleportRenderer } from "./renderers/TeleportRenderer";
+import type { TeleportEdge } from "./renderers/types";
 import {
   buildPresetWallGroups,
   buildPresetMarkers,
@@ -33,26 +35,32 @@ export class PresetConnectionsRenderer {
   private readonly invalidPassagesContainer: Container;
   private readonly undecidedWallsContainer: Container;
   private readonly presetWallsContainer: Container;
+  private readonly teleportContainer: Container;
   private readonly locksContainer: Container;
   private readonly markersContainer: Container;
   private readonly originContainer: Container;
   private readonly genSourceContainer: Container;
   private readonly isolatedHLContainer: Container;
   private readonly invalidHLContainer: Container;
+  private readonly invalidTeleportHLContainer: Container;
   private readonly hoverContainer: Container;
+  private readonly teleportPreviewContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
   private readonly invalidPassages: WallRenderer;
   private readonly undecidedWalls: WallRenderer;
   private readonly presetWalls: WallRenderer;
+  private readonly teleports: TeleportRenderer;
   private readonly locks: LockRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly origin: OriginRenderer;
   private readonly genSource: GenSourceRenderer;
   private readonly isolatedHL: CellFillRenderer;
   private readonly invalidHL: EdgeHighlightRenderer;
+  private readonly invalidTeleportHL: Graphics;
   private readonly hover: EdgeHighlightRenderer;
+  private readonly teleportPreview: Graphics;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private cfg: TessellationConfig | null = null;
@@ -69,39 +77,50 @@ export class PresetConnectionsRenderer {
     this.invalidPassagesContainer = new Container();
     this.undecidedWallsContainer = new Container();
     this.presetWallsContainer    = new Container();
+    this.teleportContainer       = new Container();
     this.locksContainer          = new Container();
     this.markersContainer        = new Container();
     this.originContainer         = new Container();
     this.genSourceContainer      = new Container();
     this.isolatedHLContainer     = new Container();
     this.invalidHLContainer      = new Container();
+    this.invalidTeleportHLContainer = new Container();
     this.hoverContainer          = new Container();
+    this.teleportPreviewContainer = new Container();
 
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
     this.root.addChild(this.invalidPassagesContainer);
     this.root.addChild(this.undecidedWallsContainer);
     this.root.addChild(this.presetWallsContainer);
+    this.root.addChild(this.teleportContainer);
     this.root.addChild(this.locksContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.originContainer);
     this.root.addChild(this.genSourceContainer);
     this.root.addChild(this.isolatedHLContainer);
     this.root.addChild(this.invalidHLContainer);
+    this.root.addChild(this.invalidTeleportHLContainer);
     this.root.addChild(this.hoverContainer);
+    this.root.addChild(this.teleportPreviewContainer);
 
     this.grid           = new GridRenderer(this.gridContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
     this.invalidPassages = new WallRenderer(this.invalidPassagesContainer);
     this.undecidedWalls = new WallRenderer(this.undecidedWallsContainer);
     this.presetWalls    = new WallRenderer(this.presetWallsContainer);
+    this.teleports      = new TeleportRenderer(this.teleportContainer);
     this.locks          = new LockRenderer(this.locksContainer);
     this.markers        = new WaypointsRenderer(this.markersContainer);
     this.origin         = new OriginRenderer(this.originContainer);
     this.genSource      = new GenSourceRenderer(this.genSourceContainer);
     this.isolatedHL     = new CellFillRenderer(this.isolatedHLContainer);
     this.invalidHL      = new EdgeHighlightRenderer(this.invalidHLContainer);
+    this.invalidTeleportHL = new Graphics();
+    this.invalidTeleportHLContainer.addChild(this.invalidTeleportHL);
     this.hover          = new EdgeHighlightRenderer(this.hoverContainer);
+    this.teleportPreview = new Graphics();
+    this.teleportPreviewContainer.addChild(this.teleportPreview);
 
     this.root.visible = false;
 
@@ -142,7 +161,8 @@ export class PresetConnectionsRenderer {
         state.presetFinish !== prev.presetFinish ||
         state.presetGenSource !== prev.presetGenSource ||
         state.lockedNodes !== prev.lockedNodes ||
-        state.autoLockedNodes !== prev.autoLockedNodes
+        state.autoLockedNodes !== prev.autoLockedNodes ||
+        state.presetTeleports !== prev.presetTeleports
       ) {
         this.redrawAll(state);
         return;
@@ -164,6 +184,10 @@ export class PresetConnectionsRenderer {
         ))
       ) {
         this.redrawIsolatedHL(state);
+      }
+
+      if (state.presetConnectionsTool !== prev.presetConnectionsTool || state.presetTeleportPendingFrom !== prev.presetTeleportPendingFrom) {
+        if (!state.presetTeleportPendingFrom) this.teleportPreview.clear();
       }
     });
   }
@@ -190,6 +214,26 @@ export class PresetConnectionsRenderer {
     if (!this.cfg) return;
     const highlights = buildHoverEdgeHighlight(edge, this.cfg);
     this.hover.render({ highlights });
+  }
+
+  /** Renders the pending teleport's origin (semi-transparent marker) and a line stretching to the
+   * cursor, so the two-click placement gesture reads as "one end is already fixed, aim the other". */
+  updateTeleportPreview(pendingFrom: [number, number] | null, cursorViewportX: number, cursorViewportY: number): void {
+    this.teleportPreview.clear();
+    if (!this.cfg || !pendingFrom) return;
+
+    const proj = makeProjection(this.cfg);
+    const { x: px, y: py } = proj.gridToScreen(pendingFrom[0], pendingFrom[1]);
+
+    this.teleportPreview
+      .moveTo(px, py)
+      .lineTo(cursorViewportX, cursorViewportY)
+      .stroke({ width: 3, color: canvas.teleport.default, alpha: 0.5, cap: "round" });
+
+    const markerSize = 16;
+    this.teleportPreview
+      .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
+      .fill({ color: canvas.teleport.default, alpha: 0.5 });
   }
 
   private rebuildCellCache(state: ReturnType<typeof useMazeStore.getState>): void {
@@ -219,6 +263,8 @@ export class PresetConnectionsRenderer {
     const markerData = buildPresetMarkers(state.presetStart, state.presetFinish, cfg);
     this.markers.render({ markers: markerData });
 
+    this.teleports.render({ edges: buildPresetTeleportEdges(state.presetTeleports, cfg) });
+
     this.redrawOrigin(state.showPresetOrigin);
     this.redrawGenSource(state.presetGenSource);
     this.redrawIsolatedHL(state);
@@ -226,8 +272,10 @@ export class PresetConnectionsRenderer {
     if (state.highlightInvalidPresets) {
       const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, state.presetConnections, cfg);
       this.invalidHL.render({ highlights: edgeHighlights });
+      this.redrawInvalidTeleportHL(state);
     } else {
       this.invalidHL.render({ highlights: [] });
+      this.invalidTeleportHL.clear();
     }
 
     this.hover.render({ highlights: [] });
@@ -257,11 +305,35 @@ export class PresetConnectionsRenderer {
     if (!this.cfg) return;
     if (!state.highlightInvalidPresets) {
       this.invalidHL.render({ highlights: [] });
+      this.invalidTeleportHL.clear();
       return;
     }
     const invalidKeys = computeInvalidKeysFromCells(state.presetConnections, this.cachedCells);
     const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, state.presetConnections, this.cfg);
     this.invalidHL.render({ highlights: edgeHighlights });
+    this.redrawInvalidTeleportHL(state);
+  }
+
+  private redrawInvalidTeleportHL(state: ReturnType<typeof useMazeStore.getState>): void {
+    if (!this.cfg) return;
+    this.invalidTeleportHL.clear();
+    if (!state.highlightInvalidPresets) return;
+
+    const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
+    const invalidIds = computeInvalidTeleportIds(state.presetTeleports, this.cfg, customPts);
+    if (invalidIds.size === 0) return;
+
+    const proj = makeProjection(this.cfg);
+    const markerSize = 20;
+    for (const t of state.presetTeleports) {
+      if (!invalidIds.has(t.id)) continue;
+      for (const [cx, cy] of [t.from, t.to]) {
+        const { x: px, y: py } = proj.gridToScreen(cx, cy);
+        this.invalidTeleportHL
+          .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
+          .stroke({ width: 4, color: canvas.preset.invalid, alpha: 0.9 });
+      }
+    }
   }
 
   private clearAll(): void {
@@ -274,11 +346,14 @@ export class PresetConnectionsRenderer {
     this.presetWalls.render({ edges: [] }, cfg);
     this.locks.render({ locks: [] }, cfg);
     this.markers.render({ markers: [] });
+    this.teleports.render({ edges: [] });
     this.origin.render({ show: false, vpScale: this.viewport.scale }, cfg);
     this.genSource.render({ source: null, vpScale: this.viewport.scale }, cfg);
     this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
     this.invalidHL.render({ highlights: [] });
+    this.invalidTeleportHL.clear();
     this.hover.render({ highlights: [] });
+    this.teleportPreview.clear();
   }
 
   destroy(): void {
@@ -288,24 +363,43 @@ export class PresetConnectionsRenderer {
     this.invalidPassages.destroy();
     this.undecidedWalls.destroy();
     this.presetWalls.destroy();
+    this.teleports.destroy();
     this.locks.destroy();
     this.markers.destroy();
     this.origin.destroy();
     this.genSource.destroy();
     this.isolatedHL.destroy();
     this.invalidHL.destroy();
+    this.invalidTeleportHL.destroy();
     this.hover.destroy();
+    this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.invalidPassagesContainer.destroy();
     this.undecidedWallsContainer.destroy();
     this.presetWallsContainer.destroy();
+    this.teleportContainer.destroy();
     this.locksContainer.destroy();
     this.markersContainer.destroy();
     this.originContainer.destroy();
     this.genSourceContainer.destroy();
     this.isolatedHLContainer.destroy();
     this.invalidHLContainer.destroy();
+    this.invalidTeleportHLContainer.destroy();
     this.hoverContainer.destroy();
+    this.teleportPreviewContainer.destroy();
   }
+}
+
+function buildPresetTeleportEdges(teleports: PresetTeleportEntry[], cfg: TessellationConfig): TeleportEdge[] {
+  const proj = makeProjection(cfg);
+  return teleports.map((t) => {
+    // `t.from`/`t.to` are the two click points in placement order — the actual passage direction
+    // for "backward" runs the other way (mirrors PresetConnectionState::TeleportBackward on the
+    // Rust side, which builds the edge to→from), so entry/exit must swap for the renderer too.
+    const [entryCell, exitCell] = t.direction === "backward" ? [t.to, t.from] : [t.from, t.to];
+    const entry = proj.gridToScreen(entryCell[0], entryCell[1]);
+    const exit = proj.gridToScreen(exitCell[0], exitCell[1]);
+    return { from: [entry.x, entry.y], to: [exit.x, exit.y], oneWay: t.direction !== "two_way" };
+  });
 }

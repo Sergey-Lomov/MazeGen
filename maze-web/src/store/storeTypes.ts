@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, GenerationStepsSnapshot, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import type { PresetConnectionEntry, PresetConnectionTool } from "../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/presetConnectionsUtils";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
@@ -222,6 +222,10 @@ export interface PresetConnectionsState {
   autoLockedNodes: Set<string>;
   /** True after any preset connection change since the last confirmTessellation. */
   presetsDirty: boolean;
+  presetTeleports: PresetTeleportEntry[];
+  /** First-click endpoint of an in-progress teleport placement (teleport_one_way/teleport_two_way tools). */
+  presetTeleportPendingFrom: [number, number] | null;
+  _nextPresetTeleportId: number;
 }
 
 export interface PresetConnectionsActions {
@@ -241,6 +245,11 @@ export interface PresetConnectionsActions {
   removeLockedNode: (x: number, y: number) => void;
   clearLockedNodes: () => void;
   setAutoLock: (v: boolean) => void;
+  setPresetTeleportPendingFrom: (cell: [number, number] | null) => void;
+  addPresetTeleport: (from: [number, number], to: [number, number], direction: "forward" | "two_way") => void;
+  cyclePresetTeleportDirection: (id: number) => void;
+  removePresetTeleport: (id: number) => void;
+  movePresetTeleportEndpoint: (id: number, end: "from" | "to", cell: [number, number]) => void;
 }
 
 export interface GenerationState {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 use maze_core::{
-    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, LockedNode, NodeLockKind},
+    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, TeleportDirection, LockedNode, NodeLockKind},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     RepairLimits,
 };
@@ -109,6 +109,9 @@ pub enum PresetConnectionStateDto {
     Passage,
     OneWayForward,
     OneWayBackward,
+    TeleportForward,
+    TeleportBackward,
+    TeleportTwoWay,
 }
 
 #[derive(Deserialize)]
@@ -249,10 +252,13 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
         from: (dto.from[0], dto.from[1]),
         to:   (dto.to[0],   dto.to[1]),
         state: match dto.state {
-            PresetConnectionStateDto::Wall          => PresetConnectionState::Wall,
-            PresetConnectionStateDto::Passage       => PresetConnectionState::Passage,
-            PresetConnectionStateDto::OneWayForward  => PresetConnectionState::OneWayForward,
-            PresetConnectionStateDto::OneWayBackward => PresetConnectionState::OneWayBackward,
+            PresetConnectionStateDto::Wall             => PresetConnectionState::Wall,
+            PresetConnectionStateDto::Passage          => PresetConnectionState::Passage,
+            PresetConnectionStateDto::OneWayForward     => PresetConnectionState::OneWayForward,
+            PresetConnectionStateDto::OneWayBackward    => PresetConnectionState::OneWayBackward,
+            PresetConnectionStateDto::TeleportForward   => PresetConnectionState::Teleport(TeleportDirection::Forward),
+            PresetConnectionStateDto::TeleportBackward  => PresetConnectionState::Teleport(TeleportDirection::Backward),
+            PresetConnectionStateDto::TeleportTwoWay    => PresetConnectionState::Teleport(TeleportDirection::TwoWay),
         },
     }).collect();
     let locked_nodes = config.locked_nodes.iter().map(|dto| LockedNode {

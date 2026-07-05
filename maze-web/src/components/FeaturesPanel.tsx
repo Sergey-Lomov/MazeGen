@@ -17,7 +17,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { computeInvalidKeys } from "../pixi/presetConnectionsUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds } from "../pixi/presetConnectionsUtils";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -39,8 +39,9 @@ export function presetConnectionsSubtitle(
   presetConnections: Map<string, unknown>,
   invalidCount: number,
   markerCount: number,
+  teleportCount: number = 0,
 ): string {
-  const n = presetConnections.size + markerCount;
+  const n = presetConnections.size + markerCount + teleportCount;
   if (n === 0) return m["preset.subtitle_none"]();
   const base = n === 1
     ? m["preset.subtitle_count"]({ count: n })
@@ -104,6 +105,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
+  const presetTeleports = useMazeStore((s) => s.presetTeleports);
 
   const activeCheckCount = useMazeStore((s) => s.rules.reduce((n, r) => n + r.checks.length, 0));
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
@@ -192,21 +194,26 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     () => computeInvalidKeys(presetConnections, tessellationConfig, customPts),
     [presetConnections, tessellationConfig, customPts],
   );
+  const presetInvalidTeleportIds = useMemo(
+    () => computeInvalidTeleportIds(presetTeleports, tessellationConfig, customPts),
+    [presetTeleports, tessellationConfig, customPts],
+  );
+  const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
   const presetStatus: FeatureStatus = fieldBlocking
     ? "unavailable"
-    : presetInvalidKeys.size > 0
+    : presetInvalidCount > 0
     ? "warning"
     : "set";
   const presetComment = !tessellationConfirmed
     ? m["status.confirm_tessellation_first"]()
     : fieldBlocking
     ? m["status.configure_field_first"]()
-    : presetInvalidKeys.size > 0
-    ? (presetInvalidKeys.size === 1
-        ? m["status.presets_outside_field"]({ count: presetInvalidKeys.size })
-        : m["status.presets_outside_field_plural"]({ count: presetInvalidKeys.size }))
+    : presetInvalidCount > 0
+    ? (presetInvalidCount === 1
+        ? m["status.presets_outside_field"]({ count: presetInvalidCount })
+        : m["status.presets_outside_field_plural"]({ count: presetInvalidCount }))
     : undefined;
 
   const analyticsCard = computeAnalyticsCard(
@@ -254,7 +261,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
         status={presetStatus}
         comment={presetComment}
         subtitle={tessellationConfirmed
-          ? presetConnectionsSubtitle(presetConnections, presetInvalidKeys.size, markerCount)
+          ? presetConnectionsSubtitle(presetConnections, presetInvalidCount, markerCount, presetTeleports.length)
           : undefined}
         expanded={openCard === "preset_connections"}
         onOpen={() => handleToggle("preset_connections")}

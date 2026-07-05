@@ -27,6 +27,8 @@ export type EdgeHL = {
 
 export type MarkerData = { pos: [number, number]; color: number; radius: number };
 
+/** A cell draws half-filled when the markers landing on it disagree: some edge wants a filled
+ * square there and some (other) edge wants an outline square there. */
 export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean };
 
 export type LockEntry = { x: number; y: number; type: "in" | "out" | "both" };

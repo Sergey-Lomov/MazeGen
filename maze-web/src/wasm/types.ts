@@ -267,7 +267,7 @@ export type InitialGenerationConfig =
   | { method: "wilson_algorithm" }
   | { method: "kruskal_algorithm" };
 
-export type PresetConnectionState = "wall" | "passage" | "one_way_forward" | "one_way_backward";
+export type PresetConnectionState = "wall" | "passage" | "one_way_forward" | "one_way_backward" | "teleport_forward" | "teleport_backward" | "teleport_two_way";
 
 export interface PresetConnection {
   from: [number, number];

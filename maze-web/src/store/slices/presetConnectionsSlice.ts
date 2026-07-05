@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
-import type { PresetConnectionEntry, PresetConnectionTool } from "../../pixi/presetConnectionsUtils";
-import { applyTool, computeInvalidKeys, resolveCells, edgeKey, canonicalize } from "../../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/presetConnectionsUtils";
+import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, resolveCells, edgeKey, canonicalize, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../pixi/presetConnectionsUtils";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";
@@ -21,8 +21,11 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   autoLock: true,
   autoLockedNodes: new Set<string>(),
   presetsDirty: false,
+  presetTeleports: [] as PresetTeleportEntry[],
+  presetTeleportPendingFrom: null,
+  _nextPresetTeleportId: 1,
 
-  setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool }),
+  setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool, presetTeleportPendingFrom: null }),
 
   applyPresetConnectionsTool: (key, from, to) => set((state) => {
     const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool);
@@ -34,7 +37,9 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const invalidKeys = computeInvalidKeys(state.presetConnections, state.tessellationConfig, customPts);
     const presetConnections = new Map(state.presetConnections);
     for (const key of invalidKeys) presetConnections.delete(key);
-    return withRecomputedAutoLock(state, { presetConnections });
+    const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, state.tessellationConfig, customPts);
+    const presetTeleports = state.presetTeleports.filter(t => !invalidTeleportIds.has(t.id));
+    return withRecomputedAutoLock(state, { presetConnections, presetTeleports });
   }),
 
   resetPresetConnections: () => set((state) => ({
@@ -45,6 +50,9 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetGenSource: null,
     lockedNodes: new Map<string, NodeLockKind>(),
     autoLockedNodes: new Set<string>(),
+    presetTeleports: [] as PresetTeleportEntry[],
+    presetTeleportPendingFrom: null,
+    _nextPresetTeleportId: 1,
     debugStale: debugStaleOf(state),
   })),
 
@@ -89,6 +97,37 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   }),
 
   clearLockedNodes: () => set((state) => ({ lockedNodes: new Map<string, NodeLockKind>(), autoLockedNodes: new Set<string>(), debugStale: debugStaleOf(state) })),
+
+  setPresetTeleportPendingFrom: (cell) => set({ presetTeleportPendingFrom: cell }),
+
+  addPresetTeleport: (from, to, direction) => set((state) => {
+    const entry: PresetTeleportEntry = { id: state._nextPresetTeleportId, from, to, direction };
+    return {
+      presetTeleports: [...state.presetTeleports, entry],
+      _nextPresetTeleportId: state._nextPresetTeleportId + 1,
+      presetTeleportPendingFrom: null,
+      presetsDirty: true,
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  cyclePresetTeleportDirection: (id) => set((state) => ({
+    presetTeleports: cycleTeleportDirection(state.presetTeleports, id),
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  })),
+
+  removePresetTeleport: (id) => set((state) => ({
+    presetTeleports: removeTeleport(state.presetTeleports, id),
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  })),
+
+  movePresetTeleportEndpoint: (id, end, cell) => set((state) => ({
+    presetTeleports: moveTeleportEndpoint(state.presetTeleports, { id, end }, cell),
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  })),
 });
 
 export function applyDefaultEdgeState(

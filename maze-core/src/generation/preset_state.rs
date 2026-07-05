@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
-use super::{PresetConnection, PresetConnectionState, LockedNode, NodeLockKind};
+use super::{PresetConnection, PresetConnectionState, TeleportDirection, LockedNode, NodeLockKind};
 
 /// Resolved preset constraints in NodeId space, ready for use by generation algorithms.
 pub struct PresetState {
@@ -76,6 +76,28 @@ pub fn build_preset_state<T: Tessellation>(
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
                 preset_edges.insert((to_id, from_id));
+            }
+            PresetConnectionState::Teleport(direction) => {
+                match direction {
+                    TeleportDirection::Forward => {
+                        graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
+                        preset_edges.insert((from_id, to_id));
+                    }
+                    TeleportDirection::Backward => {
+                        graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
+                        preset_edges.insert((to_id, from_id));
+                    }
+                    TeleportDirection::TwoWay => {
+                        graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
+                        graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
+                        preset_edges.insert((from_id, to_id));
+                        preset_edges.insert((to_id, from_id));
+                    }
+                }
+                // Not added to `preset_connected` — that set exists only to short-circuit the
+                // geometric-adjacency generation loop for adjacent preset pairs (see
+                // edge_based.rs). A teleport pair is not geometrically adjacent, so the endpoints
+                // must still go through normal generation to get their regular connectivity.
             }
         }
     }

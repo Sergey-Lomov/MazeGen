@@ -87,6 +87,12 @@ describe("presetConnectionsSubtitle", () => {
     const subtitle = presetConnectionsSubtitle(new Map([["a", 1]]), 0, 2);
     expect(subtitle).toBeTruthy();
   });
+
+  it("counts teleports toward the total when provided", () => {
+    const withTeleports = presetConnectionsSubtitle(new Map(), 0, 0, 2);
+    const without = presetConnectionsSubtitle(new Map(), 0, 0, 0);
+    expect(withTeleports).not.toBe(without);
+  });
 });
 
 describe("getTessellationKindLabel", () => {

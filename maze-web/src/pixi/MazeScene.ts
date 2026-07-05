@@ -246,6 +246,7 @@ export class MazeScene {
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();
+    this.presetConnectionsController.destroy();
     this.postEditRenderer.destroy();
     this.postEditController.destroy();
     this.fieldEditController.destroy();

@@ -3,7 +3,7 @@ import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../../
 import { initWasm } from "../../wasm/wasmLoader";
 import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot, CheckDescriptor, StrategyConfig, StrategyDescriptor } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, presetTeleportEntryToState } from "../../pixi/presetConnectionsUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractTeleportEdges } from "../../pixi/postEditUtils";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
@@ -651,6 +651,10 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   const validPresets = Array.from(state.presetConnections.values())
     .filter(e => e.state !== "undefined" && !invalidKeys.has(`${e.from[0]},${e.from[1]}-${e.to[0]},${e.to[1]}`))
     .map(e => ({ from: e.from, to: e.to, state: e.state as import("../../wasm/types").PresetConnectionState }));
+  const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, activeTessellation, customPts);
+  const validTeleportPresets = state.presetTeleports
+    .filter(t => !invalidTeleportIds.has(t.id))
+    .map(t => ({ from: t.from, to: t.to, state: presetTeleportEntryToState(t.direction) }));
   const lockedEntries = new Map(state.lockedNodes);
   for (const key of state.autoLockedNodes) {
     if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
@@ -666,7 +670,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
     initial: state.initialConfig,
     elements: state.elementsConfig,
-    preset_connections: validPresets,
+    preset_connections: [...validPresets, ...validTeleportPresets],
     locked_nodes,
     ...(state.presetStart ? { preset_start: state.presetStart } : {}),
     ...(state.presetGenSource ? { preset_gen_source: state.presetGenSource } : {}),

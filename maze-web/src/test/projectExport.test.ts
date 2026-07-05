@@ -22,6 +22,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     presetStart: [1, 2],
     presetFinish: [3, 4],
     presetGenSource: null,
+    presetTeleports: [],
     postEditDirty: false,
     postEditDraftEdges: null,
     postEditDraftMeta: null,
@@ -122,6 +123,25 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(reparsed.presets.connections).toEqual(serialized.presets.connections);
     expect(reparsed.presets.lockedNodes).toEqual(serialized.presets.lockedNodes);
   });
+
+  it("round-trips preset teleports", () => {
+    const state = makeState({
+      presetTeleports: [
+        { id: 1, from: [0, 0], to: [2, 2], direction: "forward" },
+        { id: 2, from: [1, 1], to: [3, 3], direction: "two_way" },
+      ],
+    });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.presets.teleports).toEqual(serialized.presets.teleports);
+  });
+
+  it("defaults presets.teleports to empty array for a project file saved before teleports existed", () => {
+    const data = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete data.presets.teleports;
+    const result = parseAndValidate(data);
+    expect(result.presets.teleports).toEqual([]);
+  });
 });
 
 describe("parseAndValidate — malformed input", () => {
@@ -161,6 +181,15 @@ describe("parseAndValidate — malformed input", () => {
     const data = valid();
     data.presets.defaultEdgeState = "bogus";
     expect(() => parseAndValidate(data)).toThrow(/Invalid defaultEdgeState/);
+  });
+
+  it("throws on duplicate teleport id", () => {
+    const data = valid();
+    data.presets.teleports = [
+      { id: 1, from: [0, 0], to: [2, 2], direction: "forward" },
+      { id: 1, from: [1, 1], to: [3, 3], direction: "two_way" },
+    ];
+    expect(() => parseAndValidate(data)).toThrow(/Duplicate teleport id/);
   });
 
   it("throws when root is not an object", () => {

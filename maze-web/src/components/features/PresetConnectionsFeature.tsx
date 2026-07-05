@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/presetConnectionsUtils";
-import { computeInvalidKeys } from "../../pixi/presetConnectionsUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds } from "../../pixi/presetConnectionsUtils";
 import { buttonStyle } from "../../styles/shared";
 import { ui, typography, muted } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
@@ -19,6 +19,13 @@ function getEdgeTools(): [PresetConnectionTool, string][] {
 }
 
 function getVertexTools(): [PresetConnectionTool, string][] {
+  return [
+    ["teleport_two_way", m["preset.teleport_two_way"]()],
+    ["teleport_one_way", m["preset.teleport_one_way"]()],
+  ];
+}
+
+function getStartFinishTools(): [PresetConnectionTool, string][] {
   return [
     ["set_start", m["preset.start"]()],
     ["set_finish", m["preset.finish"]()],
@@ -60,6 +67,9 @@ export function PresetConnectionsFeature() {
   const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
   const defaultEdgeState = useMazeStore((s) => s.defaultEdgeState);
   const setDefaultEdgeState = useMazeStore((s) => s.setDefaultEdgeState);
+  const presetTeleports = useMazeStore((s) => s.presetTeleports);
+  const presetTeleportPendingFrom = useMazeStore((s) => s.presetTeleportPendingFrom);
+  const setPresetTeleportPendingFrom = useMazeStore((s) => s.setPresetTeleportPendingFrom);
 
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -89,7 +99,12 @@ export function PresetConnectionsFeature() {
     () => computeInvalidKeys(presetConnections, tessellationConfig, customPts),
     [presetConnections, tessellationConfig, customPts],
   );
-  const hasInvalid = invalidKeys.size > 0;
+  const invalidTeleportIds = useMemo(
+    () => computeInvalidTeleportIds(presetTeleports, tessellationConfig, customPts),
+    [presetTeleports, tessellationConfig, customPts],
+  );
+  const invalidCount = invalidKeys.size + invalidTeleportIds.size;
+  const hasInvalid = invalidCount > 0;
 
   return (
     <div style={styles.root}>
@@ -107,7 +122,7 @@ export function PresetConnectionsFeature() {
       </div>
 
       <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
-      <div style={styles.toolGrid}>
+      <div style={styles.vertexToolGrid}>
         {getVertexTools().map(([t, label]) => (
           <button
             key={t}
@@ -117,6 +132,17 @@ export function PresetConnectionsFeature() {
             {label}
           </button>
         ))}
+        <div style={styles.startFinishRow}>
+          {getStartFinishTools().map(([t, label]) => (
+            <button
+              key={t}
+              style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+              onClick={() => setTool(t)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <span style={styles.sectionLabel}>{m["preset.generation_tools"]()}</span>
@@ -159,8 +185,21 @@ export function PresetConnectionsFeature() {
         <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
       </div>
 
-      {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish || presetGenSource) && (
+      {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish || presetGenSource || presetTeleports.length > 0 || presetTeleportPendingFrom) && (
         <div style={styles.statusBlock}>
+          {presetTeleportPendingFrom && (
+            <div style={styles.statusBubble}>
+              <span>{m["preset.teleport_pending"]()}: {presetTeleportPendingFrom[0]},{presetTeleportPendingFrom[1]}</span>
+              <button style={styles.clearTag} onClick={() => setPresetTeleportPendingFrom(null)}><X size={16} /></button>
+            </div>
+          )}
+          {presetTeleports.length > 0 && (
+            <div style={styles.statusBubble}>
+              <span>{presetTeleports.length === 1
+                ? m["preset.teleports_count"]({ count: presetTeleports.length })
+                : m["preset.teleports_count_plural"]({ count: presetTeleports.length })}</span>
+            </div>
+          )}
           {lockedNodes.size > 0 && (
             <div style={styles.statusBubble}>
               <span>{lockedNodes.size === 1
@@ -209,7 +248,7 @@ export function PresetConnectionsFeature() {
           onMouseEnter={() => setHighlightInvalidPresets(true)}
           onMouseLeave={() => setHighlightInvalidPresets(false)}
         >
-          {m["preset.clear_invalid"]({ count: invalidKeys.size })}
+          {m["preset.clear_invalid"]({ count: invalidCount })}
         </button>
       )}
       <button
@@ -237,6 +276,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 8,
   },
   toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
+  vertexToolGrid: { display: "grid", gridTemplateColumns: "1fr", gap: 4 },
+  startFinishRow: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
   generationToolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
   triGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 },
   statusBlock: {

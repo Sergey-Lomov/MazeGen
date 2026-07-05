@@ -1,5 +1,5 @@
 import type { NodeLockKind } from "../../wasm/types";
-import type { PresetConnectionEntry } from "../../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/presetConnectionsUtils";
 import type { PostEditEdge, FeatureId } from "../mazeStore";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import {
@@ -299,6 +299,21 @@ function validateQcStage(v: unknown, path: string): ProjectFileStage {
   return { id, name, ruleIds, disabled };
 }
 
+function validatePresetTeleportEntry(v: unknown, path: string): PresetTeleportEntry {
+  const obj = assertObject(v, path);
+  const fromArr = assertArray(obj.from, `${path}.from`);
+  const toArr = assertArray(obj.to, `${path}.to`);
+  const direction = assertString(obj.direction, `${path}.direction`);
+  if (direction !== "forward" && direction !== "backward" && direction !== "two_way")
+    throw new Error(`Invalid preset teleport direction at ${path}.direction: ${direction}`);
+  return {
+    id: assertNumber(obj.id, `${path}.id`),
+    from: [assertNumber(fromArr[0], `${path}.from[0]`), assertNumber(fromArr[1], `${path}.from[1]`)],
+    to: [assertNumber(toArr[0], `${path}.to[0]`), assertNumber(toArr[1], `${path}.to[1]`)],
+    direction: direction as PresetTeleportEntry["direction"],
+  };
+}
+
 function validateNodeLockKind(v: unknown, path: string): NodeLockKind {
   const kind = assertString(v, path);
   if (kind !== "in" && kind !== "out" && kind !== "both")
@@ -396,6 +411,15 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const presetStart = optCoordPair(presetsObj.start, "presets.start");
   const presetFinish = optCoordPair(presetsObj.finish, "presets.finish");
   const genSource = optCoordPair(presetsObj.genSource, "presets.genSource");
+  // Optional — absent in project files saved before preset teleports existed.
+  const teleports = presetsObj.teleports != null
+    ? assertArray(presetsObj.teleports, "presets.teleports").map((v, i) => validatePresetTeleportEntry(v, `presets.teleports[${i}]`))
+    : [];
+  const seenTeleportIds = new Set<number>();
+  for (const t of teleports) {
+    if (seenTeleportIds.has(t.id)) throw new Error(`Duplicate teleport id ${t.id} at presets.teleports`);
+    seenTeleportIds.add(t.id);
+  }
 
   // postEdit
   const postEdit = migrated.postEdit === null || migrated.postEdit === undefined
@@ -459,6 +483,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
       start: presetStart,
       finish: presetFinish,
       genSource,
+      teleports,
     },
     postEdit,
     dirtyFlags,

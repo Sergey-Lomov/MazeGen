@@ -5,8 +5,13 @@ import {
   computeInvalidKeysFromCells,
   computeAutoLockedNodes,
   applyTool,
+  computeInvalidTeleportIds,
+  cycleTeleportDirection,
+  removeTeleport,
+  moveTeleportEndpoint,
+  presetTeleportEntryToState,
 } from "../pixi/presetConnectionsUtils";
-import type { PresetConnectionEntry, FieldEdge } from "../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/presetConnectionsUtils";
 
 // --- canonicalize ---
 
@@ -189,5 +194,74 @@ describe("computeAutoLockedNodes", () => {
     ]);
     const result = computeAutoLockedNodes(connections, squareCfg);
     expect(result.has("0,0")).toBe(true);
+  });
+});
+
+// --- teleport helpers ---
+
+const teleport = (id: number, from: [number, number], to: [number, number], direction: PresetTeleportEntry["direction"] = "forward"): PresetTeleportEntry => ({
+  id, from, to, direction,
+});
+
+describe("computeInvalidTeleportIds", () => {
+  it("both endpoints in field — valid", () => {
+    const result = computeInvalidTeleportIds([teleport(1, [-1, -1], [1, 1])], squareCfg);
+    expect(result.size).toBe(0);
+  });
+
+  it("endpoint outside field — invalid", () => {
+    const result = computeInvalidTeleportIds([teleport(1, [-1, -1], [5, 5])], squareCfg);
+    expect(result.has(1)).toBe(true);
+  });
+});
+
+describe("cycleTeleportDirection", () => {
+  it("forward becomes backward", () => {
+    const result = cycleTeleportDirection([teleport(1, [0, 0], [1, 1], "forward")], 1);
+    expect(result[0].direction).toBe("backward");
+  });
+
+  it("backward becomes forward", () => {
+    const result = cycleTeleportDirection([teleport(1, [0, 0], [1, 1], "backward")], 1);
+    expect(result[0].direction).toBe("forward");
+  });
+
+  it("two_way is unaffected", () => {
+    const result = cycleTeleportDirection([teleport(1, [0, 0], [1, 1], "two_way")], 1);
+    expect(result[0].direction).toBe("two_way");
+  });
+
+  it("other entries are untouched", () => {
+    const result = cycleTeleportDirection([teleport(1, [0, 0], [1, 1], "forward"), teleport(2, [0, 0], [1, 1], "forward")], 1);
+    expect(result[1].direction).toBe("forward");
+  });
+});
+
+describe("removeTeleport", () => {
+  it("removes the matching entry only", () => {
+    const result = removeTeleport([teleport(1, [0, 0], [1, 1]), teleport(2, [0, 0], [1, 1])], 1);
+    expect(result.map(t => t.id)).toEqual([2]);
+  });
+});
+
+describe("moveTeleportEndpoint", () => {
+  it("moves the 'from' endpoint of the matching entry", () => {
+    const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "from" }, [5, 5]);
+    expect(result[0].from).toEqual([5, 5]);
+    expect(result[0].to).toEqual([1, 1]);
+  });
+
+  it("moves the 'to' endpoint of the matching entry", () => {
+    const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "to" }, [5, 5]);
+    expect(result[0].to).toEqual([5, 5]);
+    expect(result[0].from).toEqual([0, 0]);
+  });
+});
+
+describe("presetTeleportEntryToState", () => {
+  it("maps forward/backward/two_way to wire states", () => {
+    expect(presetTeleportEntryToState("forward")).toBe("teleport_forward");
+    expect(presetTeleportEntryToState("backward")).toBe("teleport_backward");
+    expect(presetTeleportEntryToState("two_way")).toBe("teleport_two_way");
   });
 });
