@@ -1,8 +1,33 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
-import { typography } from "../../styles/theme";
+import { typography, font } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
+
+const OPTION_WIDTH_BUFFER = 10;
+const SELECT_MAX_WIDTH_RATIO = 0.4;
+
+let measureCanvasCtx: CanvasRenderingContext2D | null | undefined;
+
+function getMeasureCtx(): CanvasRenderingContext2D | null {
+  if (measureCanvasCtx === undefined) {
+    measureCanvasCtx = document.createElement("canvas").getContext("2d");
+    if (measureCanvasCtx) {
+      measureCanvasCtx.font = `${font.lg}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    }
+  }
+  return measureCanvasCtx;
+}
+
+function widestOptionWidth(labels: string[]): number {
+  const ctx = getMeasureCtx();
+  if (!ctx) return 0;
+  let max = 0;
+  for (const label of labels) {
+    max = Math.max(max, ctx.measureText(label).width);
+  }
+  return max;
+}
 
 interface Props {
   params: ParamDescriptor[];
@@ -15,7 +40,40 @@ interface Props {
   getDescription?: (p: ParamDescriptor) => string | undefined;
 }
 
+const SELECT_HORIZONTAL_CHROME = 4 + 18 + 2; // padding-left + padding-right + border
+const ROW_GAP = 10; // styles.row's `gap`
+
+function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | undefined {
+  if (p.kind.type !== "enum") return undefined;
+  const labels = p.kind.options.map((opt) => resolveParamOptionLabel(p.id, opt));
+  const textWidth = widestOptionWidth(labels);
+  const desired = Math.ceil(textWidth + OPTION_WIDTH_BUFFER + SELECT_HORIZONTAL_CHROME);
+  if (containerWidth <= 0) return desired;
+
+  const softCap = Math.floor(containerWidth * SELECT_MAX_WIDTH_RATIO);
+  if (desired <= softCap) return desired;
+
+  // Widest option needs more than the soft cap — allow growing further, but never
+  // past the point where the label would get squeezed below its own text width.
+  const labelWidth = widestOptionWidth([p.label]);
+  const hardCap = Math.floor(containerWidth - labelWidth - ROW_GAP);
+  return Math.min(desired, Math.max(softCap, hardCap));
+}
+
 export function ParamFields({ params, values, getValue, onChange, getDescription }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      setContainerWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   if (params.length === 0) return null;
 
   function get(p: ParamDescriptor): string {
@@ -24,7 +82,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
   }
 
   return (
-    <div style={{ ...styles.fieldsWrap, gap: getDescription ? 16 : 4 }}>
+    <div ref={containerRef} style={{ ...styles.fieldsWrap, gap: getDescription ? 16 : 4 }}>
       {params.map((p) => {
         const description = getDescription?.(p);
         return (
@@ -51,7 +109,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               )}
               {p.kind.type === "enum" && (
                 <select
-                  style={styles.select}
+                  style={{ ...styles.select, width: enumSelectWidth(p, containerWidth) }}
                   value={get(p)}
                   onChange={(e) => onChange(p.id, e.target.value)}
                 >
@@ -125,7 +183,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   select: {
     ...sharedStyles.selectSm,
-    width: 120,
     boxSizing: "border-box",
     height: 22,
     padding: "2px 18px 2px 4px",
