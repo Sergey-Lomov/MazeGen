@@ -7,6 +7,7 @@ import type { NodeDto } from "../wasm/types";
 import { BaseController } from "./BaseController";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
+const VERTEX_TOOLS = new Set(["set_start", "set_finish"]);
 
 export class PostEditController extends BaseController {
   private renderer: PostEditRenderer;
@@ -79,24 +80,25 @@ export class PostEditController extends BaseController {
     const tool = state.postEditTool;
     const nodeMap = this.getNodeMap(state.nodes);
 
-    if (tool === "set_start" || tool === "set_finish") {
+    if (VERTEX_TOOLS.has(tool)) {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeId = nodeMap.get(`${cell.x},${cell.y}`);
       const meta = state.postEditDraftMeta ?? { start: state.start, finish: state.finish };
-      const currentId = tool === "set_start" ? meta.start : meta.finish;
-      const onMarker = nodeId !== undefined && currentId === nodeId;
+      const markerUnderCursor: "start" | "finish" | null =
+        nodeId !== undefined && meta.start === nodeId ? "start" :
+        nodeId !== undefined && meta.finish === nodeId ? "finish" : null;
 
       if (button === 2) {
-        if (onMarker) {
-          useMazeStore.getState().clearPostEditEndpoint(tool === "set_start" ? "start" : "finish");
+        if (markerUnderCursor) {
+          useMazeStore.getState().clearPostEditEndpoint(markerUnderCursor);
         }
         return;
       }
       if (button !== 0) return;
 
-      if (onMarker) {
-        this.draggingMarker = tool;
+      if (markerUnderCursor) {
+        this.draggingMarker = markerUnderCursor === "start" ? "set_start" : "set_finish";
         return;
       }
       if (nodeId !== undefined) {

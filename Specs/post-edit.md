@@ -99,8 +99,10 @@ Async, versioned via `_postEditRequestId`:
 | `passage` | Ensures both directions exist as `"basic"` in `postEditDraftEdges`. |
 | `one_way` | Toggles direction: if `fwd` exists → replace with `bwd`; otherwise → replace with `fwd`. Wall/passage not affected. |
 | `reset` | Restores edge pair to original generated state (basic or one_way_forward). |
-| `set_start` | Click on node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. Right-click on the current start node clears it (`clearPostEditEndpoint`). Press-and-drag from the current start node moves it live to whichever node is under the cursor. |
-| `set_finish` | Click on node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. Right-click on the current finish node clears it (`clearPostEditEndpoint`). Press-and-drag from the current finish node moves it live to whichever node is under the cursor. |
+| `set_start` | Click on empty node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. |
+| `set_finish` | Click on empty node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. |
+
+`set_start` and `set_finish` together form the vertex tools section. While either is active, drag-to-move and right-click-to-delete apply uniformly to **both** the start and finish markers, regardless of which one is currently selected: right-click on the current start node clears it (`clearPostEditEndpoint`) even while `set_finish` is active, and press-and-drag from either marker's node moves it live to whichever node is under the cursor, even while the other tool is active. Only the plain-click "assign to this empty node" action stays tied to the active tool (`set_start` assigns start, `set_finish` assigns finish).
 
 ### `one_way` Tool Detail
 
@@ -157,9 +159,9 @@ Extends `BaseController` (shared with `PresetConnectionsController`). `BaseContr
 Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", nodeId>`) is cached per `nodes` reference — rebuilt only when `state.nodes` changes.
 
 - **Left click + edge tool** → `applyPostEditTool`, schedule confirm if `autoConfirm`.
-- **Left click + endpoint tool, no node under marker** → `setPostEditEndpoint` (confirm called internally by store action when `autoConfirm`).
-- **Left press-drag + endpoint tool, starting on the marker's own node** → arms drag; each pointer move over a new node calls `setPostEditEndpoint` again to move it live. A press that never leaves the marker's node resolves as a plain click on release (no-op, node unchanged).
-- **Right click + endpoint tool, on the marker's own node** → `clearPostEditEndpoint`. Right-click elsewhere is a no-op for endpoint tools.
+- **Left click + endpoint tool (`set_start`/`set_finish`), no start/finish marker under cursor** → `setPostEditEndpoint` for whichever endpoint the active tool targets (confirm called internally by store action when `autoConfirm`).
+- **Left press-drag + endpoint tool, starting on start's or finish's own node** → arms drag for that marker regardless of which endpoint tool is active; each pointer move over a new node calls `setPostEditEndpoint` again to move it live. A press that never leaves the marker's node resolves as a plain click on release (no-op, node unchanged).
+- **Right click + endpoint tool, on the start or finish marker's own node** → `clearPostEditEndpoint` for that marker, regardless of which endpoint tool is active. Right-click elsewhere is a no-op for endpoint tools.
 - **Middle click** → pan viewport.
 
 ## `buildPostEditDraftEdgesFromGenerated`

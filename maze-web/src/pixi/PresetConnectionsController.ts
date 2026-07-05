@@ -8,6 +8,7 @@ import { BaseController } from "./BaseController";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
+const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way"]);
 
 export class PresetConnectionsController extends BaseController {
   private renderer: PresetConnectionsRenderer;
@@ -99,28 +100,53 @@ export class PresetConnectionsController extends BaseController {
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const tool = state.presetConnectionsTool;
 
-    if (tool === "set_start" || tool === "set_finish") {
+    if (VERTEX_TOOLS.has(tool)) {
       const proj = makeProjection(state.tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const coords: [number, number] = [cell.x, cell.y];
-      const marker = tool === "set_start" ? state.presetStart : state.presetFinish;
-      const onMarker = marker !== null && marker[0] === coords[0] && marker[1] === coords[1];
+      const store = useMazeStore.getState();
+
+      // Start/finish markers and teleport endpoints are hit-tested only for the tool group
+      // that owns them, so the two categories can freely overlap (e.g. a teleport endpoint
+      // placed on the start cell, or a start marker placed on a teleport endpoint's cell).
+      const onStartFinishTool = tool === "set_start" || tool === "set_finish";
+      const onStart = onStartFinishTool &&
+        store.presetStart !== null && store.presetStart[0] === coords[0] && store.presetStart[1] === coords[1];
+      const onFinish = onStartFinishTool &&
+        store.presetFinish !== null && store.presetFinish[0] === coords[0] && store.presetFinish[1] === coords[1];
+      const teleportHit = TELEPORT_TOOLS.has(tool)
+        ? pickTeleportEndpointAt(vpX, vpY, state.tessellationConfig, store.presetTeleports)
+        : null;
 
       if (button === 2) {
-        if (onMarker) {
-          if (tool === "set_start") useMazeStore.getState().setPresetStart(null);
-          else useMazeStore.getState().setPresetFinish(null);
-        }
+        if (onStart) store.setPresetStart(null);
+        else if (onFinish) store.setPresetFinish(null);
+        else if (teleportHit) store.removePresetTeleport(teleportHit.id);
+        else if (store.presetTeleportPendingFrom) this.cancelPendingTeleport();
         return;
       }
       if (button !== 0) return;
 
-      if (onMarker) {
-        this.draggingMarker = tool;
+      if (onStart) {
+        this.draggingMarker = "set_start";
         return;
       }
-      if (tool === "set_start") useMazeStore.getState().setPresetStart(coords);
-      else useMazeStore.getState().setPresetFinish(coords);
+      if (onFinish) {
+        this.draggingMarker = "set_finish";
+        return;
+      }
+      if (teleportHit) {
+        // Arm as a drag candidate — resolved on pointerup: if the cursor never moved to a
+        // different cell, treat it as a plain click (start/complete a new teleport) instead of
+        // a drag, so clicking an existing endpoint's cell can still begin/finish a new link there.
+        this.draggingTeleportEndpoint = teleportHit;
+        this.teleportDragMoved = false;
+        return;
+      }
+
+      if (tool === "set_start") store.setPresetStart(coords);
+      else if (tool === "set_finish") store.setPresetFinish(coords);
+      else this.tryTeleportClick(vpX, vpY, tool, state);
       return;
     }
 
@@ -136,30 +162,6 @@ export class PresetConnectionsController extends BaseController {
       } else {
         store.setPresetGenSource(coords);
       }
-      return;
-    }
-
-    if (TELEPORT_TOOLS.has(tool)) {
-      const store = useMazeStore.getState();
-      const hit = pickTeleportEndpointAt(vpX, vpY, state.tessellationConfig, store.presetTeleports);
-
-      if (button === 2) {
-        if (hit) store.removePresetTeleport(hit.id);
-        else if (store.presetTeleportPendingFrom) this.cancelPendingTeleport();
-        return;
-      }
-      if (button !== 0) return;
-
-      if (hit) {
-        // Arm as a drag candidate — resolved on pointerup: if the cursor never moved to a
-        // different cell, treat it as a plain click (start/complete a new teleport) instead of
-        // a drag, so clicking an existing endpoint's cell can still begin/finish a new link there.
-        this.draggingTeleportEndpoint = hit;
-        this.teleportDragMoved = false;
-        return;
-      }
-
-      this.tryTeleportClick(vpX, vpY, tool, state);
       return;
     }
 
