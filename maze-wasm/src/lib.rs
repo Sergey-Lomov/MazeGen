@@ -12,9 +12,9 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT},
     RegionClass,
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy},
 };
 use generation_config::{GenerateConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
@@ -331,6 +331,41 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             }],
             allow_multiple_instances: false,
         },
+        CheckDescriptor {
+            id: "teleport_duplicates_connection",
+            label: "Teleport duplicates connection",
+            description: "Fires if a teleport edge duplicates a regular connection already present between the same pair in the same direction.",
+            issue_kinds: vec![kind_str(INVALID_TELEPORT)],
+            params: vec![],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "teleport_waypoint_distance",
+            label: "Teleport waypoint distance",
+            description: "Fires if a teleport's entry (or entry/exit) sits closer than the required minimum logical distance to start and/or finish.",
+            issue_kinds: vec![kind_str(INVALID_TELEPORT)],
+            params: vec![
+                ParamDescriptor {
+                    id: "distance",
+                    label: "Min distance",
+                    kind: ParamKindDto::Integer { default: TELEPORT_WAYPOINT_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
+                },
+                ParamDescriptor {
+                    id: "waypoint",
+                    label: "Waypoint",
+                    kind: ParamKindDto::Enum { options: vec!["start", "finish", "any"], default: "any" },
+                },
+                ParamDescriptor {
+                    id: "edge",
+                    label: "Edge",
+                    kind: ParamKindDto::Enum { options: vec!["entry_only", "entry_or_exit"], default: "entry_or_exit" },
+                },
+            ],
+            // Multiple instances with different waypoint/edge/distance combinations are a
+            // legitimate common configuration (e.g. "entry far from start" AND separately "exit
+            // far from finish") — same rationale as min_region_count's allow_multiple_instances.
+            allow_multiple_instances: true,
+        },
     ]
 }
 
@@ -399,6 +434,13 @@ pub fn available_strategies() -> JsValue {
             params: strategy_params_dto(<ReduceSccCountStrategy as RepairStrategy<SquareTessellation>>::params(&ReduceSccCountStrategy)),
             experimental: <ReduceSccCountStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&ReduceSccCountStrategy),
             nested_slots: nested_slots_dto(<ReduceSccCountStrategy as RepairStrategy<SquareTessellation>>::expected_nested(&ReduceSccCountStrategy)),
+        },
+        StrategyDescriptor {
+            id: "remove_teleport",
+            handles: kind_str(INVALID_TELEPORT),
+            params: strategy_params_dto(<RemoveTeleportStrategy as RepairStrategy<SquareTessellation>>::params(&RemoveTeleportStrategy)),
+            experimental: <RemoveTeleportStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&RemoveTeleportStrategy),
+            nested_slots: vec![],
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()

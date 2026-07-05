@@ -18,6 +18,11 @@ export function postEditEdgesToDto(postEditEdges: Record<string, PostEditEdge> |
     .map(e => ({ from: e.from, to: e.to, kind: "basic" as const }));
 }
 
+// A cell is "closed" (filled as a wall) only when it has no connection at all — including a
+// teleport-only connection. A teleport in/out is a valid way to enter/exit the cell even though
+// it renders no wall opening on any geometric side (see buildMazeWalls, which deliberately
+// ignores teleport edges for the opposite reason: a teleport must not fake an open passage
+// between geometric neighbors). Both kinds count as "connected" here.
 export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[]): [number, number][] {
   const connected = new Set<number>();
   for (const e of edges) { connected.add(e.from); connected.add(e.to); }
@@ -34,6 +39,11 @@ export function buildMazeWalls(
 
   const directed = new Set<string>();
   for (const e of edges) {
+    // Teleport edges are rendered by TeleportRenderer, not as a wall opening -- a teleport
+    // between geometrically adjacent cells must not read as an open passage here. `edges` may
+    // contain both kinds mixed together (see EdgeDto's coexistence note), so this must filter,
+    // not just trust the caller passed a basic-only list.
+    if (e.kind === "teleport") continue;
     const from = nodeById.get(e.from);
     const to = nodeById.get(e.to);
     if (!from || !to) continue;

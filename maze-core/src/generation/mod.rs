@@ -329,6 +329,34 @@ pub(crate) fn try_remove_edge(
     true
 }
 
+/// try_remove_edge_by_id: removes a specific edge by its `EdgeId`, respecting PresetState.
+/// Unlike `try_remove_edge`, never looks the edge up by node pair — `Graph::edge_between`
+/// returns an arbitrary edge of any kind between a pair, which would risk removing the wrong
+/// one when a `Teleport` and a `Basic` edge coexist in the same direction (see `EdgeKind`'s
+/// parallel-edges note). Used by strategies that already hold the exact `EdgeId` to remove
+/// (e.g. `RemoveTeleportStrategy`, from `IssueData::InvalidTeleports`).
+///
+/// `preset_edges` is keyed purely by `(from, to)` node pairs, with no `EdgeKind` — it only ever
+/// gets populated from preset Passage/OneWay connections, which always build `EdgeKind::Basic`
+/// edges (see `preset_state.rs`/`Specs/post-edit.md`). A `Teleport` edge can never itself be a
+/// preset connection, so checking `preset_edges` for a `Teleport` id would be a false-positive
+/// protection: a `Teleport` duplicating a preset `Basic` connection between the same pair would
+/// never be removable, since the pair's `(from, to)` is in `preset_edges` on the `Basic` edge's
+/// behalf. Only a `Basic` edge is ever subject to this protection.
+/// Returns true if the edge was removed, false if it doesn't exist or is preset-protected.
+pub(crate) fn try_remove_edge_by_id(
+    graph: &mut Graph,
+    id: crate::ids::EdgeId,
+    preset_state: &PresetState,
+) -> bool {
+    let Some(edge) = graph.edge(id) else { return false; };
+    if edge.kind == EdgeKind::Basic && preset_state.preset_edges.contains(&(edge.from, edge.to)) {
+        return false;
+    }
+    graph.remove_edge(id);
+    true
+}
+
 /// try_add_directed_edge: adds a single one-way edge `from -> to`, respecting PresetState.
 /// Unlike `try_add_bidirectional_edge`, never adds the reverse direction — for repair
 /// strategies that need an explicit one-way connection (e.g. `MissingRegionsStrategy`).

@@ -14,8 +14,11 @@ A maze node is a **passage node** if and only if:
 - It has exactly 2 outgoing edges and exactly 2 incoming edges.
 - The sets of outgoing neighbors and incoming neighbors are identical (two symmetric bidirectional pairs).
 - It is not in the **pinned** set (see `build_nav_graph_pinned`).
+- It is not an endpoint (`from` or `to`) of any `EdgeKind::Teleport` edge.
 
 All other nodes are **junction nodes** and become `NavNode` entries.
+
+**Teleport endpoints are never passage nodes**, unconditionally — even if the node's degree happens to satisfy the 2-symmetric-pairs shape above (e.g. exactly one `Basic` pair plus one `Teleport` edge can still total 2 outgoing/2 incoming with identical neighbor sets). See GitHub issue #74: `distance_from_start`/`distance_from_finish` (`analysis.md`) are keyed on `NavNodeId`, and teleport-specific QC checks (`TeleportWaypointDistanceCheck`) need `NavGraph::nav_node_for` to resolve a `NavNodeId` for every teleport endpoint to look up its distance-to-waypoint. Silently compressing a teleport endpoint into some other nav-edge's `path` would make `nav_node_for` return `None` for it, making such a check wrongly treat the endpoint as unreachable instead of measuring its real distance. This exemption is unconditional — nav-graph structure must not depend on which QC checks happen to be configured — same rationale as the `pinned` exemption above.
 
 > **Note on terminology:** "Corridor" in generation settings (`corridor_chance`, `corridor_length`) refers to multi-node passages generated as a unit — a different concept. The nav graph uses "passage node" for the topological property (exactly 2 symmetric bidirectional neighbors), independent of how the maze was generated. The geometric stat "Straight" in `GeometricNodeStats` is a related but distinct concept: a node with 2 outgoing neighbors where the path is geometrically straight (per `field.is_straight`).
 

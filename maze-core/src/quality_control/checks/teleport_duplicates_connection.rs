@@ -1,0 +1,150 @@
+use rand::RngCore;
+use crate::Maze;
+use crate::graph::EdgeKind;
+use crate::space::Tessellation;
+use crate::quality_control::check::Check;
+use crate::quality_control::issue::{Issue, INVALID_TELEPORT};
+use crate::quality_control::issue_data::IssueData;
+
+/// Flags a teleport edge as invalid when a regular (`EdgeKind::Basic`) connection already exists
+/// between the same pair of vertices in the same direction — see GitHub issue #74. Redundant: a
+/// teleport that duplicates a passage the maze already has adds no new connectivity, only visual/
+/// navigational noise.
+pub struct TeleportDuplicatesConnectionCheck {
+    pub instance_id: String,
+}
+
+impl<T: Tessellation> Check<T> for TeleportDuplicatesConnectionCheck {
+    fn check_type_id(&self) -> &'static str { "teleport_duplicates_connection" }
+
+    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+        let invalid: Vec<_> = maze.graph.edges()
+            .filter(|e| e.kind == EdgeKind::Teleport)
+            .filter(|teleport| {
+                maze.graph.edges().any(|other| {
+                    other.kind == EdgeKind::Basic && other.from == teleport.from && other.to == teleport.to
+                })
+            })
+            .map(|e| e.id)
+            .collect();
+
+        if invalid.is_empty() {
+            return;
+        }
+        issues.push(Issue::with_data_from_check(
+            INVALID_TELEPORT,
+            IssueData::InvalidTeleports { invalid },
+            &self.instance_id,
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+    use crate::{Graph, IdGenerator};
+    use crate::space::{Field, SquareTessellation, square_rect};
+
+    const TEST_ID: &str = "teleport_duplicates_connection";
+
+    fn maze_with_teleport(add_duplicate_basic: bool) -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        if add_duplicate_basic {
+            g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        }
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn silent_when_no_teleport() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn silent_when_teleport_has_no_duplicate() {
+        let maze = maze_with_teleport(false);
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn fires_when_teleport_duplicates_basic_connection() {
+        let maze = maze_with_teleport(true);
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].kind, INVALID_TELEPORT);
+        let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
+        assert_eq!(issues[0].data, Some(IssueData::InvalidTeleports { invalid: vec![teleport_id] }));
+        assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
+    }
+
+    #[test]
+    fn fires_for_both_directions_of_a_two_way_teleport_duplicating_a_two_way_basic_passage() {
+        // Two-way teleport (both directions) exactly duplicating a two-way Basic passage between
+        // the same pair — each direction is its own Teleport edge and must be flagged
+        // independently, since the check operates per-edge, not per-pair.
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
+        g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+
+        assert_eq!(issues.len(), 1, "both directions merge into one issue from a single check call");
+        let IssueData::InvalidTeleports { invalid } = issues[0].data.as_ref().unwrap() else { panic!() };
+        let mut teleport_ids: Vec<_> = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).map(|e| e.id).collect();
+        teleport_ids.sort_unstable();
+        let mut flagged = invalid.clone();
+        flagged.sort_unstable();
+        assert_eq!(flagged, teleport_ids, "both teleport directions must be flagged, not just one");
+    }
+
+    #[test]
+    fn does_not_flag_teleport_with_only_reverse_basic() {
+        // A Basic edge in the opposite direction is not a duplicate — direction matters.
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert!(issues.is_empty());
+    }
+}

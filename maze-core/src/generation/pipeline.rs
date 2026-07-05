@@ -259,6 +259,15 @@ fn merge_issue(existing: &mut Issue, mut incoming: Issue) {
             debug_assert_eq!(*max_scc_count, incoming_max,
                 "merge_issue: two ExcessiveSccCount instances disagree on max_scc_count ({max_scc_count} vs {incoming_max})");
         }
+        (Some(IssueData::InvalidTeleports { invalid }),
+         Some(IssueData::InvalidTeleports { invalid: incoming_invalid })) => {
+            // A teleport is a single edge, not a cycle of edges — unlike InvalidLoops there is no
+            // index-into-`all` indirection to remap, just a dedup-union of flagged EdgeIds. Uses
+            // a HashSet for the membership check (existing entries only) so the union stays
+            // O(n + m) rather than O(n * m) for a linear-scan `.contains()` per incoming id.
+            let seen: HashSet<EdgeId> = invalid.iter().copied().collect();
+            invalid.extend(incoming_invalid.into_iter().filter(|id| !seen.contains(id)));
+        }
         (None, None) => {}
         (existing_data, incoming_data) => {
             debug_assert!(false,
@@ -619,5 +628,39 @@ mod merge_tests {
         let Some(IssueData::MissingRegions { balance_by_class }) = &a.data else { panic!() };
         assert_eq!(balance_by_class, &HashMap::from([(RegionClass::Trap, -5)]),
             "same-class shortfalls describe one underlying demand — take the stricter (further from zero), not the sum");
+    }
+
+    fn invalid_teleports_issue(source_check: &str, invalid: Vec<crate::ids::EdgeId>) -> Issue {
+        Issue::with_data_from_check(
+            crate::quality_control::INVALID_TELEPORT,
+            IssueData::InvalidTeleports { invalid },
+            source_check,
+        )
+    }
+
+    #[test]
+    fn merge_invalid_teleports_unions_disjoint_edge_ids() {
+        // e.g. teleport_duplicates_connection flags edge 0, teleport_waypoint_distance flags a
+        // different edge 1 in the same pass — both must survive in the merged issue.
+        let mut a = invalid_teleports_issue("teleport_duplicates_connection", vec![0]);
+        let b = invalid_teleports_issue("teleport_waypoint_distance", vec![1]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::InvalidTeleports { invalid }) = &a.data else { panic!() };
+        assert_eq!(invalid.len(), 2);
+        assert!(invalid.contains(&0));
+        assert!(invalid.contains(&1));
+    }
+
+    #[test]
+    fn merge_invalid_teleports_deduplicates_shared_edge_id() {
+        // The same teleport edge flagged by two different checks (e.g. both duplicates a
+        // connection AND sits too close to start) must appear once in the merged issue.
+        let mut a = invalid_teleports_issue("teleport_duplicates_connection", vec![0]);
+        let b = invalid_teleports_issue("teleport_waypoint_distance", vec![0]);
+        merge_issue(&mut a, b);
+
+        let Some(IssueData::InvalidTeleports { invalid }) = &a.data else { panic!() };
+        assert_eq!(invalid, &vec![0], "the same edge id flagged by both checks must not be duplicated");
     }
 }

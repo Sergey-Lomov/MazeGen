@@ -14,6 +14,7 @@ vi.mock("../store/mazeStore", () => ({
 const squareCfg = { type: "square" as const, width: 11, height: 11 };
 const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y });
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
+const tp = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
 
 function kindOf(walls: ReturnType<typeof buildMazeWalls>, ax: number, ay: number, bx: number, by: number) {
   const key = `${Math.min(ax, bx)},${Math.min(ay, by)}:${Math.max(ax, bx)},${Math.max(ay, by)}`;
@@ -102,6 +103,18 @@ describe("buildMazeWalls passage kinds", () => {
   it("duplicate edge directions still forward", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
     const walls = buildMazeWalls(nodes, [e(0, 1), e(0, 1), e(0, 1)], squareCfg);
+    expect(kindOf(walls, 0, 0, 1, 0)).toBe("forward");
+  });
+
+  it("teleport-only edge between geometric neighbors still renders a wall (not an open passage)", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const walls = buildMazeWalls(nodes, [tp(0, 1), tp(1, 0)], squareCfg);
+    expect(kindOf(walls, 0, 0, 1, 0)).toBe("none");
+  });
+
+  it("teleport edge does not turn a one-way basic passage into a bidirectional opening", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const walls = buildMazeWalls(nodes, [e(0, 1), tp(1, 0)], squareCfg);
     expect(kindOf(walls, 0, 0, 1, 0)).toBe("forward");
   });
 });

@@ -17,6 +17,8 @@ use maze_core::{
         MIN_REGION_COUNT_DEFAULT, IssueKind,
         MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP,
         EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS,
+        TeleportDuplicatesConnectionCheck, INVALID_TELEPORT,
+        TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
     },
     repair::{
         QcRule, RepairEngine, RepairRuleConfig, RepairStage, RepairStrategy,
@@ -24,6 +26,7 @@ use maze_core::{
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
         ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
+        RemoveTeleportStrategy,
     },
     RegionClass, GenerationTiming,
     quality_control::Issue,
@@ -59,6 +62,8 @@ fn check_kind_for_type(type_id: &str) -> IssueKind {
         "min_region_size"           => REGION_NEEDS_EXPANSION,
         "min_region_ratio"          => REGION_NEEDS_EXPANSION,
         "min_region_count"          => MISSING_REGIONS,
+        "teleport_duplicates_connection" => INVALID_TELEPORT,
+        "teleport_waypoint_distance" => INVALID_TELEPORT,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -71,6 +76,21 @@ fn parse_region_class_filter(param: Option<&String>) -> Vec<RegionClass> {
     match param.and_then(|v| RegionClass::from_str(v)) {
         Some(class) => vec![class],
         None => maze_core::graph::region_class::ALL_REGION_CLASSES.to_vec(),
+    }
+}
+
+fn parse_teleport_waypoint(param: Option<&String>) -> TeleportWaypoint {
+    match param.map(String::as_str) {
+        Some("start") => TeleportWaypoint::Start,
+        Some("finish") => TeleportWaypoint::Finish,
+        _ => TeleportWaypoint::Any,
+    }
+}
+
+fn parse_teleport_edge_selector(param: Option<&String>) -> TeleportEdgeSelector {
+    match param.map(String::as_str) {
+        Some("entry_only") => TeleportEdgeSelector::EntryOnly,
+        _ => TeleportEdgeSelector::EntryOrExit,
     }
 }
 
@@ -177,6 +197,16 @@ fn build_check<T: Tessellation>(
             ]);
             Box::new(MinRegionCountCheck { instance_id, min_counts })
         }
+        "teleport_duplicates_connection" => Box::new(TeleportDuplicatesConnectionCheck { instance_id }),
+        "teleport_waypoint_distance" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(TELEPORT_WAYPOINT_DISTANCE_DEFAULT);
+            let waypoint = parse_teleport_waypoint(instance.params.get("waypoint"));
+            let edge = parse_teleport_edge_selector(instance.params.get("edge"));
+            Box::new(TeleportWaypointDistanceCheck { instance_id, distance, waypoint, edge })
+        }
         other => return Err(format!("unknown check: {other}")),
     };
     Ok(check)
@@ -193,6 +223,7 @@ fn build_strategy<T: Tessellation>(id: &str) -> Result<Box<dyn RepairStrategy<T>
         "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
         "missing_regions"      => Box::new(MissingRegionsStrategy),
         "reduce_scc_count"     => Box::new(ReduceSccCountStrategy),
+        "remove_teleport"      => Box::new(RemoveTeleportStrategy),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }

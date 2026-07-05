@@ -59,6 +59,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.min_region_count.label"] as MessageFn,
     description: m["check.min_region_count.description"] as MessageFn,
   },
+  teleport_duplicates_connection: {
+    label: m["check.teleport_duplicates_connection.label"] as MessageFn,
+    description: m["check.teleport_duplicates_connection.description"] as MessageFn,
+  },
+  teleport_waypoint_distance: {
+    label: m["check.teleport_waypoint_distance.label"] as MessageFn,
+    description: m["check.teleport_waypoint_distance.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -89,6 +97,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   missing_regions: {
     label: m["issue.missing_regions.label"] as MessageFn,
     description: m["issue.missing_regions.description"] as MessageFn,
+  },
+  invalid_teleport: {
+    label: m["issue.invalid_teleport.label"] as MessageFn,
+    description: m["issue.invalid_teleport.description"] as MessageFn,
   },
 };
 
@@ -134,6 +146,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   reduce_scc_count: {
     label: m["strategy.reduce_scc_count.label"] as MessageFn,
     description: m["strategy.reduce_scc_count.description"] as MessageFn,
+  },
+  remove_teleport: {
+    label: m["strategy.remove_teleport.label"] as MessageFn,
+    description: m["strategy.remove_teleport.description"] as MessageFn,
   },
 };
 
@@ -242,6 +258,18 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.merge_priority.label"] as MessageFn,
     description: m["param.merge_priority.description"] as MessageFn,
   },
+  distance: {
+    label: m["param.distance.label"] as MessageFn,
+    description: m["param.distance.description"] as MessageFn,
+  },
+  waypoint: {
+    label: m["param.waypoint.label"] as MessageFn,
+    description: m["param.waypoint.description"] as MessageFn,
+  },
+  edge: {
+    label: m["param.edge.label"] as MessageFn,
+    description: m["param.edge.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -267,6 +295,11 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "merge_priority.smallest": m["param.merge_priority.option.smallest"] as MessageFn,
   "merge_priority.largest": m["param.merge_priority.option.largest"] as MessageFn,
   "merge_priority.random": m["param.merge_priority.option.random"] as MessageFn,
+  "waypoint.start": m["param.waypoint.option.start"] as MessageFn,
+  "waypoint.finish": m["param.waypoint.option.finish"] as MessageFn,
+  "waypoint.any": m["param.waypoint.option.any"] as MessageFn,
+  "edge.entry_only": m["param.edge.option.entry_only"] as MessageFn,
+  "edge.entry_or_exit": m["param.edge.option.entry_or_exit"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -284,6 +317,11 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "merge_priority.smallest": m["param.merge_priority.option.smallest.explanation"] as MessageFn,
   "merge_priority.largest": m["param.merge_priority.option.largest.explanation"] as MessageFn,
   "merge_priority.random": m["param.merge_priority.option.random.explanation"] as MessageFn,
+  "waypoint.start": m["param.waypoint.option.start.explanation"] as MessageFn,
+  "waypoint.finish": m["param.waypoint.option.finish.explanation"] as MessageFn,
+  "waypoint.any": m["param.waypoint.option.any.explanation"] as MessageFn,
+  "edge.entry_only": m["param.edge.option.entry_only.explanation"] as MessageFn,
+  "edge.entry_or_exit": m["param.edge.option.entry_or_exit.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

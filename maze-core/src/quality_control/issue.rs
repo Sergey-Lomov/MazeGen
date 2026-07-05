@@ -13,6 +13,7 @@ pub enum IssueKind {
     ExcessiveSccCount,
     RegionNeedsExpansion,
     MissingRegions,
+    InvalidTeleport,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -63,6 +64,14 @@ pub const REGION_NEEDS_EXPANSION: IssueKind = IssueKind::RegionNeedsExpansion;
 /// regions for structural variety. Carries `IssueData::MissingRegions { missing_by_class }` —
 /// see that variant's doc comment. No `RepairStrategy` registered yet for this kind.
 pub const MISSING_REGIONS: IssueKind = IssueKind::MissingRegions;
+/// A teleport edge (`EdgeKind::Teleport`) is invalid for some check-specific reason (currently:
+/// a regular, non-teleport connection already exists between the same pair in the same direction
+/// — see `TeleportDuplicatesConnectionCheck`). Mirrors `INVALID_LOOP`'s role for cycles: a
+/// semantic category, not tied to one specific reason — future per-teleport validation checks
+/// (geometric length, waypoint distance, super-hub avoidance) may flag teleports invalid for
+/// other reasons and reuse this same kind. Carries `IssueData::InvalidTeleports` — see that
+/// variant's doc comment.
+pub const INVALID_TELEPORT: IssueKind = IssueKind::InvalidTeleport;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -77,6 +86,7 @@ impl IssueKind {
             IssueKind::ExcessiveSccCount => "excessive_scc_count",
             IssueKind::RegionNeedsExpansion => "region_needs_expansion",
             IssueKind::MissingRegions => "missing_regions",
+            IssueKind::InvalidTeleport => "invalid_teleport",
         }
     }
 
@@ -100,6 +110,7 @@ impl IssueKind {
             "excessive_scc_count" => Some(IssueKind::ExcessiveSccCount),
             "region_needs_expansion" => Some(IssueKind::RegionNeedsExpansion),
             "missing_regions" => Some(IssueKind::MissingRegions),
+            "invalid_teleport" => Some(IssueKind::InvalidTeleport),
             _ => None,
         }
     }
@@ -308,6 +319,7 @@ mod tests {
             IssueKind::ExcessiveSccCount,
             IssueKind::RegionNeedsExpansion,
             IssueKind::MissingRegions,
+            IssueKind::InvalidTeleport,
         ];
         for kind in kinds {
             assert_eq!(IssueKind::from_str(kind.as_str()), Some(kind));

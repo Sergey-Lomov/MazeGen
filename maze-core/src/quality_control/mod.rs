@@ -4,7 +4,7 @@ pub mod check;
 pub mod engine;
 pub mod checks;
 
-pub use issue::{Issue, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, QC_NO_PROGRESS, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS};
+pub use issue::{Issue, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, QC_NO_PROGRESS, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS, INVALID_TELEPORT};
 pub use issue_data::{IssueData, RepairLimitKind};
 pub use check::Check;
 pub use engine::QualityControlEngine;
@@ -23,4 +23,6 @@ pub use checks::{
     MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT,
     MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT,
     MinRegionCountCheck, MIN_REGION_COUNT_DEFAULT,
+    TeleportDuplicatesConnectionCheck,
+    TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
 };

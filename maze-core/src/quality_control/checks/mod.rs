@@ -12,6 +12,8 @@ pub mod scc_count;
 pub mod min_region_size;
 pub mod min_region_ratio;
 pub mod min_region_count;
+pub mod teleport_duplicates_connection;
+pub mod teleport_waypoint_distance;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -27,3 +29,5 @@ pub use scc_count::{SccCountCheck, MAX_SCC_COUNT_DEFAULT};
 pub use min_region_size::{MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT};
 pub use min_region_ratio::{MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT};
 pub use min_region_count::{MinRegionCountCheck, MIN_REGION_COUNT_DEFAULT};
+pub use teleport_duplicates_connection::TeleportDuplicatesConnectionCheck;
+pub use teleport_waypoint_distance::{TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT};

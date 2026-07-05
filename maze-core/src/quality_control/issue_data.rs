@@ -100,6 +100,16 @@ pub enum IssueData {
     ExcessiveSccCount {
         max_scc_count: u32,
     },
+    /// Produced by any check that flags a teleport edge (`EdgeKind::Teleport`) invalid for a
+    /// check-specific reason (paired with `INVALID_TELEPORT`) — currently
+    /// `TeleportDuplicatesConnectionCheck` (a regular connection already exists between the same
+    /// pair in the same direction). `invalid` holds the base-`Graph` `EdgeId` of each flagged
+    /// teleport edge directly — unlike `InvalidLoops`, there is no `all`/index-into-`all`
+    /// indirection here: a teleport is a single edge, not a cycle of edges, so there is nothing
+    /// to resolve an index against. **Mandatory** for this kind, see `RemoveTeleportStrategy`.
+    InvalidTeleports {
+        invalid: Vec<EdgeId>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

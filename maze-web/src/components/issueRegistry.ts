@@ -19,6 +19,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   excessive_scc_count: () => ({ label: m["issue.excessive_scc_count.label"](), description: m["issue.excessive_scc_count.description"](), severity: "warning" }),
   region_needs_expansion: () => ({ label: m["issue.region_needs_expansion.label"](), description: m["issue.region_needs_expansion.description"](), severity: "warning" }),
   missing_regions: () => ({ label: m["issue.missing_regions.label"](), description: m["issue.missing_regions.description"](), severity: "warning" }),
+  invalid_teleport: () => ({ label: m["issue.invalid_teleport.label"](), description: m["issue.invalid_teleport.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -81,6 +82,7 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
       region_classes: classes.map((c) => resolveParamOptionLabel("region_class", c)).join(", "),
     });
   },
+  teleport_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_waypoint_distance_label"]({ distance: d.distance }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

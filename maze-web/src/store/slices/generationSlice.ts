@@ -686,6 +686,10 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
   if (debugMode) config.debug = true;
   try {
     const snapshot = generateMaze(seed, config);
+    // DIAG
+    const diagNodeXY = new Map(snapshot.nodes.map((n) => [n.id, `${n.x},${n.y}`]));
+    // DIAG
+    console.log("DIAG all edges:", snapshot.edges.map((e) => `${e.kind} (${diagNodeXY.get(e.from)}) -> (${diagNodeXY.get(e.to)})`));
     let debugSnapshot: GenerationStepsSnapshot | null = null;
     if (debugMode && snapshot.debug_steps.length > 0) {
       // Step 0 is a client-side synthetic "empty graph" state; WASM only emits steps where edges were added.

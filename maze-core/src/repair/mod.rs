@@ -14,4 +14,4 @@ pub use snapshot::SnapshotStack;
 pub use rule::QcRule;
 pub use stage::RepairStage;
 pub use engine::{RepairEngine, RepairRuleConfig, RepairOutcome};
-pub use strategies::{RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy};
+pub use strategies::{RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy};

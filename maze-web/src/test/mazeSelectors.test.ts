@@ -105,6 +105,14 @@ describe("buildClosedCells", () => {
     const result = buildClosedCells(nodes, [e(0, 99)]);
     expect(result).toEqual([]);
   });
+
+  it("teleport-only edge counts as a connection — cell is not closed even with no geometric passage", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const teleportEdge: EdgeDto = { from: 0, to: 1, kind: "teleport" };
+    const result = buildClosedCells(nodes, [teleportEdge]);
+    expect(result).not.toContainEqual([0, 0]);
+    expect(result).not.toContainEqual([1, 0]);
+  });
 });
 
 // --- buildTeleportEdges ---

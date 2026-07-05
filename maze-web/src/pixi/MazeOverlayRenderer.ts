@@ -3,7 +3,7 @@ import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { canvas } from "./colorUtils";
@@ -45,9 +45,7 @@ export class MazeOverlayRenderer {
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
-    const connected = new Set<number>();
-    for (const e of edges) { connected.add(e.from); connected.add(e.to); }
-    const closed: [number, number][] = nodes.filter(n => !connected.has(n.id)).map(n => [n.x, n.y]);
+    const closed = buildClosedCells(nodes, edges);
     this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
 
     const wallEdges = buildMazeWalls(nodes, edges, cfg);

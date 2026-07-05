@@ -19,6 +19,7 @@ pub enum IssueKind {
     ExcessiveSccCount,
     RegionNeedsExpansion,
     MissingRegions,
+    InvalidTeleport,
 }
 ```
 
@@ -43,9 +44,12 @@ pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
 pub const INVALID_LOOP:       IssueKind = IssueKind::InvalidLoop;
 pub const MISSING_LOOPS:      IssueKind = IssueKind::MissingLoops;
 pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflowed;
+pub const INVALID_TELEPORT:  IssueKind = IssueKind::InvalidTeleport;
 ```
 
 `MissingRegions` mirrors `MissingLoops`'s role, but for a deficit in the count of regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap — see "Region Classes" in `graph-analytics.md`) instead of overall loop count — currently produced only by `MinRegionCountCheck`.
+
+`InvalidTeleport` mirrors `InvalidLoop`'s role, but for a `Teleport` edge (`EdgeKind::Teleport`) flagged invalid for a check-specific reason instead of a cycle — see GitHub issue #74. Currently produced by `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport) and `TeleportWaypointDistanceCheck` (the teleport sits too close to a waypoint); future per-teleport validation checks (geometric length, super-hub avoidance) may flag teleports invalid for other reasons and reuse this same kind. Carries `IssueData::InvalidTeleports` — see that variant's doc comment. Repaired by `RemoveTeleportStrategy` (see `repair.md`).
 
 Always use the named constant — never use string literals or enum variants inline.
 
@@ -150,6 +154,9 @@ pub enum IssueData {
     MissingRegions {               // produced by MinRegionCountCheck, region balance per class, see below
         balance_by_class: HashMap<RegionClass, i32>,
     },
+    InvalidTeleports {             // produced by any check flagging teleport edges invalid, see below
+        invalid: Vec<EdgeId>,
+    },
 }
 ```
 
@@ -166,6 +173,7 @@ pub enum IssueData {
 - **`RegionsNeedingExpansion { invalid, invalid_sources }`**: produced by any check that flags SCC regions undersized for a check-specific reason (paired with `REGION_NEEDS_EXPANSION`) — currently `MinRegionSizeCheck` (region smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller than a configured share of the field). `invalid` holds indices into `maze.analysis.scc(&maze.graph).components` — not a copy of the regions themselves: that computation is already cached there (keyed by `graph.version()`, see `analysis.md`), and a future repair strategy can re-fetch it (cache hit within the same QC pass) instead of `Issue` carrying a duplicate snapshot. `invalid_sources` is keyed by the same component index — unlike `invalid_sources` on `InvalidLoops`, this needs no remap on merge, because every check sharing this issue within one QC pass reads from the same single `scc()` cache entry, so a given index means the same region on both sides of a merge (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section). No `RepairStrategy` registered yet for this kind — a detectable-but-not-yet-repairable issue kind, same as any other kind with `strategy: None` in its `QcRuleConfig`.
 - **`ExcessiveSccCount { max_scc_count }`**: produced by `SccCountCheck` (paired with `EXCESSIVE_SCC_COUNT`) — **mandatory** for this kind, see `ReduceSccCountStrategy` in `repair.md`. `max_scc_count` is the check's configured threshold, needed by the strategy to compute how many regions to merge (`current_scc_count - max_scc_count`) — there is no other channel to learn it (the check's own field isn't visible to a strategy, only what it attaches to the `Issue`). No merge rule exercised in practice — `SccCountCheck` has no multi-instance use case (see `allow_multiple_instances` in the WASM Interface section below), so two instances producing this kind in one pass never happens; `merge_issue` still defines the rule (`debug_assert_eq!` on matching `max_scc_count`, keeping the existing side) for consistency with every other `IssueData` variant.
 - **`MissingRegions { balance_by_class }`**: produced by `MinRegionCountCheck` (paired with `MISSING_REGIONS`) — carries the **region balance** per `RegionClass` (Path/Alternative/Unreachable/Trap, see `graph-analytics.md`'s "Region Classes" section). `-N` means the maze is short `N` regions of that class against its configured minimum — a repair strategy must create or convert regions into it. `+N` means the class has `N` regions *above* its minimum — a spendable surplus a repair strategy may consume (reuse outright, or merge into an undersized candidate of the same class) when fixing a different class's shortfall. A class sitting exactly at its minimum, or with no minimum configured (`min_count == 0`), carries **no entry at all** — absence means "nothing to fix, nothing to spend" for that class, not a `0` entry. Since GitHub issue #60's multi-instance design is retired, a single `MinRegionCountCheck` instance now evaluates all four classes' counts in one pass and produces one `Issue` with every off-target class's balance already in `balance_by_class` — no cross-instance merge happens in the common case (there's normally exactly one active instance), though `merge_missing_regions` (see `repair.md`'s "Pipeline" section) still unions two instances' output if more than one is ever active at once, taking the value **further from zero** for a class present on both sides. `HashMap` iteration order is not stable — code that serializes or displays `balance_by_class` (the wasm DTO layer, the web UI) sorts by `RegionClass::as_str()` at the point of use rather than relying on map order, without needing an `Ord` derive on `RegionClass` itself for this one call site.
+- **`InvalidTeleports { invalid }`**: produced by any check that flags a teleport edge invalid for a check-specific reason (paired with `INVALID_TELEPORT`) — currently `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport in the same direction) and `TeleportWaypointDistanceCheck` (the teleport sits too close to a configured waypoint). **Mandatory** for this kind, see `RemoveTeleportStrategy` in `repair.md`. `invalid` holds the base-`Graph` `EdgeId` of each flagged teleport edge directly — unlike `InvalidLoops`, there is no `all`/index-into-`all` indirection, since a teleport is a single edge, not a cycle of edges, so there is nothing to resolve an index against. Merge (see `merge_issue` in `repair.md`'s "Pipeline" section) is a plain dedup-union of `EdgeId`s across the contributing checks.
 - **`data` is not exposed over WASM**: the WASM layer serializes `IssueKind`, `source_checks`, and `details` (see `IssueDto` in `quality-feature.md`) but never `Issue.data` itself — that field stays internal, Check-to-Strategy plumbing only.
 - **Dedup interaction**: multiple checks may produce an `Issue` of the same `IssueKind` in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single `Issue` rather than keeping only the first and dropping the rest — this replaces an earlier dedup-by-first-occurrence design that silently lost a second issue's `data`. The merge rule is per-`IssueData`-variant: for `InvalidLoops`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks` and `details` (on `Issue`, see above) are unioned. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 
@@ -400,6 +408,44 @@ Uses `maze.analysis.region_classes(&maze.graph, start, finish)` and counts entri
 
 `MissingRegionsStrategy` (see `repair.md`) is the registered `RepairStrategy` for `MISSING_REGIONS`: it creates/converts regions for every `-N` class, optionally spending `+N` surplus from other classes via cross-region growth or reuse-merge to reach a configured `min_region_size`.
 
+### TeleportDuplicatesConnectionCheck
+
+```rust
+pub struct TeleportDuplicatesConnectionCheck {
+    pub instance_id: String,
+}
+```
+
+Flags a teleport edge (`EdgeKind::Teleport`) as invalid when a regular (`EdgeKind::Basic`) connection already exists between the same pair of vertices in the same direction — see GitHub issue #74. A teleport that duplicates a passage the maze already has adds no new connectivity, only visual/navigational noise. No configurable parameters.
+
+For every `Teleport` edge in `maze.graph`, checks whether a `Basic` edge exists with the same `from`/`to` (direction-specific — a `Basic` edge only in the *reverse* direction does not count as a duplicate). Each direction of a two-way teleport is its own `Teleport` edge and is flagged independently if it has its own matching `Basic` duplicate. If no teleport is flagged, the check is silent. Otherwise fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_duplicates_connection")` — `invalid` holds every flagged teleport's `EdgeId` directly.
+
+### TeleportWaypointDistanceCheck
+
+```rust
+pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT: u32 = 0;
+
+pub enum TeleportWaypoint { Start, Finish, Any }
+pub enum TeleportEdgeSelector { EntryOnly, EntryOrExit }
+
+pub struct TeleportWaypointDistanceCheck {
+    pub instance_id: String,
+    pub distance: u32,
+    pub waypoint: TeleportWaypoint,
+    pub edge: TeleportEdgeSelector,
+}
+```
+
+Flags a teleport edge placed too close to a waypoint (start/finish) in progression space — see GitHub issue #74. Multiple instances may be active at once (different `waypoint`/`edge`/`distance` combinations are all legitimate simultaneously, e.g. "entry must be far from start" AND separately "exit must be far from finish") — `allow_multiple_instances: true` (see "Available checks" below), same rationale as `MinRegionCountCheck`.
+
+Distance is logical (tile count via `maze.analysis.distance_from_start`/`distance_from_finish`, see `graph-analytics.md`'s "Distance Maps" section), never geometric. For each teleport edge, resolves the relevant endpoint(s) (`from` only for `EntryOnly`, both `from` and `to` for `EntryOrExit`) to a `NavNodeId` via `maze.analysis.nav_graph(...).nav_node_for(...)` — always `Some` for a teleport endpoint, since a node touching a `Teleport` edge is never compressed into a passage node (see `nav-graph.md`'s "Passage Node" exemption). Looks up each resolved endpoint's distance in the relevant map(s) (`distance_from_start` for `Start`, `distance_from_finish` for `Finish`, both for `Any`) and takes the **minimum** across every relevant (endpoint, waypoint) combination — a teleport is flagged if that minimum is below `distance`. A combination whose endpoint is absent from the relevant distance map (unreachable from that waypoint) is skipped entirely, not treated as distance `0` — if every relevant combination is unreachable, the teleport is never flagged, symmetric with `LoopDistanceFromStartCheck`'s "cycle has no defined distance" rule.
+
+Silently skips (no issue) if the maze doesn't have the waypoint(s) this instance needs set (`meta.start` for `Start`/`Any`, `meta.finish` for `Finish`/`Any`) — covered by `MissingEndpointsCheck`, same rationale as the loop-distance checks. Default `distance` of `0` never fires on its own, same as `LoopDistanceFromStartCheck`'s `min_distance_from_start`.
+
+If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_waypoint_distance")` with `.with_detail("teleport_waypoint_distance", "distance", self.distance.to_string())` chained on. Can be active alongside `TeleportDuplicatesConnectionCheck` (or another `teleport_waypoint_distance` instance) — all merge into one `INVALID_TELEPORT` issue per the dedup rule in `repair.md`'s "Pipeline" section.
+
+`RemoveTeleportStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_TELEPORT` — removes every flagged teleport edge outright.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -588,8 +634,12 @@ rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turne
 | `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Integer(default=25, min=0, max=100)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_count` | `missing_regions` | `region_class: Enum(options=[path,alternative,unreachable,trap], default=trap)`, `count: Integer(default=1, min=0, max=1_000_000)` | no |
+| `teleport_duplicates_connection` | `invalid_teleport` | — | no |
+| `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
+
+`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance` combinations are a legitimate simultaneous configuration.
 
 ## Architectural Contract
 
