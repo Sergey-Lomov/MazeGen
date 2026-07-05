@@ -17,6 +17,7 @@ export class PostEditController extends BaseController {
   private dragActive = false;
   private dragVisited = new Set<string>();
   private dragDidApply = false;
+  private draggingMarker: "set_start" | "set_finish" | null = null;
 
   constructor(
     getViewport: () => Container,
@@ -42,6 +43,18 @@ export class PostEditController extends BaseController {
     if (state.openCard !== "post_edit") return;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
+
+    if (this.draggingMarker) {
+      const proj = makeProjection(state.activeTessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const nodeMap = this.getNodeMap(state.nodes);
+      const nodeId = nodeMap.get(`${cell.x},${cell.y}`);
+      if (nodeId !== undefined) {
+        useMazeStore.getState().setPostEditEndpoint(this.draggingMarker === "set_start" ? "start" : "finish", nodeId);
+      }
+      return;
+    }
+
     const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     this.renderer.updateHover(edge);
 
@@ -67,10 +80,25 @@ export class PostEditController extends BaseController {
     const nodeMap = this.getNodeMap(state.nodes);
 
     if (tool === "set_start" || tool === "set_finish") {
-      if (button !== 0) return;
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeId = nodeMap.get(`${cell.x},${cell.y}`);
+      const meta = state.postEditDraftMeta ?? { start: state.start, finish: state.finish };
+      const currentId = tool === "set_start" ? meta.start : meta.finish;
+      const onMarker = nodeId !== undefined && currentId === nodeId;
+
+      if (button === 2) {
+        if (onMarker) {
+          useMazeStore.getState().clearPostEditEndpoint(tool === "set_start" ? "start" : "finish");
+        }
+        return;
+      }
+      if (button !== 0) return;
+
+      if (onMarker) {
+        this.draggingMarker = tool;
+        return;
+      }
       if (nodeId !== undefined) {
         useMazeStore.getState().setPostEditEndpoint(tool === "set_start" ? "start" : "finish", nodeId);
       }
@@ -96,6 +124,9 @@ export class PostEditController extends BaseController {
 
   onPointerUp(button: number): void {
     super.onPointerUp(button);
+    if (button === 0) {
+      this.draggingMarker = null;
+    }
     if (button === 0 && this.dragActive) {
       this.dragActive = false;
       this.dragVisited.clear();

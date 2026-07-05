@@ -197,8 +197,8 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `passage` | Edges | Sets edge to `passage` |
 | `reset` | Edges | Sets edge to `{ state: "undefined", source: "user" }` — explicitly undecided, overrides default |
 | `one_way` | Edges | Cycles one-way direction |
-| `set_start` | Vertex | Sets `presetStart` to clicked cell |
-| `set_finish` | Vertex | Sets `presetFinish` to clicked cell |
+| `set_start` | Vertex | Sets `presetStart` to clicked cell. Right-click on the current start cell clears it (`setPresetStart(null)`). Press-and-drag from the current start cell moves it live to the cell under the cursor. |
+| `set_finish` | Vertex | Sets `presetFinish` to clicked cell. Right-click on the current finish cell clears it (`setPresetFinish(null)`). Press-and-drag from the current finish cell moves it live to the cell under the cursor. |
 | `teleport_one_way` | Vertex | Two-click placement of a one-way teleport — see "Preset teleports" |
 | `teleport_two_way` | Vertex | Two-click placement of a two-way teleport — see "Preset teleports" |
 | `lock_in` | Generation | Locks node to block incoming edges |
@@ -206,7 +206,7 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `full_lock` | Generation | Locks node both in and out (`"both"`) |
 | `gen_source` | Generation | Toggles `presetGenSource` on clicked cell (click same cell to clear) |
 
-Right-click always sets the edge to `{ state: "undefined", source: "user" }` regardless of active tool or `defaultEdgeState`.
+Right-click on an edge sets it to `{ state: "undefined", source: "user" }` regardless of `defaultEdgeState`, for any tool that falls through to edge picking (i.e. not `set_start`/`set_finish`/`gen_source`/lock/teleport tools, each of which gives right-click its own tool-specific meaning — see their rows above).
 
 ## Node locking
 

@@ -15,6 +15,7 @@ export class PresetConnectionsController extends BaseController {
   private dragVisited = new Set<string>();
   private draggingTeleportEndpoint: PresetTeleportEndpointHit | null = null;
   private teleportDragMoved = false;
+  private draggingMarker: "set_start" | "set_finish" | null = null;
   private lastViewportPos = { x: 0, y: 0 };
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -39,6 +40,16 @@ export class PresetConnectionsController extends BaseController {
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     this.lastViewportPos = { x: vpX, y: vpY };
+
+    if (this.draggingMarker) {
+      const proj = makeProjection(state.tessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      const coords: [number, number] = [cell.x, cell.y];
+      if (this.draggingMarker === "set_start") useMazeStore.getState().setPresetStart(coords);
+      else useMazeStore.getState().setPresetFinish(coords);
+      return;
+    }
 
     if (this.draggingTeleportEndpoint) {
       const proj = makeProjection(state.tessellationConfig);
@@ -89,10 +100,25 @@ export class PresetConnectionsController extends BaseController {
     const tool = state.presetConnectionsTool;
 
     if (tool === "set_start" || tool === "set_finish") {
-      if (button !== 0) return;
       const proj = makeProjection(state.tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const coords: [number, number] = [cell.x, cell.y];
+      const marker = tool === "set_start" ? state.presetStart : state.presetFinish;
+      const onMarker = marker !== null && marker[0] === coords[0] && marker[1] === coords[1];
+
+      if (button === 2) {
+        if (onMarker) {
+          if (tool === "set_start") useMazeStore.getState().setPresetStart(null);
+          else useMazeStore.getState().setPresetFinish(null);
+        }
+        return;
+      }
+      if (button !== 0) return;
+
+      if (onMarker) {
+        this.draggingMarker = tool;
+        return;
+      }
       if (tool === "set_start") useMazeStore.getState().setPresetStart(coords);
       else useMazeStore.getState().setPresetFinish(coords);
       return;
@@ -177,6 +203,7 @@ export class PresetConnectionsController extends BaseController {
     if (button === 0) {
       this.dragActive = false;
       this.dragVisited.clear();
+      this.draggingMarker = null;
 
       if (this.draggingTeleportEndpoint) {
         if (!this.teleportDragMoved) {

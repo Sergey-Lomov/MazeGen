@@ -99,8 +99,8 @@ Async, versioned via `_postEditRequestId`:
 | `passage` | Ensures both directions exist as `"basic"` in `postEditDraftEdges`. |
 | `one_way` | Toggles direction: if `fwd` exists → replace with `bwd`; otherwise → replace with `fwd`. Wall/passage not affected. |
 | `reset` | Restores edge pair to original generated state (basic or one_way_forward). |
-| `set_start` | Click on node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. |
-| `set_finish` | Click on node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. |
+| `set_start` | Click on node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. Right-click on the current start node clears it (`clearPostEditEndpoint`). Press-and-drag from the current start node moves it live to whichever node is under the cursor. |
+| `set_finish` | Click on node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. Right-click on the current finish node clears it (`clearPostEditEndpoint`). Press-and-drag from the current finish node moves it live to whichever node is under the cursor. |
 
 ### `one_way` Tool Detail
 
@@ -157,7 +157,9 @@ Extends `BaseController` (shared with `PresetConnectionsController`). `BaseContr
 Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", nodeId>`) is cached per `nodes` reference — rebuilt only when `state.nodes` changes.
 
 - **Left click + edge tool** → `applyPostEditTool`, schedule confirm if `autoConfirm`.
-- **Left click + endpoint tool** → `setPostEditEndpoint` (confirm called internally by store action when `autoConfirm`).
+- **Left click + endpoint tool, no node under marker** → `setPostEditEndpoint` (confirm called internally by store action when `autoConfirm`).
+- **Left press-drag + endpoint tool, starting on the marker's own node** → arms drag; each pointer move over a new node calls `setPostEditEndpoint` again to move it live. A press that never leaves the marker's node resolves as a plain click on release (no-op, node unchanged).
+- **Right click + endpoint tool, on the marker's own node** → `clearPostEditEndpoint`. Right-click elsewhere is a no-op for endpoint tools.
 - **Middle click** → pan viewport.
 
 ## `buildPostEditDraftEdgesFromGenerated`
