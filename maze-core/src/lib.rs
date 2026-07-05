@@ -19,7 +19,7 @@ pub use graph::routing::{RouteInfo, compute_route_info};
 pub use graph::graph_analytics::{GraphAnalytics, compute_graph_analytics};
 pub use graph::region_class::{RegionClass, classify_regions};
 pub use space::{
-    Tessellation, Field,
+    Tessellation, Field, geometric_distance,
     HexPoint, HexFace, HexTessellation, hex_parallelogram, hex_hexagon,
     SquarePoint, SquareTessellation, SquareFace, square_rect,
     TriPoint, TriFace, TriTessellation, tri_rect, tri_triangle, tri_hexagon,

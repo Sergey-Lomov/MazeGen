@@ -1,7 +1,16 @@
-import { describe, it, expect } from "vitest";
-import { buildPresetWallGroups } from "../pixi/selectors/presetSelectors";
+import { describe, it, expect, vi } from "vitest";
 import type { PresetConnectionEntry } from "../pixi/presetConnectionsUtils";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+
+// getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
+// unit-test environment -- mock it with the canonical square formula (see
+// `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip -- those are applied
+// by `squareGeometry.ts` itself, not this mock).
+vi.mock("../wasm/mazeService", () => ({
+  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+}));
+
+const { buildPresetWallGroups } = await import("../pixi/selectors/presetSelectors");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
 const cfg: TessellationConfig = { type: "square", width: 2, height: 1 };

@@ -78,7 +78,7 @@ function getCellVertices(x: number, y: number, kind: TessellationKind, cfg: Tess
     }
     case "hex": {
       const orientation = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-      const center = hexCenter(x, y, orientation);
+      const center = hexCenter(x, y, orientation, cfg);
       return hexVertices(center.x, center.y, orientation);
     }
     case "triangle": {

@@ -7,6 +7,7 @@ import { createGenerationSlice, generateWithSeed } from "./slices/generationSlic
 import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
 import { buildPreviewState, buildResetMazeState, deriveTessellationFromConfig, recomputeAutoLock } from "./storeHelpers";
+import { warmCartesianCache } from "../pixi/cartesianCache";
 
 export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
@@ -48,6 +49,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     } as MazeState);
 
     // Single atomic set of all non-maze state
+    warmCartesianCache(cfg);
     set({
       // tessellation
       tessellationConfig: cfg,

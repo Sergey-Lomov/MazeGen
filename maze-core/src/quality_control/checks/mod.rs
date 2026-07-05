@@ -14,6 +14,8 @@ pub mod min_region_ratio;
 pub mod min_region_count;
 pub mod teleport_duplicates_connection;
 pub mod teleport_waypoint_distance;
+pub mod teleport_min_geometric_length;
+pub mod teleport_max_geometric_length;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -31,3 +33,5 @@ pub use min_region_ratio::{MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT};
 pub use min_region_count::{MinRegionCountCheck, MIN_REGION_COUNT_DEFAULT};
 pub use teleport_duplicates_connection::TeleportDuplicatesConnectionCheck;
 pub use teleport_waypoint_distance::{TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT};
+pub use teleport_min_geometric_length::{TeleportMinGeometricLengthCheck, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT};
+pub use teleport_max_geometric_length::{TeleportMaxGeometricLengthCheck, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT};

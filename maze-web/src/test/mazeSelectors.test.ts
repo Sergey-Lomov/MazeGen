@@ -13,6 +13,13 @@ vi.mock("../store/mazeStore", () => ({
   useMazeStore: { getState: vi.fn(() => ({})), subscribe: vi.fn(() => () => {}) },
 }));
 
+// getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
+// unit-test environment -- mock with the canonical square formula (see
+// `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip applied here).
+vi.mock("../wasm/mazeService", () => ({
+  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+}));
+
 // --- postEditEdgesToDto ---
 
 const pe = (from: number, to: number, kind: PostEditEdge["kind"]): PostEditEdge => ({ from, to, kind });

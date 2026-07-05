@@ -9,6 +9,7 @@ vi.mock("../wasm/mazeService", () => ({
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
+  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
 }));
 vi.mock("../wasm/wasmLoader", () => ({
   initWasm: vi.fn(() => Promise.resolve()),

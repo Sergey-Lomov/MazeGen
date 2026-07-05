@@ -49,7 +49,7 @@ pub const INVALID_TELEPORT:  IssueKind = IssueKind::InvalidTeleport;
 
 `MissingRegions` mirrors `MissingLoops`'s role, but for a deficit in the count of regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap — see "Region Classes" in `graph-analytics.md`) instead of overall loop count — currently produced only by `MinRegionCountCheck`.
 
-`InvalidTeleport` mirrors `InvalidLoop`'s role, but for a `Teleport` edge (`EdgeKind::Teleport`) flagged invalid for a check-specific reason instead of a cycle — see GitHub issue #74. Currently produced by `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport) and `TeleportWaypointDistanceCheck` (the teleport sits too close to a waypoint); future per-teleport validation checks (geometric length, super-hub avoidance) may flag teleports invalid for other reasons and reuse this same kind. Carries `IssueData::InvalidTeleports` — see that variant's doc comment. Repaired by `RemoveTeleportStrategy` (see `repair.md`).
+`InvalidTeleport` mirrors `InvalidLoop`'s role, but for a `Teleport` edge (`EdgeKind::Teleport`) flagged invalid for a check-specific reason instead of a cycle — see GitHub issue #74. Currently produced by `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport), `TeleportWaypointDistanceCheck` (the teleport sits too close to a waypoint), `TeleportMinGeometricLengthCheck`, and `TeleportMaxGeometricLengthCheck` (the teleport's geometric length is out of the configured range); a future super-hub-avoidance check may flag teleports invalid for still other reasons and reuse this same kind. Carries `IssueData::InvalidTeleports` — see that variant's doc comment. Repaired by `RemoveTeleportStrategy` (see `repair.md`).
 
 Always use the named constant — never use string literals or enum variants inline.
 
@@ -446,6 +446,48 @@ If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPOR
 
 `RemoveTeleportStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_TELEPORT` — removes every flagged teleport edge outright.
 
+### Geometric distance (`space::Tessellation::cartesian` / `space::geometric_distance`)
+
+Shared utility the two checks below build on — see GitHub issue #74. `Tessellation::cartesian(point) -> (f64, f64)` (`maze-core/src/space/mod.rs`) projects a tessellation's own `Point` type into a canonical Cartesian coordinate, unit tile scale (one tile = 1.0), implemented separately per tessellation (`SquarePoint`, `HexPoint`, `TriPoint`). Never a pixel coordinate, and carries no rendering-specific orientation/rotation (hex flat_top/pointy_top, tri r0/r90/r180/r270 are display-only choices that live entirely in `maze-web`, which scales and — for hex/tri — rotates this canonical projection itself rather than duplicating per-tessellation formulas; see `maze-wasm`'s `cartesian_coords` below). Each tessellation's impl only needs to be internally consistent — `SquarePoint`'s returns the raw `(x, y)` grid coordinate, while `HexPoint`'s and `TriPoint`'s happen to bake in a screen-style Y flip (ported directly from `maze-web`'s pre-existing pixel-space formulas) — see `cartesian`'s own doc comment for the full rationale. This has no effect on distance calculations, since translation/reflection are isometries.
+
+`space::geometric_distance::<T>(a, b) -> f64` is the Euclidean distance between two points of the same tessellation, via `cartesian`. Purely geometric — unrelated to graph/nav distance (`MazeAnalysis::distance_from_start`/`distance_from_finish`, used by `TeleportWaypointDistanceCheck` above), which counts tile-hops along actual edges instead of straight-line distance.
+
+**WASM Interface**: `cartesian_coords(config: { tessellation_type, points }) -> [[f64; 2]]` (`maze-wasm/src/lib.rs`) exposes `cartesian` to the frontend — given a tessellation type and a list of points, returns each point's canonical projection in the same order. `maze-web`'s single caller is `cartesianCache.ts`: `warmCartesianCache(cfg)` batches one call over every field cell whenever the tessellation kind changes (confirmTessellation, project load, generate), populating a `Map<"x,y", [number, number]>` that `getCartesian(x, y, cfg)` reads from synchronously — render loops call tile-center lookups every frame, so a per-call wasm round-trip would be far too slow. A cache miss (a point outside the prewarmed field, e.g. an invalid preset connection's endpoint) falls back to a single-point wasm call, cached afterward. `tessellationGeometry.ts`'s `squareCenter`/`hexCenter`/`triCenter` read from this cache and apply their own tile-size scale, half-tile offset, and (for hex/tri) orientation rotation on top — the single source of truth for tile geometry, replacing what used to be independently-maintained TypeScript formulas.
+
+### TeleportMinGeometricLengthCheck
+
+```rust
+pub const TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT: f64 = 0.0;
+
+pub struct TeleportMinGeometricLengthCheck {
+    pub instance_id: String,
+    pub min_length: f64,
+}
+```
+
+Flags a teleport edge whose geometric (Euclidean, unit tile scale) distance between its entry and exit is shorter than a configured minimum — see GitHub issue #74. A teleport meant to feel like a meaningful "jump" across the maze becomes pointless noise if its endpoints are only a couple of tiles apart in Cartesian space, even when they're topologically far (no direct passage).
+
+Distance is purely geometric — via `space::geometric_distance` (`Tessellation::cartesian`, see the "Geometric distance" section above), resolving each teleport edge's `from`/`to` maze `NodeId` to its tessellation `Point` via `maze.field.point_of(...)`. Never logical/graph distance (that's `TeleportWaypointDistanceCheck`'s concern). A teleport endpoint whose point can't be resolved (shouldn't happen for a live edge in a well-formed `Maze`) is silently excluded from `invalid`, not treated as distance `0`.
+
+No waypoint/edge-selector parameters — unlike `TeleportWaypointDistanceCheck`, geometric length is a property of the teleport edge alone, not relative to start/finish. Default `min_length` of `0.0` never fires on its own (no distance is negative).
+
+If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_min_geometric_length")` with `.with_detail("teleport_min_geometric_length", "min_length", self.min_length.to_string())` chained on. Can be active alongside any other `INVALID_TELEPORT`-producing check — all merge into one issue per the dedup rule in `repair.md`'s "Pipeline" section.
+
+### TeleportMaxGeometricLengthCheck
+
+```rust
+pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000_000.0;
+
+pub struct TeleportMaxGeometricLengthCheck {
+    pub instance_id: String,
+    pub max_length: f64,
+}
+```
+
+Symmetric counterpart to `TeleportMinGeometricLengthCheck` — flags a teleport edge whose geometric distance between entry and exit **exceeds** a configured maximum instead, e.g. to keep teleports from spanning the entire field when a more local "jump" is desired. Same `geometric_distance`/`point_of` mechanics, same silent-exclusion-on-unresolvable-point behavior.
+
+Fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_max_geometric_length")` with `.with_detail("teleport_max_geometric_length", "max_length", self.max_length.to_string())` chained on. Can be active alongside `TeleportMinGeometricLengthCheck` (or any other `INVALID_TELEPORT`-producing check) — all merge into one issue per the same dedup rule.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -636,6 +678,8 @@ rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turne
 | `min_region_count` | `missing_regions` | `region_class: Enum(options=[path,alternative,unreachable,trap], default=trap)`, `count: Integer(default=1, min=0, max=1_000_000)` | no |
 | `teleport_duplicates_connection` | `invalid_teleport` | — | no |
 | `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)` | no |
+| `teleport_min_geometric_length` | `invalid_teleport` | `min_length: Float(default=0.0, min=0.0, max=100_000.0)` | no |
+| `teleport_max_geometric_length` | `invalid_teleport` | `max_length: Float(default=1_000_000.0, min=0.0, max=1_000_000.0)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

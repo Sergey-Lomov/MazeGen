@@ -21,14 +21,14 @@ export function getCellVertices(x: number, y: number, cfg: TessellationConfig): 
   switch (cfg.type) {
     case "square":
     case "square_custom": {
-      const c = squareCenter(x, y);
+      const c = squareCenter(x, y, cfg);
       return squareVertices(c.x, c.y);
     }
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
       const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-      const c = hexCenter(x, y, ori);
+      const c = hexCenter(x, y, ori, cfg);
       return hexVertices(c.x, c.y, ori);
     }
     case "triangle_rect":
@@ -47,19 +47,19 @@ export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Po
   switch (cfg.type) {
     case "square":
     case "square_custom":
-      return squareCenter(x, y);
+      return squareCenter(x, y, cfg);
     case "hex_parallelogram":
     case "hex_hexagon":
     case "hex_custom": {
       const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
-      return hexCenter(x, y, ori);
+      return hexCenter(x, y, ori, cfg);
     }
     case "triangle_rect":
     case "triangle_triangle":
     case "triangle_hexagon":
     case "tri_custom": {
       const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
-      return triCenter(x, y, ori);
+      return triCenter(x, y, ori, cfg);
     }
     default:
       return { x: 0, y: 0 };

@@ -1,5 +1,20 @@
-import { describe, it, expect } from "vitest";
-import { triCenter, triVertices, TRI_TILE_SIZE } from "../pixi/triGeometry";
+import { describe, it, expect, vi } from "vitest";
+
+// getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment.
+// Mock it with the same canonical (unit-tile-scale, r0-equivalent) formula
+// `maze-core::space::triangle`'s Tessellation impl uses, so these tests stay pure formula checks
+// -- see `maze-core/src/space/triangle.rs` for the source of truth this must match.
+vi.mock("../pixi/cartesianCache", () => ({
+  getCartesian: (col: number, row: number): [number, number] => {
+    const s = 2, h = (s * Math.sqrt(3)) / 2;
+    const pointingUp = (col + row) % 2 === 0;
+    const cx = (col * s) / 2 + s / 4;
+    const cy = pointingUp ? -(row * h + h / 3) : -(row * h + (2 * h) / 3);
+    return [cx, cy];
+  },
+}));
+
+const { triCenter, triVertices, TRI_TILE_SIZE } = await import("../pixi/triGeometry");
 
 const S = TRI_TILE_SIZE;
 const H = S * Math.sqrt(3) / 2;

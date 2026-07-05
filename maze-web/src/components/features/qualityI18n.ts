@@ -67,6 +67,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.teleport_waypoint_distance.label"] as MessageFn,
     description: m["check.teleport_waypoint_distance.description"] as MessageFn,
   },
+  teleport_min_geometric_length: {
+    label: m["check.teleport_min_geometric_length.label"] as MessageFn,
+    description: m["check.teleport_min_geometric_length.description"] as MessageFn,
+  },
+  teleport_max_geometric_length: {
+    label: m["check.teleport_max_geometric_length.label"] as MessageFn,
+    description: m["check.teleport_max_geometric_length.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -269,6 +277,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   edge: {
     label: m["param.edge.label"] as MessageFn,
     description: m["param.edge.description"] as MessageFn,
+  },
+  min_length: {
+    label: m["param.min_length.label"] as MessageFn,
+    description: m["param.min_length.description"] as MessageFn,
+  },
+  max_length: {
+    label: m["param.max_length.label"] as MessageFn,
+    description: m["param.max_length.description"] as MessageFn,
   },
 };
 

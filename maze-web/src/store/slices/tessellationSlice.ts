@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { encodePoint } from "../../pixi/tessellationProjection";
 import { configAllCells } from "../../pixi/tessellationCells";
+import { warmCartesianCache } from "../../pixi/cartesianCache";
 import type { PresetConnectionEntry } from "../../pixi/presetConnectionsUtils";
 import type { NodeLockKind } from "../../wasm/types";
 import type { MazeStore, TessellationState, TessellationActions, SquareShape, HexShape, TriangleShape } from "../storeTypes";
@@ -72,6 +73,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       : state.freeFieldPoints;
     const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
     const clearMaze = kind !== state.tessellationKind;
+    warmCartesianCache(cfg);
     return {
       tessellationKind: kind,
       hexOrientation,

@@ -8,6 +8,9 @@ vi.mock("../wasm/mazeService", () => ({
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
+  // Cartesian coordinates aren't asserted on in this suite -- any deterministic per-point
+  // stand-in is fine, as long as its shape matches `getCartesianCoords`'s real return type.
+  getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
 }));
 vi.mock("../wasm/wasmLoader", () => ({
   initWasm: vi.fn(() => Promise.resolve()),

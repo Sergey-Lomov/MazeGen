@@ -43,6 +43,9 @@ impl Tessellation for SquareTessellation {
         }
     }
 
+    fn cartesian(point: SquarePoint) -> (f64, f64) {
+        (point.x as f64, point.y as f64)
+    }
 }
 
 pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {

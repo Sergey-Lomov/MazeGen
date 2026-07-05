@@ -19,6 +19,8 @@ use maze_core::{
         EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS,
         TeleportDuplicatesConnectionCheck, INVALID_TELEPORT,
         TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
+        TeleportMinGeometricLengthCheck, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT,
+        TeleportMaxGeometricLengthCheck, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT,
     },
     repair::{
         QcRule, RepairEngine, RepairRuleConfig, RepairStage, RepairStrategy,
@@ -64,6 +66,8 @@ fn check_kind_for_type(type_id: &str) -> IssueKind {
         "min_region_count"          => MISSING_REGIONS,
         "teleport_duplicates_connection" => INVALID_TELEPORT,
         "teleport_waypoint_distance" => INVALID_TELEPORT,
+        "teleport_min_geometric_length" => INVALID_TELEPORT,
+        "teleport_max_geometric_length" => INVALID_TELEPORT,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -206,6 +210,22 @@ fn build_check<T: Tessellation>(
             let waypoint = parse_teleport_waypoint(instance.params.get("waypoint"));
             let edge = parse_teleport_edge_selector(instance.params.get("edge"));
             Box::new(TeleportWaypointDistanceCheck { instance_id, distance, waypoint, edge })
+        }
+        "teleport_min_geometric_length" => {
+            let min_length = instance.params.get("min_length")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT);
+            Box::new(TeleportMinGeometricLengthCheck { instance_id, min_length })
+        }
+        "teleport_max_geometric_length" => {
+            let max_length = instance.params.get("max_length")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT);
+            Box::new(TeleportMaxGeometricLengthCheck { instance_id, max_length })
         }
         other => return Err(format!("unknown check: {other}")),
     };

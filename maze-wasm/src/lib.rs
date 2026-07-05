@@ -12,11 +12,11 @@ use maze_core::{
     ids::IdGenerator,
     graph::{Graph, EdgeKind},
     Maze,
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT},
+    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT},
     RegionClass,
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy},
 };
-use generation_config::{GenerateConfig, TessellationType};
+use generation_config::{GenerateConfig, TessellationConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
 use dto::{ComputeAnalyticsConfig, PostEditEdgeDto};
 use analytics::build_analytics_snapshot;
@@ -366,6 +366,30 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             // far from finish") — same rationale as min_region_count's allow_multiple_instances.
             allow_multiple_instances: true,
         },
+        CheckDescriptor {
+            id: "teleport_min_geometric_length",
+            label: "Teleport minimum geometric length",
+            description: "Fires if the geometric (straight-line) distance between a teleport's entry and exit is shorter than the required minimum.",
+            issue_kinds: vec![kind_str(INVALID_TELEPORT)],
+            params: vec![ParamDescriptor {
+                id: "min_length",
+                label: "Min length (tiles)",
+                kind: ParamKindDto::Float { default: TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 100_000.0 },
+            }],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "teleport_max_geometric_length",
+            label: "Teleport maximum geometric length",
+            description: "Fires if the geometric (straight-line) distance between a teleport's entry and exit exceeds the allowed maximum.",
+            issue_kinds: vec![kind_str(INVALID_TELEPORT)],
+            params: vec![ParamDescriptor {
+                id: "max_length",
+                label: "Max length (tiles)",
+                kind: ParamKindDto::Float { default: TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 1_000_000.0 },
+            }],
+            allow_multiple_instances: false,
+        },
     ]
 }
 
@@ -444,6 +468,39 @@ pub fn available_strategies() -> JsValue {
         },
     ];
     serde_wasm_bindgen::to_value(&strategies).unwrap()
+}
+
+/// Canonical (unrotated, unit-tile-scale) Cartesian projection of each point in `points`, via
+/// `Tessellation::cartesian` — see `maze-core::space`'s doc comment for why this carries no
+/// rendering-specific orientation/rotation (a display-only concept that stays entirely on the
+/// web side). `maze-web`'s `tessellationGeometry.ts` is the single caller: it scales this by
+/// `TILE_SIZE`/`TRI_TILE_SIZE` and applies the configured orientation's rotation to get pixel
+/// coordinates, rather than duplicating the projection formulas in TypeScript.
+#[wasm_bindgen]
+pub fn cartesian_coords(config: JsValue) -> Result<JsValue, JsValue> {
+    let cfg: TessellationConfig = serde_wasm_bindgen::from_value(config)
+        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
+    let coords: Vec<[f64; 2]> = match cfg.tessellation_type {
+        TessellationType::Square => cfg.points.iter()
+            .map(|&[x, y]| {
+                let (cx, cy) = SquareTessellation::cartesian(SquarePoint { x, y });
+                [cx, cy]
+            })
+            .collect(),
+        TessellationType::Hex => cfg.points.iter()
+            .map(|&[q, r]| {
+                let (cx, cy) = maze_core::space::HexTessellation::cartesian(HexPoint { q, r });
+                [cx, cy]
+            })
+            .collect(),
+        TessellationType::Tri => cfg.points.iter()
+            .map(|&[col, row]| {
+                let (cx, cy) = maze_core::space::TriTessellation::cartesian(TriPoint { col, row });
+                [cx, cy]
+            })
+            .collect(),
+    };
+    Ok(serde_wasm_bindgen::to_value(&coords).unwrap())
 }
 
 #[wasm_bindgen]

@@ -83,6 +83,8 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
     });
   },
   teleport_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_waypoint_distance_label"]({ distance: d.distance }) : undefined,
+  teleport_min_geometric_length: (d) => d.min_length !== undefined ? m["issue.invalid_teleport.teleport_min_geometric_length_label"]({ min_length: d.min_length }) : undefined,
+  teleport_max_geometric_length: (d) => d.max_length !== undefined ? m["issue.invalid_teleport.teleport_max_geometric_length_label"]({ max_length: d.max_length }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

@@ -25,4 +25,6 @@ pub use checks::{
     MinRegionCountCheck, MIN_REGION_COUNT_DEFAULT,
     TeleportDuplicatesConnectionCheck,
     TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
+    TeleportMinGeometricLengthCheck, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT,
+    TeleportMaxGeometricLengthCheck, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT,
 };

@@ -49,6 +49,15 @@ impl Tessellation for HexTessellation {
         }
     }
 
+    /// Canonical (flat_top-equivalent) projection, unit tile scale. `INRADIUS` = sqrt(3)/2 at
+    /// unit tile size — same formula as `maze-web`'s `hexCenter` (flat_top branch), minus the
+    /// `TILE_SIZE` pixel scale and any orientation rotation (both display-only, web-side concerns
+    /// — see `Tessellation::cartesian`'s doc comment).
+    fn cartesian(point: HexPoint) -> (f64, f64) {
+        let inradius = 3f64.sqrt() / 2.0;
+        let (q, r) = (point.q as f64, point.r as f64);
+        (q * 1.5, -(r * inradius * 2.0 + q * inradius))
+    }
 }
 
 pub fn hex_parallelogram(cols: usize, rows: usize) -> Vec<HexPoint> {

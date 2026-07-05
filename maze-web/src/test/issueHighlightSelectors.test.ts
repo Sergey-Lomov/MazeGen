@@ -1,7 +1,15 @@
-import { describe, it, expect } from "vitest";
-import { buildRegionGeometry } from "../pixi/selectors/issueHighlightSelectors";
+import { describe, it, expect, vi } from "vitest";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+
+// getCellCenter/getCellVertices (via squareGeometry's getCartesian) delegate to wasm, unavailable
+// in this unit-test environment -- mock with the canonical square formula (see
+// `maze-core/src/space/square.rs`'s `cartesian`: `(x, y)`, no offset/flip applied here).
+vi.mock("../wasm/mazeService", () => ({
+  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
+}));
+
+const { buildRegionGeometry } = await import("../pixi/selectors/issueHighlightSelectors");
 
 const cfg: TessellationConfig = { type: "square", width: 4, height: 1 };
 

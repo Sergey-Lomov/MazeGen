@@ -46,6 +46,21 @@ impl Tessellation for TriTessellation {
         }
     }
 
+    /// Canonical (r0-equivalent) projection, unit tile scale — `S = 2.0` (triangle side length,
+    /// matching `maze-web`'s `TRI_TILE_SIZE = TILE_SIZE * 2` convention so triangles are
+    /// geometrically comparable to squares/hexagons at the same unit scale), `H = S * sqrt(3)/2`
+    /// (triangle height). Same centroid formula as `maze-web`'s `triCenter` (r0 branch), minus
+    /// the `TILE_SIZE` pixel scale and any orientation rotation (both display-only, web-side
+    /// concerns — see `Tessellation::cartesian`'s doc comment).
+    fn cartesian(point: TriPoint) -> (f64, f64) {
+        let s = 2.0;
+        let h = s * 3f64.sqrt() / 2.0;
+        let pointing_up = (point.col + point.row).rem_euclid(2) == 0;
+        let (col, row) = (point.col as f64, point.row as f64);
+        let cx = col * s / 2.0 + s / 4.0;
+        let cy = if pointing_up { -(row * h + h / 3.0) } else { -(row * h + 2.0 * h / 3.0) };
+        (cx, cy)
+    }
 }
 
 pub fn tri_rect(cols: usize, rows: usize) -> Vec<TriPoint> {
