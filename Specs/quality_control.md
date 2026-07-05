@@ -49,7 +49,7 @@ pub const INVALID_TELEPORT:  IssueKind = IssueKind::InvalidTeleport;
 
 `MissingRegions` mirrors `MissingLoops`'s role, but for a deficit in the count of regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap — see "Region Classes" in `graph-analytics.md`) instead of overall loop count — currently produced only by `MinRegionCountCheck`.
 
-`InvalidTeleport` mirrors `InvalidLoop`'s role, but for a `Teleport` edge (`EdgeKind::Teleport`) flagged invalid for a check-specific reason instead of a cycle — see GitHub issue #74. Currently produced by `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport), `TeleportWaypointDistanceCheck` (the teleport sits too close to a waypoint), `TeleportMinGeometricLengthCheck`, and `TeleportMaxGeometricLengthCheck` (the teleport's geometric length is out of the configured range); a future super-hub-avoidance check may flag teleports invalid for still other reasons and reuse this same kind. Carries `IssueData::InvalidTeleports` — see that variant's doc comment. Repaired by `RemoveTeleportStrategy` (see `repair.md`).
+`InvalidTeleport` mirrors `InvalidLoop`'s role, but for a `Teleport` edge (`EdgeKind::Teleport`) flagged invalid for a check-specific reason instead of a cycle — see GitHub issue #74. Currently produced by `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport), `TeleportWaypointDistanceCheck` (the teleport sits too close to a waypoint), `TeleportMinGeometricLengthCheck`/`TeleportMaxGeometricLengthCheck` (the teleport's geometric length is out of the configured range), and `TeleportSuperHubAvoidanceCheck` (an endpoint vertex already has too many outgoing connections). Carries `IssueData::InvalidTeleports` — see that variant's doc comment. Repaired by `RemoveTeleportStrategy` (see `repair.md`).
 
 Always use the named constant — never use string literals or enum variants inline.
 
@@ -476,7 +476,7 @@ If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPOR
 ### TeleportMaxGeometricLengthCheck
 
 ```rust
-pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000_000.0;
+pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000.0;
 
 pub struct TeleportMaxGeometricLengthCheck {
     pub instance_id: String,
@@ -487,6 +487,34 @@ pub struct TeleportMaxGeometricLengthCheck {
 Symmetric counterpart to `TeleportMinGeometricLengthCheck` — flags a teleport edge whose geometric distance between entry and exit **exceeds** a configured maximum instead, e.g. to keep teleports from spanning the entire field when a more local "jump" is desired. Same `geometric_distance`/`point_of` mechanics, same silent-exclusion-on-unresolvable-point behavior.
 
 Fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_max_geometric_length")` with `.with_detail("teleport_max_geometric_length", "max_length", self.max_length.to_string())` chained on. Can be active alongside `TeleportMinGeometricLengthCheck` (or any other `INVALID_TELEPORT`-producing check) — all merge into one issue per the same dedup rule.
+
+### TeleportSuperHubAvoidanceCheck
+
+```rust
+pub const TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT: u32 = 1_000;
+
+pub enum TeleportHubEdgeSelector {
+    Entry,
+    Exit,
+    EntryOrExit,
+}
+
+pub struct TeleportSuperHubAvoidanceCheck {
+    pub instance_id: String,
+    pub max_connections: u32,
+    pub edge: TeleportHubEdgeSelector,
+}
+```
+
+Flags a teleport edge whose entry and/or exit vertex already has more than a configured maximum number of outgoing connections (of any `EdgeKind`, not just `Basic`) — see GitHub issue #74. Prevents a teleport from turning an already-busy vertex ("hub") into an even busier one, which would make that vertex a disproportionately convenient shortcut hub.
+
+Outgoing-connection count is computed once per check call (a single pass building a `HashMap<NodeId, u32>` of per-vertex outgoing-edge counts across the whole graph, not per-teleport), then looked up per teleport edge: for `Entry`, the count at the teleport's own `from` vertex (which always includes the teleport itself, since it originates there); for `Exit`, the count at the teleport's `to` vertex, counting edges outgoing *from* `to` — the teleport itself never contributes to this count, since it originates from `from`, not `to`. `EntryOrExit` flags the teleport if *either* end's count exceeds `max_connections` (`over(entry) || over(exit)`, "worst wins", same reduction shape as `TeleportWaypointDistanceCheck`'s `EntryOrExit`, though that one takes the closest/min instead since it flags on being *too small*).
+
+Default `max_connections` of `1_000` is high enough that it never fires in practice, while still being a sane UI slider bound (unlike `u32::MAX`, which the WASM descriptor would otherwise have to clamp down separately — see "WASM Interface" below).
+
+If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_super_hub_avoidance")` with `.with_detail("teleport_super_hub_avoidance", "max_connections", self.max_connections.to_string())` chained on. Can be active alongside any other `INVALID_TELEPORT`-producing check — all merge into one issue per the same dedup rule.
+
+The wire-level (WASM/web) param id for `edge` is `edge_hub`, not `edge` — despite matching `TeleportWaypointDistanceCheck`'s Rust field name, it's a deliberately distinct param id so the two checks don't share i18n text (`edge`'s label/description talk about distance-to-waypoint, which makes no sense for a connection-count check — see GitHub issue #74's follow-up fix).
 
 ## WASM Interface
 
@@ -679,7 +707,8 @@ rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turne
 | `teleport_duplicates_connection` | `invalid_teleport` | — | no |
 | `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)` | no |
 | `teleport_min_geometric_length` | `invalid_teleport` | `min_length: Float(default=0.0, min=0.0, max=100_000.0)` | no |
-| `teleport_max_geometric_length` | `invalid_teleport` | `max_length: Float(default=1_000_000.0, min=0.0, max=1_000_000.0)` | no |
+| `teleport_max_geometric_length` | `invalid_teleport` | `max_length: Float(default=1_000.0, min=0.0, max=1_000_000.0)` | no |
+| `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

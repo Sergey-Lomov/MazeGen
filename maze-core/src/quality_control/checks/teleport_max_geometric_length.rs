@@ -6,7 +6,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_TELEPORT};
 use crate::quality_control::issue_data::IssueData;
 
-pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000_000.0;
+pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000.0;
 
 /// Flags a teleport edge whose geometric (Euclidean, unit tile scale — see
 /// `space::geometric_distance`) distance between its entry and exit exceeds a configured maximum

@@ -75,6 +75,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.teleport_max_geometric_length.label"] as MessageFn,
     description: m["check.teleport_max_geometric_length.description"] as MessageFn,
   },
+  teleport_super_hub_avoidance: {
+    label: m["check.teleport_super_hub_avoidance.label"] as MessageFn,
+    description: m["check.teleport_super_hub_avoidance.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -286,6 +290,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.max_length.label"] as MessageFn,
     description: m["param.max_length.description"] as MessageFn,
   },
+  max_connections: {
+    label: m["param.max_connections.label"] as MessageFn,
+    description: m["param.max_connections.description"] as MessageFn,
+  },
+  edge_hub: {
+    label: m["param.edge_hub.label"] as MessageFn,
+    description: m["param.edge_hub.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -316,6 +328,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "waypoint.any": m["param.waypoint.option.any"] as MessageFn,
   "edge.entry_only": m["param.edge.option.entry_only"] as MessageFn,
   "edge.entry_or_exit": m["param.edge.option.entry_or_exit"] as MessageFn,
+  "edge_hub.entry": m["param.edge_hub.option.entry"] as MessageFn,
+  "edge_hub.exit": m["param.edge_hub.option.exit"] as MessageFn,
+  "edge_hub.entry_or_exit": m["param.edge_hub.option.entry_or_exit"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -338,6 +353,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "waypoint.any": m["param.waypoint.option.any.explanation"] as MessageFn,
   "edge.entry_only": m["param.edge.option.entry_only.explanation"] as MessageFn,
   "edge.entry_or_exit": m["param.edge.option.entry_or_exit.explanation"] as MessageFn,
+  "edge_hub.entry": m["param.edge_hub.option.entry.explanation"] as MessageFn,
+  "edge_hub.exit": m["param.edge_hub.option.exit.explanation"] as MessageFn,
+  "edge_hub.entry_or_exit": m["param.edge_hub.option.entry_or_exit.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

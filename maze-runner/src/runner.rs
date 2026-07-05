@@ -21,6 +21,7 @@ use maze_core::{
         TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
         TeleportMinGeometricLengthCheck, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT,
         TeleportMaxGeometricLengthCheck, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT,
+        TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
     },
     repair::{
         QcRule, RepairEngine, RepairRuleConfig, RepairStage, RepairStrategy,
@@ -68,6 +69,7 @@ fn check_kind_for_type(type_id: &str) -> IssueKind {
         "teleport_waypoint_distance" => INVALID_TELEPORT,
         "teleport_min_geometric_length" => INVALID_TELEPORT,
         "teleport_max_geometric_length" => INVALID_TELEPORT,
+        "teleport_super_hub_avoidance" => INVALID_TELEPORT,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -95,6 +97,14 @@ fn parse_teleport_edge_selector(param: Option<&String>) -> TeleportEdgeSelector 
     match param.map(String::as_str) {
         Some("entry_only") => TeleportEdgeSelector::EntryOnly,
         _ => TeleportEdgeSelector::EntryOrExit,
+    }
+}
+
+fn parse_teleport_hub_edge_selector(param: Option<&String>) -> TeleportHubEdgeSelector {
+    match param.map(String::as_str) {
+        Some("entry") => TeleportHubEdgeSelector::Entry,
+        Some("exit") => TeleportHubEdgeSelector::Exit,
+        _ => TeleportHubEdgeSelector::EntryOrExit,
     }
 }
 
@@ -226,6 +236,14 @@ fn build_check<T: Tessellation>(
                 .map(|v| v.max(0.0))
                 .unwrap_or(TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT);
             Box::new(TeleportMaxGeometricLengthCheck { instance_id, max_length })
+        }
+        "teleport_super_hub_avoidance" => {
+            let max_connections = instance.params.get("max_connections")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT);
+            let edge = parse_teleport_hub_edge_selector(instance.params.get("edge_hub"));
+            Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge })
         }
         other => return Err(format!("unknown check: {other}")),
     };
@@ -816,5 +834,46 @@ mod build_strategy_tests {
     #[test]
     fn unknown_id_is_rejected() {
         assert!(build_strategy::<SquareTessellation>("not_a_real_strategy").is_err());
+    }
+}
+
+#[cfg(test)]
+mod build_check_tests {
+    use super::*;
+    use maze_core::space::SquareTessellation;
+
+    // Same rationale as `build_strategy_tests::every_known_id_builds_a_strategy_whose_own_strategy_id_matches`
+    // above, but for `build_check`: its match arms hand-pair a string literal with a
+    // `Box::new(SomeCheck { .. })`, and nothing in the type system checks that
+    // `SomeCheck::check_type_id()` actually equals that same string. Also exercises
+    // `check_kind_for_type`, whose match arms are a second, independently-maintained list of the
+    // same type_ids — a check added to one but not the other would otherwise go unnoticed until
+    // a live config exercised the missing arm (and `check_kind_for_type` panics on an unknown id).
+    const ALL_KNOWN_CHECK_TYPE_IDS: &[&str] = &[
+        "missing_endpoints", "unreachable_finish",
+        "min_loops_count", "min_loop_density", "min_loop_length", "max_loop_length",
+        "external_escape_diversity", "loop_distance_from_start", "loop_distance_from_finish",
+        "max_loop_density", "scc_count", "min_region_size", "min_region_ratio", "min_region_count",
+        "teleport_duplicates_connection", "teleport_waypoint_distance",
+        "teleport_min_geometric_length", "teleport_max_geometric_length",
+        "teleport_super_hub_avoidance",
+    ];
+
+    #[test]
+    fn every_known_id_builds_a_check_whose_own_check_type_id_matches() {
+        for &id in ALL_KNOWN_CHECK_TYPE_IDS {
+            let instance = CheckInstanceConfig { local_id: "0".to_string(), type_id: id.to_string(), params: HashMap::new() };
+            let check = build_check::<SquareTessellation>(&instance, "instance".to_string())
+                .unwrap_or_else(|e| panic!("build_check({id:?}) failed: {e}"));
+            assert_eq!(check.check_type_id(), id, "build_check({id:?}) constructed a check whose own check_type_id() doesn't match — wrong match arm?");
+            // Must also resolve in check_kind_for_type's independent match — panics on unknown id.
+            let _ = check_kind_for_type(id);
+        }
+    }
+
+    #[test]
+    fn unknown_id_is_rejected() {
+        let instance = CheckInstanceConfig { local_id: "0".to_string(), type_id: "not_a_real_check".to_string(), params: HashMap::new() };
+        assert!(build_check::<SquareTessellation>(&instance, "instance".to_string()).is_err());
     }
 }

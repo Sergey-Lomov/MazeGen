@@ -155,13 +155,21 @@ pub fn generate<T: Tessellation>(
 
         let dst = candidates[weighted_sample_index(&weights, &mut rng)];
 
-        // Preset nodes already have their edge in the graph — skip try_add_edge to avoid duplicates.
-        if !preset_connected.contains(&dst) {
-            if use_geometric_pool {
+        if use_geometric_pool {
+            // Geometric pool only: a `src`-`dst` preset pair (both `preset_connected`, matched by
+            // the `preset_connected.contains(&src) && preset_connected.contains(&n)` exception in
+            // the candidates filter above) already has its edge built by `build_preset_state` —
+            // skip `try_add_edge` (and `last_dst`, so a preset-skipped step can't seed a corridor
+            // chain) to avoid duplicating it. Doesn't apply to the teleport pool below: there,
+            // `dst` being `preset_connected` says nothing about the specific src-dst pair (it's
+            // any Unseen node in the whole graph, not a geometric neighbor of `src`), so no edge
+            // exists yet and skipping would silently drop the teleport.
+            if !preset_connected.contains(&dst) {
                 try_add_edge(graph, src, dst, elements, preset_state, &mut rng);
-            } else {
-                try_add_edge_kind(graph, src, dst, EdgeKind::Teleport, elements.teleport_one_way_chance, preset_state, &mut rng);
+                last_dst = Some(dst);
             }
+        } else {
+            try_add_edge_kind(graph, src, dst, EdgeKind::Teleport, elements.teleport_one_way_chance, preset_state, &mut rng);
             last_dst = Some(dst);
         }
 
@@ -513,6 +521,31 @@ mod tests {
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
         generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
         assert!(!teleport_edges(&graph).is_empty(), "teleport_chance=1.0 should add at least one teleport edge on a 6x6 field");
+    }
+
+    #[test]
+    fn teleport_chance_one_adds_teleport_edges_when_every_geometric_pair_is_preset_passage() {
+        // Regression for a bug where a fully preset-connected field (every geometric neighbor
+        // pair preset as Passage) silently produced zero teleport edges despite teleport_chance
+        // = 1.0. Root cause: the teleport-add step incorrectly reused the geometric pool's
+        // "skip if dst is preset_connected" guard, which made no sense for the teleport pool
+        // (there, dst being preset_connected says nothing about the specific src-dst edge —
+        // it's just "some other Unseen node happens to touch a preset passage elsewhere").
+        let (field, mut graph) = make_field_and_graph(3, 3);
+        let mut connections = Vec::new();
+        for y in 0..3 {
+            for x in 0..3 {
+                if x + 1 < 3 { connections.push(super::super::PresetConnection { from: (x, y), to: (x + 1, y), state: super::super::PresetConnectionState::Passage }); }
+                if y + 1 < 3 { connections.push(super::super::PresetConnection { from: (x, y), to: (x, y + 1), state: super::super::PresetConnectionState::Passage }); }
+            }
+        }
+        let preset_state = crate::generation::build_preset_state(
+            &mut graph, &field, &connections, &[],
+            |x, y| crate::space::SquarePoint { x, y },
+        );
+        let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &preset_state, None);
+        assert!(!teleport_edges(&graph).is_empty(), "teleport_chance=1.0 must still add teleport edges when the whole field is preset-passage");
     }
 
     #[test]
