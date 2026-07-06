@@ -715,16 +715,25 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn no_check_descriptor_allows_multiple_instances() {
+    fn only_known_checks_allow_multiple_instances() {
         // GitHub issue #60's multi-instance design (min_region_count being the one check that
         // could run more than once at a time, for different region_class values) is retired:
         // a single min_region_count instance now evaluates all four classes' balances at once.
+        // teleport_waypoint_distance (issue #74) and teleport_group_proximity (issue #75) are the
+        // only checks that legitimately allow multiple simultaneous instances (distinct
+        // own_edge/other_edge/distance combinations are independent configurations).
         let checks = available_checks_list();
         let allowing: Vec<&str> = checks.iter()
             .filter(|c| c.allow_multiple_instances)
             .map(|c| c.id)
             .collect();
-        assert!(allowing.is_empty(), "no check should need multiple active instances any more, got: {allowing:?}");
+        let mut allowing_sorted = allowing.clone();
+        allowing_sorted.sort();
+        assert_eq!(
+            allowing_sorted,
+            vec!["teleport_group_proximity", "teleport_waypoint_distance"],
+            "unexpected set of checks allowing multiple instances: {allowing:?}"
+        );
     }
 
     #[test]
