@@ -2,6 +2,8 @@ use std::collections::HashSet;
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
+use crate::ids::NodeId;
+use crate::graph::{Graph, EdgeKind};
 use crate::graph::nav::{NavGraph, NavNodeId, NavEdge};
 use crate::graph::pathfinding::{dijkstra_with_prev, build_outgoing_index};
 use crate::quality_control::{Issue, MISSING_ENDPOINTS, IssueKind};
@@ -14,6 +16,7 @@ use crate::generation::PresetState;
 pub const PARAM_PATH_WEIGHT: &str = "path_weight";
 pub const PARAM_JUNCTION_WEIGHT: &str = "junction_weight";
 pub const PARAM_ONEWAY_WEIGHT: &str = "oneway_weight";
+pub const PARAM_TELEPORT_WEIGHT: &str = "teleport_weight";
 
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
@@ -29,6 +32,11 @@ static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_ONEWAY_WEIGHT,
         label: "One-way passage weight",
+        kind: StrategyParamKind::Float { default: 5.0, min: 0.0, max: 100.0 },
+    },
+    StrategyParam {
+        id: PARAM_TELEPORT_WEIGHT,
+        label: "Teleport weight",
         kind: StrategyParamKind::Float { default: 5.0, min: 0.0, max: 100.0 },
     },
 ];
@@ -60,6 +68,7 @@ impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
         let path_weight    = params.get(PARAM_PATH_WEIGHT).and_then(|v| v.as_float()).unwrap_or(1.0);
         let junction_weight = params.get(PARAM_JUNCTION_WEIGHT).and_then(|v| v.as_float()).unwrap_or(3.0);
         let oneway_weight  = params.get(PARAM_ONEWAY_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
+        let teleport_weight = params.get(PARAM_TELEPORT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
@@ -68,8 +77,8 @@ impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
             return RepairResult::Failed;
         }
 
-        let ctx = ScoredPathContext::build(nav);
-        let weights = ScoreWeights { path_weight, junction_weight, oneway_weight };
+        let ctx = ScoredPathContext::build(nav, &maze.graph);
+        let weights = ScoreWeights { path_weight, junction_weight, oneway_weight, teleport_weight };
 
         let achieved_score;
 
@@ -121,6 +130,7 @@ struct ScoreWeights {
     path_weight:    f64,
     junction_weight: f64,
     oneway_weight:  f64,
+    teleport_weight: f64,
 }
 
 /// Precomputed data derived from NavGraph for scoring endpoint pairs.
@@ -128,16 +138,18 @@ struct ScoredPathContext<'a> {
     edges:           Vec<&'a NavEdge>,
     junction_flags:  Vec<bool>,
     oneway_flags:    Vec<bool>,
+    teleport_flags:  Vec<bool>,
     outgoing_by_node: Vec<Vec<usize>>,
 }
 
 impl<'a> ScoredPathContext<'a> {
-    fn build(nav: &'a NavGraph) -> Self {
+    fn build(nav: &'a NavGraph, graph: &Graph) -> Self {
         let edges: Vec<&'a NavEdge> = nav.edges().collect();
         let junction_flags = junction_flags(nav);
         let oneway_flags   = oneway_flags(&edges);
+        let teleport_flags = teleport_flags(&edges, graph);
         let outgoing_by_node = build_outgoing_index(nav, &edges);
-        Self { edges, junction_flags, oneway_flags, outgoing_by_node }
+        Self { edges, junction_flags, oneway_flags, teleport_flags, outgoing_by_node }
     }
 
     fn best_pair(
@@ -171,7 +183,7 @@ impl<'a> ScoredPathContext<'a> {
 
                 let path_edges = reconstruct_path_edges(&self.edges, &prev_edge, s, f);
                 let score = score_path(
-                    &self.junction_flags, &self.oneway_flags,
+                    &self.junction_flags, &self.oneway_flags, &self.teleport_flags,
                     &path_edges, &self.edges, dist[f], weights,
                 );
 
@@ -200,9 +212,24 @@ fn oneway_flags(edges: &[&NavEdge]) -> Vec<bool> {
     edges.iter().map(|e| !pairs.contains(&(e.to, e.from))).collect()
 }
 
+/// Flags each NavEdge whose corridor `path` crosses at least one `Teleport` edge in the
+/// underlying maze graph. A NavEdge's `path` is a sequence of maze NodeIds; each consecutive
+/// pair is a single hop, so a hop is a teleport crossing if any `Teleport`-kind edge connects it.
+fn teleport_flags(edges: &[&NavEdge], graph: &Graph) -> Vec<bool> {
+    let teleport_hops: HashSet<(NodeId, NodeId)> = graph.edges()
+        .filter(|e| e.kind == EdgeKind::Teleport)
+        .map(|e| (e.from, e.to))
+        .collect();
+
+    edges.iter().map(|e| {
+        e.path.windows(2).any(|w| teleport_hops.contains(&(w[0], w[1])))
+    }).collect()
+}
+
 fn score_path(
     junction_flags: &[bool],
     oneway_flags: &[bool],
+    teleport_flags: &[bool],
     path_edge_indices: &[usize],
     edges: &[&NavEdge],
     path_tiles: usize,
@@ -226,9 +253,14 @@ fn score_path(
         .filter(|&&ei| oneway_flags[ei])
         .count() as f64;
 
+    let teleport_count = path_edge_indices.iter()
+        .filter(|&&ei| teleport_flags[ei])
+        .count() as f64;
+
     path_tiles as f64 * weights.path_weight
         + junction_count * weights.junction_weight
         + oneway_count * weights.oneway_weight
+        + teleport_count * weights.teleport_weight
 }
 
 fn reconstruct_path_edges(
@@ -407,6 +439,77 @@ mod tests {
             .expect("route must exist between the chosen pair");
         let junction = nodes[&(1, 0)];
         assert!(route.path.contains(&junction), "winning route must pass through the junction node");
+    }
+
+    #[test]
+    fn apply_prefers_teleport_path_when_teleport_weight_dominates() {
+        // Two disjoint straight corridors, 0-1-2 and 3-4-5, linked only by a one-way
+        // teleport edge 1 -> 4. With teleport_weight dominating and path/junction/one-way
+        // zeroed, the best-scoring pair must be the one whose route crosses the teleport.
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 2), &mut ids).unwrap();
+        let mut graph = Graph::new();
+        field.build_nodes(&mut graph);
+        let nodes: StdHashMap<(i32, i32), crate::ids::NodeId> = [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]
+            .iter()
+            .map(|&(x, y)| ((x, y), field.node_at(SquarePoint { x, y }).unwrap()))
+            .collect();
+        for x in 0..2 {
+            graph.build_initial_bidirectional_edge(nodes[&(x, 0)], nodes[&(x + 1, 0)], EdgeKind::Basic);
+            graph.build_initial_bidirectional_edge(nodes[&(x, 1)], nodes[&(x + 1, 1)], EdgeKind::Basic);
+        }
+        graph.add_edge(nodes[&(1, 0)], nodes[&(1, 1)], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, graph);
+
+        let mut overrides = StdHashMap::new();
+        overrides.insert(PARAM_TELEPORT_WEIGHT.to_string(), "1000".to_string());
+        overrides.insert(PARAM_PATH_WEIGHT.to_string(), "0".to_string());
+        overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
+        overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
+        let params = build_params(
+            <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy),
+            Some(&overrides),
+        );
+
+        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
+        // With every other weight zeroed, only a route crossing the teleport scores
+        // positively -- the winning pair must have a strictly positive score.
+        let start = maze.meta.start.unwrap();
+        let finish = maze.meta.finish.unwrap();
+        let nav = crate::graph::nav::build_nav_graph_pinned(&maze.graph, &[start, finish].into_iter().collect());
+        let route = crate::graph::routing::compute_route_info(&nav, start, finish)
+            .expect("route must exist between the chosen pair");
+        let teleport_src = nodes[&(1, 0)];
+        let teleport_dst = nodes[&(1, 1)];
+        let crosses_teleport = route.path.windows(2)
+            .any(|w| w[0] == teleport_src && w[1] == teleport_dst);
+        assert!(crosses_teleport, "winning route must cross the teleport edge");
+    }
+
+    #[test]
+    fn score_path_adds_teleport_count_times_weight() {
+        // Two edges: edge 0 crosses a teleport, edge 1 doesn't. Both non-junction, non-oneway,
+        // so with path/junction/oneway weights zeroed the only contribution is teleport_weight
+        // times how many of the two path edges are flagged as teleport.
+        let edges_owned = vec![
+            NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None },
+            NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None },
+        ];
+        let edges: Vec<&NavEdge> = edges_owned.iter().collect();
+        let junction_flags = vec![false, false, false];
+        let oneway_flags = vec![false, false];
+        let teleport_flags = vec![true, false];
+        let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 7.0 };
+
+        let score_one_teleport = score_path(&junction_flags, &oneway_flags, &teleport_flags, &[0], &edges, 1, &weights);
+        assert_eq!(score_one_teleport, 7.0);
+
+        let score_both_edges = score_path(&junction_flags, &oneway_flags, &teleport_flags, &[0, 1], &edges, 2, &weights);
+        assert_eq!(score_both_edges, 7.0, "second edge isn't a teleport crossing, so it must not add to the score");
+
+        let score_no_teleport = score_path(&junction_flags, &oneway_flags, &teleport_flags, &[1], &edges, 1, &weights);
+        assert_eq!(score_no_teleport, 0.0);
     }
 
     #[test]

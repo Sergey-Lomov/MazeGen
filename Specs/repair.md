@@ -314,11 +314,13 @@ Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted 
 | `path_weight` | Float | 1.0 | [0, 100] | Weight applied to path tile count |
 | `junction_weight` | Float | 3.0 | [0, 100] | Weight applied to number of junction nav nodes on path |
 | `oneway_weight` | Float | 5.0 | [0, 100] | Weight applied to number of one-way nav edges on path |
+| `teleport_weight` | Float | 5.0 | [0, 100] | Weight applied to number of teleport nav edges crossed on path |
 
-Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight`
+Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight + teleport_count * teleport_weight`
 
 - Junction: nav node with ≥ 3 distinct neighbors (union of incoming and outgoing).
 - One-way edge: nav edge `(u → v)` where no reverse edge `(v → u)` exists.
+- Teleport edge: nav edge whose corridor `path` crosses a `Teleport`-kind edge in the underlying maze graph.
 - Path cost (for Dijkstra): edge weight = `path.len() - 1` (tile count).
 
 Behavior per case:

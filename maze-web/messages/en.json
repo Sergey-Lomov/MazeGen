@@ -217,6 +217,8 @@
   "param.junction_weight.description": "How much passing through junctions counts against a candidate placement. Higher values favor paths with fewer junctions.",
   "param.oneway_weight.label": "One-way passage weight",
   "param.oneway_weight.description": "How much passing through one-way passages counts against a candidate placement. Higher values favor paths that avoid one-way passages.",
+  "param.teleport_weight.label": "Teleport weight",
+  "param.teleport_weight.description": "How much crossing a teleport edge counts toward a candidate placement's score. Higher values favor paths that use teleports.",
   "param.short_overlap_weight.label": "Shared short-loop weight",
   "param.short_overlap_weight.description": "How strongly a cut is preferred when it also breaks other invalid loops sharing the same passage.",
   "param.other_overlap_weight.label": "Shared valid-loop penalty",
