@@ -5,7 +5,7 @@ import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, G
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
-import { buildPostEditDraftEdgesFromGenerated, extractTeleportEdges } from "../../pixi/postEditUtils";
+import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports } from "../../pixi/postEditUtils";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance, RepairStageState, NestedStrategyState } from "../storeTypes";
 import { activeTessellationOf, buildResetMazeState, debugStaleOf } from "../storeHelpers";
@@ -248,7 +248,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   setDebugAutoPlayDelay: (ms) => set({ debugAutoPlayDelay: ms }),
   setShowDebugFrontier: (v) => set({ showDebugFrontier: v }),
 
-  reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftTeleportEdges: [], postEditDraftMeta: null, postEditEdges: null, postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
+  reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null, _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null, postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 
@@ -699,6 +699,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       debugSnapshot = { nodes: snapshot.nodes, steps };
     }
     const lastStep = debugSnapshot ? debugSnapshot.steps.length - 1 : 0;
+    const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges);
     set({
       nodes: snapshot.nodes,
       edges: snapshot.edges,
@@ -721,7 +722,9 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       debugStep: lastStep,
       debugStale: false,
       postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(snapshot.edges),
-      postEditDraftTeleportEdges: extractTeleportEdges(snapshot.edges),
+      postEditDraftTeleports: generatedTeleports,
+      _nextPostEditTeleportId: nextTeleportId,
+      postEditTeleportPendingFrom: null,
       postEditEdges: null,
       postEditTeleportEdges: [],
       postEditMeta: null,

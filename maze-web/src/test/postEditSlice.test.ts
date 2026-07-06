@@ -90,7 +90,7 @@ describe("mazeStore post-edit actions", () => {
   it("confirmPostEdit sends teleport edges to computeAnalytics with kind \"teleport\", separate from postEditDraftEdges", async () => {
     useMazeStore.setState({
       postEditDraftEdges: { "0-1": { from: 0, to: 1, kind: "basic" } },
-      postEditDraftTeleportEdges: [{ from: 0, to: 2, kind: "teleport" }],
+      postEditDraftTeleports: [{ id: 1, from: 0, to: 2, direction: "forward" }],
     });
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
@@ -102,13 +102,13 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditTeleportEdges).toEqual([{ from: 0, to: 2, kind: "teleport" }]);
   });
 
-  it("resetPostEdit repopulates postEditDraftTeleportEdges from generated edges", () => {
+  it("resetPostEdit repopulates postEditDraftTeleports from generated edges", () => {
     useMazeStore.setState({
       edges: [{ from: 0, to: 1, kind: "basic" }, { from: 2, to: 3, kind: "teleport" }],
-      postEditDraftTeleportEdges: [],
+      postEditDraftTeleports: [],
     });
     useMazeStore.getState().resetPostEdit();
-    expect(useMazeStore.getState().postEditDraftTeleportEdges).toEqual([{ from: 2, to: 3, kind: "teleport" }]);
+    expect(useMazeStore.getState().postEditDraftTeleports).toEqual([{ id: 1, from: 2, to: 3, direction: "forward" }]);
   });
 
   it("confirmPostEdit excludes rules belonging to a disabled stage from checks", async () => {

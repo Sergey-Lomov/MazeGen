@@ -1,15 +1,20 @@
 import type { StateCreator } from "zustand";
 import { computeAnalytics } from "../../wasm/mazeService";
 import type { PostEditEdgeWasmDto } from "../../wasm/types";
-import { applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated, extractTeleportEdges } from "../../pixi/postEditUtils";
-import type { MazeStore, PostEditState, PostEditActions, PostEditTool } from "../storeTypes";
+import {
+  applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports,
+  postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
+} from "../../pixi/postEditUtils";
+import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
 import { fieldConfigToWasm } from "./generationSlice";
 
 export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState & PostEditActions> = (set, get) => ({
   postEditAutoConfirm: true,
   postEditTool: "wall" as PostEditTool,
   postEditDraftEdges: null,
-  postEditDraftTeleportEdges: [],
+  postEditDraftTeleports: [] as PostEditTeleportEntry[],
+  postEditTeleportPendingFrom: null,
+  _nextPostEditTeleportId: 1,
   postEditDraftMeta: null,
   postEditEdges: null,
   postEditTeleportEdges: [],
@@ -45,10 +50,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     set({ _postEditRequestId: requestId });
 
     const state = get();
-    const { postEditDraftEdges, postEditDraftTeleportEdges, postEditDraftMeta, activeTessellationConfig, nodes, start, finish, stages } = state;
+    const { postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, activeTessellationConfig, nodes, start, finish, stages } = state;
     if (postEditDraftEdges === null) return;
     const edgesSnapshot = postEditDraftEdges;
-    const teleportEdgesSnapshot = postEditDraftTeleportEdges;
+    const teleportEdgesSnapshot = postEditTeleportsToDto(postEditDraftTeleports);
     const metaSnapshot = postEditDraftMeta;
 
     const effectiveStart = postEditDraftMeta != null ? postEditDraftMeta.start : start;
@@ -62,7 +67,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           to: e.to,
           kind: e.kind === "basic" ? "basic" as const : "one_way" as const,
         })),
-      ...postEditDraftTeleportEdges.map(e => ({ from: e.from, to: e.to, kind: "teleport" as const })),
+      ...teleportEdgesSnapshot.map(e => ({ from: e.from, to: e.to, kind: "teleport" as const })),
     ];
 
     // ruleDisabled rules and rules belonging to a disabled stage excluded — same semantics
@@ -110,17 +115,22 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   resetPostEdit: () => {
-    set((state) => ({
-      postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state.edges),
-      postEditDraftTeleportEdges: extractTeleportEdges(state.edges),
-      postEditEdges: null,
-      postEditTeleportEdges: [],
-      postEditMeta: null,
-      postEditAnalytics: null,
-      postEditDraftMeta: { start: state._generatedStart, finish: state._generatedFinish },
-      postEditTool: "wall" as PostEditTool,
-      postEditDirty: false,
-    }));
+    set((state) => {
+      const { teleports, nextId } = extractPostEditTeleports(state.edges);
+      return {
+        postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state.edges),
+        postEditDraftTeleports: teleports,
+        _nextPostEditTeleportId: nextId,
+        postEditTeleportPendingFrom: null,
+        postEditEdges: null,
+        postEditTeleportEdges: [],
+        postEditMeta: null,
+        postEditAnalytics: null,
+        postEditDraftMeta: { start: state._generatedStart, finish: state._generatedFinish },
+        postEditTool: "wall" as PostEditTool,
+        postEditDirty: false,
+      };
+    });
     void get().confirmPostEdit();
   },
 
@@ -136,6 +146,53 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   clearPostEditEndpoint: (kind) => {
     set((state) => ({
       postEditDraftMeta: { ...(state.postEditDraftMeta ?? { start: state.start, finish: state.finish }), [kind]: null },
+      postEditDirty: true,
+    }));
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  setPostEditTeleportPendingFrom: (nodeId) => set({ postEditTeleportPendingFrom: nodeId }),
+
+  addPostEditTeleport: (from, to, direction) => {
+    set((state) => {
+      const entry: PostEditTeleportEntry = { id: state._nextPostEditTeleportId, from, to, direction };
+      return {
+        postEditDraftTeleports: [...state.postEditDraftTeleports, entry],
+        _nextPostEditTeleportId: state._nextPostEditTeleportId + 1,
+        postEditTeleportPendingFrom: null,
+        postEditDirty: true,
+      };
+    });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  cyclePostEditTeleportDirection: (id) => {
+    set((state) => ({
+      postEditDraftTeleports: cyclePostEditTeleportDirection(state.postEditDraftTeleports, id),
+      postEditDirty: true,
+    }));
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  removePostEditTeleport: (id) => {
+    set((state) => ({
+      postEditDraftTeleports: removePostEditTeleport(state.postEditDraftTeleports, id),
+      postEditDirty: true,
+    }));
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  movePostEditTeleportEndpoint: (id, end, nodeId) => {
+    set((state) => ({
+      postEditDraftTeleports: movePostEditTeleportEndpoint(state.postEditDraftTeleports, { id, end }, nodeId),
       postEditDirty: true,
     }));
     if (get().postEditAutoConfirm) {

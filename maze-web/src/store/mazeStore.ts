@@ -11,6 +11,7 @@ import { warmCartesianCache } from "../pixi/cartesianCache";
 
 export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
+  PostEditTeleportDirection, PostEditTeleportEntry, PostEditTeleportEndpointHit,
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
   FieldPrimitive, FeatureId, MazeState,
 } from "./storeTypes";
@@ -103,7 +104,9 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       generationStatus: "idle" as const,
       postEditAutoConfirm: file.ui.postEditAutoConfirm,
       postEditDraftEdges: null,
-      postEditDraftTeleportEdges: [],
+      postEditDraftTeleports: [],
+      postEditTeleportPendingFrom: null,
+      _nextPostEditTeleportId: 1,
       postEditDraftMeta: null,
       postEditEdges: null,
       postEditTeleportEdges: [],
@@ -157,6 +160,10 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       set({
         postEditDraftEdges: Object.fromEntries(file.postEdit.edges),
         postEditDraftMeta: file.postEdit.meta,
+        postEditDraftTeleports: file.postEdit.teleports,
+        _nextPostEditTeleportId: file.postEdit.teleports.length === 0
+          ? 1
+          : Math.max(...file.postEdit.teleports.map((t) => t.id)) + 1,
         postEditEdges: null,
         postEditMeta: null,
         postEditAnalytics: null,

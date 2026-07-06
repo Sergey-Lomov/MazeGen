@@ -26,6 +26,13 @@ function getVertexTools(): [PostEditTool, string][] {
   ];
 }
 
+function getTeleportTools(): [PostEditTool, string][] {
+  return [
+    ["teleport_two_way", m["preset.teleport_two_way"]()],
+    ["teleport_one_way", m["preset.teleport_one_way"]()],
+  ];
+}
+
 export function PostEditFeature() {
   const tool                = useMazeStore((s) => s.postEditTool);
   const setTool             = useMazeStore((s) => s.setPostEditTool);
@@ -40,10 +47,14 @@ export function PostEditFeature() {
   const start  = postEditDraftMeta?.start ?? null;
   const finish = postEditDraftMeta?.finish ?? null;
   const clearPostEditEndpoint = useMazeStore((s) => s.clearPostEditEndpoint);
+  const postEditDraftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
+  const postEditTeleportPendingFrom = useMazeStore((s) => s.postEditTeleportPendingFrom);
+  const setPostEditTeleportPendingFrom = useMazeStore((s) => s.setPostEditTeleportPendingFrom);
 
   const nodeById = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
   const startNode = start !== null ? nodeById.get(start) : undefined;
   const finishNode = finish !== null ? nodeById.get(finish) : undefined;
+  const pendingFromNode = postEditTeleportPendingFrom !== null ? nodeById.get(postEditTeleportPendingFrom) : undefined;
 
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -65,8 +76,8 @@ export function PostEditFeature() {
         ))}
       </div>
       <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
-      <div style={styles.toolGrid}>
-        {getVertexTools().map(([t, label]) => (
+      <div style={styles.vertexToolGrid}>
+        {getTeleportTools().map(([t, label]) => (
           <button
             key={t}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
@@ -75,9 +86,20 @@ export function PostEditFeature() {
             {label}
           </button>
         ))}
+        <div style={styles.startFinishRow}>
+          {getVertexTools().map(([t, label]) => (
+            <button
+              key={t}
+              style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+              onClick={() => setTool(t)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {(startNode || finishNode) && (
+      {(startNode || finishNode || pendingFromNode || postEditDraftTeleports.length > 0) && (
         <div style={styles.statusBlock}>
           {startNode && (
             <div style={styles.statusBubble}>
@@ -89,6 +111,19 @@ export function PostEditFeature() {
             <div style={styles.statusBubble}>
               <span>{m["preset.finish"]()}: {finishNode.x},{finishNode.y}</span>
               <button style={styles.clearTag} onClick={() => clearPostEditEndpoint("finish")}><X size={16} /></button>
+            </div>
+          )}
+          {pendingFromNode && (
+            <div style={styles.statusBubble}>
+              <span>{m["preset.teleport_pending"]()}: {pendingFromNode.x},{pendingFromNode.y}</span>
+              <button style={styles.clearTag} onClick={() => setPostEditTeleportPendingFrom(null)}><X size={16} /></button>
+            </div>
+          )}
+          {postEditDraftTeleports.length > 0 && (
+            <div style={styles.statusBubble}>
+              <span>{postEditDraftTeleports.length === 1
+                ? m["preset.teleports_count"]({ count: postEditDraftTeleports.length })
+                : m["preset.teleports_count_plural"]({ count: postEditDraftTeleports.length })}</span>
             </div>
           )}
         </div>
@@ -133,6 +168,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 8,
   },
   toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
+  vertexToolGrid: { display: "grid", gridTemplateColumns: "1fr", gap: 4 },
+  startFinishRow: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
   autoConfirmRow: {
     display: "flex",
     alignItems: "center",

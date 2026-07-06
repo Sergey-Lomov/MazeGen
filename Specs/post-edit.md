@@ -21,10 +21,12 @@ Post-Edit sits between Generation and Analytics in `FeaturesPanel`. It lets user
 | Field | Type | Description |
 |---|---|---|
 | `postEditDraftEdges` | `Record<string, PostEditEdge> \| null` | Current working Basic/one-way edges. `null` before first generation. Read by `PostEditRenderer`. |
-| `postEditDraftTeleportEdges` | `EdgeDto[]` | Teleport edges carried through from generation, read-only (no post-edit tool edits them yet). Kept as a plain list, not folded into `postEditDraftEdges`'s `Record` — a Teleport and a Basic edge can coexist in the same direction between the same pair (see `Graph::add_edge`'s kind-aware dedup), which that `Record` (keyed by `from-to`, one slot per directed pair) cannot represent without one silently overwriting the other. Read by `PostEditRenderer`. |
+| `postEditDraftTeleports` | `PostEditTeleportEntry[]` | Current working teleport links, edited by node id. Kept as a plain list, not folded into `postEditDraftEdges`'s `Record` — a Teleport and a Basic edge can coexist in the same direction between the same pair (see `Graph::add_edge`'s kind-aware dedup), which that `Record` (keyed by `from-to`, one slot per directed pair) cannot represent without one silently overwriting the other. Converted to `EdgeDto[]` via `postEditTeleportsToDto` at the WASM-call/render boundary. Read by `PostEditRenderer`. |
+| `postEditTeleportPendingFrom` | `number \| null` | Node id of the pending teleport's fixed origin during two-click placement, or `null`. |
+| `_nextPostEditTeleportId` | `number` | Monotonic id source for `postEditDraftTeleports` entries. |
 | `postEditDraftMeta` | `PostEditMeta \| null` | Current working start/finish overrides. Read by `PostEditRenderer`. |
 | `postEditEdges` | `Record<string, PostEditEdge> \| null` | Snapshot of `postEditDraftEdges` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
-| `postEditTeleportEdges` | `EdgeDto[]` | Snapshot of `postEditDraftTeleportEdges` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
+| `postEditTeleportEdges` | `EdgeDto[]` | Snapshot of `postEditDraftTeleports` (converted via `postEditTeleportsToDto`) at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
 | `postEditMeta` | `PostEditMeta \| null` | Snapshot of `postEditDraftMeta` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
 | `postEditAnalytics` | `PostEditAnalytics \| null` | Analytics over confirmed graph. `null` until first `confirmPostEdit` completes. |
 | `postEditTool` | `PostEditTool` | Active tool. Reset to `"wall"` on generate and `resetPostEdit`. |
@@ -44,7 +46,22 @@ interface PostEditEdge {
 }
 ```
 
-`wall` is an explicit record (absence of record ≠ wall — wall is a deliberate user choice). `one_way_forward` and `one_way_backward` always store correct directed fields: `from→to` is the actual passage direction. There is no `"teleport"` kind here — teleport edges never enter `postEditDraftEdges`/`postEditEdges` at all (see `postEditDraftTeleportEdges` above).
+`wall` is an explicit record (absence of record ≠ wall — wall is a deliberate user choice). `one_way_forward` and `one_way_backward` always store correct directed fields: `from→to` is the actual passage direction. There is no `"teleport"` kind here — teleport edges never enter `postEditDraftEdges`/`postEditEdges` at all (see `postEditDraftTeleports` above).
+
+### PostEditTeleportEntry
+
+```typescript
+type PostEditTeleportDirection = "forward" | "backward" | "two_way";
+
+interface PostEditTeleportEntry {
+  id: number;
+  from: number;
+  to: number;
+  direction: PostEditTeleportDirection;
+}
+```
+
+Edits teleport links by node id (unlike `PresetTeleportEntry`, which edits by cell coordinate on the pre-generation field). `id` is assigned by `_nextPostEditTeleportId`, monotonically increasing, never reused within a session. `from`/`to` are the two click points in placement order; for `"backward"`, the actual passage direction runs `to→from` (mirrors `PresetConnectionState::TeleportBackward`). `"two_way"` expands to both directions. Converted to `EdgeDto[]` via `postEditTeleportsToDto`.
 
 ### PostEditMeta
 
@@ -63,8 +80,8 @@ Separate from `state.start/finish` so Generation renderer always shows the origi
 
 1. Runs WASM generation.
 2. Initializes `postEditDraftEdges` via `buildPostEditDraftEdgesFromGenerated(snapshot.edges)` — detects one_way by absence of reverse edge.
-3. Initializes `postEditDraftTeleportEdges` via `extractTeleportEdges(snapshot.edges)` — every `kind: "teleport"` entry, carried through unchanged.
-4. Sets `postEditDraftMeta = { start: snapshot.start, finish: snapshot.finish }`.
+3. Initializes `postEditDraftTeleports` via `extractPostEditTeleports(snapshot.edges)` — a forward+backward pair between the same two nodes collapses into one `"two_way"` entry, a lone direction becomes a `"forward"` entry; also resets `_nextPostEditTeleportId` to the value returned alongside.
+4. Sets `postEditDraftMeta = { start: snapshot.start, finish: snapshot.finish }`, `postEditTeleportPendingFrom = null`.
 5. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
 6. Sets `_generatedStart`, `_generatedFinish`.
 7. Resets `postEditTool` to `"wall"`.
@@ -73,7 +90,7 @@ Separate from `state.start/finish` so Generation renderer always shows the origi
 ### On `resetPostEdit()`
 
 1. Rebuilds `postEditDraftEdges` from `state.edges` via `buildPostEditDraftEdgesFromGenerated`.
-2. Rebuilds `postEditDraftTeleportEdges` from `state.edges` via `extractTeleportEdges`.
+2. Rebuilds `postEditDraftTeleports` from `state.edges` via `extractPostEditTeleports`, resetting `_nextPostEditTeleportId` and `postEditTeleportPendingFrom = null`.
 3. Restores `postEditDraftMeta` from `_generatedStart`/`_generatedFinish`.
 4. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
 5. Resets `postEditTool` to `"wall"`.
@@ -84,12 +101,14 @@ Separate from `state.start/finish` so Generation renderer always shows the origi
 Async, versioned via `_postEditRequestId`:
 
 1. Increments `_postEditRequestId`.
-2. Snapshots `postEditDraftEdges`, `postEditDraftTeleportEdges`, and `postEditDraftMeta` at call time.
+2. Snapshots `postEditDraftEdges`, `postEditDraftTeleports` (converted to `EdgeDto[]` via `postEditTeleportsToDto`), and `postEditDraftMeta` at call time.
 3. Reads `effectiveStart`/`effectiveFinish` from snapshot (falls back to `state.start/finish` when null).
-4. Serializes non-wall edges to `PostEditEdgeWasmDto[]`: `basic` → `"basic"` (bidirectional in WASM); `one_way_forward`/`one_way_backward` → `"one_way"` (WASM adds only one directed edge `from→to`); each `postEditDraftTeleportEdges` entry → `"teleport"` (WASM adds one directed `EdgeKind::Teleport` edge — a two-way teleport is sent as two separate `"teleport"` entries, one per direction, not auto-expanded like `"basic"`).
+4. Serializes non-wall edges to `PostEditEdgeWasmDto[]`: `basic` → `"basic"` (bidirectional in WASM); `one_way_forward`/`one_way_backward` → `"one_way"` (WASM adds only one directed edge `from→to`); each converted teleport `EdgeDto` → `"teleport"` (WASM adds one directed `EdgeKind::Teleport` edge — a two-way teleport is sent as two separate `"teleport"` entries, one per direction, not auto-expanded like `"basic"`).
 5. Calls WASM `compute_analytics` — QC-only (runs `checks`, no repair). Always sends an empty `check_rules`: rules exist to dispatch repair strategies, and `compute_analytics` discards the `RepairEngine` it builds internally, so a rule referencing a check the caller disabled would only ever produce a spurious "inactive check" validation error for no benefit.
 6. If `_postEditRequestId` changed (stale) — discards result.
-7. Writes to `postEditAnalytics`, `postEditEdges` (confirmed snapshot), `postEditTeleportEdges` (confirmed snapshot), `postEditMeta` (confirmed snapshot). Auto-resets `showRouteOverlay` to `false` when `route_info == null`.
+7. Writes to `postEditAnalytics`, `postEditEdges` (confirmed snapshot), `postEditTeleportEdges` (confirmed snapshot, converted teleport `EdgeDto[]`), `postEditMeta` (confirmed snapshot). Auto-resets `showRouteOverlay` to `false` when `route_info == null`.
+
+Teleport-editing actions (`addPostEditTeleport`, `cyclePostEditTeleportDirection`, `removePostEditTeleport`, `movePostEditTeleportEndpoint`) call `confirmPostEdit()` directly when `postEditAutoConfirm` is true, same as endpoint tools — the controller does not schedule an additional debounced call for these.
 
 ## Tools
 
@@ -101,8 +120,24 @@ Async, versioned via `_postEditRequestId`:
 | `reset` | Restores edge pair to original generated state (basic or one_way_forward). |
 | `set_start` | Click on empty node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. |
 | `set_finish` | Click on empty node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. |
+| `teleport_one_way` | Two-click placement of a one-way (`"forward"`) teleport link. |
+| `teleport_two_way` | Two-click placement of a two-way teleport link. |
 
 `set_start` and `set_finish` together form the vertex tools section. While either is active, drag-to-move and right-click-to-delete apply uniformly to **both** the start and finish markers, regardless of which one is currently selected: right-click on the current start node clears it (`clearPostEditEndpoint`) even while `set_finish` is active, and press-and-drag from either marker's node moves it live to whichever node is under the cursor, even while the other tool is active. Only the plain-click "assign to this empty node" action stays tied to the active tool (`set_start` assigns start, `set_finish` assigns finish).
+
+### Teleport Tools Detail
+
+`teleport_one_way` and `teleport_two_way` share one two-click placement state machine (mirrors `PresetConnectionsController`'s teleport handling, adapted from cell coordinates to node ids):
+
+- **First click on an empty node, no placement pending** → `setPostEditTeleportPendingFrom(nodeId)`. A preview line follows the cursor from that node to the pointer (`PostEditRenderer.updateTeleportPreview`).
+- **Second click on a different node, placement pending** → `addPostEditTeleport(pendingFrom, nodeId, direction)` where `direction` is `"two_way"` for the `teleport_two_way` tool, `"forward"` otherwise. Clears the pending state.
+- **Click on the pending origin node again** → no-op (does not complete a zero-length link).
+- **Escape key, or right-click with a placement pending and no marker/endpoint under the cursor** → cancels the pending placement (`setPostEditTeleportPendingFrom(null)`), clears the preview.
+- **Left press-drag starting on an existing teleport endpoint's node** → arms a drag candidate (`draggingTeleportEndpoint`). Each pointer move to a different node calls `movePostEditTeleportEndpoint`; landing back on the link's other endpoint is rejected (would collapse the link to zero length) but still counts as "moved" so release doesn't misread it as a click.
+- **Release without ever moving to a different node** → resolves as a plain click: if a placement is already pending, completes it at that endpoint's node; otherwise cycles that entry's direction (`cyclePostEditTeleportDirection` — `"forward"` ↔ `"backward"`; `"two_way"` entries are unaffected, they have no direction to cycle).
+- **Right click on an existing teleport endpoint's node (no placement pending)** → `removePostEditTeleport(id)`.
+
+Endpoint hit-testing is done by `pickPostEditTeleportEndpointAt` (in `postEditUtils.ts`), which resolves node id → screen position via `nodeById` before comparing to the cursor — unlike `PresetConnectionsController`'s `pickTeleportEndpointAt`, which works directly in cell coordinates since preset connections predate node ids.
 
 ### `one_way` Tool Detail
 
@@ -124,17 +159,18 @@ Looks up `(from_, to_)` pair in original `state.edges`:
 
 ## Auto-Confirm
 
-When `postEditAutoConfirm = true`, `PostEditController` schedules `confirmPostEdit` with 300ms debounce after each edge tool click. For endpoint tools (`set_start`/`set_finish`), `confirmPostEdit` is called directly by the store action (only when `autoConfirm = true`) — controller does not schedule an additional call.
+When `postEditAutoConfirm = true`, `PostEditController` schedules `confirmPostEdit` with 300ms debounce after each edge tool click. For endpoint tools (`set_start`/`set_finish`) and teleport-editing actions (`addPostEditTeleport`, `cyclePostEditTeleportDirection`, `removePostEditTeleport`, `movePostEditTeleportEndpoint`), `confirmPostEdit` is called directly by the store action (only when `autoConfirm = true`) — controller does not schedule an additional call.
 
 When `postEditAutoConfirm = false`:
 - Edge tool clicks update `postEditDraftEdges` but do not trigger `confirmPostEdit`.
 - Endpoint tool clicks update `postEditDraftMeta` but do not trigger `confirmPostEdit`.
+- Teleport-editing actions update `postEditDraftTeleports` but do not trigger `confirmPostEdit`.
 - `postEditEdges`, `postEditMeta`, `postEditAnalytics` remain frozen at last confirm.
 - Manual Confirm button calls `confirmPostEdit()` explicitly.
 
 ## Canvas Renderer — PostEditRenderer
 
-Reads from `postEditDraftEdges`, `postEditDraftTeleportEdges`, and `postEditDraftMeta` — always shows the current working state, regardless of `autoConfirm`.
+Reads from `postEditDraftEdges`, `postEditDraftTeleports`, and `postEditDraftMeta` — always shows the current working state, regardless of `autoConfirm`.
 
 Lives in `postEditContainer` — a synced layer in `MazeScene` (not a viewport child). `TessellationRenderer` hides itself when `postEditOpen` is true.
 
@@ -146,17 +182,20 @@ Lives in `postEditContainer` — a synced layer in `MazeScene` (not a viewport c
 | 2 | `floorContainer` | `CellFillRenderer` — all nodes in `FLOOR_COLOR` |
 | 3 | `closedCellsContainer` | `CellFillRenderer` — isolated nodes (no edges) in `WALL_COLOR` |
 | 4 | `wallsContainer` | `WallRenderer` — walls and one-way arrows |
-| 5 | `teleportContainer` | `TeleportRenderer` — teleport markers/line, built from `postEditDraftEdges` concatenated with `postEditDraftTeleportEdges` (read-only pass-through, no post-edit tool edits these) |
+| 5 | `teleportContainer` | `TeleportRenderer` — teleport markers/line, built from `postEditDraftEdges` concatenated with `postEditDraftTeleports` (converted via `postEditTeleportsToDto`) |
 | 6 | `markersContainer` | `WaypointsRenderer` — start/finish from `postEditDraftMeta` |
 | 7 | `hoverContainer` | `EdgeHighlightRenderer` — hover highlight |
+| 8 | `teleportPreviewContainer` | `Graphics` — pending teleport placement preview (origin marker + line to cursor), mirrors `PresetConnectionsRenderer`'s teleport preview |
 
 Cell cache (`cachedCells`, `cachedCellSet`) is built once on open and on `activeTessellationConfig` change. Used by `PostEditController` for edge picking.
 
-`PostEditRenderer` extends `BaseFieldRenderer` (shared with `PresetConnectionsRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton (open/close detection, cell-cache lifecycle, `getCachedCells`/`getCachedCellSet`, `destroy`). `PostEditRenderer` implements `isCardOpen` (`openCard === "post_edit"`), `getActiveConfig` (`activeTessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `onStoreChange` (the draft-edges/teleport-edges/nodes/meta comparison above), and `destroyChildren`.
+`updateTeleportPreview(pendingFrom, cursorViewportX, cursorViewportY)` takes `pendingFrom` already resolved to viewport coordinates (the controller resolves node id → screen via `nodeById` before calling in, since the renderer has no node lookup of its own) — unlike `PresetConnectionsRenderer`'s version, which takes a cell coordinate and projects it internally.
+
+`PostEditRenderer` extends `BaseFieldRenderer` (shared with `PresetConnectionsRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton (open/close detection, cell-cache lifecycle, `getCachedCells`/`getCachedCellSet`, `destroy`). `PostEditRenderer` implements `isCardOpen` (`openCard === "post_edit"`), `getActiveConfig` (`activeTessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `onStoreChange` (the draft-edges/teleports/nodes/meta comparison above, plus clearing the teleport preview when `postEditTool`/`postEditTeleportPendingFrom` changes and no placement is pending), and `destroyChildren`.
 
 ## Controller — PostEditController
 
-Extends `BaseController` (shared with `PresetConnectionsController`). `BaseController` owns pan logic (`tryStartPan`, `handlePanMove`, `toViewport`), edge-drag bookkeeping (`beginEdgeDrag`/`continueEdgeDrag`/`endEdgeDrag`/`isDragActive` — dedupe-only, the caller's `onNewEdge` callback owns the store action and any redraw), and marker-drag bookkeeping (`draggingMarker`, `armMarkerDrag`/`releaseMarkerDrag` — the latter called automatically from `onPointerUp`). `PostEditController` adds node-map caching, edge picking, tool dispatch, and confirm debounce.
+Extends `BaseController` (shared with `PresetConnectionsController`). `BaseController` owns pan logic (`tryStartPan`, `handlePanMove`, `toViewport`), edge-drag bookkeeping (`beginEdgeDrag`/`continueEdgeDrag`/`endEdgeDrag`/`isDragActive` — dedupe-only, the caller's `onNewEdge` callback owns the store action and any redraw), and marker-drag bookkeeping (`draggingMarker`, `armMarkerDrag`/`releaseMarkerDrag` — the latter called automatically from `onPointerUp`). `PostEditController` adds node-map caching, edge picking, tool dispatch, confirm debounce, and teleport pending-placement/drag/cancel state (`draggingTeleportEndpoint`, `teleportDragMoved`, an ESC key listener wired in the constructor and torn down in `destroy()` — mirrors `PresetConnectionsController`).
 
 Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", nodeId>`) is cached per `nodes` reference — rebuilt only when `state.nodes` changes.
 
@@ -164,19 +203,30 @@ Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", nodeId>`) is c
 - **Left click + endpoint tool (`set_start`/`set_finish`), no start/finish marker under cursor** → `setPostEditEndpoint` for whichever endpoint the active tool targets (confirm called internally by store action when `autoConfirm`).
 - **Left press-drag + endpoint tool, starting on start's or finish's own node** → arms drag for that marker regardless of which endpoint tool is active; each pointer move over a new node calls `setPostEditEndpoint` again to move it live. A press that never leaves the marker's node resolves as a plain click on release (no-op, node unchanged).
 - **Right click + endpoint tool, on the start or finish marker's own node** → `clearPostEditEndpoint` for that marker, regardless of which endpoint tool is active. Right-click elsewhere is a no-op for endpoint tools.
+- **Teleport tools (`teleport_one_way`/`teleport_two_way`)** → see Teleport Tools Detail above.
 - **Middle click** → pan viewport.
+
+`set_start`/`set_finish`/`teleport_one_way`/`teleport_two_way` are all members of the controller's `VERTEX_TOOLS` set — they share the same node-picking pointerdown branch, dispatching to endpoint vs. teleport handling based on which tool is active and what's under the cursor (marker, teleport endpoint, or empty node).
 
 ## `buildPostEditDraftEdgesFromGenerated`
 
-Shared function used by `_generateWithSeed` and `resetPostEdit`. Ignores `kind: "teleport"` entries entirely (see `extractTeleportEdges` below). Detects one_way edges by absence of reverse: if `A→B` exists but `B→A` does not → `one_way_forward`. If both exist → `basic`.
+Shared function used by `_generateWithSeed` and `resetPostEdit`. Ignores `kind: "teleport"` entries entirely (see `extractPostEditTeleports` below). Detects one_way edges by absence of reverse: if `A→B` exists but `B→A` does not → `one_way_forward`. If both exist → `basic`.
 
-## `extractTeleportEdges`
+## `extractPostEditTeleports`
 
-Shared function in `postEditUtils.ts`, used by `_generateWithSeed` and `resetPostEdit` alongside `buildPostEditDraftEdgesFromGenerated`. Filters generation's `EdgeDto[]` down to `kind: "teleport"` entries, unchanged — the resulting list feeds `postEditDraftTeleportEdges` directly, one entry per directed teleport edge (a two-way teleport is two entries). Not folded into `buildPostEditDraftEdgesFromGenerated`'s `Record` output because a Teleport and a Basic edge can coexist in the same direction between the same pair — that `Record` has only one slot per `from-to` key and would drop one of the two.
+Shared function in `postEditUtils.ts`, used by `_generateWithSeed` and `resetPostEdit` alongside `buildPostEditDraftEdgesFromGenerated`. Filters generation's `EdgeDto[]` down to `kind: "teleport"` entries and rebuilds them as `PostEditTeleportEntry[]`: a forward+backward pair between the same two nodes collapses into one `"two_way"` entry, a lone direction becomes a `"forward"` entry. Returns `{ teleports, nextId }` — `nextId` seeds `_nextPostEditTeleportId` so ids assigned afterward by `addPostEditTeleport` don't collide. Not folded into `buildPostEditDraftEdgesFromGenerated`'s `Record` output because a Teleport and a Basic edge can coexist in the same direction between the same pair — that `Record` has only one slot per `from-to` key and would drop one of the two.
+
+## `postEditTeleportsToDto`
+
+Shared function in `postEditUtils.ts`. Converts `PostEditTeleportEntry[]` to `EdgeDto[]` at the WASM-call/render boundary: `"forward"` → one edge `from→to`; `"backward"` → one edge `to→from` (actual passage direction, mirrors `PresetConnectionState::TeleportBackward`); `"two_way"` → both directions. Used by `confirmPostEdit` (building the confirmed `postEditTeleportEdges` snapshot and the WASM request) and `PostEditRenderer` (building the edges fed to `TeleportRenderer`/`buildTeleportEdges`).
+
+## `pickPostEditTeleportEndpointAt`
+
+Shared function in `postEditUtils.ts`. Hit-tests a viewport position against `PostEditTeleportEntry[]` endpoints, resolving each entry's `from`/`to` node id to a screen position via a `nodeById` map before comparing distance to the cursor. Mirrors `pickTeleportEndpointAt` in `fieldEditUtils.ts`, adapted for node-id space (preset connections hit-test directly in cell coordinates).
 
 ## `postEditEdgesToDto`
 
-Shared selector in `mazeSelectors.ts`. Converts `Record<string, PostEditEdge> | null` to `EdgeDto[]`, filtering out `wall` entries and mapping every remaining entry's `kind` to `"basic"` (post-edit's tool-facing distinction between `basic`/`one_way_forward`/`one_way_backward` collapses here — direction is already encoded in each entry's own `from`/`to`, and downstream consumers like `buildMazeWalls` derive one-way vs bidirectional by checking for the reverse pair, not by reading `kind`). Never returns teleport entries — those live in `postEditDraftTeleportEdges`/`postEditTeleportEdges` and must be concatenated in by the caller. Used by both `PostEditRenderer` (passing `postEditDraftEdges`, concatenated with `postEditDraftTeleportEdges`) and `AnalyticsRenderer` (passing `postEditEdges`, concatenated with `postEditTeleportEdges`).
+Shared selector in `mazeSelectors.ts`. Converts `Record<string, PostEditEdge> | null` to `EdgeDto[]`, filtering out `wall` entries and mapping every remaining entry's `kind` to `"basic"` (post-edit's tool-facing distinction between `basic`/`one_way_forward`/`one_way_backward` collapses here — direction is already encoded in each entry's own `from`/`to`, and downstream consumers like `buildMazeWalls` derive one-way vs bidirectional by checking for the reverse pair, not by reading `kind`). Never returns teleport entries — those live in `postEditDraftTeleports`/`postEditTeleportEdges` and must be concatenated in by the caller (converting `postEditDraftTeleports` via `postEditTeleportsToDto` first). Used by both `PostEditRenderer` (passing `postEditDraftEdges`, concatenated with `postEditTeleportsToDto(postEditDraftTeleports)`) and `AnalyticsRenderer` (passing `postEditEdges`, concatenated with `postEditTeleportEdges`, which is already `EdgeDto[]`).
 
 ## `buildClosedCells`
 

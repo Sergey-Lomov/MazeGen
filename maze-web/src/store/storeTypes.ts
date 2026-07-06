@@ -4,7 +4,7 @@ import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry }
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
-export type PostEditTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish";
+export type PostEditTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way";
 
 export interface PostEditEdge {
   from: number;
@@ -15,6 +15,24 @@ export interface PostEditEdge {
 export interface PostEditMeta {
   start: number | null;
   finish: number | null;
+}
+
+export type PostEditTeleportDirection = "forward" | "backward" | "two_way";
+
+/** A post-edit teleport link, edited by node id (unlike PresetTeleportEntry, which edits by cell
+ * coordinates on the pre-generation field). Converted to EdgeDto[] at the WASM-call/render
+ * boundary via `postEditTeleportsToDto`. */
+export interface PostEditTeleportEntry {
+  id: number;
+  from: number;
+  to: number;
+  direction: PostEditTeleportDirection;
+}
+
+/** Endpoint of a post-edit teleport, identified for hit-testing/drag by the owning entry's id and which end it is. */
+export interface PostEditTeleportEndpointHit {
+  id: number;
+  end: "from" | "to";
 }
 
 export interface PostEditAnalytics {
@@ -447,13 +465,16 @@ export interface PostEditState {
   postEditTool: PostEditTool;
   /** Working copy — updated on every tool click. Read by PostEditRenderer. */
   postEditDraftEdges: Record<string, PostEditEdge> | null;
-  /** Teleport edges carried through from generation, kept separate from `postEditDraftEdges`
-   * (a `Record` keyed by `from-to` — one slot per directed pair) since a Teleport and a Basic
-   * edge can coexist in the same direction between the same pair (see `Graph::add_edge`'s
-   * kind-aware dedup) and would otherwise collide in that Record. No post-edit tool operates on
-   * these yet — they are read-only pass-through, kept as a plain list so a future "edit teleport"
-   * tool has a natural place to add without re-touching the Basic/one-way Record shape. */
-  postEditDraftTeleportEdges: EdgeDto[];
+  /** Teleport links, edited by node id. Kept separate from `postEditDraftEdges` (a `Record`
+   * keyed by `from-to` — one slot per directed pair) since a Teleport and a Basic edge can
+   * coexist in the same direction between the same pair (see `Graph::add_edge`'s kind-aware
+   * dedup) and would otherwise collide in that Record. Converted to `EdgeDto[]` at the
+   * WASM-call/render boundary via `postEditTeleportsToDto`. */
+  postEditDraftTeleports: PostEditTeleportEntry[];
+  /** Node id of the pending teleport's fixed origin during two-click placement, or null. */
+  postEditTeleportPendingFrom: number | null;
+  /** Monotonic id source for postEditDraftTeleports entries. */
+  _nextPostEditTeleportId: number;
   /** Working copy — updated on endpoint changes. Read by PostEditRenderer. */
   postEditDraftMeta: PostEditMeta | null;
   /** Confirmed snapshot of postEditDraftEdges. Read by AnalyticsRenderer. */
@@ -479,6 +500,11 @@ export interface PostEditActions {
   applyPostEditTool: (edgeKey: string, from: number, to: number) => void;
   setPostEditEndpoint: (kind: "start" | "finish", nodeId: number) => void;
   clearPostEditEndpoint: (kind: "start" | "finish") => void;
+  setPostEditTeleportPendingFrom: (nodeId: number | null) => void;
+  addPostEditTeleport: (from: number, to: number, direction: PostEditTeleportDirection) => void;
+  cyclePostEditTeleportDirection: (id: number) => void;
+  removePostEditTeleport: (id: number) => void;
+  movePostEditTeleportEndpoint: (id: number, end: "from" | "to", nodeId: number) => void;
   confirmPostEdit: () => Promise<void>;
   resetPostEdit: () => void;
 }

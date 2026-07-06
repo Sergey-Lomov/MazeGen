@@ -1,14 +1,15 @@
-import { Container } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 
 import type { FieldEdge } from "./fieldEditUtils";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
-import { TeleportRenderer } from "./renderers/TeleportRenderer";
+import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells } from "./selectors/mazeSelectors";
+import { postEditTeleportsToDto } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorUtils";
 import type { NodeDto } from "../wasm/types";
@@ -26,6 +27,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
   private readonly hoverContainer: Container;
+  private readonly teleportPreviewContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -34,6 +36,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly hover: EdgeHighlightRenderer;
+  private readonly teleportPreview: Graphics;
 
   constructor(container: Container) {
     super();
@@ -54,6 +57,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.teleportContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.hoverContainer);
+    this.teleportPreviewContainer = new Container();
+    this.root.addChild(this.teleportPreviewContainer);
 
     this.grid        = new GridRenderer(this.gridContainer);
     this.floor       = new CellFillRenderer(this.floorContainer);
@@ -62,6 +67,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.teleports   = new TeleportRenderer(this.teleportContainer);
     this.markers     = new WaypointsRenderer(this.markersContainer);
     this.hover       = new EdgeHighlightRenderer(this.hoverContainer);
+    this.teleportPreview = new Graphics();
+    this.teleportPreviewContainer.addChild(this.teleportPreview);
 
     this.root.visible = false;
 
@@ -93,14 +100,48 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hover.render({ highlights });
   }
 
+  /** Renders the pending teleport's origin (semi-transparent marker) and a line stretching to the
+   * cursor, so the two-click placement gesture reads as "one end is already fixed, aim the other".
+   * `pendingFrom` is already in viewport coordinates (the caller resolves node → screen). */
+  updateTeleportPreview(pendingFrom: { x: number; y: number } | null, cursorViewportX: number, cursorViewportY: number): void {
+    this.teleportPreview.clear();
+    if (!pendingFrom) return;
+
+    const { x: px, y: py } = pendingFrom;
+    const markerSize = 16;
+    const strokeWidth = 3;
+    const dx = cursorViewportX - px;
+    const dy = cursorViewportY - py;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0) {
+      const ux = dx / len;
+      const uy = dy / len;
+      const clip = clipDistance(ux, uy, markerSize / 2, strokeWidth);
+      if (len > clip) {
+        this.teleportPreview
+          .moveTo(px + ux * clip, py + uy * clip)
+          .lineTo(cursorViewportX, cursorViewportY)
+          .stroke({ width: strokeWidth, color: canvas.teleport.default, alpha: 0.5, cap: "round" });
+      }
+    }
+
+    this.teleportPreview
+      .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
+      .fill({ color: canvas.teleport.default, alpha: 0.5 });
+  }
+
   protected onStoreChange(state: MazeState, prev: MazeState): void {
     if (
       state.postEditDraftEdges !== prev.postEditDraftEdges ||
-      state.postEditDraftTeleportEdges !== prev.postEditDraftTeleportEdges ||
+      state.postEditDraftTeleports !== prev.postEditDraftTeleports ||
       state.nodes !== prev.nodes ||
       state.postEditDraftMeta !== prev.postEditDraftMeta
     ) {
       this.redrawAll(state);
+    }
+
+    if (state.postEditTool !== prev.postEditTool || state.postEditTeleportPendingFrom !== prev.postEditTeleportPendingFrom) {
+      if (state.postEditTeleportPendingFrom === null) this.teleportPreview.clear();
     }
   }
 
@@ -110,10 +151,10 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
 
-    const { nodes, postEditDraftEdges, postEditDraftTeleportEdges, postEditDraftMeta } = state;
+    const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta } = state;
     const start = postEditDraftMeta?.start ?? null;
     const finish = postEditDraftMeta?.finish ?? null;
-    const activeEdges = [...postEditEdgesToDto(postEditDraftEdges), ...postEditDraftTeleportEdges];
+    const activeEdges = [...postEditEdgesToDto(postEditDraftEdges), ...postEditTeleportsToDto(postEditDraftTeleports)];
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
@@ -144,6 +185,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.teleports.render({ edges: [] });
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });
+    this.teleportPreview.clear();
   }
 
   protected destroyChildren(): void {
@@ -154,6 +196,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.teleports.destroy();
     this.markers.destroy();
     this.hover.destroy();
+    this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
@@ -161,5 +204,6 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.hoverContainer.destroy();
+    this.teleportPreviewContainer.destroy();
   }
 }

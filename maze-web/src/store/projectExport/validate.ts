@@ -1,6 +1,6 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
-import type { PostEditEdge, FeatureId } from "../mazeStore";
+import type { PostEditEdge, PostEditTeleportEntry, FeatureId } from "../mazeStore";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import {
   CURRENT_VERSION,
@@ -192,6 +192,19 @@ function validatePostEditEdge(v: unknown, path: string): PostEditEdge {
   };
 }
 
+function validatePostEditTeleportEntry(v: unknown, path: string): PostEditTeleportEntry {
+  const obj = assertObject(v, path);
+  const direction = assertString(obj.direction, `${path}.direction`);
+  if (direction !== "forward" && direction !== "backward" && direction !== "two_way")
+    throw new Error(`Invalid post-edit teleport direction at ${path}.direction: ${direction}`);
+  return {
+    id: assertNumber(obj.id, `${path}.id`),
+    from: assertNumber(obj.from, `${path}.from`),
+    to: assertNumber(obj.to, `${path}.to`),
+    direction: direction as PostEditTeleportEntry["direction"],
+  };
+}
+
 function validatePostEdit(v: unknown): ProjectFilePostEdit {
   const obj = assertObject(v, "postEdit");
   const edges = validatePairArray(obj.edges, "postEdit.edges", validatePostEditEdge);
@@ -203,7 +216,16 @@ function validatePostEdit(v: unknown): ProjectFilePostEdit {
       finish: m.finish === null ? null : assertNumber(m.finish, "postEdit.meta.finish"),
     };
   }
-  return { edges, meta };
+  // Optional — absent in project files saved before post-edit teleport editing existed.
+  const teleports = obj.teleports != null
+    ? assertArray(obj.teleports, "postEdit.teleports").map((t, i) => validatePostEditTeleportEntry(t, `postEdit.teleports[${i}]`))
+    : [];
+  const seenTeleportIds = new Set<number>();
+  for (const t of teleports) {
+    if (seenTeleportIds.has(t.id)) throw new Error(`Duplicate teleport id ${t.id} at postEdit.teleports`);
+    seenTeleportIds.add(t.id);
+  }
+  return { edges, meta, teleports };
 }
 
 function validateCoordPair(v: unknown, path: string): [number, number] {

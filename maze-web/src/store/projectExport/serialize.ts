@@ -8,6 +8,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     ? {
         edges: Object.entries(state.postEditDraftEdges ?? {}) as [string, PostEditEdge][],
         meta: state.postEditDraftMeta,
+        teleports: state.postEditDraftTeleports,
       }
     : null;
 

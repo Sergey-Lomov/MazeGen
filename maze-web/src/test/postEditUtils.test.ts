@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractTeleportEdges } from "../pixi/postEditUtils";
+import { buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractPostEditTeleports, postEditTeleportsToDto } from "../pixi/postEditUtils";
 import type { EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
 
@@ -45,7 +45,7 @@ describe("buildPostEditDraftEdgesFromGenerated", () => {
   it("ignores teleport edges entirely, even parallel to a Basic edge in the same direction", () => {
     // A Teleport and a Basic edge can coexist in the same direction between the same pair —
     // teleport must not appear in this Record at all (it's tracked separately, see
-    // extractTeleportEdges), and must not shadow or be shadowed by the Basic entry.
+    // extractPostEditTeleports), and must not shadow or be shadowed by the Basic entry.
     const edges: EdgeDto[] = [
       { from: 0, to: 1, kind: "basic" }, { from: 1, to: 0, kind: "basic" },
       { from: 0, to: 1, kind: "teleport" },
@@ -56,33 +56,55 @@ describe("buildPostEditDraftEdgesFromGenerated", () => {
   });
 });
 
-// --- extractTeleportEdges ---
+// --- extractPostEditTeleports ---
 
-describe("extractTeleportEdges", () => {
-  it("returns only teleport-kind edges", () => {
+describe("extractPostEditTeleports", () => {
+  it("returns only teleport-kind edges as forward entries", () => {
     const edges: EdgeDto[] = [
       { from: 0, to: 1, kind: "basic" },
       { from: 2, to: 3, kind: "teleport" },
     ];
-    expect(extractTeleportEdges(edges)).toEqual([{ from: 2, to: 3, kind: "teleport" }]);
+    expect(extractPostEditTeleports(edges).teleports).toEqual([{ id: 1, from: 2, to: 3, direction: "forward" }]);
   });
 
-  it("preserves multiple teleport edges including both directions of a two-way pair", () => {
+  it("collapses a forward+backward pair into one two_way entry", () => {
     const edges: EdgeDto[] = [
       { from: 0, to: 1, kind: "teleport" },
       { from: 1, to: 0, kind: "teleport" },
       { from: 2, to: 3, kind: "teleport" },
     ];
-    expect(extractTeleportEdges(edges)).toEqual(edges);
+    expect(extractPostEditTeleports(edges).teleports).toEqual([
+      { id: 1, from: 0, to: 1, direction: "two_way" },
+      { id: 2, from: 2, to: 3, direction: "forward" },
+    ]);
   });
 
   it("empty input returns empty array", () => {
-    expect(extractTeleportEdges([])).toEqual([]);
+    expect(extractPostEditTeleports([]).teleports).toEqual([]);
   });
 
   it("no teleport edges returns empty array", () => {
     const edges: EdgeDto[] = [{ from: 0, to: 1, kind: "basic" }];
-    expect(extractTeleportEdges(edges)).toEqual([]);
+    expect(extractPostEditTeleports(edges).teleports).toEqual([]);
+  });
+});
+
+// --- postEditTeleportsToDto ---
+
+describe("postEditTeleportsToDto", () => {
+  it("forward entry produces one edge in the stored direction", () => {
+    expect(postEditTeleportsToDto([{ id: 1, from: 0, to: 1, direction: "forward" }]))
+      .toEqual([{ from: 0, to: 1, kind: "teleport" }]);
+  });
+
+  it("backward entry produces one edge reversed", () => {
+    expect(postEditTeleportsToDto([{ id: 1, from: 0, to: 1, direction: "backward" }]))
+      .toEqual([{ from: 1, to: 0, kind: "teleport" }]);
+  });
+
+  it("two_way entry produces both directions", () => {
+    expect(postEditTeleportsToDto([{ id: 1, from: 0, to: 1, direction: "two_way" }]))
+      .toEqual([{ from: 0, to: 1, kind: "teleport" }, { from: 1, to: 0, kind: "teleport" }]);
   });
 });
 

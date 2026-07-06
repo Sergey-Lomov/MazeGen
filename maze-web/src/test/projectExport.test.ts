@@ -26,6 +26,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     postEditDirty: false,
     postEditDraftEdges: null,
     postEditDraftMeta: null,
+    postEditDraftTeleports: [],
     fieldDirty: false,
     presetsDirty: false,
     mazeDirty: false,
@@ -101,6 +102,30 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(serialized.postEdit).not.toBeNull();
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.postEdit).toEqual(serialized.postEdit);
+  });
+
+  it("round-trips dirty post-edit teleports", () => {
+    const state = makeState({
+      postEditDirty: true,
+      postEditDraftEdges: {},
+      postEditDraftMeta: null,
+      postEditDraftTeleports: [
+        { id: 1, from: 0, to: 2, direction: "forward" },
+        { id: 2, from: 1, to: 3, direction: "two_way" },
+      ],
+    });
+    const serialized = serializeProject(state);
+    expect(serialized.postEdit).not.toBeNull();
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.postEdit?.teleports).toEqual(serialized.postEdit?.teleports);
+  });
+
+  it("defaults postEdit.teleports to empty array for a project file saved before post-edit teleport editing existed", () => {
+    const state = makeState({ postEditDirty: true, postEditDraftEdges: {}, postEditDraftMeta: null });
+    const data = JSON.parse(JSON.stringify(serializeProject(state)));
+    delete data.postEdit.teleports;
+    const result = parseAndValidate(data);
+    expect(result.postEdit?.teleports).toEqual([]);
   });
 
   it("postEdit is null when not dirty", () => {
@@ -189,6 +214,19 @@ describe("parseAndValidate — malformed input", () => {
       { id: 1, from: [0, 0], to: [2, 2], direction: "forward" },
       { id: 1, from: [1, 1], to: [3, 3], direction: "two_way" },
     ];
+    expect(() => parseAndValidate(data)).toThrow(/Duplicate teleport id/);
+  });
+
+  it("throws on duplicate post-edit teleport id", () => {
+    const data = valid();
+    data.postEdit = {
+      edges: [],
+      meta: null,
+      teleports: [
+        { id: 1, from: 0, to: 2, direction: "forward" },
+        { id: 1, from: 1, to: 3, direction: "two_way" },
+      ],
+    };
     expect(() => parseAndValidate(data)).toThrow(/Duplicate teleport id/);
   });
 
