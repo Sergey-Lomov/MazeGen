@@ -102,17 +102,13 @@ export class PresetConnectionsController extends BaseController {
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
 
-      // Start/finish markers and teleport endpoints are hit-tested only for the tool group
-      // that owns them, so the two categories can freely overlap (e.g. a teleport endpoint
-      // placed on the start cell, or a start marker placed on a teleport endpoint's cell).
-      const onStartFinishTool = tool === "set_start" || tool === "set_finish";
-      const onStart = onStartFinishTool &&
+      // All four vertex elements (start, finish, every teleport endpoint) share one editing
+      // mode: whichever vertex tool is active, drag/RMB-delete applies to any of them.
+      const onStart =
         store.presetStart !== null && store.presetStart[0] === coords[0] && store.presetStart[1] === coords[1];
-      const onFinish = onStartFinishTool &&
+      const onFinish =
         store.presetFinish !== null && store.presetFinish[0] === coords[0] && store.presetFinish[1] === coords[1];
-      const teleportHit = TELEPORT_TOOLS.has(tool)
-        ? pickTeleportEndpointAt(vpX, vpY, state.tessellationConfig, store.presetTeleports)
-        : null;
+      const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.tessellationConfig, store.presetTeleports);
 
       if (button === 2) {
         if (onStart) store.setPresetStart(null);

@@ -77,21 +77,18 @@ Both are in the Vertex tools section, alongside `set_start`/`set_finish`. Select
 
 ### Shared vertex editing mode
 
-Vertex tools split into two groups that each get a shared editing mode within the group, but not across groups: `set_start`/`set_finish` share drag-to-move and right-click-to-delete across the start and finish markers; `teleport_one_way`/`teleport_two_way` share the same across all teleport endpoints. A tool from one group never drags or deletes an element owned by the other group:
+All four vertex tools (`set_start`, `set_finish`, `teleport_one_way`, `teleport_two_way`) share one editing mode: whichever vertex tool is active, drag-to-move and right-click-to-delete apply uniformly to the start marker, the finish marker, and every teleport endpoint — not just the element type matching the active tool.
 
-- **Left press-drag starting on the start marker's cell**, while `set_start` or `set_finish` is active → moves the start marker live.
-- **Left press-drag starting on the finish marker's cell**, while `set_start` or `set_finish` is active → moves the finish marker live.
-- **Left press-drag starting on an existing teleport endpoint**, while `teleport_one_way` or `teleport_two_way` is active → moves that endpoint live (see "Editing existing teleports" below).
-- **Right-click on the start marker's cell**, while `set_start` or `set_finish` is active → clears the start marker (`setPresetStart(null)`).
-- **Right-click on the finish marker's cell**, while `set_start` or `set_finish` is active → clears the finish marker (`setPresetFinish(null)`).
-- **Right-click on an existing teleport endpoint**, while `teleport_one_way` or `teleport_two_way` is active → removes that teleport entry (`removePresetTeleport`).
+- **Left press-drag starting on the start marker's cell**, while any vertex tool is active → moves the start marker live.
+- **Left press-drag starting on the finish marker's cell**, while any vertex tool is active → moves the finish marker live.
+- **Left press-drag starting on an existing teleport endpoint**, while any vertex tool is active → moves that endpoint live (see "Editing existing teleports" below).
+- **Right-click on the start marker's cell**, while any vertex tool is active → clears the start marker (`setPresetStart(null)`).
+- **Right-click on the finish marker's cell**, while any vertex tool is active → clears the finish marker (`setPresetFinish(null)`).
+- **Right-click on an existing teleport endpoint**, while any vertex tool is active → removes that teleport entry (`removePresetTeleport`).
 
-Start/finish markers and teleport endpoints are hit-tested only for the tool group that currently owns them, so the two categories can freely overlap at the same cell:
+Hit-testing checks the start marker, then the finish marker, then teleport endpoints, regardless of which vertex tool is active — so drag/delete on overlapping elements at the same cell resolves in that priority order.
 
-- While `set_start`/`set_finish` is active, only the start/finish markers are hit-tested — a teleport endpoint sitting on the same cell is ignored, so a plain click there places/moves the start or finish marker right on top of it.
-- While `teleport_one_way`/`teleport_two_way` is active, only teleport endpoints are hit-tested — a start/finish marker sitting on the same cell is ignored, so a plain click there starts/completes a teleport link right on top of it.
-
-Only when nothing in the active tool's own category is hit does the tool-specific "create new" action apply — left click assigns the marker for `set_start`/`set_finish`, or drives the two-click placement gesture for the two teleport tools. A plain click (no drag) on an existing teleport endpoint's own cell, with no placement pending, still cycles that entry's direction only when a teleport tool is active (see below).
+Only when nothing is hit does the tool-specific "create new" action apply — left click assigns the marker for `set_start`/`set_finish`, or drives the two-click placement gesture for the two teleport tools (still tool-specific: the placement gesture and preview line only run while a teleport tool is active). A plain click (no drag) on an existing teleport endpoint's own cell, with no placement pending, still cycles that entry's direction only when a teleport tool is active (see below).
 
 ### Placement gesture
 
