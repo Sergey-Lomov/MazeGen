@@ -72,11 +72,36 @@ fn make_generated_graph(seed: u64) -> (Field<SquareTessellation>, Graph) {
 fn pipeline_assigns_start_and_finish() {
     let (field, graph) = make_generated_graph(42);
     let (qc, repair) = make_engines();
-    let (maze, warnings, _timing) = build_maze(field, graph, 42, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (maze, warnings, _timing) = build_maze(field, graph, 42, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
     assert_ne!(maze.meta.start, maze.meta.finish);
+}
+
+/// Issue #86 regression at the `build_maze` level: a preset start must be seeded onto
+/// `maze.meta` *before* the repair loop runs, so `FarthestEndpointsStrategy` sees it as already
+/// resolved (its `(Some(start), None)` branch) instead of running its `(None, None)` branch and
+/// picking its own random start — which would then get silently overwritten by the preset start
+/// after the fact, leaving a finish that was never actually farthest from it.
+#[test]
+fn preset_start_is_honored_by_farthest_endpoints_before_repair_runs() {
+    let (field, graph) = make_generated_graph(42);
+    let preset_start = field.node_at(SquarePoint { x: 4, y: 4 }).unwrap();
+    let qc = QualityControlEngine::new(vec![
+        Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }),
+    ]);
+    let repair = engine_with_rule(MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(FarthestEndpointsStrategy));
+
+    let (maze, warnings, _timing) = build_maze(
+        field, graph, 42, qc, repair, &PresetState::empty(), RepairLimits::default(),
+        Some(preset_start), None,
+    );
+
+    assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
+    assert_eq!(maze.meta.start, Some(preset_start), "preset start must survive repair unchanged");
+    assert!(maze.meta.finish.is_some());
+    assert_ne!(maze.meta.finish, Some(preset_start));
 }
 
 #[test]
@@ -85,7 +110,7 @@ fn pipeline_deterministic() {
     let run = || {
         let (field, graph) = make_generated_graph(seed);
         let (qc, repair) = make_engines();
-        let (maze, _, _timing) = build_maze(field, graph, seed, qc, repair, &PresetState::empty(), RepairLimits::default());
+        let (maze, _, _timing) = build_maze(field, graph, seed, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
         (maze.meta.start, maze.meta.finish)
     };
     let (s1, f1) = run();
@@ -99,7 +124,7 @@ fn pipeline_warns_when_no_strategy_for_issue() {
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
     let repair: RepairEngine<SquareTessellation> = RepairEngine::new(vec![], vec![], vec![]);
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(!warnings.is_empty());
 }
 
@@ -123,7 +148,7 @@ fn pipeline_warns_when_strategy_always_fails() {
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
     let repair = engine_with_rule(MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(AlwaysFail));
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(!warnings.is_empty());
 }
 
@@ -180,7 +205,7 @@ fn pipeline_stops_at_max_iterations_cap() {
     let (field, graph, qc, repair) = never_converging_setup(move || { counter.fetch_add(1, Ordering::SeqCst); });
 
     let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), limits);
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), limits, None, None);
     assert_eq!(call_count.load(Ordering::SeqCst), 3, "strategy must be called exactly max_iterations times");
     assert!(!warnings.is_empty(), "issue is still unresolved after the cap stops the loop early");
     let limit_issue = warnings.iter().find(|i| i.kind == REPAIR_LIMIT_REACHED).expect("must surface a REPAIR_LIMIT_REACHED issue");
@@ -200,7 +225,7 @@ fn pipeline_stops_at_time_budget() {
     });
 
     let limits = RepairLimits { max_iterations: None, time_budget_secs: Some(0.05) };
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), limits);
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), limits, None, None);
     let calls = call_count.load(Ordering::SeqCst);
     assert!(calls >= 1, "at least one iteration should run before the budget is exhausted");
     assert!(calls < 20, "time budget must stop the loop well before an unbounded run would (got {calls} calls)");
@@ -235,7 +260,7 @@ fn pipeline_surfaces_qc_no_progress_with_stuck_rule_id() {
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![Box::new(AlwaysSameIssueCheck)]);
     let repair = engine_with_rule(MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(NoOpFix));
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
 
     let issue = warnings.iter().find(|i| i.kind == QC_NO_PROGRESS).expect("must surface a QC_NO_PROGRESS issue");
     match &issue.data {
@@ -280,7 +305,7 @@ fn pipeline_merges_issues_from_duplicate_checks_into_one_strategy_call() {
     ]);
     let repair = engine_with_rule(MISSING_ENDPOINTS, &["missing_endpoints"], Box::new(CountingStrategy { count: Arc::clone(&call_count) }));
 
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     assert_eq!(call_count.load(Ordering::SeqCst), 1, "strategy called more than once for duplicate issue");
 }
@@ -306,7 +331,7 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
         (INVALID_LOOP, &["min_loop_length"], Box::new(InvalidLoopRandomStrategy)),
     );
 
-    let (_, remaining, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (_, remaining, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(!remaining.iter().any(|i| i.kind == INVALID_LOOP),
         "short loop must be resolved by the pipeline: {:?}", remaining);
 }
@@ -349,7 +374,7 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
             (INVALID_LOOP, &["min_loop_length"], Box::new(InvalidLoopRandomStrategy)),
         );
 
-        let (maze, _, _timing) = build_maze(field, graph, seed, qc, repair, &PresetState::empty(), RepairLimits::default());
+        let (maze, _, _timing) = build_maze(field, graph, seed, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
 
         for node in maze.graph.nodes() {
             let degree = maze.graph.edges().filter(|e| e.from == node.id || e.to == node.id).count();
@@ -393,7 +418,7 @@ fn exact_issue_23_seed_never_isolates_a_node() {
         (INVALID_LOOP, &["min_loop_length"], Box::new(InvalidLoopRandomStrategy)),
     );
 
-    let (maze, _, _timing) = build_maze(field, graph, seed, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (maze, _, _timing) = build_maze(field, graph, seed, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
 
     for node in maze.graph.nodes() {
         let degree = maze.graph.edges().filter(|e| e.from == node.id || e.to == node.id).count();
@@ -456,7 +481,7 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     ]);
     let repair = engine_with_rule(INVALID_LOOP, &["missing_endpoints", "unreachable_finish"], Box::new(InvalidLoopRandomStrategy));
 
-    let (maze, remaining, _timing) = build_maze(field, g, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (maze, remaining, _timing) = build_maze(field, g, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
 
     assert!(!remaining.iter().any(|i| i.kind == INVALID_LOOP),
         "both checks' issues must be merged into one and resolved in a single repair call: {:?}", remaining);
@@ -528,7 +553,7 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     ]);
     let repair = engine_with_rule(INVALID_LOOP, &["missing_endpoints"], Box::new(InvalidLoopRandomStrategy));
 
-    let (maze, remaining, _timing) = build_maze(field, g, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (maze, remaining, _timing) = build_maze(field, g, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
 
     assert!(!remaining.iter().any(|i| i.kind == INVALID_LOOP),
         "both triangles must be resolved across iterations, not falsely stopped after the first: {:?}", remaining);
@@ -613,7 +638,7 @@ fn stage_2_rule_does_not_dispatch_until_stage_1_resolves() {
         (MISSING_ENDPOINTS, &["stage2_check"], Box::new(RequiresEndpoints { calls_before_endpoints_set: Arc::clone(&calls_before_endpoints_set) })),
     );
 
-    let (maze, _, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (maze, _, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(maze.meta.start.is_some() && maze.meta.finish.is_some(), "stage 1 must have resolved endpoints");
     assert_eq!(calls_before_endpoints_set.load(Ordering::SeqCst), 0,
         "stage 2's strategy must never be dispatched before stage 1 finished resolving endpoints");
@@ -671,7 +696,7 @@ fn failed_rule_in_stage_1_does_not_block_stage_2() {
         (MISSING_ENDPOINTS, &["unreachable_finish"], Box::new(CountingFix { count: Arc::clone(&call_count) })),
     );
 
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(warnings.iter().any(|i| i.kind == MISSING_ENDPOINTS), "stage 1's rule must remain unresolved (Failed)");
     assert!(call_count.load(Ordering::SeqCst) > 0, "stage 2 must still have been dispatched despite stage 1's failure");
 }
@@ -720,7 +745,7 @@ fn no_progress_in_stage_1_aborts_stage_2_entirely() {
         (MISSING_ENDPOINTS, &["unreachable_finish"], Box::new(CountingFix { count: Arc::clone(&call_count) })),
     );
 
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(warnings.iter().any(|i| i.kind == QC_NO_PROGRESS), "must surface QC_NO_PROGRESS for stuck stage 1");
     assert_eq!(call_count.load(Ordering::SeqCst), 0, "stage 2 must never be reached once stage 1 no-progresses");
 }
@@ -778,7 +803,7 @@ fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
     );
 
     let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), limits);
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), limits, None, None);
     let limit_issue = warnings.iter().find(|i| i.kind == REPAIR_LIMIT_REACHED).expect("must surface REPAIR_LIMIT_REACHED once budget exhausts mid stage 2");
     assert_eq!(limit_issue.data, Some(IssueData::RepairLimitReached { limit: RepairLimitKind::MaxIterations }));
     // Final QC pass still ran (it's unconditional) — endpoints resolved by stage 1 remain
@@ -791,7 +816,7 @@ fn empty_stage_list_skips_repair_and_goes_straight_to_final_qc() {
     let (field, graph) = make_generated_graph(1);
     let qc = QualityControlEngine::new(vec![Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() })]);
     let repair: RepairEngine<SquareTessellation> = RepairEngine::new(vec![], vec![], vec![]);
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(warnings.iter().any(|i| i.kind == MISSING_ENDPOINTS), "no stages means no repair, issue surfaces via the final QC pass");
 }
 
@@ -851,7 +876,7 @@ fn stage_with_only_no_strategy_rules_is_skipped_instantly_between_dispatchable_s
         ],
     );
 
-    let (maze, _, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default());
+    let (maze, _, _timing) = build_maze(field, graph, 1, qc, repair, &PresetState::empty(), RepairLimits::default(), None, None);
     assert!(maze.meta.start.is_some() && maze.meta.finish.is_some());
     assert!(called_with_endpoints_set.load(Ordering::SeqCst) > 0, "stage 3 must dispatch after stage 1, unaffected by no-strategy stage 2");
 }

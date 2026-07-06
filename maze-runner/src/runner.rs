@@ -458,6 +458,7 @@ fn run_generate_typed<T: Tessellation>(
     start: T::Point,
     config: &GenerateConfig,
     gen_config: GenerationConfig,
+    to_xy: impl Fn(T::Point) -> (i32, i32),
 ) -> Result<MazeRunResult, String> {
     use maze_core::generation::pipeline::build_maze;
 
@@ -478,7 +479,13 @@ fn run_generate_typed<T: Tessellation>(
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<T>(config)?;
     let limits = build_repair_limits(config);
-    let (maze, remaining_issues, timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, limits);
+    let preset_start = config.preset_start.and_then(|[sx, sy]| {
+        field.all_points().find(|&p| to_xy(p) == (sx, sy)).and_then(|p| field.node_at(p))
+    });
+    let preset_finish = config.preset_finish.and_then(|[fx, fy]| {
+        field.all_points().find(|&p| to_xy(p) == (fx, fy)).and_then(|p| field.node_at(p))
+    });
+    let (maze, remaining_issues, timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, limits, preset_start, preset_finish);
 
     let start_node = maze.meta.start;
     let finish_node = maze.meta.finish;
@@ -512,7 +519,7 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
             let start = resolve_start(&pts, config.preset_gen_source, |p| (p.x, p.y));
             let field = Field::<SquareTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
-            run_generate_typed(seed, field, start, config, gen_config)
+            run_generate_typed(seed, field, start, config, gen_config, |p| (p.x, p.y))
         }
         TessellationType::Hex => {
             use maze_core::space::{HexTessellation, HexPoint};
@@ -521,7 +528,7 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
             let start = resolve_start(&pts, config.preset_gen_source, |p| (p.q, p.r));
             let field = Field::<HexTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
-            run_generate_typed(seed, field, start, config, gen_config)
+            run_generate_typed(seed, field, start, config, gen_config, |p| (p.q, p.r))
         }
         TessellationType::Tri => {
             use maze_core::space::{TriTessellation, TriPoint};
@@ -530,7 +537,7 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
             let start = resolve_start(&pts, config.preset_gen_source, |p| (p.col, p.row));
             let field = Field::<TriTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
-            run_generate_typed(seed, field, start, config, gen_config)
+            run_generate_typed(seed, field, start, config, gen_config, |p| (p.col, p.row))
         }
     }
 }

@@ -9,6 +9,20 @@
 use maze_core::RegionClass;
 use maze_runner::run_fixture;
 
+/// Issue #86: preset start + farthest_endpoints strategy picks wrong finish (not actually farthest).
+/// `farthest_endpoints` must see the preset start seeded on `maze.meta` *before* repair runs, not
+/// have it applied afterward — otherwise it computes "farthest" from whatever start the strategy
+/// itself would have picked (or none), then the real preset start silently overwrites it later.
+#[test]
+fn repro_86_farthest_endpoints_wrong_finish() {
+    let result = run_fixture("tests/fixtures/issue-86-farthest-preset-start.json", 42);
+    println!("start={:?} finish={:?}", result.start, result.finish);
+    assert!(result.start.is_some(), "preset start must be honored");
+    assert!(result.finish.is_some(), "farthest_endpoints must assign a finish");
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    assert!(kinds.is_empty(), "no remaining issues expected, got {kinds:?}");
+}
+
 /// Template — copy + rename + add assertions.
 #[test]
 #[ignore]

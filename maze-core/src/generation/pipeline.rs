@@ -78,8 +78,12 @@ pub fn build_maze<T: Tessellation>(
     repair_engine: RepairEngine<T>,
     preset_state: &PresetState,
     limits: RepairLimits,
+    preset_start: Option<crate::ids::NodeId>,
+    preset_finish: Option<crate::ids::NodeId>,
 ) -> (Maze<T>, Vec<crate::quality_control::Issue>, GenerationTiming) {
     let mut maze = Maze::new(field, graph);
+    maze.meta.start = preset_start;
+    maze.meta.finish = preset_finish;
     let mut rng = MazeRng::seed_from_u64(seed);
     let mut failed: HashSet<String> = HashSet::new();
     let check_id_to_rule = repair_engine.check_id_to_rule();

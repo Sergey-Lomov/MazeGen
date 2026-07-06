@@ -44,25 +44,15 @@ pub fn run_generate<T: Tessellation>(
     let (qc_engine, repair_engine, check_types) = build_qc_and_repair_with_types::<T>(config)
         .map_err(|e| JsValue::from_str(&e))?;
 
-    let (mut maze, issues, mut timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, build_repair_limits(config));
-    timing.initial_build_ms = initial_build_ms;
+    let preset_start = config.preset_start.and_then(|[sx, sy]| {
+        field.all_points().find(|&p| point_to_xy(p) == (sx, sy)).and_then(|p| field.node_at(p))
+    });
+    let preset_finish = config.preset_finish.and_then(|[fx, fy]| {
+        field.all_points().find(|&p| point_to_xy(p) == (fx, fy)).and_then(|p| field.node_at(p))
+    });
 
-    if let Some([fx, fy]) = config.preset_finish {
-        if let Some(finish_id) = maze.field.all_points()
-            .find(|&p| point_to_xy(p) == (fx, fy))
-            .and_then(|p| maze.field.node_at(p))
-        {
-            maze.meta.finish = Some(finish_id);
-        }
-    }
-    if let Some([sx, sy]) = config.preset_start {
-        if let Some(start_override) = maze.field.all_points()
-            .find(|&p| point_to_xy(p) == (sx, sy))
-            .and_then(|p| maze.field.node_at(p))
-        {
-            maze.meta.start = Some(start_override);
-        }
-    }
+    let (mut maze, issues, mut timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, build_repair_limits(config), preset_start, preset_finish);
+    timing.initial_build_ms = initial_build_ms;
 
     let debug_steps = steps_to_dto(raw_steps);
 
