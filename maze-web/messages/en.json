@@ -91,6 +91,7 @@
   "generation.one_way_chance": "One-way passage",
   "generation.teleport_chance": "Teleport chance",
   "generation.teleport_one_way_chance": "One-way teleport chance",
+  "generation.canonical_elements_warning": "Canonical algorithm: adds only plain passages. Add one-way, teleports etc. via Quality Control repair.",
   "debug.outdated_warning": "Debug snapshot is outdated — re-generate to update",
   "debug.prev_step": "Previous step",
   "debug.next_step": "Next step",

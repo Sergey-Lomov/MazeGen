@@ -96,6 +96,7 @@
   "generation.one_way_chance": "Односторонний переход",
   "generation.teleport_chance": "Шанс телепорта",
   "generation.teleport_one_way_chance": "Шанс одностороннего телепорта",
+  "generation.canonical_elements_warning": "Канонический алгоритм: добавляет только простые проходы. Односторонние, телепорты и т.д. - через ремонт в Quality Control.",
 
   "debug.outdated_warning": "Снимок отладки устарел — пересгенерируйте для обновления",
   "debug.prev_step": "Предыдущий шаг",

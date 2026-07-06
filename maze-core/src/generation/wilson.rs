@@ -4,14 +4,13 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
-use super::{ElementsConfig, PresetState, try_add_edge, can_connect};
+use super::{PresetState, try_add_bidirectional_edge, can_connect};
 
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
     field: &Field<T>,
     seed: u64,
     start: NodeId,
-    elements: &ElementsConfig,
     preset_state: &PresetState,
     mut on_step: Option<&mut super::StepCallback<'_>>,
 ) {
@@ -53,7 +52,7 @@ pub fn generate<T: Tessellation>(
         let mut node = walk_start;
         while !visited.contains(&node) {
             let Some(&dst) = next.get(&node) else { break; };
-            try_add_edge(graph, node, dst, elements, preset_state, &mut rng);
+            try_add_bidirectional_edge(graph, node, dst, preset_state);
             visited.insert(node);
             if let Some(ref mut cb) = on_step { cb(graph, node, &[]); }
             node = dst;

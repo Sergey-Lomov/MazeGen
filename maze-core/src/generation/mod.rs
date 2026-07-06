@@ -173,11 +173,11 @@ fn dispatch<T: Tessellation>(
         GenerationAlgorithm::CustomEdgeBased(params) =>
             edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, on_step),
         GenerationAlgorithm::RecursiveBacktracker =>
-            recursive_backtracker::generate(graph, field, seed, start, &config.elements, preset_state, on_step),
+            recursive_backtracker::generate(graph, field, seed, start, preset_state, on_step),
         GenerationAlgorithm::WilsonAlgorithm =>
-            wilson::generate(graph, field, seed, start, &config.elements, preset_state, on_step),
+            wilson::generate(graph, field, seed, start, preset_state, on_step),
         GenerationAlgorithm::KruskalAlgorithm =>
-            kruskal::generate(graph, field, seed, &config.elements, preset_state, on_step),
+            kruskal::generate(graph, field, seed, preset_state, on_step),
     }
 }
 

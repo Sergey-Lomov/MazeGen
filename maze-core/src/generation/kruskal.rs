@@ -5,13 +5,12 @@ use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
 use crate::dsu::Dsu;
-use super::{ElementsConfig, PresetState, try_add_edge, can_connect};
+use super::{PresetState, try_add_bidirectional_edge, can_connect};
 
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
     field: &Field<T>,
     seed: u64,
-    elements: &ElementsConfig,
     preset_state: &PresetState,
     mut on_step: Option<&mut super::StepCallback<'_>>,
 ) {
@@ -57,7 +56,7 @@ pub fn generate<T: Tessellation>(
         let rb = dsu.find(node_index[&b]);
         if ra != rb {
             dsu.union_by_min(ra, rb);
-            try_add_edge(graph, a, b, elements, preset_state, &mut rng);
+            try_add_bidirectional_edge(graph, a, b, preset_state);
             if let Some(ref mut cb) = on_step { cb(graph, a, &[]); }
         }
     }

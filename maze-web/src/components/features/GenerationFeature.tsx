@@ -7,6 +7,7 @@ import { ui, radius, typography, muted } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
 import { Switch } from "../Switch";
 import { SliderParam } from "../SliderParam";
+import { WarningBubble } from "../WarningBubble";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
@@ -40,6 +41,7 @@ export function GenerationFeature({ canGenerate }: Props) {
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
   const isEdgeBased = method === "custom_edge_based";
+  const isCanonical = !isVertexBased && !isEdgeBased;
 
   const vertexParams = isVertexBased ? (initialConfig as { method: string } & GenerationParams) : null;
   const edgeParams = isEdgeBased ? (initialConfig as { method: string } & EdgeBasedParams) : null;
@@ -90,20 +92,20 @@ export function GenerationFeature({ canGenerate }: Props) {
         </div>
         {isVertexBased && vertexParams && (
           <div style={styles.paramValues}>
-            <SliderParam label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
-            <SliderParam label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
-            <SliderParam label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
-            <SliderParam label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
-            <SliderParam label={m["generation.cyclicity"]()} value={vertexParams.cyclicity ?? 0.0} onChange={(v) => setGenerationParam("cyclicity", v)} />
+            <SliderParam variant="primary" label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
+            <SliderParam variant="primary" label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
+            <SliderParam variant="primary" label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
+            <SliderParam variant="primary" label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
+            <SliderParam variant="primary" label={m["generation.cyclicity"]()} value={vertexParams.cyclicity ?? 0.0} onChange={(v) => setGenerationParam("cyclicity", v)} />
           </div>
         )}
         {isEdgeBased && edgeParams && (
           <div style={styles.paramValues}>
-            <SliderParam label={m["generation.corridor_length"]()} value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
-            <SliderParam label={m["generation.branching"]()} value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
-            <SliderParam label={m["generation.depth_first"]()} value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
-            <SliderParam label={m["generation.directionality"]()} value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
-            <SliderParam label={m["generation.cyclicity"]()} value={edgeParams.cyclicity ?? 0.0} onChange={(v) => setEdgeBasedParam("cyclicity", v)} />
+            <SliderParam variant="primary" label={m["generation.corridor_length"]()} value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
+            <SliderParam variant="primary" label={m["generation.branching"]()} value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
+            <SliderParam variant="primary" label={m["generation.depth_first"]()} value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
+            <SliderParam variant="primary" label={m["generation.directionality"]()} value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
+            <SliderParam variant="primary" label={m["generation.cyclicity"]()} value={edgeParams.cyclicity ?? 0.0} onChange={(v) => setEdgeBasedParam("cyclicity", v)} />
           </div>
         )}
       </div>
@@ -111,11 +113,15 @@ export function GenerationFeature({ canGenerate }: Props) {
       {/* Elements block */}
       <div style={styles.algorithmBlock}>
         <span style={styles.sectionCaption}>{m["generation.elements"]()}</span>
-        <div style={styles.paramValues}>
-          <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.04} onChange={(v) => setElementsParam("one_way_chance", v)} />
-          <SliderParam variant="primary" label={m["generation.teleport_chance"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
-          <SliderParam variant="primary" label={m["generation.teleport_one_way_chance"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
-        </div>
+        {isCanonical ? (
+          <WarningBubble message={m["generation.canonical_elements_warning"]()} />
+        ) : (
+          <div style={styles.paramValues}>
+            <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.04} onChange={(v) => setElementsParam("one_way_chance", v)} />
+            <SliderParam variant="primary" label={m["generation.teleport_chance"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
+            <SliderParam variant="primary" label={m["generation.teleport_one_way_chance"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
+          </div>
+        )}
       </div>
 
       {/* Status line */}
