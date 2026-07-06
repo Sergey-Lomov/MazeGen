@@ -1,6 +1,6 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
-import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
 import type { PostEditEdge, PostEditMeta, FeatureId } from "../mazeStore";
 
 export interface ProjectFilePostEdit {

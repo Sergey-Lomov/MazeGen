@@ -1,6 +1,6 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { Container } from "pixi.js";
-import { pickEdgeAtPosition } from "./presetConnectionsUtils";
+import { pickEdgeAtPosition } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
 import type { PostEditRenderer } from "./PostEditRenderer";
 import type { NodeDto } from "../wasm/types";
@@ -15,10 +15,7 @@ export class PostEditController extends BaseController {
   private confirmDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private nodeMap: Map<string, number> = new Map();
   private nodeMapNodes: NodeDto[] | null = null;
-  private dragActive = false;
-  private dragVisited = new Set<string>();
   private dragDidApply = false;
-  private draggingMarker: "set_start" | "set_finish" | null = null;
 
   constructor(
     getViewport: () => Container,
@@ -59,15 +56,14 @@ export class PostEditController extends BaseController {
     const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     this.renderer.updateHover(edge);
 
-    if (this.dragActive && edge && !this.dragVisited.has(edge.key)) {
-      this.dragVisited.add(edge.key);
-      const nodeMap = this.getNodeMap(state.nodes);
-      const nodeKey = cellEdgeToNodeKey(edge.from, edge.to, nodeMap);
+    const nodeMap = this.getNodeMap(state.nodes);
+    this.continueEdgeDrag(edge, (e) => {
+      const nodeKey = cellEdgeToNodeKey(e.from, e.to, nodeMap);
       if (nodeKey) {
         useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
         this.dragDidApply = true;
       }
-    }
+    });
   }
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
@@ -98,7 +94,7 @@ export class PostEditController extends BaseController {
       if (button !== 0) return;
 
       if (markerUnderCursor) {
-        this.draggingMarker = markerUnderCursor === "start" ? "set_start" : "set_finish";
+        this.armMarkerDrag(markerUnderCursor === "start" ? "set_start" : "set_finish");
         return;
       }
       if (nodeId !== undefined) {
@@ -114,8 +110,7 @@ export class PostEditController extends BaseController {
     if (nodeKey) {
       useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
       if (button === 0 && DRAG_EDGE_TOOLS.has(tool)) {
-        this.dragActive = true;
-        this.dragVisited = new Set([edge.key]);
+        this.beginEdgeDrag(edge.key);
         this.dragDidApply = true;
       } else if (state.postEditAutoConfirm) {
         this.scheduleConfirm();
@@ -125,18 +120,14 @@ export class PostEditController extends BaseController {
   }
 
   onPointerUp(button: number): void {
-    super.onPointerUp(button);
-    if (button === 0) {
-      this.draggingMarker = null;
-    }
-    if (button === 0 && this.dragActive) {
-      this.dragActive = false;
-      this.dragVisited.clear();
+    if (button === 0 && this.isDragActive) {
       if (this.dragDidApply && useMazeStore.getState().postEditAutoConfirm) {
         this.scheduleConfirm();
       }
       this.dragDidApply = false;
     }
+    super.onPointerUp(button);
+    if (button === 0) this.endEdgeDrag();
   }
 
   clearHover(): void {

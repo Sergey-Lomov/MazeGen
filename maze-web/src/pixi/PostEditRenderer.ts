@@ -1,10 +1,7 @@
-﻿import { Container } from "pixi.js";
+import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 
-import { resolveCells } from "./presetConnectionsUtils";
-import type { FieldEdge } from "./presetConnectionsUtils";
-import { encodePoint } from "./tessellationProjection";
-import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { FieldEdge } from "./fieldEditUtils";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
@@ -14,10 +11,12 @@ import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells } from "./selectors/mazeSelectors";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorUtils";
-import type { Viewport } from "./renderers/types";
 import type { NodeDto } from "../wasm/types";
+import { BaseFieldRenderer } from "./BaseFieldRenderer";
 
-export class PostEditRenderer {
+type MazeState = ReturnType<typeof useMazeStore.getState>;
+
+export class PostEditRenderer extends BaseFieldRenderer {
   private readonly root: Container;
 
   private readonly gridContainer: Container;
@@ -36,14 +35,8 @@ export class PostEditRenderer {
   private readonly markers: WaypointsRenderer;
   private readonly hover: EdgeHighlightRenderer;
 
-  private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
-  private cfg: TessellationConfig | null = null;
-  private cachedCells: [number, number][] = [];
-  private cachedCellSet: Set<number> = new Set();
-
-  private unsubscribe: (() => void) | null = null;
-
   constructor(container: Container) {
+    super();
     this.root = container;
 
     this.gridContainer        = new Container();
@@ -72,52 +65,23 @@ export class PostEditRenderer {
 
     this.root.visible = false;
 
-    this.unsubscribe = useMazeStore.subscribe((state, prev) => {
-      const isOpen = state.openCard === "post_edit";
-      const openChanged = state.openCard !== prev.openCard
-        && (isOpen || prev.openCard === "post_edit");
-
-      if (openChanged) {
-        this.root.visible = isOpen;
-        if (isOpen) {
-          this.cfg = state.activeTessellationConfig;
-          this.rebuildCellCache(state);
-          this.redrawAll(state);
-        } else {
-          this.clearAll();
-        }
-      }
-
-      if (!isOpen) return;
-
-      if (state.activeTessellationConfig !== prev.activeTessellationConfig) {
-        this.cfg = state.activeTessellationConfig;
-        this.rebuildCellCache(state);
-        this.redrawAll(state);
-        return;
-      }
-
-      if (
-        state.postEditDraftEdges !== prev.postEditDraftEdges ||
-        state.postEditDraftTeleportEdges !== prev.postEditDraftTeleportEdges ||
-        state.nodes !== prev.nodes ||
-        state.postEditDraftMeta !== prev.postEditDraftMeta
-      ) {
-        this.redrawAll(state);
-      }
-    });
+    this.subscribeToStore();
   }
 
-  getCachedCells(): [number, number][] {
-    return this.cachedCells;
+  protected isCardOpen(state: MazeState): boolean {
+    return state.openCard === "post_edit";
   }
 
-  getCachedCellSet(): Set<number> {
-    return this.cachedCellSet;
+  protected getActiveConfig(state: MazeState) {
+    return state.activeTessellationConfig;
+  }
+
+  protected setRootVisible(visible: boolean): void {
+    this.root.visible = visible;
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
-    this.viewport = { x, y, w, h, scale };
+    this.updateViewport(x, y, w, h, scale);
     if (useMazeStore.getState().openCard === "post_edit" && this.cfg) {
       this.grid.render({ viewport: this.viewport }, this.cfg);
     }
@@ -129,15 +93,18 @@ export class PostEditRenderer {
     this.hover.render({ highlights });
   }
 
-  private rebuildCellCache(state: ReturnType<typeof useMazeStore.getState>): void {
-    if (!this.cfg) return;
-    const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0
-      ? state.fieldPoints : undefined;
-    this.cachedCells = resolveCells(this.cfg, customPts);
-    this.cachedCellSet = new Set(this.cachedCells.map(([x, y]) => encodePoint(x, y)));
+  protected onStoreChange(state: MazeState, prev: MazeState): void {
+    if (
+      state.postEditDraftEdges !== prev.postEditDraftEdges ||
+      state.postEditDraftTeleportEdges !== prev.postEditDraftTeleportEdges ||
+      state.nodes !== prev.nodes ||
+      state.postEditDraftMeta !== prev.postEditDraftMeta
+    ) {
+      this.redrawAll(state);
+    }
   }
 
-  private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
+  protected redrawAll(state: MazeState): void {
     if (!this.cfg) return;
     const cfg = this.cfg;
 
@@ -167,7 +134,7 @@ export class PostEditRenderer {
     this.hover.render({ highlights: [] });
   }
 
-  private clearAll(): void {
+  protected clearAll(): void {
     if (!this.cfg) return;
     const cfg = this.cfg;
     this.grid.render({ viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 } }, cfg);
@@ -179,8 +146,7 @@ export class PostEditRenderer {
     this.hover.render({ highlights: [] });
   }
 
-  destroy(): void {
-    this.unsubscribe?.();
+  protected destroyChildren(): void {
     this.grid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();
@@ -197,4 +163,3 @@ export class PostEditRenderer {
     this.hoverContainer.destroy();
   }
 }
-

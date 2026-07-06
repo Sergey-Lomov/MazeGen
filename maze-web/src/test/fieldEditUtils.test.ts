@@ -10,8 +10,8 @@ import {
   removeTeleport,
   moveTeleportEndpoint,
   presetTeleportEntryToState,
-} from "../pixi/presetConnectionsUtils";
-import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/presetConnectionsUtils";
+} from "../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 
 // --- canonicalize ---
 

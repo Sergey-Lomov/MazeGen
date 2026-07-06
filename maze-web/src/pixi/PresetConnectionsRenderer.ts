@@ -1,8 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { resolveCells, computeInvalidKeysFromCells, computeInvalidTeleportIds } from "./presetConnectionsUtils";
-import type { FieldEdge, PresetTeleportEntry } from "./presetConnectionsUtils";
-import { encodePoint, makeProjection } from "./tessellationProjection";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds } from "./fieldEditUtils";
+import type { FieldEdge, PresetTeleportEntry } from "./fieldEditUtils";
+import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
@@ -23,11 +23,13 @@ import {
   buildHoverEdgeHighlight,
 } from "./selectors/presetSelectors";
 import { canvas } from "./colorUtils";
-import type { Viewport } from "./renderers/types";
+import { BaseFieldRenderer } from "./BaseFieldRenderer";
+
+type MazeState = ReturnType<typeof useMazeStore.getState>;
 
 const ISOLATED_HL_ALPHA = 0.35;
 
-export class PresetConnectionsRenderer {
+export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly root: Container;
 
   private readonly gridContainer: Container;
@@ -62,14 +64,8 @@ export class PresetConnectionsRenderer {
   private readonly hover: EdgeHighlightRenderer;
   private readonly teleportPreview: Graphics;
 
-  private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
-  private cfg: TessellationConfig | null = null;
-  private cachedCells: [number, number][] = [];
-  private cachedCellSet: Set<number> = new Set();
-
-  private unsubscribe: (() => void) | null = null;
-
   constructor(container: Container) {
+    super();
     this.root = container;
 
     this.gridContainer           = new Container();
@@ -124,84 +120,23 @@ export class PresetConnectionsRenderer {
 
     this.root.visible = false;
 
-    this.unsubscribe = useMazeStore.subscribe((state, prev) => {
-      const isOpen = state.openCard === "preset_connections";
-      const openChanged = state.openCard !== prev.openCard
-        && (isOpen || prev.openCard === "preset_connections");
-
-      if (openChanged) {
-        this.root.visible = isOpen;
-        if (isOpen) {
-          this.cfg = state.tessellationConfig;
-          this.rebuildCellCache(state);
-          this.redrawAll(state);
-        } else {
-          this.clearAll();
-        }
-      }
-
-      if (!isOpen) return;
-
-      if (state.tessellationConfig !== prev.tessellationConfig) {
-        this.cfg = state.tessellationConfig;
-        this.rebuildCellCache(state);
-        this.redrawAll(state);
-        return;
-      }
-
-      const fieldChanged = state.fieldPoints !== prev.fieldPoints || state.fieldEditMode !== prev.fieldEditMode;
-      if (fieldChanged) {
-        this.rebuildCellCache(state);
-      }
-
-      if (
-        fieldChanged ||
-        state.presetConnections !== prev.presetConnections ||
-        state.presetStart !== prev.presetStart ||
-        state.presetFinish !== prev.presetFinish ||
-        state.presetGenSource !== prev.presetGenSource ||
-        state.lockedNodes !== prev.lockedNodes ||
-        state.autoLockedNodes !== prev.autoLockedNodes ||
-        state.presetTeleports !== prev.presetTeleports
-      ) {
-        this.redrawAll(state);
-        return;
-      }
-
-      if (state.showPresetOrigin !== prev.showPresetOrigin) {
-        this.redrawOrigin(state.showPresetOrigin);
-      }
-
-      if (state.highlightInvalidPresets !== prev.highlightInvalidPresets) {
-        this.redrawInvalidHL(state);
-      }
-
-      if (
-        state.highlightIsolatedNodes !== prev.highlightIsolatedNodes ||
-        (state.highlightIsolatedNodes && (
-          state.lockedNodes !== prev.lockedNodes ||
-          state.presetConnections !== prev.presetConnections
-        ))
-      ) {
-        this.redrawIsolatedHL(state);
-      }
-
-      if (state.presetConnectionsTool !== prev.presetConnectionsTool || state.presetTeleportPendingFrom !== prev.presetTeleportPendingFrom) {
-        if (!state.presetTeleportPendingFrom) this.teleportPreview.clear();
-      }
-    });
+    this.subscribeToStore();
   }
 
-  getCachedCells(): [number, number][] {
-    return this.cachedCells;
+  protected isCardOpen(state: MazeState): boolean {
+    return state.openCard === "preset_connections";
   }
 
-  getCachedCellSet(): Set<number> {
-    return this.cachedCellSet;
+  protected getActiveConfig(state: MazeState) {
+    return state.tessellationConfig;
+  }
+
+  protected setRootVisible(visible: boolean): void {
+    this.root.visible = visible;
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
-    this.viewport = { x, y, w, h, scale };
+    this.updateViewport(x, y, w, h, scale);
     if (this.root.visible && this.cfg) {
       const state = useMazeStore.getState();
       this.grid.render({ viewport: this.viewport }, this.cfg);
@@ -247,15 +182,50 @@ export class PresetConnectionsRenderer {
       .fill({ color: canvas.teleport.default, alpha: 0.5 });
   }
 
-  private rebuildCellCache(state: ReturnType<typeof useMazeStore.getState>): void {
-    if (!this.cfg) return;
-    const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0
-      ? state.fieldPoints : undefined;
-    this.cachedCells = resolveCells(this.cfg, customPts);
-    this.cachedCellSet = new Set(this.cachedCells.map(([x, y]) => encodePoint(x, y)));
+  protected onStoreChange(state: MazeState, prev: MazeState): void {
+    const fieldChanged = state.fieldPoints !== prev.fieldPoints || state.fieldEditMode !== prev.fieldEditMode;
+    if (fieldChanged) {
+      this.rebuildCellCache(state);
+    }
+
+    if (
+      fieldChanged ||
+      state.presetConnections !== prev.presetConnections ||
+      state.presetStart !== prev.presetStart ||
+      state.presetFinish !== prev.presetFinish ||
+      state.presetGenSource !== prev.presetGenSource ||
+      state.lockedNodes !== prev.lockedNodes ||
+      state.autoLockedNodes !== prev.autoLockedNodes ||
+      state.presetTeleports !== prev.presetTeleports
+    ) {
+      this.redrawAll(state);
+      return;
+    }
+
+    if (state.showPresetOrigin !== prev.showPresetOrigin) {
+      this.redrawOrigin(state.showPresetOrigin);
+    }
+
+    if (state.highlightInvalidPresets !== prev.highlightInvalidPresets) {
+      this.redrawInvalidHL(state);
+    }
+
+    if (
+      state.highlightIsolatedNodes !== prev.highlightIsolatedNodes ||
+      (state.highlightIsolatedNodes && (
+        state.lockedNodes !== prev.lockedNodes ||
+        state.presetConnections !== prev.presetConnections
+      ))
+    ) {
+      this.redrawIsolatedHL(state);
+    }
+
+    if (state.presetConnectionsTool !== prev.presetConnectionsTool || state.presetTeleportPendingFrom !== prev.presetTeleportPendingFrom) {
+      if (!state.presetTeleportPendingFrom) this.teleportPreview.clear();
+    }
   }
 
-  private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
+  protected redrawAll(state: MazeState): void {
     if (!this.cfg) return;
     const cfg = this.cfg;
     const cells = this.cachedCells;
@@ -302,7 +272,7 @@ export class PresetConnectionsRenderer {
     this.genSource.render({ source, vpScale: this.viewport.scale }, this.cfg);
   }
 
-  private redrawIsolatedHL(state: ReturnType<typeof useMazeStore.getState>): void {
+  private redrawIsolatedHL(state: MazeState): void {
     if (!this.cfg) return;
     if (!state.highlightIsolatedNodes) {
       this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
@@ -312,7 +282,7 @@ export class PresetConnectionsRenderer {
     this.isolatedHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
   }
 
-  private redrawInvalidHL(state: ReturnType<typeof useMazeStore.getState>): void {
+  private redrawInvalidHL(state: MazeState): void {
     if (!this.cfg) return;
     if (!state.highlightInvalidPresets) {
       this.invalidHL.render({ highlights: [] });
@@ -325,7 +295,7 @@ export class PresetConnectionsRenderer {
     this.redrawInvalidTeleportHL(state);
   }
 
-  private redrawInvalidTeleportHL(state: ReturnType<typeof useMazeStore.getState>): void {
+  private redrawInvalidTeleportHL(state: MazeState): void {
     if (!this.cfg) return;
     this.invalidTeleportHL.clear();
     if (!state.highlightInvalidPresets) return;
@@ -347,7 +317,7 @@ export class PresetConnectionsRenderer {
     }
   }
 
-  private clearAll(): void {
+  protected clearAll(): void {
     if (!this.cfg) return;
     const cfg = this.cfg;
     this.grid.render({ viewport: { x: 0, y: 0, w: 0, h: 0, scale: 1 } }, cfg);
@@ -367,8 +337,7 @@ export class PresetConnectionsRenderer {
     this.teleportPreview.clear();
   }
 
-  destroy(): void {
-    this.unsubscribe?.();
+  protected destroyChildren(): void {
     this.grid.destroy();
     this.floor.destroy();
     this.invalidPassages.destroy();

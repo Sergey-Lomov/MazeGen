@@ -1,7 +1,7 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeLockKind } from "../wasm/types";
 import type { Container } from "pixi.js";
-import { pickEdgeAtPosition, pickTeleportEndpointAt, type PresetTeleportEndpointHit } from "./presetConnectionsUtils";
+import { pickEdgeAtPosition, pickTeleportEndpointAt, type PresetTeleportEndpointHit } from "./fieldEditUtils";
 import { makeProjection, encodePoint } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { BaseController } from "./BaseController";
@@ -12,11 +12,8 @@ const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "te
 
 export class PresetConnectionsController extends BaseController {
   private renderer: PresetConnectionsRenderer;
-  private dragActive = false;
-  private dragVisited = new Set<string>();
   private draggingTeleportEndpoint: PresetTeleportEndpointHit | null = null;
   private teleportDragMoved = false;
-  private draggingMarker: "set_start" | "set_finish" | null = null;
   private lastViewportPos = { x: 0, y: 0 };
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -85,10 +82,9 @@ export class PresetConnectionsController extends BaseController {
     const edge = pickEdgeAtPosition(vpX, vpY, state.tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     this.renderer.updateHover(edge);
 
-    if (this.dragActive && edge && !this.dragVisited.has(edge.key)) {
-      this.dragVisited.add(edge.key);
-      useMazeStore.getState().applyPresetConnectionsTool(edge.key, edge.from, edge.to);
-    }
+    this.continueEdgeDrag(edge, (e) => {
+      useMazeStore.getState().applyPresetConnectionsTool(e.key, e.from, e.to);
+    });
   }
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
@@ -128,11 +124,11 @@ export class PresetConnectionsController extends BaseController {
       if (button !== 0) return;
 
       if (onStart) {
-        this.draggingMarker = "set_start";
+        this.armMarkerDrag("set_start");
         return;
       }
       if (onFinish) {
-        this.draggingMarker = "set_finish";
+        this.armMarkerDrag("set_finish");
         return;
       }
       if (teleportHit) {
@@ -193,8 +189,7 @@ export class PresetConnectionsController extends BaseController {
     } else if (button === 0) {
       useMazeStore.getState().applyPresetConnectionsTool(edge.key, edge.from, edge.to);
       if (DRAG_EDGE_TOOLS.has(tool)) {
-        this.dragActive = true;
-        this.dragVisited = new Set([edge.key]);
+        this.beginEdgeDrag(edge.key);
       }
     }
     this.renderer.updateHover(edge);
@@ -203,9 +198,7 @@ export class PresetConnectionsController extends BaseController {
   onPointerUp(button: number): void {
     super.onPointerUp(button);
     if (button === 0) {
-      this.dragActive = false;
-      this.dragVisited.clear();
-      this.draggingMarker = null;
+      this.endEdgeDrag();
 
       if (this.draggingTeleportEndpoint) {
         if (!this.teleportDragMoved) {

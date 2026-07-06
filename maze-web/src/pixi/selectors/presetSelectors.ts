@@ -1,8 +1,8 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../renderers/types";
-import type { PresetConnectionEntry, FieldEdge } from "../presetConnectionsUtils";
-import { edgeKey, canonicalize, computeInvalidKeysFromCells } from "../presetConnectionsUtils";
+import type { PresetConnectionEntry, FieldEdge } from "../fieldEditUtils";
+import { edgeKey, canonicalize, computeInvalidKeysFromCells } from "../fieldEditUtils";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS, WALL_THICKNESS, canvas } from "../colorUtils";

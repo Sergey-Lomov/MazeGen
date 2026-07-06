@@ -156,10 +156,9 @@ Changing `defaultEdgeState` also triggers `_recomputeAutoLock` if auto-lock is e
 ## Drag mode
 
 Tools `wall`, `passage`, and `reset` support drag with LMB held. While dragging:
-- `dragActive` flag is set on `pointerdown`
-- `dragVisited: Set<string>` deduplicates edges within one drag session
-- Each newly-entered edge has the current tool applied immediately via `applyPresetConnectionsTool`
-- `dragActive` and `dragVisited` clear on `pointerup` (LMB only)
+- `beginEdgeDrag(edgeKey)` (on `BaseController`, shared with `PostEditController`) sets `dragActive` and seeds `dragVisited` on `pointerdown`
+- `continueEdgeDrag(edge, onNewEdge)` deduplicates edges within one drag session via `dragVisited: Set<string>` and invokes `onNewEdge` for each newly-entered edge; the callback applies the current tool via `applyPresetConnectionsTool` — the helper itself never touches the store
+- `endEdgeDrag()` clears `dragActive`/`dragVisited` on `pointerup` (LMB only)
 
 One-way and lock/gen-source tools do not support drag.
 
@@ -277,6 +276,8 @@ Layers (bottom to top):
 **Cell cache** (`cachedCells`, `cachedCellSet`) is built once on open and rebuilt only when `tessellationConfig`, `fieldPoints`, or `fieldEditMode` changes. All redraw calls use the cache. `getCachedCells()` and `getCachedCellSet()` expose the cache to the controller.
 
 **`redrawInvalidHL`** is called separately when `highlightInvalidPresets` changes, without redrawing all other layers. Same for `redrawOrigin` and `redrawGenSource` on viewport scale changes.
+
+`PresetConnectionsRenderer` extends `BaseFieldRenderer` (shared with `PostEditRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton, the cell-cache lifecycle (`rebuildCellCache`, `getCachedCells`/`getCachedCellSet`), and `destroy`. `PresetConnectionsRenderer` implements `isCardOpen` (`openCard === "preset_connections"`), `getActiveConfig` (`tessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `destroyChildren`, and `onStoreChange` — the latter holds all of this feature's point updates that don't need a full `redrawAll` (field-points rebuild, origin/genSource/invalidHL/isolatedHL toggles, teleport preview clear on tool change).
 
 ## Gen source marker
 

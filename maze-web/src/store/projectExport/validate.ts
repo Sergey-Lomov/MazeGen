@@ -1,5 +1,5 @@
 import type { NodeLockKind } from "../../wasm/types";
-import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
 import type { PostEditEdge, FeatureId } from "../mazeStore";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import {

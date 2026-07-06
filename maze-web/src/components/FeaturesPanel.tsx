@@ -17,7 +17,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { computeInvalidKeys, computeInvalidTeleportIds } from "../pixi/presetConnectionsUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds } from "../pixi/fieldEditUtils";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";

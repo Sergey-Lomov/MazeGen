@@ -1,8 +1,8 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, GraphAnalyticsDto, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GenerationStepsSnapshot, IssueDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
-import type { PresetConnectionEntry } from "../pixi/presetConnectionsUtils";
-import { computeAutoLockedNodes } from "../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
+import { computeAutoLockedNodes } from "../pixi/fieldEditUtils";
 import type {
   MazeState, TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
 } from "./storeTypes";

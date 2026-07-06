@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
-import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/presetConnectionsUtils";
-import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, resolveCells, edgeKey, canonicalize, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
+import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, resolveCells, edgeKey, canonicalize, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../pixi/fieldEditUtils";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";

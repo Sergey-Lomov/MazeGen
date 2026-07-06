@@ -152,9 +152,11 @@ Lives in `postEditContainer` — a synced layer in `MazeScene` (not a viewport c
 
 Cell cache (`cachedCells`, `cachedCellSet`) is built once on open and on `activeTessellationConfig` change. Used by `PostEditController` for edge picking.
 
+`PostEditRenderer` extends `BaseFieldRenderer` (shared with `PresetConnectionsRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton (open/close detection, cell-cache lifecycle, `getCachedCells`/`getCachedCellSet`, `destroy`). `PostEditRenderer` implements `isCardOpen` (`openCard === "post_edit"`), `getActiveConfig` (`activeTessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `onStoreChange` (the draft-edges/teleport-edges/nodes/meta comparison above), and `destroyChildren`.
+
 ## Controller — PostEditController
 
-Extends `BaseController` (shared with `PresetConnectionsController`). `BaseController` owns pan logic: `tryStartPan`, `handlePanMove`, `onPointerUp`, `toViewport`. `PostEditController` adds node-map caching, edge picking, tool dispatch, and confirm debounce.
+Extends `BaseController` (shared with `PresetConnectionsController`). `BaseController` owns pan logic (`tryStartPan`, `handlePanMove`, `toViewport`), edge-drag bookkeeping (`beginEdgeDrag`/`continueEdgeDrag`/`endEdgeDrag`/`isDragActive` — dedupe-only, the caller's `onNewEdge` callback owns the store action and any redraw), and marker-drag bookkeeping (`draggingMarker`, `armMarkerDrag`/`releaseMarkerDrag` — the latter called automatically from `onPointerUp`). `PostEditController` adds node-map caching, edge picking, tool dispatch, and confirm debounce.
 
 Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", nodeId>`) is cached per `nodes` reference — rebuilt only when `state.nodes` changes.
 

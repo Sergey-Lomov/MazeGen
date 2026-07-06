@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { PresetConnectionEntry } from "../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 // getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this

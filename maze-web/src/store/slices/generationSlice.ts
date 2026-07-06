@@ -3,7 +3,7 @@ import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../../
 import { initWasm } from "../../wasm/wasmLoader";
 import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot, CheckDescriptor, StrategyConfig, StrategyDescriptor } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { computeInvalidKeys, computeInvalidTeleportIds, presetTeleportEntryToState } from "../../pixi/presetConnectionsUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractTeleportEdges } from "../../pixi/postEditUtils";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";

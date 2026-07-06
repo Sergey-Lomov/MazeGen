@@ -3,7 +3,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { encodePoint } from "../../pixi/tessellationProjection";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
-import type { PresetConnectionEntry } from "../../pixi/presetConnectionsUtils";
+import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
 import type { NodeLockKind } from "../../wasm/types";
 import type { MazeStore, TessellationState, TessellationActions, SquareShape, HexShape, TriangleShape } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";

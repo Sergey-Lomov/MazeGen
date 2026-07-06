@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { PresetConnectionTool } from "../../pixi/presetConnectionsUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds } from "../../pixi/presetConnectionsUtils";
+import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds } from "../../pixi/fieldEditUtils";
 import { buttonStyle } from "../../styles/shared";
 import { ui, typography, muted } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
