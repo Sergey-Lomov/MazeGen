@@ -80,6 +80,18 @@ describe("mazeStore preset connections", () => {
     expect(useMazeStore.getState().presetConnections.size).toBe(0);
   });
 
+  it("clearInvalidPresetConnections clears start/finish markers that fall outside the field", () => {
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 1, height: 1 },
+      presetStart: [5, 5],
+      presetFinish: [0, 0],
+    });
+    useMazeStore.getState().clearInvalidPresetConnections();
+    const s = useMazeStore.getState();
+    expect(s.presetStart).toBeNull();
+    expect(s.presetFinish).toEqual([0, 0]);
+  });
+
   it("resetPresetConnections clears all preset state", () => {
     useMazeStore.setState({
       presetConnections: new Map([["0,0-1,0", { from: [0, 0], to: [1, 0], state: "wall", source: "user" }]]),

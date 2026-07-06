@@ -110,6 +110,12 @@ A press that doesn't move to a different cell is resolved as a click on `pointer
 
 ### Validity
 
+`presetStart`/`presetFinish` are **invalid** if their cell is outside the current field (`computeInvalidMarkers`, same field-resolution logic as `computeInvalidKeys`). Invalid markers:
+- count toward the combined invalid total shown in the UI (`invalidKeys.size + invalidTeleportIds.size + invalidMarkerCount`)
+- are excluded from `generate()` (`preset_start`/`preset_finish` omitted from the payload)
+- are cleared (set to `null`) by "Clear invalid" alongside invalid edge presets and teleports
+- get a dedicated highlight (circle outline matching the marker's own shape, `canvas.preset.invalid`) when `highlightInvalidPresets` is on, drawn on the same layer as invalid teleport endpoints
+
 A teleport is **invalid** if either endpoint is outside the current field (`computeInvalidTeleportIds`, same field-resolution logic as `computeInvalidKeys`). Invalid teleports:
 - count toward the combined invalid total shown in the UI (`invalidKeys.size + invalidTeleportIds.size`)
 - are excluded from `generate()`
@@ -239,13 +245,13 @@ Both sets are merged when rendering (`buildLocks`) and when checking for isolate
 | Status | Condition (priority order) |
 |---|---|
 | `unavailable` | Field not ready |
-| `warning` | Field ready, `computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size > 0` |
+| `warning` | Field ready, `computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size + invalidMarkerCount > 0` |
 | `set` | Field ready, no invalids, `presetConnections.size + markerCount > 0` |
 | `set-default` | Field ready, no invalids, nothing set |
 
 `markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0)`. `presetGenSource` is not counted here.
 
-Subtitle: `"N preset(s)"` or `"N preset(s) · ⚠ M invalid"` where `N = presetConnections.size + markerCount + presetTeleports.length`. The invalid count `M` combines both invalid edge presets and invalid teleports (`computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size`); "Clear invalid" removes both kinds together.
+Subtitle: `"N preset(s)"` or `"N preset(s) · ⚠ M invalid"` where `N = presetConnections.size + markerCount + presetTeleports.length`. The invalid count `M` combines invalid edge presets, invalid teleports, and invalid start/finish markers (`computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size + invalidMarkerCount`); "Clear invalid" removes all three kinds together.
 
 ## Rendering (`PresetConnectionsRenderer`)
 

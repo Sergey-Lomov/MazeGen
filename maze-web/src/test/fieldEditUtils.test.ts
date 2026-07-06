@@ -6,6 +6,7 @@ import {
   computeAutoLockedNodes,
   applyTool,
   computeInvalidTeleportIds,
+  computeInvalidMarkers,
   cycleTeleportDirection,
   removeTeleport,
   moveTeleportEndpoint,
@@ -212,6 +213,30 @@ describe("computeInvalidTeleportIds", () => {
   it("endpoint outside field — invalid", () => {
     const result = computeInvalidTeleportIds([teleport(1, [-1, -1], [5, 5])], squareCfg);
     expect(result.has(1)).toBe(true);
+  });
+});
+
+describe("computeInvalidMarkers", () => {
+  it("both markers in field — valid", () => {
+    const result = computeInvalidMarkers([0, 0], [1, 1], squareCfg);
+    expect(result).toEqual({ start: false, finish: false });
+  });
+
+  it("start outside field — invalid", () => {
+    const result = computeInvalidMarkers([50, 50], [1, 1], squareCfg);
+    expect(result.start).toBe(true);
+    expect(result.finish).toBe(false);
+  });
+
+  it("finish outside field — invalid", () => {
+    const result = computeInvalidMarkers([0, 0], [50, 50], squareCfg);
+    expect(result.start).toBe(false);
+    expect(result.finish).toBe(true);
+  });
+
+  it("null markers — valid", () => {
+    const result = computeInvalidMarkers(null, null, squareCfg);
+    expect(result).toEqual({ start: false, finish: false });
   });
 });
 

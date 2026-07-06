@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, resolveCells, edgeKey, canonicalize, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../pixi/fieldEditUtils";
+import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, resolveCells, edgeKey, canonicalize, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../pixi/fieldEditUtils";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";
@@ -39,7 +39,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     for (const key of invalidKeys) presetConnections.delete(key);
     const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, state.tessellationConfig, customPts);
     const presetTeleports = state.presetTeleports.filter(t => !invalidTeleportIds.has(t.id));
-    return withRecomputedAutoLock(state, { presetConnections, presetTeleports });
+    const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, state.tessellationConfig, customPts);
+    const presetStart = invalidMarkers.start ? null : state.presetStart;
+    const presetFinish = invalidMarkers.finish ? null : state.presetFinish;
+    return withRecomputedAutoLock(state, { presetConnections, presetTeleports, presetStart, presetFinish });
   }),
 
   resetPresetConnections: () => set((state) => ({

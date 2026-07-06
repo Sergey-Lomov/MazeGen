@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { computeInvalidKeysFromCells, computeInvalidTeleportIds } from "./fieldEditUtils";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidMarkers } from "./fieldEditUtils";
 import type { FieldEdge, PresetTeleportEntry } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -22,7 +22,7 @@ import {
   buildInvalidEdgeHighlights,
   buildHoverEdgeHighlight,
 } from "./selectors/presetSelectors";
-import { canvas } from "./colorUtils";
+import { canvas, NODE_RADIUS } from "./colorUtils";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
@@ -301,11 +301,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     if (!state.highlightInvalidPresets) return;
 
     const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
-    const invalidIds = computeInvalidTeleportIds(state.presetTeleports, this.cfg, customPts);
-    if (invalidIds.size === 0) return;
-
     const proj = makeProjection(this.cfg);
     const markerSize = 20;
+
+    const invalidIds = computeInvalidTeleportIds(state.presetTeleports, this.cfg, customPts);
     for (const t of state.presetTeleports) {
       if (!invalidIds.has(t.id)) continue;
       for (const [cx, cy] of [t.from, t.to]) {
@@ -314,6 +313,16 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
           .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
           .stroke({ width: 4, color: canvas.preset.invalid, alpha: 0.9 });
       }
+    }
+
+    const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, this.cfg, customPts);
+    const markerRadius = NODE_RADIUS * 1.5;
+    for (const [invalid, cell] of [[invalidMarkers.start, state.presetStart], [invalidMarkers.finish, state.presetFinish]] as const) {
+      if (!invalid || !cell) continue;
+      const { x: px, y: py } = proj.gridToScreen(cell[0], cell[1]);
+      this.invalidTeleportHL
+        .circle(px, py, markerRadius + 3)
+        .stroke({ width: 6, color: canvas.preset.invalid, alpha: 0.9 });
     }
   }
 

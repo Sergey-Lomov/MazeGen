@@ -1023,6 +1023,47 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
   });
 });
 
+describe("buildGenerateConfig — preset_start/preset_finish", () => {
+  it("includes preset_start and preset_finish when set inside the field", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 3, height: 3 },
+      presetStart: [0, 0],
+      presetFinish: [1, 1],
+    });
+    useMazeStore.getState().generate();
+    const call = vi.mocked(generateMaze).mock.calls[0];
+    expect(call[1].preset_start).toEqual([0, 0]);
+    expect(call[1].preset_finish).toEqual([1, 1]);
+  });
+
+  it("omits preset_start and preset_finish when unset", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 3, height: 3 },
+      presetStart: null,
+      presetFinish: null,
+    });
+    useMazeStore.getState().generate();
+    const call = vi.mocked(generateMaze).mock.calls[0];
+    expect(call[1].preset_start).toBeUndefined();
+    expect(call[1].preset_finish).toBeUndefined();
+  });
+
+  it("omits preset_start and preset_finish when they fall outside the field", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 1, height: 1 },
+      presetStart: [5, 5],
+      presetFinish: [9, 9],
+    });
+    useMazeStore.getState().generate();
+    const call = vi.mocked(generateMaze).mock.calls[0];
+    expect(call[1].preset_start).toBeUndefined();
+    expect(call[1].preset_finish).toBeUndefined();
+  });
+});
+
 describe("mazeStore generation misc actions", () => {
   it("setStrategy sets a strategy for a rule", () => {
     useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [] }] });

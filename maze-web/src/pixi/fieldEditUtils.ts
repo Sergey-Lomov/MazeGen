@@ -142,6 +142,22 @@ export function computeInvalidKeysFromCells(
   return invalid;
 }
 
+export function computeInvalidMarkers(
+  presetStart: [number, number] | null,
+  presetFinish: [number, number] | null,
+  cfg: TessellationConfig,
+  customPoints?: Set<number>,
+): { start: boolean; finish: boolean } {
+  const cells = resolveCells(cfg, customPoints);
+  const fieldSet = new Set<number>();
+  for (const [x, y] of cells) fieldSet.add(encodePoint(x, y));
+
+  return {
+    start: presetStart != null && !fieldSet.has(encodePoint(presetStart[0], presetStart[1])),
+    finish: presetFinish != null && !fieldSet.has(encodePoint(presetFinish[0], presetFinish[1])),
+  };
+}
+
 export function computeInvalidTeleportIds(
   teleports: PresetTeleportEntry[],
   cfg: TessellationConfig,

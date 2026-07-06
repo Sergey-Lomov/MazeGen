@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../../pixi/fieldEditUtils";
 import { buttonStyle } from "../../styles/shared";
 import { ui, typography, muted } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
@@ -103,7 +103,12 @@ export function PresetConnectionsFeature() {
     () => computeInvalidTeleportIds(presetTeleports, tessellationConfig, customPts),
     [presetTeleports, tessellationConfig, customPts],
   );
-  const invalidCount = invalidKeys.size + invalidTeleportIds.size;
+  const invalidMarkers = useMemo(
+    () => computeInvalidMarkers(presetStart, presetFinish, tessellationConfig, customPts),
+    [presetStart, presetFinish, tessellationConfig, customPts],
+  );
+  const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
+  const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidMarkerCount;
   const hasInvalid = invalidCount > 0;
 
   return (

@@ -3,7 +3,7 @@ import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../../
 import { initWasm } from "../../wasm/wasmLoader";
 import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot, CheckDescriptor, StrategyConfig, StrategyDescriptor } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { computeInvalidKeys, computeInvalidTeleportIds, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports } from "../../pixi/postEditUtils";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
@@ -663,6 +663,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     const [x, y] = key.split(",").map(Number);
     return { point: [x, y] as [number, number], kind };
   });
+  const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, activeTessellation, customPts);
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
     stages,
@@ -672,9 +673,9 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     elements: state.elementsConfig,
     preset_connections: [...validPresets, ...validTeleportPresets],
     locked_nodes,
-    ...(state.presetStart ? { preset_start: state.presetStart } : {}),
+    ...(state.presetStart && !invalidMarkers.start ? { preset_start: state.presetStart } : {}),
     ...(state.presetGenSource ? { preset_gen_source: state.presetGenSource } : {}),
-    ...(state.presetFinish ? { preset_finish: state.presetFinish } : {}),
+    ...(state.presetFinish && !invalidMarkers.finish ? { preset_finish: state.presetFinish } : {}),
   };
 }
 

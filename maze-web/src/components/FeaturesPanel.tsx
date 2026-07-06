@@ -17,7 +17,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { computeInvalidKeys, computeInvalidTeleportIds } from "../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../pixi/fieldEditUtils";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -198,7 +198,12 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     () => computeInvalidTeleportIds(presetTeleports, tessellationConfig, customPts),
     [presetTeleports, tessellationConfig, customPts],
   );
-  const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size;
+  const presetInvalidMarkers = useMemo(
+    () => computeInvalidMarkers(presetStart, presetFinish, tessellationConfig, customPts),
+    [presetStart, presetFinish, tessellationConfig, customPts],
+  );
+  const presetInvalidMarkerCount = (presetInvalidMarkers.start ? 1 : 0) + (presetInvalidMarkers.finish ? 1 : 0);
+  const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidMarkerCount;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
   const presetStatus: FeatureStatus = fieldBlocking
