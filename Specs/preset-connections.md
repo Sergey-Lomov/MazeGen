@@ -126,7 +126,9 @@ Each teleport draws as a connecting line plus one marker square per endpoint:
 - **One-way**: origin (`from`, or `to` if `direction: "backward"`) filled solid; destination outlined only.
 - **Half-filled marker**: when a cell is the landing point for markers from *different* teleport entries that disagree — i.e. at least one entry wants a filled square there and at least one wants an outline square there — that cell draws as a diagonally-split square instead of a plain filled/outline one. Computed by the pure `computeMixedCells(edges): Set<string>` (coordKey-encoded), unit-tested in `TeleportRenderer.test.ts` independently of the Pixi drawing code.
 
-Preview line/marker for an in-progress placement is drawn separately by `PresetConnectionsRenderer.updateTeleportPreview`, at 50% alpha.
+The connecting line stops at each endpoint marker's border rather than running to its center: the clip distance along the line's direction is the square's Chebyshev border distance (`half / max(|ux|, |uy|)`) plus half the line's stroke width, compensating for the round line cap extending past its geometric endpoint. Computed by the pure `clipDistance(ux, uy, half, strokeWidth)`, unit-tested in `TeleportRenderer.test.ts`.
+
+Preview line/marker for an in-progress placement is drawn separately by `PresetConnectionsRenderer.updateTeleportPreview`, at 50% alpha; it clips to the origin marker's border the same way.
 
 ### WASM wire format
 

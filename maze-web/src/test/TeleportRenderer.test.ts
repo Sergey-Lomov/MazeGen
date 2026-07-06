@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeMixedCells } from "../pixi/renderers/TeleportRenderer";
+import { computeMixedCells, clipDistance } from "../pixi/renderers/TeleportRenderer";
 import type { TeleportEdge } from "../pixi/renderers/types";
 
 describe("computeMixedCells", () => {
@@ -51,5 +51,29 @@ describe("computeMixedCells", () => {
       { from: [0, 0], to: [4, 4], oneWay: false },
     ];
     expect(computeMixedCells(edges).size).toBe(0);
+  });
+});
+
+describe("clipDistance", () => {
+  const half = 5.6;
+  const strokeWidth = 3;
+
+  it("axis-aligned direction — clips to flat side plus half stroke width", () => {
+    expect(clipDistance(1, 0, half, strokeWidth)).toBeCloseTo(half + strokeWidth / 2);
+    expect(clipDistance(0, 1, half, strokeWidth)).toBeCloseTo(half + strokeWidth / 2);
+  });
+
+  it("exact diagonal direction — clips to the square's corner distance plus half stroke width", () => {
+    const u = Math.SQRT1_2;
+    expect(clipDistance(u, u, half, strokeWidth)).toBeCloseTo(half * Math.SQRT2 + strokeWidth / 2);
+  });
+
+  it("shallow non-axis-aligned direction — geometric part of the clip lands exactly on the square's border", () => {
+    const ux = 0.9486832980505138;
+    const uy = -0.31622776601683794;
+    const clip = clipDistance(ux, uy, half, strokeWidth);
+    expect(clip).toBeGreaterThan(half + strokeWidth / 2);
+    const geometricClip = clip - strokeWidth / 2;
+    expect(Math.max(Math.abs(ux * geometricClip), Math.abs(uy * geometricClip))).toBeCloseTo(half);
   });
 });

@@ -11,6 +11,15 @@ function coordKey(x: number, y: number): string {
   return `${Math.round(x * 1000)},${Math.round(y * 1000)}`;
 }
 
+/** Distance from a square marker's center to the point where a line along unit direction
+ * (ux, uy) should stop: the square's border along that direction (Chebyshev distance,
+ * half / max(|ux|, |uy|)), plus half the stroke width to compensate for the round line cap
+ * extending past its geometric endpoint. Using a flat `half` alone undershoots at
+ * non-axis-aligned angles and the cap still overlaps the square. */
+export function clipDistance(ux: number, uy: number, half: number, strokeWidth: number): number {
+  return half / Math.max(Math.abs(ux), Math.abs(uy)) + strokeWidth / 2;
+}
+
 /** A cell reads as half-filled when the markers landing on it disagree: at least one edge wants
  * a filled square there and at least one (a different edge) wants an outline square. Returns the
  * set of coordKey-encoded cells that are mixed. */
@@ -59,15 +68,17 @@ export class TeleportRenderer {
       const dx = tx - fx;
       const dy = ty - fy;
       const len = Math.sqrt(dx * dx + dy * dy);
-      // Stop the line at each square's border (half the square's size), not inside it.
       const half = SQUARE_SIZE / 2;
-      if (len > half * 2) {
+      if (len > 0) {
         const ux = dx / len;
         const uy = dy / len;
-        this.g
-          .moveTo(fx + ux * half, fy + uy * half)
-          .lineTo(tx - ux * half, ty - uy * half)
-          .stroke({ width: SQUARE_STROKE_WIDTH, color: canvas.teleport.default, cap: "round" });
+        const clip = clipDistance(ux, uy, half, SQUARE_STROKE_WIDTH);
+        if (len > clip * 2) {
+          this.g
+            .moveTo(fx + ux * clip, fy + uy * clip)
+            .lineTo(tx - ux * clip, ty - uy * clip)
+            .stroke({ width: SQUARE_STROKE_WIDTH, color: canvas.teleport.default, cap: "round" });
+        }
       }
 
       if (e.oneWay) {
