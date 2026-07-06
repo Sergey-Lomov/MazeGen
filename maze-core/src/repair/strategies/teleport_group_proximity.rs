@@ -4,13 +4,15 @@ use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::{Issue, IssueData, TELEPORT_GROUP_PROXIMITY, IssueKind};
-use crate::generation::{PresetState, try_remove_edge_by_id};
+use crate::generation::{PresetState, try_remove_teleport_with_reverse};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::snapshot::SnapshotStack;
+use crate::graph::route_protection::is_teleport_route_protected;
 
 pub const PARAM_PRIORITY: &str = "priority";
+pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
 
 pub const PRIORITY_RANDOM: &str = "random";
 pub const PRIORITY_PROBLEMATIC: &str = "problematic";
@@ -23,6 +25,11 @@ static PARAMS: &[StrategyParam] = &[
         label: "Removal priority",
         kind: StrategyParamKind::Enum { options: PRIORITY_OPTIONS, default: PRIORITY_PROBLEMATIC },
     },
+    StrategyParam {
+        id: PARAM_PROTECT_ROUTE,
+        label: "Protect route teleports",
+        kind: StrategyParamKind::Bool { default: true },
+    },
 ];
 
 /// Handles `TELEPORT_GROUP_PROXIMITY` — see GitHub issue #75. For each problematic pair flagged by
@@ -32,6 +39,17 @@ static PARAMS: &[StrategyParam] = &[
 ///
 /// **`issue.data` is mandatory for this kind**: `IssueData::TeleportProximityPairs { pairs }` is
 /// the producing check's result — there is no other channel to learn which edges are paired.
+///
+/// `PARAM_PROTECT_ROUTE` (see GitHub issue #78): when enabled, the side of a pair chosen for
+/// removal is skipped if it (or, for a two-way teleport, its opposite-direction counterpart)
+/// lies on the maze's current start->finish route (`is_teleport_route_protected`); the other
+/// side of the pair is removed instead. If both sides are route-protected, the pair is left
+/// untouched entirely (still counted as resolved — see `apply`'s doc comment).
+///
+/// Removing a chosen edge also removes its opposite-direction `Teleport` counterpart, if any
+/// (`try_remove_teleport_with_reverse`), so a two-way teleport is never left half-removed. Both
+/// ids returned by that call are recorded in `removed`, so a later pair referencing the reverse
+/// direction is correctly treated as already resolved.
 pub struct TeleportGroupProximityStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for TeleportGroupProximityStrategy {
@@ -64,6 +82,7 @@ impl<T: Tessellation> RepairStrategy<T> for TeleportGroupProximityStrategy {
             Some(StrategyParamValue::Enum(v)) => v.as_str(),
             _ => PRIORITY_PROBLEMATIC,
         };
+        let protect_route = matches!(params.get(PARAM_PROTECT_ROUTE), Some(StrategyParamValue::Bool(true)));
 
         // Membership counts computed once up front, over the original (unresolved) pair set —
         // "belongs to more other problematic pairs" is a snapshot of the check's findings, not a
@@ -91,8 +110,23 @@ impl<T: Tessellation> RepairStrategy<T> for TeleportGroupProximityStrategy {
                 }
                 _ => if rng.random_bool(0.5) { a } else { b },
             };
-            try_remove_edge_by_id(&mut maze.graph, to_remove, preset_state);
-            removed.insert(to_remove);
+
+            if protect_route && is_teleport_route_protected(maze, to_remove) {
+                // The chosen side is route-critical — fall back to the other side of the pair
+                // instead. If that side is also route-critical, neither is removed; the pair is
+                // still considered resolved (see the strategy's own doc comment).
+                let fallback = if to_remove == a { b } else { a };
+                if !is_teleport_route_protected(maze, fallback) {
+                    // Also removes fallback's opposite-direction Teleport counterpart, if any —
+                    // both removed ids are recorded so a later pair referencing either one (e.g.
+                    // the reverse direction, close to some other teleport too) is skipped as
+                    // already resolved instead of attempting a no-op removal.
+                    removed.extend(try_remove_teleport_with_reverse(&mut maze.graph, fallback, preset_state));
+                }
+                continue;
+            }
+
+            removed.extend(try_remove_teleport_with_reverse(&mut maze.graph, to_remove, preset_state));
         }
 
         RepairResult::Fixed { score: None }
@@ -111,6 +145,16 @@ mod tests {
     fn params_with_priority(priority: &str) -> StrategyParams {
         let mut overrides = HashMap::new();
         overrides.insert(PARAM_PRIORITY.to_string(), priority.to_string());
+        crate::repair::params::build_params(
+            <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation>>::params(&TeleportGroupProximityStrategy),
+            Some(&overrides),
+        )
+    }
+
+    fn params_with_priority_and_protect(priority: &str, protect_route: bool) -> StrategyParams {
+        let mut overrides = HashMap::new();
+        overrides.insert(PARAM_PRIORITY.to_string(), priority.to_string());
+        overrides.insert(PARAM_PROTECT_ROUTE.to_string(), protect_route.to_string());
         crate::repair::params::build_params(
             <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation>>::params(&TeleportGroupProximityStrategy),
             Some(&overrides),
@@ -278,5 +322,186 @@ mod tests {
 
         let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
         assert_eq!(remaining, 2, "removing a resolves both pairs -- b and c both survive, only a is removed");
+    }
+
+    #[test]
+    fn removing_one_direction_of_a_two_way_teleport_resolves_a_pair_referencing_its_reverse() {
+        // a_fwd and a_bwd are the two directions of one physical two-way teleport. a_fwd is a
+        // member of 2 pairs ((a_fwd,b) and (a_fwd,d)) -- "problematic" priority deterministically
+        // removes a_fwd from both (it strictly outranks b and d, each in only 1 pair). Removing
+        // a_fwd must also remove a_bwd via try_remove_teleport_with_reverse -- BEFORE (a_bwd, c),
+        // the pair after it in iteration order, is ever evaluated. c is deliberately given a
+        // *higher* membership (2 pairs, via an unrelated f) so "problematic" would pick c over
+        // a_bwd if (a_bwd, c) were actually evaluated with both sides still present. Instead, by
+        // the time that pair comes up, a_bwd is already in `removed` (from a_fwd's reverse), so
+        // the pair is skipped as already-resolved and c is never touched. Without
+        // try_remove_teleport_with_reverse, a_bwd would still be present when (a_bwd, c) is
+        // evaluated, and "problematic" would remove c instead -- so asserting c survives (not
+        // a_bwd surviving) is what actually distinguishes the fixed behavior from the bug.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(12, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let a_fwd = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let a_bwd = g.add_edge(nodes[1], nodes[0], EdgeKind::Teleport);
+        let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
+        let id_d = g.add_edge(nodes[4], nodes[5], EdgeKind::Teleport);
+        let id_c = g.add_edge(nodes[6], nodes[7], EdgeKind::Teleport);
+        let id_f = g.add_edge(nodes[8], nodes[9], EdgeKind::Teleport);
+        let id_g = g.add_edge(nodes[10], nodes[11], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        // a_fwd: 2 pairs (b, d) -- outranks both, gets removed from each.
+        // c: 2 pairs (a_bwd, f) -- outranks a_bwd (1 pair), so (a_bwd, c) picks c, not a_bwd.
+        // g pairs with f only to keep f's own count from tying with c's.
+        let issue = Issue::with_data(TELEPORT_GROUP_PROXIMITY, IssueData::TeleportProximityPairs {
+            pairs: vec![(a_fwd, id_b), (a_fwd, id_d), (a_bwd, id_c), (id_c, id_f), (id_f, id_g)],
+        });
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = TeleportGroupProximityStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(a_fwd).is_none(), "a_fwd (member of 2 pairs) must be removed");
+        assert!(maze.graph.edge(a_bwd).is_none(), "a_bwd must be removed too, as a_fwd's reverse counterpart -- its own pair (a_bwd, c) would otherwise pick c, never a_bwd directly");
+        assert!(maze.graph.edge(id_b).is_some(), "b must survive -- only a_fwd is removed from its pair");
+        assert!(maze.graph.edge(id_d).is_some(), "d must survive -- only a_fwd is removed from its pair");
+        assert!(maze.graph.edge(id_c).is_some(), "c must survive: (a_bwd, c) is skipped as already-resolved once a_bwd is gone via reverse-removal, so c is never itself acted on");
+    }
+
+    #[test]
+    fn protect_route_falls_back_to_the_non_route_side_of_the_pair() {
+        // a (0->1) is the maze's only start->finish route; b (2->3) is an unrelated teleport
+        // paired with a. With protect_route enabled and "random" priority forced to pick a,
+        // the strategy must remove b instead and leave a in place.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[1]);
+
+        let issue = Issue::with_data(TELEPORT_GROUP_PROXIMITY, IssueData::TeleportProximityPairs { pairs: vec![(id_a, id_b)] });
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = TeleportGroupProximityStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(id_a).is_some(), "route-critical teleport a must survive");
+        assert!(maze.graph.edge(id_b).is_none(), "non-route teleport b must be removed instead");
+    }
+
+    #[test]
+    fn protect_route_leaves_pair_untouched_when_both_sides_are_route_critical() {
+        // a and b are both on the (only) start->finish route -- e.g. two parallel teleport
+        // hops each individually required. Neither may be removed; the pair still resolves.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let id_b = g.add_edge(nodes[1], nodes[2], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[2]);
+
+        let issue = Issue::with_data(TELEPORT_GROUP_PROXIMITY, IssueData::TeleportProximityPairs { pairs: vec![(id_a, id_b)] });
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = TeleportGroupProximityStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }), "pair must still report Fixed even when neither side is removed");
+
+        assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive");
+        assert!(maze.graph.edge(id_b).is_some(), "b is route-critical and must survive");
+    }
+
+    #[test]
+    fn protect_route_falls_back_correctly_across_multiple_pairs_sharing_the_protected_teleport() {
+        // a is route-critical and appears in two problematic pairs: (a, b) and (a, c). Neither
+        // b nor c is removed while resolving the other's pair (a survives both fallback picks),
+        // so this must not stop at "a already resolved once" -- each pair independently falls
+        // back to its own non-route side. With "problematic" priority, a (member of 2 pairs)
+        // would normally be picked for removal both times; protect_route must override that in
+        // both iterations, since a is never actually removed to trip the `removed` early-skip.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(6, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
+        let id_c = g.add_edge(nodes[4], nodes[5], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[1]);
+
+        let issue = Issue::with_data(TELEPORT_GROUP_PROXIMITY, IssueData::TeleportProximityPairs { pairs: vec![(id_a, id_b), (id_a, id_c)] });
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = TeleportGroupProximityStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority_and_protect(PRIORITY_PROBLEMATIC, true), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive both pair resolutions");
+        assert!(maze.graph.edge(id_b).is_none(), "b must be removed as the fallback for the first pair");
+        assert!(maze.graph.edge(id_c).is_none(), "c must be removed as the fallback for the second pair");
+    }
+
+    #[test]
+    fn protect_route_fallback_removal_also_removes_the_fallback_side_reverse() {
+        // a is route-critical; b is a two-way teleport (b_fwd, b_bwd), paired with a, and not on
+        // the route. protect_route must fall back to removing b instead of a -- and since b is
+        // two-way, both b_fwd and b_bwd must be removed, not just whichever direction the pair
+        // happened to reference.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let b_fwd = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
+        let b_bwd = g.add_edge(nodes[3], nodes[2], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[1]);
+
+        let issue = Issue::with_data(TELEPORT_GROUP_PROXIMITY, IssueData::TeleportProximityPairs { pairs: vec![(id_a, b_fwd)] });
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = TeleportGroupProximityStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive");
+        assert!(maze.graph.edge(b_fwd).is_none(), "b_fwd must be removed as the fallback");
+        assert!(maze.graph.edge(b_bwd).is_none(), "b_bwd must be removed too, as b_fwd's reverse counterpart");
+    }
+
+    #[test]
+    fn protect_route_default_is_true_when_no_override_is_given() {
+        // Mirrors missing_priority_override_falls_back_to_problematic_default, but for
+        // protect_route: build_params with no override must apply the Bool { default: true }
+        // descriptor, so a route-critical teleport survives even without an explicit override.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[1]);
+
+        let issue = Issue::with_data(TELEPORT_GROUP_PROXIMITY, IssueData::TeleportProximityPairs { pairs: vec![(id_a, id_b)] });
+        let mut rng = MazeRng::seed_from_u64(1);
+        let no_override_params = crate::repair::params::build_params(
+            <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation>>::params(&TeleportGroupProximityStrategy),
+            None,
+        );
+        let result = TeleportGroupProximityStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_override_params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive: protect_route defaults to true with no override");
+        assert!(maze.graph.edge(id_b).is_none(), "non-route b must still be removed");
     }
 }

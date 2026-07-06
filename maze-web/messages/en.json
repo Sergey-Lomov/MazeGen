@@ -418,6 +418,8 @@
   "param.other_edge.option.entry_or_exit.explanation": "Uses whichever of the other teleport's entry or exit is closer.",
   "param.priority.label": "Removal priority",
   "param.priority.description": "Which teleport of a problematic pair to remove.",
+  "param.protect_route.label": "Protect route teleports",
+  "param.protect_route.description": "Leave a flagged teleport in place instead of removing it when it lies on the maze's start-finish route.",
   "param.priority.option.random": "Random",
   "param.priority.option.problematic": "Most problematic",
   "param.priority.option.random.explanation": "Removes a random teleport from the pair.",

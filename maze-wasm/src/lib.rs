@@ -336,7 +336,7 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Teleport duplicates connection",
             description: "Fires if a teleport edge duplicates a regular connection already present between the same pair in the same direction.",
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
-            params: vec![],
+            params: vec![protect_route_param()],
             allow_multiple_instances: false,
         },
         CheckDescriptor {
@@ -360,6 +360,7 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Edge",
                     kind: ParamKindDto::Enum { options: vec!["entry_only", "entry_or_exit"], default: "entry_or_exit" },
                 },
+                protect_route_param(),
             ],
             // Multiple instances with different waypoint/edge/distance combinations are a
             // legitimate common configuration (e.g. "entry far from start" AND separately "exit
@@ -371,11 +372,14 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Teleport minimum geometric length",
             description: "Fires if the geometric (straight-line) distance between a teleport's entry and exit is shorter than the required minimum.",
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
-            params: vec![ParamDescriptor {
-                id: "min_length",
-                label: "Min length (tiles)",
-                kind: ParamKindDto::Float { default: TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 100_000.0 },
-            }],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_length",
+                    label: "Min length (tiles)",
+                    kind: ParamKindDto::Float { default: TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 100_000.0 },
+                },
+                protect_route_param(),
+            ],
             allow_multiple_instances: false,
         },
         CheckDescriptor {
@@ -383,11 +387,14 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Teleport maximum geometric length",
             description: "Fires if the geometric (straight-line) distance between a teleport's entry and exit exceeds the allowed maximum.",
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
-            params: vec![ParamDescriptor {
-                id: "max_length",
-                label: "Max length (tiles)",
-                kind: ParamKindDto::Float { default: TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 1_000_000.0 },
-            }],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_length",
+                    label: "Max length (tiles)",
+                    kind: ParamKindDto::Float { default: TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 1_000_000.0 },
+                },
+                protect_route_param(),
+            ],
             allow_multiple_instances: false,
         },
         CheckDescriptor {
@@ -406,6 +413,7 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Edge",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
                 },
+                protect_route_param(),
             ],
             allow_multiple_instances: false,
         },
@@ -430,6 +438,7 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Other teleport's end",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
                 },
+                protect_route_param(),
             ],
             // Multiple instances with different own_edge/other_edge/distance combinations are a
             // legitimate simultaneous configuration (e.g. "entries close to each other" AND
@@ -438,6 +447,16 @@ fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: true,
         },
     ]
+}
+
+/// Shared `protect_route` param descriptor (GitHub issue #78) — every per-teleport check gets
+/// this exact id/label/default, so it's declared once instead of repeated per `CheckDescriptor`.
+fn protect_route_param() -> ParamDescriptor {
+    ParamDescriptor {
+        id: "protect_route",
+        label: "Protect route teleports",
+        kind: ParamKindDto::Bool { default: true },
+    }
 }
 
 #[wasm_bindgen]

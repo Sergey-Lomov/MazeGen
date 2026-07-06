@@ -322,6 +322,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.priority.label"] as MessageFn,
     description: m["param.priority.description"] as MessageFn,
   },
+  protect_route: {
+    label: m["param.protect_route.label"] as MessageFn,
+    description: m["param.protect_route.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`

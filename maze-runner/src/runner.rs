@@ -119,6 +119,15 @@ fn parse_teleport_proximity_edge(param: Option<&String>) -> TeleportProximityEdg
     }
 }
 
+/// `protect_route` (GitHub issue #78) defaults to `true` on every per-teleport check —
+/// `"false"`/`"0"` opts out, anything else (including missing/unparseable) stays `true`.
+fn parse_protect_route(param: Option<&String>) -> bool {
+    match param.map(String::as_str) {
+        Some("false") | Some("0") => false,
+        _ => true,
+    }
+}
+
 fn build_check<T: Tessellation>(
     instance: &CheckInstanceConfig,
     instance_id: String,
@@ -222,7 +231,10 @@ fn build_check<T: Tessellation>(
             ]);
             Box::new(MinRegionCountCheck { instance_id, min_counts })
         }
-        "teleport_duplicates_connection" => Box::new(TeleportDuplicatesConnectionCheck { instance_id }),
+        "teleport_duplicates_connection" => {
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Box::new(TeleportDuplicatesConnectionCheck { instance_id, protect_route })
+        }
         "teleport_waypoint_distance" => {
             let distance = instance.params.get("distance")
                 .and_then(|v| v.parse::<i64>().ok())
@@ -230,7 +242,8 @@ fn build_check<T: Tessellation>(
                 .unwrap_or(TELEPORT_WAYPOINT_DISTANCE_DEFAULT);
             let waypoint = parse_teleport_waypoint(instance.params.get("waypoint"));
             let edge = parse_teleport_edge_selector(instance.params.get("edge"));
-            Box::new(TeleportWaypointDistanceCheck { instance_id, distance, waypoint, edge })
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Box::new(TeleportWaypointDistanceCheck { instance_id, distance, waypoint, edge, protect_route })
         }
         "teleport_min_geometric_length" => {
             let min_length = instance.params.get("min_length")
@@ -238,7 +251,8 @@ fn build_check<T: Tessellation>(
                 .filter(|v| v.is_finite())
                 .map(|v| v.max(0.0))
                 .unwrap_or(TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT);
-            Box::new(TeleportMinGeometricLengthCheck { instance_id, min_length })
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Box::new(TeleportMinGeometricLengthCheck { instance_id, min_length, protect_route })
         }
         "teleport_max_geometric_length" => {
             let max_length = instance.params.get("max_length")
@@ -246,7 +260,8 @@ fn build_check<T: Tessellation>(
                 .filter(|v| v.is_finite())
                 .map(|v| v.max(0.0))
                 .unwrap_or(TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT);
-            Box::new(TeleportMaxGeometricLengthCheck { instance_id, max_length })
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Box::new(TeleportMaxGeometricLengthCheck { instance_id, max_length, protect_route })
         }
         "teleport_super_hub_avoidance" => {
             let max_connections = instance.params.get("max_connections")
@@ -254,7 +269,8 @@ fn build_check<T: Tessellation>(
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT);
             let edge = parse_teleport_hub_edge_selector(instance.params.get("edge_hub"));
-            Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge })
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge, protect_route })
         }
         "teleport_group_proximity" => {
             let distance = instance.params.get("distance")
@@ -264,7 +280,8 @@ fn build_check<T: Tessellation>(
                 .unwrap_or(TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT);
             let own_edge = parse_teleport_proximity_edge(instance.params.get("own_edge"));
             let other_edge = parse_teleport_proximity_edge(instance.params.get("other_edge"));
-            Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge })
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge, protect_route })
         }
         other => return Err(format!("unknown check: {other}")),
     };

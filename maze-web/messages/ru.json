@@ -428,6 +428,8 @@
   "param.other_edge.option.entry_or_exit.explanation": "Использует ту точку (вход или выход другого телепорта), что ближе.",
   "param.priority.label": "Приоритет удаления",
   "param.priority.description": "Какой телепорт из проблемной пары удалять.",
+  "param.protect_route.label": "Защищать телепорты на маршруте",
+  "param.protect_route.description": "Не удалять помеченный телепорт, если он лежит на маршруте старт-финиш лабиринта.",
   "param.priority.option.random": "Случайный",
   "param.priority.option.problematic": "Наиболее проблемный",
   "param.priority.option.random.explanation": "Удаляет случайный телепорт из пары.",

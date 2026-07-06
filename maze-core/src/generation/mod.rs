@@ -365,6 +365,33 @@ pub(crate) fn try_remove_edge_by_id(
     true
 }
 
+/// try_remove_teleport_with_reverse: like `try_remove_edge_by_id`, but for a `Teleport` edge that
+/// may be one direction of a two-way teleport — also removes the opposite-direction `Teleport`
+/// edge (`Graph::teleport_reverse`), if any, so a repair strategy can never leave a two-way
+/// teleport silently downgraded to one-way just because only one direction's `EdgeId` was flagged
+/// (e.g. a per-teleport check using an `EntryOnly`-style selector that only inspects one end).
+///
+/// Returns the set of `EdgeId`s actually removed (empty, one, or both directions) — callers that
+/// track pending pairs/candidates by `EdgeId` (e.g. `TeleportGroupProximityStrategy`) need this to
+/// know the reverse was also consumed, not just whether the call "succeeded".
+pub(crate) fn try_remove_teleport_with_reverse(
+    graph: &mut Graph,
+    id: crate::ids::EdgeId,
+    preset_state: &PresetState,
+) -> Vec<crate::ids::EdgeId> {
+    let reverse_id = graph.teleport_reverse(id);
+    let mut removed = Vec::with_capacity(2);
+    if try_remove_edge_by_id(graph, id, preset_state) {
+        removed.push(id);
+    }
+    if let Some(reverse_id) = reverse_id {
+        if try_remove_edge_by_id(graph, reverse_id, preset_state) {
+            removed.push(reverse_id);
+        }
+    }
+    removed
+}
+
 /// try_add_directed_edge: adds a single one-way edge `from -> to`, respecting PresetState.
 /// Unlike `try_add_bidirectional_edge`, never adds the reverse direction — for repair
 /// strategies that need an explicit one-way connection (e.g. `MissingRegionsStrategy`).

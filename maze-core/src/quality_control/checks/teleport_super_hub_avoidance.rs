@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
+use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
@@ -34,6 +35,9 @@ pub struct TeleportSuperHubAvoidanceCheck {
     pub instance_id: String,
     pub max_connections: u32,
     pub edge: TeleportHubEdgeSelector,
+    /// GitHub issue #78, default `true`: a teleport lying on the maze's current start->finish
+    /// route (`is_teleport_route_protected`) is never included in `invalid`.
+    pub protect_route: bool,
 }
 
 impl<T: Tessellation> Check<T> for TeleportSuperHubAvoidanceCheck {
@@ -57,6 +61,7 @@ impl<T: Tessellation> Check<T> for TeleportSuperHubAvoidanceCheck {
                     TeleportHubEdgeSelector::EntryOrExit => over(entry_count) || over(exit_count),
                 }
             })
+            .filter(|t| !self.protect_route || !is_teleport_route_protected(maze, t.id))
             .map(|e| e.id)
             .collect();
 
@@ -85,7 +90,7 @@ mod tests {
         let mut g = Graph::new();
         field.build_nodes(&mut g);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -105,7 +110,7 @@ mod tests {
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -113,6 +118,29 @@ mod tests {
         assert_eq!(issues[0].kind, INVALID_TELEPORT);
         let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
         assert_eq!(issues[0].data, Some(IssueData::InvalidTeleports { invalid: vec![teleport_id] }));
+    }
+
+    #[test]
+    fn protect_route_excludes_a_route_critical_hub_teleport() {
+        // Same busy-hub setup, but the teleport 1->3 is the maze's only start->finish route
+        // (start=1, finish=3) -- with protect_route enabled it must not be flagged.
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
+        g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[1]);
+        maze.meta.finish = Some(nodes[3]);
+
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
     }
 
     #[test]
@@ -125,7 +153,7 @@ mod tests {
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::Entry };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -148,7 +176,7 @@ mod tests {
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -171,7 +199,7 @@ mod tests {
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 5, edge: TeleportHubEdgeSelector::Exit };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 5, edge: TeleportHubEdgeSelector::Exit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -190,7 +218,7 @@ mod tests {
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::Exit };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::Exit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -209,7 +237,7 @@ mod tests {
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -227,7 +255,7 @@ mod tests {
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 0, edge: TeleportHubEdgeSelector::EntryOrExit };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 0, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -249,7 +277,7 @@ mod tests {
         g.add_edge(nodes[3], nodes[1], EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::EntryOrExit };
+        let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);

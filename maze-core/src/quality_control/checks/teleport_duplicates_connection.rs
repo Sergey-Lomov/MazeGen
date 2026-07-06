@@ -1,6 +1,7 @@
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
+use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_TELEPORT};
@@ -10,8 +11,15 @@ use crate::quality_control::issue_data::IssueData;
 /// between the same pair of vertices in the same direction — see GitHub issue #74. Redundant: a
 /// teleport that duplicates a passage the maze already has adds no new connectivity, only visual/
 /// navigational noise.
+///
+/// `protect_route` (GitHub issue #78, default `true`): a teleport lying on the maze's current
+/// start->finish route (`is_teleport_route_protected` — covers both directions of a two-way
+/// teleport) is never included in `invalid`, regardless of whether it would otherwise qualify.
+/// Route protection lives here, on the producing check, not on `RemoveTeleportStrategy` — the
+/// strategy stays a pure "remove everything flagged" executor.
 pub struct TeleportDuplicatesConnectionCheck {
     pub instance_id: String,
+    pub protect_route: bool,
 }
 
 impl<T: Tessellation> Check<T> for TeleportDuplicatesConnectionCheck {
@@ -25,6 +33,7 @@ impl<T: Tessellation> Check<T> for TeleportDuplicatesConnectionCheck {
                     other.kind == EdgeKind::Basic && other.from == teleport.from && other.to == teleport.to
                 })
             })
+            .filter(|teleport| !self.protect_route || !is_teleport_route_protected(maze, teleport.id))
             .map(|e| e.id)
             .collect();
 
@@ -68,7 +77,7 @@ mod tests {
         let mut g = Graph::new();
         field.build_nodes(&mut g);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -78,7 +87,7 @@ mod tests {
     #[test]
     fn silent_when_teleport_has_no_duplicate() {
         let maze = maze_with_teleport(false);
-        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -88,7 +97,7 @@ mod tests {
     #[test]
     fn fires_when_teleport_duplicates_basic_connection() {
         let maze = maze_with_teleport(true);
-        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -115,7 +124,7 @@ mod tests {
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
@@ -130,6 +139,49 @@ mod tests {
     }
 
     #[test]
+    fn protect_route_excludes_a_route_critical_duplicate_teleport() {
+        // start=0, finish=2, and the teleport 0->2 is the maze's only start->finish route (the
+        // duplicate Basic 0->2 alone wouldn't matter here -- what matters is that the teleport
+        // itself sits on the route). With protect_route enabled it must not be flagged at all.
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[2]);
+
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
+    }
+
+    #[test]
+    fn protect_route_disabled_flags_the_route_teleport_as_before() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[2]);
+
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: false };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert_eq!(issues.len(), 1, "protect_route disabled must flag the teleport exactly like before #78");
+    }
+
+    #[test]
     fn does_not_flag_teleport_with_only_reverse_basic() {
         // A Basic edge in the opposite direction is not a duplicate — direction matters.
         let mut ids = IdGenerator::new();
@@ -141,7 +193,7 @@ mod tests {
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string() };
+        let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);

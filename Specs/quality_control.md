@@ -420,12 +420,15 @@ Uses `maze.analysis.region_classes(&maze.graph, start, finish)` and counts entri
 ```rust
 pub struct TeleportDuplicatesConnectionCheck {
     pub instance_id: String,
+    pub protect_route: bool,
 }
 ```
 
-Flags a teleport edge (`EdgeKind::Teleport`) as invalid when a regular (`EdgeKind::Basic`) connection already exists between the same pair of vertices in the same direction — see GitHub issue #74. A teleport that duplicates a passage the maze already has adds no new connectivity, only visual/navigational noise. No configurable parameters.
+Flags a teleport edge (`EdgeKind::Teleport`) as invalid when a regular (`EdgeKind::Basic`) connection already exists between the same pair of vertices in the same direction — see GitHub issue #74. A teleport that duplicates a passage the maze already has adds no new connectivity, only visual/navigational noise.
 
 For every `Teleport` edge in `maze.graph`, checks whether a `Basic` edge exists with the same `from`/`to` (direction-specific — a `Basic` edge only in the *reverse* direction does not count as a duplicate). Each direction of a two-way teleport is its own `Teleport` edge and is flagged independently if it has its own matching `Basic` duplicate. If no teleport is flagged, the check is silent. Otherwise fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_duplicates_connection")` — `invalid` holds every flagged teleport's `EdgeId` directly.
+
+`protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
 
 ### TeleportWaypointDistanceCheck
 
@@ -440,6 +443,7 @@ pub struct TeleportWaypointDistanceCheck {
     pub distance: u32,
     pub waypoint: TeleportWaypoint,
     pub edge: TeleportEdgeSelector,
+    pub protect_route: bool,
 }
 ```
 
@@ -450,6 +454,8 @@ Distance is logical (tile count via `maze.analysis.distance_from_start`/`distanc
 Silently skips (no issue) if the maze doesn't have the waypoint(s) this instance needs set (`meta.start` for `Start`/`Any`, `meta.finish` for `Finish`/`Any`) — covered by `MissingEndpointsCheck`, same rationale as the loop-distance checks. Default `distance` of `0` never fires on its own, same as `LoopDistanceFromStartCheck`'s `min_distance_from_start`.
 
 If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_waypoint_distance")` with `.with_detail("teleport_waypoint_distance", "distance", self.distance.to_string())` chained on. Can be active alongside `TeleportDuplicatesConnectionCheck` (or another `teleport_waypoint_distance` instance) — all merge into one `INVALID_TELEPORT` issue per the dedup rule in `repair.md`'s "Pipeline" section.
+
+`protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
 
 `RemoveTeleportStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_TELEPORT` — removes every flagged teleport edge outright.
 
@@ -469,6 +475,7 @@ pub const TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT: f64 = 0.0;
 pub struct TeleportMinGeometricLengthCheck {
     pub instance_id: String,
     pub min_length: f64,
+    pub protect_route: bool,
 }
 ```
 
@@ -480,6 +487,8 @@ No waypoint/edge-selector parameters — unlike `TeleportWaypointDistanceCheck`,
 
 If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_min_geometric_length")` with `.with_detail("teleport_min_geometric_length", "min_length", self.min_length.to_string())` chained on. Can be active alongside any other `INVALID_TELEPORT`-producing check — all merge into one issue per the dedup rule in `repair.md`'s "Pipeline" section.
 
+`protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
+
 ### TeleportMaxGeometricLengthCheck
 
 ```rust
@@ -488,12 +497,15 @@ pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000.0;
 pub struct TeleportMaxGeometricLengthCheck {
     pub instance_id: String,
     pub max_length: f64,
+    pub protect_route: bool,
 }
 ```
 
 Symmetric counterpart to `TeleportMinGeometricLengthCheck` — flags a teleport edge whose geometric distance between entry and exit **exceeds** a configured maximum instead, e.g. to keep teleports from spanning the entire field when a more local "jump" is desired. Same `geometric_distance`/`point_of` mechanics, same silent-exclusion-on-unresolvable-point behavior.
 
 Fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_max_geometric_length")` with `.with_detail("teleport_max_geometric_length", "max_length", self.max_length.to_string())` chained on. Can be active alongside `TeleportMinGeometricLengthCheck` (or any other `INVALID_TELEPORT`-producing check) — all merge into one issue per the same dedup rule.
+
+`protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
 
 ### TeleportSuperHubAvoidanceCheck
 
@@ -510,6 +522,7 @@ pub struct TeleportSuperHubAvoidanceCheck {
     pub instance_id: String,
     pub max_connections: u32,
     pub edge: TeleportHubEdgeSelector,
+    pub protect_route: bool,
 }
 ```
 
@@ -522,6 +535,8 @@ Default `max_connections` of `1_000` is high enough that it never fires in pract
 If any teleports are flagged, fires `Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, "teleport_super_hub_avoidance")` with `.with_detail("teleport_super_hub_avoidance", "max_connections", self.max_connections.to_string())` chained on. Can be active alongside any other `INVALID_TELEPORT`-producing check — all merge into one issue per the same dedup rule.
 
 The wire-level (WASM/web) param id for `edge` is `edge_hub`, not `edge` — despite matching `TeleportWaypointDistanceCheck`'s Rust field name, it's a deliberately distinct param id so the two checks don't share i18n text (`edge`'s label/description talk about distance-to-waypoint, which makes no sense for a connection-count check — see GitHub issue #74's follow-up fix).
+
+`protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
 
 ### TeleportGroupProximityCheck
 
@@ -538,6 +553,7 @@ pub struct TeleportGroupProximityCheck {
     pub distance: f64,
     pub own_edge: TeleportProximityEdge,
     pub other_edge: TeleportProximityEdge,
+    pub protect_route: bool,
 }
 ```
 
@@ -552,6 +568,16 @@ For each teleport edge, scans every other teleport edge for the first one whose 
 Default `distance` of `0` never fires on its own, same as every other teleport distance check. If no pair is found, the check is silent. Otherwise fires `Issue::with_data_from_check(TELEPORT_GROUP_PROXIMITY, IssueData::TeleportProximityPairs { pairs }, "teleport_group_proximity")` with `.with_detail("teleport_group_proximity", "distance", self.distance.to_string())` chained on.
 
 Multiple instances may be active at once (`allow_multiple_instances: true`) — distinct `own_edge`/`other_edge`/`distance` combinations are a legitimate simultaneous configuration, same rationale as `TeleportWaypointDistanceCheck`.
+
+**`protect_route` (GitHub issue #78, default `true`) — different rule than the per-edge checks below.** A close pair is only excluded when *both* teleports are route-critical (`graph::route_protection::is_teleport_route_protected`, checked on `own_id`/`other_id` right when a hit is found): if only one side of the pair sits on the maze's start→finish route, the pair is still recorded, since the non-route side remains a legitimate removal candidate — `TeleportGroupProximityStrategy`'s own `protect_route` (see `repair.md`) is what actually decides *which* side to spare in that mixed case. Excluding a pair for being fully route-protected does **not** end the scan for the teleport being scanned (`own_id`) — a farther, non-protected candidate is still searched for and recorded if found, so a route-critical teleport doesn't silently "use up" its one scan slot on a pair that turns out to be unresolvable.
+
+### `protect_route`: route protection for per-teleport checks
+
+`TeleportDuplicatesConnectionCheck`, `TeleportWaypointDistanceCheck`, `TeleportMinGeometricLengthCheck`, `TeleportMaxGeometricLengthCheck`, and `TeleportSuperHubAvoidanceCheck` all share the same `protect_route` rule (GitHub issue #78) — `TeleportGroupProximityCheck`'s own variant is described above, since it works on pairs rather than single edges.
+
+For these five checks: when `protect_route` is `true` (the default), a teleport edge that would otherwise be flagged is excluded from `invalid` if `graph::route_protection::is_teleport_route_protected(maze, edge_id)` reports it lies on the maze's current start→finish route (`maze.analysis.route_info(&maze.graph, &maze.meta)`, reusing that cache rather than recomputing the path). For a two-way teleport (two independent `EdgeId`s in the base `Graph` — no `reverse_edge` link like `NavEdge` has), protection covers both directions: if either direction is itself a route hop, both are excluded, so `protect_route` never silently downgrades a two-way teleport to one-way. Setting `protect_route` to `false` reproduces the pre-#78 behavior exactly (every teleport meeting the check's own criterion is flagged, regardless of route).
+
+Route protection lives entirely on the producing check, never on `RemoveTeleportStrategy` (see `repair.md`) — the strategy stays a pure "remove everything flagged" executor with no route-awareness of its own, since a route-critical teleport is simply never placed in `invalid` to begin with.
 
 `TeleportGroupProximityStrategy` (see `repair.md`) is the registered `RepairStrategy` for `TELEPORT_GROUP_PROXIMITY`.
 
@@ -743,12 +769,12 @@ rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turne
 | `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Integer(default=25, min=0, max=100)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_count` | `missing_regions` | `region_class: Enum(options=[path,alternative,unreachable,trap], default=trap)`, `count: Integer(default=1, min=0, max=1_000_000)` | no |
-| `teleport_duplicates_connection` | `invalid_teleport` | — | no |
-| `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)` | no |
-| `teleport_min_geometric_length` | `invalid_teleport` | `min_length: Float(default=0.0, min=0.0, max=100_000.0)` | no |
-| `teleport_max_geometric_length` | `invalid_teleport` | `max_length: Float(default=1_000.0, min=0.0, max=1_000_000.0)` | no |
-| `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` | no |
-| `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` | no |
+| `teleport_duplicates_connection` | `invalid_teleport` | `protect_route: Bool(default=true)` | no |
+| `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
+| `teleport_min_geometric_length` | `invalid_teleport` | `min_length: Float(default=0.0, min=0.0, max=100_000.0)`, `protect_route: Bool(default=true)` | no |
+| `teleport_max_geometric_length` | `invalid_teleport` | `max_length: Float(default=1_000.0, min=0.0, max=1_000_000.0)`, `protect_route: Bool(default=true)` | no |
+| `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
+| `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

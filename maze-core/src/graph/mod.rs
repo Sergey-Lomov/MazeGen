@@ -5,6 +5,7 @@ pub mod stats;
 pub mod routing;
 pub mod graph_analytics;
 pub mod region_class;
+pub mod route_protection;
 pub(crate) mod pathfinding;
 pub(crate) mod cycles;
 pub(crate) mod distance_map;
@@ -165,6 +166,19 @@ impl Graph {
         self.outgoing.get(&from)?.iter().find(|&&eid| {
             self.edges[eid].as_ref().map_or(false, |e| e.to == to)
         }).copied()
+    }
+
+    /// Returns the opposite-direction `Teleport` edge of a two-way teleport, if any — `id` must
+    /// itself be a `Teleport` edge. A two-way teleport is two independent `EdgeId`s in this graph
+    /// (no `reverse_edge` link like `NavEdge` has), so this scans for a `Teleport` edge going
+    /// `to -> from`. `None` if `id` doesn't exist, isn't a `Teleport`, or has no reverse
+    /// (a one-way teleport).
+    pub fn teleport_reverse(&self, id: EdgeId) -> Option<EdgeId> {
+        let edge = self.edge(id)?;
+        if edge.kind != EdgeKind::Teleport { return None; }
+        self.edges().find(|other| {
+            other.kind == EdgeKind::Teleport && other.from == edge.to && other.to == edge.from
+        }).map(|other| other.id)
     }
 
     pub fn reachable_to(&self, target: NodeId) -> Vec<NodeId> {

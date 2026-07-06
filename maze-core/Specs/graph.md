@@ -39,6 +39,7 @@ Internal structure:
 - `outgoing_neighbors(node) -> Iterator<NodeId>` — nodes reachable via outgoing edges
 - `incoming_neighbors(node) -> Iterator<NodeId>` — nodes that have an edge pointing to this node
 - `edge_between(from, to) -> Option<EdgeId>` — O(degree) scan through `outgoing[from]`
+- `teleport_reverse(id) -> Option<EdgeId>` — for a `Teleport` edge, the opposite-direction `Teleport` edge (`to -> from`), if any. `None` if `id` isn't a `Teleport` or has no reverse (one-way teleport). Used by repair strategies (GitHub issue #78's follow-up) that must never leave a two-way teleport downgraded to one-way when only one direction's `EdgeId` was flagged for removal.
 - `node_count() -> usize`
 - `nodes() -> Iterator<&Node>`
 - `edges() -> Iterator<&Edge>` — filters tombstones

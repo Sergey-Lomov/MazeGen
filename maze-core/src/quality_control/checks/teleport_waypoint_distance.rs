@@ -1,6 +1,7 @@
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
+use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::issue::{Issue, INVALID_TELEPORT};
@@ -41,6 +42,9 @@ pub struct TeleportWaypointDistanceCheck {
     pub distance: u32,
     pub waypoint: TeleportWaypoint,
     pub edge: TeleportEdgeSelector,
+    /// GitHub issue #78, default `true`: a teleport lying on the maze's current start->finish
+    /// route (`is_teleport_route_protected`) is never included in `invalid`.
+    pub protect_route: bool,
 }
 
 impl<T: Tessellation> Check<T> for TeleportWaypointDistanceCheck {
@@ -95,6 +99,7 @@ impl<T: Tessellation> Check<T> for TeleportWaypointDistanceCheck {
                 };
                 closest.is_some_and(|d| d < self.distance as usize)
             })
+            .filter(|t| !self.protect_route || !is_teleport_route_protected(maze, t.id))
             .map(|e| e.id)
             .collect();
 
@@ -148,6 +153,7 @@ mod tests {
             distance: 5,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -165,6 +171,7 @@ mod tests {
             distance: 5,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -184,6 +191,7 @@ mod tests {
             distance: 5,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -215,6 +223,7 @@ mod tests {
             distance: 5,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOrExit,
+            protect_route: true,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -247,11 +256,51 @@ mod tests {
             distance: 5,
             waypoint: TeleportWaypoint::Any,
             edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1, "entry is 2 tiles from finish (reverse-reachable) even though far from start");
+    }
+
+    #[test]
+    fn protect_route_excludes_a_route_critical_teleport() {
+        // finish set at the far node -- the teleport entry->far is the maze's only route from
+        // start to finish (no corridor connects entry to far otherwise). With protect_route
+        // enabled it must not be flagged even though it's otherwise close enough to start.
+        let (mut maze, nodes) = maze_with_teleport_entry_at_distance(2);
+        let far = *nodes.last().unwrap();
+        maze.meta.finish = Some(far);
+        let check = TeleportWaypointDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 5,
+            waypoint: TeleportWaypoint::Start,
+            edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
+        };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
+    }
+
+    #[test]
+    fn protect_route_disabled_flags_the_route_teleport_as_before() {
+        let (mut maze, nodes) = maze_with_teleport_entry_at_distance(2);
+        let far = *nodes.last().unwrap();
+        maze.meta.finish = Some(far);
+        let check = TeleportWaypointDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 5,
+            waypoint: TeleportWaypoint::Start,
+            edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: false,
+        };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.check(&maze, &mut issues, &mut rng);
+        assert_eq!(issues.len(), 1, "protect_route disabled must flag the teleport exactly like before #78");
     }
 
     #[test]
@@ -262,6 +311,7 @@ mod tests {
             distance: 0,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -278,6 +328,7 @@ mod tests {
             distance: 100,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -307,6 +358,7 @@ mod tests {
             distance: 1000,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);

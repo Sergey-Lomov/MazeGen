@@ -2,7 +2,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::{Issue, IssueData, INVALID_TELEPORT, IssueKind};
-use crate::generation::{PresetState, try_remove_edge_by_id};
+use crate::generation::{PresetState, try_remove_teleport_with_reverse};
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
@@ -13,6 +13,17 @@ use crate::repair::snapshot::SnapshotStack;
 /// parameters, no alternative strategy — unlike `INVALID_LOOP` (which has both a random and a
 /// scored cut strategy), a teleport is a single edge, not a cycle with multiple candidate edges
 /// to choose from, so there is nothing to pick between.
+///
+/// Route protection (GitHub issue #78) lives entirely on the producing checks' side, not here:
+/// each per-teleport check has its own `protect_route` param and simply never includes a
+/// route-critical teleport in `invalid` to begin with, so `issue.data` never contains an edge
+/// this strategy shouldn't remove. This strategy stays a pure "remove everything flagged"
+/// executor, same as before #78.
+///
+/// Removing a flagged edge also removes its opposite-direction `Teleport` counterpart, if any
+/// (`try_remove_teleport_with_reverse`) — a two-way teleport must never end up silently
+/// downgraded to one-way just because a check's edge selector (e.g. `EntryOnly`) only inspected
+/// one direction and flagged only that `EdgeId`.
 pub struct RemoveTeleportStrategy;
 
 impl<T: Tessellation> RepairStrategy<T> for RemoveTeleportStrategy {
@@ -39,7 +50,7 @@ impl<T: Tessellation> RepairStrategy<T> for RemoveTeleportStrategy {
             return RepairResult::Failed;
         };
         for &edge_id in invalid {
-            try_remove_edge_by_id(&mut maze.graph, edge_id, preset_state);
+            try_remove_teleport_with_reverse(&mut maze.graph, edge_id, preset_state);
         }
         RepairResult::Fixed { score: None }
     }
@@ -75,7 +86,7 @@ mod tests {
     #[test]
     fn apply_removes_flagged_teleport_but_keeps_the_basic_edge() {
         let mut maze = maze_with_duplicate_teleport();
-        let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string() };
+        let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut check_rng = MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
@@ -102,7 +113,7 @@ mod tests {
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string() };
+        let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut check_rng = MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);
@@ -114,6 +125,52 @@ mod tests {
 
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport), "both teleport directions must be removed");
         assert_eq!(maze.graph.edges().filter(|e| e.kind == EdgeKind::Basic).count(), 2, "both basic directions must survive");
+    }
+
+    #[test]
+    fn apply_removes_the_reverse_direction_even_when_only_the_forward_id_is_flagged() {
+        // Only the forward direction is in `invalid` (simulating an edge selector like EntryOnly
+        // that only ever inspects/flags one end) -- the strategy must still remove the backward
+        // Teleport counterpart so a two-way teleport is never left downgraded to one-way.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let forward_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        let backward_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let issue = Issue::with_data(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid: vec![forward_id] });
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(forward_id).is_none(), "the flagged forward direction must be removed");
+        assert!(maze.graph.edge(backward_id).is_none(), "the unflagged backward direction must also be removed");
+    }
+
+    #[test]
+    fn apply_does_not_remove_a_reverse_basic_edge_mistaken_for_a_teleport_reverse() {
+        // A Basic edge in the reverse direction must not be treated as the flagged Teleport's
+        // "reverse" -- only a Teleport-kind reverse counts. Regression guard for
+        // `Graph::teleport_reverse`'s kind check.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let teleport_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        let reverse_basic_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let issue = Issue::with_data(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid: vec![teleport_id] });
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(teleport_id).is_none());
+        assert!(maze.graph.edge(reverse_basic_id).is_some(), "a reverse Basic edge must survive -- it is not a teleport reverse");
     }
 
     #[test]
@@ -141,7 +198,7 @@ mod tests {
         // comment). If the Basic edge it duplicates happens to be preset-protected, that
         // protection must not leak onto the Teleport: the Teleport is still removable.
         let mut maze = maze_with_duplicate_teleport();
-        let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string() };
+        let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut check_rng = MazeRng::seed_from_u64(0);
         check.check(&maze, &mut issues, &mut check_rng);

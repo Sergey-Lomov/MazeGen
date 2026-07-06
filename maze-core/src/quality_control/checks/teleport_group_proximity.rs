@@ -4,6 +4,7 @@ use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::graph::distance_map::{compute_distance_map, DistanceDirection};
 use crate::graph::nav::NavNodeId;
+use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
@@ -55,6 +56,11 @@ pub struct TeleportGroupProximityCheck {
     pub distance: f64,
     pub own_edge: TeleportProximityEdge,
     pub other_edge: TeleportProximityEdge,
+    /// GitHub issue #78, default `true`: a pair is only excluded when *both* teleports are
+    /// route-critical (`is_teleport_route_protected`) — if only one side of the pair sits on the
+    /// route, the pair is still recorded, since the non-route side remains a legitimate removal
+    /// candidate for `TeleportGroupProximityStrategy` to act on.
+    pub protect_route: bool,
 }
 
 impl<T: Tessellation> Check<T> for TeleportGroupProximityCheck {
@@ -147,8 +153,16 @@ impl<T: Tessellation> Check<T> for TeleportGroupProximityCheck {
 
                 if let Some(dist) = closest {
                     if (dist as f64) < self.distance {
-                        pairs.push((own_id, other_id));
-                        break;
+                        let both_route_protected = self.protect_route
+                            && is_teleport_route_protected(maze, own_id)
+                            && is_teleport_route_protected(maze, other_id);
+                        // A pair excluded because both sides are route-critical doesn't stop the
+                        // scan for `own_id` — a farther, non-protected candidate may still exist
+                        // and would otherwise never be recorded.
+                        if !both_route_protected {
+                            pairs.push((own_id, other_id));
+                            break;
+                        }
                     }
                 }
             }
@@ -173,7 +187,7 @@ mod tests {
     const TEST_ID: &str = "teleport_group_proximity";
 
     fn check(distance: f64, own_edge: TeleportProximityEdge, other_edge: TeleportProximityEdge) -> TeleportGroupProximityCheck {
-        TeleportGroupProximityCheck { instance_id: TEST_ID.to_string(), distance, own_edge, other_edge }
+        TeleportGroupProximityCheck { instance_id: TEST_ID.to_string(), distance, own_edge, other_edge, protect_route: true }
     }
 
     #[test]
@@ -489,6 +503,123 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check(1000.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "unreachable in both directions must not be treated as distance 0");
+    }
+
+    #[test]
+    fn protect_route_excludes_a_pair_where_both_teleports_are_route_critical() {
+        // start=entry_a(0), finish=exit_b(3): the only route is entry_a->exit_a(teleport a),
+        // then exit_a--entry_b via a short corridor, then entry_b->exit_b(teleport b) -- both
+        // teleports are route-critical. Their entries sit 1 nav-hop apart (well within the
+        // check's threshold), so without protect_route this pair would fire.
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        let entry_a = p(0);
+        let exit_a = p(1);
+        let entry_b = p(2);
+        let exit_b = p(3);
+        g.add_edge(entry_a, exit_a, EdgeKind::Teleport);
+        g.add_bidirectional_edge(exit_a, entry_b, EdgeKind::Basic);
+        g.add_edge(entry_b, exit_b, EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(entry_a);
+        maze.meta.finish = Some(exit_b);
+
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        assert!(issues.is_empty(), "a pair where both teleports are route-critical must not be recorded");
+    }
+
+    #[test]
+    fn protect_route_still_records_a_pair_where_only_one_side_is_route_critical() {
+        // Same topology, but finish is set to exit_a instead -- only teleport a is route-critical
+        // (entry_a -> exit_a is the whole route); teleport b is unrelated and still a legitimate
+        // removal candidate, so the pair must still be recorded.
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        let entry_a = p(0);
+        let exit_a = p(1);
+        let entry_b = p(2);
+        let exit_b = p(3);
+        g.add_edge(entry_a, exit_a, EdgeKind::Teleport);
+        g.add_bidirectional_edge(exit_a, entry_b, EdgeKind::Basic);
+        g.add_edge(entry_b, exit_b, EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(entry_a);
+        maze.meta.finish = Some(exit_a);
+
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        assert_eq!(issues.len(), 1, "a pair with only one route-critical side must still be recorded");
+    }
+
+    #[test]
+    fn protect_route_skips_a_fully_protected_pair_and_still_finds_a_farther_unprotected_one() {
+        // a's first-scanned candidate (b) is close AND both route-critical -- excluded, but the
+        // scan for `a` must not stop there: a second candidate (c), also close but NOT
+        // route-critical, must still be found and recorded. This exercises that skipping a
+        // fully-protected pair doesn't `break` (unlike a normal hit), so a route-critical
+        // teleport doesn't silently "use up" its scan slot on an unresolvable pair.
+        //
+        // Layout: entry_a(0) -> exit_a(1) [teleport a, route-critical]
+        //         exit_a --- entry_b(2)   [basic corridor, 1 hop]
+        //         entry_b(2) -> exit_b(3) [teleport b, route-critical -- inserted first so the
+        //                                  scan visits it before c]
+        //         exit_b --- entry_c(4)  is NOT built -- c is reached via its own short bridge
+        //         from entry_a instead, so it's close to a but off the actual route entirely.
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(7, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        let entry_a = p(0);
+        let exit_a = p(1);
+        let entry_b = p(2);
+        let exit_b = p(3);
+        let entry_c = p(5);
+        let exit_c = p(6);
+
+        let id_a = g.add_edge(entry_a, exit_a, EdgeKind::Teleport);
+        g.add_bidirectional_edge(exit_a, entry_b, EdgeKind::Basic);
+        // b inserted before c so the scan from a's side visits b (the protected candidate) first.
+        let id_b = g.add_edge(entry_b, exit_b, EdgeKind::Teleport);
+        // c sits near entry_a via its own short bridge -- close enough to be a candidate, but
+        // reaching finish through c is impossible (c dead-ends past exit_c with no way back to
+        // exit_b), so c is not on the route and not route-critical.
+        g.add_bidirectional_edge(entry_a, entry_c, EdgeKind::Basic);
+        let id_c = g.add_edge(entry_c, exit_c, EdgeKind::Teleport);
+
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(entry_a);
+        maze.meta.finish = Some(exit_b);
+
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+
+        assert_eq!(issues.len(), 1);
+        let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
+        // The key assertion is the *direction* (a, c): if the skip incorrectly `break`s a's scan
+        // right after seeing the protected (a, b) candidate, a's own scan records nothing at all
+        // for `a` — the only way (a, c)/(c, a) could still appear would be from c's own
+        // independent scan (recorded as (c, a), never (a, c)). Asserting the exact (a, c)
+        // direction is what actually exercises "skip doesn't break the scan", not a looser
+        // "either direction" check which a regression could still satisfy via c's side alone.
+        assert!(
+            pairs.contains(&(id_a, id_c)),
+            "a's scan must skip the fully-protected (a, b) pair and still record (a, c) from a's own side: got {pairs:?}"
+        );
+        assert!(
+            !pairs.contains(&(id_a, id_b)) && !pairs.contains(&(id_b, id_a)),
+            "the fully-protected (a, b) pair must never be recorded: got {pairs:?}"
+        );
     }
 
     #[test]

@@ -3,6 +3,7 @@ import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
 import { typography, font } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
+import { Switch } from "../Switch";
 
 const OPTION_WIDTH_BUFFER = 10;
 const SELECT_MAX_WIDTH_RATIO = 0.4;
@@ -101,10 +102,9 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 />
               )}
               {p.kind.type === "bool" && (
-                <input
-                  type="checkbox"
+                <Switch
                   checked={get(p) === "true"}
-                  onChange={(e) => onChange(p.id, e.target.checked ? "true" : "false")}
+                  onChange={(checked) => onChange(p.id, checked ? "true" : "false")}
                 />
               )}
               {p.kind.type === "enum" && (
