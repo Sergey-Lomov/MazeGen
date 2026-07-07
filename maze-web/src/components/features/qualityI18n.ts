@@ -258,6 +258,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.target_mode.label"] as MessageFn,
     description: m["param.target_mode.description"] as MessageFn,
   },
+  connection_mode: {
+    label: m["param.connection_mode.label"] as MessageFn,
+    description: m["param.connection_mode.description"] as MessageFn,
+  },
+  prefer_partially_connected: {
+    label: m["param.prefer_partially_connected.label"] as MessageFn,
+    description: m["param.prefer_partially_connected.description"] as MessageFn,
+  },
   locality: {
     label: m["param.locality.label"] as MessageFn,
     description: m["param.locality.description"] as MessageFn,
@@ -347,6 +355,8 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "target_mode.smallest": m["param.target_mode.option.smallest"] as MessageFn,
   "target_mode.random": m["param.target_mode.option.random"] as MessageFn,
   "target_mode.prefer_needy": m["param.target_mode.option.prefer_needy"] as MessageFn,
+  "connection_mode.passage": m["param.connection_mode.option.passage"] as MessageFn,
+  "connection_mode.one_way": m["param.connection_mode.option.one_way"] as MessageFn,
   "region_class.all": m["param.region_class.option.all"] as MessageFn,
   "region_class.path": m["param.region_class.option.path"] as MessageFn,
   "region_class.alternative": m["param.region_class.option.alternative"] as MessageFn,
@@ -380,6 +390,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "target_mode.smallest": m["param.target_mode.option.smallest.explanation"] as MessageFn,
   "target_mode.random": m["param.target_mode.option.random.explanation"] as MessageFn,
   "target_mode.prefer_needy": m["param.target_mode.option.prefer_needy.explanation"] as MessageFn,
+  "connection_mode.passage": m["param.connection_mode.option.passage.explanation"] as MessageFn,
+  "connection_mode.one_way": m["param.connection_mode.option.one_way.explanation"] as MessageFn,
   "region_class.all": m["param.region_class.option.all.explanation"] as MessageFn,
   "region_class.path": m["param.region_class.option.path.explanation"] as MessageFn,
   "region_class.alternative": m["param.region_class.option.alternative.explanation"] as MessageFn,

@@ -268,6 +268,24 @@ mod tests {
         }]
     }
 
+    /// Nested `ExpandRegionPassageStrategy` pinned to the legacy fast path (`random` target
+    /// mode, `prefer_partially_connected` off) — first geometrically-adjacent neighbor found,
+    /// no `rng` involvement, no risk of two `ReduceSccCountStrategy`-selected sibling regions
+    /// picking each other and collapsing two intended merges into one.
+    fn expand_region_passage_nested_legacy_fast_path<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> {
+        let mut param_overrides = std::collections::HashMap::new();
+        param_overrides.insert(
+            crate::repair::strategies::expand_region_passage::PARAM_PREFER_PARTIALLY_CONNECTED.to_string(),
+            "false".to_string(),
+        );
+        vec![NestedStrategyConfig {
+            slot: &NESTED_SLOTS[0],
+            strategy: Box::new(ExpandRegionPassageStrategy),
+            param_overrides,
+            nested: vec![],
+        }]
+    }
+
     /// 1x4 row of cells, no edges at all -> 4 singleton SCC components, all geometrically
     /// adjacent in a chain: 0-1-2-3.
     fn maze_4_singletons() -> Maze<SquareTessellation> {
@@ -332,11 +350,16 @@ mod tests {
     fn apply_merges_exactly_count_minus_max_regions() {
         // 4 singletons, max_scc_count = 2 -> exactly 2 regions must be merged away, leaving
         // exactly 2 SCC components (a merge always reduces the component count by exactly one,
-        // since it bridges two previously-separate singleton regions into one).
+        // since it bridges two previously-separate singleton regions into one). Nested strategy
+        // pinned to `smallest` target selection (deterministic by component size, no rng-indexed
+        // picks) so the outcome doesn't depend on which two adjacent regions the parent's default
+        // `smallest` merge_priority happens to pick in a chain topology (see
+        // `ExpandRegionPassageStrategy`'s own accepted "chosen regions can merge into each other"
+        // imprecision, documented in `Specs/repair.md`).
         let mut maze = maze_4_singletons();
         let issue = issue_for(2);
         let mut rng = MazeRng::seed_from_u64(7);
-        let nested = expand_region_passage_nested();
+        let nested = expand_region_passage_nested_legacy_fast_path();
         let result = ReduceSccCountStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let fresh = Maze::<SquareTessellation>::new(maze.field, maze.graph);
