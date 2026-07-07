@@ -30,7 +30,7 @@ use maze_core::{
         NestedSlot, NestedStrategyConfig,
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
-        ExpandRegionPassageStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
+        ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
         RemoveTeleportStrategy, TeleportGroupProximityStrategy,
     },
     RegionClass, GenerationTiming,
@@ -297,6 +297,7 @@ fn build_strategy<T: Tessellation>(id: &str) -> Result<Box<dyn RepairStrategy<T>
         "invalid_loop_scored"  => Box::new(InvalidLoopScoredStrategy),
         "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
         "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
+        "teleport_region_merge" => Box::new(TeleportRegionMergeStrategy),
         "missing_regions"      => Box::new(MissingRegionsStrategy),
         "reduce_scc_count"     => Box::new(ReduceSccCountStrategy),
         "remove_teleport"      => Box::new(RemoveTeleportStrategy),
@@ -865,7 +866,7 @@ mod build_strategy_tests {
     const ALL_KNOWN_STRATEGY_IDS: &[&str] = &[
         "random_endpoints", "farthest_endpoints", "scored_endpoints",
         "invalid_loop_random", "invalid_loop_scored", "missing_loops_random",
-        "expand_region_passage", "missing_regions", "reduce_scc_count",
+        "expand_region_passage", "teleport_region_merge", "missing_regions", "reduce_scc_count",
         "remove_teleport", "teleport_group_proximity",
     ];
 

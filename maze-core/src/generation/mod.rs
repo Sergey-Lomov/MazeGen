@@ -321,6 +321,61 @@ pub(crate) fn try_add_bidirectional_edge(
     true
 }
 
+/// try_add_directed_teleport: adds a single one-way `Teleport` edge `a -> b`, respecting
+/// `PresetState` on the forward direction only — for repair strategies that need an explicit
+/// one-way teleport connection (e.g. `TeleportRegionMergeStrategy`). Idempotent against **any**
+/// existing edge kind in that direction, not just an existing `Teleport`: if `a -> b` is already
+/// carried by a `Basic` edge (e.g. a passage from an earlier repair pass), that direction is
+/// treated as already closed and no `Teleport` is added on top of it — mirrors
+/// `TeleportRegionMergeStrategy`'s "partial connection" concept, which also considers any edge
+/// kind. Returns true if a `Teleport` edge was added or the direction was already covered by any
+/// edge; false if blocked by `preset_state`.
+pub(crate) fn try_add_directed_teleport(
+    graph: &mut Graph,
+    a: NodeId,
+    b: NodeId,
+    preset_state: &PresetState,
+) -> bool {
+    if preset_state.locked_out.contains(&a) { return false; }
+    if preset_state.locked_in.contains(&b) { return false; }
+    if preset_state.blocked.contains(&(a, b)) { return false; }
+    if graph.edge_between(a, b).is_none() {
+        graph.add_edge(a, b, EdgeKind::Teleport);
+    }
+    true
+}
+
+/// try_add_bidirectional_teleport: strict "both directions free, or skip the pair" connect for
+/// a matched two-way `Teleport` (`TeleportRegionMergeStrategy`'s `two_way` direction mode) —
+/// same "check both directions before mutating either" contract as `try_add_bidirectional_edge`,
+/// just for `Teleport` edges instead of `Basic`. Idempotent against any existing edge kind in
+/// each direction (mirrors `try_add_directed_teleport`). Returns false (no mutation at all) if
+/// either direction is blocked by `preset_state` — never leaves one direction added and the
+/// other missing.
+pub(crate) fn try_add_bidirectional_teleport(
+    graph: &mut Graph,
+    a: NodeId,
+    b: NodeId,
+    preset_state: &PresetState,
+) -> bool {
+    let fwd_blocked = preset_state.blocked.contains(&(a, b))
+        || preset_state.locked_out.contains(&a)
+        || preset_state.locked_in.contains(&b);
+    let bwd_blocked = preset_state.blocked.contains(&(b, a))
+        || preset_state.locked_out.contains(&b)
+        || preset_state.locked_in.contains(&a);
+    if fwd_blocked || bwd_blocked {
+        return false;
+    }
+    if graph.edge_between(a, b).is_none() {
+        graph.add_edge(a, b, EdgeKind::Teleport);
+    }
+    if graph.edge_between(b, a).is_none() {
+        graph.add_edge(b, a, EdgeKind::Teleport);
+    }
+    true
+}
+
 /// try_remove_edge: respects PresetState before removing a directed edge.
 /// Returns true if the edge was removed, false if it is protected by a preset connection.
 pub(crate) fn try_remove_edge(

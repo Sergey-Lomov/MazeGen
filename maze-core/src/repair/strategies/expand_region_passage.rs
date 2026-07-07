@@ -1,4 +1,4 @@
-use rand::{Rng, RngCore};
+use rand::RngCore;
 use std::collections::HashMap;
 use crate::Maze;
 use crate::ids::NodeId;
@@ -10,22 +10,17 @@ use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::snapshot::SnapshotStack;
+use crate::repair::strategies::region_merge_core::{
+    self, PARAM_TARGET_MODE, PARAM_PREFER_PARTIALLY_CONNECTED, MODE_OPTIONS, MODE_RANDOM,
+};
 use crate::graph::scc::ConnectedComponents;
 use std::collections::HashSet;
 
-pub const PARAM_TARGET_MODE: &str = "target_mode";
 pub const PARAM_CONNECTION_MODE: &str = "connection_mode";
-pub const PARAM_PREFER_PARTIALLY_CONNECTED: &str = "prefer_partially_connected";
-
-pub const MODE_LARGEST: &str = "largest";
-pub const MODE_SMALLEST: &str = "smallest";
-pub const MODE_RANDOM: &str = "random";
-pub const MODE_PREFER_NEEDY: &str = "prefer_needy";
 
 pub const CONNECTION_PASSAGE: &str = "passage";
 pub const CONNECTION_ONE_WAY: &str = "one_way";
 
-static MODE_OPTIONS: &[&str] = &[MODE_LARGEST, MODE_SMALLEST, MODE_RANDOM, MODE_PREFER_NEEDY];
 static CONNECTION_OPTIONS: &[&str] = &[CONNECTION_PASSAGE, CONNECTION_ONE_WAY];
 
 static PARAMS: &[StrategyParam] = &[
@@ -94,32 +89,13 @@ impl<T: Tessellation> RepairStrategy<T> for ExpandRegionPassageStrategy {
         };
 
         let scc = maze.analysis.scc(&maze.graph);
-        let mut pending: Vec<ComponentId> = invalid.clone();
-        let mut merged_away: HashSet<ComponentId> = HashSet::new();
-        let mut any_fixed = false;
 
-        while let Some(region_idx) = pending.pop() {
-            if merged_away.contains(&region_idx) {
-                continue;
-            }
-            let Some(region) = scc.components.get(region_idx) else { continue };
-
-            let needy: HashSet<ComponentId> =
-                invalid.iter().copied().filter(|i| *i != region_idx && !merged_away.contains(i)).collect();
-
-            let candidate = find_merge_candidate(
-                region, region_idx, &scc, &mut *maze, preset_state, mode, connection_mode, prefer_partial, &needy, rng,
-            );
-
-            let Some((neighbor_idx, applied)) = candidate else { continue };
-            if !applied {
-                continue;
-            }
-            any_fixed = true;
-            if needy.contains(&neighbor_idx) {
-                merged_away.insert(neighbor_idx);
-            }
-        }
+        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
+            let region = scc.components.get(region_idx)?;
+            find_merge_candidate(
+                region, region_idx, &scc, &mut *maze, preset_state, mode, connection_mode, prefer_partial, needy, rng,
+            )
+        });
 
         if any_fixed {
             RepairResult::Fixed { score: None }
@@ -241,9 +217,9 @@ fn find_merge_candidate<T: Tessellation>(
             info.has_outbound != info.has_inbound // exactly one direction present
         })
         .collect();
-    let pool: &Vec<ComponentId> = if prefer_partial && !partial.is_empty() { &partial } else { &keys };
+    let pool = region_merge_core::narrow_to_partial(&keys, &partial, prefer_partial);
 
-    let chosen = pick_by_mode(pool, scc, mode, needy, rng)?;
+    let chosen = region_merge_core::pick_by_mode(pool, scc, mode, needy, rng)?;
     let info = &by_neighbor[&chosen];
 
     let applied = match connection_mode {
@@ -271,33 +247,6 @@ fn find_first_neighbor_passage<T: Tessellation>(
     let (node, neighbor_node, neighbor_idx) = first?;
     let applied = try_add_bidirectional_edge(&mut maze.graph, node, neighbor_node, preset_state);
     Some((neighbor_idx, applied))
-}
-
-/// Picks one component id from `pool` according to `mode`, same selection rules
-/// `ExpandRegionPassageStrategy` has always used (`largest`/`smallest` by component size,
-/// `prefer_needy` biased toward flagged neighbors, `random` uniform).
-fn pick_by_mode(
-    pool: &[ComponentId],
-    scc: &ConnectedComponents,
-    mode: &str,
-    needy: &HashSet<ComponentId>,
-    rng: &mut dyn RngCore,
-) -> Option<ComponentId> {
-    if pool.is_empty() {
-        return None;
-    }
-    match mode {
-        MODE_LARGEST => pool.iter().copied().max_by_key(|i| scc.components[*i].len()),
-        MODE_SMALLEST => pool.iter().copied().min_by_key(|i| scc.components[*i].len()),
-        MODE_PREFER_NEEDY => {
-            let needy_candidates: Vec<ComponentId> = pool.iter().copied().filter(|i| needy.contains(i)).collect();
-            let sub_pool = if needy_candidates.is_empty() { pool } else { &needy_candidates };
-            Some(sub_pool[rng.random_range(0..sub_pool.len())])
-        }
-        // `random`, or an unknown mode (shouldn't happen — `build_params` always falls back
-        // to the enum's default): pick any.
-        _ => Some(pool[rng.random_range(0..pool.len())]),
-    }
 }
 
 /// Applies the `one_way` connection mode to a chosen neighbor: ensures both a `region ->
@@ -440,6 +389,7 @@ mod tests {
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, Field};
     use crate::repair::params::build_params;
+    use region_merge_core::{MODE_LARGEST, MODE_SMALLEST, MODE_PREFER_NEEDY};
 
     fn params_with(mode: &str, connection_mode: &str, prefer_partial: bool) -> StrategyParams {
         let mut overrides = StdHashMap::new();

@@ -275,7 +275,7 @@ mod tests {
     fn expand_region_passage_nested_legacy_fast_path<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> {
         let mut param_overrides = std::collections::HashMap::new();
         param_overrides.insert(
-            crate::repair::strategies::expand_region_passage::PARAM_PREFER_PARTIALLY_CONNECTED.to_string(),
+            crate::repair::strategies::region_merge_core::PARAM_PREFER_PARTIALLY_CONNECTED.to_string(),
             "false".to_string(),
         );
         vec![NestedStrategyConfig {

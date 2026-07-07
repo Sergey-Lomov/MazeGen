@@ -159,6 +159,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.expand_region_passage.label"] as MessageFn,
     description: m["strategy.expand_region_passage.description"] as MessageFn,
   },
+  teleport_region_merge: {
+    label: m["strategy.teleport_region_merge.label"] as MessageFn,
+    description: m["strategy.teleport_region_merge.description"] as MessageFn,
+  },
   missing_regions: {
     label: m["strategy.missing_regions.label"] as MessageFn,
     description: m["strategy.missing_regions.description"] as MessageFn,
@@ -266,6 +270,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.prefer_partially_connected.label"] as MessageFn,
     description: m["param.prefer_partially_connected.description"] as MessageFn,
   },
+  direction_mode: {
+    label: m["param.direction_mode.label"] as MessageFn,
+    description: m["param.direction_mode.description"] as MessageFn,
+  },
+  min_distance: {
+    label: m["param.min_distance.label"] as MessageFn,
+    description: m["param.min_distance.description"] as MessageFn,
+  },
   locality: {
     label: m["param.locality.label"] as MessageFn,
     description: m["param.locality.description"] as MessageFn,
@@ -357,6 +369,8 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "target_mode.prefer_needy": m["param.target_mode.option.prefer_needy"] as MessageFn,
   "connection_mode.passage": m["param.connection_mode.option.passage"] as MessageFn,
   "connection_mode.one_way": m["param.connection_mode.option.one_way"] as MessageFn,
+  "direction_mode.two_way": m["param.direction_mode.option.two_way"] as MessageFn,
+  "direction_mode.one_way": m["param.direction_mode.option.one_way"] as MessageFn,
   "region_class.all": m["param.region_class.option.all"] as MessageFn,
   "region_class.path": m["param.region_class.option.path"] as MessageFn,
   "region_class.alternative": m["param.region_class.option.alternative"] as MessageFn,
@@ -392,6 +406,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "target_mode.prefer_needy": m["param.target_mode.option.prefer_needy.explanation"] as MessageFn,
   "connection_mode.passage": m["param.connection_mode.option.passage.explanation"] as MessageFn,
   "connection_mode.one_way": m["param.connection_mode.option.one_way.explanation"] as MessageFn,
+  "direction_mode.two_way": m["param.direction_mode.option.two_way.explanation"] as MessageFn,
+  "direction_mode.one_way": m["param.direction_mode.option.one_way.explanation"] as MessageFn,
   "region_class.all": m["param.region_class.option.all.explanation"] as MessageFn,
   "region_class.path": m["param.region_class.option.path.explanation"] as MessageFn,
   "region_class.alternative": m["param.region_class.option.alternative.explanation"] as MessageFn,
