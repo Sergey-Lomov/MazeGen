@@ -167,7 +167,7 @@ The `generate` WASM function accepts `debug: bool` (default `false`). When `true
 
 `debug_steps` is always empty in this mode (no generation step ever runs) — `config.debug` is ignored, not an error, when `qc_experiment` is set.
 
-Web UI: a "QC experiment" button on the generation card, next to Generate/Re-Generate, always available (no dev/debug gating) — see GitHub issue #93. The web store tracks `lastUsedQcExperiment` (`maze-web/src/store/storeTypes.ts`) since QC experiment isn't a persistent toggle — this lets the debug-export payload (`buildExactGenerateCallPayload`) faithfully reproduce the exact config a QC-experiment run actually used, not silently fall back to a normal-run payload.
+Web UI: a "QC Only" toggle (`Switch`) on the generation card, next to Generate/Re-Generate, always available (no dev/debug gating) — see GitHub issue #96 (originally a separate button, GitHub issue #93). The toggle is a persistent part of generation config: `qcExperiment` (`maze-web/src/store/storeTypes.ts`) is serialized into the project file (`ProjectFile.generation.qcExperiment`, `maze-web/src/store/projectExport/types.ts`), so loading a project restores it and the next `generate`/`regenerate` call reproduces `qc_experiment` correctly without the user re-selecting the mode. Since the toggle can be flipped after a run without a new generation happening, a separate `lastUsedQcExperiment` flag records what the last actual `generate`/`regenerate`/`loadProject` call used; the debug-export payload (`buildExactGenerateCallPayload`) reads `lastUsedQcExperiment`, not the live toggle, so it faithfully reproduces the exact config the core actually last received.
 
 ---
 

@@ -1275,36 +1275,60 @@ describe("mazeStore generation misc actions", () => {
   });
 });
 
-describe("mazeStore.generateQcExperiment", () => {
-  it("calls generateMaze with qc_experiment true and locked_nodes cleared", () => {
+describe("mazeStore.qcExperiment toggle", () => {
+  it("generate() calls generateMaze with qc_experiment true and locked_nodes cleared when qcExperiment is on", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
     useMazeStore.setState({
       seed: 7,
       randomSeed: false,
       rules: [],
+      qcExperiment: true,
       lockedNodes: new Map([["0,0", "both"]]),
     });
-    useMazeStore.getState().generateQcExperiment();
+    useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
       qc_experiment: true,
       locked_nodes: [],
     }));
   });
 
-  it("sets lastUsedQcExperiment true, generate() resets it to false", () => {
+  it("setQcExperiment persists the toggle across generate() calls", () => {
     vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
-    useMazeStore.getState().generateQcExperiment();
-    expect(useMazeStore.getState().lastUsedQcExperiment).toBe(true);
+    useMazeStore.getState().setQcExperiment(true);
+    expect(useMazeStore.getState().qcExperiment).toBe(true);
     useMazeStore.getState().generate();
+    expect(useMazeStore.getState().qcExperiment).toBe(true);
+  });
+
+  it("regenerate() also honors qcExperiment", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], lastUsedSeed: 7, qcExperiment: true });
+    useMazeStore.getState().regenerate();
+    expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({ qc_experiment: true }));
+  });
+
+  it("generate()/regenerate() record lastUsedQcExperiment from the toggle at call time", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], qcExperiment: true });
+    useMazeStore.getState().generate();
+    expect(useMazeStore.getState().lastUsedQcExperiment).toBe(true);
+
+    useMazeStore.setState({ qcExperiment: false });
+    useMazeStore.getState().regenerate();
     expect(useMazeStore.getState().lastUsedQcExperiment).toBe(false);
   });
 
-  it("regenerate() also resets lastUsedQcExperiment to false", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
-    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], lastUsedSeed: 7, lastUsedQcExperiment: true });
-    useMazeStore.getState().regenerate();
-    expect(useMazeStore.getState().lastUsedQcExperiment).toBe(false);
+  it("setQcExperiment marks debugStale when a debug snapshot exists", () => {
+    useMazeStore.setState({ debugSnapshot: { nodes: [], steps: [] } });
+    useMazeStore.getState().setQcExperiment(true);
+    expect(useMazeStore.getState().debugStale).toBe(true);
+  });
+
+  it("setQcExperiment does not mark debugStale when there is no debug snapshot", () => {
+    useMazeStore.setState({ debugSnapshot: null, debugStale: false });
+    useMazeStore.getState().setQcExperiment(true);
+    expect(useMazeStore.getState().debugStale).toBe(false);
   });
 });
 
@@ -1327,6 +1351,18 @@ describe("buildExactGenerateCallPayload", () => {
       seed: 7,
       lastUsedSeed: 7,
       lastUsedQcExperiment: false,
+      rules: [],
+    });
+    const payload = buildExactGenerateCallPayload(useMazeStore.getState);
+    expect(payload?.config.qc_experiment).toBeUndefined();
+  });
+
+  it("ignores a live qcExperiment toggle flipped after the last actual run", () => {
+    useMazeStore.setState({
+      seed: 7,
+      lastUsedSeed: 7,
+      lastUsedQcExperiment: false,
+      qcExperiment: true,
       rules: [],
     });
     const payload = buildExactGenerateCallPayload(useMazeStore.getState);

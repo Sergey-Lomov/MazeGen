@@ -368,6 +368,9 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const initial = assertObject(genObj.initial, "generation.initial") as unknown as InitialGenerationConfig;
   assertString((initial as Record<string, unknown>).method as unknown, "generation.initial.method");
   const elements = assertObject(genObj.elements, "generation.elements") as unknown as ElementsConfig;
+  // Optional — absent in project files saved before QC Only became a persistent toggle (see
+  // GitHub issue #96); old files default to off, same as a fresh store.
+  const qcExperiment = optBool(genObj, "qcExperiment", false);
 
   // quality
   const qualObj = assertObject(migrated.quality, "quality");
@@ -495,7 +498,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   return {
     version: CURRENT_VERSION,
     tessellation: { config, savedConfigs },
-    generation: { seed, randomSeed, initial, elements },
+    generation: { seed, randomSeed, initial, elements, qcExperiment },
     quality: { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
     presets: {
       connections,

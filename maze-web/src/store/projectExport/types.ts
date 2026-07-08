@@ -86,6 +86,7 @@ export interface ProjectFile {
     randomSeed: boolean;
     initial: InitialGenerationConfig;
     elements: ElementsConfig;
+    qcExperiment: boolean;
   };
   quality: {
     rules: ProjectFileQcRule[];

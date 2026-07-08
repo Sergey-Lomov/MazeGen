@@ -74,6 +74,8 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       randomSeed: file.generation.randomSeed,
       initialConfig: file.generation.initial,
       elementsConfig: file.generation.elements,
+      qcExperiment: file.generation.qcExperiment,
+      lastUsedQcExperiment: file.generation.qcExperiment,
       // quality
       // nextLocalCheckId recomputed below, not stored in the project file — see CheckInstance's
       // doc comment in storeTypes.ts.
@@ -150,7 +152,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store
     // skipConfirmPostEdit=true to avoid double confirmPostEdit (we call it ourselves below)
     set({ lastUsedSeed: file.generation.seed });
-    generateWithSeed(file.generation.seed, get, set, true);
+    generateWithSeed(file.generation.seed, get, set, true, file.generation.qcExperiment);
 
     // Only proceed with post-edit and analytics if generation succeeded
     if (get().generationStatus !== "done") return;

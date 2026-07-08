@@ -310,9 +310,16 @@ export interface GenerationState {
   // Runtime generation state
   randomSeed: boolean;
   lastUsedSeed: number | null;
-  /** Whether the last actual generation run (`generate`/`regenerate`/`generateQcExperiment`) was
-   *  a QC experiment call — lets `buildExactGenerateCallPayload` reproduce the exact payload the
-   *  core last received, since QC experiment mode isn't a persistent UI toggle. */
+  /** Persistent QC Only mode toggle — part of the serialized project file (`generation.qcExperiment`
+   *  in `ProjectFile`), so loading a project restores it and the next `generate`/`regenerate` call
+   *  reproduces `qc_experiment` correctly without the user re-selecting the mode. This is the
+   *  forward-looking control the UI switch binds to — it can change after a run without a new
+   *  generation happening, so it is NOT what a snapshot of "what actually ran" should read. */
+  qcExperiment: boolean;
+  /** Whether the last actual generation run (`generate`/`regenerate`/`loadProject`) used QC Only
+   *  mode — lets `buildExactGenerateCallPayload` reproduce the exact config the core last
+   *  received, since `qcExperiment` (the toggle) may have been flipped after that run without a
+   *  new one happening yet. */
   lastUsedQcExperiment: boolean;
   generationStatus: "idle" | "done" | "error";
   // Active feature card
@@ -336,11 +343,10 @@ export interface GenerationState {
 
 export interface GenerationActions {
   generate: () => void;
-  /** QC experiment mode — skips the generation algorithm entirely and runs QC/repair directly
-   * on the preset-seeded graph (preset connections applied, no algorithmic edges added). Lets
-   * a hand-crafted preset setup be used to study QC/repair behavior in isolation. Uses the same
-   * seed resolution as `generate` (random seed rolled if `randomSeed` is on). */
-  generateQcExperiment: () => void;
+  /** Sets the persistent QC Only mode toggle — see `GenerationState.qcExperiment`'s doc comment.
+   * When on, `generate`/`regenerate` skip the generation algorithm entirely and run QC/repair
+   * directly on the preset-seeded graph (preset connections applied, no algorithmic edges added). */
+  setQcExperiment: (v: boolean) => void;
   reset: () => void;
   setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze", value: boolean) => void;
   selectNode: (id: number | null) => void;

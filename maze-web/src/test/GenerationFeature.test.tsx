@@ -9,6 +9,7 @@ beforeEach(() => {
     seed: 42,
     randomSeed: false,
     lastUsedSeed: null,
+    qcExperiment: false,
     generationStatus: "idle",
     debugMode: false,
     error: null,
@@ -18,54 +19,48 @@ beforeEach(() => {
   });
 });
 
-describe("GenerationFeature — QC experiment button", () => {
-  it("calls generateQcExperiment directly when post-edit is not dirty", () => {
-    const generateQcExperiment = vi.fn();
-    useMazeStore.setState({ generateQcExperiment });
+describe("GenerationFeature — QC Only toggle", () => {
+  it("reflects the store's qcExperiment value", () => {
+    useMazeStore.setState({ qcExperiment: true });
     render(<GenerationFeature canGenerate={true} />);
 
-    fireEvent.click(screen.getByText(m["generation.qc_experiment"]()));
-
-    expect(generateQcExperiment).toHaveBeenCalledTimes(1);
+    const checkbox = screen.getByText(m["generation.qc_experiment"]())
+      .closest("div")!
+      .querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
   });
 
-  it("is disabled when canGenerate is false", () => {
-    render(<GenerationFeature canGenerate={false} />);
-    const button = screen.getByText(m["generation.qc_experiment"]()).closest("button");
-    expect(button).toBeDisabled();
-  });
-
-  it("shows a confirm modal instead of calling generateQcExperiment when post-edit is dirty", () => {
-    const generateQcExperiment = vi.fn();
-    useMazeStore.setState({ generateQcExperiment, postEditDirty: true });
+  it("calls setQcExperiment when toggled", () => {
+    const setQcExperiment = vi.fn();
+    useMazeStore.setState({ setQcExperiment });
     render(<GenerationFeature canGenerate={true} />);
 
-    fireEvent.click(screen.getByText(m["generation.qc_experiment"]()));
+    const checkbox = screen.getByText(m["generation.qc_experiment"]())
+      .closest("div")!
+      .querySelector("input[type=checkbox]") as HTMLInputElement;
+    fireEvent.click(checkbox);
 
-    expect(generateQcExperiment).not.toHaveBeenCalled();
+    expect(setQcExperiment).toHaveBeenCalledWith(true);
+  });
+
+  it("calls generate directly when post-edit is not dirty", () => {
+    const generate = vi.fn();
+    useMazeStore.setState({ generate });
+    render(<GenerationFeature canGenerate={true} />);
+
+    fireEvent.click(screen.getByText(m["generation.generate"]()));
+
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a confirm modal instead of calling generate when post-edit is dirty", () => {
+    const generate = vi.fn();
+    useMazeStore.setState({ generate, postEditDirty: true });
+    render(<GenerationFeature canGenerate={true} />);
+
+    fireEvent.click(screen.getByText(m["generation.generate"]()));
+
+    expect(generate).not.toHaveBeenCalled();
     expect(screen.getByText(m["post_edit.confirm_regenerate"]())).toBeInTheDocument();
-  });
-
-  it("calls generateQcExperiment after confirming the pending post-edit dialog", () => {
-    const generateQcExperiment = vi.fn();
-    useMazeStore.setState({ generateQcExperiment, postEditDirty: true });
-    render(<GenerationFeature canGenerate={true} />);
-
-    fireEvent.click(screen.getByText(m["generation.qc_experiment"]()));
-    fireEvent.click(screen.getByText(m["common.ok"]()));
-
-    expect(generateQcExperiment).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not call generateQcExperiment when the pending post-edit dialog is cancelled", () => {
-    const generateQcExperiment = vi.fn();
-    useMazeStore.setState({ generateQcExperiment, postEditDirty: true });
-    render(<GenerationFeature canGenerate={true} />);
-
-    fireEvent.click(screen.getByText(m["generation.qc_experiment"]()));
-    fireEvent.click(screen.getByText(m["common.cancel"]()));
-
-    expect(generateQcExperiment).not.toHaveBeenCalled();
-    expect(screen.queryByText(m["post_edit.confirm_regenerate"]())).not.toBeInTheDocument();
   });
 });

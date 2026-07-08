@@ -159,6 +159,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   timing: null,
   randomSeed: false,
   lastUsedSeed: null,
+  qcExperiment: false,
   lastUsedQcExperiment: false,
   generationStatus: "idle" as const,
   openCard: "basic_config" as const,
@@ -225,27 +226,18 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       usedSeed = Math.floor(Math.random() * 1_000_000);
       set({ seed: usedSeed });
     }
-    set({ lastUsedSeed: usedSeed, lastUsedQcExperiment: false });
-    generateWithSeed(usedSeed, get, set);
-  },
-
-  generateQcExperiment: () => {
-    const state = get();
-    let usedSeed = state.seed;
-    if (state.randomSeed) {
-      usedSeed = Math.floor(Math.random() * 1_000_000);
-      set({ seed: usedSeed });
-    }
-    set({ lastUsedSeed: usedSeed, lastUsedQcExperiment: true });
-    generateWithSeed(usedSeed, get, set, false, true);
+    set({ lastUsedSeed: usedSeed, lastUsedQcExperiment: state.qcExperiment });
+    generateWithSeed(usedSeed, get, set, false, state.qcExperiment);
   },
 
   regenerate: () => {
     const state = get();
     if (state.lastUsedSeed === null) return;
-    set({ lastUsedQcExperiment: false });
-    generateWithSeed(state.lastUsedSeed, get, set);
+    set({ lastUsedQcExperiment: state.qcExperiment });
+    generateWithSeed(state.lastUsedSeed, get, set, false, state.qcExperiment);
   },
+
+  setQcExperiment: (v) => set((state) => ({ qcExperiment: v, debugStale: debugStaleOf(state) })),
 
   setRandomSeed: (v) => set({ randomSeed: v }),
 
@@ -771,13 +763,14 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
 }
 
 /**
- * Builds the exact `{ seed, config }` payload that `generateWithSeed` would send into
- * `generateMaze` right now -- same `buildGenerateConfig(state)` call, same seed resolution
- * (the last seed actually used, falling back to the configured one) -- but instead of calling
- * the wasm core, returns it for download. Lets a bug report attach the literal input the core
- * received, without anyone hand-reconstructing the JS->wasm config-building logic (tessellation
- * point centering/ordering, rule composition, etc.) by hand and risking drift from the real
- * code path. Returns `null` under the same precondition `generateWithSeed` bails out on.
+ * Builds the exact `{ seed, config }` payload that the last actual `generateWithSeed` call sent
+ * into `generateMaze` -- same `buildGenerateConfig(state)` call, same seed resolution (the last
+ * seed actually used, falling back to the configured one), and `lastUsedQcExperiment` (not the
+ * live `qcExperiment` toggle, which may have been flipped since without a new run happening) --
+ * but instead of calling the wasm core, returns it for download. Lets a bug report attach the
+ * literal input the core received, without anyone hand-reconstructing the JS->wasm config-building
+ * logic (tessellation point centering/ordering, rule composition, etc.) by hand and risking drift
+ * from the real code path. Returns `null` under the same precondition `generateWithSeed` bails out on.
  */
 export function buildExactGenerateCallPayload(get: StoreGet): { seed: number; config: GenerateConfig } | null {
   const state = get();
