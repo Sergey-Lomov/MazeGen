@@ -159,6 +159,16 @@ All numeric values are clamped to `[0.0, 1.0]` in the WASM layer before use.
 
 The `generate` WASM function accepts `debug: bool` (default `false`). When `true`, the response `MazeSnapshot` includes a populated `debug_steps: GenerationStepDto[]`. When `false`, `debug_steps` is empty and no step data is computed.
 
+## QC Experiment Mode
+
+`GenerateConfig.qc_experiment: bool` (default `false`) skips the generation algorithm entirely — no `generate_maze`/`generate_maze_steps` call is made. The graph fed into `build_maze`'s QC/repair pass is exactly what `build_preset_state` built from the preset connections (Passage/OneWay edges applied, nothing else) — lets a user hand-craft an arbitrary preset setup and observe how QC/repair reshapes it in isolation, without generation noise.
+
+**No preset protection in this mode.** The `PresetState` passed to `build_maze` is `PresetState::empty()` (via `PresetState::for_repair(qc_experiment)`, `maze-core/src/generation/preset_state.rs`) rather than the one `build_preset_state` actually computed — repair is free to add or remove any edge, including ones the preset setup established (Wall-blocked pairs, Passage edges, locked nodes, manual or auto-computed). The graph itself still starts from the preset setup; only the *constraints* repair would otherwise honor are dropped. `maze-wasm::run_generate` and `maze-runner::run_generate_typed` both apply this identically, so native repro tests (`maze-runner/tests/repro.rs`) faithfully reproduce browser QC-experiment behavior.
+
+`debug_steps` is always empty in this mode (no generation step ever runs) — `config.debug` is ignored, not an error, when `qc_experiment` is set.
+
+Web UI: a "QC experiment" button on the generation card, next to Generate/Re-Generate, always available (no dev/debug gating) — see GitHub issue #93. The web store tracks `lastUsedQcExperiment` (`maze-web/src/store/storeTypes.ts`) since QC experiment isn't a persistent toggle — this lets the debug-export payload (`buildExactGenerateCallPayload`) faithfully reproduce the exact config a QC-experiment run actually used, not silently fall back to a normal-run payload.
+
 ---
 
 ## CustomEdgeBased Algorithm

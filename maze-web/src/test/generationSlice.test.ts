@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
-import { fieldConfigToWasm } from "../store/slices/generationSlice";
+import { fieldConfigToWasm, buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { baseStoreState, emptyFreePoints, mockSnapshot, resetGenerationMocks } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -1272,5 +1272,64 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().error).toBe("boom");
     useMazeStore.getState().setError(null);
     expect(useMazeStore.getState().error).toBeNull();
+  });
+});
+
+describe("mazeStore.generateQcExperiment", () => {
+  it("calls generateMaze with qc_experiment true and locked_nodes cleared", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({
+      seed: 7,
+      randomSeed: false,
+      rules: [],
+      lockedNodes: new Map([["0,0", "both"]]),
+    });
+    useMazeStore.getState().generateQcExperiment();
+    expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
+      qc_experiment: true,
+      locked_nodes: [],
+    }));
+  });
+
+  it("sets lastUsedQcExperiment true, generate() resets it to false", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    useMazeStore.getState().generateQcExperiment();
+    expect(useMazeStore.getState().lastUsedQcExperiment).toBe(true);
+    useMazeStore.getState().generate();
+    expect(useMazeStore.getState().lastUsedQcExperiment).toBe(false);
+  });
+
+  it("regenerate() also resets lastUsedQcExperiment to false", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], lastUsedSeed: 7, lastUsedQcExperiment: true });
+    useMazeStore.getState().regenerate();
+    expect(useMazeStore.getState().lastUsedQcExperiment).toBe(false);
+  });
+});
+
+describe("buildExactGenerateCallPayload", () => {
+  it("includes qc_experiment/locked_nodes overrides when lastUsedQcExperiment is true", () => {
+    useMazeStore.setState({
+      seed: 7,
+      lastUsedSeed: 7,
+      lastUsedQcExperiment: true,
+      rules: [],
+      lockedNodes: new Map([["0,0", "both"]]),
+    });
+    const payload = buildExactGenerateCallPayload(useMazeStore.getState);
+    expect(payload?.config.qc_experiment).toBe(true);
+    expect(payload?.config.locked_nodes).toEqual([]);
+  });
+
+  it("omits qc_experiment override when lastUsedQcExperiment is false", () => {
+    useMazeStore.setState({
+      seed: 7,
+      lastUsedSeed: 7,
+      lastUsedQcExperiment: false,
+      rules: [],
+    });
+    const payload = buildExactGenerateCallPayload(useMazeStore.getState);
+    expect(payload?.config.qc_experiment).toBeUndefined();
   });
 });

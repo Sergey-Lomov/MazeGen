@@ -76,6 +76,8 @@
   "generation.generate_first": "Сначала сгенерируйте",
   "generation.regenerate": "Перегенерировать",
   "generation.regenerate_tooltip": "Перегенерация с последним сидом ({seed})",
+  "generation.qc_experiment": "QC Only",
+  "generation.qc_experiment_tooltip": "Пропустить генерацию и запустить QC/repair прямо по пресет-настройке",
   "generation.save_debug_config": "Сохранить отладочный конфиг",
   "generation.save_debug_config_tooltip": "Скачать точный seed/config, который был отправлен в ядро в последний раз — для баг-репортов",
   "generation.debug_mode": "Режим отладки",

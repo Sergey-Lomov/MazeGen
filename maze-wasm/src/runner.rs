@@ -33,7 +33,13 @@ pub fn run_generate<T: Tessellation>(
         |x, y| field.all_points().find(|&p| point_to_xy(p) == (x, y)).unwrap_or(start),
     );
     let initial_build_start = now_ms();
-    let raw_steps: Vec<GenerationStep> = if config.debug {
+    // QC experiment mode skips the generation algorithm entirely — the graph built by
+    // `build_preset_state` above (preset connections only, no generated edges) is fed straight
+    // into `build_maze`'s QC/repair pass. `debug_steps` has nothing to record in this case (no
+    // generation step ever runs), so `config.debug` is ignored here rather than erroring.
+    let raw_steps: Vec<GenerationStep> = if config.qc_experiment {
+        vec![]
+    } else if config.debug {
         generate_maze_steps(&mut graph, &field, seed, start_id, gen_config, &preset_state)
     } else {
         generate_maze(&mut graph, &field, seed, start_id, gen_config, &preset_state);
@@ -51,7 +57,8 @@ pub fn run_generate<T: Tessellation>(
         field.all_points().find(|&p| point_to_xy(p) == (fx, fy)).and_then(|p| field.node_at(p))
     });
 
-    let (mut maze, issues, mut timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, build_repair_limits(config), preset_start, preset_finish);
+    let repair_preset_state = preset_state.for_repair(config.qc_experiment);
+    let (mut maze, issues, mut timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &repair_preset_state, build_repair_limits(config), preset_start, preset_finish);
     timing.initial_build_ms = initial_build_ms;
 
     let debug_steps = steps_to_dto(raw_steps);

@@ -476,7 +476,12 @@ fn run_generate_typed<T: Tessellation>(
         |_, _| start,
     );
 
-    generate_maze(&mut graph, &field, seed, start_id, gen_config, &preset_state);
+    // QC experiment mode skips the generation algorithm entirely — mirrors `maze-wasm`'s
+    // `run_generate` (see `Specs`'s generation-card "QC experiment" mode). The graph built by
+    // `build_preset_state` above (preset connections only) is fed straight into `build_maze`.
+    if !config.qc_experiment {
+        generate_maze(&mut graph, &field, seed, start_id, gen_config, &preset_state);
+    }
 
     let (qc_engine, repair_engine) = build_qc_and_repair::<T>(config)?;
     let limits = build_repair_limits(config);
@@ -486,7 +491,8 @@ fn run_generate_typed<T: Tessellation>(
     let preset_finish = config.preset_finish.and_then(|[fx, fy]| {
         field.all_points().find(|&p| to_xy(p) == (fx, fy)).and_then(|p| field.node_at(p))
     });
-    let (maze, remaining_issues, timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &preset_state, limits, preset_start, preset_finish);
+    let repair_preset_state = preset_state.for_repair(config.qc_experiment);
+    let (maze, remaining_issues, timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &repair_preset_state, limits, preset_start, preset_finish);
 
     let start_node = maze.meta.start;
     let finish_node = maze.meta.finish;

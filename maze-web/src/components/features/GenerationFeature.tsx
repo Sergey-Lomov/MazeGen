@@ -33,10 +33,11 @@ export function GenerationFeature({ canGenerate }: Props) {
   const setElementsParam = useMazeStore((s) => s.setElementsParam);
   const generate = useMazeStore((s) => s.generate);
   const regenerate = useMazeStore((s) => s.regenerate);
+  const generateQcExperiment = useMazeStore((s) => s.generateQcExperiment);
   const postEditDirty = useMazeStore(selectPostEditDirty);
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"generate" | "regenerate" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"generate" | "regenerate" | "qc_experiment" | null>(null);
 
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
@@ -56,9 +57,15 @@ export function GenerationFeature({ canGenerate }: Props) {
     regenerate();
   }
 
+  function handleQcExperiment() {
+    if (postEditDirty) { setPendingAction("qc_experiment"); return; }
+    generateQcExperiment();
+  }
+
   function confirmPending() {
     if (pendingAction === "generate") generate();
     else if (pendingAction === "regenerate") regenerate();
+    else if (pendingAction === "qc_experiment") generateQcExperiment();
     setPendingAction(null);
   }
 
@@ -156,6 +163,14 @@ export function GenerationFeature({ canGenerate }: Props) {
           {m["generation.regenerate"]()}
         </button>
       </div>
+      <button
+        style={{ ...styles.btnRegenerate, ...(!canGenerate ? styles.btnDisabled : {}) }}
+        disabled={!canGenerate}
+        title={m["generation.qc_experiment_tooltip"]()}
+        onClick={handleQcExperiment}
+      >
+        {m["generation.qc_experiment"]()}
+      </button>
 
       {algorithmDialogOpen && (
         <AlgorithmSelectDialog onClose={() => setAlgorithmDialogOpen(false)} />

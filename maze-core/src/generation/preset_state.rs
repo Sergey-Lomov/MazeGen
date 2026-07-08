@@ -28,6 +28,14 @@ impl PresetState {
             preset_edges:    HashSet::new(),
         }
     }
+
+    /// Resolves which `PresetState` `build_maze`'s repair pass should actually see — QC
+    /// experiment mode has no preset protection at all (the graph already reflects the preset
+    /// setup; only the repair-time constraints are dropped), a normal run keeps `self` as-is.
+    /// Shared by `maze-wasm` and `maze-runner` so both stay in sync — see `Specs/generation.md`.
+    pub fn for_repair(self, qc_experiment: bool) -> Self {
+        if qc_experiment { Self::empty() } else { self }
+    }
 }
 
 /// Build PresetState and apply Passage/OneWay edges to the graph before generation.

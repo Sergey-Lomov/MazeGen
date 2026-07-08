@@ -310,6 +310,10 @@ export interface GenerationState {
   // Runtime generation state
   randomSeed: boolean;
   lastUsedSeed: number | null;
+  /** Whether the last actual generation run (`generate`/`regenerate`/`generateQcExperiment`) was
+   *  a QC experiment call — lets `buildExactGenerateCallPayload` reproduce the exact payload the
+   *  core last received, since QC experiment mode isn't a persistent UI toggle. */
+  lastUsedQcExperiment: boolean;
   generationStatus: "idle" | "done" | "error";
   // Active feature card
   openCard: FeatureId;
@@ -332,6 +336,11 @@ export interface GenerationState {
 
 export interface GenerationActions {
   generate: () => void;
+  /** QC experiment mode — skips the generation algorithm entirely and runs QC/repair directly
+   * on the preset-seeded graph (preset connections applied, no algorithmic edges added). Lets
+   * a hand-crafted preset setup be used to study QC/repair behavior in isolation. Uses the same
+   * seed resolution as `generate` (random seed rolled if `randomSeed` is on). */
+  generateQcExperiment: () => void;
   reset: () => void;
   setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze", value: boolean) => void;
   selectNode: (id: number | null) => void;

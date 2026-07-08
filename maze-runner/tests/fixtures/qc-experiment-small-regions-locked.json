@@ -1,0 +1,86 @@
+{
+  "tessellation": {
+    "tessellation_type": "square",
+    "points": [[-2,-2],[-2,-1],[-2,0],[-2,1],[-2,2],[-1,-2],[-1,-1],[-1,0],[-1,1],[-1,2],[0,-2],[0,-1],[0,0],[0,1],[0,2],[1,-2],[1,-1],[1,0],[1,1],[1,2],[2,-2],[2,-1],[2,0],[2,1],[2,2]]
+  },
+  "stages": [
+    {
+      "id": "stage_92234e32-017e-4550-b56e-8f1d03350a5a",
+      "name": "Stage 2",
+      "rules": [
+        {
+          "id": "rule_88a99bbf-828f-42f9-9b1e-a5602ccdcd35",
+          "checks": [{"local_id": "0", "type_id": "scc_count", "params": {"max_scc_count": "1"}}],
+          "strategy": {
+            "id": "reduce_scc_count",
+            "params": {"merge_priority": "smallest"},
+            "nested": [
+              {"id": "expand_region_passage", "params": {"target_mode": "prefer_needy", "connection_mode": "passage", "prefer_partially_connected": "true"}, "slot_id": "merge_target", "nested": []}
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "stage_329343df-9b9b-4cef-aa84-0d5e0fd6eb17",
+      "name": "Waypoints",
+      "rules": [
+        {"id": "rule_bbb86abc-1b35-487e-8383-9825c2edc8c3", "checks": [{"local_id": "0", "type_id": "missing_endpoints", "params": {}}], "strategy": {"id": "scored_endpoints", "params": {}}},
+        {"id": "rule_a940490e-3e0b-4c27-984d-30c4d69af199", "checks": [{"local_id": "0", "type_id": "unreachable_finish", "params": {}}], "strategy": null}
+      ]
+    }
+  ],
+  "repair_max_iterations": 10,
+  "initial": {"method": "recursive_backtracker"},
+  "elements": {"one_way_chance": 0.04, "teleport_chance": 0, "teleport_one_way_chance": 0},
+  "preset_connections": [
+    {"from": [-2,-2], "to": [-1,-2], "state": "wall"},
+    {"from": [-2,-2], "to": [-2,-1], "state": "wall"},
+    {"from": [-2,-1], "to": [-1,-1], "state": "wall"},
+    {"from": [-2,-1], "to": [-2,0], "state": "wall"},
+    {"from": [-2,0], "to": [-1,0], "state": "wall"},
+    {"from": [-2,0], "to": [-2,1], "state": "wall"},
+    {"from": [-2,1], "to": [-1,1], "state": "wall"},
+    {"from": [-2,1], "to": [-2,2], "state": "wall"},
+    {"from": [-2,2], "to": [-1,2], "state": "wall"},
+    {"from": [-1,-2], "to": [0,-2], "state": "wall"},
+    {"from": [-1,-2], "to": [-1,-1], "state": "wall"},
+    {"from": [-1,-1], "to": [0,-1], "state": "wall"},
+    {"from": [-1,-1], "to": [-1,0], "state": "wall"},
+    {"from": [-1,0], "to": [0,0], "state": "wall"},
+    {"from": [-1,0], "to": [-1,1], "state": "wall"},
+    {"from": [-1,1], "to": [0,1], "state": "wall"},
+    {"from": [-1,1], "to": [-1,2], "state": "wall"},
+    {"from": [-1,2], "to": [0,2], "state": "wall"},
+    {"from": [0,-2], "to": [1,-2], "state": "wall"},
+    {"from": [0,-2], "to": [0,-1], "state": "wall"},
+    {"from": [0,-1], "to": [1,-1], "state": "wall"},
+    {"from": [0,-1], "to": [0,0], "state": "wall"},
+    {"from": [0,0], "to": [1,0], "state": "wall"},
+    {"from": [0,0], "to": [0,1], "state": "wall"},
+    {"from": [0,1], "to": [1,1], "state": "wall"},
+    {"from": [0,1], "to": [0,2], "state": "wall"},
+    {"from": [0,2], "to": [1,2], "state": "wall"},
+    {"from": [1,-2], "to": [2,-2], "state": "wall"},
+    {"from": [1,-2], "to": [1,-1], "state": "wall"},
+    {"from": [1,-1], "to": [2,-1], "state": "wall"},
+    {"from": [1,-1], "to": [1,0], "state": "wall"},
+    {"from": [1,0], "to": [2,0], "state": "wall"},
+    {"from": [1,0], "to": [1,1], "state": "wall"},
+    {"from": [1,1], "to": [2,1], "state": "wall"},
+    {"from": [1,1], "to": [1,2], "state": "wall"},
+    {"from": [1,2], "to": [2,2], "state": "wall"},
+    {"from": [2,-2], "to": [2,-1], "state": "wall"},
+    {"from": [2,-1], "to": [2,0], "state": "wall"},
+    {"from": [2,0], "to": [2,1], "state": "wall"},
+    {"from": [2,1], "to": [2,2], "state": "wall"}
+  ],
+  "locked_nodes": [
+    {"point": [-2,-2], "kind": "both"}, {"point": [-2,-1], "kind": "both"}, {"point": [-2,0], "kind": "both"}, {"point": [-2,1], "kind": "both"}, {"point": [-2,2], "kind": "both"},
+    {"point": [-1,-2], "kind": "both"}, {"point": [-1,-1], "kind": "both"}, {"point": [-1,0], "kind": "both"}, {"point": [-1,1], "kind": "both"}, {"point": [-1,2], "kind": "both"},
+    {"point": [0,-2], "kind": "both"}, {"point": [0,-1], "kind": "both"}, {"point": [0,0], "kind": "both"}, {"point": [0,1], "kind": "both"}, {"point": [0,2], "kind": "both"},
+    {"point": [1,-2], "kind": "both"}, {"point": [1,-1], "kind": "both"}, {"point": [1,0], "kind": "both"}, {"point": [1,1], "kind": "both"}, {"point": [1,2], "kind": "both"},
+    {"point": [2,-2], "kind": "both"}, {"point": [2,-1], "kind": "both"}, {"point": [2,0], "kind": "both"}, {"point": [2,1], "kind": "both"}, {"point": [2,2], "kind": "both"}
+  ],
+  "qc_experiment": true
+}

@@ -159,6 +159,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   timing: null,
   randomSeed: false,
   lastUsedSeed: null,
+  lastUsedQcExperiment: false,
   generationStatus: "idle" as const,
   openCard: "basic_config" as const,
   debugMode: false,
@@ -224,13 +225,25 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       usedSeed = Math.floor(Math.random() * 1_000_000);
       set({ seed: usedSeed });
     }
-    set({ lastUsedSeed: usedSeed });
+    set({ lastUsedSeed: usedSeed, lastUsedQcExperiment: false });
     generateWithSeed(usedSeed, get, set);
+  },
+
+  generateQcExperiment: () => {
+    const state = get();
+    let usedSeed = state.seed;
+    if (state.randomSeed) {
+      usedSeed = Math.floor(Math.random() * 1_000_000);
+      set({ seed: usedSeed });
+    }
+    set({ lastUsedSeed: usedSeed, lastUsedQcExperiment: true });
+    generateWithSeed(usedSeed, get, set, false, true);
   },
 
   regenerate: () => {
     const state = get();
     if (state.lastUsedSeed === null) return;
+    set({ lastUsedQcExperiment: false });
     generateWithSeed(state.lastUsedSeed, get, set);
   },
 
@@ -679,7 +692,16 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   };
 }
 
-export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, skipConfirmPostEdit = false): void {
+/** Applies QC experiment mode's config overrides in place — no preset protection at all
+ *  (including locked nodes, manual or auto-computed): the whole point is letting QC/repair
+ *  freely rework a hand-crafted preset setup. Shared by `generateWithSeed` (the real call) and
+ *  `buildExactGenerateCallPayload` (the debug-export call), so both stay in sync. */
+function applyQcExperimentOverrides(config: GenerateConfig): void {
+  config.qc_experiment = true;
+  config.locked_nodes = [];
+}
+
+export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, skipConfirmPostEdit = false, qcExperiment = false): void {
   const state = get();
   if (state.isEditingField && state.fieldPoints.size < 2) {
     set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
@@ -689,7 +711,11 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
   const debugMode = state.debugMode;
   const config = buildGenerateConfig(state);
   if (!config) return;
-  if (debugMode) config.debug = true;
+  if (qcExperiment) {
+    applyQcExperimentOverrides(config);
+  } else if (debugMode) {
+    config.debug = true;
+  }
   try {
     const snapshot = generateMaze(seed, config);
     warmCartesianCache(activeTessellation);
@@ -759,5 +785,8 @@ export function buildExactGenerateCallPayload(get: StoreGet): { seed: number; co
   const seed = state.lastUsedSeed ?? state.seed;
   const config = buildGenerateConfig(state);
   if (!config) return null;
+  if (state.lastUsedQcExperiment) {
+    applyQcExperimentOverrides(config);
+  }
   return { seed, config };
 }

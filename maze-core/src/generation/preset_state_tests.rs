@@ -115,3 +115,26 @@ fn build_preset_state_locked_node_both_sets_in_and_out() {
     assert!(state.locked_in.contains(&a));
     assert!(state.locked_out.contains(&a));
 }
+
+#[test]
+fn for_repair_returns_empty_when_qc_experiment() {
+    let (field, mut graph) = make_field_and_graph(3, 3);
+    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::Both }];
+    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y });
+    let repair_state = state.for_repair(true);
+    assert!(repair_state.locked_in.is_empty());
+    assert!(repair_state.locked_out.is_empty());
+    assert!(repair_state.blocked.is_empty());
+    assert!(repair_state.preset_edges.is_empty());
+}
+
+#[test]
+fn for_repair_returns_self_unchanged_when_not_qc_experiment() {
+    let (field, mut graph) = make_field_and_graph(3, 3);
+    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::Both }];
+    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y });
+    let a = node_at(&field, 0, 0);
+    let repair_state = state.for_repair(false);
+    assert!(repair_state.locked_in.contains(&a));
+    assert!(repair_state.locked_out.contains(&a));
+}

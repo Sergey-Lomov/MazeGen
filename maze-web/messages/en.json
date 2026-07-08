@@ -71,6 +71,8 @@
   "generation.generate_first": "Generate first",
   "generation.regenerate": "Re-Generate",
   "generation.regenerate_tooltip": "Re-generate with last seed ({seed})",
+  "generation.qc_experiment": "QC Only",
+  "generation.qc_experiment_tooltip": "Skip generation and run QC/repair directly on the preset setup",
   "generation.save_debug_config": "Save Debug Config",
   "generation.save_debug_config_tooltip": "Download the exact seed/config payload that was last sent to the core, for bug reports",
   "generation.debug_mode": "Debug mode",

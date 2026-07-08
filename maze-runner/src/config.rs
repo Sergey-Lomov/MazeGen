@@ -176,6 +176,11 @@ pub struct GenerateConfig {
     // browser debug toolbar) — `maze-runner`'s own native repro tests never read it.
     #[serde(default)]
     pub debug: bool,
+    // Only consumed by `maze-wasm` (skips the generation algorithm entirely and runs QC/repair
+    // directly on the preset-seeded graph) — `maze-runner`'s own native repro tests never read
+    // it, same rationale as `debug`.
+    #[serde(default)]
+    pub qc_experiment: bool,
 }
 
 impl Default for GenerateConfig {
@@ -223,6 +228,7 @@ impl Default for GenerateConfig {
             preset_finish: None,
             preset_gen_source: None,
             debug: false,
+            qc_experiment: false,
         }
     }
 }

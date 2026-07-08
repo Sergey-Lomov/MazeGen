@@ -295,6 +295,7 @@ export interface GenerateConfig {
   preset_finish?: [number, number];
   preset_gen_source?: [number, number];
   debug?: boolean;
+  qc_experiment?: boolean;
 }
 
 export type PostEditEdgeKind = "basic" | "one_way" | "teleport";

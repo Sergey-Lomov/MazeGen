@@ -78,6 +78,43 @@ fn repro_268_carve_trap_from_path() {
     println!("remaining_issues={kinds:?}");
 }
 
+/// QC experiment mode, 5x5 field with every inner edge preset to `wall` — 25 single-node SCC
+/// regions. `scc_count` (max 1) + `reduce_scc_count` (nested `expand_region_passage`) should
+/// merge them down to one region, same as a normal (non-experiment) run would.
+#[test]
+fn repro_qc_experiment_small_regions_not_merged() {
+    let result = run_fixture("tests/fixtures/qc-experiment-small-regions.json", 42);
+
+    for cls in [RegionClass::Path, RegionClass::Alternative, RegionClass::Trap, RegionClass::Unreachable] {
+        let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
+        println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
+    }
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    println!("remaining_issues={kinds:?}");
+    let scc_count = result.region_sizes.values().map(|v| v.len()).sum::<usize>();
+    assert_eq!(scc_count, 1, "all 25 single-node regions must merge into one");
+}
+
+/// Same 5x5 all-wall setup as above, but every cell is also auto-locked "both" (as the browser
+/// actually sent it — auto-lock treats a cell whose every interior edge is explicitly set, wall
+/// or not, as "fully defined" and locks it). QC experiment mode must ignore preset protection
+/// entirely — locks included — or `expand_region_passage` can never bridge any pair (both
+/// `locked_out`/`locked_in` block every candidate edge). Regression for the bug where QC
+/// experiment mode built `PresetState` from `locked_nodes` same as a normal run.
+#[test]
+fn repro_qc_experiment_locked_small_regions_not_merged() {
+    let result = run_fixture("tests/fixtures/qc-experiment-small-regions-locked.json", 42);
+
+    for cls in [RegionClass::Path, RegionClass::Alternative, RegionClass::Trap, RegionClass::Unreachable] {
+        let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
+        println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
+    }
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    println!("remaining_issues={kinds:?}");
+    let scc_count = result.region_sizes.values().map(|v| v.len()).sum::<usize>();
+    assert_eq!(scc_count, 1, "all 25 single-node regions must merge into one, even with every node auto-locked");
+}
+
 /// Seed 268: large Unreachable region (~50 nodes) present but MissingRegionsStrategy
 /// fails to convert it into the required Alternative region.
 #[test]
