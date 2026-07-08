@@ -6,6 +6,7 @@ import { primitiveCells, cfgKind } from "./primitiveGeometry";
 import type { ShapePrimitive, TessellationKind } from "./primitiveGeometry";
 import type { FieldPrimitive } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { canvasToGrid } from "./hoverProviders";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -209,10 +210,7 @@ export class FieldEditController {
   private toGrid(canvasX: number, canvasY: number): { x: number; y: number } | null {
     const proj = this.getProjection();
     if (!proj) return null;
-    const vp = this.getViewport();
-    const vx = (canvasX - vp.x) / vp.scale.x;
-    const vy = (canvasY - vp.y) / vp.scale.y;
-    return proj.screenToGrid(vx, vy);
+    return canvasToGrid(canvasX, canvasY, this.getViewport(), proj);
   }
 
   private applyEdit(x: number, y: number, button: number): void {

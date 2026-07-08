@@ -23,6 +23,18 @@ Top-level coordinator. Holds a single `viewport: Container` for the maze, plus s
 
 **Auto-fit**: on new maze generation, `fitMaze()` scales and centers viewport around all node centers. `refit(durationMs)` repeats this over time (e.g., on panel resize).
 
+## Hover info panel
+
+Thin DOM bar docked at the bottom of the canvas column (`HoverInfoPanel`), showing the grid `x, y` under the cursor. Works uniformly across every card except `quality` (raw HTML5 canvas, no Pixi stage) — one shared mechanism rather than a per-feature reimplementation.
+
+**`HoverProvider`** (`pixi/hoverTypes.ts`): `getHoverInfo(canvasX, canvasY): HoverInfo | null`. `canvasX/canvasY` are raw DOM pointer-event coordinates (before viewport pan/zoom is undone) — each provider does its own transform. Returns `null` only when hover info can't be determined at all (no active projection/viewport); coordinates outside the current field/graph bounds still return a valid `HoverInfo`.
+
+**`DefaultHoverProvider`** (`pixi/hoverProviders.ts`): today's only implementation, used by every card. Converts canvas coords → viewport-local coords → grid coords via the active `TessellationProjection` (`canvasToGrid`, also reused by `FieldEditController.toGrid`).
+
+**Resolution**: `MazeScene.getHoverProvider(st)` mirrors `getController(st)` — resolves which provider is active per `openCard`. Currently always returns the single cached `hoverProvider` instance; a future per-feature override (e.g. edge hit-testing, out of scope for now) would branch here instead, the same way `getController` branches per card. The config used to build the projection is picked via `TESSELLATION_CONFIG_BY_CARD` (a `Record<FeatureId, ...>` lookup, separate from `refit()`'s own config-selection — the two answer different questions and are not shared).
+
+**Wiring**: `SceneInteraction` calls `getHoverProvider(st).getHoverInfo(...)` unconditionally on every `pointermove`, pushing the result to `MazeScene.setHoverListener`'s registered callback (`HoverInfoPanel`'s `setState`). Cleared (`null`) on `pointerleave`, `pointerupoutside`, and window `blur`. `setHoverListener` supports exactly one listener — registering a new one clears the previous.
+
 ## GenerationRenderer
 
 Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. Receives only `viewport: Container` — all layer containers are created internally.

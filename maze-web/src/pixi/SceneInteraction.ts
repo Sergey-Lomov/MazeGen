@@ -5,6 +5,7 @@ import type { FieldEditController } from "./FieldEditController";
 import type { FieldEditorOverlay } from "./FieldEditorOverlay";
 import type { PointerHandler } from "./sceneTypes";
 import { PanState } from "./sceneTypes";
+import type { HoverInfo, HoverProvider } from "./hoverTypes";
 
 interface SceneInteractionDeps {
   app: Application;
@@ -12,6 +13,8 @@ interface SceneInteractionDeps {
   getFieldEditController: () => FieldEditController;
   fieldEditorOverlay: FieldEditorOverlay;
   getController: (st: ReturnType<typeof useMazeStore.getState>) => PointerHandler | null;
+  getHoverProvider: (st: ReturnType<typeof useMazeStore.getState>) => HoverProvider;
+  onHoverChanged: (info: HoverInfo | null) => void;
   onViewportChanged: () => void;
 }
 
@@ -25,6 +28,7 @@ export class SceneInteraction {
     this.defaultPan.end();
     const st = useMazeStore.getState();
     this.deps.getController(st)?.clearHover?.();
+    this.deps.onHoverChanged(null);
   };
 
   constructor(deps: SceneInteractionDeps) {
@@ -42,7 +46,7 @@ export class SceneInteraction {
   }
 
   private setup(): void {
-    const { app, viewport, getFieldEditController, fieldEditorOverlay, getController, onViewportChanged } = this.deps;
+    const { app, viewport, getFieldEditController, fieldEditorOverlay, getController, getHoverProvider, onHoverChanged, onViewportChanged } = this.deps;
     const stage = app.stage;
     stage.interactive = true;
     stage.hitArea = app.screen;
@@ -59,6 +63,7 @@ export class SceneInteraction {
 
     stage.on("pointermove", (e) => {
       const st = useMazeStore.getState();
+      onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
       if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
@@ -88,6 +93,7 @@ export class SceneInteraction {
       const controller = getController(st);
       controller?.onPointerUp(1);
       controller?.clearHover?.();
+      onHoverChanged(null);
       if (st.openCard === "field_setup") {
         fieldEditorOverlay.updateHover(null, st.tessellationConfig);
       }
@@ -96,6 +102,7 @@ export class SceneInteraction {
 
     stage.on("pointerleave", () => {
       const st = useMazeStore.getState();
+      onHoverChanged(null);
       if (st.openCard === "field_setup") {
         fieldEditorOverlay.updateHover(null, st.tessellationConfig);
       }

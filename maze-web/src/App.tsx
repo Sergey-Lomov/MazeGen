@@ -4,6 +4,7 @@ import { MazeScene } from "./pixi/MazeScene";
 import { FeaturesPanel } from "./components/FeaturesPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { GenerationDebugBar } from "./components/GenerationDebugBar";
+import { HoverInfoPanel } from "./components/HoverInfoPanel";
 import { useMazeStore } from "./store/mazeStore";
 import { ui, typography, disabled } from "./styles/theme";
 import { canvas } from "./pixi/colorUtils";
@@ -60,6 +61,7 @@ export function App() {
         {generationOpen && debugMode && debugSnapshot && <GenerationDebugBar />}
         <div ref={canvasRef} style={{ ...styles.canvas, display: qualityOpen ? "none" : undefined }} />
         {qualityOpen && <QualityCanvas />}
+        {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}
       </div>
     </div>
   );

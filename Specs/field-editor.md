@@ -131,6 +131,8 @@ Grid rendering is embedded in each feature renderer, not in a standalone compone
 
 While `fieldSetupOpen = true` and the cursor is over the canvas, the hovered cell is highlighted with a soft grey overlay (`0x888888`, alpha 0.3). Rendered by `FieldEditorOverlay.updateHover()`, called from `MazeScene` on every `pointermove`. Cleared on `pointerupoutside`.
 
+The same `pointermove` also drives the generic `x, y` coordinate readout in `HoverInfoPanel` (see `maze-web/Specs/renderer.md`) — that mechanism is card-agnostic and runs regardless of `fieldSetupOpen`; this section only covers the field-edit-specific grey-cell overlay layered on top of it.
+
 ## Hit-test
 
 Square/hex: rectangular row/column lookup.

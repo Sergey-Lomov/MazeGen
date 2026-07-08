@@ -12,9 +12,26 @@ import { PostEditController } from "./PostEditController";
 import { fitFieldViewport } from "./FieldEditorOverlay";
 import { fitMazeViewport } from "./viewportFit";
 import { makeProjection } from "./tessellationProjection";
+import type { TessellationProjection } from "./tessellationProjection";
 import { useMazeStore } from "../store/mazeStore";
 import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
+import type { HoverInfo, HoverProvider } from "./hoverTypes";
+import { DefaultHoverProvider } from "./hoverProviders";
+import type { FeatureId } from "../store/storeTypes";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+
+type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => TessellationConfig;
+
+export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
+  basic_config: (st) => st.previewTessellationConfig,
+  field_setup: (st) => st.tessellationConfig,
+  preset_connections: (st) => st.tessellationConfig,
+  quality: (st) => st.tessellationConfig,
+  generation: (st) => st.activeTessellationConfig,
+  post_edit: (st) => st.activeTessellationConfig,
+  analytics: (st) => st.activeTessellationConfig,
+};
 
 export class MazeScene {
   private app: Application;
@@ -36,6 +53,9 @@ export class MazeScene {
   private analyticsRenderer: AnalyticsRenderer;
   private analyticsContainer: Container;
   private interaction: SceneInteraction;
+  private hoverProvider: DefaultHoverProvider;
+  private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
+  private cachedProjection: { cfg: TessellationConfig; projection: TessellationProjection } | null = null;
 
   // All containers that must stay in sync with viewport position/scale.
   private syncedLayers: Container[] = [];
@@ -106,12 +126,19 @@ export class MazeScene {
       (x, y) => { this.viewport.x = x; this.viewport.y = y; this.syncLayersToViewport(); },
     );
 
+    this.hoverProvider = new DefaultHoverProvider(
+      () => this.viewport,
+      () => this.getProjectionFor(this.getActiveTessellationConfig(useMazeStore.getState())),
+    );
+
     this.interaction = new SceneInteraction({
       app: this.app,
       viewport: this.viewport,
       getFieldEditController: () => this.fieldEditController,
       fieldEditorOverlay: this.fieldEditorOverlay,
       getController: (st) => this.getController(st),
+      getHoverProvider: (st) => this.getHoverProvider(st),
+      onHoverChanged: (info) => this.hoverCallback?.(info),
       onViewportChanged: () => this.syncLayersToViewport(),
     });
 
@@ -154,6 +181,39 @@ export class MazeScene {
     if (st.openCard === "preset_connections") return this.presetConnectionsController;
     if (st.openCard === "post_edit") return this.postEditController;
     return null;
+  }
+
+  /** Which TessellationConfig represents "the current field" for hover purposes, per open card.
+   * NOT reused by refit() — refit()'s fieldCfg answers a different question (what to fit when the
+   * maze view is NOT shown), which only partially overlaps with this table. */
+  private getActiveTessellationConfig(st: ReturnType<typeof useMazeStore.getState>): TessellationConfig {
+    return TESSELLATION_CONFIG_BY_CARD[st.openCard](st);
+  }
+
+  private getProjectionFor(cfg: TessellationConfig): TessellationProjection {
+    if (this.cachedProjection?.cfg !== cfg) {
+      this.cachedProjection = { cfg, projection: makeProjection(cfg) };
+    }
+    return this.cachedProjection.projection;
+  }
+
+  /** Resolves the active hover provider for the current card. Currently every card uses the same
+   * generic cell-lookup provider; a future per-feature override (e.g. edge hit-testing) would
+   * branch on st.openCard here the same way getController() does. `st` is unused today — kept for
+   * signature symmetry with getController() and because that future branch will need it. */
+  private getHoverProvider(st: ReturnType<typeof useMazeStore.getState>): HoverProvider {
+    void st;
+    return this.hoverProvider;
+  }
+
+  /** Supports exactly one listener — HoverInfoPanel. Calling this while a different listener is
+   * already registered clears it (sends null) before attaching the new one, so no stale value
+   * survives a hot-swap (e.g. React StrictMode double-invoke, or panel remount). Re-passing the
+   * same callback instance is a no-op. */
+  setHoverListener(cb: ((info: HoverInfo | null) => void) | null): void {
+    if (cb === this.hoverCallback) return;
+    this.hoverCallback?.(null);
+    this.hoverCallback = cb;
   }
 
   private subscribeToPreview(): void {
@@ -237,6 +297,7 @@ export class MazeScene {
   }
 
   destroy(): void {
+    this.hoverCallback?.(null);
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();
     this.unsubscribeQualityOpen?.();
