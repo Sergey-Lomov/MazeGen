@@ -128,3 +128,18 @@ fn repro_268_alternative_not_created() {
     let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
     println!("remaining_issues={kinds:?}");
 }
+
+/// Issue #95 (exact debug-toolbar "Copy config JSON" export, QC-only preset graph). Documents
+/// the known `FarthestEndpointsStrategy` heuristic limitation (see `Specs/repair.md`): the
+/// two-Dijkstra sweep isn't an exhaustive search, so it can land on a pair that isn't the true
+/// diameter on a graph with cycles. On this exact graph the sweep picks a pair at tile-distance
+/// 12 while the true maximum (found by brute force over all pairs) is 14 — a known-acceptable
+/// gap, not asserted here since the sweep's exact pick isn't part of its contract.
+#[test]
+fn repro_95_qc_only_official_export() {
+    let result = run_fixture("tests/fixtures/issue-95-qc-only-official.json", 42);
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    assert!(kinds.is_empty(), "no remaining issues expected, got {kinds:?}");
+    assert!(result.start.is_some(), "farthest_endpoints must assign a start");
+    assert!(result.finish.is_some(), "farthest_endpoints must assign a finish");
+}

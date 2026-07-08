@@ -473,7 +473,7 @@ fn run_generate_typed<T: Tessellation>(
         &mut graph, &field,
         &gen_config.preset_connections,
         &gen_config.locked_nodes,
-        |_, _| start,
+        |x, y| field.all_points().find(|&p| to_xy(p) == (x, y)).expect("preset coordinate must exist on the field"),
     );
 
     // QC experiment mode skips the generation algorithm entirely — mirrors `maze-wasm`'s

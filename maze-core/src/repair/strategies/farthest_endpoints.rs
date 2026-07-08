@@ -44,6 +44,11 @@ impl<T: Tessellation> RepairStrategy<T> for FarthestEndpointsStrategy {
                 if finish_node == start_node {
                     return RepairResult::Failed;
                 }
+                let finish_nav = nav.nav_node_for(finish_node).unwrap();
+
+                // The graph is directed: dist(start->finish) can differ from dist(finish->start).
+                // The sweep above only measured one direction — check the other and swap if it's longer.
+                let (start_node, finish_node) = orient_farthest_pair(nav, start_nav, finish_nav);
 
                 maze.meta.start = Some(start_node);
                 maze.meta.finish = Some(finish_node);
@@ -85,6 +90,23 @@ fn farthest_from(nav: &NavGraph, source: usize) -> NodeId {
         .max_by_key(|&(nav_id, &d)| (d, std::cmp::Reverse(nav.nodes[nav_id].node_id)))
         .map(|(nav_id, _)| nav.nodes[nav_id].node_id)
         .unwrap_or(nav.nodes[source].node_id)
+}
+
+/// Directed graph: dist(a->b) can differ from dist(b->a). Given a candidate pair, returns
+/// (start, finish) oriented so the path between them is the longer of the two directions.
+/// Falls back to the original orientation if the reverse direction is unreachable.
+fn orient_farthest_pair(nav: &NavGraph, a: usize, b: usize) -> (NodeId, NodeId) {
+    let a_id = nav.nodes[a].node_id;
+    let b_id = nav.nodes[b].node_id;
+
+    let forward_dist = dijkstra_forward(nav, a)[b];
+    let backward_dist = dijkstra_forward(nav, b)[a];
+
+    if backward_dist != usize::MAX && backward_dist > forward_dist {
+        (b_id, a_id)
+    } else {
+        (a_id, b_id)
+    }
 }
 
 fn farthest_to(nav: &NavGraph, target: usize) -> NodeId {

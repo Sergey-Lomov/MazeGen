@@ -369,7 +369,7 @@
   "strategy.random_endpoints.label": "Random endpoints",
   "strategy.random_endpoints.description": "Places start and finish at random nodes in the maze.",
   "strategy.farthest_endpoints.label": "Farthest endpoints",
-  "strategy.farthest_endpoints.description": "Places start and finish at the two nodes that are farthest apart in terms of path length.",
+  "strategy.farthest_endpoints.description": "Places start and finish at two nodes with a large path distance between them. Uses a fast heuristic (double path-search sweep) rather than an exhaustive search over all pairs — on graphs with cycles it can pick a pair slightly short of the true maximum.",
   "strategy.scored_endpoints.label": "Scored endpoints",
   "strategy.scored_endpoints.description": "Scores all candidate endpoint pairs by path length, junction count and one-way passage count, then picks the best pair.",
   "strategy.invalid_loop_random.label": "Break loop randomly",

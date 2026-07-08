@@ -379,7 +379,7 @@
   "strategy.random_endpoints.label": "Случайные точки",
   "strategy.random_endpoints.description": "Размещает старт и финиш в случайных узлах лабиринта.",
   "strategy.farthest_endpoints.label": "Наиболее удалённые точки",
-  "strategy.farthest_endpoints.description": "Размещает старт и финиш в двух узлах с наибольшим расстоянием пути между ними.",
+  "strategy.farthest_endpoints.description": "Размещает старт и финиш в двух узлах с большим расстоянием пути между ними. Использует быструю эвристику (двойной проход поиска пути), а не полный перебор всех пар — на графах с циклами может выбрать пару чуть короче настоящего максимума.",
   "strategy.scored_endpoints.label": "Точки по оценке",
   "strategy.scored_endpoints.description": "Оценивает все пары кандидатов по длине пути, числу развилок и числу односторонних переходов, затем выбирает лучшую пару.",
   "strategy.invalid_loop_random.label": "Разорвать петлю случайно",

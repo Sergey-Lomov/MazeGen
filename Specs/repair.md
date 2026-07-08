@@ -293,11 +293,13 @@ Handles `MISSING_ENDPOINTS`. No configurable parameters.
 
 ### FarthestEndpointsStrategy
 
-Handles `MISSING_ENDPOINTS`. No configurable parameters. Places start and finish at maximally distant nav-graph nodes (distance measured in tile count — edge weight = `path.len() - 1`).
+Handles `MISSING_ENDPOINTS`. No configurable parameters. Places start and finish at nav-graph nodes chosen to be far apart (distance measured in tile count — edge weight = `path.len() - 1`), via a fast two-Dijkstra sweep — **not** an exhaustive search over all pairs.
+
+**Known limitation (heuristic, not a guaranteed diameter)**: the two-Dijkstra sweep (pick a node, find the farthest node from it, then the farthest node from *that*) is the standard approach for finding a graph's diameter, but it is only exact on trees. On a general graph with cycles — which any maze with loops is — the sweep can converge on a pair that is close to the maximum but not actually it. Confirmed on a real repro (GitHub issue #95, 5x5 QC-only preset graph): the sweep picked a pair at tile-distance 12 while the true maximum over all pairs, found by brute force, was 14. `ScoredEndpointsStrategy` does an exhaustive search instead and is not affected by this; use it when an exact result matters more than speed.
 
 - If both `maze.meta.start` and `maze.meta.finish` are `Some`: returns `Fixed` immediately.
 - Empty nav graph: returns `Failed`.
-- **Neither set**: picks a random nav node via `rng`. Runs reverse Dijkstra (incoming edges) from that node to find the node farthest *upstream* — this becomes `start` (landing in a source SCC). Then runs forward Dijkstra from `start` to find the farthest reachable node — this becomes `finish`.
+- **Neither set**: picks a random nav node via `rng`. Runs reverse Dijkstra (incoming edges) from that node to find the node farthest *upstream* — candidate `start` (landing in a source SCC). Then runs forward Dijkstra from that candidate to find the farthest reachable node — candidate `finish`. Since the graph is directed, `dist(candidate_start -> candidate_finish)` can differ from `dist(candidate_finish -> candidate_start)` (see GitHub issue #95: the two-Dijkstra sweep only measures the forward direction, and on a directed graph that isn't guaranteed to be the longer one even though it identifies the correct pair of nodes). `orient_farthest_pair` runs a forward Dijkstra in both directions between the candidate pair and swaps `start`/`finish` if the reverse direction turns out longer; falls back to the original orientation if the reverse direction is unreachable. This orientation fix is independent of, and does not solve, the sweep's tree-only-exactness limitation described above.
 - **Only start set**: runs Dijkstra from `start`'s nav node, takes the farthest node as `finish`.
 - **Only finish set**: runs reverse Dijkstra (traversing incoming edges) from `finish`'s nav node, takes the farthest node as `start`. This finds the node with the longest path that can actually reach `finish`, which is correct for one-way graphs.
 - If farthest node equals the source (isolated nav node or no reachable peers in the same component): returns `Failed`.
