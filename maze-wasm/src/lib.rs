@@ -14,7 +14,7 @@ use maze_core::{
     Maze,
     quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, TELEPORT_GROUP_PROXIMITY, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT},
     RegionClass,
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy},
 };
 use generation_config::{GenerateConfig, TessellationConfig, TessellationType};
 use tessellation_dispatch::dispatch_generate;
@@ -546,8 +546,15 @@ pub fn available_strategies() -> JsValue {
             experimental: <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&TeleportGroupProximityStrategy),
             nested_slots: vec![],
         },
+        StrategyDescriptor {
+            id: "weighted_region_merge",
+            handles: kind_str(REGION_NEEDS_EXPANSION),
+            params: strategy_params_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation>>::params(&WeightedRegionMergeStrategy)),
+            experimental: <WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation>>::is_experimental(&WeightedRegionMergeStrategy),
+            nested_slots: nested_slots_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation>>::expected_nested(&WeightedRegionMergeStrategy)),
+        },
     ];
-    serde_wasm_bindgen::to_value(&strategies).unwrap()
+    strategies.serialize(&serde_wasm_bindgen::Serializer::json_compatible()).unwrap()
 }
 
 /// Canonical (unrotated, unit-tile-scale) Cartesian projection of each point in `points`, via

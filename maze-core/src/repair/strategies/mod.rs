@@ -12,6 +12,7 @@ pub mod missing_regions;
 pub mod reduce_scc_count;
 pub mod remove_teleport;
 pub mod teleport_group_proximity;
+pub mod weighted_region_merge;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -25,3 +26,4 @@ pub use missing_regions::MissingRegionsStrategy;
 pub use reduce_scc_count::ReduceSccCountStrategy;
 pub use remove_teleport::RemoveTeleportStrategy;
 pub use teleport_group_proximity::{TeleportGroupProximityStrategy, PARAM_PRIORITY, PRIORITY_RANDOM, PRIORITY_PROBLEMATIC};
+pub use weighted_region_merge::{WeightedRegionMergeStrategy, SLOT_MERGE_TARGET as WEIGHTED_REGION_MERGE_SLOT_MERGE_TARGET};

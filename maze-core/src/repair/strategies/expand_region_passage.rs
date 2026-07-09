@@ -5,7 +5,7 @@ use crate::ids::NodeId;
 use crate::graph::scc::ComponentId;
 use crate::space::Tessellation;
 use crate::quality_control::{Issue, IssueData, REGION_NEEDS_EXPANSION, IssueKind};
-use crate::generation::{PresetState, try_add_bidirectional_edge, try_add_directed_edge};
+use crate::generation::{PresetState, try_add_bidirectional_edge, try_add_directed_edge, try_remove_edge};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
@@ -302,6 +302,17 @@ fn apply_one_way<T: Tessellation>(
         let (a2, b2) = p2;
         let out_ok = try_add_directed_edge(&mut maze.graph, a1, b1, preset_state);
         let in_ok = try_add_directed_edge(&mut maze.graph, b2, a2, preset_state);
+        // All-or-nothing: `one_way` means two independently-cut directions, not "whichever one
+        // happened to succeed" — a lone directed edge left behind after a partial failure (e.g.
+        // one pair is preset-protected) is exactly what silently turns into a full passage on a
+        // later repair pass (`try_add_bidirectional_edge` completes an existing one-way edge
+        // rather than duplicating it), defeating the caller's chosen `connection_mode`. If only
+        // one side went through, undo it before reporting failure so the graph is left untouched.
+        if out_ok && !in_ok {
+            try_remove_edge(&mut maze.graph, a1, b1, preset_state);
+        } else if in_ok && !out_ok {
+            try_remove_edge(&mut maze.graph, b2, a2, preset_state);
+        }
         out_ok && in_ok
     }
 }
@@ -685,6 +696,35 @@ mod tests {
         let (ol, or_) = outbound_pairs[0];
         let (il, ir) = inbound_pairs[0];
         assert!(!(ol == ir && or_ == il), "one_way must use two distinct cell pairs, not complete a passage on one pair");
+    }
+
+    /// Both bridging pairs exist (so `one_way` picks two distinct pairs, one per direction), but
+    /// every inbound (right -> left) pair is preset-blocked — only the outbound direction can
+    /// succeed. `apply_one_way` must not leave that lone outbound edge behind: a partial one-way
+    /// silently completing into a full passage on a later repair pass (via
+    /// `try_add_bidirectional_edge`'s completion-aware behavior) would defeat the caller's
+    /// `connection_mode` choice. The whole attempt must fail with the graph left untouched.
+    #[test]
+    fn one_way_rolls_back_the_lone_successful_direction_when_the_other_is_preset_blocked() {
+        let (mut maze, nodes) = maze_2x2_two_columns();
+        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
+        let issue = issue_for(vec![region_idx]);
+        let mut rng = MazeRng::seed_from_u64(4);
+
+        let left = [nodes[0], nodes[2]];
+        let right = [nodes[1], nodes[3]];
+        let mut preset_state = PresetState::empty();
+        for &l in &left {
+            for &r in &right {
+                preset_state.blocked.insert((r, l)); // block every possible inbound direction
+            }
+        }
+
+        let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
+        let result = ExpandRegionPassageStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, CONNECTION_ONE_WAY, false), &preset_state, &[]);
+        assert!(matches!(result, RepairResult::Failed), "one_way must fail outright when only one direction can be built");
+        let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
+        assert_eq!(edges_before, edges_after, "the lone successful outbound edge must be rolled back, not left as a stray partial connection");
     }
 
     #[test]

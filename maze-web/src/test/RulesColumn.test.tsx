@@ -155,10 +155,69 @@ describe("RulesColumn", () => {
     expect(useMazeStore.getState().rules).toEqual([{ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }]);
   });
 
+  it("clicking a nested strategy's name calls onSelect with its (slotId, index) path", () => {
+    const onSelect = vi.fn();
+    const nestedStrategy: StrategyVM = { id: "expand_region_passage", label: "expand_region_passage", handles: "k2", params: [], experimental: false, nestedSlots: [] };
+    const strategyWithSlot: StrategyVM = {
+      id: "s1", label: "Strategy One", handles: "k1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1 }],
+    };
+    const slots: StrategySlotVM[] = [{
+      ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: strategyWithSlot,
+      disabled: false, ruleDisabled: false, producedBy: [checkA],
+      nestedStrategies: [{ slotId: "slot_a", strategy: nestedStrategy, params: [], nested: [] }],
+    }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
+    fireEvent.click(screen.getByText("Expand region with a passage"));
+    expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] });
+  });
+
+  it("clicking a nested strategy's name calls onSelect when the slot allows multiple entries (weight row shown)", () => {
+    const onSelect = vi.fn();
+    const nestedStrategy: StrategyVM = { id: "expand_region_passage", label: "expand_region_passage", handles: "k2", params: [], experimental: false, nestedSlots: [] };
+    const strategyWithSlot: StrategyVM = {
+      id: "weighted_region_merge", label: "Strategy One", handles: "k1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "merge_target", kind: "k2", min: 1, max: null }],
+    };
+    const slots: StrategySlotVM[] = [{
+      ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: strategyWithSlot,
+      disabled: false, ruleDisabled: false, producedBy: [checkA],
+      nestedStrategies: [{ slotId: "merge_target", strategy: nestedStrategy, params: [], nested: [] }],
+    }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
+    fireEvent.click(screen.getByText("Expand region with a passage"));
+    expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "merge_target", index: 0 }] });
+  });
+
+  it("swapping a nested strategy at the same path shows the new strategy's own default param value, not a stale one", () => {
+    const strategyA: StrategyVM = { id: "expand_region_passage", label: "expand_region_passage", handles: "k2", experimental: false, nestedSlots: [], params: [] };
+    const strategyB: StrategyVM = {
+      id: "teleport_region_merge", label: "teleport_region_merge", handles: "k2", experimental: false, nestedSlots: [],
+      params: [{ id: "min_distance", label: "Minimum logical distance between teleport endpoints", kind: { type: "float", default: 1, min: 0, max: 1000 } }],
+    };
+    const topLevel: StrategyVM = {
+      id: "s1", label: "Strategy One", handles: "k1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1 }],
+    };
+    function slotsWith(nested: StrategyVM): StrategySlotVM[] {
+      return [{
+        ruleId: "g1", name: "Rule 1", kind: "k1", label: "Issue One", strategy: topLevel,
+        disabled: false, ruleDisabled: false, producedBy: [checkA],
+        nestedStrategies: [{ slotId: "slot_a", strategy: nested, params: nested.params, nested: [] }],
+      }];
+    }
+    useMazeStore.setState({
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [{ slotId: "slot_a", strategyId: "teleport_region_merge", params: { min_distance: "1" }, nested: [] }] }],
+    });
+    const { rerender } = render(<RulesColumn stages={wrapStage(slotsWith(strategyA))} selection={null} onSelect={vi.fn()} />);
+    rerender(<RulesColumn stages={wrapStage(slotsWith(strategyB))} selection={null} onSelect={vi.fn()} />);
+    expect(screen.getByDisplayValue("1")).toBeInTheDocument();
+  });
+
   it("removing a rule with a selected nested_strategy inside it clears the selection", () => {
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
-    render(<RulesColumn stages={wrapStage(slots)} selection={{ type: "nested_strategy", ruleId: "g1", path: ["slot_a"] }} onSelect={onSelect} />);
+    render(<RulesColumn stages={wrapStage(slots)} selection={{ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] }} onSelect={onSelect} />);
     fireEvent.click(screen.getByTitle("Remove rule"));
     fireEvent.click(screen.getByText("Ok"));
     expect(onSelect).toHaveBeenCalledWith(null);
@@ -176,7 +235,7 @@ describe("RulesColumn", () => {
   it("removing a rule does not clear a selection belonging to a different rule", () => {
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
-    render(<RulesColumn stages={wrapStage(slots)} selection={{ type: "nested_strategy", ruleId: "other_rule", path: ["slot_a"] }} onSelect={onSelect} />);
+    render(<RulesColumn stages={wrapStage(slots)} selection={{ type: "nested_strategy", ruleId: "other_rule", path: [{ slotId: "slot_a", index: 0 }] }} onSelect={onSelect} />);
     fireEvent.click(screen.getByTitle("Remove rule"));
     fireEvent.click(screen.getByText("Ok"));
     expect(onSelect).not.toHaveBeenCalled();

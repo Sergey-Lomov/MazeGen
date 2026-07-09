@@ -134,7 +134,72 @@ pub struct NestedStrategyConfig<T: Tessellation> {
 
 **Rollback stays the mutating strategy's own responsibility.** A nested call does not introduce a second snapshot mechanism or double bookkeeping — the same `&mut SnapshotStack` passed into the parent's `apply()` is passed straight through into the nested call, unchanged. If the nested strategy mutates the graph and then returns `Failed`, the parent does not roll those mutations back on the nested strategy's behalf; that is exactly the same contract every `RepairStrategy` already has today (e.g. `ExpandRegionPassageStrategy` does not snapshot around its own `try_add_bidirectional_edge` calls) — nesting changes nothing about who owns rollback.
 
-**Debug contract**: every `apply()` should start with `debug_assert_eq!(issue.kind, self.handles())` — a caller-side invariant (the `Issue` passed in must match what the strategy declared it handles), checked defensively in debug builds. Not retroactively added to every pre-existing strategy, but expected of new code (see `ReduceSccCountStrategy` for the pattern) and enforced going forward.
+### Weighted nested dispatch (`dispatch_weighted`)
+
+See GitHub issue #90. `maze-core/src/repair/nested_dispatch.rs` provides a shared helper for a
+parent strategy that wants to pick *which* of several nested strategies filling one slot to
+actually run, weighted-randomly, retrying a different one if the chosen one fails —
+`WeightedRegionMergeStrategy` (below) is the first user.
+
+```rust
+pub struct WeightedCandidate<'a, T: Tessellation> {
+    pub config: &'a NestedStrategyConfig<T>,
+    pub weight: f64,
+}
+
+pub fn dispatch_weighted<T: Tessellation>(
+    issue: &Issue,
+    maze: &mut Maze<T>,
+    snapshots: &mut SnapshotStack,
+    rng: &mut dyn RngCore,
+    preset_state: &PresetState,
+    candidates: &[WeightedCandidate<T>],
+) -> RepairResult;
+```
+
+- **Who resolves weights**: `dispatch_weighted` itself carries no convention for how a weight is
+  derived — it only consumes already-resolved `f64` weights via `WeightedCandidate`. Deriving a
+  weight (e.g. reading a `"weight"` key out of `NestedStrategyConfig.param_overrides`) is the
+  calling dispatcher's own convention; `WeightedRegionMergeStrategy` is the reference
+  implementation of one such convention.
+- **Weight contract**: every weight must be finite and `> 0.0` — the caller's responsibility,
+  `debug_assert!`-checked defensively on entry, never silently substituted. Empty `candidates`
+  returns `Failed` immediately without touching `rng` or `snapshots`.
+- **Who builds `StrategyParams`**: `dispatch_weighted` itself, via `build_params(strategy.params(),
+  Some(&config.param_overrides))` for whichever candidate it is about to try — callers pass raw
+  `NestedStrategyConfig`s, never pre-built `StrategyParams`.
+- **Selection**: without replacement, weighted-random over the remaining pool (cumulative-weight
+  pick via `rng`), repeated until a `Fixed` result or the pool is exhausted.
+- **`SnapshotStack` ownership**: `snapshots.snapshot(maze)` before each attempt. On `Fixed`, that
+  snapshot is discarded via `snapshots.discard_last()` (not restored) — the mutation is kept and
+  the stack ends the call at the same depth it had on entry (no net growth). On `Failed`,
+  `snapshots.restore(maze)` undoes exactly that attempt's mutations before the next pick is tried
+  on a clean graph.
+- **Recursion**: each attempt is called with `&config.nested` passed straight through — a
+  nested-under-nested chain is not truncated by this helper.
+- **Only `Fixed`/`Failed`**: `RepairResult` is a two-variant enum today; the helper's `match` has
+  no wildcard arm on purpose, so a future third variant forces a compile error here rather than a
+  silently wrong fallthrough.
+
+**Known limitation, not solved here**: `dispatch_weighted` operates on one `Issue` per call. When
+an `Issue` bundles several independent sub-problems (e.g. `RegionsNeedingExpansion`'s `invalid:
+Vec<usize>` can list many undersized regions at once), a caller that dispatches once on the whole
+bundled issue lets a single weighted pick decide the nested mechanism for the *entire* batch —
+the configured weight ratio then governs which mechanism handles the whole issue, not each
+sub-problem individually, and with few `dispatch_weighted` calls overall (most of a run's items
+folded into one or two big-batch issues) the observed mechanism-choice frequency can drift far
+from the configured ratio simply from having too few independent picks to sample from. A per-item
+dispatch helper was tried and reverted (GitHub issue #90's follow-up) — it broke `region_merge_core
+::run_merge_loop`'s single-SCC-snapshot-per-batch invariant, since re-dispatching per region forced
+a fresh (and potentially differently-numbered) SCC snapshot after each region's own merge. The
+actual fix is to stop bundling multiple sub-problems into one `Issue` in the first place — see
+GitHub issues #98–#101 (splitting `InvalidLoops`/`RegionsNeedingExpansion`/`InvalidTeleports`/
+`TeleportProximityPairs` into one `Issue` per element) — not to fragment dispatch inside a
+strategy that receives an already-bundled issue.
+
+### Debug contract
+
+Every `apply()` should start with `debug_assert_eq!(issue.kind, self.handles())` — a caller-side invariant (the `Issue` passed in must match what the strategy declared it handles), checked defensively in debug builds. Not retroactively added to every pre-existing strategy, but expected of new code (see `ReduceSccCountStrategy` for the pattern) and enforced going forward.
 
 ### QcRule and rule-based RepairEngine
 
@@ -440,6 +505,27 @@ Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #89. Merges each flagged u
 - **Logical distance** (`bfs_min_distance`): `min(dist(a -> b), dist(b -> a))` via directed BFS hop-count within the current graph, in each direction — a region's two directions from a node can have different lengths, so the metric takes whichever is shorter. Purely graph-topological, unrelated to `space::geometric_distance` (which `ExpandRegionPassageStrategy`'s `one_way` mode uses instead, for its geometrically-adjacent candidate pairs).
 - If a chosen neighbor is already connected in both directions: `apply` returns `Fixed` immediately for that region without mutating (idempotency), same posture as `ExpandRegionPassageStrategy`'s "already a full passage" completion-aware behavior. **Defensive only, not reachable in practice**: if a directed path exists both `region -> neighbor` and `neighbor -> region` (through any edge), the two are already the same SCC by definition — `REGION_NEEDS_EXPANSION` would never name them as two separate regions to merge in the first place. No real maze state can trigger this branch; it exists purely as a safety net against a stale/inconsistent `scc` snapshot.
 - Returns `Fixed` if at least one region was successfully merged; `Failed` if none were (e.g. `invalid`'s region has no other SCC component at all — a single-component maze).
+
+### WeightedRegionMergeStrategy
+
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #90. Unlike `ExpandRegionPassageStrategy`/`TeleportRegionMergeStrategy`, which each implement one specific merge mechanism, this strategy picks *which* nested region-merge strategy to actually run: it holds any number of nested strategies under one slot, each with a weight, and delegates to `dispatch_weighted` (see "Weighted nested dispatch" above) — weighted-random selection without replacement, retrying a different nested strategy if the chosen one returns `Failed`, until one succeeds or every candidate has been tried.
+
+The parent issue is passed through to the nested call **unchanged** — unlike `ReduceSccCountStrategy`, which synthesizes a new `Issue` naming which regions to merge, this strategy only picks the merge *mechanism*; which regions need merging is already `issue.data`'s `invalid`, untouched (see the `apply()` behavior list below for what this implies for a multi-region batch).
+
+**`issue.data` is mandatory for this kind**, same contract as `ExpandRegionPassageStrategy`: `invalid` is the producing check's result — there is no other channel to learn it.
+
+No configurable parameters of its own — weights live per nested candidate (below), not as a top-level `StrategyParam`.
+
+**Nested slot**: exactly one, `slot_id = "merge_target"` (exported as `SLOT_MERGE_TARGET` — its own constant, deliberately not a reuse of `ReduceSccCountStrategy`'s constant of the same string value, since `slot_id` is part of each strategy's own public API per the "Nested strategies" section above), `kind = REGION_NEEDS_EXPANSION`, `min = 1`, `max = None` — any number of nested strategies (typically `ExpandRegionPassageStrategy` and/or `TeleportRegionMergeStrategy`) may fill it, unlike `ReduceSccCountStrategy`'s single-slot `max: Some(1)`.
+
+**Weight resolution** (`resolve_weight`): each nested candidate's weight is read from its own `NestedStrategyConfig.param_overrides["weight"]` — a string, parsed as `f64`. Missing, unparsable, non-finite, or `<= 0.0` all fall back to `1.0` (one fallback rule, no separate branches for NaN/∞/negative/zero/malformed text). No upper clamp — `weight` isn't a declared `StrategyParam` of the nested strategy (it lives in `param_overrides` as this dispatcher's own convention on top of whatever params the nested strategy already exposes), so there's nothing to clamp against; an arbitrarily large weight simply dominates selection, which is safe and predictable. This fallback guarantees that whenever at least one nested candidate is configured, the pool passed to `dispatch_weighted` always has a strictly positive total weight. A `debug_assert!` rejects any nested candidate that declares its own `StrategyParam` literally named `"weight"` — that would collide with this dispatcher's reserved `param_overrides` key.
+
+- `debug_assert_eq!(issue.kind, self.handles())`.
+- If `issue.data` is missing or the wrong variant: returns `Failed`.
+- If `invalid` is empty: returns `Fixed` immediately (idempotency), without touching `rng` or `nested`.
+- Nested entries are filtered to `slot_id == SLOT_MERGE_TARGET` — a defensive runtime check, not the primary validation (`maze-runner`'s `build_nested` already guarantees this at config-build time); it only guards direct `apply()` calls made outside the runner, same posture `ReduceSccCountStrategy` takes toward its own single slot.
+- If no candidate fills the slot after filtering: returns `Failed`.
+- Otherwise wraps each filtered candidate in a `WeightedCandidate` (config + resolved weight) and delegates to `dispatch_weighted` with the **original, unmodified** `issue` — one weighted pick decides the merge mechanism for the whole `invalid` batch at once; the chosen nested strategy's own `apply()` is responsible for merging as many regions in the batch as it can (see "Known limitation, not solved here" under "Weighted nested dispatch" above for why this isn't split per-region).
 
 ### MissingRegionsStrategy
 

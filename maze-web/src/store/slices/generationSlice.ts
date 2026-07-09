@@ -6,8 +6,8 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports } from "../../pixi/postEditUtils";
-import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
-import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance, RepairStageState, NestedStrategyState } from "../storeTypes";
+import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot } from "../storeTypes";
+import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance, RepairStageState, NestedStrategyState, PathSegment } from "../storeTypes";
 import { activeTessellationOf, buildResetMazeState, debugStaleOf } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import * as m from "~/paraglide/messages";
@@ -376,23 +376,27 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     debugStale: debugStaleOf(state),
   })),
 
-  // `path` is a chain of slot ids, each resolved relative to the currently selected nested
-  // strategy, not globally — `path[0]` is looked up in the rule's own top-level strategy's
-  // `nestedStrategies`, `path[1]` is looked up in *that* entry's own `nested`, and so on. The
-  // same `slot_id` string appearing at two different depths never collides, since each lookup
-  // only ever searches within its own parent's list, never the whole tree.
+  // `path` is a chain of `(slotId, index)` steps, each resolved relative to the currently
+  // selected nested strategy, not globally — `path[0]` is looked up in the rule's own top-level
+  // strategy's `nestedStrategies`, `path[1]` is looked up in *that* entry's own `nested`, and so
+  // on. `index` selects among sibling entries sharing this level's `slotId` (see
+  // `entriesForSlot`) — for a slot capped at 1 (the overwhelming majority), `index` is always 0.
+  // The same `slot_id` string appearing at two different depths never collides, since each
+  // lookup only ever searches within its own parent's list, never the whole tree.
   setNestedStrategy: (ruleId, path, strategyId) => set((state) => {
-    function updateList(list: NestedStrategyState[], remainingPath: string[]): NestedStrategyState[] {
-      const [slotId, ...rest] = remainingPath;
+    function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
+      const [{ slotId, index }, ...rest] = remainingPath;
+      const siblings = entriesForSlot(list, slotId);
+      const target = siblings[index];
+      if (!target) return list; // stale path (entry was removed elsewhere) — no-op.
       if (rest.length === 0) {
-        const withoutSlot = list.filter((n) => n.slotId !== slotId);
-        if (strategyId === null) return withoutSlot;
+        if (strategyId === null) return list.filter((n) => n !== target);
         const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
         const params = descriptor ? defaultParamsFor(descriptor) : {};
         const nested = buildDefaultNestedStrategies(strategyId, state.availableStrategies);
-        return [...withoutSlot, { slotId, strategyId, params, nested }];
+        return list.map((n) => n === target ? { slotId, strategyId, params, nested } : n);
       }
-      return list.map((n) => n.slotId === slotId ? { ...n, nested: updateList(n.nested, rest) } : n);
+      return list.map((n) => n === target ? { ...n, nested: updateList(n.nested, rest) } : n);
     }
     return {
       rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
@@ -401,13 +405,58 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   }),
 
   setNestedStrategyParam: (ruleId, path, paramId, value) => set((state) => {
-    function updateList(list: NestedStrategyState[], remainingPath: string[]): NestedStrategyState[] {
-      const [slotId, ...rest] = remainingPath;
-      return list.map((n) => {
-        if (n.slotId !== slotId) return n;
-        if (rest.length === 0) return { ...n, params: { ...n.params, [paramId]: value } };
-        return { ...n, nested: updateList(n.nested, rest) };
-      });
+    function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
+      const [{ slotId, index }, ...rest] = remainingPath;
+      const siblings = entriesForSlot(list, slotId);
+      const target = siblings[index];
+      if (!target) return list;
+      if (rest.length === 0) return list.map((n) => n === target ? { ...n, params: { ...n.params, [paramId]: value } } : n);
+      return list.map((n) => n === target ? { ...n, nested: updateList(n.nested, rest) } : n);
+    }
+    return {
+      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  // Appends a fresh entry (defaulted to the first strategy handling `slotKind`) after every
+  // existing sibling sharing the target slot's `slotId` — the target slot is `path`'s last
+  // segment, whose own `index` is ignored (ambiguous/stale for an append, unlike
+  // `setNestedStrategy`/`removeNestedStrategy` which address one specific existing entry). A
+  // no-op if no compatible candidate strategy is registered.
+  addNestedStrategy: (ruleId, path, slotKind) => set((state) => {
+    const candidate = state.availableStrategies.find((s) => s.handles === slotKind);
+    if (!candidate) return {};
+    const newEntry: NestedStrategyState = {
+      slotId: path[path.length - 1].slotId,
+      strategyId: candidate.id,
+      params: defaultParamsFor(candidate),
+      nested: buildDefaultNestedStrategies(candidate.id, state.availableStrategies),
+    };
+    function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
+      if (remainingPath.length === 1) return [...list, newEntry];
+      const [{ slotId, index }, ...rest] = remainingPath;
+      const target = entriesForSlot(list, slotId)[index];
+      if (!target) return list;
+      return list.map((n) => n === target ? { ...n, nested: updateList(n.nested, rest) } : n);
+    }
+    return {
+      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  // Removes the entry at `path` outright (every later sibling sharing its `slotId` shifts down
+  // by one, since `index` is a list position — see `PathSegment`), unlike
+  // `setNestedStrategy(..., null)` which is reserved for clearing a single-entry slot back to
+  // "unset" rather than shrinking a multi-entry slot's list.
+  removeNestedStrategy: (ruleId, path) => set((state) => {
+    function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
+      const [{ slotId, index }, ...rest] = remainingPath;
+      const target = entriesForSlot(list, slotId)[index];
+      if (!target) return list;
+      if (rest.length === 0) return list.filter((n) => n !== target);
+      return list.map((n) => n === target ? { ...n, nested: updateList(n.nested, rest) } : n);
     }
     return {
       rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
@@ -588,6 +637,15 @@ export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConf
 // nested strategy independently). `depth` guards against a pathologically deep tree (e.g. loaded
 // from a project file) blowing the call stack on every `generate()` call — see
 // `MAX_NESTED_STRATEGY_DEPTH`'s doc comment.
+//
+// `NESTED_STRATEGY_WEIGHT_PARAM_ID` is forwarded unconditionally, alongside whatever the
+// descriptor declares — a dispatcher like `weighted_region_merge` reads a nested entry's weight
+// straight out of its own `param_overrides["weight"]` (`Specs/repair.md`'s "WeightedRegionMerge-
+// Strategy" section), deliberately NOT as a declared `StrategyParam` of the nested strategy
+// itself (weight is the *dispatcher's* convention, not the nested strategy's own knob) — so the
+// normal "only descriptor-known ids" filter would silently drop it.
+export const NESTED_STRATEGY_WEIGHT_PARAM_ID = "weight";
+
 function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): StrategyConfig {
   const descriptor = state.availableStrategies.find((s) => s.id === n.strategyId);
   const params: Record<string, string> = {};
@@ -595,6 +653,9 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
     for (const p of descriptor.params) {
       if (n.params[p.id] !== undefined) params[p.id] = n.params[p.id];
     }
+  }
+  if (n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID] !== undefined) {
+    params[NESTED_STRATEGY_WEIGHT_PARAM_ID] = n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID];
   }
   return {
     id: n.strategyId,

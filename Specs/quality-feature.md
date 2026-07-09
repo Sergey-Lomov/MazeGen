@@ -132,10 +132,111 @@ type QualitySelection =
   | { type: "check"; id: string }
   | { type: "strategy"; ruleId: string; strategyId: string }
   | { type: "logging"; ruleId: string }
+  | { type: "nested_strategy"; ruleId: string; path: PathSegment[] }
   | null;
 ```
 
+`nested_strategy` selects one nested-strategy entry, anywhere in the nesting chain under a rule's top-level strategy — see "Nested strategies (UI)" below for `PathSegment` and how the detail panel renders this case (same `ParamizedDetail` machinery as `strategy`, plus that entry's own further-nested slots).
+
 `QualityCanvas` holds a `flushRef` it passes into `QualityDetailPanel` (via `ParamizedDetail`) and calls before every selection change, so an in-flight debounced edit in the detail panel is never lost when switching selection. This is separate from — and does not cover — the inline editors in `RuleCheckRow`/`RuleStrategyPanel` (see above).
+
+### Nested strategies (UI)
+
+Files: `maze-web/src/components/features/quality/NestedStrategyPanel.tsx`,
+`NestedStrategySelectDialog.tsx`. Mirrors `maze-core`'s nested-strategy mechanism (see
+`Specs/repair.md`'s "Nested strategies" and "Weighted nested dispatch" sections) — a strategy can
+declare `nested_slots: NestedSlotDescriptor[]` (`{ slot_id, kind, min, max }`, `max: null` = no
+upper bound), and the UI lets the user fill each slot with one or more nested strategy
+assignments.
+
+**Addressing (`PathSegment`)**: a nested-strategy tree position is a `{ slotId: string; index: number }[]`
+chain, not a bare `slotId[]` chain — `slotId` alone is not a unique key once a slot's `max` allows
+more than one entry (see `weighted_region_merge`'s `merge_target` slot, GitHub issue #90).
+`index` is the entry's position among *siblings sharing that `slotId`* specifically
+(`entriesForSlot(list, slotId)[index]`, `maze-web/src/store/storeTypes.ts`), not a position in the
+whole (possibly mixed-slot) list. `path[0]` resolves against the rule's own top-level strategy's
+`nestedStrategies`; `path[1]` resolves against *that* entry's own `nested`, and so on. `NestedSlotVM`/
+`NestedStrategyVM` (`useQualityViewModel.ts`) are the view-model side of `NestedSlotDescriptor`/
+`NestedStrategyState`, resolved the same way `StrategySlotVM.strategy` resolves `QcRuleState.strategyId`.
+
+**`NestedStrategyPanel`** renders one slot: every currently-filling entry, plus a `+ {label}` add
+row when the slot isn't at its `max` capacity yet (hidden once full for the overwhelming majority
+of slots, which are capped at 1). Rendered recursively — once from `RuleStrategyPanel` (rule
+card) for the top-level strategy's own slots, and again inside `QualityDetailPanel` (detail panel)
+for whichever nested entry is currently selected, so the same slot's entries can appear
+simultaneously in the card and in the detail panel, kept in sync by the shared store.
+
+Each entry (`NestedStrategyEntryRow`) renders up to three stacked rows:
+
+1. **Weight row** — shown only when the slot allows more than one entry (`max === null ||
+   max > 1`); a single-candidate slot has nothing to weigh against, so this row is omitted
+   entirely. `"Weight"` label, a text input bound to `param_overrides["weight"]` (defaulting to
+   `"1"` when unset), a live-computed `N%` share of this entry's weight among all its slot
+   siblings (rounded down; `null`/hidden when the weight row itself is hidden), and a remove
+   button. The percent uses the same fallback-to-`1` parsing as `maze-core`'s `resolve_weight`
+   (`weighted_region_merge.rs`) — see `resolveWeight` in `NestedStrategyPanel.tsx` — so the
+   displayed share always matches what `dispatch_weighted` will actually do at generation time.
+   A thin vertical line down the left, starting just below this row, visually ties the weight to
+   the rest of this entry's block underneath it.
+2. **Strategy row** — `"Merge strategy"` label, the assigned strategy's name, a `WarningIcon` when
+   experimental, and a `✎` edit button opening `NestedStrategySelectDialog`. When the weight row
+   is hidden (single-candidate slot), the remove button lives here instead.
+3. **Params / further-nested slots** — the assigned strategy's own param fields (`ParamFields`),
+   and, if it itself declares nested slots, one more `NestedStrategyPanel` per such slot,
+   recursively, up to `MAX_NESTED_STRATEGY_DEPTH`.
+
+Hovering or clicking anywhere in rows 2–3 (the strategy row and everything under it, not just the
+strategy's name) highlights/selects that entry — `onSelect({ type: "nested_strategy", ruleId,
+path })`. Clicks on an actual control inside the params block (`input`/`select`/the `Switch`
+wrapper — `ParamFields` stops propagation only on those, not on labels or empty space around
+them) do not trigger this selection, so editing a param never re-selects/re-scrolls the detail
+panel.
+
+**`NestedStrategySelectDialog`** — same `ItemSelectDialog` shape as `StrategySelectDialog`, minus
+the `no_fix` entry (a nested slot always needs an actual strategy). Candidates are strategies
+where `handles === slotKind`. Selecting a different strategy than the one already assigned calls
+`setNestedStrategy(ruleId, path, selectedId)`, which also resets that entry's `params` to fresh
+defaults (see `setNestedStrategy` below) — any params edited for a not-yet-committed candidate in
+this dialog are staged locally and flushed into the store right after, discarded on Cancel.
+
+**Store actions** (`maze-web/src/store/slices/generationSlice.ts`):
+
+```typescript
+setNestedStrategy(ruleId: string, path: PathSegment[], strategyId: string | null): void
+setNestedStrategyParam(ruleId: string, path: PathSegment[], paramId: string, value: string): void
+addNestedStrategy(ruleId: string, path: PathSegment[], slotKind: string): void
+removeNestedStrategy(ruleId: string, path: PathSegment[]): void
+```
+
+- `setNestedStrategy`: replaces (or clears, if `strategyId` is `null`) the entry at `path` in
+  place — never appends. Replacing rebuilds `params` from the new strategy's declared defaults
+  (`defaultParamsFor`) and auto-fills that strategy's own mandatory nested slots
+  (`buildDefaultNestedStrategies`), discarding whatever was there before. A no-op if `path`
+  doesn't resolve to an existing entry (stale path — e.g. the entry was removed elsewhere in the
+  same render).
+- `setNestedStrategyParam`: updates one param on the entry at `path`. `param_overrides["weight"]`
+  (`NESTED_STRATEGY_WEIGHT_PARAM_ID` in `generationSlice.ts`) is set through this same action —
+  weight is not a declared `StrategyParam` of the nested strategy itself (it's the dispatcher's
+  own convention, see `Specs/repair.md`), so it's forwarded to the generate-config unconditionally
+  by `nestedToConfig`, bypassing the normal "only descriptor-known param ids" filter that applies
+  to every other param.
+- `addNestedStrategy`: appends a fresh entry (defaulted to the first available strategy handling
+  `slotKind`) after every existing sibling sharing `path`'s last segment's `slotId` — that
+  segment's own `index` is ignored (ambiguous for an append). Callers (the `+` row) are
+  responsible for not calling this past the slot's own `max`; the action itself doesn't enforce a
+  cap. No-op if no strategy in the registry handles `slotKind`.
+- `removeNestedStrategy`: removes the entry at `path` outright — every later sibling sharing that
+  `slotId` shifts down one `index`, since `index` is a list position, not a stable id. Distinct
+  from `setNestedStrategy(path, null)`, which is reserved for clearing a single-entry (`min: 0`)
+  slot back to "unset" rather than shrinking a multi-entry list.
+
+**Project file round-trip**: `NestedStrategyState`/`ProjectFileNestedStrategy`
+(`maze-web/src/store/projectExport/types.ts`) share the same shape 1:1 — serialization is a
+straight pass-through (no per-entry transform needed), and multiple entries sharing a `slotId`
+serialize/deserialize as independent array elements, no different from single-entry slots.
+`validateNestedStrategy` recursion is `MAX_NESTED_STRATEGY_DEPTH`-guarded, since a loaded project
+file is the one nested-strategy recursion that crosses a real trust boundary (arbitrary data from
+disk, not web-UI-generated state).
 
 ## IssueSelectDialog ("Add new rule", step 1)
 
@@ -200,8 +301,16 @@ Computed via `useMemo` from store state:
 
 ```ts
 interface QualityViewModel {
-  checks: CheckVM[];               // every active check instance, across all rules
-  strategySlots: StrategySlotVM[]; // one per rule in the store
+  checks: CheckVM[];                // every active check instance, across all rules
+  stages: QualityStageVM[];         // rule cards grouped by stage, in state.stages order — RulesColumn's source of truth
+  strategySlots: StrategySlotVM[];  // stages.flatMap(s => s.slots) — one per rule in the store
+}
+
+interface QualityStageVM {
+  stageId: string;
+  name: string;
+  slots: StrategySlotVM[];
+  disabled: boolean;                // whole-stage toggle
 }
 
 interface CheckVM {
@@ -222,8 +331,14 @@ interface StrategySlotVM {
   disabled: boolean;
   ruleDisabled: boolean;
   producedBy: CheckVM[];    // this rule's member check instances, resolved to full CheckVMs
+  nestedStrategies: NestedStrategyVM[]; // resolved nested-strategy entries for strategy's nested slots — see "Nested strategies (UI)" above
 }
-interface StrategyVM { id: string; label: string; handles: string; params: ParamDescriptor[] }
+interface StrategyVM {
+  id: string; label: string; handles: string; params: ParamDescriptor[]; experimental: boolean;
+  nestedSlots: NestedSlotVM[]; // nested-strategy slots this strategy accepts, if any
+}
+interface NestedSlotVM { slotId: string; kind: string; min: number; max: number | null }
+interface NestedStrategyVM { slotId: string; strategy: StrategyVM; params: ParamDescriptor[]; nested: NestedStrategyVM[] }
 ```
 
 `compositeCheckId(ruleId, localId)` (exported from `useQualityViewModel.ts`) is the single point
@@ -309,7 +424,13 @@ removeStage(stageId: string): void
 moveStage(stageId: string, direction: "up" | "down"): void
 toggleStageDisabled(stageId: string): void
 setStrategyParam(strategyId: string, paramId: string, value: string): void
+setNestedStrategy(ruleId: string, path: PathSegment[], strategyId: string | null): void
+setNestedStrategyParam(ruleId: string, path: PathSegment[], paramId: string, value: string): void
+addNestedStrategy(ruleId: string, path: PathSegment[], slotKind: string): void
+removeNestedStrategy(ruleId: string, path: PathSegment[]): void
 ```
+
+See "Nested strategies (UI)" above for the last four.
 
 There is no `selectedChecks`/global `checkParams` state anymore (see "What a rule is" above) —
 every action below addresses a check instance as the pair `(ruleId, localId)`, never a bare check

@@ -32,7 +32,35 @@ fn repro_template() {
     // result.region_sizes      — HashMap<RegionClass, Vec<usize>> (sorted desc)
     // result.start / .finish   — Option<NodeId>
     // result.timing            — GenerationTiming
+    // result.graph             — Graph (final, post-repair)
     let _ = result;
+}
+
+/// User report: weighted_region_merge configured 9:1 (passage:one_way) for merge_target seemed to
+/// never produce a one-way connection in the browser. Config exported from the browser debug
+/// toolbar, QC-only mode (algorithmic generation skipped entirely — every preset connection in
+/// the fixture is `wall`), so every edge in the final graph is attributable to the repair
+/// strategy, not base generation's own `one_way_chance`.
+///
+/// Investigation: the exact fixture seed (315556) happens to never land on the one_way candidate
+/// across its few `dispatch_weighted` picks for this maze — a legitimate ~(0.9)^n outcome at a
+/// 9:1 weight split with only a handful of undersized regions to merge, not a bug. Scanning
+/// several other seeds against the same fixture confirms `dispatch_weighted` does pick the
+/// one_way candidate at roughly the configured ~10% rate, and successfully-applied one-way edges
+/// do survive into the final graph unchanged (this test's own assertion, at seed 0). Kept as a
+/// regression guard, not proof of the original report — see also
+/// `expand_region_passage::one_way_rolls_back_the_lone_successful_direction_when_the_other_is_preset_blocked`
+/// for a related atomicity hardening found while investigating (a partially-applied one-way could
+/// otherwise leave a stray directed edge that a later repair pass silently completes into a full
+/// passage, which would look like exactly this report from the outside).
+#[test]
+fn repro_315556_weighted_one_way_edges_survive_when_picked() {
+    let result = run_fixture("tests/fixtures/weighted_1_9_repro.json", 0);
+    let one_way: Vec<_> = result.graph.edges()
+        .filter(|e| result.graph.edge_between(e.to, e.from).is_none())
+        .collect();
+    println!("total_edges={} one_way_edges={}", result.graph.edges().count(), one_way.len());
+    assert!(!one_way.is_empty(), "seed 0 is known to pick+apply the one_way candidate at least once for this fixture");
 }
 
 /// Seed 287903: MissingRegionsStrategy fails to create Alternative despite large isolated regions.
@@ -143,3 +171,4 @@ fn repro_95_qc_only_official_export() {
     assert!(result.start.is_some(), "farthest_endpoints must assign a start");
     assert!(result.finish.is_some(), "farthest_endpoints must assign a finish");
 }
+

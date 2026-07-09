@@ -8,11 +8,11 @@ import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, re
 import { ui, radius, typography } from "../../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../../wasm/types";
-import type { NestedStrategyState, QcRuleState } from "../../../store/storeTypes";
+import { entriesForSlot, type NestedStrategyState, type PathSegment, type QcRuleState } from "../../../store/storeTypes";
 
 interface Props {
   ruleId: string;
-  path: string[];
+  path: PathSegment[];
   /** `IssueKind` this slot accepts — candidates are filtered to strategies handling it. */
   slotKind: string;
   currentStrategyId: string | null;
@@ -112,7 +112,7 @@ export function NestedStrategySelectDialog({ ruleId, path, slotKind, currentStra
 
 function NestedStrategyParamPanel({ ruleId, path, strategyId, params, storeValues, onCommit }: {
   ruleId: string;
-  path: string[];
+  path: PathSegment[];
   strategyId: string;
   params: ParamDescriptor[];
   storeValues: Record<string, string>;
@@ -120,7 +120,7 @@ function NestedStrategyParamPanel({ ruleId, path, strategyId, params, storeValue
 }) {
   const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }));
   const { values, onChange } = useParamEditor({
-    entityId: `${ruleId}:${path.join(".")}:${strategyId}`,
+    entityId: `${ruleId}:${path.map((p) => `${p.slotId}.${p.index}`).join(".")}:${strategyId}`,
     params: localizedParams,
     storeValues,
     onCommit,
@@ -177,11 +177,11 @@ const EMPTY_PARAMS: Record<string, string> = {};
 // Mirrors `NestedStrategyPanel.findRawNested`, but returns the raw param overrides directly
 // (`{}` if the slot has no assignment yet) — this dialog only ever needs the values, not the
 // whole node.
-function findRawNestedParams(rule: QcRuleState | undefined, path: string[]): Record<string, string> {
+function findRawNestedParams(rule: QcRuleState | undefined, path: PathSegment[]): Record<string, string> {
   let list = rule?.nestedStrategies;
   let found: NestedStrategyState | undefined;
-  for (const slotId of path) {
-    found = list?.find((n) => n.slotId === slotId);
+  for (const { slotId, index } of path) {
+    found = list ? entriesForSlot(list, slotId)[index] : undefined;
     list = found?.nested;
   }
   return found?.params ?? EMPTY_PARAMS;

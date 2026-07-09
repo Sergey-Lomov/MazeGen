@@ -60,4 +60,15 @@ impl SnapshotStack {
         maze.graph.force_bump_past(version_before_restore);
         maze.meta = meta;
     }
+
+    /// Pops the most recent snapshot WITHOUT restoring it — the mutations made since that
+    /// `snapshot()` call are kept, the snapshot itself is just no longer needed as a rollback
+    /// point. Used by a dispatcher (e.g. `dispatch_weighted`) that snapshots before a candidate
+    /// attempt "just in case" and, once that attempt actually succeeds, no longer needs the
+    /// rollback point it took out defensively.
+    ///
+    /// Panics if the stack is empty — same contract as `restore()`.
+    pub fn discard_last(&mut self) {
+        self.stack.pop().expect("discard_last() called with empty snapshot stack");
+    }
 }

@@ -7,6 +7,7 @@ import { WarningIcon } from "../../WarningIcon";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { NestedStrategyPanel } from "./NestedStrategyPanel";
+import { entriesForSlot } from "../../../store/storeTypes";
 import type { StrategySlotVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
@@ -80,9 +81,9 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
             <NestedStrategyPanel
               key={slotDesc.slotId}
               ruleId={slot.ruleId}
-              path={[slotDesc.slotId]}
+              path={[{ slotId: slotDesc.slotId, index: 0 }]}
               slotDesc={slotDesc}
-              node={slot.nestedStrategies.find((n) => n.slotId === slotDesc.slotId) ?? null}
+              entries={entriesForSlot(slot.nestedStrategies, slotDesc.slotId)}
               depth={1}
               selection={selection}
               onSelect={onSelect}

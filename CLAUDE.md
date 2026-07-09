@@ -54,4 +54,4 @@ IMPORTANT: These rules override the default commit behavior.
 
 **For browser-repro tests: never hardcode generation params** — seed, tessellation, checks, strategies, repair limits all come from the fixture JSON. This guarantees the test reproduces exactly what the browser ran. Regular unit tests with hand-crafted mazes may hardcode params as usual.
 
-`MazeRunResult` fields: `remaining_issues`, `region_sizes` (`HashMap<RegionClass, Vec<usize>>` sorted desc), `start`, `finish`, `timing`.
+`MazeRunResult` fields: `remaining_issues`, `region_sizes` (`HashMap<RegionClass, Vec<usize>>` sorted desc), `start`, `finish`, `timing`, `graph` (final post-repair `Graph` — inspect edge kinds/directionality).

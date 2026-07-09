@@ -5,6 +5,7 @@ import { NestedStrategyPanel, findRawNested } from "./NestedStrategyPanel";
 import { resolveStrategyDescription } from "../qualityI18n";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
+import { entriesForSlot, type PathSegment } from "../../../store/storeTypes";
 import type { useQualityViewModel, NestedStrategyVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
@@ -15,16 +16,16 @@ interface Props {
   onSelect: (s: QualitySelection) => void;
 }
 
-// Walks a `StrategySlotVM`'s `nestedStrategies` tree down `path`, the same slot-id chain
-// `NestedStrategyPanel.findRawNested` walks over the raw store state — this one resolves the
-// view-model side instead, since the detail panel needs the fully-resolved `NestedStrategyVM`
-// (label/description/params), not the raw store node. Exported for direct unit testing — pure,
-// no React/store involved.
-export function resolveNestedStrategyVM(topLevel: NestedStrategyVM[], path: string[]): NestedStrategyVM | undefined {
+// Walks a `StrategySlotVM`'s `nestedStrategies` tree down `path`, the same `(slotId, index)`
+// chain `NestedStrategyPanel.findRawNested` walks over the raw store state — this one resolves
+// the view-model side instead, since the detail panel needs the fully-resolved
+// `NestedStrategyVM` (label/description/params), not the raw store node. Exported for direct
+// unit testing — pure, no React/store involved.
+export function resolveNestedStrategyVM(topLevel: NestedStrategyVM[], path: PathSegment[]): NestedStrategyVM | undefined {
   let list = topLevel;
   let found: NestedStrategyVM | undefined;
-  for (const slotId of path) {
-    found = list.find((n) => n.slotId === slotId);
+  for (const { slotId, index } of path) {
+    found = entriesForSlot(list, slotId)[index];
     if (!found) return undefined;
     list = found.nested;
   }
@@ -96,9 +97,9 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
               <NestedStrategyPanel
                 key={slotDesc.slotId}
                 ruleId={slot.ruleId}
-                path={[slotDesc.slotId]}
+                path={[{ slotId: slotDesc.slotId, index: 0 }]}
                 slotDesc={slotDesc}
-                node={slot.nestedStrategies.find((n) => n.slotId === slotDesc.slotId) ?? null}
+                entries={entriesForSlot(slot.nestedStrategies, slotDesc.slotId)}
                 depth={1}
                 selection={selection}
                 onSelect={onSelect}
@@ -118,7 +119,10 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
     const rawNested = findRawNested(rules.find((r) => r.id === selection.ruleId), path);
     return (
       <ParamizedDetail
-        id={`${selection.ruleId}:${path.join(".")}`}
+        // Includes `node.strategy.id` — see `NestedStrategyPanel`'s matching `entityId` comment:
+        // without it, `useParamEditor`'s reset effect doesn't fire when this same path's
+        // strategy is swapped via the edit dialog, leaving stale param values displayed.
+        id={`${selection.ruleId}:${path.map((p) => `${p.slotId}.${p.index}`).join(".")}:${node.strategy.id}`}
         label={node.strategy.label}
         description={resolveStrategyDescription(node.strategy.id)}
         warning={node.strategy.experimental}
@@ -133,9 +137,9 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
               <NestedStrategyPanel
                 key={childSlotDesc.slotId}
                 ruleId={selection.ruleId}
-                path={[...path, childSlotDesc.slotId]}
+                path={[...path, { slotId: childSlotDesc.slotId, index: 0 }]}
                 slotDesc={childSlotDesc}
-                node={node.nested.find((n) => n.slotId === childSlotDesc.slotId) ?? null}
+                entries={entriesForSlot(node.nested, childSlotDesc.slotId)}
                 depth={1}
                 selection={selection}
                 onSelect={onSelect}

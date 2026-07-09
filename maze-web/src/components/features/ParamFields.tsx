@@ -90,6 +90,10 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
           <div key={p.id} style={styles.field}>
             <div style={styles.row}>
               <label style={styles.label}>{p.label}</label>
+              {/* Each control stops its own click from bubbling — not the whole row/field — so a
+                  container that turns clicks into a "select this" action elsewhere (e.g.
+                  `NestedStrategyPanel`'s strategy block) still catches clicks on the label or
+                  empty space around a control, just not on the control itself. */}
               {(p.kind.type === "float" || p.kind.type === "integer") && (
                 <input
                   type="number"
@@ -99,19 +103,23 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   max={p.kind.max}
                   step={p.kind.type === "integer" ? 1 : 0.1}
                   onChange={(e) => onChange(p.id, e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
                 />
               )}
               {p.kind.type === "bool" && (
-                <Switch
-                  checked={get(p) === "true"}
-                  onChange={(checked) => onChange(p.id, checked ? "true" : "false")}
-                />
+                <span style={styles.switchWrap} onClick={(e) => e.stopPropagation()}>
+                  <Switch
+                    checked={get(p) === "true"}
+                    onChange={(checked) => onChange(p.id, checked ? "true" : "false")}
+                  />
+                </span>
               )}
               {p.kind.type === "enum" && (
                 <select
                   style={{ ...styles.select, width: enumSelectWidth(p, containerWidth) }}
                   value={get(p)}
                   onChange={(e) => onChange(p.id, e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   {p.kind.options.map((opt) => (
                     <option key={opt} value={opt}>{resolveParamOptionLabel(p.id, opt)}</option>
@@ -186,5 +194,11 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
     height: 22,
     padding: "2px 18px 2px 4px",
+  },
+  // `display: flex` (not the default `inline`) so this stopPropagation wrapper doesn't disturb
+  // `row`'s flex layout — `Switch`'s own `flexShrink: 0` still applies to it as a flex item.
+  switchWrap: {
+    display: "flex",
+    flexShrink: 0,
   },
 };

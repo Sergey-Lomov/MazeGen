@@ -179,6 +179,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.teleport_group_proximity.label"] as MessageFn,
     description: m["strategy.teleport_group_proximity.description"] as MessageFn,
   },
+  weighted_region_merge: {
+    label: m["strategy.weighted_region_merge.label"] as MessageFn,
+    description: m["strategy.weighted_region_merge.description"] as MessageFn,
+  },
 };
 
 export const paramI18n: Record<string, { label: MessageFn; description: MessageFn }> = {

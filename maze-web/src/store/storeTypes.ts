@@ -81,17 +81,46 @@ export interface CheckInstance {
  */
 export const MAX_NESTED_STRATEGY_DEPTH = 32;
 
+/** One step of a nested-strategy address chain — `slotId` picks which slot at this level, `index`
+ * picks which of possibly several entries filling that slot (`NestedSlot.max` may be `null`,
+ * i.e. unbounded — see `weighted_region_merge`'s `merge_target` slot, GitHub issue #90). `index`
+ * is the entry's position among sibling entries sharing this `slotId` specifically, not a
+ * position in the whole (mixed-slot) list — see `entriesForSlot`. For a slot capped at 1 (the
+ * overwhelming majority today), `index` is always `0`. */
+export interface PathSegment {
+  slotId: string;
+  index: number;
+}
+
 /** One nested strategy assignment, filling one of the parent strategy's `nested_slots` (see
  * `StrategyDescriptor.nested_slots` and `Specs/repair.md`'s nested-strategy pattern). Recursive —
  * a nested strategy can itself have nested strategies. Lives per-rule (on `QcRuleState`), not in
  * the global `strategyParams` map — two rules using the same nesting-capable top-level strategy
- * (e.g. two `reduce_scc_count` rules) must be able to pick independent nested strategies/params. */
+ * (e.g. two `reduce_scc_count` rules) must be able to pick independent nested strategies/params.
+ *
+ * Several entries may share the same `slotId` when that slot's `max` is `null` or `> 1` (see
+ * `weighted_region_merge`, GitHub issue #90) — `slotId` alone is therefore not a unique key into
+ * a `NestedStrategyState[]` list; addressing a specific entry needs `(slotId, index)`, see
+ * `PathSegment`/`entriesForSlot`. */
 export interface NestedStrategyState {
-  /** Which parent slot this fills — matches `StrategyDescriptor.nested_slots[].slot_id`. */
+  /** Which parent slot this fills — matches `StrategyDescriptor.nested_slots[].slot_id`. Not
+   * unique within the owning list — see this interface's own doc comment. */
   slotId: string;
   strategyId: string;
   params: Record<string, string>;
   nested: NestedStrategyState[];
+}
+
+/** Every entry in `list` filling `slotId`, in list order — that order is this slot's own
+ * `index` addressing (see `PathSegment`), so callers must never resort/filter this array by
+ * anything other than `slotId` before indexing into it. Shared by every consumer that needs to
+ * enumerate or index a slot's entries (store actions, `NestedStrategyPanel`,
+ * `useQualityViewModel`'s `buildNested`, `findRawNested`) — generic over `{ slotId: string }`
+ * so it works identically for the raw `NestedStrategyState[]` tree and the resolved
+ * `NestedStrategyVM[]` tree (`useQualityViewModel.ts`), which share the same `slotId`-keyed
+ * shape but are otherwise different types. */
+export function entriesForSlot<T extends { slotId: string }>(list: T[], slotId: string): T[] {
+  return list.filter((n) => n.slotId === slotId);
 }
 
 /** A user-defined rule: a group of active checks producing the same issue kind, sharing one
@@ -385,12 +414,25 @@ export interface GenerationActions {
   setStrategy: (ruleId: string, strategyId: string) => void;
   clearStrategy: (ruleId: string) => void;
   /** Sets, replaces, or removes (`strategyId: null`) the nested strategy at `path` — a chain of
-   * slot ids, each resolved relative to the node selected by the previous element (see
-   * `NestedStrategyState`'s doc comment). `path: ["merge_target"]` addresses the slot directly
-   * under the rule's own top-level strategy; `path: ["merge_target", "some_deeper_slot"]`
-   * addresses a slot under that nested strategy, and so on. */
-  setNestedStrategy: (ruleId: string, path: string[], strategyId: string | null) => void;
-  setNestedStrategyParam: (ruleId: string, path: string[], paramId: string, value: string) => void;
+   * `(slotId, index)` steps, each resolved relative to the node selected by the previous element
+   * (see `NestedStrategyState`/`PathSegment`'s doc comments). `path: [{slotId: "merge_target",
+   * index: 0}]` addresses the first entry of the slot directly under the rule's own top-level
+   * strategy; a longer path addresses a slot under that nested strategy, and so on. `index` must
+   * already reference an existing entry (from `addNestedStrategy` or a previous `setStrategy`
+   * auto-fill) — this action replaces or clears that entry in place, it never appends. */
+  setNestedStrategy: (ruleId: string, path: PathSegment[], strategyId: string | null) => void;
+  setNestedStrategyParam: (ruleId: string, path: PathSegment[], paramId: string, value: string) => void;
+  /** Appends a new entry to the slot addressed by `path`'s last segment (whose `index` is
+   * ignored — the new entry always lands after every existing sibling sharing that `slotId`),
+   * defaulted to the first strategy handling `slotKind`. No-op if no compatible strategy is
+   * registered. Callers are responsible for respecting the slot's own `max` (unbounded when
+   * `null`) — this action does not itself enforce a cap. */
+  addNestedStrategy: (ruleId: string, path: PathSegment[], slotKind: string) => void;
+  /** Removes the entry at `path` entirely (not just clearing its strategy, unlike
+   * `setNestedStrategy(..., null)`, which is reserved for a single-entry, `min: 0` slot use case)
+   * — every sibling entry sharing this `slotId` with a higher `index` shifts down by one, since
+   * `index` is a list position, not a stable id (see `PathSegment`). */
+  removeNestedStrategy: (ruleId: string, path: PathSegment[]) => void;
   toggleStrategyDisabled: (ruleId: string) => void;
   toggleRuleDisabled: (ruleId: string) => void;
   renameRule: (ruleId: string, name: string) => void;

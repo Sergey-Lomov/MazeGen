@@ -31,7 +31,7 @@ use maze_core::{
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
         ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
-        RemoveTeleportStrategy, TeleportGroupProximityStrategy,
+        RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy,
     },
     RegionClass, GenerationTiming,
     quality_control::Issue,
@@ -49,6 +49,10 @@ pub struct MazeRunResult {
     pub region_sizes: HashMap<RegionClass, Vec<usize>>,
     pub start: Option<maze_core::ids::NodeId>,
     pub finish: Option<maze_core::ids::NodeId>,
+    /// Final graph, post-repair — lets a repro test inspect actual edge kinds/directionality
+    /// (e.g. verifying a one-way vs. bidirectional connection was actually chosen), which none
+    /// of the other summary fields expose.
+    pub graph: Graph,
 }
 
 fn check_kind_for_type(type_id: &str) -> IssueKind {
@@ -300,6 +304,7 @@ fn build_strategy<T: Tessellation>(id: &str) -> Result<Box<dyn RepairStrategy<T>
         "teleport_region_merge" => Box::new(TeleportRegionMergeStrategy),
         "missing_regions"      => Box::new(MissingRegionsStrategy),
         "reduce_scc_count"     => Box::new(ReduceSccCountStrategy),
+        "weighted_region_merge" => Box::new(WeightedRegionMergeStrategy),
         "remove_teleport"      => Box::new(RemoveTeleportStrategy),
         "teleport_group_proximity" => Box::new(TeleportGroupProximityStrategy),
         other => return Err(format!("unknown strategy: {other}")),
@@ -509,7 +514,7 @@ fn run_generate_typed<T: Tessellation>(
         }
     }
 
-    Ok(MazeRunResult { remaining_issues, timing, region_sizes, start: start_node, finish: finish_node })
+    Ok(MazeRunResult { remaining_issues, timing, region_sizes, start: start_node, finish: finish_node, graph: maze.graph.clone() })
 }
 
 /// Parse JSON config and run the full generation+repair pipeline for the given seed.
@@ -745,6 +750,59 @@ mod nested_strategy_tests {
         let result = run_from_config(1, &config).expect("run_from_config must succeed");
         assert!(!result.remaining_issues.iter().any(|i| i.kind.as_str() == "excessive_scc_count"),
             "a fully contiguous field must let reduce_scc_count converge to max_scc_count=1: {:?}",
+            result.remaining_issues.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn end_to_end_weighted_region_merge_retries_after_geometric_failure_via_teleport() {
+        use crate::config::TessellationConfig;
+
+        // Two disjoint 2x2 islands, same shape as the reduce_scc_count disjoint-islands test
+        // above — expand_region_passage is guaranteed to fail (no shared wall between islands),
+        // teleport_region_merge is guaranteed to succeed (not geometry-bound, any other SCC
+        // component is a valid candidate). This proves dispatch_weighted actually retries: the
+        // only way REGION_NEEDS_EXPANSION gets resolved on this fixture is if the
+        // geometry-bound candidate is tried, fails, is rolled back, and the teleport candidate is
+        // then tried and succeeds — not just "generation converged somehow".
+        let mut points = vec![];
+        for x in 0..2 { for y in 0..2 { points.push([x, y]); } }
+        for x in 4..6 { for y in 0..2 { points.push([x, y]); } }
+
+        let mut config = GenerateConfig::default();
+        config.tessellation = TessellationConfig { tessellation_type: TessellationType::Square, points };
+
+        let region_rule = QcRuleConfig {
+            id: "r_region".to_string(),
+            checks: vec![CheckInstanceConfig {
+                local_id: "min_region_size".to_string(),
+                type_id: "min_region_size".to_string(),
+                params: HashMap::from([("min_region_size".to_string(), "3".to_string())]),
+            }],
+            strategy: Some(StrategyConfig {
+                id: "weighted_region_merge".to_string(),
+                params: HashMap::new(),
+                slot_id: None,
+                nested: vec![
+                    StrategyConfig {
+                        id: "expand_region_passage".to_string(),
+                        params: HashMap::new(),
+                        slot_id: Some("merge_target".to_string()),
+                        nested: vec![],
+                    },
+                    StrategyConfig {
+                        id: "teleport_region_merge".to_string(),
+                        params: HashMap::new(),
+                        slot_id: Some("merge_target".to_string()),
+                        nested: vec![],
+                    },
+                ],
+            }),
+        };
+        config.stages[0].rules.push(region_rule);
+
+        let result = run_from_config(1, &config).expect("run_from_config must succeed");
+        assert!(!result.remaining_issues.iter().any(|i| i.kind.as_str() == "region_needs_expansion"),
+            "weighted_region_merge must resolve region_needs_expansion via the teleport candidate after the geometric one fails: {:?}",
             result.remaining_issues.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>());
     }
 

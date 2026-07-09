@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { useRef } from "react";
 import { QualityDetailPanel } from "../components/features/quality/QualityDetailPanel";
 import { useMazeStore } from "../store/mazeStore";
@@ -61,6 +61,29 @@ describe("QualityDetailPanel", () => {
     expect(screen.getByText("Strategy One")).toBeInTheDocument();
   });
 
+  it("clicking a nested strategy shown under a selected top-level strategy calls onSelect", () => {
+    const onSelect = vi.fn();
+    const nestedStrategy: StrategyVM = { id: "expand_region_passage", label: "expand_region_passage", handles: "k2", params: [], experimental: false, nestedSlots: [] };
+    const topLevel: StrategyVM = {
+      id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: null }],
+    };
+    const vm = makeVm({
+      strategySlots: [{
+        ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: topLevel,
+        disabled: false, ruleDisabled: false, producedBy: [check],
+        nestedStrategies: [{ slotId: "slot_a", strategy: nestedStrategy, params: [], nested: [] }],
+      }],
+    });
+    function HarnessWithSelect({ vm: v }: { vm: QualityViewModel }) {
+      const flushRef = useRef<() => void>(() => {});
+      return <QualityDetailPanel selection={{ type: "strategy", ruleId: "g1", strategyId: "s1" }} vm={v} flushRef={flushRef} onSelect={onSelect} />;
+    }
+    render(<HarnessWithSelect vm={vm} />);
+    fireEvent.click(screen.getByText("Expand region with a passage"));
+    expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] });
+  });
+
   it("renders empty panel when selected check no longer exists", () => {
     render(<Harness selection={{ type: "check", id: "missing" }} vm={makeVm()} />);
     expect(screen.queryByText("Check One")).not.toBeInTheDocument();
@@ -79,15 +102,35 @@ describe("QualityDetailPanel", () => {
         nestedStrategies: [{ slotId: "slot_a", strategy: nestedStrategy, params: [], nested: [] }],
       }],
     });
-    render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: ["slot_a"] }} vm={vm} />);
+    render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] }} vm={vm} />);
     expect(screen.getByText("Nested One")).toBeInTheDocument();
+  });
+
+  it("renders the nested strategy's own params on the detail panel", () => {
+    const nestedStrategy: StrategyVM = {
+      id: "n1", label: "Nested One", handles: "k2", experimental: false, nestedSlots: [],
+      params: [{ id: "p1", label: "Param One", kind: { type: "float", default: 1, min: 0, max: 10 } }],
+    };
+    const topLevel: StrategyVM = {
+      id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1 }],
+    };
+    const vm = makeVm({
+      strategySlots: [{
+        ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: topLevel,
+        disabled: false, ruleDisabled: false, producedBy: [check],
+        nestedStrategies: [{ slotId: "slot_a", strategy: nestedStrategy, params: nestedStrategy.params, nested: [] }],
+      }],
+    });
+    render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] }} vm={vm} />);
+    expect(screen.getByText("Param One")).toBeInTheDocument();
   });
 
   it("renders empty panel when the selected nested_strategy path no longer resolves", () => {
     const vm = makeVm({
       strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy, disabled: false, ruleDisabled: false, producedBy: [check], nestedStrategies: [] }],
     });
-    render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: ["slot_a"] }} vm={vm} />);
+    render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] }} vm={vm} />);
     expect(screen.queryByText("Strategy One")).not.toBeInTheDocument();
   });
 });
