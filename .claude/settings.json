@@ -1,1 +1,11 @@
-{}
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"d:/Development/MazeGen/.claude/hooks\" 2>/dev/null; ls \"d:/Development/MazeGen/.claude\")",
+      "PowerShell(if \\($?\\) { \"valid JSON\" })"
+    ],
+    "additionalDirectories": [
+      "d:\\Development\\MazeGen\\.claude"
+    ]
+  }
+}
