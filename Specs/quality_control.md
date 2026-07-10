@@ -608,13 +608,21 @@ Serialized to JSON in `MazeSnapshot.issues` (`build_analytics_snapshot`, `maze-w
 ```rust
 struct IssueDto {
     kind: String,                                       // IssueKind::as_str()
-    invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>>, // invalid_loop only, keyed by source check instance id
-    region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>>, // region_needs_expansion only, keyed by source check instance id
+    payload: IssuePayloadDto,                            // tagged payload, see below
     source_checks: Vec<String>,                          // Issue::source_checks() — opaque composite instance ids
     source_check_types: HashMap<String, String>,         // source_checks entry -> check type id
     details: HashMap<String, HashMap<String, String>>,   // Issue::details()
 }
+
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum IssuePayloadDto {
+    None,
+    InvalidLoop { edges: HashMap<String, Vec<Vec<[u32; 2]>>> }, // invalid_loop only, keyed by source check instance id
+    RegionNeedsExpansion { nodes: HashMap<String, Vec<Vec<u32>>> }, // region_needs_expansion only, keyed by source check instance id
+}
 ```
+
+`payload` is a discriminated union tagged via `#[serde(tag = "kind")]`, serialized through `serde_wasm_bindgen::Serializer::json_compatible()` into a real TS discriminated union — the web side narrows on `payload.kind` (`"none" | "invalid_loop" | "region_needs_expansion"`) to know which field (`edges`/`nodes`) is present, instead of reading two parallel always-mostly-empty maps. `IssueDto.kind` remains the source of truth for UI filtering/labels; `payload.kind` is purely a narrowing discriminant. `payload.kind`'s variant tags mirror `IssueKind::as_str()`'s wire strings by construction — `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) asserts (debug-only) that they never diverge.
 
 `source_checks` and `details` are the serialized form of `Issue`'s same-named accessors (see
 "Issue" above) — the web UI uses them to render one bubble per contributing check, each with a
@@ -631,28 +639,28 @@ builds while constructing the active checks for this pass — invariant: exactly
 `source_check_types` entry per distinct id appearing anywhere in any issue's `source_checks` for
 this snapshot, no extras.
 
-`invalid_loop_edges` is keyed by source check instance id, not one flat list — a merged
-`invalid_loop` issue may carry cycles from several checks at once (e.g. both `min_loop_length`'s
-short loops and `max_loop_length`'s long loops), and each is attributed to its own check's entry
-so the UI can highlight only the cycles relevant to the bubble being hovered, not every
-contributing check's cycles combined. Built by looking up each invalid cycle's canonical key
-(`canonical_cycle_key`) in `IssueData::InvalidLoops.invalid_sources` to find which check(s)
-flagged it — the same attribution map `merge_invalid_loops` (`repair.md`'s "Pipeline" section)
-already maintains across merges. A check instance id absent from `invalid_loop_edges` (or the
-whole map empty) means that check flagged no cycles, or the issue isn't `invalid_loop`.
+`IssuePayloadDto::InvalidLoop.edges` is keyed by source check instance id, not one flat list — a
+merged `invalid_loop` issue may carry cycles from several checks at once (e.g. both
+`min_loop_length`'s short loops and `max_loop_length`'s long loops), and each is attributed to its
+own check's entry so the UI can highlight only the cycles relevant to the bubble being hovered,
+not every contributing check's cycles combined. Built by looking up each invalid cycle's
+canonical key (`canonical_cycle_key`) in `IssueData::InvalidLoops.invalid_sources` to find which
+check(s) flagged it — the same attribution map `merge_invalid_loops` (`repair.md`'s "Pipeline"
+section) already maintains across merges. `payload` is only `InvalidLoop` when the issue is
+`invalid_loop` and at least one check flagged a cycle — otherwise it's `None`.
 
-`region_needs_expansion_nodes` mirrors `invalid_loop_edges`'s role for `region_needs_expansion`
-issues (currently produced by `MinRegionSizeCheck`/`MinRegionRatioCheck`) — keyed by source
-check instance id for the same reason, so hovering one check's bubble highlights only the
-regions that check flagged. Each inner `Vec<u32>` is one flagged region's member maze node ids
-(not edges — the web client derives the region's perimeter and fill client-side from this node
-set, the same way it derives preset boundary walls from a cell set; see
-`IssueHighlightOverlay.ts`/`issueHighlightSelectors.ts`). Built from
+`IssuePayloadDto::RegionNeedsExpansion.nodes` mirrors `InvalidLoop.edges`'s role for
+`region_needs_expansion` issues (currently produced by `MinRegionSizeCheck`/`MinRegionRatioCheck`)
+— keyed by source check instance id for the same reason, so hovering one check's bubble
+highlights only the regions that check flagged. Each inner `Vec<u32>` is one flagged region's
+member maze node ids (not edges — the web client derives the region's perimeter and fill
+client-side from this node set, the same way it derives preset boundary walls from a cell set;
+see `IssueHighlightOverlay.ts`/`issueHighlightSelectors.ts`). Built from
 `IssueData::RegionsNeedingExpansion.invalid` (indices into
 `maze.analysis.scc(&maze.graph).components`) and `invalid_sources` (keyed by component index, no
 remap needed within one QC pass — see `IssueData::RegionsNeedingExpansion`'s doc comment above).
-A check instance id absent from `region_needs_expansion_nodes` means that check flagged no
-regions, or the issue isn't `region_needs_expansion`.
+`payload` is only `RegionNeedsExpansion` when the issue is `region_needs_expansion` and at least
+one check flagged a region — otherwise it's `None`.
 
 ### CheckDescriptor
 

@@ -3,13 +3,13 @@ use rand::SeedableRng;
 use maze_core::random::MazeRng;
 use maze_core::{
     space::Tessellation,
-    quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED},
+    quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED, INVALID_LOOP, REGION_NEEDS_EXPANSION},
     quality_control::issue_data::canonical_cycle_key,
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
     Maze,
 };
 use crate::dto::{
-    EdgeDto, EdgeKindDto, IssueDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
+    EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
     NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
 };
 
@@ -54,7 +54,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         // Grouped by source check id (not one flat list) so a merged issue rendered as several
         // bubbles (one per `source_checks` entry) highlights only the cycles *that check*
-        // flagged on hover — see `IssueDto.invalid_loop_edges`'s doc comment.
+        // flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment.
         let mut invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
         if let Some(IssueData::InvalidLoops { all, invalid, invalid_sources }) = &issue.data {
             for &idx in invalid {
@@ -81,6 +81,29 @@ pub fn build_analytics_snapshot<T: Tessellation>(
                 }
             }
         }
+        debug_assert!(
+            invalid_loop_edges.is_empty() || region_needs_expansion_nodes.is_empty(),
+            "issue {:?} produced both InvalidLoop and RegionNeedsExpansion payload data — \
+             at most one IssueData variant should match per issue",
+            issue.kind
+        );
+        let payload = if !invalid_loop_edges.is_empty() {
+            IssuePayloadDto::InvalidLoop { edges: invalid_loop_edges }
+        } else if !region_needs_expansion_nodes.is_empty() {
+            IssuePayloadDto::RegionNeedsExpansion { nodes: region_needs_expansion_nodes }
+        } else {
+            IssuePayloadDto::None
+        };
+        debug_assert!(
+            match &payload {
+                IssuePayloadDto::None => true,
+                // Compare against IssueKind itself, not its string form — Display/to_string is
+                // not guaranteed to match the wire string (`as_str()`) and could diverge from it.
+                IssuePayloadDto::InvalidLoop { .. } => issue.kind == INVALID_LOOP,
+                IssuePayloadDto::RegionNeedsExpansion { .. } => issue.kind == REGION_NEEDS_EXPANSION,
+            },
+            "payload kind must match issue.kind ({:?}), got {:?}", issue.kind, payload
+        );
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()
             .map(|(check_id, kv)| (
@@ -108,7 +131,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         let source_check_types: HashMap<String, String> = issue.source_checks().iter()
             .filter_map(|s| check_types.get(s).map(|t| (s.clone(), t.clone())))
             .collect();
-        IssueDto { kind: issue.kind.to_string(), invalid_loop_edges, region_needs_expansion_nodes, source_checks, source_check_types, details }
+        IssueDto { kind: issue.kind.to_string(), payload, source_checks, source_check_types, details }
     }).collect();
 
     let nodes: Vec<NodeDto> = maze.graph

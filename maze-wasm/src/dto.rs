@@ -39,24 +39,45 @@ pub struct NavEdgeDto {
     pub path: Vec<u32>,
 }
 
+/// Tagged payload carried by `IssueDto` — replaces the old parallel-optional-fields shape
+/// (`invalid_loop_edges` / `region_needs_expansion_nodes`) with one discriminated union, tagged
+/// via `#[serde(tag = "kind")]` so `serde_wasm_bindgen::Serializer::json_compatible()` emits a
+/// real TS discriminated union (`payload.kind` narrows which field is valid) instead of two
+/// always-mostly-empty maps a caller could silently read the wrong one of. Variant tags
+/// intentionally mirror `IssueKind::as_str()`'s wire strings (`invalid_loop`,
+/// `region_needs_expansion`) so `payload.kind` lines up with `IssueDto.kind` by construction —
+/// see `build_analytics_snapshot`'s `debug_assert!`s for the runtime check that they stay in
+/// sync. `IssueDto.kind` remains the source of truth for UI filtering/labels; `payload.kind` is
+/// only a TS-narrowing discriminant for which payload fields are present.
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum IssuePayloadDto {
+    None,
+    /// Keyed by source check id — each inner Vec is one invalid cycle flagged by that check,
+    /// expressed as base-graph [from, to] maze node-id pairs for highlight rendering. Keyed per
+    /// check (not one flat list) so that when one merged issue renders as several bubbles (one
+    /// per `source_checks` entry — see `quality_control.md`'s "Dedup interaction"), hovering a
+    /// bubble highlights only the cycles *that check* flagged, not every contributing check's
+    /// cycles combined (e.g. `min_loop_length`'s short loops must not highlight when hovering the
+    /// `max_loop_length` bubble).
+    InvalidLoop {
+        edges: HashMap<String, Vec<Vec<[u32; 2]>>>,
+    },
+    /// Keyed by source check id — each inner Vec is one flagged SCC region's member maze node ids
+    /// (not edges — the web side derives the region's perimeter client-side from this node set,
+    /// the same way it already derives preset boundary walls from a cell set). Keyed per check
+    /// for the same reason as `InvalidLoop` — `min_region_size` and `min_region_ratio` can both
+    /// flag regions and merge into one issue, but hovering one bubble must highlight only that
+    /// check's regions.
+    RegionNeedsExpansion {
+        nodes: HashMap<String, Vec<Vec<u32>>>,
+    },
+}
+
 #[derive(Serialize)]
 pub struct IssueDto {
     pub kind: String,
-    /// Present only for `invalid_loop` issues, keyed by source check id — each inner Vec is one
-    /// invalid cycle flagged by that check, expressed as base-graph [from, to] maze node-id pairs
-    /// for highlight rendering. Keyed per check (not one flat list) so that when one merged issue
-    /// renders as several bubbles (one per `source_checks` entry — see `quality_control.md`'s
-    /// "Dedup interaction"), hovering a bubble highlights only the cycles *that check* flagged,
-    /// not every contributing check's cycles combined (e.g. `min_loop_length`'s short loops must
-    /// not highlight when hovering the `max_loop_length` bubble).
-    pub invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>>,
-    /// Present only for `region_needs_expansion` issues, keyed by source check id — each inner
-    /// Vec is one flagged SCC region's member maze node ids (not edges — the web side derives the
-    /// region's perimeter client-side from this node set, the same way it already derives preset
-    /// boundary walls from a cell set). Keyed per check for the same reason as
-    /// `invalid_loop_edges` — `min_region_size` and `min_region_ratio` can both flag regions and
-    /// merge into one issue, but hovering one bubble must highlight only that check's regions.
-    pub region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>>,
+    pub payload: IssuePayloadDto,
     /// Opaque per-instance check id(s) that produced or contributed to this issue
     /// (`Issue::source_checks()`) — lets the web UI render one bubble per contributing check
     /// rather than one per `kind`, distinguishing e.g. two `min_region_count` instances' issues

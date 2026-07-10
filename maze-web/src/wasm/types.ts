@@ -79,18 +79,31 @@ export interface GraphAnalyticsDto {
 
 export type RegionClass = "path" | "alternative" | "unreachable" | "trap";
 
+/** Tagged payload for `IssueDto` — a real discriminated union (narrow on `kind`) mirroring
+ * Rust's `IssuePayloadDto`. `IssueDto.kind` remains the source of truth for UI filtering/labels;
+ * `payload.kind` is only a narrowing discriminant for which payload fields are present. */
+export type IssuePayloadDto =
+  | { kind: "none" }
+  | {
+      kind: "invalid_loop";
+      /** Keyed by source check id — each entry is one invalid cycle's base-graph edges as
+       * [from, to] maze node-id pairs, for highlight rendering. Keyed per check (not one flat
+       * list) so hovering one check's bubble highlights only the cycles that check flagged, not
+       * every contributing check's cycles combined. */
+      edges: Record<string, [number, number][][]>;
+    }
+  | {
+      kind: "region_needs_expansion";
+      /** Keyed by source check id — each entry is one flagged SCC region's member maze node ids
+       * (not edges — the UI derives the region's perimeter client-side from this node set, the
+       * same way preset boundary walls are derived from a cell set). Keyed per check for the same
+       * reason as the `invalid_loop` variant's `edges`. */
+      nodes: Record<string, number[][]>;
+    };
+
 export interface IssueDto {
   kind: string;
-  /** Present only for `invalid_loop` issues, keyed by source check id — each entry is one
-   * invalid cycle's base-graph edges as [from, to] maze node-id pairs, for highlight rendering.
-   * Keyed per check (not one flat list) so hovering one check's bubble highlights only the
-   * cycles that check flagged, not every contributing check's cycles combined. */
-  invalid_loop_edges: Record<string, [number, number][][]>;
-  /** Present only for `region_needs_expansion` issues, keyed by source check id — each entry is
-   * one flagged SCC region's member maze node ids (not edges — the UI derives the region's
-   * perimeter client-side from this node set, the same way preset boundary walls are derived from
-   * a cell set). Keyed per check for the same reason as `invalid_loop_edges`. */
-  region_needs_expansion_nodes: Record<string, number[][]>;
+  payload: IssuePayloadDto;
   /** Opaque per-instance check id(s) that produced or contributed to this issue — lets the UI
    * render one bubble per contributing check rather than one per `kind`. Not a check type id by
    * itself (see GitHub issue #60) — resolve the type id via `source_check_types`. */

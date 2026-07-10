@@ -33,11 +33,15 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const typeId = sourceCheck != null ? issue.source_check_types[sourceCheck] ?? sourceCheck : issue.kind;
   const label = resolveIssueSourceLabel(issue.kind, typeId, details);
   // Only this bubble's own source check's cycles — not every contributing check's cycles
-  // combined (see `IssueDto.invalid_loop_edges`'s doc comment).
-  const loopEdges = sourceCheck != null ? issue.invalid_loop_edges[sourceCheck] ?? null : null;
+  // combined (see `IssuePayloadDto`'s doc comment).
+  const loopEdges = sourceCheck != null && issue.payload.kind === "invalid_loop"
+    ? issue.payload.edges[sourceCheck] ?? null
+    : null;
   // Same per-check isolation as `loopEdges` above — only this bubble's own source check's
   // flagged regions, not every contributing check's regions combined.
-  const regionNodes = sourceCheck != null ? issue.region_needs_expansion_nodes[sourceCheck] ?? null : null;
+  const regionNodes = sourceCheck != null && issue.payload.kind === "region_needs_expansion"
+    ? issue.payload.nodes[sourceCheck] ?? null
+    : null;
   const palette = severity === "critical"
     ? { bg: ui.bg.error, text: ui.text.error }
     : { bg: ui.bg.warning, text: ui.text.warning };
