@@ -15,7 +15,7 @@ pub struct SccCountCheck {
 impl<T: Tessellation> Check<T> for SccCountCheck {
     fn check_type_id(&self) -> &'static str { "scc_count" }
 
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let scc = maze.analysis.scc(&maze.graph);
         let count = scc.components.len() as u32;
         if count <= self.max_scc_count {
@@ -72,7 +72,7 @@ mod tests {
         let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 1 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -82,7 +82,7 @@ mod tests {
         let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 1 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, EXCESSIVE_SCC_COUNT);
         assert_eq!(issues[0].data, Some(IssueData::ExcessiveSccCount { max_scc_count: 1 }));
@@ -103,7 +103,7 @@ mod tests {
         let check = SccCountCheck { instance_id: TEST_ID.to_string(), max_scc_count: 4 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 }

@@ -11,7 +11,7 @@ pub struct MissingEndpointsCheck {
 impl<T: Tessellation> Check<T> for MissingEndpointsCheck {
     fn check_type_id(&self) -> &'static str { "missing_endpoints" }
 
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
             issues.push(Issue::new_from_check(MISSING_ENDPOINTS, &self.instance_id));
         }

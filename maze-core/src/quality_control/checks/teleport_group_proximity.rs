@@ -66,7 +66,7 @@ pub struct TeleportGroupProximityCheck {
 impl<T: Tessellation> Check<T> for TeleportGroupProximityCheck {
     fn check_type_id(&self) -> &'static str { "teleport_group_proximity" }
 
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let teleports: Vec<_> = maze.graph.edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .map(|e| (e.id, e.from, e.to))
@@ -202,7 +202,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(1000.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(1000.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -233,7 +233,7 @@ mod tests {
         let (maze, id_a, id_b) = maze_with_two_teleport_entries_at_gap(2);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, TELEPORT_GROUP_PROXIMITY);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
@@ -248,7 +248,7 @@ mod tests {
         let (maze, _, _) = maze_with_two_teleport_entries_at_gap(10);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -257,7 +257,7 @@ mod tests {
         let (maze, _, _) = maze_with_two_teleport_entries_at_gap(0);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(0.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(0.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "a threshold of 0 should never flag any pair");
     }
 
@@ -270,13 +270,13 @@ mod tests {
         let (maze_close, _, _) = maze_with_two_teleport_entries_at_gap(1);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze_close, &mut issues, &mut rng);
+        check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze_close, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1, "gap of 1 tile-hop must fire against threshold 1.5");
 
         let (maze_far, _, _) = maze_with_two_teleport_entries_at_gap(2);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze_far, &mut issues, &mut rng);
+        check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze_far, &mut issues, &mut rng);
         assert!(issues.is_empty(), "gap of 2 tile-hops must stay silent against threshold 1.5");
     }
 
@@ -285,7 +285,7 @@ mod tests {
         let (maze, _, _) = maze_with_two_teleport_entries_at_gap(1);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(1.5, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].details().get(TEST_ID).and_then(|kv| kv.get("distance")), Some(&"1.5".to_string()));
     }
@@ -307,7 +307,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
         assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b), "forward a->b (distance 2) must be caught even though b->a is unreachable");
@@ -364,7 +364,7 @@ mod tests {
         let (maze, id_a, id_b) = maze_with_one_close_endpoint_pair(ClosePair::EntryEntry);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
         assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
@@ -375,7 +375,7 @@ mod tests {
         let (maze, id_a, id_b) = maze_with_one_close_endpoint_pair(ClosePair::EntryExit);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Exit).check(&maze, &mut issues, &mut rng);
+        check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Exit).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
         assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
@@ -386,7 +386,7 @@ mod tests {
         let (maze, id_a, id_b) = maze_with_one_close_endpoint_pair(ClosePair::ExitEntry);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(3.0, TeleportProximityEdge::Exit, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(3.0, TeleportProximityEdge::Exit, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
         assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
@@ -397,7 +397,7 @@ mod tests {
         let (maze, id_a, id_b) = maze_with_one_close_endpoint_pair(ClosePair::ExitExit);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(3.0, TeleportProximityEdge::Exit, TeleportProximityEdge::Exit).check(&maze, &mut issues, &mut rng);
+        check(3.0, TeleportProximityEdge::Exit, TeleportProximityEdge::Exit).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
         assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
@@ -412,7 +412,7 @@ mod tests {
             let (maze, id_a, id_b) = maze_with_one_close_endpoint_pair(close);
             let mut issues = Vec::new();
             let mut rng = crate::random::MazeRng::seed_from_u64(0);
-            check(3.0, TeleportProximityEdge::EntryOrExit, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+            check(3.0, TeleportProximityEdge::EntryOrExit, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
             assert_eq!(issues.len(), 1, "own=EntryOrExit must fire regardless of which own end is close");
             let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
             assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
@@ -427,7 +427,7 @@ mod tests {
             let (maze, id_a, id_b) = maze_with_one_close_endpoint_pair(close);
             let mut issues = Vec::new();
             let mut rng = crate::random::MazeRng::seed_from_u64(0);
-            check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::EntryOrExit).check(&maze, &mut issues, &mut rng);
+            check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::EntryOrExit).repair_check(&maze, &mut issues, &mut rng);
             assert_eq!(issues.len(), 1);
             let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
             assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
@@ -440,7 +440,7 @@ mod tests {
             let (maze, id_a, id_b) = maze_with_one_close_endpoint_pair(close);
             let mut issues = Vec::new();
             let mut rng = crate::random::MazeRng::seed_from_u64(0);
-            check(3.0, TeleportProximityEdge::EntryOrExit, TeleportProximityEdge::EntryOrExit).check(&maze, &mut issues, &mut rng);
+            check(3.0, TeleportProximityEdge::EntryOrExit, TeleportProximityEdge::EntryOrExit).repair_check(&maze, &mut issues, &mut rng);
             assert_eq!(issues.len(), 1);
             let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
             assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
@@ -460,7 +460,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(1000.0, TeleportProximityEdge::EntryOrExit, TeleportProximityEdge::EntryOrExit).check(&maze, &mut issues, &mut rng);
+        check(1000.0, TeleportProximityEdge::EntryOrExit, TeleportProximityEdge::EntryOrExit).repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "unreachable in every combination must not be treated as distance 0");
     }
 
@@ -474,7 +474,7 @@ mod tests {
         let (maze, _, _) = maze_with_one_close_endpoint_pair(ClosePair::ExitExit);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -483,7 +483,7 @@ mod tests {
         let (maze, _, _) = maze_with_one_close_endpoint_pair(ClosePair::EntryEntry);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(3.0, TeleportProximityEdge::Exit, TeleportProximityEdge::Exit).check(&maze, &mut issues, &mut rng);
+        check(3.0, TeleportProximityEdge::Exit, TeleportProximityEdge::Exit).repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -501,7 +501,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(1000.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(1000.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "unreachable in both directions must not be treated as distance 0");
     }
 
@@ -529,7 +529,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "a pair where both teleports are route-critical must not be recorded");
     }
 
@@ -556,7 +556,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1, "a pair with only one route-critical side must still be recorded");
     }
 
@@ -602,7 +602,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
 
         assert_eq!(issues.len(), 1);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
@@ -644,7 +644,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
         let a_pairs: Vec<_> = pairs.iter().filter(|&&(x, _)| x == id_a).collect();
@@ -658,7 +658,7 @@ mod tests {
         let (maze, _, _) = maze_with_two_teleport_entries_at_gap(2);
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].details().get(TEST_ID).and_then(|kv| kv.get("distance")), Some(&"5".to_string()));
     }
@@ -691,7 +691,7 @@ mod tests {
 
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).check(&maze, &mut issues, &mut rng);
+        check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         let Some(IssueData::TeleportProximityPairs { pairs }) = &issues[0].data else { panic!() };
         // The original forward id_a->id_b pair (and its symmetric b->a) must still be present;

@@ -135,8 +135,8 @@ pub fn build_maze<T: Tessellation>(
             // See merge_issue. An issue this loop can't route to any rule (zero source checks, e.g.
             // CYCLE_ANALYSIS_OVERFLOWED, or a check id with no configured rule) is dropped from this
             // iteration's `by_rule` map entirely — it plays no part in this iteration's repair pass.
-            // It is not lost from the maze's perspective: the final `qc_engine.run` call after the
-            // loop (see `remaining` below) recomputes issues fresh and will surface it there if it's
+            // It is not lost from the maze's perspective: the final `qc_engine.run_report_timed` call
+            // after the loop (see `remaining` below) recomputes issues fresh and will surface it there if it's
             // still present, the same way CYCLE_ANALYSIS_OVERFLOWED (never routed, never repaired)
             // does today. This merge is stage-agnostic — it processes every rule's issues, including
             // rules belonging to stages not yet reached, so nothing here changes with staging (see
@@ -207,7 +207,7 @@ pub fn build_maze<T: Tessellation>(
 
     let final_qc_start = now_ms();
     let mut final_per_check_ms: HashMap<&'static str, (f64, u32)> = HashMap::new();
-    let mut remaining = qc_engine.run_timed(&maze, &mut rng, &mut final_per_check_ms, now_ms);
+    let mut remaining = qc_engine.run_report_timed(&maze, &mut rng, &mut final_per_check_ms, now_ms);
     timing.qc_total_ms += now_ms() - final_qc_start;
     for (id, (total_ms, calls)) in final_per_check_ms {
         let entry = timing.per_check.entry(id).or_default();

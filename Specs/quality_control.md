@@ -188,15 +188,28 @@ pub enum IssueData {
 
 ```rust
 pub trait Check<T: Tessellation> {
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, rng: &mut dyn RngCore);
+    fn check_type_id(&self) -> &'static str;
+
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, rng: &mut dyn RngCore);
+
+    fn report_check(&self, maze: &Maze<T>, rng: &mut dyn RngCore) -> Vec<Issue> {
+        let mut issues = Vec::new();
+        self.repair_check(maze, &mut issues, rng);
+        issues
+    }
 }
 ```
 
 - **Read-only**: `maze` is immutable. A `Check` must not mutate any state.
-- **No side effects**: `check` must not access global state or perform I/O.
-- **`rng` is the one sanctioned source of non-determinism**: most checks ignore it (`_rng`) and stay fully deterministic, but a check whose contract is inherently randomized — currently only `MaxLoopDensityCheck` (below), which must pick *which* excess loops to flag without a deterministic ordering rule — draws from it instead of seeding its own. `QualityControlEngine::run` takes the `rng` from its caller (the pipeline's per-`build_maze`-call `MazeRng`, seeded from the generation seed) rather than each check owning one, so a whole QC pass stays reproducible for a given seed.
+- **No side effects**: neither method may access global state or perform I/O.
+- **`rng` is the one sanctioned source of non-determinism**: most checks ignore it (`_rng`) and stay fully deterministic, but a check whose contract is inherently randomized — currently only `MaxLoopDensityCheck` (below), which must pick *which* excess loops to flag without a deterministic ordering rule — draws from it instead of seeding its own. `QualityControlEngine::run`/`run_timed`/`run_report_timed` take the `rng` from their caller (the pipeline's per-`build_maze`-call `MazeRng`, seeded from the generation seed) rather than each check owning one, so a whole QC pass stays reproducible for a given seed.
 - A check may produce zero or more issues per call.
 - A check may read `maze.analysis` to avoid redundant computation.
+- **`repair_check` vs `report_check`** — see GitHub issue #102. Both methods detect the exact same problems; they differ only in how many `Issue` values they produce per flagged instance:
+  - `repair_check` is the detection the repair fixpoint loop (`build_maze`) drives. It may bundle every flagged problem instance into one merged `Issue` per call (e.g. `MinLoopLengthCheck` bundles all short cycles into one `IssueData::InvalidLoops { all, invalid, invalid_sources }`), since the loop dispatches one repair strategy call per rule against the whole batch — batching there is a feature, not a limitation, of the repair-dispatch contract.
+  - `report_check` is the detection the final QC report (`remaining_issues`, analytics, UI) drives. It must produce one `Issue` per flagged problem instance instead, since a batched issue can't be split into accurate per-item counts, per-item highlighting, or (eventually) one-issue-per-cycle repair dispatch. Default implementation delegates to `repair_check` (calls it into a temporary `Vec` and returns it) — no behavior change for a check that doesn't override it.
+  - Both methods return/populate the same `Issue` type — there is no separate report-only issue type. A check overriding `report_check` is still free to attach `data: IssueData` to each per-instance issue if useful, even though the final QC report's `Issue`s are never fed to a `RepairStrategy` in practice (the report path never calls `RepairEngine`).
+  - `check_type_id()` identifies the check **type** (e.g. `"min_loop_length"`), used by both `QualityControlEngine::run_timed` and `run_report_timed` to aggregate per-check-type timing — distinct from `instance_id`, the per-instance composite routing key.
 
 ### QualityControlEngine
 
@@ -208,12 +221,15 @@ pub struct QualityControlEngine<T: Tessellation> {
 impl<T: Tessellation> QualityControlEngine<T> {
     pub fn new(checks: Vec<Box<dyn Check<T>>>) -> Self;
     pub fn run(&self, maze: &Maze<T>, rng: &mut dyn RngCore) -> Vec<Issue>;
+    pub fn run_timed(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64) -> Vec<Issue>;
+    pub fn run_report_timed(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64) -> Vec<Issue>;
 }
 ```
 
 - Runs checks in insertion order.
 - Returns all issues collected across all checks, including duplicates.
 - Merging issues with the same `IssueKind` (not dropping duplicates) is the pipeline's responsibility — see `repair.md`'s "Pipeline" section and the "Dedup interaction" note above.
+- `run`/`run_timed` call each check's `repair_check`; `run_report_timed` calls `report_check` instead — see the "Check trait" section above. `build_maze` uses `run_timed` for the fixpoint loop's own iterations and `run_report_timed` for the final post-loop pass that computes `remaining` (see `repair.md`'s timing section). Callers with no timing interest (e.g. `build_analytics_snapshot`'s analytics-only QC pass) use plain `run`, which is repair-check-based like `run_timed`.
 
 ## Built-in Checks
 

@@ -23,7 +23,7 @@ pub struct ExternalEscapeDiversityCheck {
 impl<T: Tessellation> Check<T> for ExternalEscapeDiversityCheck {
     fn check_type_id(&self) -> &'static str { "external_escape_diversity" }
 
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
@@ -130,7 +130,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
@@ -150,7 +150,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "8 distinct exit destinations should clear a threshold of 3");
     }
 
@@ -160,7 +160,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 0 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
     }
 
@@ -188,7 +188,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
@@ -205,7 +205,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 }

@@ -27,7 +27,7 @@ pub struct MaxLoopDensityCheck {
 impl<T: Tessellation> Check<T> for MaxLoopDensityCheck {
     fn check_type_id(&self) -> &'static str { "max_loop_density" }
 
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, rng: &mut dyn RngCore) {
         let field_cells = maze.field.node_count();
         if field_cells == 0 {
             return;
@@ -116,7 +116,7 @@ mod tests {
         let maze = maze_with_two_disjoint_triangles();
         let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_LOOP);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
@@ -138,7 +138,7 @@ mod tests {
         let maze = maze_with_two_disjoint_triangles();
         let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 60 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "60% density should clear a threshold of 60");
     }
 
@@ -160,7 +160,7 @@ mod tests {
 
         let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 37 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1, "37.5% rounds to 38, which exceeds max_density 37");
     }
 
@@ -186,7 +186,7 @@ mod tests {
 
         let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
         match &issues[0].data {
             Some(IssueData::InvalidLoops { invalid, .. }) => {
@@ -201,7 +201,7 @@ mod tests {
         let maze = maze_with_two_disjoint_triangles();
         let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
         match &issues[0].data {
             Some(IssueData::InvalidLoops { all, invalid, .. }) => {
@@ -223,7 +223,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty());
     }
 
@@ -251,7 +251,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
         let mut issues = Vec::new();
-        check.check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 }

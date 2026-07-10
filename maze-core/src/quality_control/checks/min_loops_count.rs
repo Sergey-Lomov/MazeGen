@@ -15,7 +15,7 @@ pub struct MinLoopsCountCheck {
 impl<T: Tessellation> Check<T> for MinLoopsCountCheck {
     fn check_type_id(&self) -> &'static str { "min_loops_count" }
 
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         // Uses the same independent-cycle count (Euler: E - V + C on the pure-cycle core) shown
         // to the user as the "Cycle count" analytics stat — not `find_deduped_simple_cycles`'s
         // raw simple-cycle enumeration, which is a different (usually much larger) metric and
@@ -64,7 +64,7 @@ mod tests {
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -74,7 +74,7 @@ mod tests {
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, MISSING_LOOPS);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
@@ -101,7 +101,7 @@ mod tests {
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         match &issues[0].data {
             Some(IssueData::Missing { missing }) => assert_eq!(*missing, 1),
@@ -136,7 +136,7 @@ mod tests {
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 }

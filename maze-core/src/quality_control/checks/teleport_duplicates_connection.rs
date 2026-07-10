@@ -25,7 +25,7 @@ pub struct TeleportDuplicatesConnectionCheck {
 impl<T: Tessellation> Check<T> for TeleportDuplicatesConnectionCheck {
     fn check_type_id(&self) -> &'static str { "teleport_duplicates_connection" }
 
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let invalid: Vec<_> = maze.graph.edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .filter(|teleport| {
@@ -80,7 +80,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -90,7 +90,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 
@@ -100,7 +100,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].kind, INVALID_TELEPORT);
         let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
@@ -127,7 +127,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
 
         assert_eq!(issues.len(), 1, "both directions merge into one issue from a single check call");
         let IssueData::InvalidTeleports { invalid } = issues[0].data.as_ref().unwrap() else { panic!() };
@@ -157,7 +157,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
     }
 
@@ -177,7 +177,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: false };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1, "protect_route disabled must flag the teleport exactly like before #78");
     }
 
@@ -196,7 +196,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert!(issues.is_empty());
     }
 }

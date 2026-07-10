@@ -1022,7 +1022,7 @@ mod build_check_tests {
 
         let mut issues = Vec::new();
         let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1, "distance=1.1 must flag a pair of teleports 1 tile-hop apart, proving the fractional value wasn't truncated to 0 or 1");
     }
 }

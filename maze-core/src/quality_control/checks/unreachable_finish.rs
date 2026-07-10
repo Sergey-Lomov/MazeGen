@@ -11,7 +11,7 @@ pub struct UnreachableFinishCheck {
 impl<T: Tessellation> Check<T> for UnreachableFinishCheck {
     fn check_type_id(&self) -> &'static str { "unreachable_finish" }
 
-    fn check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let (Some(start), Some(finish)) = (maze.meta.start, maze.meta.finish) else {
             return;
         };

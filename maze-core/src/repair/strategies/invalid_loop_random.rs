@@ -106,7 +106,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(maze, &mut issues, &mut check_rng);
+        check.repair_check(maze, &mut issues, &mut check_rng);
         !issues.is_empty()
     }
 
@@ -122,7 +122,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(7);
@@ -164,7 +164,7 @@ mod tests {
             let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
             let mut issues = Vec::new();
             let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-            check.check(&maze, &mut issues, &mut check_rng);
+            check.repair_check(&maze, &mut issues, &mut check_rng);
             issues.into_iter().next().unwrap()
         };
 
@@ -201,7 +201,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(99);
@@ -238,7 +238,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
@@ -263,7 +263,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
 
         let IssueData::InvalidLoops { all, invalid, .. } = issue.data.as_ref().unwrap() else { panic!() };
