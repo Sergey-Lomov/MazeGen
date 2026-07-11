@@ -632,9 +632,10 @@ fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, Js
 /// doc comment in `run_compute_analytics` for why. Split out so the wrapping itself (one rule
 /// per check, distinct ids, no strategy) can be unit-tested without going through `JsValue`.
 // Wraps every active check in its own singleton rule, all under one synthetic stage — this path
-// never runs `RepairEngine` (analytics-only, no repair), so stage granularity has no observable
-// effect here; a single stage is the simplest shape satisfying `build_qc_and_repair`'s "every
-// strategy-bearing rule must be in a stage" invariant (moot here, since no rule has a strategy).
+// never dispatches repair (analytics-only, `QualityControlEngine::run_check_only`, see GitHub
+// issue #106), so stage granularity has no observable effect here; a single stage is the
+// simplest shape satisfying `build_qc_and_repair`'s "every strategy-bearing rule must be in a
+// stage" invariant (moot here, since no rule has a strategy).
 fn analytics_only_stages(checks: Vec<generation_config::CheckInstanceConfig>) -> Vec<generation_config::StageConfig> {
     let rules: Vec<generation_config::QcRuleConfig> = checks.into_iter()
         .enumerate()
@@ -705,15 +706,16 @@ where
     // Build QC engine from config (no repair). Each active check becomes its own synthetic
     // singleton rule (id/kind discarded immediately below) — `build_qc_and_repair` is rule-driven
     // (see GitHub issue #60) and no longer accepts a flat check list, but this path has no real
-    // rules of its own and never runs `RepairEngine`, so a throwaway one-check-per-rule wrapper
-    // is the simplest way to satisfy that shape without rule semantics actually mattering here.
+    // rules of its own and never dispatches repair (see `build_analytics_snapshot`'s
+    // `run_check_only` path, GitHub issue #106), so a throwaway one-check-per-rule wrapper is the
+    // simplest way to satisfy that shape without rule semantics actually mattering here.
     let stages = analytics_only_stages(cfg.checks);
     let qc_config = GenerateConfig {
         tessellation: cfg.tessellation,
         stages,
         ..GenerateConfig::default()
     };
-    let (qc_engine, _, check_types) = runner::build_qc_and_repair_with_types::<T>(&qc_config)
+    let (qc_engine, check_types) = runner::build_qc_and_repair_with_types::<T>(&qc_config)
         .map_err(|e| JsValue::from_str(&e))?;
 
     let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, point_to_xy)
@@ -763,7 +765,7 @@ mod tests {
         assert_ne!(rules[0].id, rules[1].id, "each synthetic rule needs a distinct id");
         for rule in rules {
             assert_eq!(rule.checks.len(), 1, "one check per synthetic rule");
-            assert!(rule.strategy.is_none(), "analytics-only path never runs RepairEngine");
+            assert!(rule.strategy.is_none(), "analytics-only path never dispatches repair");
         }
     }
 

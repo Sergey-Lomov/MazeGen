@@ -13,9 +13,10 @@ pub struct SnapshotStack {
 
 impl SnapshotStack {
     /// Public so integration tests can construct a stack directly when calling `apply()` outside
-    /// of `RepairEngine::run`. In normal pipeline operation only `RepairEngine::run` constructs a
-    /// `SnapshotStack` (one per `apply()` call) — strategies receive an existing instance via
-    /// `&mut` and only call `snapshot()`/`restore()` on it, they never construct their own.
+    /// of `Rule::dispatch_repair`. In normal pipeline operation only `Rule::dispatch_repair`
+    /// constructs a `SnapshotStack` (one per `apply()` call) — strategies receive an existing
+    /// instance via `&mut` and only call `snapshot()`/`restore()` on it, they never construct
+    /// their own.
     pub fn new() -> Self {
         Self { stack: Vec::new() }
     }

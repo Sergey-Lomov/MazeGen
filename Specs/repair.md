@@ -76,7 +76,7 @@ pub trait RepairStrategy<T: Tessellation> {
 
 `MissingRegionsStrategy` is the only strategy currently marked experimental (`is_experimental() -> true`) — its region reuse/growth heuristics are new (GitHub issue #59) and less predictable in result quality and performance than the other built-in strategies.
 
-`snapshots: &mut SnapshotStack` lets a strategy push/pop `(Graph, MazeMeta)` rollback points around a sequence of mutating actions it wants to be able to undo (see `MissingRegionsStrategy`'s reuse/growth attempts) — opt-in, most strategies never call it. One `SnapshotStack` is constructed per `apply()` call by `RepairEngine::run`/`run_timed`, threaded through unchanged into any nested `apply()` call (see below) — nested calls never get their own stack.
+`snapshots: &mut SnapshotStack` lets a strategy push/pop `(Graph, MazeMeta)` rollback points around a sequence of mutating actions it wants to be able to undo (see `MissingRegionsStrategy`'s reuse/growth attempts) — opt-in, most strategies never call it. One `SnapshotStack` is constructed per `apply()` call by `Rule::dispatch_repair` (see "Rule, Stage, and the unified QualityControlEngine" below), threaded through unchanged into any nested `apply()` call (see below) — nested calls never get their own stack.
 
 `nested: &[NestedStrategyConfig<T>]` carries this rule's configured nested strategies (empty for every strategy without nested slots — the overwhelming majority, which simply ignore the parameter). See "Nested strategies" below.
 
@@ -109,9 +109,9 @@ pub struct NestedSlot {
     pub max: Option<usize>,
 }
 
-/// One nested strategy assignment — same shape as a `RepairRuleConfig`'s own strategy binding,
-/// minus the `QcRule` (a nested call has no independent QC rule; its `Issue` is synthesized by
-/// the parent, never derived from a check).
+/// One nested strategy assignment — same shape as a `Rule`'s own strategy binding, minus the
+/// rule id/kind (a nested call has no independent QC rule; its `Issue` is synthesized by the
+/// parent, never derived from a check).
 pub struct NestedStrategyConfig<T: Tessellation> {
     /// Which of the parent's `expected_nested()` slots this fills — the full slot descriptor,
     /// not just its id. Points into the `&'static [NestedSlot]` the parent's
@@ -126,7 +126,7 @@ pub struct NestedStrategyConfig<T: Tessellation> {
 
 **`slot_id` is part of a strategy's public configuration API**, not an internal detail — `StrategyConfig.slot_id` (config JSON, `maze-runner`), `maze-wasm`'s `NestedSlotDto.slot_id`, and the web store's `path: string[]` addressing all key off this exact string. Once a strategy ships with a given `slot_id`, renaming it is a breaking config-format change (same stability bar as `strategy_id()`/`IssueKind::as_str()`) — never renamed casually. Within `maze-core`, always reference it via the owning strategy's own exported constant, never a repeated string literal. `slot_id` distinguishes multiple slots that share the same `kind` but play different roles for the parent (e.g. a future "direct passage" slot and a separate "teleport" slot, both `REGION_NEEDS_EXPANSION`, not interchangeable alternatives of one "pick any" slot).
 
-**Dispatch**: `RepairEngine::run`/`run_timed` always pass `&cfg.nested` into `apply()`, for every strategy, whether or not it declares any `expected_nested()` slots — the engine itself carries no per-strategy special-casing; a strategy that has nothing to do with nesting simply never reads the parameter.
+**Dispatch**: `Rule::dispatch_repair` always passes its own configured `nested` into `apply()`, for every strategy, whether or not it declares any `expected_nested()` slots — no per-strategy special-casing; a strategy that has nothing to do with nesting simply never reads the parameter.
 
 **Building `nested` (`maze-runner`)**: `maze-runner/src/runner.rs::build_nested` resolves a `StrategyConfig`'s `nested: Vec<StrategyConfig>` against the parent's `expected_nested()` — purely generically over `expected_nested()`/`handles()`, no strategy id ever compared in this validation logic (only the unavoidable id→struct `match` in `build_strategy` mentions ids at all). For each nested `StrategyConfig`: `slot_id` must be present and match one of the parent's declared slots; the resolved strategy's `handles()` must equal that slot's `kind`; and, once every entry is resolved, each slot's filled count must fall within `[slot.min, slot.max]`. A slot's own nested strategies are validated the same way, recursively — depth is unbounded in the data model (a real second-level nested-capable strategy doesn't exist yet, but nothing stops one).
 
@@ -201,146 +201,199 @@ strategy that receives an already-bundled issue.
 
 Every `apply()` should start with `debug_assert_eq!(issue.kind, self.handles())` — a caller-side invariant (the `Issue` passed in must match what the strategy declared it handles), checked defensively in debug builds. Not retroactively added to every pre-existing strategy, but expected of new code (see `ReduceSccCountStrategy` for the pattern) and enforced going forward.
 
-### QcRule and rule-based RepairEngine
+### Rule, Stage, and the unified QualityControlEngine
 
-A **rule** is the unit `RepairEngine` actually dispatches on — not `IssueKind` directly. A rule is a non-empty set of checks producing one `IssueKind`, with at most one strategy. This lets two checks producing the same `IssueKind` (e.g. `min_loop_length` and `max_loop_length`, both `INVALID_LOOP`) be split into independent rules with different strategies, instead of being forced to share the single strategy a kind-keyed engine would allow.
+See GitHub issue #106. `QualityControlEngine` is the **single orchestrator** for the whole
+check+repair process (or check-only, when no repair is requested) — there is no separate
+`RepairEngine` anymore. Control mirrors storage: `QualityControlEngine` owns an ordered list of
+`Stage`s; each `Stage` owns and drives its own `Rule`s; each `Rule` owns and drives its own checks
+plus its one strategy. Each level calls into the next — `Stage::run_repair` calls
+`Rule::run_checks`/`Rule::dispatch_repair`, `QualityControlEngine::run_full` calls
+`Stage::run_repair` — rather than a flat loop reaching into all three levels at once, which is
+what the pre-#106 `QualityControlEngine`+`RepairEngine`+`pipeline.rs` split did (a flat
+`checks: Vec<Box<dyn Check<T>>>` on `QualityControlEngine`, a separate `QcRule`/`RepairStage`
+config-only hierarchy on `RepairEngine`, re-matched every iteration via a `check_id_to_rule`
+`HashMap` built in `pipeline.rs`).
+
+**Why there is no separate `RepairEngine` type**: in this model repair is never an independent
+operation over an arbitrary issue set — it always happens in the context of one `Rule`, which
+already owns both what to check and how to fix it. The pre-#106 split was only justified by checks
+and strategy-bearing rules being two independent flat lists the pipeline had to re-match every
+iteration; once a `Rule` owns both, that matching is no longer a separate concern, so neither is a
+separate engine class for it. `QualityControlEngine` keeps its name because it is still entirely
+about quality — detection and repair — never about generation, which runs before it and stays out
+of its scope.
 
 ```rust
-/// A user-defined QC rule. Caller-supplied configuration (built by the wasm layer from
-/// `GenerateConfig.check_rules`, see `quality_control.md`'s `QcRuleConfig`), not generated or
-/// interpreted by core. `id` is opaque — core never inspects its content, only uses it as a
-/// lookup/dedup key for one `build_maze` call; it is not required to be stable or unique across
-/// different `build_maze` calls.
-pub struct QcRule {
+/// A user-defined QC rule: owns its own checks (each with a `local_id`, unique within this
+/// rule) and, optionally, one repair strategy. `None` strategy = "no_fix" — the rule's checks
+/// still run and merge for attribution, but nothing is dispatched to fix what they find.
+pub struct Rule<T: Tessellation> {
     pub id: String,
     pub kind: IssueKind,
-    /// Rule-scoped composite check-instance ids (`{rule_id}:{local_id}`, see GitHub issue #60),
-    /// minted by `maze-wasm/src/runner.rs::composite_check_id` — not check type ids. Opaque to
-    /// core: never parsed back apart, only used as a routing/dedup key (same role the old
-    /// `CheckId` enum played, before it was widened to a `String` to let two configured
-    /// instances of one check type route independently instead of colliding on one enum
-    /// variant — issue #60's original multi-instance motivation, since retired for every check
-    /// currently in the registry, but the composite-id mechanism itself stays general).
-    pub checks: Vec<String>,
+    checks: Vec<(String, Box<dyn Check<T>>)>,
+    strategy: Option<RuleStrategy<T>>, // strategy + param_overrides + nested, private
+}
+
+impl<T: Tessellation> Rule<T> {
+    pub fn new(
+        id: String, kind: IssueKind,
+        checks: Vec<(String, Box<dyn Check<T>>)>,
+        strategy: Option<Box<dyn RepairStrategy<T>>>,
+        param_overrides: HashMap<String, String>,
+        nested: Vec<NestedStrategyConfig<T>>,
+    ) -> Self;
+
+    /// `(local_id, &dyn Check<T>)` pairs, in configured order — the only way anything outside
+    /// this module observes this rule's checks. Composite-id construction (`{rule_id}:{local_id}`,
+    /// GitHub issue #60) is NOT this type's concern — it's a DTO-protocol detail, built entirely
+    /// by `QualityControlEngine::check_id_to_rule` (the one place in core that knows the format).
+    pub fn checks(&self) -> impl Iterator<Item = (&str, &dyn Check<T>)>;
+
+    pub fn has_strategy(&self) -> bool;
+
+    /// Runs every check in this rule via `Check::repair_check`, folding all raw issues into at
+    /// most one merged `Issue` via `merge_issue` (moved here from `pipeline.rs` — see "Pipeline"
+    /// below) — this is where rule-level issue merging naturally lives now, since a rule owns
+    /// its own check dispatch. `None` if no check in this rule found anything this call.
+    pub fn run_checks(
+        &self, maze: &Maze<T>, rng: &mut dyn RngCore,
+        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64,
+    ) -> Option<Issue>;
+
+    /// Runs every check via `Check::report_check` instead — one `Issue` per flagged problem
+    /// instance, no merge (see GitHub issue #102). Used by both the final `build_maze` report and
+    /// `QualityControlEngine::run_check_only`.
+    pub fn report_checks(
+        &self, maze: &Maze<T>, rng: &mut dyn RngCore,
+        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64,
+    ) -> Vec<Issue>;
+
+    /// Dispatches this rule's own strategy against `issue` (already merged by `run_checks`) —
+    /// builds `StrategyParams` and calls `apply` itself, no separate engine involved. `None` if
+    /// this rule has no registered strategy.
+    pub fn dispatch_repair(
+        &self, issue: &Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore,
+        preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>,
+        now_ms: impl Fn() -> f64,
+    ) -> Option<RepairResult>;
 }
 ```
 
-There is no `CheckId` enum anymore — `maze-wasm/src/runner.rs::build_check` dispatches directly
-on `CheckInstanceConfig.type_id: &str` (`match type_id.as_str() { "missing_endpoints" => ..., ... }`)
-to pick which `Check<T>` struct to construct. That `type_id` string ("what kind of check is
-this") is a different thing from the composite routing id in `QcRule.checks` ("which specific
-configured instance produced this issue") — do not confuse the two.
-
-`kind` is a **caller-supplied, caller-trusted invariant**: core never reads it for routing or validation logic (only `id`/`checks` are used by `check_id_to_rule`/`run`/`strategy_rule_ids`), and core does not verify that every check in `checks` actually produces `kind`. That check happens entirely on the caller side, before a `QcRule` is ever constructed — `maze-wasm/src/runner.rs::build_qc_and_repair` resolves each check id's kind and rejects a config where they disagree (`"checks in rule {id} produce different issue kinds"`) before building the `QcRule`. `kind` exists on the struct for callers that need to read it back (e.g. `maze-wasm` re-derives it when building `RepairRuleConfig`, and it round-trips into web-side `StrategySlotVM.kind` for UI display) — core just carries it through unread.
+`kind` is the same caller-supplied, caller-trusted invariant it always was — core never verifies
+that every check in a `Rule` actually produces `kind`; that validation happens entirely on the
+caller side (`maze-runner/src/runner.rs::build_qc_and_repair`, `"checks in rule {id} produce
+different issue kinds"`) before a `Rule` is ever constructed.
 
 ```rust
-/// One rule's strategy assignment — RepairEngine's caller-supplied configuration unit.
-pub struct RepairRuleConfig<F: Field> {
-    pub rule: QcRule,
-    pub strategy: Box<dyn RepairStrategy<F>>,
-    pub param_overrides: HashMap<String, String>,
-    /// Nested strategy assignments for `strategy`'s `expected_nested()` slots, if any — empty
-    /// for every strategy without nested slots (the overwhelming majority). See "Nested
-    /// strategies" above.
-    pub nested: Vec<NestedStrategyConfig<F>>,
+/// Bundles the timing accumulators `Stage::run_repair` threads through one fixpoint loop —
+/// `per_check`/`per_strategy` in the `(total_ms, calls)` tuple form the pre-#106 `run_timed`
+/// used, `qc_total_ms`/`repair_total_ms` the stage-level totals. The caller
+/// (`QualityControlEngine::run_repair_stages`) folds `per_check`/`per_strategy` into
+/// `GenerationTiming`'s `TimingEntry` maps once, after every stage has run. Bundled into one
+/// struct rather than four separate `&mut` parameters so `run_repair`'s signature doesn't grow
+/// every time a new timing dimension is added.
+pub(crate) struct TimingSink<'a> {
+    pub per_check: &'a mut HashMap<&'static str, (f64, u32)>,
+    pub per_strategy: &'a mut HashMap<&'static str, (f64, u32)>,
+    pub qc_total_ms: &'a mut f64,
+    pub repair_total_ms: &'a mut f64,
 }
 
-/// Result of running one rule's strategy. Named struct, not a tuple, so `rule_id` (an internal
-/// wiring detail repair/pipeline use for failed-tracking) isn't mistaken for a meaningful part
-/// of the domain result.
-pub struct RepairOutcome {
-    pub rule_id: String,
-    pub result: RepairResult,
-}
-
-### RepairStage
-
-See GitHub issue #65. A **stage** is a named, ordered group of rule ids — `RepairEngine` dispatches one stage at a time, only rules belonging to the current stage, in stage order. This lets a rule needing another rule's fix as a precondition (e.g. a rule reading `maze.meta.start`/`finish`) be placed in a later stage than the rule that sets them, guaranteeing it never dispatches before its precondition holds.
-
-```rust
-/// A user-defined, named, ordered group of `QcRule` ids. Caller-supplied configuration (built
-/// by `maze-wasm`/`maze-runner` from `GenerateConfig.stages`, see `quality_control.md`'s
-/// `StageConfig`), not generated or interpreted by core beyond grouping. `id` is opaque, same
-/// role as `QcRule.id`.
-pub struct RepairStage {
+/// A user-defined, named, ordered group of `Rule`s — drives its own fixpoint repair loop over
+/// only its own rules' checks (stage-scoped QC — the pre-#106 stage-agnostic pass, which ran
+/// every check across every stage on every iteration regardless of which stage was active, is
+/// gone). See GitHub issue #65 for the original stage concept.
+pub struct Stage<T: Tessellation> {
     pub id: String,
     pub name: String,
-    /// Order is significant for UI/serialization round-trip, not for repair dispatch order
-    /// within the stage — `RepairEngine::run` resolves rules by id via `HashMap` lookup
-    /// regardless of `rule_ids` order. Includes every rule in this stage, strategy or not (same
-    /// role `RepairEngine.all_rules` plays for the whole engine) — a rule without a strategy has
-    /// no dispatch consequence but still needs a stage for merge/attribution routing.
-    pub rule_ids: Vec<String>,
+    rules: Vec<Rule<T>>,
+}
+
+impl<T: Tessellation> Stage<T> {
+    pub fn new(id: String, name: String, rules: Vec<Rule<T>>) -> Self;
+    pub fn rules(&self) -> &[Rule<T>];
+
+    /// Drives this stage's own fixpoint repair loop until convergence (no active issues),
+    /// no-progress (same active rule/issue set twice in a row), or the shared `budget` (see
+    /// `QualityControlEngine` below) is exhausted. Returns `StageOutcome` describing which —
+    /// the caller (`QualityControlEngine::run_repair_stages`) decides what that means for the
+    /// rest of the stage sequence; a `Stage` never knows whether it is the last one or not.
+    pub(crate) fn run_repair(
+        &self, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState,
+        budget: &mut RepairBudget,
+        timing: &mut TimingSink,
+        now_ms: impl Fn() -> f64,
+    ) -> StageOutcome;
+
+    /// One report pass over every rule in this stage (`Rule::report_checks` semantics).
+    pub(crate) fn run_report(
+        &self, maze: &Maze<T>, rng: &mut dyn RngCore,
+        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64,
+    ) -> Vec<Issue>;
+}
+
+pub(crate) enum StageOutcome {
+    Done,
+    LimitReached(RepairLimitKind),
+    NoProgress(Vec<String>), // stuck rule ids
 }
 ```
 
-**Unassigned rule = caller-side config error, but only if the rule has a strategy.** A rule with a strategy that doesn't appear in any stage's `rule_ids` is a configuration bug — `maze-wasm/src/runner.rs::build_qc_and_repair` rejects it (`"rule {id} not assigned to any stage"`), the same way it already rejects `"checks in rule {id} produce different issue kinds"`. Core itself (`RepairEngine`/`build_maze`) never validates or recovers this — it is a caller-guaranteed invariant of the `stages` argument to `RepairEngine::new`, same as `rules` being a subset of `all_rules` already was. A rule with **no** strategy has nothing to dispatch, so it has no such requirement — its stage membership (if any) only affects UI/serialization, never `build_maze`'s repair loop. An empty `stages: Vec<RepairStage>` (no stage at all) is a valid degenerate case, not an error, when no rule in the config has a strategy.
+Inside `run_repair`, no-progress state (the previous-iteration fingerprint) and the per-rule
+`failed` set are **local variables** — not fields on `Stage` — living only for the duration of one
+`run_repair` call, resetting naturally on the next call rather than needing an explicit reset at a
+stage boundary the way the pre-#106 pipeline had to reset its fingerprint manually. A rule id
+never crosses a stage boundary (a rule is configured into exactly one stage), so `failed` never
+needs to be shared beyond the stage that owns it either.
 
 ```rust
-pub struct RepairEngine<F: Field> {
-    /// Rules with a registered strategy — these are actually dispatched by `run`.
-    rules: Vec<RepairRuleConfig<F>>,
-    /// All rules, including ones with no strategy ("no_fix") — kept so `check_id_to_rule` can
-    /// route every check id, not just the repaired ones. A rule without a strategy still needs
-    /// correct merge/attribution upstream in `build_maze`.
-    all_rules: Vec<QcRule>,
-    /// Ordered stages — `build_maze` dispatches one stage at a time, in this order.
-    stages: Vec<RepairStage>,
+/// The single orchestrator for the whole check+repair process, or check-only when no repair is
+/// requested. Owns an ordered list of `Stage`s.
+pub struct QualityControlEngine<T: Tessellation> {
+    stages: Vec<Stage<T>>,
 }
 
-impl<F: Field> RepairEngine<F> {
-    /// `rules` — strategy assignments (only for rules with a strategy). `all_rules` — full rule
-    /// list, including rules with no strategy. Every rule in `rules` must also appear in
-    /// `all_rules` (by `id`); callers (`maze-wasm/src/runner.rs::build_qc_and_repair`) are
-    /// responsible for this invariant. `stages` — every rule in `rules` (i.e. every rule with a
-    /// strategy) must appear in exactly one stage's `rule_ids`; a rule with no strategy may or
-    /// may not appear in a stage. Callers are responsible for both invariants — core does not
-    /// validate them (see "Unassigned rule" above).
-    pub fn new(rules: Vec<RepairRuleConfig<F>>, all_rules: Vec<QcRule>, stages: Vec<RepairStage>) -> Self;
-
-    /// All check instance ids (composite routing ids, see `QcRule.checks` above) across every
-    /// rule (strategy or not), mapped to their rule id. Used by `build_maze` to route raw issues
-    /// to their rule before merging. Stage-agnostic — does not change with staging.
-    pub fn check_id_to_rule(&self) -> HashMap<String, String>;
-
-    /// Rule ids with a registered strategy, as a lookup set — precomputed once per call rather
-    /// than scanned per lookup, since `build_maze` calls this once per repair-loop iteration and
-    /// tests it against every active rule that iteration. Rules without a strategy still merge
-    /// issues for attribution but must not enter fingerprint tracking or repair dispatch.
-    pub fn strategy_rule_ids(&self) -> HashSet<&str>;
+impl<T: Tessellation> QualityControlEngine<T> {
+    pub fn new(stages: Vec<Stage<T>>) -> Self;
 
     /// Ordered stages this engine dispatches, in dispatch order.
-    pub fn stages(&self) -> &[RepairStage];
+    pub fn stages(&self) -> &[Stage<T>];
 
-    /// Rule ids with a registered strategy, belonging to the given stage — precomputed
-    /// intersection of `strategy_rule_ids()` and `stage.rule_ids` (precomputed once in `new`,
-    /// same rationale as `strategy_rule_ids()`'s own precomputation — `build_maze` calls this
-    /// once per fixpoint-loop iteration, not once per stage). `None` only for a `stage_id`
-    /// unknown to this engine (never happens for ids obtained via `self.stages()` in the same
-    /// call). A known stage with no dispatchable rules (no-strategy-only, or empty) returns
-    /// `Some(&empty_set)` — a legitimate degenerate case, not an error. Callers treat "no
-    /// dispatchable rules" and "unknown stage" the same way (e.g. `unwrap_or_default()`), since
-    /// both mean "nothing to dispatch this iteration".
-    pub fn strategy_rule_ids_for_stage(&self, stage_id: &str) -> Option<&HashSet<String>>;
+    /// Composite check id (`{rule_id}:{local_id}`) → rule id, across every stage/rule — pure
+    /// introspection for external DTO-attribution consumers (`maze-wasm`), not a dispatch
+    /// mechanism (dispatch needs no routing at all in this model: a check physically lives
+    /// inside its own `Rule`, so nothing has to look it up by id to know which rule it belongs
+    /// to). This is the one place in `maze_core` that knows the composite-id string format.
+    pub fn check_id_to_rule(&self) -> HashMap<String, String>;
 
-    /// `issues` are `(rule_id, Issue)` pairs — the rule-aware merge result built by `build_maze`
-    /// (see "Pipeline" below). For each pair: looks up the rule's strategy, calls
-    /// `build_params(strategy.params(), param_overrides)`, then calls `apply`.
-    pub fn run(
-        &self,
-        issues: &[(String, Issue)],
-        maze: &mut Maze<F>,
-        rng: &mut impl RngCore,
-        preset_state: &PresetState,
-    ) -> Vec<RepairOutcome>;
+    /// Full check+repair: a fixpoint repair loop per stage (in order, sharing one
+    /// `RepairBudget`), then an unconditional final report pass over every stage. Replaces the
+    /// combined pre-#106 role of `QualityControlEngine`+`RepairEngine`+`pipeline.rs`'s own loop.
+    pub fn run_full(
+        &self, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState,
+        limits: RepairLimits, now_ms: impl Fn() -> f64,
+    ) -> (Vec<Issue>, GenerationTiming);
+
+    /// Check-only mode — no repair, `report_check` semantics everywhere (one `Issue` per flagged
+    /// problem instance). Replaces both the pre-#106 final-report pass inside `build_maze` and
+    /// `build_analytics_snapshot`'s own QC-only call — issue #106 unifies these into one code
+    /// path with one semantics (a deliberate behavior change for the analytics caller, which
+    /// previously used `repair_check`-batched semantics — see GitHub issue #106's discussion).
+    pub fn run_check_only(&self, maze: &Maze<T>, rng: &mut dyn RngCore, now_ms: impl Fn() -> f64) -> Vec<Issue>;
 }
 ```
 
-- `param_overrides` is per-rule (carried on `RepairRuleConfig`), not a separate map keyed by kind.
-- If a `rule_id` in `issues` has no entry in `rules` (no strategy registered): skipped, not included in the result. The pipeline detects unresolved rules via the progress fingerprint guard, same mechanism as before, just keyed by rule id instead of kind.
-- Returns one `RepairOutcome` per issue that had a matching rule+strategy.
-- Multiple checks may produce the same `IssueKind`; which ones share a rule (and therefore a strategy) is caller-configured, not engine-decided. The pipeline merges issues sharing a *rule* (not a kind) into one `Issue` before calling `RepairEngine::run` — see "Pipeline" below.
-- `run`/`run_timed` are unaware of stages — dispatch is by `rule_id` lookup regardless of which stage owns it. Stage filtering happens entirely in `build_maze`, before `run` is ever called (see "Pipeline" below).
+The shared repair budget (`RepairLimits` → `iterations_done`/`start_ms`, plus which limit fired
+and which rules no-progressed) is **not** reset per stage — `QualityControlEngine::run_repair_stages`
+constructs one `RepairBudget` before the first stage and passes the same `&mut RepairBudget` into
+every `stage.run_repair(...)` call in sequence. A stage reporting `StageOutcome::Done` simply
+advances to the next stage; `LimitReached`/`NoProgress` stops the whole sequence (mirrors the
+pre-#106 pipeline's `break 'stages'` — no-progress or a spent budget in one stage means later
+stages never get a chance to run against a maze whose current stage never reached a clean state).
+No `'stages` label is needed in the new code: the inner fixpoint loop lives entirely inside
+`Stage::run_repair`, which simply returns a `StageOutcome` instead of breaking through a label —
+`run_repair_stages` sees only one loop level, an ordinary `for` over `self.stages`.
 
 ## Built-in Strategies
 
@@ -415,7 +468,7 @@ Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producin
 
 ### InvalidLoopScoredStrategy
 
-Handles `INVALID_LOOP`, same mandatory-`issue.data` contract as `InvalidLoopRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (`RepairEngine` maps one strategy per `IssueKind`), not a replacement.
+Handles `INVALID_LOOP`, same mandatory-`issue.data` contract as `InvalidLoopRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (each `Rule` binds exactly one strategy), not a replacement.
 
 Instead of picking a random edge from each invalid cycle, scores every still-present, non-preset-protected candidate edge in the cycle being cut and picks the highest-scoring one (ties broken via `rng`). The goal: bias cuts toward edges that simultaneously break several invalid loops at once (fewer total cuts needed to clear the issue) while avoiding edges that would also break a cycle the maze is meant to keep.
 
@@ -647,52 +700,62 @@ impl Default for RepairLimits {
     }
 }
 
-pub fn build_maze<F: Field>(
-    field: F,
+pub fn build_maze<T: Tessellation>(
+    field: Field<T>,
     graph: Graph,
     seed: u64,
-    qc_engine: QualityControlEngine<F>,
-    repair_engine: RepairEngine<F>,
+    qc_engine: QualityControlEngine<T>,
     preset_state: &PresetState,
     limits: RepairLimits,
-) -> (Maze<F>, Vec<Issue>)
+    preset_start: Option<NodeId>,
+    preset_finish: Option<NodeId>,
+) -> (Maze<T>, Vec<Issue>, GenerationTiming)
 ```
 
 `build_maze`, `MAX_REPAIR_ITERATIONS`, and `RepairLimits` are re-exported from `maze_core` root.
+
+**Since GitHub issue #106, `build_maze` is thin plumbing, not the algorithm.** All dispatch logic (the fixpoint repair loop, issue merging, the no-progress/limit guards, stage sequencing) lives on `QualityControlEngine`/`Stage`/`Rule` (see "Rule, Stage, and the unified QualityControlEngine" above) — `build_maze` itself only constructs the `Maze`, seeds the shared `MazeRng`, seeds `maze.meta.start`/`finish` from `preset_start`/`preset_finish` (before the repair loop runs, so a preset start is honored by the same idempotency check strategies already use — see GitHub issue #86), and delegates to `qc_engine.run_full(...)`:
+
+```rust
+pub fn build_maze<T: Tessellation>(
+    field: Field<T>, graph: Graph, seed: u64, qc_engine: QualityControlEngine<T>,
+    preset_state: &PresetState, limits: RepairLimits,
+    preset_start: Option<NodeId>, preset_finish: Option<NodeId>,
+) -> (Maze<T>, Vec<Issue>, GenerationTiming) {
+    let mut maze = Maze::new(field, graph);
+    maze.meta.start = preset_start;
+    maze.meta.finish = preset_finish;
+    let mut rng = MazeRng::seed_from_u64(seed);
+    let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms);
+    (maze, issues, timing)
+}
+```
 
 The second return value is the list of unresolved issues after all repair iterations. An empty vec means all issues were resolved. Callers decide how to handle unresolved issues — the pipeline always returns a maze regardless.
 
 Time is measured via a small internal `now_ms()` helper, not `std::time::Instant` directly — `Instant` panics on `wasm32-unknown-unknown` (no syscall backing it). Native (including `cargo test`) reads a process-lifetime monotonic clock; the `wasm32` target reads `js_sys::Date::now()` instead. Either way, the value is only ever used for measuring elapsed duration within one `build_maze` call.
 
-Logic:
+**Full algorithm** (`QualityControlEngine::run_full` → `run_repair_stages` → `Stage::run_repair` → `Rule::run_checks`/`dispatch_repair`):
 
-1. Construct `Maze` via `Maze::new(field, graph)` — sets `MazeMeta::empty()` and `MazeAnalysis::default()`.
-2. Create `rng = MazeRng::seed_from_u64(seed)`. This single RNG is shared across all repair iterations, across every stage, for cross-iteration determinism.
-3. Build `check_id_to_rule: HashMap<String, String>` once via `repair_engine.check_id_to_rule()` — maps every check instance's composite routing id (see `QcRule.checks` above) across every configured rule (strategy or not) to its rule id. Stage-agnostic — built once for the whole call.
-4. Track `failed: HashSet<String>` — rule ids whose strategy returned `Failed`. Shared across every stage in this call — a rule that failed in an earlier stage stays excluded when a later stage's fixpoint loop merges its issues too (it never will dispatch again, but see below: it's still routed by `check_id_to_rule` for attribution purposes if some other rule shares its `IssueKind`).
-5. Record `start_ms = now_ms()` and `iterations_done = 0` once, before any stage — both shared across every stage (see "Stages and the repair budget" below).
-6. **Iterate `repair_engine.stages()` in order** (`'stages: for stage in repair_engine.stages()`). For each stage:
-   - Look up `dispatchable = repair_engine.strategy_rule_ids_for_stage(&stage.id).unwrap_or_default()` — the `HashSet` of this stage's rule ids that have a registered strategy. If empty (stage is entirely no-strategy rules, or has no rules at all): skip straight to the next stage — QC for this stage's own rules still happens as part of the *next* stage's iteration's QC pass (QC is stage-agnostic, see below), so nothing is lost; just no repair-loop iteration is spent here.
-   - Track `previous_fingerprint: Option<Vec<(String, Issue)>>` **reset to `None` at the start of each stage** — the progress guard (below) only compares within the current stage's own iterations; a fresh stage's differing active-rule set must never look like "no progress" carried over from the previous stage, nor mask genuine no-progress within the new stage.
-   - Loop, checking at the top of each iteration (before running QC):
-     - If `limits.max_iterations` is `Some(max)` and `iterations_done` already reached `max`: record `limit_reached`, **break out of the stage loop entirely** (not just this stage) — the budget is shared across all stages (see below).
-     - If `limits.time_budget_secs` is `Some(budget)` and `now_ms() - start_ms >= budget * 1000.0`: same — record `limit_reached`, break out of the stage loop entirely.
-     - `iterations_done += 1`.
-     - **Run QC — stage-agnostic.** `qc_engine.run` covers every registered check across every rule in every stage, not just the current stage's — the QC engine itself has no concept of stages at all (it's the same `QualityControlEngine` built once for the whole `build_maze` call).
-     - **Merge, not drop, issues sharing a rule — also stage-agnostic.** Multiple checks in the same rule may legitimately produce the same `IssueKind` in one pass (e.g. several reasons a cycle can be invalid; see `quality_control.md`). For each raw issue, route by `issue.single_source_check()` — `Some(check_id)` only when the issue carries exactly one source check, looked up via `check_id_to_rule`; `None` (zero sources, e.g. `CYCLE_ANALYSIS_OVERFLOWED`, or — should never happen for a raw pre-merge issue, guarded by `debug_assert!` — two or more) routes to no rule and the issue is dropped from this iteration's merge map. This is a deliberate fail-safe: a malformed 2+-source raw issue is routed as "no rule" rather than silently picked by an arbitrary single source id, which is what indexing `source_checks()` directly would do in a release build with `debug_assert!` compiled out. An issue with no matching rule isn't lost from the maze's perspective — the final `qc_engine.run` after the loop recomputes fresh and will surface it again if still present. Group routed issues by rule id into a `HashMap<String, Issue>`: the first issue for a rule seeds the entry, any further issue for the same rule is merged into it via `merge_issue` (in `pipeline.rs`) rather than discarded. `merge_issue` unions sources via `Issue::push_source` (deduplicated) and unions `data` per a per-`IssueData`-variant rule — for `IssueData::InvalidLoops`, a three-step canonical merge (normalize → dedup → remap) that treats a cycle as a set of edges, so the same cycle found by two different checks collapses to one entry in the merged `all` instead of appearing twice; `invalid_sources` (per-cycle check attribution) is unioned by canonical key alongside it. The remap step uses `.get()` on the old→new index map, not direct indexing — an out-of-range `invalid` index from a malformed future `Check` is dropped (debug-asserted, not panicked) rather than crashing the pipeline. `IssueData::RegionsNeedingExpansion` (see `quality_control.md`) merges more simply via `merge_regions_needing_expansion` — no remap needed, since `invalid`'s indices are into the one `maze.analysis.scc(&maze.graph)` cache entry shared by every check in the pass, so the same index already means the same region on both sides; only a plain dedup-union of `invalid` and `invalid_sources` is required. `IssueData::MissingRegions` merges via `merge_missing_regions` — folds the incoming `balance_by_class` map into the existing one, entry by entry; a class present in both takes the value **further from zero** (the stricter demand/surplus — not the sum, since both checks describe the same underlying shortfall/surplus against the same threshold), a class present in only one side is carried over unchanged. A shortfall and a surplus on the same class from two different instances in one pass is a configuration conflict the merge can't resolve (`debug_assert!`, not silently picked). In practice this merge rarely runs: GitHub issue #60's multi-instance design is retired, so there is normally exactly one active `MinRegionCountCheck` instance, which already reports every off-target class in one issue. A combination of `IssueData` variants with no defined merge rule is a `debug_assert!`/panic in debug builds — there is no silent "keep one side, drop the other" fallback; that was the old dedup bug this merge replaces. Then filter out `failed` rule ids. Order of the resulting active-issues list is **not specified** (it comes from iterating a `HashMap`).
-     - **This is where staging actually applies**: filter the merged `by_rule` map to `dispatchable` (this stage's own `strategy_rule_ids_for_stage` result) — **not** `repair_engine.strategy_rule_ids()` (every stage's dispatchable rules combined). A rule belonging to a *later*, not-yet-reached stage may already have an active issue at this point (QC found it, merge routed it) — it is simply dropped by this filter for this iteration, not cached or deferred; once that rule's own stage is reached, QC recomputes fresh on the then-current graph and the issue (if still present) passes the filter normally. Rules with no registered strategy are excluded by the same filter regardless of stage (they were never in `dispatchable` to begin with) — same final effect as before staging existed, just narrower per iteration now.
-     - If `active` (post-filter) is empty: **this stage is done** — advance to the next stage (`continue 'stages`), *not* a break out of the whole loop. This is the only way a stage completes normally.
-     - Progress guard: sort `active` by rule id and compare the full `(rule_id, Issue)` list against `previous_fingerprint` (this stage's own, reset at stage start — see above), by value (`Issue` derives `PartialEq`, covering `data`/`source_checks`/`details`). Catches true "no progress" (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid).
-     - **If equal to previous: no-progress — break out of the stage loop entirely, not just this stage.** Unlike a normal "active is empty" stage completion, no-progress means the current stage's own issues were never actually resolved through the loop — its state is not fully settled. Continuing to a later stage on top of that would repair-dispatch against a maze whose current stage never reached a clean "done" state, so the whole `build_maze` repair pass stops here instead. (This mirrors the pre-#65 behavior exactly: before stages existed, no-progress always stopped the single loop outright — staging changes *what dispatches when*, not this stopping condition.)
-     - Run repair on active `(rule_id, Issue)` pairs, passing through `preset_state`.
-     - Add `Failed` outcomes' `rule_id` to the shared `failed` set.
-7. Final QC (unconditional, regardless of how the stage loop ended — all stages completed, or a limit/no-progress broke out of it early): return `(maze, remaining_issues)`.
+1. `run_full` constructs one `GenerationTiming` accumulator for the whole call — every level below only *updates* it (via smaller `(f64, u32)` tuple maps folded in afterward), never creates its own.
+2. `run_repair_stages` constructs one `RepairBudget` (wraps `RepairLimits` plus `iterations_done`/`start_ms`, plus whichever limit fired / rules no-progressed) **before the first stage**, then iterates `self.stages` in order (`for stage in &self.stages`), passing the *same* `&mut RepairBudget` into every `stage.run_repair(...)` call — the budget is shared across all stages, never reset per stage (see below). A stage reporting `StageOutcome::Done` advances to the next; `LimitReached`/`NoProgress` stops the whole sequence — this mirrors the pre-#106 pipeline's `break 'stages'` exactly, just without needing a loop label, since the inner fixpoint loop is now entirely inside `Stage::run_repair` and simply `return`s a `StageOutcome` instead of breaking through several loop levels.
+3. **Inside `Stage::run_repair`** (one stage's own fixpoint loop, `failed`/no-progress fingerprint local to this call):
+   - Check `budget.exhausted(now_ms)` (max_iterations checked before time_budget) → `Some(kind)` means `LimitReached(kind)`.
+   - `budget.iterations_done += 1`.
+   - **`collect_active`: run QC — stage-scoped, not stage-agnostic.** For each `Rule` in `self.rules` (in `Vec` order), skipping ids already in the local `failed` set, call `rule.run_checks(maze, rng, ...)` — this only runs **this stage's own** checks, unlike the pre-#106 pipeline, which ran every check across every stage every iteration (explicitly called out as wasteful, see GitHub issue #106). **Rule-level merge happens inside `run_checks` itself**, not here: a rule's own multiple checks fold into at most one `Issue` via `merge_issue` (moved from `pipeline.rs` to `quality_control/rule.rs` — same function, same per-`IssueData`-variant merge rules: `InvalidLoops` via a three-step normalize→dedup→remap canonical merge, `RegionsNeedingExpansion`/`InvalidTeleports`/`TeleportProximityPairs` via plain dedup-union, `MissingRegions` takes the value further from zero per class — see "Rule, Stage, and the unified QualityControlEngine" above and `quality_control.md`'s "Dedup interaction" for the full per-variant rules, unchanged by this refactor). Keep only rules with `Some(issue)` **and** `rule.has_strategy()` → `active: Vec<(&Rule, Issue)>`, sorted by `rule.id` once, immediately — the same sorted order is then reused by both the progress check and dispatch below, matching the pre-#106 pipeline's deterministic dispatch order (`active.sort_unstable_by` by rule id).
+   - If `active` is empty: `StageOutcome::Done` — this stage is finished.
+   - **Progress guard**: compare `active` (already sorted) against the previous iteration's snapshot, element-wise, on `(rule.id, issue)` — full `Issue` equality (`PartialEq`, covering `data`/`source_checks`/`details`), same as before #106: catches true no-progress (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid — GitHub issue #27). Equal → `StageOutcome::NoProgress(rule_ids)`.
+   - Otherwise snapshot `active` as `(rule.id.clone(), issue.clone())` pairs for the next iteration's comparison, then dispatch: for each `(rule, issue)` in `active`'s order, call `rule.dispatch_repair(issue, maze, rng, preset_state, ...)` directly (no lookup — `active` already holds a reference to the `Rule`, not just its id) — `Failed` → add `rule.id` to the local `failed` set; `Fixed { score: Some(s) }` → set `maze.meta.route_score` if not already set.
+   - Loop.
+4. Back in `run_repair_stages`: fold each stage's timing tuples into `GenerationTiming`'s `TimingEntry` maps. Return the final `RepairBudget`.
+5. `run_full` runs the **unconditional final report pass** (`collect_final_report`, regardless of how the stage sequence ended) — walks `self.stages` again, concatenating `stage.run_report(...)` (i.e. `Rule::report_checks`, `report_check`-based, one `Issue` per flagged instance — see GitHub issue #102) for every rule in every stage. Same effective check set as the pre-#106 stage-agnostic final pass, just reached by walking the same stage/rule hierarchy instead of a flat check list.
+6. Pushes `REPAIR_LIMIT_REACHED`/`QC_NO_PROGRESS` synthetic issues based on the returned `RepairBudget`, same as before. Returns `(remaining, timing)`.
 
-Two rules producing the same `IssueKind` are fully independent through this loop — each gets its own entry in `check_id_to_rule`, its own slot in the merge map, its own fingerprint entry (within whichever stage owns it), and its own `failed` tracking. A failure on one rule does not affect another rule's repair dispatch, in the same or a different stage. A no-progress break, however, *does* stop every later stage — see above.
+Two rules producing the same `IssueKind` are fully independent through this — each owns its own checks and strategy, its own fingerprint (within whichever stage owns it), and its own `failed` tracking; there is no shared routing table for either to collide on. A failure on one rule does not affect another rule's repair dispatch, in the same or a different stage. A no-progress break, however, *does* stop every later stage — see above.
 
 ### Stages and the repair budget
 
-`RepairLimits` (`max_iterations`/`time_budget_secs`) is shared across every stage in one `build_maze` call, not reset per stage — `iterations_done`/`start_ms` are declared once, before the first stage, and never reset at a stage boundary. If the budget is exhausted mid-stage, the whole stage loop stops (not just the current stage) — the same `REPAIR_LIMIT_REACHED` issue construction as before staging existed applies unchanged; it just may now fire while a later stage never even got a chance to start. `QC_NO_PROGRESS` similarly always names whichever stage's rules were stuck when the break happened.
+`RepairLimits` (`max_iterations`/`time_budget_secs`) is shared across every stage in one `run_full` call via the single `RepairBudget` constructed in `run_repair_stages`, not reset per stage — `iterations_done`/`start_ms` are set once, before the first stage, and never reset at a stage boundary. If the budget is exhausted mid-stage, the whole stage sequence stops (not just the current stage) — the same `REPAIR_LIMIT_REACHED` issue construction as before staging existed applies unchanged; it just may now fire while a later stage never even got a chance to start. `QC_NO_PROGRESS` similarly always names whichever stage's rules were stuck when the break happened.
 
 **Note:** `generate_maze` must be called **before** `build_maze`. `build_maze` only handles metadata, not graph structure.
 
@@ -720,12 +783,12 @@ pub fn build_maze<T: Tessellation>(...) -> (Maze<T>, Vec<Issue>, GenerationTimin
 ```
 
 - `initial_build_ms` is left at `0.0` by `build_maze` itself — it only runs the QC/repair fixpoint loop, not the initial `generate_maze`/`generate_maze_steps` call. `maze-wasm::run_generate` is the only caller that also runs that stage; it times it with the same `now_ms()` clock and fills `timing.initial_build_ms` in after `build_maze` returns.
-- `qc_total_ms`/`per_check` cover every `QualityControlEngine::run` call across the whole `build_maze` call — every fixpoint iteration's QC pass plus the final post-loop QC pass that computes `remaining`.
-- `repair_total_ms`/`per_strategy` cover every `RepairEngine::run` call (one per fixpoint iteration that has active issues).
+- `qc_total_ms`/`per_check` cover every `Rule::run_checks` call across the whole `run_full` call — every fixpoint iteration's QC pass (`run_repair_stages`) plus the final unconditional report pass (`collect_final_report`, `Rule::report_checks`) that computes `remaining`. Since GitHub issue #106, this is `QualityControlEngine::run_full`'s single accumulator, not a separate timed/untimed method pair — see "Rule, Stage, and the unified QualityControlEngine" above.
+- `repair_total_ms`/`per_strategy` cover every `Rule::dispatch_repair` call (one per fixpoint iteration's active rule).
 - `per_check` is keyed by **check type id** (`Check::check_type_id()`, e.g. `"min_loop_length"` — the same string as `available_checks()`'s `CheckDescriptor.id`), not by instance id — two active instances of the same type (GitHub issue #60) aggregate into one entry, since the issue calls for per-check-*type* timing, not per-configured-instance.
 - `per_strategy` is keyed by **strategy id** (`RepairStrategy::strategy_id()`, e.g. `"invalid_loop_random"` — the same string as `StrategyConfig.id`), not by rule id — two rules backed by the same strategy aggregate into one entry.
-- **Nested strategies (see "Nested strategies" above) are not timed separately.** `RepairEngine::run_timed` only wraps the top-level `cfg.strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` entry, with no separate entry for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading `per_strategy` cannot distinguish a parent's own work from its nested delegate's.
-- `QualityControlEngine::run_timed`/`RepairEngine::run_timed` are the timed variants `build_maze` calls instead of the plain `run` — they take an `&mut HashMap<&'static str, (f64, u32)>` accumulator and a `now_ms: impl Fn() -> f64` clock (injected so the same wasm/native-aware clock from `pipeline.rs` is reused), and wrap each `Check::repair_check`/`RepairStrategy::apply` call. Every other caller of `run` (e.g. `build_analytics_snapshot`'s analytics-only QC pass, which has no generation to time) is unaffected — `run` keeps its original untimed signature. The final post-loop QC pass that computes `remaining` uses `QualityControlEngine::run_report_timed` instead, wrapping `Check::report_check` — one `Issue` per flagged problem instance rather than one merged `Issue` per check call (see GitHub issue #102, `quality_control.md`'s "Check trait" section).
+- **Nested strategies (see "Nested strategies" above) are not timed separately.** `Rule::dispatch_repair` only wraps the top-level `strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` entry, with no separate entry for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading `per_strategy` cannot distinguish a parent's own work from its nested delegate's.
+- `QualityControlEngine::run_full` (timed, drives repair) and `run_check_only` (untimed — check-only callers, e.g. `build_analytics_snapshot`, have no generation to time and pass a throwaway one-off accumulator internally) are the two entry points — there is no separate `run`/`run_timed` method pair anymore; each `Rule`'s own `run_checks`/`report_checks`/`dispatch_repair` methods take the timing accumulator and `now_ms: impl Fn() -> f64` clock as parameters (injected so the same wasm/native-aware clock from `pipeline.rs` is reused) and wrap each `Check::repair_check`/`report_check`/`RepairStrategy::apply` call internally.
 - `now_ms()` (`pipeline.rs`) is `pub`, not private, specifically so `maze-wasm::run_generate` can time the initial-build stage with the same clock.
 
 `maze-wasm`'s `GenerationTimingDto` (see `analytics-web.md`) is the serialized form, surfaced on `MazeSnapshot.timing` — `Some` only for snapshots from a full generation run (`run_generate`); `None` for analytics-only paths (post-edit, `compute_analytics`) that never call `build_maze`.

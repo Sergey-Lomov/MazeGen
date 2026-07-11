@@ -217,7 +217,8 @@ pub struct ComputeAnalyticsConfig {
     /// synthetic singleton rule when building the `QualityControlEngine` (see
     /// `dispatch_compute_analytics` in `lib.rs`), purely so `build_qc_and_repair`'s rule-driven
     /// shape (GitHub issue #60) has something to iterate; the rule ids/kinds built from these are
-    /// discarded immediately since this path never runs `RepairEngine`.
+    /// discarded immediately since this path never dispatches repair (`run_check_only`, GitHub
+    /// issue #106).
     #[serde(default)]
     pub checks: Vec<crate::generation_config::CheckInstanceConfig>,
 }

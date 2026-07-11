@@ -202,34 +202,28 @@ pub trait Check<T: Tessellation> {
 
 - **Read-only**: `maze` is immutable. A `Check` must not mutate any state.
 - **No side effects**: neither method may access global state or perform I/O.
-- **`rng` is the one sanctioned source of non-determinism**: most checks ignore it (`_rng`) and stay fully deterministic, but a check whose contract is inherently randomized — currently only `MaxLoopDensityCheck` (below), which must pick *which* excess loops to flag without a deterministic ordering rule — draws from it instead of seeding its own. `QualityControlEngine::run`/`run_timed`/`run_report_timed` take the `rng` from their caller (the pipeline's per-`build_maze`-call `MazeRng`, seeded from the generation seed) rather than each check owning one, so a whole QC pass stays reproducible for a given seed.
+- **`rng` is the one sanctioned source of non-determinism**: most checks ignore it (`_rng`) and stay fully deterministic, but a check whose contract is inherently randomized — currently only `MaxLoopDensityCheck` (below), which must pick *which* excess loops to flag without a deterministic ordering rule — draws from it instead of seeding its own. `Rule::run_checks`/`report_checks` (see `repair.md`'s "Rule, Stage, and the unified QualityControlEngine" section, GitHub issue #106) take the `rng` from their caller (ultimately the pipeline's per-`build_maze`-call `MazeRng`, seeded from the generation seed) rather than each check owning one, so a whole QC pass stays reproducible for a given seed.
 - A check may produce zero or more issues per call.
 - A check may read `maze.analysis` to avoid redundant computation.
 - **`repair_check` vs `report_check`** — see GitHub issue #102. Both methods detect the exact same problems; they differ only in how many `Issue` values they produce per flagged instance:
-  - `repair_check` is the detection the repair fixpoint loop (`build_maze`) drives. It may bundle every flagged problem instance into one merged `Issue` per call (e.g. `MinLoopLengthCheck` bundles all short cycles into one `IssueData::InvalidLoops { all, invalid, invalid_sources }`), since the loop dispatches one repair strategy call per rule against the whole batch — batching there is a feature, not a limitation, of the repair-dispatch contract.
-  - `report_check` is the detection the final QC report (`remaining_issues`, analytics, UI) drives. It must produce one `Issue` per flagged problem instance instead, since a batched issue can't be split into accurate per-item counts, per-item highlighting, or (eventually) one-issue-per-cycle repair dispatch. Default implementation delegates to `repair_check` (calls it into a temporary `Vec` and returns it) — no behavior change for a check that doesn't override it.
-  - Both methods return/populate the same `Issue` type — there is no separate report-only issue type. A check overriding `report_check` is still free to attach `data: IssueData` to each per-instance issue if useful, even though the final QC report's `Issue`s are never fed to a `RepairStrategy` in practice (the report path never calls `RepairEngine`).
-  - `check_type_id()` identifies the check **type** (e.g. `"min_loop_length"`), used by both `QualityControlEngine::run_timed` and `run_report_timed` to aggregate per-check-type timing — distinct from `instance_id`, the per-instance composite routing key.
+  - `repair_check` is the detection the repair fixpoint loop (`Rule::run_checks`, driven by `Stage::run_repair`) drives. It may bundle every flagged problem instance into one merged `Issue` per call (e.g. `MinLoopLengthCheck` bundles all short cycles into one `IssueData::InvalidLoops { all, invalid, invalid_sources }`), since the loop dispatches one repair strategy call per rule against the whole batch — batching there is a feature, not a limitation, of the repair-dispatch contract.
+  - `report_check` is the detection the final QC report (`remaining_issues`, analytics, UI) drives — driven by `Rule::report_checks`, called both by `build_maze`'s final report pass and by `build_analytics_snapshot`'s check-only path (unified since GitHub issue #106; see `repair.md`). It must produce one `Issue` per flagged problem instance instead, since a batched issue can't be split into accurate per-item counts, per-item highlighting, or (eventually) one-issue-per-cycle repair dispatch. Default implementation delegates to `repair_check` (calls it into a temporary `Vec` and returns it) — no behavior change for a check that doesn't override it.
+  - Both methods return/populate the same `Issue` type — there is no separate report-only issue type. A check overriding `report_check` is still free to attach `data: IssueData` to each per-instance issue if useful, even though the final QC report's `Issue`s are never fed to a `RepairStrategy` in practice (the report path never dispatches repair).
+  - `check_type_id()` identifies the check **type** (e.g. `"min_loop_length"`), used by `Rule::run_checks`/`report_checks` to aggregate per-check-type timing — distinct from `instance_id`, the per-instance composite routing key.
 
-### QualityControlEngine
+### QualityControlEngine, Rule, and Stage
 
-```rust
-pub struct QualityControlEngine<T: Tessellation> {
-    checks: Vec<Box<dyn Check<T>>>,
-}
-
-impl<T: Tessellation> QualityControlEngine<T> {
-    pub fn new(checks: Vec<Box<dyn Check<T>>>) -> Self;
-    pub fn run(&self, maze: &Maze<T>, rng: &mut dyn RngCore) -> Vec<Issue>;
-    pub fn run_timed(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64) -> Vec<Issue>;
-    pub fn run_report_timed(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64) -> Vec<Issue>;
-}
-```
-
-- Runs checks in insertion order.
-- Returns all issues collected across all checks, including duplicates.
-- Merging issues with the same `IssueKind` (not dropping duplicates) is the pipeline's responsibility — see `repair.md`'s "Pipeline" section and the "Dedup interaction" note above.
-- `run`/`run_timed` call each check's `repair_check`; `run_report_timed` calls `report_check` instead — see the "Check trait" section above. `build_maze` uses `run_timed` for the fixpoint loop's own iterations and `run_report_timed` for the final post-loop pass that computes `remaining` (see `repair.md`'s timing section). Callers with no timing interest (e.g. `build_analytics_snapshot`'s analytics-only QC pass) use plain `run`, which is repair-check-based like `run_timed`.
+See GitHub issue #106. `QualityControlEngine` is no longer a flat holder of
+`checks: Vec<Box<dyn Check<T>>>` — it owns an ordered list of `Stage`s, each owning its own
+`Rule`s, each `Rule` owning its own checks plus (optionally) one repair strategy. Merging issues
+with the same `IssueKind` produced by different checks **within one `Rule`** (not dropping
+duplicates) is that `Rule`'s own responsibility (`Rule::run_checks`, via `merge_issue`) — see
+`repair.md`'s "Rule, Stage, and the unified QualityControlEngine" section for the full type
+shapes and dispatch algorithm, and the "Dedup interaction" note above for the per-`IssueData`
+merge rules themselves (unchanged by this refactor — only *where* the merge happens moved, from a
+pipeline-wide `HashMap` keyed by rule id to a loop local to each `Rule`'s own checks). A `Rule`'s
+checks always run in the order they were configured, same as the pre-#106 flat engine's insertion
+order.
 
 ## Built-in Checks
 
@@ -733,10 +727,11 @@ pub struct StageConfig {
 }
 ```
 
-A named, ordered group of rules — `RepairEngine` (`maze-core`) dispatches one stage at a time, in
-`stages` array order, only rules belonging to the current stage, until it has no more active
-issues, then moves to the next stage. See `repair.md`'s "Stages" section for the full dispatch
-semantics and the shared `RepairLimits` budget across stages. `maze-wasm/src/runner.rs::build_qc_and_repair`
+A named, ordered group of rules — `QualityControlEngine` (`maze-core`, via its owned `Stage`s)
+dispatches one stage at a time, in `stages` array order, only rules belonging to the current
+stage, until it has no more active issues, then moves to the next stage. See `repair.md`'s "Rule,
+Stage, and the unified QualityControlEngine" section for the full dispatch semantics and the
+shared `RepairLimits` budget across stages. `maze-wasm/src/runner.rs::build_qc_and_repair`
 rejects a config where a rule with a `strategy` doesn't appear in any stage's `rules`
 (`"rule {id} not assigned to any stage"`), a duplicate `stage.id` across the config
 (`"duplicate stage id: {id}"`), or a duplicate rule `id` across stages
@@ -764,14 +759,14 @@ One user-defined QC rule: a non-empty set of active check **instances** producin
 `IssueKind`, sharing one repair strategy (or none — `strategy: None`, the rule's issues still
 merge for attribution but no `RepairStrategy` is dispatched). Two instances of the same
 `type_id` in the same rule (or in different rules) is a normal, fully supported case — see
-GitHub issue #60 — not deduplicated anywhere in this pipeline; `QualityControlEngine` runs every
-instance independently and completely. `local_id` only needs to be unique within its own rule's
-`checks` array — `maze-wasm/src/runner.rs::build_qc_and_repair` rejects a config with a
+GitHub issue #60 — not deduplicated anywhere in this pipeline; each `Rule` runs every one of its
+own instances independently and completely. `local_id` only needs to be unique within its own
+rule's `checks` array — `maze-wasm/src/runner.rs::build_qc_and_repair` rejects a config with a
 duplicate `local_id` inside one rule (`"rule {id} has duplicate local_id: {local_id}"`), as a
 defense against malformed/hand-edited configs; the web store's own monotonic per-rule counter
-already guarantees this never happens via normal UI flow. See `repair.md`'s "QcRule and
-rule-based RepairEngine" section for how a `QcRuleConfig` is validated and turned into core's
-`QcRule`/`RepairRuleConfig`.
+already guarantees this never happens via normal UI flow. See `repair.md`'s "Rule, Stage, and the
+unified QualityControlEngine" section for how a `QcRuleConfig` is validated and turned into core's
+`Rule`.
 
 `GenerateConfig::default()` ships one default stage (`{ id: "stage_1", name: "Stage 1" }`) containing one default rule: `{ id: "default_missing_endpoints", checks: [{ local_id: "missing_endpoints", type_id: "missing_endpoints", params: {} }], strategy: Some(farthest_endpoints) }` — `local_id == type_id` here is a deliberate special case for this fixed bootstrap singleton, not a general pattern. `unreachable_finish` has no default rule (but does default to the same one stage, with `strategy: None`).
 

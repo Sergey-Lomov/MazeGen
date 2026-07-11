@@ -47,7 +47,7 @@ pub fn run_generate<T: Tessellation>(
     };
     let initial_build_ms = now_ms() - initial_build_start;
 
-    let (qc_engine, repair_engine, check_types) = build_qc_and_repair_with_types::<T>(config)
+    let (qc_engine, check_types) = build_qc_and_repair_with_types::<T>(config)
         .map_err(|e| JsValue::from_str(&e))?;
 
     let preset_start = config.preset_start.and_then(|[sx, sy]| {
@@ -58,7 +58,7 @@ pub fn run_generate<T: Tessellation>(
     });
 
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
-    let (mut maze, issues, mut timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &repair_preset_state, build_repair_limits(config), preset_start, preset_finish);
+    let (mut maze, issues, mut timing) = build_maze(field, graph, seed, qc_engine, &repair_preset_state, build_repair_limits(config), preset_start, preset_finish);
     timing.initial_build_ms = initial_build_ms;
 
     let debug_steps = steps_to_dto(raw_steps);
@@ -76,7 +76,7 @@ pub fn run_generate<T: Tessellation>(
 /// Thin wrapper that also returns `check_types` map needed by `build_analytics_snapshot`.
 pub fn build_qc_and_repair_with_types<T: Tessellation>(
     config: &GenerateConfig,
-) -> Result<(maze_core::quality_control::QualityControlEngine<T>, maze_core::repair::RepairEngine<T>, HashMap<String, String>), String> {
+) -> Result<(maze_core::quality_control::QualityControlEngine<T>, HashMap<String, String>), String> {
     use std::collections::HashSet;
 
     let mut check_types: HashMap<String, String> = HashMap::new();
@@ -92,8 +92,8 @@ pub fn build_qc_and_repair_with_types<T: Tessellation>(
         }
     }
 
-    let (qc_engine, repair_engine) = maze_runner::runner::build_qc_and_repair::<T>(config)?;
-    Ok((qc_engine, repair_engine, check_types))
+    let qc_engine = maze_runner::runner::build_qc_and_repair::<T>(config)?;
+    Ok((qc_engine, check_types))
 }
 
 fn timing_to_dto(timing: maze_core::GenerationTiming) -> crate::dto::GenerationTimingDto {
@@ -277,8 +277,8 @@ mod build_qc_and_repair_tests {
             ]),
             ..GenerateConfig::default()
         };
-        let (_, repair_engine) = build_qc_and_repair::<SquareTessellation>(&config).unwrap();
-        let routing = repair_engine.check_id_to_rule();
+        let qc_engine = build_qc_and_repair::<SquareTessellation>(&config).unwrap();
+        let routing = qc_engine.check_id_to_rule();
         assert_eq!(routing.get("r_trap:a"), Some(&"r_trap".to_string()));
         assert_eq!(routing.get("r_alt:b"), Some(&"r_alt".to_string()));
     }
@@ -305,22 +305,19 @@ mod build_qc_and_repair_tests {
             }]),
             ..GenerateConfig::default()
         };
-        let (_, repair_engine) = build_qc_and_repair::<SquareTessellation>(&config).unwrap();
-        let routing = repair_engine.check_id_to_rule();
+        let qc_engine = build_qc_and_repair::<SquareTessellation>(&config).unwrap();
+        let routing = qc_engine.check_id_to_rule();
         assert_eq!(routing.get("r1:a"), Some(&"r1".to_string()));
         assert_eq!(routing.get("r1:b"), Some(&"r1".to_string()));
     }
 
     // --- Stages (issue #65) ---
 
-    // Note: "rule with a strategy not assigned to any stage" (`build_qc_and_repair`'s
-    // "not assigned to any stage" error) is unreachable from this function's own input shape —
-    // `stage.rules` is the sole source of both rule definitions and stage membership (see plan's
-    // "Отдельное 'stages', check_rules уходит"), so every strategy-bearing rule parsed here is
-    // always added to that same stage's `rule_ids`. The check exists as a defensive invariant on
-    // `RepairEngine::new`'s caller contract, exercised directly at the `maze-core` level instead
-    // — see `pipeline_test.rs`'s stage tests and `engine.rs`'s
-    // `strategy_rule_ids_for_stage_intersects_stage_and_strategy_rules`.
+    // Note: "rule with a strategy not assigned to any stage" can no longer even be expressed,
+    // let alone happen — since GitHub issue #106, a `Rule` is constructed and pushed directly
+    // into the `Stage` it's configured under (see `maze-runner/src/runner.rs::build_qc_and_repair`),
+    // there is no separate "all rules" list a strategy-bearing rule could fail to appear in.
+    // `stage.rules` is the sole source of both rule definitions and stage membership.
 
     #[test]
     fn duplicate_stage_id_is_rejected() {
@@ -374,9 +371,9 @@ mod build_qc_and_repair_tests {
             ],
             ..GenerateConfig::default()
         };
-        let (_, repair_engine) = build_qc_and_repair::<SquareTessellation>(&config).unwrap();
-        assert_eq!(repair_engine.stages().len(), 2);
-        assert_eq!(repair_engine.stages()[0].id, "stage_1");
-        assert_eq!(repair_engine.stages()[1].id, "stage_2");
+        let qc_engine = build_qc_and_repair::<SquareTessellation>(&config).unwrap();
+        assert_eq!(qc_engine.stages().len(), 2);
+        assert_eq!(qc_engine.stages()[0].id, "stage_1");
+        assert_eq!(qc_engine.stages()[1].id, "stage_2");
     }
 }

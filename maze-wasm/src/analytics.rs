@@ -34,7 +34,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         // the editor) — a fixed seed keeps a randomized check (MaxLoopDensityCheck) at least
         // deterministic per call, consistent with every other check's no-side-effects contract.
         let mut rng = MazeRng::seed_from_u64(0);
-        engine.run(maze, &mut rng)
+        engine.run_check_only(maze, &mut rng, maze_core::generation::pipeline::now_ms)
     } else {
         vec![]
     };

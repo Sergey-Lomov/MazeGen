@@ -81,7 +81,7 @@ pub trait RepairStrategy<T: Tessellation> {
     /// `issue.kind` must equal `self.handles()` (see `handles()`'s own doc comment) — new code
     /// should assert this with `debug_assert_eq!(issue.kind, self.handles())` as the first line.
     ///
-    /// `snapshots`/`rng` are owned by the caller (`RepairEngine::run`/`run_timed`), one instance
+    /// `snapshots`/`rng` are owned by the caller (`Rule::dispatch_repair`), one instance
     /// per top-level `apply()` call, shared across the whole call including any nested
     /// delegation. **A strategy that delegates to one of its `nested` entries must pass this
     /// same `snapshots`/`rng` straight through to the nested `apply()` call, never construct a

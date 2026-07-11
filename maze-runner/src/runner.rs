@@ -23,10 +23,10 @@ use maze_core::{
         TeleportMaxGeometricLengthCheck, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT,
         TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
-        TELEPORT_GROUP_PROXIMITY,
+        TELEPORT_GROUP_PROXIMITY, Rule, Stage,
     },
     repair::{
-        QcRule, RepairEngine, RepairRuleConfig, RepairStage, RepairStrategy,
+        RepairStrategy,
         NestedSlot, NestedStrategyConfig,
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
@@ -363,11 +363,8 @@ fn build_nested<T: Tessellation>(
 
 pub fn build_qc_and_repair<T: Tessellation>(
     config: &GenerateConfig,
-) -> Result<(QualityControlEngine<T>, RepairEngine<T>), String> {
-    let mut checks: Vec<Box<dyn maze_core::quality_control::Check<T>>> = Vec::new();
-    let mut all_rules: Vec<QcRule> = Vec::new();
-    let mut repair_rules: Vec<RepairRuleConfig<T>> = Vec::new();
-    let mut stages: Vec<RepairStage> = Vec::new();
+) -> Result<QualityControlEngine<T>, String> {
+    let mut stages: Vec<Stage<T>> = Vec::new();
     let mut seen_stage_ids: HashSet<&str> = HashSet::new();
     let mut seen_rule_ids: HashSet<&str> = HashSet::new();
 
@@ -375,7 +372,7 @@ pub fn build_qc_and_repair<T: Tessellation>(
         if !seen_stage_ids.insert(stage_cfg.id.as_str()) {
             return Err(format!("duplicate stage id: {}", stage_cfg.id));
         }
-        let mut stage_rule_ids: Vec<String> = Vec::with_capacity(stage_cfg.rules.len());
+        let mut rules: Vec<Rule<T>> = Vec::with_capacity(stage_cfg.rules.len());
 
         for rule_cfg in &stage_cfg.rules {
             if !seen_rule_ids.insert(rule_cfg.id.as_str()) {
@@ -385,7 +382,7 @@ pub fn build_qc_and_repair<T: Tessellation>(
                 return Err(format!("rule {} has no checks", rule_cfg.id));
             }
             let mut kind: Option<IssueKind> = None;
-            let mut composite_ids: Vec<String> = Vec::with_capacity(rule_cfg.checks.len());
+            let mut checks: Vec<(String, Box<dyn maze_core::quality_control::Check<T>>)> = Vec::with_capacity(rule_cfg.checks.len());
             let mut seen_local_ids: HashSet<&str> = HashSet::new();
             for instance in &rule_cfg.checks {
                 if !seen_local_ids.insert(instance.local_id.as_str()) {
@@ -398,45 +395,34 @@ pub fn build_qc_and_repair<T: Tessellation>(
                     Some(_) => return Err(format!("checks in rule {} produce different issue kinds", rule_cfg.id)),
                 }
                 let instance_id = composite_check_id(&rule_cfg.id, &instance.local_id);
-                checks.push(build_check::<T>(instance, instance_id.clone())?);
-                composite_ids.push(instance_id);
+                let check = build_check::<T>(instance, instance_id)?;
+                checks.push((instance.local_id.clone(), check));
             }
             let kind = kind.expect("non-empty rule always resolves a kind");
-            let rule = QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids.clone() };
 
-            if let Some(strategy_cfg) = &rule_cfg.strategy {
-                if strategy_cfg.slot_id.is_some() {
-                    return Err(format!("rule {}'s top-level strategy must not declare slot_id", rule_cfg.id));
+            let (strategy, param_overrides, nested) = match &rule_cfg.strategy {
+                Some(strategy_cfg) => {
+                    if strategy_cfg.slot_id.is_some() {
+                        return Err(format!("rule {}'s top-level strategy must not declare slot_id", rule_cfg.id));
+                    }
+                    let strategy = build_strategy::<T>(&strategy_cfg.id)?;
+                    let nested = build_nested::<T>(strategy.as_ref(), &strategy_cfg.nested)?;
+                    (Some(strategy), strategy_cfg.params.clone(), nested)
                 }
-                let strategy = build_strategy::<T>(&strategy_cfg.id)?;
-                let nested = build_nested::<T>(strategy.as_ref(), &strategy_cfg.nested)?;
-                repair_rules.push(RepairRuleConfig {
-                    rule: QcRule { id: rule_cfg.id.clone(), kind, checks: composite_ids },
-                    strategy,
-                    param_overrides: strategy_cfg.params.clone(),
-                    nested,
-                });
-            }
-            stage_rule_ids.push(rule_cfg.id.clone());
-            all_rules.push(rule);
+                None => (None, HashMap::new(), Vec::new()),
+            };
+
+            rules.push(Rule::new(rule_cfg.id.clone(), kind, checks, strategy, param_overrides, nested));
         }
 
-        stages.push(RepairStage { id: stage_cfg.id.clone(), name: stage_cfg.name.clone(), rule_ids: stage_rule_ids });
+        stages.push(Stage::new(stage_cfg.id.clone(), stage_cfg.name.clone(), rules));
     }
 
-    // Every rule with a registered strategy must belong to exactly one stage — a rule with no
-    // strategy has nothing to dispatch, so it has no such requirement (see `Specs/repair.md`'s
-    // "Stages" section / plan's "Модель данных").
-    let staged_rule_ids: HashSet<&str> = stages.iter().flat_map(|s| s.rule_ids.iter().map(|id| id.as_str())).collect();
-    for cfg in &repair_rules {
-        if !staged_rule_ids.contains(cfg.rule.id.as_str()) {
-            return Err(format!("rule {} not assigned to any stage", cfg.rule.id));
-        }
-    }
+    // Note: "rule with a strategy not assigned to any stage" can no longer happen structurally —
+    // a `Rule` is built and pushed directly into the `Stage` it's configured under, there is no
+    // longer a separate "all rules" list a strategy-bearing rule could fail to appear in.
 
-    let qc_engine = QualityControlEngine::new(checks);
-    let repair_engine = RepairEngine::new(repair_rules, all_rules, stages);
-    Ok((qc_engine, repair_engine))
+    Ok(QualityControlEngine::new(stages))
 }
 
 pub fn pick_start<P: Copy>(points: &[P], to_xy: impl Fn(P) -> (i32, i32)) -> P {
@@ -488,7 +474,7 @@ fn run_generate_typed<T: Tessellation>(
         generate_maze(&mut graph, &field, seed, start_id, gen_config, &preset_state);
     }
 
-    let (qc_engine, repair_engine) = build_qc_and_repair::<T>(config)?;
+    let qc_engine = build_qc_and_repair::<T>(config)?;
     let limits = build_repair_limits(config);
     let preset_start = config.preset_start.and_then(|[sx, sy]| {
         field.all_points().find(|&p| to_xy(p) == (sx, sy)).and_then(|p| field.node_at(p))
@@ -497,7 +483,7 @@ fn run_generate_typed<T: Tessellation>(
         field.all_points().find(|&p| to_xy(p) == (fx, fy)).and_then(|p| field.node_at(p))
     });
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
-    let (maze, remaining_issues, timing) = build_maze(field, graph, seed, qc_engine, repair_engine, &repair_preset_state, limits, preset_start, preset_finish);
+    let (maze, remaining_issues, timing) = build_maze(field, graph, seed, qc_engine, &repair_preset_state, limits, preset_start, preset_finish);
 
     let start_node = maze.meta.start;
     let finish_node = maze.meta.finish;

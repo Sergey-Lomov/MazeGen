@@ -2,72 +2,261 @@ use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use super::check::Check;
-use super::issue::Issue;
+use crate::generation::PresetState;
+use crate::generation::pipeline::{RepairLimits, GenerationTiming, TimingEntry};
+use crate::quality_control::issue_data::RepairLimitKind;
+use super::issue::{Issue, REPAIR_LIMIT_REACHED, QC_NO_PROGRESS};
+use super::issue_data::IssueData;
+use super::stage::{Stage, StageOutcome, TimingSink};
 
+/// Shared repair budget across every stage in one `QualityControlEngine::run_full` call —
+/// `iterations_done`/`start_ms` are NOT reset per stage (see `Specs/repair.md`'s "Stages and the
+/// repair budget"). `limit_reached`/`no_progress` are written by `run_repair_stages`, not by
+/// `Stage::run_repair` itself — a `Stage` reports what happened in its own loop via
+/// `StageOutcome`, but deciding whether that should stop the whole stage sequence is the
+/// engine's call, not the stage's.
+pub(crate) struct RepairBudget {
+    limits: RepairLimits,
+    pub(crate) iterations_done: usize,
+    start_ms: f64,
+    pub(crate) limit_reached: Option<RepairLimitKind>,
+    pub(crate) no_progress: Option<Vec<String>>,
+}
+
+impl RepairBudget {
+    fn new(limits: RepairLimits, now_ms: &impl Fn() -> f64) -> Self {
+        Self { limits, iterations_done: 0, start_ms: now_ms(), limit_reached: None, no_progress: None }
+    }
+
+    /// `Some(kind)` for the first bound that has already been exhausted (max_iterations checked
+    /// before time_budget, matching the pre-#106 flat pipeline's check order), `None` if neither
+    /// bound is configured or both still have room.
+    pub(crate) fn exhausted(&self, now_ms: &impl Fn() -> f64) -> Option<RepairLimitKind> {
+        if let Some(max) = self.limits.max_iterations {
+            if self.iterations_done >= max {
+                return Some(RepairLimitKind::MaxIterations);
+            }
+        }
+        if let Some(budget_secs) = self.limits.time_budget_secs {
+            if now_ms() - self.start_ms >= budget_secs * 1000.0 {
+                return Some(RepairLimitKind::TimeBudget);
+            }
+        }
+        None
+    }
+}
+
+/// The single orchestrator for the whole check+repair process — or check-only, when no repair is
+/// requested (see GitHub issue #106). Owns an ordered list of `Stage`s; each `Stage` drives its
+/// own `Rule`s; each `Rule` drives its own checks plus its one strategy. Control mirrors storage:
+/// `QualityControlEngine` calls into `Stage`, `Stage` calls into `Rule`, rather than a flat loop
+/// reaching into all three levels at once.
+///
+/// Repair is not a separate orchestrator (there is no more `RepairEngine`) — in this model repair
+/// is never an independent operation over an arbitrary issue set, it always happens in the
+/// context of one `Rule`, which already owns both what to check and how to fix it. The split
+/// existed only because checks and strategy-bearing rules used to be two independent flat lists
+/// pipeline.rs re-matched every iteration via `check_id_to_rule`; once a `Rule` owns both, that
+/// matching is no longer a separate concern. `QualityControlEngine`'s name still fits: it is
+/// entirely about quality — detection and repair — never about generation, which runs before it
+/// and is out of its scope.
 pub struct QualityControlEngine<T: Tessellation> {
-    checks: Vec<Box<dyn Check<T>>>,
+    stages: Vec<Stage<T>>,
 }
 
 impl<T: Tessellation> QualityControlEngine<T> {
-    pub fn new(checks: Vec<Box<dyn Check<T>>>) -> Self {
-        Self { checks }
+    pub fn new(stages: Vec<Stage<T>>) -> Self {
+        Self { stages }
     }
 
-    pub fn run(&self, maze: &Maze<T>, rng: &mut dyn RngCore) -> Vec<Issue> {
-        let mut issues = Vec::new();
-        for check in &self.checks {
-            check.repair_check(maze, &mut issues, rng);
+    pub fn stages(&self) -> &[Stage<T>] {
+        &self.stages
+    }
+
+    /// Composite check id (`{rule_id}:{local_id}`) → rule id, across every stage/rule — pure
+    /// intospection, not a dispatch mechanism (dispatch needs no routing at all in this model,
+    /// since a check physically lives inside its own `Rule`). Kept for external DTO-attribution
+    /// consumers (`maze-wasm`) that still need to map a composite id back to its rule. This is
+    /// the one place in `maze_core` that knows the composite-id string format.
+    pub fn check_id_to_rule(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        for stage in &self.stages {
+            for rule in stage.rules() {
+                for (local_id, _) in rule.checks() {
+                    map.insert(format!("{}:{}", rule.id, local_id), rule.id.clone());
+                }
+            }
         }
-        issues
+        map
     }
 
-    /// Same as `run`, but also times each `Check::repair_check` call, accumulating elapsed
-    /// milliseconds and call count per `check_type_id` into `timing` — used by `build_maze`'s
-    /// repair loop to collect per-check timing analytics (see GitHub issue #56). Kept as a
-    /// separate method rather than a parameter on `run` so every other caller (analytics-only
-    /// QC passes with no timing interest, e.g. `build_analytics_snapshot`) is unaffected.
-    pub fn run_timed(
+    /// Runs the full check+repair process: a fixpoint repair loop per stage (in order, sharing
+    /// one `RepairBudget`), then an unconditional final report pass over every stage. Replaces
+    /// both `QualityControlEngine`+`RepairEngine`'s combined role in the pre-#106 `build_maze`.
+    pub fn run_full(
+        &self,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        preset_state: &PresetState,
+        limits: RepairLimits,
+        now_ms: impl Fn() -> f64,
+    ) -> (Vec<Issue>, GenerationTiming) {
+        let mut timing = GenerationTiming::default();
+        let budget = self.run_repair_stages(maze, rng, preset_state, limits, &mut timing, &now_ms);
+
+        let mut remaining = self.collect_final_report(maze, rng, &mut timing.per_check, &now_ms);
+        if let Some(limit) = budget.limit_reached {
+            remaining.push(Issue::with_data(REPAIR_LIMIT_REACHED, IssueData::RepairLimitReached { limit }));
+        }
+        if let Some(rule_ids) = budget.no_progress {
+            remaining.push(Issue::with_data(QC_NO_PROGRESS, IssueData::QcNoProgress { rule_ids }));
+        }
+        (remaining, timing)
+    }
+
+    /// Check-only mode — no repair, `report_check` semantics everywhere (one `Issue` per flagged
+    /// problem instance). Replaces both the pre-#106 final-report pass inside `build_maze`
+    /// (`run_report_timed`) and `build_analytics_snapshot`'s plain `run` call — issue #106
+    /// unifies these into one code path with one semantics.
+    pub fn run_check_only(&self, maze: &Maze<T>, rng: &mut dyn RngCore, now_ms: impl Fn() -> f64) -> Vec<Issue> {
+        let mut timing_out = HashMap::new();
+        self.collect_final_report(maze, rng, &mut timing_out, &now_ms)
+    }
+
+    /// Drives every stage's own fixpoint repair loop in order, sharing one `RepairBudget` across
+    /// all of them. A stage reporting `Done` simply advances to the next; `LimitReached`/
+    /// `NoProgress` stops the whole sequence (mirrors the pre-#106 `break 'stages'` — no-progress
+    /// or a spent budget in one stage means later stages never get a chance to run against a
+    /// maze whose current stage never reached a clean state). No `'stages` label is needed here:
+    /// the inner fixpoint loop lives entirely inside `Stage::run_repair`, which simply returns a
+    /// `StageOutcome` instead of breaking out through a label — this function sees only one loop
+    /// level.
+    fn run_repair_stages(
+        &self,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        preset_state: &PresetState,
+        limits: RepairLimits,
+        timing: &mut GenerationTiming,
+        now_ms: &impl Fn() -> f64,
+    ) -> RepairBudget {
+        let mut budget = RepairBudget::new(limits, now_ms);
+        let mut per_check: HashMap<&'static str, (f64, u32)> = HashMap::new();
+        let mut per_strategy: HashMap<&'static str, (f64, u32)> = HashMap::new();
+        let mut qc_total_ms = 0.0;
+        let mut repair_total_ms = 0.0;
+        for stage in &self.stages {
+            let mut sink = TimingSink {
+                per_check: &mut per_check,
+                per_strategy: &mut per_strategy,
+                qc_total_ms: &mut qc_total_ms,
+                repair_total_ms: &mut repair_total_ms,
+            };
+            let outcome = stage.run_repair(maze, rng, preset_state, &mut budget, &mut sink, now_ms);
+            match outcome {
+                StageOutcome::Done => continue,
+                StageOutcome::LimitReached(kind) => { budget.limit_reached = Some(kind); break; }
+                StageOutcome::NoProgress(rule_ids) => { budget.no_progress = Some(rule_ids); break; }
+            }
+        }
+        timing.qc_total_ms += qc_total_ms;
+        timing.repair_total_ms += repair_total_ms;
+        fold_timing(&mut timing.per_check, per_check);
+        fold_timing(&mut timing.per_strategy, per_strategy);
+        budget
+    }
+
+    /// Unconditional report pass over every stage's every rule (`report_check` semantics) —
+    /// not a flat pass over all checks like the pre-#106 code, but the same effective check set,
+    /// now reached by walking the same stage/rule hierarchy as the repair loop.
+    fn collect_final_report(
         &self,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
-        timing: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: impl Fn() -> f64,
+        timing_out: &mut HashMap<&'static str, TimingEntry>,
+        now_ms: &impl Fn() -> f64,
     ) -> Vec<Issue> {
+        let mut per_check: HashMap<&'static str, (f64, u32)> = HashMap::new();
         let mut issues = Vec::new();
-        for check in &self.checks {
-            let start = now_ms();
-            check.repair_check(maze, &mut issues, rng);
-            let elapsed = now_ms() - start;
-            let entry = timing.entry(check.check_type_id()).or_insert((0.0, 0));
-            entry.0 += elapsed;
-            entry.1 += 1;
+        for stage in &self.stages {
+            issues.append(&mut stage.run_report(maze, rng, &mut per_check, now_ms));
         }
+        fold_timing(timing_out, per_check);
         issues
     }
+}
 
-    /// Same as `run_timed`, but collects via `Check::report_check` instead of
-    /// `Check::repair_check` — one `Issue` per flagged problem instance rather than one merged
-    /// `Issue` per check call. Used for the final post-fixpoint QC pass (`build_maze`'s
-    /// `remaining`), not the fixpoint loop's own iterations, which stay on
-    /// `run_timed`/`repair_check`. See GitHub issue #102.
-    pub fn run_report_timed(
-        &self,
-        maze: &Maze<T>,
-        rng: &mut dyn RngCore,
-        timing: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: impl Fn() -> f64,
-    ) -> Vec<Issue> {
-        let mut issues = Vec::new();
-        for check in &self.checks {
-            let start = now_ms();
-            let mut check_issues = check.report_check(maze, rng);
-            let elapsed = now_ms() - start;
-            let entry = timing.entry(check.check_type_id()).or_insert((0.0, 0));
-            entry.0 += elapsed;
-            entry.1 += 1;
-            issues.append(&mut check_issues);
-        }
-        issues
+fn fold_timing(target: &mut HashMap<&'static str, TimingEntry>, source: HashMap<&'static str, (f64, u32)>) {
+    for (id, (total_ms, calls)) in source {
+        let entry = target.entry(id).or_default();
+        entry.total_ms += total_ms;
+        entry.calls += calls;
+    }
+}
+
+#[cfg(test)]
+mod repair_budget_tests {
+    use super::*;
+
+    fn clock_at(ms: f64) -> impl Fn() -> f64 {
+        move || ms
+    }
+
+    #[test]
+    fn neither_bound_configured_never_exhausted() {
+        let limits = RepairLimits { max_iterations: None, time_budget_secs: None };
+        let budget = RepairBudget::new(limits, &clock_at(0.0));
+        assert_eq!(budget.exhausted(&clock_at(1_000_000.0)), None);
+    }
+
+    #[test]
+    fn max_iterations_not_yet_reached_is_not_exhausted() {
+        let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
+        let mut budget = RepairBudget::new(limits, &clock_at(0.0));
+        budget.iterations_done = 2;
+        assert_eq!(budget.exhausted(&clock_at(0.0)), None);
+    }
+
+    #[test]
+    fn max_iterations_reached_is_exhausted() {
+        let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
+        let mut budget = RepairBudget::new(limits, &clock_at(0.0));
+        budget.iterations_done = 3;
+        assert_eq!(budget.exhausted(&clock_at(0.0)), Some(RepairLimitKind::MaxIterations));
+    }
+
+    #[test]
+    fn time_budget_not_yet_elapsed_is_not_exhausted() {
+        let limits = RepairLimits { max_iterations: None, time_budget_secs: Some(1.0) };
+        let budget = RepairBudget::new(limits, &clock_at(0.0));
+        assert_eq!(budget.exhausted(&clock_at(500.0)), None);
+    }
+
+    #[test]
+    fn time_budget_elapsed_is_exhausted() {
+        let limits = RepairLimits { max_iterations: None, time_budget_secs: Some(1.0) };
+        let budget = RepairBudget::new(limits, &clock_at(0.0));
+        assert_eq!(budget.exhausted(&clock_at(1000.0)), Some(RepairLimitKind::TimeBudget));
+    }
+
+    #[test]
+    fn max_iterations_checked_before_time_budget_when_both_configured() {
+        // Both bounds already exhausted at once — max_iterations must win (matches the
+        // pre-#106 flat pipeline's check order).
+        let limits = RepairLimits { max_iterations: Some(1), time_budget_secs: Some(1.0) };
+        let mut budget = RepairBudget::new(limits, &clock_at(0.0));
+        budget.iterations_done = 1;
+        assert_eq!(budget.exhausted(&clock_at(2000.0)), Some(RepairLimitKind::MaxIterations));
+    }
+
+    #[test]
+    fn time_budget_fires_when_only_it_is_exhausted_and_both_are_configured() {
+        // Both bounds configured, but only time_budget has actually run out this time —
+        // max_iterations being checked first (see test above) must not mask a genuine
+        // TimeBudget result when max_iterations itself still has room.
+        let limits = RepairLimits { max_iterations: Some(100), time_budget_secs: Some(1.0) };
+        let mut budget = RepairBudget::new(limits, &clock_at(0.0));
+        budget.iterations_done = 1;
+        assert_eq!(budget.exhausted(&clock_at(2000.0)), Some(RepairLimitKind::TimeBudget));
     }
 }
