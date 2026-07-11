@@ -14,6 +14,7 @@ pub mod min_region_ratio;
 pub mod min_region_count;
 pub mod teleport_duplicates_connection;
 pub mod teleport_waypoint_distance;
+mod teleport_geometric_length_core;
 pub mod teleport_min_geometric_length;
 pub mod teleport_max_geometric_length;
 pub mod teleport_super_hub_avoidance;

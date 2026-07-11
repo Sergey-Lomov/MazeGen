@@ -1,11 +1,9 @@
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::EdgeKind;
-use crate::graph::route_protection::is_teleport_route_protected;
-use crate::space::{Tessellation, geometric_distance};
+use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, INVALID_TELEPORT};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::issue::Issue;
+use super::teleport_geometric_length_core::{build_issue, find_invalid_teleports};
 
 pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000.0;
 
@@ -26,24 +24,10 @@ impl<T: Tessellation> Check<T> for TeleportMaxGeometricLengthCheck {
     fn check_type_id(&self) -> &'static str { "teleport_max_geometric_length" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
-        let invalid: Vec<_> = maze.graph.edges()
-            .filter(|e| e.kind == EdgeKind::Teleport)
-            .filter(|t| {
-                let (Some(from), Some(to)) = (maze.field.point_of(t.from), maze.field.point_of(t.to)) else {
-                    return false;
-                };
-                geometric_distance::<T>(from, to) > self.max_length
-            })
-            .filter(|t| !self.protect_route || !is_teleport_route_protected(maze, t.id))
-            .map(|e| e.id)
-            .collect();
-
-        if invalid.is_empty() {
-            return;
+        let invalid = find_invalid_teleports(maze, self.protect_route, |d| d > self.max_length);
+        if let Some(issue) = build_issue(invalid, &self.instance_id, "max_length", self.max_length) {
+            issues.push(issue);
         }
-        let issue = Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, &self.instance_id)
-            .with_detail(&self.instance_id, "max_length", self.max_length.to_string());
-        issues.push(issue);
     }
 }
 
@@ -52,6 +36,9 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
+    use crate::graph::EdgeKind;
+    use crate::quality_control::issue::INVALID_TELEPORT;
+    use crate::quality_control::issue_data::IssueData;
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "teleport_max_geometric_length";
