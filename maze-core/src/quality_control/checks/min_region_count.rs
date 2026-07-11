@@ -4,8 +4,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::region_class::{RegionClass, ALL_REGION_CLASSES};
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, MISSING_REGIONS};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::{Issue, MissingRegionsIssue};
 
 pub const MIN_REGION_COUNT_DEFAULT: u32 = 0;
 
@@ -20,10 +19,10 @@ pub struct MinRegionCountCheck {
     pub min_counts: HashMap<RegionClass, u32>,
 }
 
-impl<T: Tessellation> Check<T> for MinRegionCountCheck {
+impl<T: Tessellation> Check<T, MissingRegionsIssue> for MinRegionCountCheck {
     fn check_type_id(&self) -> &'static str { "min_region_count" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingRegionsIssue>, _rng: &mut dyn RngCore) {
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
             return;
         }
@@ -73,11 +72,7 @@ impl<T: Tessellation> Check<T> for MinRegionCountCheck {
             _ => None,
         };
 
-        let mut issue = Issue::with_data_from_check(
-            MISSING_REGIONS,
-            IssueData::MissingRegions { balance_by_class },
-            &self.instance_id,
-        )
+        let mut issue = MissingRegionsIssue::new_from_check(&self.instance_id, balance_by_class)
             .with_detail(&self.instance_id, "region_classes", detail);
 
         if let Some(min_count) = single_deficit_min_count {
@@ -165,14 +160,8 @@ mod tests {
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, MISSING_REGIONS);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        match &issues[0].data {
-            Some(IssueData::MissingRegions { balance_by_class }) => {
-                assert_eq!(balance_by_class, &HashMap::from([(RegionClass::Trap, -1)]), "2 trap regions found, 3 required -> -1");
-            }
-            other => panic!("expected MissingRegions, got {other:?}"),
-        }
+        assert_eq!(issues[0].balance_by_class, HashMap::from([(RegionClass::Trap, -1)]), "2 trap regions found, 3 required -> -1");
     }
 
     #[test]
@@ -226,11 +215,6 @@ mod tests {
         let mut issues = Vec::new();
         c.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1, "one instance, one issue, even with multiple classes off-target");
-        match &issues[0].data {
-            Some(IssueData::MissingRegions { balance_by_class }) => {
-                assert_eq!(balance_by_class, &HashMap::from([(RegionClass::Trap, -1), (RegionClass::Path, 2)]));
-            }
-            other => panic!("expected MissingRegions, got {other:?}"),
-        }
+        assert_eq!(issues[0].balance_by_class, HashMap::from([(RegionClass::Trap, -1), (RegionClass::Path, 2)]));
     }
 }

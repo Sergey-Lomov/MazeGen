@@ -1,9 +1,9 @@
 use maze_core::{Graph, IdGenerator, Maze, RegionClass};
 use maze_core::space::{Field, SquareTessellation, square_rect};
 use maze_core::quality_control::{
-    Rule, MissingEndpointsCheck, UnreachableFinishCheck, MinRegionCountCheck, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_REGIONS,
+    Rule, Check, Issue, IssueMerge, MissingEndpointsCheck, UnreachableFinishCheck, MinRegionCountCheck,
+    MissingEndpointsIssue, UnreachableFinishIssue, MissingRegionsIssue,
 };
-use maze_core::quality_control::IssueData;
 use maze_core::graph::EdgeKind;
 use rand::SeedableRng;
 use std::collections::HashMap;
@@ -18,37 +18,34 @@ fn make_empty_square_maze() -> Maze<SquareTessellation> {
 
 fn now_ms_stub() -> f64 { 0.0 }
 
-fn run_checks<T: maze_core::space::Tessellation>(
-    checks: Vec<(String, Box<dyn maze_core::quality_control::Check<T>>)>,
-    kind: maze_core::quality_control::IssueKind,
+fn run_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge>(
+    checks: Vec<(String, Box<dyn Check<T, I>>)>,
     maze: &Maze<T>,
-) -> Vec<maze_core::quality_control::Issue> {
-    let rule = Rule::new("r".to_string(), kind, checks, None, HashMap::new(), vec![]);
+) -> Vec<I> {
+    let rule = Rule::new("r".to_string(), checks, None, HashMap::new(), vec![]);
     let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let mut timing = HashMap::new();
-    rule.run_checks(maze, &mut rng, &mut timing, now_ms_stub).into_iter().collect::<Vec<_>>()
+    rule.run_checks_typed(maze, &mut rng, &mut timing, &now_ms_stub).into_iter().collect::<Vec<_>>()
 }
 
-fn report_checks<T: maze_core::space::Tessellation>(
-    checks: Vec<(String, Box<dyn maze_core::quality_control::Check<T>>)>,
-    kind: maze_core::quality_control::IssueKind,
+fn report_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge>(
+    checks: Vec<(String, Box<dyn Check<T, I>>)>,
     maze: &Maze<T>,
-) -> Vec<maze_core::quality_control::Issue> {
-    let rule = Rule::new("r".to_string(), kind, checks, None, HashMap::new(), vec![]);
+) -> Vec<I> {
+    let rule = Rule::new("r".to_string(), checks, None, HashMap::new(), vec![]);
     let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let mut timing = HashMap::new();
-    rule.report_checks(maze, &mut rng, &mut timing, now_ms_stub)
+    rule.report_checks_typed(maze, &mut rng, &mut timing, &now_ms_stub)
 }
 
 #[test]
 fn missing_endpoints_check_detects_when_both_missing() {
     let maze = make_empty_square_maze();
-    let issues = run_checks(
+    let issues: Vec<MissingEndpointsIssue> = run_checks(
         vec![("missing_endpoints".to_string(), Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }))],
-        MISSING_ENDPOINTS, &maze,
+        &maze,
     );
     assert_eq!(issues.len(), 1);
-    assert_eq!(issues[0].kind, MISSING_ENDPOINTS);
 }
 
 #[test]
@@ -56,12 +53,11 @@ fn missing_endpoints_check_detects_when_only_start_missing() {
     let mut maze = make_empty_square_maze();
     let nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
     maze.meta.finish = Some(nodes[1]);
-    let issues = run_checks(
+    let issues: Vec<MissingEndpointsIssue> = run_checks(
         vec![("missing_endpoints".to_string(), Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }))],
-        MISSING_ENDPOINTS, &maze,
+        &maze,
     );
     assert_eq!(issues.len(), 1);
-    assert_eq!(issues[0].kind, MISSING_ENDPOINTS);
 }
 
 #[test]
@@ -69,12 +65,11 @@ fn missing_endpoints_check_detects_when_only_finish_missing() {
     let mut maze = make_empty_square_maze();
     let nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
     maze.meta.start = Some(nodes[0]);
-    let issues = run_checks(
+    let issues: Vec<MissingEndpointsIssue> = run_checks(
         vec![("missing_endpoints".to_string(), Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }))],
-        MISSING_ENDPOINTS, &maze,
+        &maze,
     );
     assert_eq!(issues.len(), 1);
-    assert_eq!(issues[0].kind, MISSING_ENDPOINTS);
 }
 
 #[test]
@@ -83,9 +78,9 @@ fn missing_endpoints_check_no_false_positive_when_both_set() {
     let nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
-    let issues = run_checks(
+    let issues: Vec<MissingEndpointsIssue> = run_checks(
         vec![("missing_endpoints".to_string(), Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }))],
-        MISSING_ENDPOINTS, &maze,
+        &maze,
     );
     assert!(issues.is_empty());
 }
@@ -100,20 +95,19 @@ fn unreachable_finish_check_detects_when_not_reachable() {
     let mut maze = Maze::new(field, graph);
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
-    let issues = run_checks(
+    let issues: Vec<UnreachableFinishIssue> = run_checks(
         vec![("unreachable_finish".to_string(), Box::new(UnreachableFinishCheck { instance_id: "unreachable_finish".to_string() }))],
-        UNREACHABLE_FINISH, &maze,
+        &maze,
     );
     assert_eq!(issues.len(), 1);
-    assert_eq!(issues[0].kind, UNREACHABLE_FINISH);
 }
 
 #[test]
 fn unreachable_finish_check_skips_when_endpoints_missing() {
     let maze = make_empty_square_maze();
-    let issues = run_checks(
+    let issues: Vec<UnreachableFinishIssue> = run_checks(
         vec![("unreachable_finish".to_string(), Box::new(UnreachableFinishCheck { instance_id: "unreachable_finish".to_string() }))],
-        UNREACHABLE_FINISH, &maze,
+        &maze,
     );
     assert!(issues.is_empty());
 }
@@ -129,9 +123,9 @@ fn unreachable_finish_check_no_false_positive_when_reachable() {
     let mut maze = Maze::new(field, graph);
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
-    let issues = run_checks(
+    let issues: Vec<UnreachableFinishIssue> = run_checks(
         vec![("unreachable_finish".to_string(), Box::new(UnreachableFinishCheck { instance_id: "unreachable_finish".to_string() }))],
-        UNREACHABLE_FINISH, &maze,
+        &maze,
     );
     assert!(issues.is_empty());
 }
@@ -157,22 +151,17 @@ fn one_min_region_count_instance_reports_multiple_classes_at_once() {
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[2]);
 
-    let issues = run_checks(
+    let issues: Vec<MissingRegionsIssue> = run_checks(
         vec![("0".to_string(), Box::new(MinRegionCountCheck {
             instance_id: "rule_a:0".to_string(),
             min_counts: HashMap::from([(RegionClass::Trap, 2), (RegionClass::Alternative, 2)]),
         }))],
-        MISSING_REGIONS, &maze,
+        &maze,
     );
 
     assert_eq!(issues.len(), 1, "one instance, one issue, even with multiple classes off-target");
-    assert_eq!(issues[0].kind, MISSING_REGIONS);
-    match &issues[0].data {
-        Some(IssueData::MissingRegions { balance_by_class }) =>
-            assert_eq!(balance_by_class, &HashMap::from([(RegionClass::Trap, -1), (RegionClass::Alternative, -1)]),
-                "1 trap region found (2 required) and 1 alternative region found (2 required) -> both -1"),
-        other => panic!("expected rule_a:0 to report MissingRegions, got {other:?}"),
-    }
+    assert_eq!(issues[0].balance_by_class, HashMap::from([(RegionClass::Trap, -1), (RegionClass::Alternative, -1)]),
+        "1 trap region found (2 required) and 1 alternative region found (2 required) -> both -1");
 }
 
 // --- Rule::run_checks merges multiple checks within the same rule ---
@@ -184,11 +173,11 @@ fn run_checks_merges_two_checks_producing_the_same_kind_into_one_issue() {
     // Rule::run_checks's own responsibility since GitHub issue #106, tested directly here rather
     // than only transitively through pipeline_test.rs's full build_maze scenarios.
     let maze = make_empty_square_maze();
-    let checks: Vec<(String, Box<dyn maze_core::quality_control::Check<SquareTessellation>>)> = vec![
+    let checks: Vec<(String, Box<dyn Check<SquareTessellation, MissingEndpointsIssue>>)> = vec![
         ("a".to_string(), Box::new(MissingEndpointsCheck { instance_id: "r:a".to_string() })),
         ("b".to_string(), Box::new(MissingEndpointsCheck { instance_id: "r:b".to_string() })),
     ];
-    let issues = run_checks(checks, MISSING_ENDPOINTS, &maze);
+    let issues = run_checks(checks, &maze);
     assert_eq!(issues.len(), 1, "two checks in one rule must merge into a single issue");
     assert_eq!(issues[0].source_checks(), vec!["r:a".to_string(), "r:b".to_string()]);
 }
@@ -199,9 +188,9 @@ fn run_checks_returns_none_when_no_check_in_the_rule_finds_anything() {
     let nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
-    let checks: Vec<(String, Box<dyn maze_core::quality_control::Check<SquareTessellation>>)> =
+    let checks: Vec<(String, Box<dyn Check<SquareTessellation, MissingEndpointsIssue>>)> =
         vec![("a".to_string(), Box::new(MissingEndpointsCheck { instance_id: "r:a".to_string() }))];
-    let issues = run_checks(checks, MISSING_ENDPOINTS, &maze);
+    let issues = run_checks(checks, &maze);
     assert!(issues.is_empty(), "no check found anything -> run_checks returns None, collected as empty");
 }
 
@@ -213,11 +202,11 @@ fn report_checks_does_not_merge_two_checks_into_one_issue() {
     // report_checks — must produce TWO separate issues instead of one merged issue, since
     // report_check's whole contract (GitHub issue #102) is one Issue per flagged instance.
     let maze = make_empty_square_maze();
-    let checks: Vec<(String, Box<dyn maze_core::quality_control::Check<SquareTessellation>>)> = vec![
+    let checks: Vec<(String, Box<dyn Check<SquareTessellation, MissingEndpointsIssue>>)> = vec![
         ("a".to_string(), Box::new(MissingEndpointsCheck { instance_id: "r:a".to_string() })),
         ("b".to_string(), Box::new(MissingEndpointsCheck { instance_id: "r:b".to_string() })),
     ];
-    let issues = report_checks(checks, MISSING_ENDPOINTS, &maze);
+    let issues = report_checks(checks, &maze);
     assert_eq!(issues.len(), 2, "report_checks must not merge — one issue per check, not one merged issue");
     let sources: Vec<&str> = issues.iter().flat_map(|i| i.source_checks()).map(|s| s.as_str()).collect();
     assert!(sources.contains(&"r:a") && sources.contains(&"r:b"));
@@ -229,32 +218,31 @@ fn report_checks_returns_empty_when_nothing_flagged() {
     let nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[1]);
-    let checks: Vec<(String, Box<dyn maze_core::quality_control::Check<SquareTessellation>>)> =
+    let checks: Vec<(String, Box<dyn Check<SquareTessellation, MissingEndpointsIssue>>)> =
         vec![("a".to_string(), Box::new(MissingEndpointsCheck { instance_id: "r:a".to_string() }))];
-    assert!(report_checks(checks, MISSING_ENDPOINTS, &maze).is_empty());
+    assert!(report_checks(checks, &maze).is_empty());
 }
 
 // --- Rule::checks() / has_strategy() accessors ---
 
 #[test]
 fn checks_accessor_returns_local_ids_and_check_type_ids_in_configured_order() {
-    let checks: Vec<(String, Box<dyn maze_core::quality_control::Check<SquareTessellation>>)> = vec![
+    let checks: Vec<(String, Box<dyn Check<SquareTessellation, MissingEndpointsIssue>>)> = vec![
         ("first".to_string(), Box::new(MissingEndpointsCheck { instance_id: "r:first".to_string() })),
-        ("second".to_string(), Box::new(UnreachableFinishCheck { instance_id: "r:second".to_string() })),
     ];
-    let rule = Rule::new("r".to_string(), MISSING_ENDPOINTS, checks, None, HashMap::new(), vec![]);
+    let rule = Rule::new("r".to_string(), checks, None, HashMap::new(), vec![]);
     let observed: Vec<(&str, &'static str)> = rule.checks().map(|(id, c)| (id, c.check_type_id())).collect();
-    assert_eq!(observed, vec![("first", "missing_endpoints"), ("second", "unreachable_finish")]);
+    assert_eq!(observed, vec![("first", "missing_endpoints")]);
 }
 
 #[test]
 fn has_strategy_reflects_constructor_argument() {
-    let with_strategy: Rule<SquareTessellation> = Rule::new(
-        "r1".to_string(), MISSING_ENDPOINTS, vec![],
+    let with_strategy: Rule<SquareTessellation, MissingEndpointsIssue> = Rule::new(
+        "r1".to_string(), vec![],
         Some(Box::new(maze_core::repair::FarthestEndpointsStrategy)), HashMap::new(), vec![],
     );
     assert!(with_strategy.has_strategy());
 
-    let without_strategy: Rule<SquareTessellation> = Rule::new("r2".to_string(), MISSING_ENDPOINTS, vec![], None, HashMap::new(), vec![]);
+    let without_strategy: Rule<SquareTessellation, MissingEndpointsIssue> = Rule::new("r2".to_string(), vec![], None, HashMap::new(), vec![]);
     assert!(!without_strategy.has_strategy());
 }

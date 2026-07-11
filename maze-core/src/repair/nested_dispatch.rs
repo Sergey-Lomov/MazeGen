@@ -8,6 +8,10 @@ use super::result::RepairResult;
 use super::strategy::NestedStrategyConfig;
 use super::snapshot::SnapshotStack;
 
+// `dispatch_weighted` operates at the erased boundary — nested candidates (`NestedStrategyConfig`)
+// hold `Box<dyn ErasedRepairStrategy<T>>`, whose own kind may differ from the caller's own `I`
+// (see `Specs/repair.md`'s nested-strategy contract) — so `issue` here is always `&dyn Issue`.
+
 /// One nested-strategy candidate paired with its selection weight. The weight's meaning and
 /// resolution (e.g. reading a `"weight"` key out of `config.param_overrides`) belongs entirely
 /// to the caller — `dispatch_weighted` itself carries no convention for how a weight is derived,
@@ -44,7 +48,7 @@ pub struct WeightedCandidate<'a, T: Tessellation> {
 /// The `match` below has no wildcard arm on purpose — adding a third `RepairResult` variant must
 /// force a compile error here rather than a silently wrong runtime fallthrough.
 pub fn dispatch_weighted<T: Tessellation>(
-    issue: &Issue,
+    issue: &dyn Issue,
     maze: &mut Maze<T>,
     snapshots: &mut SnapshotStack,
     rng: &mut dyn RngCore,
@@ -99,8 +103,8 @@ mod tests {
     use crate::graph::Graph;
     use crate::ids::{IdGenerator, NodeId};
     use crate::space::{SquareTessellation, square_rect, Field};
-    use crate::quality_control::{Issue, MISSING_ENDPOINTS};
-    use crate::repair::strategy::{RepairStrategy, NestedSlot};
+    use crate::quality_control::{MissingEndpointsIssue, MISSING_ENDPOINTS};
+    use crate::repair::strategy::{RepairStrategy, ErasedRepairStrategy, NestedSlot};
     use crate::repair::params::StrategyParams;
     use std::collections::HashMap;
 
@@ -109,12 +113,11 @@ mod tests {
     /// Mutates the graph deterministically (adds one fixed edge) then always fails — used to
     /// verify per-attempt rollback.
     struct AlwaysFailedStrategy;
-    impl<T: Tessellation> RepairStrategy<T> for AlwaysFailedStrategy {
+    impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for AlwaysFailedStrategy {
         fn strategy_id(&self) -> &'static str { "test_always_failed" }
-        fn handles(&self) -> crate::quality_control::IssueKind { MISSING_ENDPOINTS }
         fn apply(
             &self,
-            _issue: &Issue,
+            _issue: &MissingEndpointsIssue,
             maze: &mut Maze<T>,
             _snapshots: &mut SnapshotStack,
             _rng: &mut dyn RngCore,
@@ -129,15 +132,15 @@ mod tests {
             RepairResult::Failed
         }
     }
+    crate::impl_erased_repair_strategy!(AlwaysFailedStrategy, MissingEndpointsIssue);
 
     /// Never mutates, always succeeds.
     struct AlwaysFixedStrategy;
-    impl<T: Tessellation> RepairStrategy<T> for AlwaysFixedStrategy {
+    impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for AlwaysFixedStrategy {
         fn strategy_id(&self) -> &'static str { "test_always_fixed" }
-        fn handles(&self) -> crate::quality_control::IssueKind { MISSING_ENDPOINTS }
         fn apply(
             &self,
-            _issue: &Issue,
+            _issue: &MissingEndpointsIssue,
             _maze: &mut Maze<T>,
             _snapshots: &mut SnapshotStack,
             _rng: &mut dyn RngCore,
@@ -148,18 +151,18 @@ mod tests {
             RepairResult::Fixed { score: None }
         }
     }
+    crate::impl_erased_repair_strategy!(AlwaysFixedStrategy, MissingEndpointsIssue);
 
     /// Records the length of the `nested` slice it was called with, then succeeds — used to
     /// verify `dispatch_weighted` passes `config.nested` through rather than substituting `&[]`.
     struct RecordsReceivedNestedStrategy {
         seen_len: std::rc::Rc<Cell<Option<usize>>>,
     }
-    impl<T: Tessellation> RepairStrategy<T> for RecordsReceivedNestedStrategy {
+    impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for RecordsReceivedNestedStrategy {
         fn strategy_id(&self) -> &'static str { "test_records_nested" }
-        fn handles(&self) -> crate::quality_control::IssueKind { MISSING_ENDPOINTS }
         fn apply(
             &self,
-            _issue: &Issue,
+            _issue: &MissingEndpointsIssue,
             _maze: &mut Maze<T>,
             _snapshots: &mut SnapshotStack,
             _rng: &mut dyn RngCore,
@@ -171,6 +174,7 @@ mod tests {
             RepairResult::Fixed { score: None }
         }
     }
+    crate::impl_erased_repair_strategy!(RecordsReceivedNestedStrategy, MissingEndpointsIssue);
 
     fn maze_2_nodes() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
@@ -180,12 +184,12 @@ mod tests {
         Maze::new(field, g)
     }
 
-    fn no_params_config<T: Tessellation>(strategy: Box<dyn RepairStrategy<T>>) -> NestedStrategyConfig<T> {
+    fn no_params_config<T: Tessellation>(strategy: Box<dyn ErasedRepairStrategy<T>>) -> NestedStrategyConfig<T> {
         NestedStrategyConfig { slot: &DUMMY_SLOT, strategy, param_overrides: HashMap::new(), nested: vec![] }
     }
 
-    fn issue() -> Issue {
-        Issue::new(MISSING_ENDPOINTS)
+    fn issue() -> MissingEndpointsIssue {
+        MissingEndpointsIssue::default()
     }
 
     #[test]
@@ -229,24 +233,16 @@ mod tests {
         fn run_order() -> Vec<&'static str> {
             let mut maze = maze_2_nodes();
             let mut rng = MazeRng::seed_from_u64(42);
-            struct Named(&'static str);
-            impl<T: Tessellation> RepairStrategy<T> for Named {
-                fn strategy_id(&self) -> &'static str { self.0 }
-                fn handles(&self) -> crate::quality_control::IssueKind { MISSING_ENDPOINTS }
-                fn apply(&self, _: &Issue, _: &mut Maze<T>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> RepairResult {
-                    RepairResult::Failed
-                }
-            }
-            let order = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
             struct Tracking { name: &'static str, order: std::rc::Rc<std::cell::RefCell<Vec<&'static str>>> }
-            impl<T: Tessellation> RepairStrategy<T> for Tracking {
+            impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for Tracking {
                 fn strategy_id(&self) -> &'static str { self.name }
-                fn handles(&self) -> crate::quality_control::IssueKind { MISSING_ENDPOINTS }
-                fn apply(&self, _: &Issue, _: &mut Maze<T>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> RepairResult {
+                fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<T>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> RepairResult {
                     self.order.borrow_mut().push(self.name);
                     RepairResult::Failed
                 }
             }
+            crate::impl_erased_repair_strategy!(Tracking, MissingEndpointsIssue);
+            let order = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
             let configs = vec![
                 no_params_config::<SquareTessellation>(Box::new(Tracking { name: "a", order: order.clone() })),
                 no_params_config::<SquareTessellation>(Box::new(Tracking { name: "b", order: order.clone() })),

@@ -4,7 +4,7 @@ use crate::Maze;
 use crate::ids::NodeId;
 use crate::graph::region_class::RegionClass;
 use crate::space::Tessellation;
-use crate::quality_control::{Issue, IssueData, MISSING_REGIONS, IssueKind};
+use crate::quality_control::MissingRegionsIssue;
 use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -77,9 +77,8 @@ pub(super) struct GrowContext<'a> {
 /// no other channel to learn it.
 pub struct MissingRegionsStrategy;
 
-impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
+impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsStrategy {
     fn strategy_id(&self) -> &'static str { "missing_regions" }
-    fn handles(&self) -> IssueKind { MISSING_REGIONS }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -89,7 +88,7 @@ impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
 
     fn apply(
         &self,
-        issue: &Issue,
+        issue: &MissingRegionsIssue,
         maze: &mut Maze<T>,
         snapshots: &mut SnapshotStack,
         rng: &mut dyn RngCore,
@@ -97,9 +96,7 @@ impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult {
-        let Some(IssueData::MissingRegions { balance_by_class }) = &issue.data else {
-            return RepairResult::Failed;
-        };
+        let balance_by_class = &issue.balance_by_class;
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
             return RepairResult::Failed;
         }
@@ -181,6 +178,8 @@ impl<T: Tessellation> RepairStrategy<T> for MissingRegionsStrategy {
         }
     }
 }
+
+crate::impl_erased_repair_strategy!(MissingRegionsStrategy, MissingRegionsIssue);
 
 /// One full region-item attempt: try reuse first, fall back to growth. Returns the committed
 /// region's `members` on success (caller is responsible for NOT restoring the snapshot in that

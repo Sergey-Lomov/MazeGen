@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::region_class::RegionClass;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::Issue;
+use crate::quality_control::{Issue, RegionNeedsExpansionIssue};
 use super::region_size_check_core::{find_invalid_regions, build_issue};
 
 pub const MIN_REGION_SIZE_DEFAULT: u32 = 20;
@@ -18,10 +18,10 @@ pub struct MinRegionSizeCheck {
     pub region_classes: Vec<RegionClass>,
 }
 
-impl<T: Tessellation> Check<T> for MinRegionSizeCheck {
+impl<T: Tessellation> Check<T, RegionNeedsExpansionIssue> for MinRegionSizeCheck {
     fn check_type_id(&self) -> &'static str { "min_region_size" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<RegionNeedsExpansionIssue>, _rng: &mut dyn RngCore) {
         let min_region_size = self.min_region_size;
         let Some(invalid) = find_invalid_regions(maze, &self.region_classes, |len| (len as u32) < min_region_size) else {
             return;
@@ -38,8 +38,6 @@ mod tests {
     use crate::graph::region_class::ALL_REGION_CLASSES;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
-    use crate::quality_control::issue::REGION_NEEDS_EXPANSION;
-    use crate::quality_control::issue_data::IssueData;
 
     const TEST_ID: &str = "min_region_size";
 
@@ -77,12 +75,8 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, REGION_NEEDS_EXPANSION);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        match &issues[0].data {
-            Some(IssueData::RegionsNeedingExpansion { invalid, .. }) => assert_eq!(invalid.len(), 1, "only the singleton region is undersized"),
-            other => panic!("expected RegionsNeedingExpansion, got {other:?}"),
-        }
+        assert_eq!(issues[0].invalid.len(), 1, "only the singleton region is undersized");
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_region_size")),
             Some(&"2".to_string()),
@@ -140,10 +134,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        match &issues[0].data {
-            Some(IssueData::RegionsNeedingExpansion { invalid, .. }) => assert_eq!(invalid.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1"),
-            other => panic!("expected RegionsNeedingExpansion, got {other:?}"),
-        }
+        assert_eq!(issues[0].invalid.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1");
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("region_classes")),
             Some(&"unreachable".to_string()),

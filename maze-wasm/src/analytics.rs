@@ -3,8 +3,11 @@ use rand::SeedableRng;
 use maze_core::random::MazeRng;
 use maze_core::{
     space::Tessellation,
-    quality_control::{QualityControlEngine, Issue, IssueData, CYCLE_ANALYSIS_OVERFLOWED, INVALID_LOOP, REGION_NEEDS_EXPANSION},
-    quality_control::issue_data::canonical_cycle_key,
+    quality_control::{
+        QualityControlEngine, Issue, CycleAnalysisOverflowedIssue, InvalidLoopIssue,
+        RegionNeedsExpansionIssue, RepairLimitReachedIssue, QcNoProgressIssue,
+    },
+    quality_control::issue_kinds::canonical_cycle_key,
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
     Maze,
 };
@@ -20,14 +23,14 @@ use crate::dto::{
 pub fn build_analytics_snapshot<T: Tessellation>(
     maze: &mut Maze<T>,
     qc_engine: Option<&QualityControlEngine<T>>,
-    issues_override: Option<Vec<Issue>>,
+    issues_override: Option<Vec<Box<dyn Issue>>>,
     check_types: &HashMap<String, String>,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
 ) -> Result<MazeSnapshot, String> {
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
     let graph_analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
 
-    let mut raw_issues: Vec<Issue> = if let Some(i) = issues_override {
+    let mut raw_issues: Vec<Box<dyn Issue>> = if let Some(i) = issues_override {
         i
     } else if let Some(engine) = qc_engine {
         // No generation seed exists on this path (the maze is already built, e.g. loaded from
@@ -43,7 +46,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // follow-up review): a dense, heavily preset-connected graph can exceed
     // `find_all_simple_cycles`'s `MAX_SIMPLE_CYCLES` bound and abort cycle analysis.
     if graph_analytics.cycle_analysis_overflowed {
-        raw_issues.push(Issue::new(CYCLE_ANALYSIS_OVERFLOWED));
+        raw_issues.push(Box::new(CycleAnalysisOverflowedIssue::default()));
     }
 
     // Computed once here (before the issues map needs it for `RegionsNeedingExpansion`) and reused
@@ -52,11 +55,12 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let scc = maze.analysis.scc(&maze.graph);
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
+        let issue = issue.as_ref();
         // Grouped by source check id (not one flat list) so a merged issue rendered as several
         // bubbles (one per `source_checks` entry) highlights only the cycles *that check*
         // flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment.
         let mut invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
-        if let Some(IssueData::InvalidLoops { all, invalid, invalid_sources }) = &issue.data {
+        if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
             for &idx in invalid {
                 let Some(loop_edges) = all.get(idx) else { continue };
                 let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| {
@@ -72,7 +76,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             }
         }
         let mut region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>> = HashMap::new();
-        if let Some(IssueData::RegionsNeedingExpansion { invalid, invalid_sources }) = &issue.data {
+        if let Some(RegionNeedsExpansionIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<RegionNeedsExpansionIssue>() {
             for &idx in invalid {
                 let Some(region) = scc.components.get(idx) else { continue };
                 let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
@@ -84,8 +88,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         debug_assert!(
             invalid_loop_edges.is_empty() || region_needs_expansion_nodes.is_empty(),
             "issue {:?} produced both InvalidLoop and RegionNeedsExpansion payload data — \
-             at most one IssueData variant should match per issue",
-            issue.kind
+             at most one concrete Issue type should match per issue",
+            issue.kind()
         );
         let payload = if !invalid_loop_edges.is_empty() {
             IssuePayloadDto::InvalidLoop { edges: invalid_loop_edges }
@@ -94,16 +98,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         } else {
             IssuePayloadDto::None
         };
-        debug_assert!(
-            match &payload {
-                IssuePayloadDto::None => true,
-                // Compare against IssueKind itself, not its string form — Display/to_string is
-                // not guaranteed to match the wire string (`as_str()`) and could diverge from it.
-                IssuePayloadDto::InvalidLoop { .. } => issue.kind == INVALID_LOOP,
-                IssuePayloadDto::RegionNeedsExpansion { .. } => issue.kind == REGION_NEEDS_EXPANSION,
-            },
-            "payload kind must match issue.kind ({:?}), got {:?}", issue.kind, payload
-        );
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()
             .map(|(check_id, kv)| (
@@ -112,17 +106,17 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             ))
             .collect();
         // `REPAIR_LIMIT_REACHED` carries no source check (pushed directly by `build_maze`, not a
-        // toggleable `Check<T>`), so its detail can't be keyed by a check instance id like the
+        // toggleable `Check<T, I>`), so its detail can't be keyed by a check instance id like the
         // others — keyed by the issue's own kind string instead, the only stable key available here.
-        if let Some(IssueData::RepairLimitReached { limit }) = &issue.data {
-            details.insert(issue.kind.to_string(), HashMap::from([("limit".to_string(), limit.as_str().to_string())]));
+        if let Some(RepairLimitReachedIssue { limit, .. }) = issue.as_any().downcast_ref::<RepairLimitReachedIssue>() {
+            details.insert(issue.kind().to_string(), HashMap::from([("limit".to_string(), limit.as_str().to_string())]));
         }
         // Same rationale as `REPAIR_LIMIT_REACHED` above — `QC_NO_PROGRESS` carries no source
         // check either. `rule_ids` is joined into one comma-separated string since `details`'
         // values are flat strings, not lists; the web side only needs it for display, not
         // further parsing into a structured rule reference.
-        if let Some(IssueData::QcNoProgress { rule_ids }) = &issue.data {
-            details.insert(issue.kind.to_string(), HashMap::from([("rule_ids".to_string(), rule_ids.join(", "))]));
+        if let Some(QcNoProgressIssue { rule_ids, .. }) = issue.as_any().downcast_ref::<QcNoProgressIssue>() {
+            details.insert(issue.kind().to_string(), HashMap::from([("rule_ids".to_string(), rule_ids.join(", "))]));
         }
         // Invariant: every key in `source_checks` has a matching entry here, no extras — both
         // come from the same composite-id set built while constructing the active checks (see
@@ -131,7 +125,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         let source_check_types: HashMap<String, String> = issue.source_checks().iter()
             .filter_map(|s| check_types.get(s).map(|t| (s.clone(), t.clone())))
             .collect();
-        IssueDto { kind: issue.kind.to_string(), payload, source_checks, source_check_types, details }
+        IssueDto { kind: issue.kind().to_string(), payload, source_checks, source_check_types, details }
     }).collect();
 
     let nodes: Vec<NodeDto> = maze.graph
@@ -274,6 +268,7 @@ mod tests {
     use maze_core::graph::EdgeKind;
     use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
     use maze_core::{Graph, IdGenerator};
+    use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
 
     #[test]
     fn pushes_cycle_analysis_overflowed_issue_on_overflow() {

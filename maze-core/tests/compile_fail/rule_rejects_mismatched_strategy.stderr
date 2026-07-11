@@ -1,0 +1,10 @@
+error[E0277]: the trait bound `MissingLoopsRandomStrategy: RepairStrategy<SquareTessellation, InvalidLoopIssue>` is not satisfied
+  --> tests/compile_fail/rule_rejects_mismatched_strategy.rs:12:39
+   |
+12 |         "r".to_string(), checks, Some(Box::new(MissingLoopsRandomStrategy)), HashMap::new(), vec![],
+   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `RepairStrategy<SquareTessellation, InvalidLoopIssue>` is not implemented for `MissingLoopsRandomStrategy`
+   |
+   = help: the trait `RepairStrategy<SquareTessellation, InvalidLoopIssue>` is not implemented for `MissingLoopsRandomStrategy`
+           but trait `RepairStrategy<SquareTessellation, MissingLoopsIssue>` is implemented for it
+   = help: for that trait implementation, expected `MissingLoopsIssue`, found `InvalidLoopIssue`
+   = note: required for the cast from `Box<MissingLoopsRandomStrategy>` to `Box<dyn RepairStrategy<SquareTessellation, InvalidLoopIssue>>`

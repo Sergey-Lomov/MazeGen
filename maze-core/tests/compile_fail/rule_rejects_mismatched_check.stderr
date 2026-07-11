@@ -1,0 +1,10 @@
+error[E0277]: the trait bound `MinLoopsCountCheck: Check<SquareTessellation, InvalidLoopIssue>` is not satisfied
+ --> tests/compile_fail/rule_rejects_mismatched_check.rs:9:27
+  |
+9 |         ("a".to_string(), Box::new(MinLoopsCountCheck { instance_id: "a".to_string(), min_loops: 1 })),
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `Check<SquareTessellation, InvalidLoopIssue>` is not implemented for `MinLoopsCountCheck`
+  |
+  = help: the trait `Check<SquareTessellation, InvalidLoopIssue>` is not implemented for `MinLoopsCountCheck`
+          but trait `Check<SquareTessellation, MissingLoopsIssue>` is implemented for it
+  = help: for that trait implementation, expected `MissingLoopsIssue`, found `InvalidLoopIssue`
+  = note: required for the cast from `Box<MinLoopsCountCheck>` to `Box<dyn Check<SquareTessellation, InvalidLoopIssue>>`

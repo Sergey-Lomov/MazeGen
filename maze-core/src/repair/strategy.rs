@@ -9,8 +9,8 @@ use super::result::RepairResult;
 use super::snapshot::SnapshotStack;
 
 /// Describes one nested-strategy slot a parent strategy accepts — what `IssueKind` the
-/// synthetic `Issue` the parent builds for it will carry, and how many strategies may fill
-/// this slot. A strategy with no nested slots (the overwhelming majority) returns `&[]` from
+/// synthetic issue the parent builds for it will carry, and how many strategies may fill this
+/// slot. A strategy with no nested slots (the overwhelming majority) returns `&[]` from
 /// `RepairStrategy::expected_nested()`.
 ///
 /// `slot_id` distinguishes multiple slots that share the same `kind` but play different roles
@@ -26,6 +26,12 @@ use super::snapshot::SnapshotStack;
 /// stability bar as `strategy_id()`/`IssueKind::as_str()` string constants elsewhere in this
 /// crate) — never renamed casually. Within `maze-core`, always reference it via the owning
 /// strategy's own exported constant, never a repeated string literal.
+///
+/// `kind` stays a runtime `IssueKind` — nested-slot resolution is a second, independent axis of
+/// heterogeneity from a strategy's own `I` (a parent handling one issue type may delegate to a
+/// nested strategy of a completely different issue type, e.g. `ReduceSccCountStrategy` handling
+/// `EXCESSIVE_SCC_COUNT` delegating to a `REGION_NEEDS_EXPANSION` nested strategy) — see
+/// `ErasedRepairStrategy` below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NestedSlot {
     pub slot_id: &'static str,
@@ -36,8 +42,9 @@ pub struct NestedSlot {
 }
 
 /// One nested strategy assignment — same shape as a `RepairRuleConfig`'s own strategy binding,
-/// minus the `QcRule` (a nested call has no independent QC rule; its `Issue` is synthesized by
-/// the parent, never derived from a check).
+/// minus the `QcRule` (a nested call has no independent QC rule; its issue is synthesized by
+/// the parent, never derived from a check). Erased (`Box<dyn ErasedRepairStrategy<T>>`) since a
+/// nested strategy's issue type is independent of its parent's — see `ErasedRepairStrategy`.
 pub struct NestedStrategyConfig<T: Tessellation> {
     /// Which of the parent's `expected_nested()` slots this fills — the full slot descriptor,
     /// not just its id, so `apply()` and any future consumer get `kind`/`min`/`max` and
@@ -45,20 +52,17 @@ pub struct NestedStrategyConfig<T: Tessellation> {
     /// `expected_nested()`. Points into the `&'static [NestedSlot]` the parent's
     /// `expected_nested()` returned — never owned/cloned.
     pub slot: &'static NestedSlot,
-    pub strategy: Box<dyn RepairStrategy<T>>,
+    pub strategy: Box<dyn ErasedRepairStrategy<T>>,
     pub param_overrides: HashMap<String, String>,
     /// Recursive — a nested strategy can itself have nested strategies.
     pub nested: Vec<NestedStrategyConfig<T>>,
 }
 
-pub trait RepairStrategy<T: Tessellation> {
+pub trait RepairStrategy<T: Tessellation, I: Issue> {
     /// Strategy id — matches `maze-wasm`'s `StrategyConfig.id` (e.g. `"invalid_loop_random"`).
     /// Used to aggregate per-strategy timing, distinct from `rule_id` (a rule may use any
     /// registered strategy, and the same strategy can back multiple rules).
     fn strategy_id(&self) -> &'static str;
-
-    /// The `IssueKind` this strategy itself expects in `issue.kind` when `apply()` is called.
-    fn handles(&self) -> IssueKind;
 
     fn params(&self) -> &'static [StrategyParam] {
         &[]
@@ -78,10 +82,7 @@ pub trait RepairStrategy<T: Tessellation> {
         &[]
     }
 
-    /// `issue.kind` must equal `self.handles()` (see `handles()`'s own doc comment) — new code
-    /// should assert this with `debug_assert_eq!(issue.kind, self.handles())` as the first line.
-    ///
-    /// `snapshots`/`rng` are owned by the caller (`Rule::dispatch_repair`), one instance
+    /// `snapshots`/`rng` are owned by the caller (`Rule::dispatch_repair_typed`), one instance
     /// per top-level `apply()` call, shared across the whole call including any nested
     /// delegation. **A strategy that delegates to one of its `nested` entries must pass this
     /// same `snapshots`/`rng` straight through to the nested `apply()` call, never construct a
@@ -95,12 +96,12 @@ pub trait RepairStrategy<T: Tessellation> {
     /// `expected_nested()` — empty for every strategy that declares no nested slots (the
     /// overwhelming majority, which simply ignore this parameter). A strategy that does declare
     /// nested slots is responsible for locating the entry for each slot it needs (matching on
-    /// `NestedStrategyConfig::slot`) and calling `entry.strategy.apply(...)` with a synthesized
-    /// `Issue` of that slot's `kind` — core does not dispatch nested calls on the strategy's
-    /// behalf.
+    /// `NestedStrategyConfig::slot`) and calling `entry.strategy.apply(...)` (the erased
+    /// `ErasedRepairStrategy::apply`, taking `&dyn Issue`) with a synthesized issue of that
+    /// slot's `kind` — core does not dispatch nested calls on the strategy's behalf.
     fn apply(
         &self,
-        issue: &Issue,
+        issue: &I,
         maze: &mut Maze<T>,
         snapshots: &mut SnapshotStack,
         rng: &mut dyn RngCore,
@@ -108,4 +109,85 @@ pub trait RepairStrategy<T: Tessellation> {
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult;
+}
+
+/// Type-erased view of `RepairStrategy<T, I>` for the one place genuine cross-`I` heterogeneity
+/// is unavoidable: nested-strategy slots (`NestedStrategyConfig<T>`) and the `maze-runner`
+/// factory's nested-strategy resolution (`build_nested`), where a parent strategy's own `I` and
+/// its nested strategy's `I` are independent (see `NestedSlot`'s doc comment).
+///
+/// **Not a blanket impl** — `impl<T, I, S: RepairStrategy<T, I>> ErasedRepairStrategy<T> for S`
+/// does not compile in Rust (the compiler cannot prove `S` implements `RepairStrategy<T, I>` for
+/// only one `I`). Every concrete strategy gets its own `impl ErasedRepairStrategy<T> for
+/// ConcreteStrategy`, generated once via `impl_erased_repair_strategy!` (below) rather than
+/// hand-written per strategy.
+pub trait ErasedRepairStrategy<T: Tessellation> {
+    fn strategy_id(&self) -> &'static str;
+    fn handles(&self) -> IssueKind;
+    fn params(&self) -> &'static [StrategyParam];
+    fn is_experimental(&self) -> bool;
+    fn expected_nested(&self) -> &'static [NestedSlot];
+    fn apply(
+        &self,
+        issue: &dyn Issue,
+        maze: &mut Maze<T>,
+        snapshots: &mut SnapshotStack,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult;
+}
+
+/// Generates `impl ErasedRepairStrategy<T> for $StrategyTy`, delegating each method to
+/// `$StrategyTy`'s own `RepairStrategy<T, $IssueTy>` impl — `apply` downcasts the erased `&dyn
+/// Issue` back to `&$IssueTy` via `as_any()`, panicking (via `expect`) if it doesn't match. That
+/// panic signals a caller bug (a nested slot / `build_nested` kind mismatch), never a reachable
+/// runtime condition given `NestedSlot.kind` is validated against `ErasedRepairStrategy::handles()`
+/// at config-parse time (`maze-runner::build_nested`) before any `apply()` call happens.
+///
+/// Invoked once per concrete strategy, right after its `impl RepairStrategy<T, IssueTy> for
+/// StrategyTy` block, in each `repair/strategies/*.rs` file.
+#[macro_export]
+macro_rules! impl_erased_repair_strategy {
+    ($StrategyTy:ty, $IssueTy:ty) => {
+        impl<T: $crate::space::Tessellation> $crate::repair::ErasedRepairStrategy<T> for $StrategyTy {
+            fn strategy_id(&self) -> &'static str {
+                <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::strategy_id(self)
+            }
+            fn handles(&self) -> $crate::quality_control::IssueKind {
+                <$IssueTy as $crate::quality_control::IssueKindConst>::KIND
+            }
+            fn params(&self) -> &'static [$crate::repair::StrategyParam] {
+                <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::params(self)
+            }
+            fn is_experimental(&self) -> bool {
+                <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::is_experimental(self)
+            }
+            fn expected_nested(&self) -> &'static [$crate::repair::NestedSlot] {
+                <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::expected_nested(self)
+            }
+            fn apply(
+                &self,
+                issue: &dyn $crate::quality_control::Issue,
+                maze: &mut $crate::Maze<T>,
+                snapshots: &mut $crate::repair::SnapshotStack,
+                rng: &mut dyn ::rand::RngCore,
+                params: &$crate::repair::StrategyParams,
+                preset_state: &$crate::generation::PresetState,
+                nested: &[$crate::repair::NestedStrategyConfig<T>],
+            ) -> $crate::repair::RepairResult {
+                let typed: &$IssueTy = $crate::quality_control::Issue::as_any(issue)
+                    .downcast_ref::<$IssueTy>()
+                    .expect(concat!(
+                    "ErasedRepairStrategy::apply: issue kind must match strategy's own I (",
+                    stringify!($IssueTy),
+                    ") — caller (build_nested/parent strategy) is responsible for kind agreement"
+                ));
+                <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::apply(
+                    self, typed, maze, snapshots, rng, params, preset_state, nested,
+                )
+            }
+        }
+    };
 }

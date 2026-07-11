@@ -10,7 +10,7 @@ mod preset_state;
 pub use preset_state::{PresetState, build_preset_state};
 
 use crate::random::MazeRng;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
@@ -165,7 +165,7 @@ fn dispatch<T: Tessellation>(
     start: NodeId,
     config: GenerationConfig,
     preset_state: &PresetState,
-    mut on_step: Option<&mut StepCallback<'_>>,
+    on_step: Option<&mut StepCallback<'_>>,
 ) {
     match config.algorithm {
         GenerationAlgorithm::CustomVertexBased(params) =>

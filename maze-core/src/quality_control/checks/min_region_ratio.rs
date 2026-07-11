@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::region_class::RegionClass;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::Issue;
+use crate::quality_control::{Issue, RegionNeedsExpansionIssue};
 use super::region_size_check_core::{find_invalid_regions, build_issue};
 
 pub const MIN_REGION_RATIO_DEFAULT: u32 = 25;
@@ -22,10 +22,10 @@ pub struct MinRegionRatioCheck {
     pub region_classes: Vec<RegionClass>,
 }
 
-impl<T: Tessellation> Check<T> for MinRegionRatioCheck {
+impl<T: Tessellation> Check<T, RegionNeedsExpansionIssue> for MinRegionRatioCheck {
     fn check_type_id(&self) -> &'static str { "min_region_ratio" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<RegionNeedsExpansionIssue>, _rng: &mut dyn RngCore) {
         let field_cells = maze.field.node_count();
         if field_cells == 0 {
             return;
@@ -48,8 +48,6 @@ mod tests {
     use crate::graph::region_class::ALL_REGION_CLASSES;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
-    use crate::quality_control::issue::REGION_NEEDS_EXPANSION;
-    use crate::quality_control::issue_data::IssueData;
 
     const TEST_ID: &str = "min_region_ratio";
 
@@ -86,12 +84,8 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, REGION_NEEDS_EXPANSION);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        match &issues[0].data {
-            Some(IssueData::RegionsNeedingExpansion { invalid, .. }) => assert_eq!(invalid.len(), 7, "the seven 10%-of-field singleton regions are below a 20% minimum"),
-            other => panic!("expected RegionsNeedingExpansion, got {other:?}"),
-        }
+        assert_eq!(issues[0].invalid.len(), 7, "the seven 10%-of-field singleton regions are below a 20% minimum");
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_region_ratio")),
             Some(&"20".to_string()),
@@ -160,10 +154,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        match &issues[0].data {
-            Some(IssueData::RegionsNeedingExpansion { invalid, .. }) => assert_eq!(invalid.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1"),
-            other => panic!("expected RegionsNeedingExpansion, got {other:?}"),
-        }
+        assert_eq!(issues[0].invalid.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1");
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("region_classes")),
             Some(&"unreachable".to_string()),

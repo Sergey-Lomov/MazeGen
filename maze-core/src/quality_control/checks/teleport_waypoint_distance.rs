@@ -4,8 +4,7 @@ use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, INVALID_TELEPORT};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::{Issue, InvalidTeleportIssue};
 
 pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT: u32 = 0;
 
@@ -47,10 +46,10 @@ pub struct TeleportWaypointDistanceCheck {
     pub protect_route: bool,
 }
 
-impl<T: Tessellation> Check<T> for TeleportWaypointDistanceCheck {
+impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanceCheck {
     fn check_type_id(&self) -> &'static str { "teleport_waypoint_distance" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore) {
         let dist_from_start = maze.analysis.distance_from_start(&maze.graph, &maze.meta);
         let dist_from_finish = maze.analysis.distance_from_finish(&maze.graph, &maze.meta);
         let (need_start, need_finish) = match self.waypoint {
@@ -106,7 +105,7 @@ impl<T: Tessellation> Check<T> for TeleportWaypointDistanceCheck {
         if invalid.is_empty() {
             return;
         }
-        let issue = Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, &self.instance_id)
+        let issue = InvalidTeleportIssue::new_from_check(&self.instance_id, invalid)
             .with_detail(&self.instance_id, "distance", self.distance.to_string());
         issues.push(issue);
     }
@@ -159,7 +158,6 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, INVALID_TELEPORT);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
     }
 

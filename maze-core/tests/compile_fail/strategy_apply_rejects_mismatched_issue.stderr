@@ -1,0 +1,18 @@
+error[E0308]: mismatched types
+  --> tests/compile_fail/strategy_apply_rejects_mismatched_issue.rs:29:40
+   |
+29 |     assert_apply::<T, _, _>(&strategy, &issue, maze, snapshots, rng, params, preset_state);
+   |     -----------------------            ^^^^^^ expected `&MissingLoopsIssue`, found `&InvalidLoopIssue`
+   |     |
+   |     arguments to this function are incorrect
+   |
+   = note: expected reference `&MissingLoopsIssue`
+              found reference `&InvalidLoopIssue`
+note: function defined here
+  --> tests/compile_fail/strategy_apply_rejects_mismatched_issue.rs:8:4
+   |
+ 8 | fn assert_apply<T: maze_core::space::Tessellation, I: maze_core::quality_control::Issue, S: RepairStrategy<T, I>>(
+   |    ^^^^^^^^^^^^
+ 9 |     strategy: &S,
+10 |     issue: &I,
+   |     ---------

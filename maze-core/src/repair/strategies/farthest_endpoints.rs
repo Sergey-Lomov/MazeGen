@@ -4,7 +4,7 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::graph::nav::NavGraph;
 use crate::graph::pathfinding::{dijkstra_forward, dijkstra_reverse};
-use crate::quality_control::{Issue, MISSING_ENDPOINTS, IssueKind};
+use crate::quality_control::MissingEndpointsIssue;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
@@ -13,11 +13,10 @@ use crate::generation::PresetState;
 
 pub struct FarthestEndpointsStrategy;
 
-impl<T: Tessellation> RepairStrategy<T> for FarthestEndpointsStrategy {
+impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for FarthestEndpointsStrategy {
     fn strategy_id(&self) -> &'static str { "farthest_endpoints" }
-    fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
-    fn apply(&self, _issue: &Issue, maze: &mut Maze<T>, _snapshots: &mut SnapshotStack, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>]) -> RepairResult {
+    fn apply(&self, _issue: &MissingEndpointsIssue, maze: &mut Maze<T>, _snapshots: &mut SnapshotStack, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>]) -> RepairResult {
         if maze.meta.start.is_some() && maze.meta.finish.is_some() {
             return RepairResult::Fixed { score: None };
         }
@@ -82,6 +81,8 @@ impl<T: Tessellation> RepairStrategy<T> for FarthestEndpointsStrategy {
         RepairResult::Fixed { score: None }
     }
 }
+
+crate::impl_erased_repair_strategy!(FarthestEndpointsStrategy, MissingEndpointsIssue);
 
 fn farthest_from(nav: &NavGraph, source: usize) -> NodeId {
     let dist = dijkstra_forward(nav, source);

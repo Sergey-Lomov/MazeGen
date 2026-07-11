@@ -5,7 +5,7 @@ use maze_core::{
     space::{Field, Tessellation},
     generation::{generate_maze, build_preset_state, GenerationConfig},
     quality_control::{
-        QualityControlEngine, MissingEndpointsCheck, UnreachableFinishCheck,
+        QualityControlEngine, RuleTrait, IssueKindConst, MissingEndpointsCheck, UnreachableFinishCheck,
         MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT,
         AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT,
         MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck,
@@ -14,19 +14,20 @@ use maze_core::{
         LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT,
         SccCountCheck, MAX_SCC_COUNT_DEFAULT, MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT,
         MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT, MinRegionCountCheck,
-        MIN_REGION_COUNT_DEFAULT, IssueKind,
-        MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, INVALID_LOOP,
-        EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS,
-        TeleportDuplicatesConnectionCheck, INVALID_TELEPORT,
+        MIN_REGION_COUNT_DEFAULT,
+        TeleportDuplicatesConnectionCheck,
         TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
         TeleportMinGeometricLengthCheck, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT,
         TeleportMaxGeometricLengthCheck, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT,
         TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
-        TELEPORT_GROUP_PROXIMITY, Rule, Stage,
+        Rule, Stage,
+        MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
+        ExcessiveSccCountIssue, RegionNeedsExpansionIssue, MissingRegionsIssue, InvalidTeleportIssue,
+        TeleportGroupProximityIssue,
     },
     repair::{
-        RepairStrategy,
+        RepairStrategy, ErasedRepairStrategy,
         NestedSlot, NestedStrategyConfig,
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy,
@@ -43,7 +44,7 @@ use crate::config::{
 
 /// Result of a single `run_from_config` call — everything a test might want to inspect.
 pub struct MazeRunResult {
-    pub remaining_issues: Vec<Issue>,
+    pub remaining_issues: Vec<Box<dyn Issue>>,
     pub timing: GenerationTiming,
     /// Region classes → sorted sizes (descending). Key absent if count = 0.
     pub region_sizes: HashMap<RegionClass, Vec<usize>>,
@@ -55,28 +56,47 @@ pub struct MazeRunResult {
     pub graph: Graph,
 }
 
-fn check_kind_for_type(type_id: &str) -> IssueKind {
+/// One tag per concrete `Issue` type — the compile-time-known "which `I`" a rule's checks/
+/// strategy share, chosen at runtime from the first check's `type_id` (see `check_kind_for_type`)
+/// and then used to pick a `build_rule_for!` macro arm, which fixes `I` for the rest of that
+/// rule's construction. Not `IssueKind` itself: `IssueKind` is the runtime-erased representation
+/// (config/DTO/serialization, see GitHub issue #113's plan §2); `KindTag` exists purely to drive
+/// this factory's match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KindTag {
+    MissingEndpoints,
+    UnreachableFinish,
+    MissingLoops,
+    InvalidLoop,
+    ExcessiveSccCount,
+    RegionNeedsExpansion,
+    MissingRegions,
+    InvalidTeleport,
+    TeleportGroupProximity,
+}
+
+fn check_kind_for_type(type_id: &str) -> KindTag {
     match type_id {
-        "missing_endpoints"         => MISSING_ENDPOINTS,
-        "unreachable_finish"        => UNREACHABLE_FINISH,
-        "min_loops_count"           => MISSING_LOOPS,
-        "min_loop_density"          => MISSING_LOOPS,
-        "min_loop_length"           => INVALID_LOOP,
-        "max_loop_length"           => INVALID_LOOP,
-        "external_escape_diversity" => INVALID_LOOP,
-        "loop_distance_from_start"  => INVALID_LOOP,
-        "loop_distance_from_finish" => INVALID_LOOP,
-        "max_loop_density"          => INVALID_LOOP,
-        "scc_count"                 => EXCESSIVE_SCC_COUNT,
-        "min_region_size"           => REGION_NEEDS_EXPANSION,
-        "min_region_ratio"          => REGION_NEEDS_EXPANSION,
-        "min_region_count"          => MISSING_REGIONS,
-        "teleport_duplicates_connection" => INVALID_TELEPORT,
-        "teleport_waypoint_distance" => INVALID_TELEPORT,
-        "teleport_min_geometric_length" => INVALID_TELEPORT,
-        "teleport_max_geometric_length" => INVALID_TELEPORT,
-        "teleport_super_hub_avoidance" => INVALID_TELEPORT,
-        "teleport_group_proximity" => TELEPORT_GROUP_PROXIMITY,
+        "missing_endpoints"         => KindTag::MissingEndpoints,
+        "unreachable_finish"        => KindTag::UnreachableFinish,
+        "min_loops_count"           => KindTag::MissingLoops,
+        "min_loop_density"          => KindTag::MissingLoops,
+        "min_loop_length"           => KindTag::InvalidLoop,
+        "max_loop_length"           => KindTag::InvalidLoop,
+        "external_escape_diversity" => KindTag::InvalidLoop,
+        "loop_distance_from_start"  => KindTag::InvalidLoop,
+        "loop_distance_from_finish" => KindTag::InvalidLoop,
+        "max_loop_density"          => KindTag::InvalidLoop,
+        "scc_count"                 => KindTag::ExcessiveSccCount,
+        "min_region_size"           => KindTag::RegionNeedsExpansion,
+        "min_region_ratio"          => KindTag::RegionNeedsExpansion,
+        "min_region_count"          => KindTag::MissingRegions,
+        "teleport_duplicates_connection" => KindTag::InvalidTeleport,
+        "teleport_waypoint_distance" => KindTag::InvalidTeleport,
+        "teleport_min_geometric_length" => KindTag::InvalidTeleport,
+        "teleport_max_geometric_length" => KindTag::InvalidTeleport,
+        "teleport_super_hub_avoidance" => KindTag::InvalidTeleport,
+        "teleport_group_proximity" => KindTag::TeleportGroupProximity,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -132,19 +152,34 @@ fn parse_protect_route(param: Option<&String>) -> bool {
     }
 }
 
-fn build_check<T: Tessellation>(
-    instance: &CheckInstanceConfig,
-    instance_id: String,
-) -> Result<Box<dyn maze_core::quality_control::Check<T>>, String> {
-    let check: Box<dyn maze_core::quality_control::Check<T>> = match instance.type_id.as_str() {
-        "missing_endpoints" => Box::new(MissingEndpointsCheck { instance_id }),
-        "unreachable_finish" => Box::new(UnreachableFinishCheck { instance_id }),
+/// One `build_*_check` function per `KindTag` — `type_id`s that share a `KindTag` (e.g.
+/// `min_loops_count`/`min_loop_density`, both `MissingLoops`) are handled by the same function's
+/// own `match`. Parsing logic per arm is unchanged from the pre-#113 single `build_check`, just
+/// redistributed by `KindTag` instead of living in one flat match over every `type_id` at once.
+/// `Option`, not `Result` — `None` means "this `type_id` doesn't belong to this `KindTag`", the
+/// per-arm-invalid-value case doesn't exist (every param has a documented fallback default).
+fn build_missing_endpoints_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingEndpointsIssue>>> {
+    match instance.type_id.as_str() {
+        "missing_endpoints" => Some(Box::new(MissingEndpointsCheck { instance_id })),
+        _ => None,
+    }
+}
+
+fn build_unreachable_finish_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, UnreachableFinishIssue>>> {
+    match instance.type_id.as_str() {
+        "unreachable_finish" => Some(Box::new(UnreachableFinishCheck { instance_id })),
+        _ => None,
+    }
+}
+
+fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingLoopsIssue>>> {
+    match instance.type_id.as_str() {
         "min_loops_count" => {
             let min_loops = instance.params.get("min_loops")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MIN_LOOPS_DEFAULT);
-            Box::new(MinLoopsCountCheck { instance_id, min_loops })
+            Some(Box::new(MinLoopsCountCheck { instance_id, min_loops }))
         }
         "min_loop_density" => {
             let min_density = instance.params.get("min_density")
@@ -155,64 +190,82 @@ fn build_check<T: Tessellation>(
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(AVG_LOOP_LENGTH_ESTIMATE_DEFAULT);
-            Box::new(MinLoopDensityCheck { instance_id, min_density, avg_loop_length_estimate })
+            Some(Box::new(MinLoopDensityCheck { instance_id, min_density, avg_loop_length_estimate }))
         }
+        _ => None,
+    }
+}
+
+fn build_invalid_loop_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidLoopIssue>>> {
+    match instance.type_id.as_str() {
         "min_loop_length" => {
             let min_loop_length = instance.params.get("min_loop_length")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MIN_LOOP_LENGTH_DEFAULT);
-            Box::new(MinLoopLengthCheck { instance_id, min_loop_length })
+            Some(Box::new(MinLoopLengthCheck { instance_id, min_loop_length }))
         }
         "max_loop_length" => {
             let max_loop_length = instance.params.get("max_loop_length")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MAX_LOOP_LENGTH_DEFAULT);
-            Box::new(MaxLoopLengthCheck { instance_id, max_loop_length })
+            Some(Box::new(MaxLoopLengthCheck { instance_id, max_loop_length }))
         }
         "external_escape_diversity" => {
             let min_distinct_exits = instance.params.get("min_distinct_exits")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(EXTERNAL_ESCAPE_DIVERSITY_DEFAULT);
-            Box::new(ExternalEscapeDiversityCheck { instance_id, min_distinct_exits })
+            Some(Box::new(ExternalEscapeDiversityCheck { instance_id, min_distinct_exits }))
         }
         "loop_distance_from_start" => {
             let min_distance_from_start = instance.params.get("min_distance_from_start")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(LOOP_DISTANCE_FROM_START_DEFAULT);
-            Box::new(LoopDistanceFromStartCheck { instance_id, min_distance_from_start })
+            Some(Box::new(LoopDistanceFromStartCheck { instance_id, min_distance_from_start }))
         }
         "loop_distance_from_finish" => {
             let min_distance_from_finish = instance.params.get("min_distance_from_finish")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(LOOP_DISTANCE_FROM_FINISH_DEFAULT);
-            Box::new(LoopDistanceFromFinishCheck { instance_id, min_distance_from_finish })
+            Some(Box::new(LoopDistanceFromFinishCheck { instance_id, min_distance_from_finish }))
         }
         "max_loop_density" => {
             let max_density = instance.params.get("max_density")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
-            Box::new(MaxLoopDensityCheck { instance_id, max_density })
+            Some(Box::new(MaxLoopDensityCheck { instance_id, max_density }))
         }
+        _ => None,
+    }
+}
+
+fn build_excessive_scc_count_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, ExcessiveSccCountIssue>>> {
+    match instance.type_id.as_str() {
         "scc_count" => {
             let max_scc_count = instance.params.get("max_scc_count")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MAX_SCC_COUNT_DEFAULT);
-            Box::new(SccCountCheck { instance_id, max_scc_count })
+            Some(Box::new(SccCountCheck { instance_id, max_scc_count }))
         }
+        _ => None,
+    }
+}
+
+fn build_region_needs_expansion_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, RegionNeedsExpansionIssue>>> {
+    match instance.type_id.as_str() {
         "min_region_size" => {
             let min_region_size = instance.params.get("min_region_size")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MIN_REGION_SIZE_DEFAULT);
             let region_classes = parse_region_class_filter(instance.params.get("region_class"));
-            Box::new(MinRegionSizeCheck { instance_id, min_region_size, region_classes })
+            Some(Box::new(MinRegionSizeCheck { instance_id, min_region_size, region_classes }))
         }
         "min_region_ratio" => {
             let min_region_ratio = instance.params.get("min_region_ratio")
@@ -220,8 +273,14 @@ fn build_check<T: Tessellation>(
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MIN_REGION_RATIO_DEFAULT);
             let region_classes = parse_region_class_filter(instance.params.get("region_class"));
-            Box::new(MinRegionRatioCheck { instance_id, min_region_ratio, region_classes })
+            Some(Box::new(MinRegionRatioCheck { instance_id, min_region_ratio, region_classes }))
         }
+        _ => None,
+    }
+}
+
+fn build_missing_regions_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingRegionsIssue>>> {
+    match instance.type_id.as_str() {
         "min_region_count" => {
             let parse_count = |key: &str| instance.params.get(key)
                 .and_then(|v| v.parse::<i64>().ok())
@@ -233,11 +292,17 @@ fn build_check<T: Tessellation>(
                 (RegionClass::Unreachable, parse_count("unreachable_count")),
                 (RegionClass::Trap,        parse_count("trap_count")),
             ]);
-            Box::new(MinRegionCountCheck { instance_id, min_counts })
+            Some(Box::new(MinRegionCountCheck { instance_id, min_counts }))
         }
+        _ => None,
+    }
+}
+
+fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidTeleportIssue>>> {
+    match instance.type_id.as_str() {
         "teleport_duplicates_connection" => {
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Box::new(TeleportDuplicatesConnectionCheck { instance_id, protect_route })
+            Some(Box::new(TeleportDuplicatesConnectionCheck { instance_id, protect_route }))
         }
         "teleport_waypoint_distance" => {
             let distance = instance.params.get("distance")
@@ -247,7 +312,7 @@ fn build_check<T: Tessellation>(
             let waypoint = parse_teleport_waypoint(instance.params.get("waypoint"));
             let edge = parse_teleport_edge_selector(instance.params.get("edge"));
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Box::new(TeleportWaypointDistanceCheck { instance_id, distance, waypoint, edge, protect_route })
+            Some(Box::new(TeleportWaypointDistanceCheck { instance_id, distance, waypoint, edge, protect_route }))
         }
         "teleport_min_geometric_length" => {
             let min_length = instance.params.get("min_length")
@@ -256,7 +321,7 @@ fn build_check<T: Tessellation>(
                 .map(|v| v.max(0.0))
                 .unwrap_or(TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT);
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Box::new(TeleportMinGeometricLengthCheck { instance_id, min_length, protect_route })
+            Some(Box::new(TeleportMinGeometricLengthCheck { instance_id, min_length, protect_route }))
         }
         "teleport_max_geometric_length" => {
             let max_length = instance.params.get("max_length")
@@ -265,7 +330,7 @@ fn build_check<T: Tessellation>(
                 .map(|v| v.max(0.0))
                 .unwrap_or(TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT);
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Box::new(TeleportMaxGeometricLengthCheck { instance_id, max_length, protect_route })
+            Some(Box::new(TeleportMaxGeometricLengthCheck { instance_id, max_length, protect_route }))
         }
         "teleport_super_hub_avoidance" => {
             let max_connections = instance.params.get("max_connections")
@@ -274,8 +339,14 @@ fn build_check<T: Tessellation>(
                 .unwrap_or(TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT);
             let edge = parse_teleport_hub_edge_selector(instance.params.get("edge_hub"));
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge, protect_route })
+            Some(Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge, protect_route }))
         }
+        _ => None,
+    }
+}
+
+fn build_teleport_group_proximity_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, TeleportGroupProximityIssue>>> {
+    match instance.type_id.as_str() {
         "teleport_group_proximity" => {
             let distance = instance.params.get("distance")
                 .and_then(|v| v.parse::<f64>().ok())
@@ -285,14 +356,21 @@ fn build_check<T: Tessellation>(
             let own_edge = parse_teleport_proximity_edge(instance.params.get("own_edge"));
             let other_edge = parse_teleport_proximity_edge(instance.params.get("other_edge"));
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge, protect_route })
+            Some(Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge, protect_route }))
         }
-        other => return Err(format!("unknown check: {other}")),
-    };
-    Ok(check)
+        _ => None,
+    }
 }
 
-fn build_strategy<T: Tessellation>(id: &str) -> Result<Box<dyn RepairStrategy<T>>, String> {
+/// Erased-boundary strategy factory — returns `Box<dyn ErasedRepairStrategy<T>>` (not a concrete
+/// `RepairStrategy<T, I>`) since a strategy id is resolved from a runtime string with no
+/// compile-time-known `I` at this call site (used both for a rule's own top-level strategy, via
+/// `build_rule_for!`'s per-`KindTag` downcast, and for nested-strategy slots, which are erased by
+/// design — see `Specs/repair.md`'s nested-strategy pattern). Each concrete strategy struct
+/// already has its own `impl ErasedRepairStrategy<T> for ConcreteStrategy` (generated by
+/// `impl_erased_repair_strategy!` next to its `impl RepairStrategy<T, I>`), so `Box::new(...) as
+/// Box<dyn ErasedRepairStrategy<T>>` is valid for each arm below without any further wiring here.
+fn build_strategy_erased<T: Tessellation>(id: &str) -> Result<Box<dyn ErasedRepairStrategy<T>>, String> {
     Ok(match id {
         "random_endpoints"     => Box::new(RandomEndpointsStrategy),
         "farthest_endpoints"   => Box::new(FarthestEndpointsStrategy),
@@ -311,12 +389,52 @@ fn build_strategy<T: Tessellation>(id: &str) -> Result<Box<dyn RepairStrategy<T>
     })
 }
 
+/// Downcasts an erased `Box<dyn ErasedRepairStrategy<T>>` (from `build_strategy_erased`) to a
+/// concrete `Box<dyn RepairStrategy<T, I>>` — used only by `build_rule_for!`, where `I` is fixed
+/// by the macro's own `KindTag` arm. Every registry strategy for a given `type_id` is *intended*
+/// to implement `RepairStrategy<T, I>` for that exact `I`, but nothing in the type system
+/// connects a `KindTag` arm to the strategy ids `build_strategy_erased` hands back for it — a
+/// future strategy registered under the wrong arm would otherwise downcast wrong silently in a
+/// release build (the inner `impl_erased_repair_strategy!`-generated `apply` can't catch this:
+/// its own downcast target is this wrapper's `I`, which is already "correct" by construction, not
+/// the strategy's true `I`). So this checks `erased.handles() == I::KIND` explicitly and returns
+/// `Err` on mismatch, the same way `build_nested`'s own kind check works — a wiring bug becomes a
+/// loud config-build error instead of a silent wrong-behavior risk.
+fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst>(strategy: Box<dyn ErasedRepairStrategy<T>>) -> Result<Box<dyn RepairStrategy<T, I>>, String> {
+    struct ErasedAsTyped<T: Tessellation, I: Issue> {
+        inner: Box<dyn ErasedRepairStrategy<T>>,
+        _marker: std::marker::PhantomData<I>,
+    }
+    impl<T: Tessellation + 'static, I: Issue> RepairStrategy<T, I> for ErasedAsTyped<T, I> {
+        fn strategy_id(&self) -> &'static str { self.inner.strategy_id() }
+        fn params(&self) -> &'static [maze_core::repair::StrategyParam] { self.inner.params() }
+        fn is_experimental(&self) -> bool { self.inner.is_experimental() }
+        fn expected_nested(&self) -> &'static [NestedSlot] { self.inner.expected_nested() }
+        fn apply(
+            &self, issue: &I, maze: &mut maze_core::Maze<T>, snapshots: &mut maze_core::repair::SnapshotStack,
+            rng: &mut dyn rand::RngCore, params: &maze_core::repair::StrategyParams,
+            preset_state: &maze_core::generation::PresetState, nested: &[NestedStrategyConfig<T>],
+        ) -> maze_core::repair::RepairResult {
+            self.inner.apply(issue, maze, snapshots, rng, params, preset_state, nested)
+        }
+    }
+    if strategy.handles() != I::KIND {
+        return Err(format!(
+            "internal error: strategy \"{}\" handles {:?}, but was resolved against a rule expecting {:?}",
+            strategy.strategy_id(), strategy.handles(), I::KIND,
+        ));
+    }
+    Ok(Box::new(ErasedAsTyped::<T, I> { inner: strategy, _marker: std::marker::PhantomData }))
+}
+
 /// Resolves `configs` (a `StrategyConfig`'s `nested` list) into `NestedStrategyConfig`s against
 /// `parent`'s `expected_nested()` slots — see `Specs/repair.md`'s nested-strategy pattern. Purely
 /// generic over `parent.expected_nested()`/`.handles()`: no strategy id is ever compared here,
-/// so adding a new nested-capable strategy never requires touching this function.
+/// so adding a new nested-capable strategy never requires touching this function. Operates
+/// entirely at the erased (`Box<dyn ErasedRepairStrategy<T>>`) boundary — a nested strategy's own
+/// `I` is independent of its parent's, see `ErasedRepairStrategy`'s doc comment.
 fn build_nested<T: Tessellation>(
-    parent: &dyn RepairStrategy<T>,
+    parent: &dyn ErasedRepairStrategy<T>,
     configs: &[StrategyConfig],
 ) -> Result<Vec<NestedStrategyConfig<T>>, String> {
     let slots = parent.expected_nested();
@@ -327,7 +445,7 @@ fn build_nested<T: Tessellation>(
     let slots_by_id: HashMap<&'static str, &'static NestedSlot> = slots.iter().map(|s| (s.slot_id, s)).collect();
 
     let mut counts: HashMap<&str, usize> = HashMap::new();
-    let mut resolved: Vec<(&'static NestedSlot, &StrategyConfig, Box<dyn RepairStrategy<T>>)> = Vec::new();
+    let mut resolved: Vec<(&'static NestedSlot, &StrategyConfig, Box<dyn ErasedRepairStrategy<T>>)> = Vec::new();
     for cfg in configs {
         let Some(slot_id) = cfg.slot_id.as_deref() else {
             return Err(format!("nested strategy {} under {} is missing slot_id", cfg.id, parent.strategy_id()));
@@ -335,7 +453,7 @@ fn build_nested<T: Tessellation>(
         let Some(&slot) = slots_by_id.get(slot_id) else {
             return Err(format!("strategy {} has no nested slot \"{slot_id}\"", parent.strategy_id()));
         };
-        let nested_strategy = build_strategy::<T>(&cfg.id)?;
+        let nested_strategy = build_strategy_erased::<T>(&cfg.id)?;
         if nested_strategy.handles() != slot.kind {
             return Err(format!(
                 "strategy {} cannot fill slot \"{slot_id}\" of {}: handles {:?}, slot expects {:?}",
@@ -361,7 +479,68 @@ fn build_nested<T: Tessellation>(
     }).collect()
 }
 
-pub fn build_qc_and_repair<T: Tessellation>(
+/// Generates the common body for one `KindTag` arm of `build_rule::<T>`: collects `rule_cfg`'s
+/// checks via `$check_ctor` (erroring if any `type_id` doesn't belong to this arm's `I`, i.e.
+/// `$check_ctor` returns `None` — the runtime equivalent of the old "checks in rule produce
+/// different issue kinds" check, except now a mismatched check simply can't be constructed as
+/// `Check<T, I>` for this arm's `I` in the first place), resolves the top-level strategy (if any)
+/// via `build_strategy_erased` + `downcast_strategy::<T, $IssueTy>`, and constructs `Rule::<T,
+/// $IssueTy>::new(...)` — wrapped in `Box::new(...) as Box<dyn RuleTrait<T>>` for the caller's
+/// `Vec<Box<dyn RuleTrait<T>>>`. See GitHub issue #113's plan §9 for why this can't be a plain
+/// generic function (the concrete `$IssueTy` must be chosen by the macro caller's own match arm,
+/// not passed as a runtime value).
+macro_rules! build_rule_for {
+    ($IssueTy:ty, $check_ctor:ident, $rule_cfg:expr) => {{
+        let rule_cfg = $rule_cfg;
+        let mut checks: Vec<(String, Box<dyn maze_core::quality_control::Check<T, $IssueTy>>)> = Vec::with_capacity(rule_cfg.checks.len());
+        let mut seen_local_ids: HashSet<&str> = HashSet::new();
+        for instance in &rule_cfg.checks {
+            if !seen_local_ids.insert(instance.local_id.as_str()) {
+                return Err(format!("rule {} has duplicate local_id: {}", rule_cfg.id, instance.local_id));
+            }
+            let instance_id = composite_check_id(&rule_cfg.id, &instance.local_id);
+            let check = $check_ctor::<T>(instance, instance_id)
+                .ok_or_else(|| format!("checks in rule {} produce different issue kinds", rule_cfg.id))?;
+            checks.push((instance.local_id.clone(), check));
+        }
+
+        let (strategy, param_overrides, nested) = match &rule_cfg.strategy {
+            Some(strategy_cfg) => {
+                if strategy_cfg.slot_id.is_some() {
+                    return Err(format!("rule {}'s top-level strategy must not declare slot_id", rule_cfg.id));
+                }
+                let erased = build_strategy_erased::<T>(&strategy_cfg.id)?;
+                let nested = build_nested::<T>(erased.as_ref(), &strategy_cfg.nested)?;
+                let typed = downcast_strategy::<T, $IssueTy>(erased)?;
+                (Some(typed), strategy_cfg.params.clone(), nested)
+            }
+            None => (None, HashMap::new(), Vec::new()),
+        };
+
+        let rule = Rule::<T, $IssueTy>::new(rule_cfg.id.clone(), checks, strategy, param_overrides, nested);
+        Ok(Box::new(rule) as Box<dyn RuleTrait<T>>)
+    }};
+}
+
+/// Builds one `Box<dyn RuleTrait<T>>` from a `QcRuleConfig` — dispatches on the first check's
+/// `type_id` (via `check_kind_for_type`) to pick which `KindTag`, and therefore which concrete
+/// `I`, this rule's checks/strategy share; see `build_rule_for!`'s own doc comment for what each
+/// arm does. `rule_cfg.checks` must be non-empty (checked by the caller, `build_qc_and_repair`).
+fn build_rule<T: Tessellation + 'static>(rule_cfg: &crate::config::QcRuleConfig) -> Result<Box<dyn RuleTrait<T>>, String> {
+    match check_kind_for_type(&rule_cfg.checks[0].type_id) {
+        KindTag::MissingEndpoints => build_rule_for!(MissingEndpointsIssue, build_missing_endpoints_check, rule_cfg),
+        KindTag::UnreachableFinish => build_rule_for!(UnreachableFinishIssue, build_unreachable_finish_check, rule_cfg),
+        KindTag::MissingLoops => build_rule_for!(MissingLoopsIssue, build_missing_loops_check, rule_cfg),
+        KindTag::InvalidLoop => build_rule_for!(InvalidLoopIssue, build_invalid_loop_check, rule_cfg),
+        KindTag::ExcessiveSccCount => build_rule_for!(ExcessiveSccCountIssue, build_excessive_scc_count_check, rule_cfg),
+        KindTag::RegionNeedsExpansion => build_rule_for!(RegionNeedsExpansionIssue, build_region_needs_expansion_check, rule_cfg),
+        KindTag::MissingRegions => build_rule_for!(MissingRegionsIssue, build_missing_regions_check, rule_cfg),
+        KindTag::InvalidTeleport => build_rule_for!(InvalidTeleportIssue, build_invalid_teleport_check, rule_cfg),
+        KindTag::TeleportGroupProximity => build_rule_for!(TeleportGroupProximityIssue, build_teleport_group_proximity_check, rule_cfg),
+    }
+}
+
+pub fn build_qc_and_repair<T: Tessellation + 'static>(
     config: &GenerateConfig,
 ) -> Result<QualityControlEngine<T>, String> {
     let mut stages: Vec<Stage<T>> = Vec::new();
@@ -372,7 +551,7 @@ pub fn build_qc_and_repair<T: Tessellation>(
         if !seen_stage_ids.insert(stage_cfg.id.as_str()) {
             return Err(format!("duplicate stage id: {}", stage_cfg.id));
         }
-        let mut rules: Vec<Rule<T>> = Vec::with_capacity(stage_cfg.rules.len());
+        let mut rules: Vec<Box<dyn RuleTrait<T>>> = Vec::with_capacity(stage_cfg.rules.len());
 
         for rule_cfg in &stage_cfg.rules {
             if !seen_rule_ids.insert(rule_cfg.id.as_str()) {
@@ -381,38 +560,7 @@ pub fn build_qc_and_repair<T: Tessellation>(
             if rule_cfg.checks.is_empty() {
                 return Err(format!("rule {} has no checks", rule_cfg.id));
             }
-            let mut kind: Option<IssueKind> = None;
-            let mut checks: Vec<(String, Box<dyn maze_core::quality_control::Check<T>>)> = Vec::with_capacity(rule_cfg.checks.len());
-            let mut seen_local_ids: HashSet<&str> = HashSet::new();
-            for instance in &rule_cfg.checks {
-                if !seen_local_ids.insert(instance.local_id.as_str()) {
-                    return Err(format!("rule {} has duplicate local_id: {}", rule_cfg.id, instance.local_id));
-                }
-                let this_kind = check_kind_for_type(&instance.type_id);
-                match kind {
-                    None => kind = Some(this_kind),
-                    Some(k) if k == this_kind => {}
-                    Some(_) => return Err(format!("checks in rule {} produce different issue kinds", rule_cfg.id)),
-                }
-                let instance_id = composite_check_id(&rule_cfg.id, &instance.local_id);
-                let check = build_check::<T>(instance, instance_id)?;
-                checks.push((instance.local_id.clone(), check));
-            }
-            let kind = kind.expect("non-empty rule always resolves a kind");
-
-            let (strategy, param_overrides, nested) = match &rule_cfg.strategy {
-                Some(strategy_cfg) => {
-                    if strategy_cfg.slot_id.is_some() {
-                        return Err(format!("rule {}'s top-level strategy must not declare slot_id", rule_cfg.id));
-                    }
-                    let strategy = build_strategy::<T>(&strategy_cfg.id)?;
-                    let nested = build_nested::<T>(strategy.as_ref(), &strategy_cfg.nested)?;
-                    (Some(strategy), strategy_cfg.params.clone(), nested)
-                }
-                None => (None, HashMap::new(), Vec::new()),
-            };
-
-            rules.push(Rule::new(rule_cfg.id.clone(), kind, checks, strategy, param_overrides, nested));
+            rules.push(build_rule::<T>(rule_cfg)?);
         }
 
         stages.push(Stage::new(stage_cfg.id.clone(), stage_cfg.name.clone(), rules));
@@ -444,7 +592,7 @@ pub fn resolve_start<P: Copy>(pts: &[P], gen_source_xy: Option<[i32; 2]>, to_xy:
     pick_start(pts, to_xy)
 }
 
-fn run_generate_typed<T: Tessellation>(
+fn run_generate_typed<T: Tessellation + 'static>(
     seed: u64,
     field: Field<T>,
     start: T::Point,
@@ -691,9 +839,9 @@ mod nested_strategy_tests {
         // shared wall exists between them) — the issue is expected to remain unresolved, proving
         // the strategy was actually dispatched (not silently skipped) and correctly reported
         // Failed rather than panicking or silently succeeding.
-        assert!(result.remaining_issues.iter().any(|i| i.kind.as_str() == "excessive_scc_count"),
+        assert!(result.remaining_issues.iter().any(|i| i.kind().as_str() == "excessive_scc_count"),
             "excessive_scc_count must still be reported since the two islands cannot be bridged: {:?}",
-            result.remaining_issues.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>());
+            result.remaining_issues.iter().map(|i| i.kind().as_str()).collect::<Vec<_>>());
     }
 
     #[test]
@@ -734,9 +882,9 @@ mod nested_strategy_tests {
         config.stages[0].rules.push(scc_check_rule);
 
         let result = run_from_config(1, &config).expect("run_from_config must succeed");
-        assert!(!result.remaining_issues.iter().any(|i| i.kind.as_str() == "excessive_scc_count"),
+        assert!(!result.remaining_issues.iter().any(|i| i.kind().as_str() == "excessive_scc_count"),
             "a fully contiguous field must let reduce_scc_count converge to max_scc_count=1: {:?}",
-            result.remaining_issues.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>());
+            result.remaining_issues.iter().map(|i| i.kind().as_str()).collect::<Vec<_>>());
     }
 
     #[test]
@@ -787,9 +935,9 @@ mod nested_strategy_tests {
         config.stages[0].rules.push(region_rule);
 
         let result = run_from_config(1, &config).expect("run_from_config must succeed");
-        assert!(!result.remaining_issues.iter().any(|i| i.kind.as_str() == "region_needs_expansion"),
+        assert!(!result.remaining_issues.iter().any(|i| i.kind().as_str() == "region_needs_expansion"),
             "weighted_region_merge must resolve region_needs_expansion via the teleport candidate after the geometric one fails: {:?}",
-            result.remaining_issues.iter().map(|i| i.kind.as_str()).collect::<Vec<_>>());
+            result.remaining_issues.iter().map(|i| i.kind().as_str()).collect::<Vec<_>>());
     }
 
     #[test]
@@ -827,7 +975,7 @@ mod nested_strategy_tests {
         use super::*;
         use maze_core::repair::{RepairResult, StrategyParams};
         use maze_core::generation::PresetState;
-        use maze_core::quality_control::Issue;
+        use maze_core::quality_control::{ExcessiveSccCountIssue, EXCESSIVE_SCC_COUNT};
         use maze_core::Maze;
 
         // A slot-holding strategy that accepts any number (0..) of nested strategies handling
@@ -835,17 +983,17 @@ mod nested_strategy_tests {
         // slot's `kind` is chosen to match `reduce_scc_count`'s own `handles()`, so a real
         // registry strategy (not a second mock) can fill it — see
         // `three_level_nesting_resolves_through_a_real_second_level_strategy` below, which uses
-        // this to reach 3 real levels without needing a test-only entry in `build_strategy`.
+        // this to reach 3 real levels without needing a test-only entry in `build_strategy_erased`.
         struct UnboundedSlotStrategy;
         static UNBOUNDED_SLOT: &[NestedSlot] = &[NestedSlot { slot_id: "unbounded", kind: EXCESSIVE_SCC_COUNT, min: 0, max: None }];
-        impl RepairStrategy<SquareTessellation> for UnboundedSlotStrategy {
+        impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for UnboundedSlotStrategy {
             fn strategy_id(&self) -> &'static str { "test_unbounded_slot_strategy" }
-            fn handles(&self) -> IssueKind { EXCESSIVE_SCC_COUNT }
             fn expected_nested(&self) -> &'static [NestedSlot] { UNBOUNDED_SLOT }
-            fn apply(&self, _: &Issue, _: &mut Maze<SquareTessellation>, _: &mut maze_core::repair::SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+            fn apply(&self, _: &ExcessiveSccCountIssue, _: &mut Maze<T>, _: &mut maze_core::repair::SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> RepairResult {
                 RepairResult::Failed
             }
         }
+        maze_core::impl_erased_repair_strategy!(UnboundedSlotStrategy, ExcessiveSccCountIssue);
 
         fn nested_cfg(id: &str, slot_id: &str, nested: Vec<StrategyConfig>) -> StrategyConfig {
             StrategyConfig { id: id.to_string(), params: HashMap::new(), slot_id: Some(slot_id.to_string()), nested }
@@ -923,15 +1071,15 @@ mod build_strategy_tests {
     #[test]
     fn every_known_id_builds_a_strategy_whose_own_strategy_id_matches() {
         for &id in ALL_KNOWN_STRATEGY_IDS {
-            let strategy = build_strategy::<SquareTessellation>(id)
-                .unwrap_or_else(|e| panic!("build_strategy({id:?}) failed: {e}"));
-            assert_eq!(strategy.strategy_id(), id, "build_strategy({id:?}) constructed a strategy whose own strategy_id() doesn't match — wrong match arm?");
+            let strategy = build_strategy_erased::<SquareTessellation>(id)
+                .unwrap_or_else(|e| panic!("build_strategy_erased({id:?}) failed: {e}"));
+            assert_eq!(strategy.strategy_id(), id, "build_strategy_erased({id:?}) constructed a strategy whose own strategy_id() doesn't match — wrong match arm?");
         }
     }
 
     #[test]
     fn unknown_id_is_rejected() {
-        assert!(build_strategy::<SquareTessellation>("not_a_real_strategy").is_err());
+        assert!(build_strategy_erased::<SquareTessellation>("not_a_real_strategy").is_err());
     }
 }
 
@@ -957,13 +1105,37 @@ mod build_check_tests {
         "teleport_super_hub_avoidance", "teleport_group_proximity",
     ];
 
+    /// Test-only dispatcher mirroring `build_rule_for!`'s own `KindTag` match, but returning just
+    /// the built check's `check_type_id()` — the one thing these regression tests need — instead
+    /// of a `Box<dyn Check<T, I>>` (whose concrete `I` differs per arm and so can't be returned
+    /// as one unified type). `None` means `instance.type_id` is unknown to every `KindTag` arm.
+    fn build_check_type_id<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<&'static str> {
+        macro_rules! try_ctor {
+            ($ctor:ident) => {
+                if let Some(check) = $ctor::<T>(instance, instance_id.clone()) {
+                    return Some(check.check_type_id());
+                }
+            };
+        }
+        try_ctor!(build_missing_endpoints_check);
+        try_ctor!(build_unreachable_finish_check);
+        try_ctor!(build_missing_loops_check);
+        try_ctor!(build_invalid_loop_check);
+        try_ctor!(build_excessive_scc_count_check);
+        try_ctor!(build_region_needs_expansion_check);
+        try_ctor!(build_missing_regions_check);
+        try_ctor!(build_invalid_teleport_check);
+        try_ctor!(build_teleport_group_proximity_check);
+        None
+    }
+
     #[test]
     fn every_known_id_builds_a_check_whose_own_check_type_id_matches() {
         for &id in ALL_KNOWN_CHECK_TYPE_IDS {
             let instance = CheckInstanceConfig { local_id: "0".to_string(), type_id: id.to_string(), params: HashMap::new() };
-            let check = build_check::<SquareTessellation>(&instance, "instance".to_string())
-                .unwrap_or_else(|e| panic!("build_check({id:?}) failed: {e}"));
-            assert_eq!(check.check_type_id(), id, "build_check({id:?}) constructed a check whose own check_type_id() doesn't match — wrong match arm?");
+            let check_type_id = build_check_type_id::<SquareTessellation>(&instance, "instance".to_string())
+                .unwrap_or_else(|| panic!("build_check_type_id({id:?}) found no matching KindTag arm"));
+            assert_eq!(check_type_id, id, "build_check_type_id({id:?}) constructed a check whose own check_type_id() doesn't match — wrong match arm?");
             // Must also resolve in check_kind_for_type's independent match — panics on unknown id.
             let _ = check_kind_for_type(id);
         }
@@ -972,7 +1144,7 @@ mod build_check_tests {
     #[test]
     fn unknown_id_is_rejected() {
         let instance = CheckInstanceConfig { local_id: "0".to_string(), type_id: "not_a_real_check".to_string(), params: HashMap::new() };
-        assert!(build_check::<SquareTessellation>(&instance, "instance".to_string()).is_err());
+        assert!(build_check_type_id::<SquareTessellation>(&instance, "instance".to_string()).is_none());
     }
 
     #[test]
@@ -990,8 +1162,8 @@ mod build_check_tests {
         let mut params = HashMap::new();
         params.insert("distance".to_string(), "1.1".to_string());
         let instance = CheckInstanceConfig { local_id: "0".to_string(), type_id: "teleport_group_proximity".to_string(), params };
-        let check = build_check::<SquareTessellation>(&instance, "instance".to_string())
-            .expect("build_check must accept a fractional distance string");
+        let check = build_teleport_group_proximity_check::<SquareTessellation>(&instance, "instance".to_string())
+            .expect("build_teleport_group_proximity_check must accept a fractional distance string");
 
         // Two teleports whose entries sit exactly 1 tile-hop apart -- must be flagged against
         // threshold 1.1 (1 < 1.1), but would NOT be flagged against the old silently-truncated

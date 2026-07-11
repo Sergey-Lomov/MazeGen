@@ -6,8 +6,8 @@ use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
 use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, density_per_100};
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, INVALID_LOOP};
-use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
+use crate::quality_control::{Issue, InvalidLoopIssue};
+use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
 
@@ -24,10 +24,10 @@ pub struct MaxLoopDensityCheck {
     pub max_density: u32,
 }
 
-impl<T: Tessellation> Check<T> for MaxLoopDensityCheck {
+impl<T: Tessellation> Check<T, InvalidLoopIssue> for MaxLoopDensityCheck {
     fn check_type_id(&self) -> &'static str { "max_loop_density" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, rng: &mut dyn RngCore) {
         let field_cells = maze.field.node_count();
         if field_cells == 0 {
             return;
@@ -67,7 +67,7 @@ impl<T: Tessellation> Check<T> for MaxLoopDensityCheck {
         for &idx in &excess {
             invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
         }
-        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: excess, invalid_sources }, &self.instance_id)
+        let issue = InvalidLoopIssue::new_from_check(&self.instance_id, all, excess, invalid_sources)
             .with_detail(&self.instance_id, "max_density", self.max_density.to_string());
         issues.push(issue);
     }
@@ -118,15 +118,9 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, INVALID_LOOP);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        match &issues[0].data {
-            Some(IssueData::InvalidLoops { all, invalid, .. }) => {
-                assert_eq!(all.len(), 2, "both triangles enumerated");
-                assert_eq!(invalid.len(), 1, "flagging one triangle (3 of 6 covered cells) is enough to drop to 30%");
-            }
-            other => panic!("expected InvalidLoops, got {other:?}"),
-        }
+        assert_eq!(issues[0].all.len(), 2, "both triangles enumerated");
+        assert_eq!(issues[0].invalid.len(), 1, "flagging one triangle (3 of 6 covered cells) is enough to drop to 30%");
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("max_density")),
             Some(&"30".to_string()),
@@ -188,12 +182,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        match &issues[0].data {
-            Some(IssueData::InvalidLoops { invalid, .. }) => {
-                assert_eq!(invalid.len(), 1, "flagging one of the two overlapping triangles already clears the target");
-            }
-            other => panic!("expected InvalidLoops, got {other:?}"),
-        }
+        assert_eq!(issues[0].invalid.len(), 1, "flagging one of the two overlapping triangles already clears the target");
     }
 
     #[test]
@@ -203,12 +192,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        match &issues[0].data {
-            Some(IssueData::InvalidLoops { all, invalid, .. }) => {
-                assert_eq!(invalid.len(), all.len(), "every loop must be flagged when even all of them can't reach max_density 0");
-            }
-            other => panic!("expected InvalidLoops, got {other:?}"),
-        }
+        assert_eq!(issues[0].invalid.len(), issues[0].all.len(), "every loop must be flagged when even all of them can't reach max_density 0");
     }
 
     #[test]

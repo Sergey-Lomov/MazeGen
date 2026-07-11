@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::distance_map::cycle_min_distance;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::Issue;
+use crate::quality_control::{Issue, InvalidLoopIssue};
 use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const LOOP_DISTANCE_FROM_FINISH_DEFAULT: u32 = 0;
@@ -19,10 +19,10 @@ pub struct LoopDistanceFromFinishCheck {
     pub min_distance_from_finish: u32,
 }
 
-impl<T: Tessellation> Check<T> for LoopDistanceFromFinishCheck {
+impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromFinishCheck {
     fn check_type_id(&self) -> &'static str { "loop_distance_from_finish" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore) {
         let Some(dist_from_finish) = maze.analysis.distance_from_finish(&maze.graph, &maze.meta) else { return };
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
         let Some((nav, cycles, too_close)) = find_invalid_cycles(maze, |nav, cycle| {
@@ -40,8 +40,6 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
-    use crate::quality_control::issue::INVALID_LOOP;
-    use crate::quality_control::issue_data::IssueData;
     use crate::meta::MazeMeta;
 
     const TEST_ID: &str = "loop_distance_from_finish";
@@ -79,12 +77,8 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, INVALID_LOOP);
+        assert_eq!(issues[0].invalid.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        match &issues[0].data {
-            Some(IssueData::InvalidLoops { invalid, .. }) => assert_eq!(invalid.len(), 1),
-            other => panic!("expected InvalidLoops, got {other:?}"),
-        }
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_distance_from_finish")),
             Some(&"5".to_string()),
@@ -140,13 +134,8 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        match &issues[0].data {
-            Some(IssueData::InvalidLoops { all, invalid, .. }) => {
-                assert_eq!(all.len(), 2, "both cycles must be enumerated");
-                assert_eq!(invalid.len(), 1, "only the near cycle is below the threshold");
-            }
-            other => panic!("expected InvalidLoops, got {other:?}"),
-        }
+        assert_eq!(issues[0].all.len(), 2, "both cycles must be enumerated");
+        assert_eq!(issues[0].invalid.len(), 1, "only the near cycle is below the threshold");
     }
 
     #[test]

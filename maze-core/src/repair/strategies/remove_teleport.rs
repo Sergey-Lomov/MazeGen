@@ -1,7 +1,7 @@
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::quality_control::{Issue, IssueData, INVALID_TELEPORT, IssueKind};
+use crate::quality_control::InvalidTeleportIssue;
 use crate::generation::{PresetState, try_remove_teleport_with_reverse};
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
@@ -26,13 +26,12 @@ use crate::repair::snapshot::SnapshotStack;
 /// one direction and flagged only that `EdgeId`.
 pub struct RemoveTeleportStrategy;
 
-impl<T: Tessellation> RepairStrategy<T> for RemoveTeleportStrategy {
+impl<T: Tessellation> RepairStrategy<T, InvalidTeleportIssue> for RemoveTeleportStrategy {
     fn strategy_id(&self) -> &'static str { "remove_teleport" }
-    fn handles(&self) -> IssueKind { INVALID_TELEPORT }
 
     fn apply(
         &self,
-        issue: &Issue,
+        issue: &InvalidTeleportIssue,
         maze: &mut Maze<T>,
         _snapshots: &mut SnapshotStack,
         _rng: &mut dyn RngCore,
@@ -40,21 +39,14 @@ impl<T: Tessellation> RepairStrategy<T> for RemoveTeleportStrategy {
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult {
-        debug_assert_eq!(issue.kind, <Self as RepairStrategy<T>>::handles(self));
-        // INVALID_TELEPORT always carries InvalidTeleports data in a well-formed pipeline run —
-        // the producing check already found exactly which teleport edges to remove, there is no
-        // other channel to learn them. Missing/wrong-type data means this was called outside the
-        // normal pipeline (malformed) — Failed, not "already fixed". An empty `invalid` means the
-        // check found nothing to remove.
-        let Some(IssueData::InvalidTeleports { invalid }) = &issue.data else {
-            return RepairResult::Failed;
-        };
-        for &edge_id in invalid {
+        for &edge_id in &issue.invalid {
             try_remove_teleport_with_reverse(&mut maze.graph, edge_id, preset_state);
         }
         RepairResult::Fixed { score: None }
     }
 }
+
+crate::impl_erased_repair_strategy!(RemoveTeleportStrategy, InvalidTeleportIssue);
 
 #[cfg(test)]
 mod tests {
@@ -80,7 +72,7 @@ mod tests {
     }
 
     fn no_params() -> StrategyParams {
-        build_params(<RemoveTeleportStrategy as RepairStrategy<SquareTessellation>>::params(&RemoveTeleportStrategy), None)
+        build_params(<RemoveTeleportStrategy as RepairStrategy<SquareTessellation, InvalidTeleportIssue>>::params(&RemoveTeleportStrategy), None)
     }
 
     #[test]
@@ -93,7 +85,7 @@ mod tests {
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport));
@@ -120,7 +112,7 @@ mod tests {
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport), "both teleport directions must be removed");
@@ -141,9 +133,9 @@ mod tests {
         let backward_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let issue = Issue::with_data(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid: vec![forward_id] });
+        let issue = InvalidTeleportIssue::new_from_check("test", vec![forward_id]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(forward_id).is_none(), "the flagged forward direction must be removed");
@@ -164,9 +156,9 @@ mod tests {
         let reverse_basic_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let issue = Issue::with_data(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid: vec![teleport_id] });
+        let issue = InvalidTeleportIssue::new_from_check("test", vec![teleport_id]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(teleport_id).is_none());
@@ -174,20 +166,11 @@ mod tests {
     }
 
     #[test]
-    fn apply_fails_when_data_is_missing() {
-        let mut maze = maze_with_duplicate_teleport();
-        let issue = Issue::new(INVALID_TELEPORT); // no data attached
-        let mut rng = MazeRng::seed_from_u64(1);
-        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Failed));
-    }
-
-    #[test]
     fn apply_succeeds_on_empty_invalid_list() {
         let mut maze = maze_with_duplicate_teleport();
-        let issue = Issue::with_data(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid: vec![] });
+        let issue = InvalidTeleportIssue::new_from_check("test", vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -209,7 +192,7 @@ mod tests {
         preset_state.preset_edges.insert((basic_edge.from, basic_edge.to));
 
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RemoveTeleportStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
+        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport), "teleport must be removed even though the duplicated Basic pair is preset-protected");
         assert!(maze.graph.edges().any(|e| e.kind == EdgeKind::Basic), "the preset-protected Basic edge itself must survive");

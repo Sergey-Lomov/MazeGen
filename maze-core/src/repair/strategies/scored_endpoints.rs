@@ -6,7 +6,7 @@ use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::graph::nav::{NavGraph, NavNodeId, NavEdge};
 use crate::graph::pathfinding::{dijkstra_with_prev, build_outgoing_index};
-use crate::quality_control::{Issue, MISSING_ENDPOINTS, IssueKind};
+use crate::quality_control::MissingEndpointsIssue;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
@@ -43,9 +43,8 @@ static PARAMS: &[StrategyParam] = &[
 
 pub struct ScoredEndpointsStrategy;
 
-impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
+impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpointsStrategy {
     fn strategy_id(&self) -> &'static str { "scored_endpoints" }
-    fn handles(&self) -> IssueKind { MISSING_ENDPOINTS }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -53,7 +52,7 @@ impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
 
     fn apply(
         &self,
-        _issue: &Issue,
+        _issue: &MissingEndpointsIssue,
         maze: &mut Maze<T>,
         _snapshots: &mut SnapshotStack,
         _rng: &mut dyn RngCore,
@@ -125,6 +124,8 @@ impl<T: Tessellation> RepairStrategy<T> for ScoredEndpointsStrategy {
         RepairResult::Fixed { score: Some(achieved_score) }
     }
 }
+
+crate::impl_erased_repair_strategy!(ScoredEndpointsStrategy, MissingEndpointsIssue);
 
 struct ScoreWeights {
     path_weight:    f64,
@@ -294,11 +295,11 @@ mod tests {
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, Field, SquarePoint};
     use crate::repair::params::build_params;
-    use crate::quality_control::{Issue, MISSING_ENDPOINTS};
+    use crate::quality_control::MissingEndpointsIssue;
 
     fn default_params() -> StrategyParams {
         build_params(
-            <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy),
+            <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
             None,
         )
     }
@@ -324,14 +325,14 @@ mod tests {
 
     fn rng() -> MazeRng { MazeRng::seed_from_u64(7) }
 
-    fn issue() -> Issue { Issue::new(MISSING_ENDPOINTS) }
+    fn issue() -> MissingEndpointsIssue { MissingEndpointsIssue::default() }
 
     #[test]
     fn apply_fixed_immediately_when_both_already_set() {
         let (mut maze, nodes) = make_connected_maze(3);
         maze.meta.start = Some(nodes[0]);
         maze.meta.finish = Some(nodes[2]);
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -340,14 +341,14 @@ mod tests {
         // A single node has a nav node but no second node to pair with -- `best_pair` must
         // find no valid (s, f) pair (every candidate requires f != s and a finite distance).
         let mut maze = make_maze(1, 1);
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
     }
 
     #[test]
     fn apply_picks_best_pair_when_neither_endpoint_set() {
         let (mut maze, nodes) = make_connected_maze(5);
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
         assert!(maze.meta.start.is_some());
         assert!(maze.meta.finish.is_some());
@@ -362,7 +363,7 @@ mod tests {
     fn apply_fixes_finish_when_only_start_set() {
         let (mut maze, nodes) = make_connected_maze(5);
         maze.meta.start = Some(nodes[0]);
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
         assert_eq!(maze.meta.start, Some(nodes[0]));
         assert_eq!(maze.meta.finish, Some(nodes[4]), "farthest/highest-scoring node on a straight corridor is the opposite end");
@@ -372,7 +373,7 @@ mod tests {
     fn apply_fixes_start_when_only_finish_set() {
         let (mut maze, nodes) = make_connected_maze(5);
         maze.meta.finish = Some(nodes[4]);
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
         assert_eq!(maze.meta.finish, Some(nodes[4]));
         assert_eq!(maze.meta.start, Some(nodes[0]));
@@ -384,7 +385,7 @@ mod tests {
         // start set to a node id that doesn't exist in the graph at all.
         let _ = nodes;
         maze.meta.start = Some(999_999);
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -395,7 +396,7 @@ mod tests {
         let mut maze = make_maze(2, 1);
         let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
         maze.meta.start = Some(a);
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -423,11 +424,11 @@ mod tests {
         overrides.insert(PARAM_PATH_WEIGHT.to_string(), "0".to_string());
         overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
         let params = build_params(
-            <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy),
+            <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
             Some(&overrides),
         );
 
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &params, &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
         // With path/one-way weight zeroed, any pair whose route never crosses the junction
         // scores exactly 0 -- the winning pair must have a strictly positive score, which
@@ -467,11 +468,11 @@ mod tests {
         overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
         overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
         let params = build_params(
-            <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation>>::params(&ScoredEndpointsStrategy),
+            <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
             Some(&overrides),
         );
 
-        let result = ScoredEndpointsStrategy.apply(&issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &params, &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng(), &params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
         // With every other weight zeroed, only a route crossing the teleport scores
         // positively -- the winning pair must have a strictly positive score.
@@ -516,11 +517,11 @@ mod tests {
     fn apply_is_deterministic_for_fixed_seed() {
         let (mut maze_a, _) = make_connected_maze(5);
         let mut rng_a = MazeRng::seed_from_u64(123);
-        ScoredEndpointsStrategy.apply(&issue(), &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &default_params(), &PresetState::empty(), &[]);
+        RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &default_params(), &PresetState::empty(), &[]);
 
         let (mut maze_b, _) = make_connected_maze(5);
         let mut rng_b = MazeRng::seed_from_u64(123);
-        ScoredEndpointsStrategy.apply(&issue(), &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &default_params(), &PresetState::empty(), &[]);
+        RepairStrategy::apply(&ScoredEndpointsStrategy, &issue(), &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &default_params(), &PresetState::empty(), &[]);
 
         assert_eq!(maze_a.meta.start, maze_b.meta.start);
         assert_eq!(maze_a.meta.finish, maze_b.meta.finish);

@@ -3,7 +3,7 @@ use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
-use crate::quality_control::{Issue, IssueData, INVALID_LOOP, IssueKind};
+use crate::quality_control::InvalidLoopIssue;
 use crate::generation::{PresetState, try_remove_edge};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -42,9 +42,8 @@ static PARAMS: &[StrategyParam] = &[
 /// cycle the maze is meant to keep.
 pub struct InvalidLoopScoredStrategy;
 
-impl<T: Tessellation> RepairStrategy<T> for InvalidLoopScoredStrategy {
+impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredStrategy {
     fn strategy_id(&self) -> &'static str { "invalid_loop_scored" }
-    fn handles(&self) -> IssueKind { INVALID_LOOP }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -52,7 +51,7 @@ impl<T: Tessellation> RepairStrategy<T> for InvalidLoopScoredStrategy {
 
     fn apply(
         &self,
-        issue: &Issue,
+        issue: &InvalidLoopIssue,
         maze: &mut Maze<T>,
         _snapshots: &mut SnapshotStack,
         rng: &mut dyn RngCore,
@@ -60,11 +59,7 @@ impl<T: Tessellation> RepairStrategy<T> for InvalidLoopScoredStrategy {
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult {
-        // Same per-kind contract as InvalidLoopRandomStrategy: InvalidLoops data is mandatory,
-        // not an optional optimization — see that strategy's doc comment for the rationale.
-        let Some(IssueData::InvalidLoops { all, invalid, .. }) = &issue.data else {
-            return RepairResult::Failed;
-        };
+        let (all, invalid) = (&issue.all, &issue.invalid);
 
         let short_overlap_weight = params.get(PARAM_SHORT_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
         let other_overlap_weight = params.get(PARAM_OTHER_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(6.0);
@@ -93,6 +88,8 @@ impl<T: Tessellation> RepairStrategy<T> for InvalidLoopScoredStrategy {
         RepairResult::Fixed { score: None }
     }
 }
+
+crate::impl_erased_repair_strategy!(InvalidLoopScoredStrategy, InvalidLoopIssue);
 
 /// Pure scoring formula, kept standalone so new terms can be unit-tested in isolation as the
 /// strategy grows (see the struct-level doc comment on why this is meant to be additive).
@@ -162,7 +159,7 @@ mod tests {
     use crate::repair::params::build_params;
 
     fn no_params() -> StrategyParams {
-        build_params(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation>>::params(&InvalidLoopScoredStrategy), None)
+        build_params(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, InvalidLoopIssue>>::params(&InvalidLoopScoredStrategy), None)
     }
 
     #[test]
@@ -219,7 +216,7 @@ mod tests {
         for seed in 0..20 {
             let mut maze_try = maze_with_shared_edge_triangles();
             let mut rng = MazeRng::seed_from_u64(seed);
-            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+            let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
             assert!(matches!(result, RepairResult::Fixed { score: None }));
 
             let nodes = shared_edge_triangle_nodes(&maze_try.field);
@@ -249,7 +246,7 @@ mod tests {
         for seed in 0..20 {
             let mut maze_try = maze_with_shared_edge_triangles();
             let mut rng = MazeRng::seed_from_u64(seed);
-            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+            let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
             assert!(matches!(result, RepairResult::Fixed { score: None }));
             let d_degree = maze_try.graph.edges().filter(|e| e.from == d || e.to == d).count();
             assert!(d_degree > 0, "seed {seed}: D must keep at least one edge — it must not be fully cut off");
@@ -257,20 +254,11 @@ mod tests {
     }
 
     #[test]
-    fn apply_fails_when_data_is_missing() {
-        let mut maze = maze_with_shared_edge_triangles();
-        let issue = Issue::new(crate::quality_control::issue::INVALID_LOOP);
-        let mut rng = MazeRng::seed_from_u64(7);
-        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Failed));
-    }
-
-    #[test]
     fn apply_succeeds_on_empty_cycle_list() {
         let mut maze = maze_with_shared_edge_triangles();
-        let issue = Issue::with_data(crate::quality_control::issue::INVALID_LOOP, IssueData::InvalidLoops { all: vec![], invalid: vec![], invalid_sources: Default::default() });
+        let issue = InvalidLoopIssue::new_from_check("min_loop_length", vec![], vec![], Default::default());
         let mut rng = MazeRng::seed_from_u64(7);
-        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -310,8 +298,7 @@ mod tests {
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut check_rng);
         let issue = issues.into_iter().next().unwrap();
-        let Some(IssueData::InvalidLoops { invalid, .. }) = &issue.data else { panic!("expected InvalidLoops") };
-        assert_eq!(invalid.len(), 1, "only the triangle should be invalid; the long loop must stay valid");
+        assert_eq!(issue.invalid.len(), 1, "only the triangle should be invalid; the long loop must stay valid");
 
         let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
         let (a, c) = (nodes[0], nodes[2]);
@@ -319,7 +306,7 @@ mod tests {
         for seed in 0..20 {
             let mut maze_try = maze_with_plain_edge_and_penalized_edge();
             let mut rng = MazeRng::seed_from_u64(seed);
-            let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+            let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
             assert!(matches!(result, RepairResult::Fixed { score: None }));
             assert!(maze_try.graph.edge_between(c, a).is_some(), "seed {seed}: C->A must survive, it's shared with a valid loop");
 
@@ -345,7 +332,7 @@ mod tests {
 
         let mut rng = MazeRng::seed_from_u64(1);
         let mut maze_try = maze_with_shared_edge_triangles();
-        let result = InvalidLoopScoredStrategy.apply(&issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
+        let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze_try.graph.edge_between(a, b).is_some(), "protected edge must survive");
     }

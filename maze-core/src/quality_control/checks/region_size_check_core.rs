@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::region_class::{RegionClass, ALL_REGION_CLASSES};
-use crate::quality_control::issue::{Issue, REGION_NEEDS_EXPANSION};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::RegionNeedsExpansionIssue;
 
 /// Shared region-filtering/issue-building logic for `MinRegionSizeCheck` and
 /// `MinRegionRatioCheck` — see GitHub issue #108. Each check owns only its threshold predicate
@@ -44,9 +43,9 @@ pub fn find_invalid_regions<T: Tessellation>(
     Some(invalid)
 }
 
-/// Builds the `RegionsNeedingExpansion` issue for a set of `invalid` region indices, including
-/// the `region_classes` detail: the actual `RegionClass`es among the flagged regions (not the
-/// full configured filter — a filter covering several classes may still have only one of them
+/// Builds the `RegionNeedsExpansionIssue` for a set of `invalid` region indices, including the
+/// `region_classes` detail: the actual `RegionClass`es among the flagged regions (not the full
+/// configured filter — a filter covering several classes may still have only one of them
 /// actually undersized this pass), so the UI can name which region class is short instead of a
 /// generic "region(s) below threshold". Needs `RegionClass`es recomputed even when the filter is
 /// "all classes" (where detection's fast `None` path skips it) — falls back to no detail (generic
@@ -58,7 +57,7 @@ pub fn build_issue<T: Tessellation>(
     instance_id: &str,
     detail_key: &'static str,
     threshold: impl ToString,
-) -> Issue {
+) -> RegionNeedsExpansionIssue {
     let mut invalid_sources: HashMap<usize, Vec<String>> = HashMap::new();
     for &idx in &invalid {
         invalid_sources.entry(idx).or_default().push(instance_id.to_string());
@@ -74,11 +73,11 @@ pub fn build_issue<T: Tessellation>(
             .collect();
         detail_classes.sort_unstable();
         detail_classes.dedup();
-        Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, instance_id)
+        RegionNeedsExpansionIssue::new_from_check(instance_id, invalid, invalid_sources)
             .with_detail(instance_id, detail_key, threshold.to_string())
             .with_detail(instance_id, "region_classes", detail_classes.join(","))
     } else {
-        Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, instance_id)
+        RegionNeedsExpansionIssue::new_from_check(instance_id, invalid, invalid_sources)
             .with_detail(instance_id, detail_key, threshold.to_string())
     }
 }

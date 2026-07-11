@@ -4,9 +4,8 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::generation::pipeline::{RepairLimits, GenerationTiming, TimingEntry};
-use crate::quality_control::issue_data::RepairLimitKind;
-use super::issue::{Issue, REPAIR_LIMIT_REACHED, QC_NO_PROGRESS};
-use super::issue_data::IssueData;
+use crate::quality_control::issue_kinds::{RepairLimitKind, RepairLimitReachedIssue, QcNoProgressIssue};
+use super::issue::Issue;
 use super::stage::{Stage, StageOutcome, TimingSink};
 
 /// Shared repair budget across every stage in one `QualityControlEngine::run_full` call —
@@ -31,7 +30,7 @@ impl RepairBudget {
     /// `Some(kind)` for the first bound that has already been exhausted (max_iterations checked
     /// before time_budget, matching the pre-#106 flat pipeline's check order), `None` if neither
     /// bound is configured or both still have room.
-    pub(crate) fn exhausted(&self, now_ms: &impl Fn() -> f64) -> Option<RepairLimitKind> {
+    pub(crate) fn exhausted(&self, now_ms: &(impl Fn() -> f64 + ?Sized)) -> Option<RepairLimitKind> {
         if let Some(max) = self.limits.max_iterations {
             if self.iterations_done >= max {
                 return Some(RepairLimitKind::MaxIterations);
@@ -82,8 +81,8 @@ impl<T: Tessellation> QualityControlEngine<T> {
         let mut map = HashMap::new();
         for stage in &self.stages {
             for rule in stage.rules() {
-                for (local_id, _) in rule.checks() {
-                    map.insert(format!("{}:{}", rule.id, local_id), rule.id.clone());
+                for local_id in rule.local_check_ids() {
+                    map.insert(format!("{}:{}", rule.id(), local_id), rule.id().to_string());
                 }
             }
         }
@@ -100,16 +99,16 @@ impl<T: Tessellation> QualityControlEngine<T> {
         preset_state: &PresetState,
         limits: RepairLimits,
         now_ms: impl Fn() -> f64,
-    ) -> (Vec<Issue>, GenerationTiming) {
+    ) -> (Vec<Box<dyn Issue>>, GenerationTiming) {
         let mut timing = GenerationTiming::default();
         let budget = self.run_repair_stages(maze, rng, preset_state, limits, &mut timing, &now_ms);
 
         let mut remaining = self.collect_final_report(maze, rng, &mut timing.per_check, &now_ms);
         if let Some(limit) = budget.limit_reached {
-            remaining.push(Issue::with_data(REPAIR_LIMIT_REACHED, IssueData::RepairLimitReached { limit }));
+            remaining.push(Box::new(RepairLimitReachedIssue::new(limit)));
         }
         if let Some(rule_ids) = budget.no_progress {
-            remaining.push(Issue::with_data(QC_NO_PROGRESS, IssueData::QcNoProgress { rule_ids }));
+            remaining.push(Box::new(QcNoProgressIssue::new(rule_ids)));
         }
         (remaining, timing)
     }
@@ -118,7 +117,7 @@ impl<T: Tessellation> QualityControlEngine<T> {
     /// problem instance). Replaces both the pre-#106 final-report pass inside `build_maze`
     /// (`run_report_timed`) and `build_analytics_snapshot`'s plain `run` call — issue #106
     /// unifies these into one code path with one semantics.
-    pub fn run_check_only(&self, maze: &Maze<T>, rng: &mut dyn RngCore, now_ms: impl Fn() -> f64) -> Vec<Issue> {
+    pub fn run_check_only(&self, maze: &Maze<T>, rng: &mut dyn RngCore, now_ms: impl Fn() -> f64) -> Vec<Box<dyn Issue>> {
         let mut timing_out = HashMap::new();
         self.collect_final_report(maze, rng, &mut timing_out, &now_ms)
     }
@@ -175,7 +174,7 @@ impl<T: Tessellation> QualityControlEngine<T> {
         rng: &mut dyn RngCore,
         timing_out: &mut HashMap<&'static str, TimingEntry>,
         now_ms: &impl Fn() -> f64,
-    ) -> Vec<Issue> {
+    ) -> Vec<Box<dyn Issue>> {
         let mut per_check: HashMap<&'static str, (f64, u32)> = HashMap::new();
         let mut issues = Vec::new();
         for stage in &self.stages {

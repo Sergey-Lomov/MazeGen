@@ -2,7 +2,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::Issue;
+use crate::quality_control::{Issue, InvalidLoopIssue};
 use super::cycle_check_core::{find_invalid_cycles, build_issue, tile_length};
 
 pub const MIN_LOOP_LENGTH_DEFAULT: u32 = 10;
@@ -12,10 +12,10 @@ pub struct MinLoopLengthCheck {
     pub min_loop_length: u32,
 }
 
-impl<T: Tessellation> Check<T> for MinLoopLengthCheck {
+impl<T: Tessellation> Check<T, InvalidLoopIssue> for MinLoopLengthCheck {
     fn check_type_id(&self) -> &'static str { "min_loop_length" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore) {
         // Silently skip on overflow (see `CycleSearchResult::TooManyCycles`) rather than
         // hang on a dense, heavily preset-connected graph (issue #22) — this check is
         // toggleable, so a maze that can't be analyzed here just doesn't get this check,
@@ -35,8 +35,6 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
-    use crate::quality_control::issue::INVALID_LOOP;
-    use crate::quality_control::issue_data::IssueData;
 
     const TEST_ID: &str = "min_loop_length";
 
@@ -60,12 +58,8 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, INVALID_LOOP);
+        assert_eq!(issues[0].invalid.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        match &issues[0].data {
-            Some(IssueData::InvalidLoops { invalid, .. }) => assert_eq!(invalid.len(), 1),
-            other => panic!("expected InvalidLoops, got {other:?}"),
-        }
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("threshold")),
             Some(&"10".to_string()),

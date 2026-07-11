@@ -70,7 +70,7 @@ It aborts and returns `TooManyCycles` once the running cycle count exceeds `MAX_
 
 ### Surfacing the overflow as an `Issue`
 
-`build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) computes `graph_analytics` first, then — if `cycle_analysis_overflowed` is true — pushes `Issue::new(CYCLE_ANALYSIS_OVERFLOWED)` directly into the issue list, after `QualityControlEngine` (or `issues_override`) has already run. This bypasses the QC engine entirely: unlike every other `IssueKind`, `CycleAnalysisOverflowed` has no `Check<T>` and no toggle — it surfaces unconditionally whenever the analytics computation itself overflows. See `quality_control.md` for the full `IssueKind` contract. On the web side this is just another entry in `IssuesBlock`/the analytics `FeatureCard`, resolved to `critical` severity via `issueRegistry.ts`.
+`build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) computes `graph_analytics` first, then — if `cycle_analysis_overflowed` is true — pushes `Box::new(CycleAnalysisOverflowedIssue::default())` directly into the issue list, after `QualityControlEngine` (or `issues_override`) has already run. This bypasses the QC engine entirely: unlike every other `IssueKind`, `CycleAnalysisOverflowed` has no `Check<T, I>` and no toggle — it surfaces unconditionally whenever the analytics computation itself overflows. See `quality_control.md` for the full `IssueKind` contract. On the web side this is just another entry in `IssuesBlock`/the analytics `FeatureCard`, resolved to `critical` severity via `issueRegistry.ts`.
 
 ## Computation Pipeline
 

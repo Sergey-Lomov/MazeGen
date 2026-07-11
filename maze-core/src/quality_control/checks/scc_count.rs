@@ -2,8 +2,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, EXCESSIVE_SCC_COUNT};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::{Issue, ExcessiveSccCountIssue};
 
 pub const MAX_SCC_COUNT_DEFAULT: u32 = 1;
 
@@ -12,20 +11,16 @@ pub struct SccCountCheck {
     pub max_scc_count: u32,
 }
 
-impl<T: Tessellation> Check<T> for SccCountCheck {
+impl<T: Tessellation> Check<T, ExcessiveSccCountIssue> for SccCountCheck {
     fn check_type_id(&self) -> &'static str { "scc_count" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<ExcessiveSccCountIssue>, _rng: &mut dyn RngCore) {
         let scc = maze.analysis.scc(&maze.graph);
         let count = scc.components.len() as u32;
         if count <= self.max_scc_count {
             return;
         }
-        let issue = Issue::with_data_from_check(
-            EXCESSIVE_SCC_COUNT,
-            IssueData::ExcessiveSccCount { max_scc_count: self.max_scc_count },
-            &self.instance_id,
-        )
+        let issue = ExcessiveSccCountIssue::new_from_check(&self.instance_id, self.max_scc_count)
             .with_detail(&self.instance_id, "max_scc_count", self.max_scc_count.to_string())
             .with_detail(&self.instance_id, "scc_count", count.to_string());
         issues.push(issue);
@@ -84,8 +79,7 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, EXCESSIVE_SCC_COUNT);
-        assert_eq!(issues[0].data, Some(IssueData::ExcessiveSccCount { max_scc_count: 1 }));
+        assert_eq!(issues[0].max_scc_count, 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("max_scc_count")),

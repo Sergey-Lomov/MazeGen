@@ -2,8 +2,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, MISSING_LOOPS};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::{Issue, MissingLoopsIssue};
 
 pub const MIN_LOOPS_DEFAULT: u32 = 1;
 
@@ -12,10 +11,10 @@ pub struct MinLoopsCountCheck {
     pub min_loops: u32,
 }
 
-impl<T: Tessellation> Check<T> for MinLoopsCountCheck {
+impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopsCountCheck {
     fn check_type_id(&self) -> &'static str { "min_loops_count" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingLoopsIssue>, _rng: &mut dyn RngCore) {
         // Uses the same independent-cycle count (Euler: E - V + C on the pure-cycle core) shown
         // to the user as the "Cycle count" analytics stat — not `find_deduped_simple_cycles`'s
         // raw simple-cycle enumeration, which is a different (usually much larger) metric and
@@ -30,7 +29,7 @@ impl<T: Tessellation> Check<T> for MinLoopsCountCheck {
         if missing == 0 {
             return;
         }
-        let issue = Issue::with_data_from_check(MISSING_LOOPS, IssueData::Missing { missing }, &self.instance_id)
+        let issue = MissingLoopsIssue::new_from_check(&self.instance_id, missing)
             .with_detail(&self.instance_id, "missing", missing.to_string());
         issues.push(issue);
     }
@@ -76,12 +75,8 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, MISSING_LOOPS);
+        assert_eq!(issues[0].missing, 2);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        match &issues[0].data {
-            Some(IssueData::Missing { missing }) => assert_eq!(*missing, 2),
-            other => panic!("expected Missing, got {other:?}"),
-        }
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
             Some(&"2".to_string()),
@@ -103,10 +98,7 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        match &issues[0].data {
-            Some(IssueData::Missing { missing }) => assert_eq!(*missing, 1),
-            other => panic!("expected Missing, got {other:?}"),
-        }
+        assert_eq!(issues[0].missing, 1);
     }
 
     #[test]

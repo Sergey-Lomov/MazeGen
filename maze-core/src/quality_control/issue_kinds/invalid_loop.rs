@@ -1,0 +1,273 @@
+use std::collections::{HashMap, HashSet};
+use crate::ids::EdgeId;
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, INVALID_LOOP};
+use super::canonical_cycle_key;
+
+/// Produced by any check that flags cycles invalid for a check-specific reason (currently
+/// `MinLoopLengthCheck`/`MaxLoopLengthCheck`; future checks may flag cycles invalid for other
+/// reasons and reuse this same kind). `all` holds every simple cycle found in the maze (valid and
+/// invalid alike), each as the set of base-Graph edges forming it — membership only, order
+/// carries no meaning, edge ids within one cycle never repeat. `invalid` is the subset of indices
+/// into `all` that the producing check(s) flagged (the ones a repair strategy must break).
+/// Keeping the valid cycles alongside the invalid ones lets a strategy avoid cutting an edge
+/// shared with a cycle it must not destroy, instead of only seeing the cycles it's supposed to
+/// break.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct InvalidLoopIssue {
+    meta: IssueMeta,
+    pub all: Vec<Vec<EdgeId>>,
+    pub invalid: Vec<usize>,
+    /// Per-cycle check provenance, keyed by `canonical_cycle_key` (not by index into `all`) —
+    /// indices are re-mapped on every merge, but a cycle's canonical key is stable across merges,
+    /// so this map never needs remapping. A cycle absent here was flagged by no check directly
+    /// tracked (shouldn't happen for entries in `invalid`, but the map is not required to cover
+    /// every index — absence means "no recorded source", not an error).
+    pub invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
+}
+
+impl InvalidLoopIssue {
+    pub fn new_from_check(
+        source_check: &str,
+        all: Vec<Vec<EdgeId>>,
+        invalid: Vec<usize>,
+        invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
+    ) -> Self {
+        Self { meta: IssueMeta::new_from_check(source_check), all, invalid, invalid_sources }
+    }
+
+    pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
+        self.meta = self.meta.with_detail(source_check, key, value);
+        self
+    }
+}
+
+impl IssueKindConst for InvalidLoopIssue {
+    const KIND: IssueKind = INVALID_LOOP;
+}
+
+impl Issue for InvalidLoopIssue {
+    fn kind(&self) -> IssueKind { Self::KIND }
+    fn meta(&self) -> &IssueMeta { &self.meta }
+    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
+    fn as_any(&self) -> &dyn std::any::Any { self }
+    crate::impl_issue_dyn_boilerplate!();
+}
+
+impl IssueMerge for InvalidLoopIssue {
+    /// Canonical merge, in three explicit steps so each step's invariant stays locally checkable
+    /// (normalize → dedup → remap), rather than one pass that conflates "is this the same cycle"
+    /// with "what's its new index" with "which indices are invalid". A cycle from `self`/`other`
+    /// that's identical as an edge-set (regardless of `Vec` order — cycles are sets of edges, not
+    /// sequences) is kept once in the merged `all`, so the same cycle found by two different
+    /// checks doesn't appear twice or end up with two different indices in `invalid`.
+    /// `invalid_sources` is keyed by the same canonical key, so unioning it needs no remap —
+    /// unlike `invalid`, which is index-based and must be remapped.
+    fn merge(&mut self, other: Self) {
+        for source in other.meta.source_checks() {
+            self.meta.push_source(source);
+        }
+        self.meta.merge_details(other.meta.details().clone());
+
+        // Step 1+2: dedup — build the merged `all`, mapping every old index (from both sides) to
+        // its new index in the merged list; identical cycles (by canonical_cycle_key) collapse
+        // onto the same new index.
+        let mut canonical_to_new_index: HashMap<Vec<EdgeId>, usize> = HashMap::new();
+        let mut merged_all: Vec<Vec<EdgeId>> = Vec::new();
+        let mut existing_old_to_new: Vec<usize> = Vec::with_capacity(self.all.len());
+        for cycle in self.all.iter() {
+            let key = canonical_cycle_key(cycle);
+            let new_index = *canonical_to_new_index.entry(key).or_insert_with(|| {
+                merged_all.push(cycle.clone());
+                merged_all.len() - 1
+            });
+            existing_old_to_new.push(new_index);
+        }
+        let mut incoming_old_to_new: Vec<usize> = Vec::with_capacity(other.all.len());
+        for cycle in other.all.into_iter() {
+            let key = canonical_cycle_key(&cycle);
+            let new_index = *canonical_to_new_index.entry(key).or_insert_with(|| {
+                merged_all.push(cycle);
+                merged_all.len() - 1
+            });
+            incoming_old_to_new.push(new_index);
+        }
+
+        // Step 3: remap — translate both `invalid` index lists through the old->new mapping built
+        // above, deduplicating (the same merged cycle may be invalid per both sides). Indexes via
+        // `.get()`, not `[]` — a well-behaved `Check` only ever puts indices into `invalid` that
+        // are valid for its own `all`, but that's a caller contract, not something this merge
+        // step can verify; an out-of-range index from a malformed future `Check` is dropped (with
+        // a debug-build signal) rather than panicking the whole repair pipeline.
+        let mut merged_invalid: Vec<usize> = Vec::new();
+        let mut seen_invalid: HashSet<usize> = HashSet::new();
+        for &old_idx in self.invalid.iter() {
+            let Some(&new_idx) = existing_old_to_new.get(old_idx) else {
+                debug_assert!(false, "InvalidLoopIssue::merge: invalid index {old_idx} out of range for self.all (len {})", existing_old_to_new.len());
+                continue;
+            };
+            if seen_invalid.insert(new_idx) {
+                merged_invalid.push(new_idx);
+            }
+        }
+        for &old_idx in other.invalid.iter() {
+            let Some(&new_idx) = incoming_old_to_new.get(old_idx) else {
+                debug_assert!(false, "InvalidLoopIssue::merge: invalid index {old_idx} out of range for other.all (len {})", incoming_old_to_new.len());
+                continue;
+            };
+            if seen_invalid.insert(new_idx) {
+                merged_invalid.push(new_idx);
+            }
+        }
+
+        // invalid_sources: keyed by canonical key, no remap needed — union directly,
+        // deduplicating per-check-id within each cycle's source list.
+        for (key, sources) in other.invalid_sources {
+            let entry = self.invalid_sources.entry(key).or_default();
+            for source in sources {
+                if !entry.contains(&source) {
+                    entry.push(source);
+                }
+            }
+        }
+
+        self.all = merged_all;
+        self.invalid = merged_invalid;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn issue(source_check: &str, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>) -> InvalidLoopIssue {
+        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
+        for &idx in &invalid {
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(source_check.to_string());
+        }
+        InvalidLoopIssue::new_from_check(source_check, all, invalid, invalid_sources)
+    }
+
+    #[test]
+    fn merge_keeps_each_source_checks_details_after_merge() {
+        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0])
+            .with_detail("min_loop_length", "threshold", "10".to_string());
+        let b = issue("max_loop_length", vec![vec![4, 5, 6]], vec![0])
+            .with_detail("max_loop_length", "threshold", "100".to_string());
+        a.merge(b);
+
+        assert_eq!(a.details().get("min_loop_length").and_then(|kv| kv.get("threshold")), Some(&"10".to_string()));
+        assert_eq!(a.details().get("max_loop_length").and_then(|kv| kv.get("threshold")), Some(&"100".to_string()));
+    }
+
+    #[test]
+    fn merge_disjoint_cycles_unions_all_and_invalid() {
+        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("unreachable_finish", vec![vec![4, 5, 6]], vec![0]);
+        a.merge(b);
+
+        assert_eq!(a.all.len(), 2, "disjoint cycles must not collapse");
+        assert_eq!(a.invalid.len(), 2, "both cycles are invalid, from different sources");
+        assert_eq!(a.source_checks(), vec!["missing_endpoints".to_string(), "unreachable_finish".to_string()]);
+    }
+
+    #[test]
+    fn merge_deduplicates_identical_cycle_found_by_both_sides() {
+        // Same cycle, edges listed in a different order — must collapse to one entry in `all`.
+        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("unreachable_finish", vec![vec![3, 1, 2]], vec![0]);
+        a.merge(b);
+
+        assert_eq!(a.all.len(), 1, "identical cycle (as an edge set) must not be duplicated");
+        assert_eq!(a.invalid, vec![0], "both sides' invalid index must collapse onto the same merged index");
+    }
+
+    #[test]
+    fn merge_keeps_valid_cycles_distinct_from_invalid_ones() {
+        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3], vec![7, 8, 9]], vec![0]); // second cycle valid
+        let b = issue("unreachable_finish", vec![vec![4, 5, 6]], vec![0]);
+        a.merge(b);
+
+        assert_eq!(a.all.len(), 3);
+        assert_eq!(a.invalid.len(), 2, "only the two flagged cycles are invalid; the valid one stays out of `invalid`");
+    }
+
+    #[test]
+    fn merge_source_checks_has_no_duplicates() {
+        let mut a = issue("missing_endpoints", vec![], vec![]);
+        let b = issue("missing_endpoints", vec![], vec![]);
+        a.merge(b);
+        assert_eq!(a.source_checks(), vec!["missing_endpoints".to_string()], "merging the same source twice must not duplicate it");
+    }
+
+    #[test]
+    fn merge_invalid_sources_unions_check_ids_for_same_cycle() {
+        // Same cycle (different edge order), flagged invalid by two different checks — both
+        // check ids must end up attributed to it, not just one side's.
+        let mut a = issue("min_loop_length", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("max_loop_length", vec![vec![3, 1, 2]], vec![0]);
+        a.merge(b);
+
+        let key = canonical_cycle_key(&[1, 2, 3]);
+        let sources = a.invalid_sources.get(&key).expect("merged cycle must have recorded sources");
+        assert_eq!(sources.len(), 2);
+        assert!(sources.contains(&"min_loop_length".to_string()));
+        assert!(sources.contains(&"max_loop_length".to_string()));
+    }
+
+    #[test]
+    fn merge_invalid_sources_no_duplicate_for_repeated_check() {
+        let mut a = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        a.merge(b);
+
+        let key = canonical_cycle_key(&[1, 2, 3]);
+        assert_eq!(a.invalid_sources.get(&key), Some(&vec!["missing_endpoints".to_string()]));
+    }
+
+    #[test]
+    fn merge_invalid_sources_associative_regardless_of_merge_order() {
+        let a = issue("missing_endpoints", vec![vec![1, 2, 3]], vec![0]);
+        let b = issue("unreachable_finish", vec![vec![1, 2, 3]], vec![0]);
+        let c = issue("min_loops_count", vec![vec![1, 2, 3]], vec![0]);
+
+        let mut left_first = a.clone();
+        left_first.merge(b.clone());
+        left_first.merge(c.clone());
+
+        let mut right_first = b.clone();
+        right_first.merge(c.clone());
+        right_first.merge(a.clone());
+
+        let key = canonical_cycle_key(&[1, 2, 3]);
+        let extract_sorted = |issue: &InvalidLoopIssue| {
+            let mut sources = issue.invalid_sources.get(&key).cloned().unwrap_or_default();
+            sources.sort_unstable();
+            sources
+        };
+        assert_eq!(extract_sorted(&left_first), extract_sorted(&right_first));
+        assert_eq!(extract_sorted(&left_first), vec!["min_loops_count".to_string(), "missing_endpoints".to_string(), "unreachable_finish".to_string()]);
+    }
+
+    #[test]
+    #[cfg_attr(debug_assertions, should_panic(expected = "out of range"))]
+    fn merge_drops_out_of_range_invalid_index_instead_of_panicking() {
+        // A malformed `Check` impl could put an index into `invalid` that's out of range for its
+        // own `all`. The remap step uses `.get()`, not `[]`, so the actual (release-build)
+        // behavior is "drop the bad index, keep going" — never an array-index panic. In a debug
+        // build the `debug_assert!` deliberately still fires (loud signal for whoever's
+        // developing a new `Check` and got this wrong); this test asserts on that debug-only
+        // panic message rather than disabling debug_assertions to exercise the release path,
+        // since `cargo test` always builds with them on.
+        let mut a = InvalidLoopIssue::new_from_check(
+            "missing_endpoints",
+            vec![vec![1, 2, 3]],
+            vec![99],
+            HashMap::new(),
+        );
+        let b = issue("unreachable_finish", vec![vec![4, 5, 6]], vec![0]);
+        a.merge(b);
+
+        assert_eq!(a.all.len(), 2, "both cycles still end up in the merged all");
+        assert_eq!(a.invalid, vec![1], "the out-of-range index is dropped; only check_b's valid index survives");
+    }
+}

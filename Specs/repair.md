@@ -48,12 +48,17 @@ pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
 
 ### RepairStrategy trait
 
+See GitHub issue #113. `RepairStrategy<T>` is now `RepairStrategy<T, I: Issue>` — the concrete
+`Issue` type it consumes is a type parameter, not a runtime `handles()` value compared at the
+call site. `handles()` is gone entirely: a rule's checks, its strategy, and (through
+`ErasedRepairStrategy<T>` — see below) nested-strategy slot validation all agree on `I` by
+construction, so the old `debug_assert_eq!(issue.kind, self.handles())` pattern (see the removed
+"Debug contract" section) is now a compile error if violated, not a debug-only runtime check.
+
 ```rust
-pub trait RepairStrategy<T: Tessellation> {
+pub trait RepairStrategy<T: Tessellation, I: Issue> {
     /// Strategy id — matches `maze-wasm`'s `StrategyConfig.id` (e.g. `"invalid_loop_random"`).
     fn strategy_id(&self) -> &'static str;
-    /// The `IssueKind` this strategy itself expects in `issue.kind` when `apply()` is called.
-    fn handles(&self) -> IssueKind;
     fn params(&self) -> &'static [StrategyParam] { &[] }
     /// Whether this strategy is experimental (results/performance may be unpredictable).
     /// Surfaced to the UI as a warning, not enforced by core. Default `false`.
@@ -63,7 +68,7 @@ pub trait RepairStrategy<T: Tessellation> {
     fn expected_nested(&self) -> &'static [NestedSlot] { &[] }
     fn apply(
         &self,
-        issue: &Issue,
+        issue: &I,
         maze: &mut Maze<T>,
         snapshots: &mut SnapshotStack,
         rng: &mut dyn RngCore,
@@ -72,11 +77,37 @@ pub trait RepairStrategy<T: Tessellation> {
         nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult;
 }
+
+/// Type-erased view of `RepairStrategy<T, I>` for the one place genuine cross-`I` heterogeneity
+/// is unavoidable: nested-strategy slots (see "Nested strategies" below), where a parent
+/// strategy's own `I` and its nested strategy's `I` are independent. **Not a blanket impl** —
+/// `impl<T, I, S: RepairStrategy<T, I>> ErasedRepairStrategy<T> for S` does not compile (the
+/// compiler cannot prove `S` implements `RepairStrategy<T, I>` for only one `I`). Every concrete
+/// strategy gets its own `impl ErasedRepairStrategy<T> for ConcreteStrategy`, generated once via
+/// `impl_erased_repair_strategy!(ConcreteStrategy, ConcreteIssueTy)` (invoked once per strategy,
+/// right after its own `impl RepairStrategy<T, ConcreteIssueTy>` block) rather than hand-written.
+pub trait ErasedRepairStrategy<T: Tessellation> {
+    fn strategy_id(&self) -> &'static str;
+    fn handles(&self) -> IssueKind;
+    fn params(&self) -> &'static [StrategyParam];
+    fn is_experimental(&self) -> bool;
+    fn expected_nested(&self) -> &'static [NestedSlot];
+    fn apply(
+        &self, issue: &dyn Issue, maze: &mut Maze<T>, snapshots: &mut SnapshotStack,
+        rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult;
+}
 ```
+
+`handles()` still exists, but only on `ErasedRepairStrategy<T>` — the erased boundary is exactly
+where a runtime `IssueKind` comparison is still needed (`maze-runner`'s `build_nested`, matching a
+nested `StrategyConfig` against its parent's declared slot `kind`). Everywhere `I` is statically
+known (a `Rule<T, I>`'s own checks and strategy), there is nothing to compare at runtime.
 
 `MissingRegionsStrategy` is the only strategy currently marked experimental (`is_experimental() -> true`) — its region reuse/growth heuristics are new (GitHub issue #59) and less predictable in result quality and performance than the other built-in strategies.
 
-`snapshots: &mut SnapshotStack` lets a strategy push/pop `(Graph, MazeMeta)` rollback points around a sequence of mutating actions it wants to be able to undo (see `MissingRegionsStrategy`'s reuse/growth attempts) — opt-in, most strategies never call it. One `SnapshotStack` is constructed per `apply()` call by `Rule::dispatch_repair` (see "Rule, Stage, and the unified QualityControlEngine" below), threaded through unchanged into any nested `apply()` call (see below) — nested calls never get their own stack.
+`snapshots: &mut SnapshotStack` lets a strategy push/pop `(Graph, MazeMeta)` rollback points around a sequence of mutating actions it wants to be able to undo (see `MissingRegionsStrategy`'s reuse/growth attempts) — opt-in, most strategies never call it. One `SnapshotStack` is constructed per `apply()` call by `Rule::dispatch_repair_typed` (see "Rule, Stage, and the unified QualityControlEngine" below), threaded through unchanged into any nested `apply()` call (see below) — nested calls never get their own stack.
 
 `nested: &[NestedStrategyConfig<T>]` carries this rule's configured nested strategies (empty for every strategy without nested slots — the overwhelming majority, which simply ignore the parameter). See "Nested strategies" below.
 
@@ -90,7 +121,7 @@ pub trait RepairStrategy<T: Tessellation> {
 - Must not depend on external or global state.
 - May read `maze.analysis` but must not write to it.
 - **Idempotency**: if the relevant meta field is already set, return `Fixed` immediately without modifying state or consuming `rng`. This ensures safe re-invocation.
-- May read `issue.data` (see `quality_control.md`) — findings the matching `Check` already computed during detection. Whether `data` is optional (cheap to recompute, so `None` falls back gracefully) or effectively required (the data *is* the expensive result, with no other channel to get it) is a **per-`IssueKind` decision**, documented by each strategy for its own kind — there is no blanket rule across all strategies.
+- May read `issue`'s own fields (see `quality_control.md`) — findings the matching `Check<T, I>` already computed during detection. Whether a given field is effectively required (the data *is* the expensive result, with no other channel to get it) is a **per-concrete-type decision**, documented by each strategy for its own `I` — there is no blanket rule across all strategies. Unlike the pre-#113 `Option<IssueData>`, a concrete type's fields are never optional at the type level — a strategy either receives the fields it needs (by construction, since `I` is fixed) or the field itself models absence (e.g. an empty `Vec`).
 
 ### Nested strategies
 
@@ -110,14 +141,16 @@ pub struct NestedSlot {
 }
 
 /// One nested strategy assignment — same shape as a `Rule`'s own strategy binding, minus the
-/// rule id/kind (a nested call has no independent QC rule; its `Issue` is synthesized by the
-/// parent, never derived from a check).
+/// rule id (a nested call has no independent QC rule; its `Issue` is synthesized by the parent,
+/// never derived from a check). Erased (`Box<dyn ErasedRepairStrategy<T>>`), not `Box<dyn
+/// RepairStrategy<T, I>>` — a nested strategy's `I` is independent of its parent's, see
+/// `ErasedRepairStrategy`'s doc comment above.
 pub struct NestedStrategyConfig<T: Tessellation> {
     /// Which of the parent's `expected_nested()` slots this fills — the full slot descriptor,
     /// not just its id. Points into the `&'static [NestedSlot]` the parent's
     /// `expected_nested()` returned — never owned/cloned.
     pub slot: &'static NestedSlot,
-    pub strategy: Box<dyn RepairStrategy<T>>,
+    pub strategy: Box<dyn ErasedRepairStrategy<T>>,
     pub param_overrides: HashMap<String, String>,
     /// Recursive — a nested strategy can itself have nested strategies.
     pub nested: Vec<NestedStrategyConfig<T>>,
@@ -126,11 +159,11 @@ pub struct NestedStrategyConfig<T: Tessellation> {
 
 **`slot_id` is part of a strategy's public configuration API**, not an internal detail — `StrategyConfig.slot_id` (config JSON, `maze-runner`), `maze-wasm`'s `NestedSlotDto.slot_id`, and the web store's `path: string[]` addressing all key off this exact string. Once a strategy ships with a given `slot_id`, renaming it is a breaking config-format change (same stability bar as `strategy_id()`/`IssueKind::as_str()`) — never renamed casually. Within `maze-core`, always reference it via the owning strategy's own exported constant, never a repeated string literal. `slot_id` distinguishes multiple slots that share the same `kind` but play different roles for the parent (e.g. a future "direct passage" slot and a separate "teleport" slot, both `REGION_NEEDS_EXPANSION`, not interchangeable alternatives of one "pick any" slot).
 
-**Dispatch**: `Rule::dispatch_repair` always passes its own configured `nested` into `apply()`, for every strategy, whether or not it declares any `expected_nested()` slots — no per-strategy special-casing; a strategy that has nothing to do with nesting simply never reads the parameter.
+**Dispatch**: `Rule::dispatch_repair_typed` always passes its own configured `nested` into `apply()`, for every strategy, whether or not it declares any `expected_nested()` slots — no per-strategy special-casing; a strategy that has nothing to do with nesting simply never reads the parameter.
 
-**Building `nested` (`maze-runner`)**: `maze-runner/src/runner.rs::build_nested` resolves a `StrategyConfig`'s `nested: Vec<StrategyConfig>` against the parent's `expected_nested()` — purely generically over `expected_nested()`/`handles()`, no strategy id ever compared in this validation logic (only the unavoidable id→struct `match` in `build_strategy` mentions ids at all). For each nested `StrategyConfig`: `slot_id` must be present and match one of the parent's declared slots; the resolved strategy's `handles()` must equal that slot's `kind`; and, once every entry is resolved, each slot's filled count must fall within `[slot.min, slot.max]`. A slot's own nested strategies are validated the same way, recursively — depth is unbounded in the data model (a real second-level nested-capable strategy doesn't exist yet, but nothing stops one).
+**Building `nested` (`maze-runner`)**: `maze-runner/src/runner.rs::build_nested` resolves a `StrategyConfig`'s `nested: Vec<StrategyConfig>` against the parent's `expected_nested()` — purely generically over `expected_nested()`/`handles()` on the erased `dyn ErasedRepairStrategy<T>` boundary, no strategy id ever compared in this validation logic (only the unavoidable id→struct `match` in `build_strategy_erased` mentions ids at all). For each nested `StrategyConfig`: `slot_id` must be present and match one of the parent's declared slots; the resolved strategy's `handles()` must equal that slot's `kind`; and, once every entry is resolved, each slot's filled count must fall within `[slot.min, slot.max]`. A slot's own nested strategies are validated the same way, recursively — depth is unbounded in the data model (a real second-level nested-capable strategy doesn't exist yet, but nothing stops one).
 
-**Synthesized issues never join the shared issue pool.** A parent strategy that delegates to a nested one builds its own `Issue` for the nested call (e.g. `ReduceSccCountStrategy` builds a `RegionsNeedingExpansion` issue naming the regions it picked) — this issue exists only as a local variable inside the parent's `apply()`, is passed straight into the nested strategy's `apply()`, and is discarded afterward. It is never added to `remaining_issues`, never surfaces in `maze-wasm`'s `IssueDto` list, and never reaches the web UI. The user only ever sees the original top-level issue (e.g. `EXCESSIVE_SCC_COUNT`) that the parent strategy itself was dispatched for.
+**Synthesized issues never join the shared issue pool.** A parent strategy that delegates to a nested one builds its own concrete `Issue` value for the nested call (e.g. `ReduceSccCountStrategy` builds a `RegionNeedsExpansionIssue` naming the regions it picked, then passes `&synthetic as &dyn Issue` into the nested `ErasedRepairStrategy::apply` call) — this issue exists only as a local variable inside the parent's `apply()` and is discarded afterward. It is never added to `remaining_issues`, never surfaces in `maze-wasm`'s `IssueDto` list, and never reaches the web UI. The user only ever sees the original top-level issue (e.g. `EXCESSIVE_SCC_COUNT`) that the parent strategy itself was dispatched for.
 
 **Rollback stays the mutating strategy's own responsibility.** A nested call does not introduce a second snapshot mechanism or double bookkeeping — the same `&mut SnapshotStack` passed into the parent's `apply()` is passed straight through into the nested call, unchanged. If the nested strategy mutates the graph and then returns `Failed`, the parent does not roll those mutations back on the nested strategy's behalf; that is exactly the same contract every `RepairStrategy` already has today (e.g. `ExpandRegionPassageStrategy` does not snapshot around its own `try_add_bidirectional_edge` calls) — nesting changes nothing about who owns rollback.
 
@@ -148,7 +181,7 @@ pub struct WeightedCandidate<'a, T: Tessellation> {
 }
 
 pub fn dispatch_weighted<T: Tessellation>(
-    issue: &Issue,
+    issue: &dyn Issue,
     maze: &mut Maze<T>,
     snapshots: &mut SnapshotStack,
     rng: &mut dyn RngCore,
@@ -156,6 +189,10 @@ pub fn dispatch_weighted<T: Tessellation>(
     candidates: &[WeightedCandidate<T>],
 ) -> RepairResult;
 ```
+
+`dispatch_weighted` operates entirely at the erased boundary — `issue: &dyn Issue`, not a
+concrete `I`, since `NestedStrategyConfig`'s candidates are `Box<dyn ErasedRepairStrategy<T>>`
+whose own `I` may differ from the caller's.
 
 - **Who resolves weights**: `dispatch_weighted` itself carries no convention for how a weight is
   derived — it only consumes already-resolved `f64` weights via `WeightedCandidate`. Deriving a
@@ -197,23 +234,23 @@ GitHub issues #98–#101 (splitting `InvalidLoops`/`RegionsNeedingExpansion`/`In
 `TeleportProximityPairs` into one `Issue` per element) — not to fragment dispatch inside a
 strategy that receives an already-bundled issue.
 
-### Debug contract
-
-Every `apply()` should start with `debug_assert_eq!(issue.kind, self.handles())` — a caller-side invariant (the `Issue` passed in must match what the strategy declared it handles), checked defensively in debug builds. Not retroactively added to every pre-existing strategy, but expected of new code (see `ReduceSccCountStrategy` for the pattern) and enforced going forward.
-
 ### Rule, Stage, and the unified QualityControlEngine
 
-See GitHub issue #106. `QualityControlEngine` is the **single orchestrator** for the whole
-check+repair process (or check-only, when no repair is requested) — there is no separate
-`RepairEngine` anymore. Control mirrors storage: `QualityControlEngine` owns an ordered list of
-`Stage`s; each `Stage` owns and drives its own `Rule`s; each `Rule` owns and drives its own checks
-plus its one strategy. Each level calls into the next — `Stage::run_repair` calls
-`Rule::run_checks`/`Rule::dispatch_repair`, `QualityControlEngine::run_full` calls
-`Stage::run_repair` — rather than a flat loop reaching into all three levels at once, which is
-what the pre-#106 `QualityControlEngine`+`RepairEngine`+`pipeline.rs` split did (a flat
-`checks: Vec<Box<dyn Check<T>>>` on `QualityControlEngine`, a separate `QcRule`/`RepairStage`
-config-only hierarchy on `RepairEngine`, re-matched every iteration via a `check_id_to_rule`
-`HashMap` built in `pipeline.rs`).
+See GitHub issue #106 (Stage/Rule ownership) and GitHub issue #113 (`Rule<T, I>` typing).
+`QualityControlEngine` is the **single orchestrator** for the whole check+repair process (or
+check-only, when no repair is requested) — there is no separate `RepairEngine` anymore. Control
+mirrors storage: `QualityControlEngine` owns an ordered list of `Stage<T>`s; each `Stage` owns
+`Vec<Box<dyn RuleTrait<T>>>` (erased — every concrete `Rule<T, I>` implements `RuleTrait<T>`,
+letting a `Stage` group rules of different `I` together); each concrete `Rule<T, I>` owns and
+drives its own checks plus its one strategy, all fixed to the same `I`. Each level calls into the
+next — `Stage::run_repair` calls `RuleTrait::run_checks`/`RuleTrait::dispatch_repair` (the erased
+entry points; internally these delegate to `Rule<T, I>`'s own `run_checks_typed`/
+`dispatch_repair_typed`), `QualityControlEngine::run_full` calls `Stage::run_repair` — rather than
+a flat loop reaching into all three levels at once, which is what the pre-#106
+`QualityControlEngine`+`RepairEngine`+`pipeline.rs` split did (a flat `checks: Vec<Box<dyn
+Check<T>>>` on `QualityControlEngine`, a separate `QcRule`/`RepairStage` config-only hierarchy on
+`RepairEngine`, re-matched every iteration via a `check_id_to_rule` `HashMap` built in
+`pipeline.rs`).
 
 **Why there is no separate `RepairEngine` type**: in this model repair is never an independent
 operation over an arbitrary issue set — it always happens in the context of one `Rule`, which
@@ -226,64 +263,85 @@ of its scope.
 
 ```rust
 /// A user-defined QC rule: owns its own checks (each with a `local_id`, unique within this
-/// rule) and, optionally, one repair strategy. `None` strategy = "no_fix" — the rule's checks
-/// still run and merge for attribution, but nothing is dispatched to fix what they find.
-pub struct Rule<T: Tessellation> {
+/// rule) and, optionally, one repair strategy, all producing/consuming the same concrete `I`.
+/// `None` strategy = "no_fix" — the rule's checks still run and merge for attribution, but
+/// nothing is dispatched to fix what they find. No `kind: IssueKind` field — `I` fixes it at
+/// the type level (see `IssueKindConst`), eliminating the pre-#113 possibility of a `Rule`
+/// whose checks disagree with a separately-supplied `kind`.
+pub struct Rule<T: Tessellation, I: Issue + IssueMerge> {
     pub id: String,
-    pub kind: IssueKind,
-    checks: Vec<(String, Box<dyn Check<T>>)>,
-    strategy: Option<RuleStrategy<T>>, // strategy + param_overrides + nested, private
+    checks: Vec<(String, Box<dyn Check<T, I>>)>,
+    strategy: Option<RuleStrategy<T, I>>, // strategy + param_overrides + nested, private
 }
 
-impl<T: Tessellation> Rule<T> {
+impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
     pub fn new(
-        id: String, kind: IssueKind,
-        checks: Vec<(String, Box<dyn Check<T>>)>,
-        strategy: Option<Box<dyn RepairStrategy<T>>>,
+        id: String,
+        checks: Vec<(String, Box<dyn Check<T, I>>)>,
+        strategy: Option<Box<dyn RepairStrategy<T, I>>>,
         param_overrides: HashMap<String, String>,
         nested: Vec<NestedStrategyConfig<T>>,
     ) -> Self;
 
-    /// `(local_id, &dyn Check<T>)` pairs, in configured order — the only way anything outside
+    /// `(local_id, &dyn Check<T, I>)` pairs, in configured order — the only way anything outside
     /// this module observes this rule's checks. Composite-id construction (`{rule_id}:{local_id}`,
     /// GitHub issue #60) is NOT this type's concern — it's a DTO-protocol detail, built entirely
     /// by `QualityControlEngine::check_id_to_rule` (the one place in core that knows the format).
-    pub fn checks(&self) -> impl Iterator<Item = (&str, &dyn Check<T>)>;
+    pub fn checks(&self) -> impl Iterator<Item = (&str, &dyn Check<T, I>)>;
 
     pub fn has_strategy(&self) -> bool;
 
     /// Runs every check in this rule via `Check::repair_check`, folding all raw issues into at
-    /// most one merged `Issue` via `merge_issue` (moved here from `pipeline.rs` — see "Pipeline"
-    /// below) — this is where rule-level issue merging naturally lives now, since a rule owns
-    /// its own check dispatch. `None` if no check in this rule found anything this call.
-    pub fn run_checks(
+    /// most one merged `I` via `IssueMerge::merge` (moved here from `pipeline.rs` — see
+    /// "Pipeline" below) — this is where rule-level issue merging naturally lives now, since a
+    /// rule owns its own check dispatch. `None` if no check in this rule found anything this call.
+    pub fn run_checks_typed(
         &self, maze: &Maze<T>, rng: &mut dyn RngCore,
-        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64,
-    ) -> Option<Issue>;
+        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64,
+    ) -> Option<I>;
 
-    /// Runs every check via `Check::report_check` instead — one `Issue` per flagged problem
+    /// Runs every check via `Check::report_check` instead — one `I` per flagged problem
     /// instance, no merge (see GitHub issue #102). Used by both the final `build_maze` report and
     /// `QualityControlEngine::run_check_only`.
-    pub fn report_checks(
+    pub fn report_checks_typed(
         &self, maze: &Maze<T>, rng: &mut dyn RngCore,
-        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64,
-    ) -> Vec<Issue>;
+        timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64,
+    ) -> Vec<I>;
 
-    /// Dispatches this rule's own strategy against `issue` (already merged by `run_checks`) —
-    /// builds `StrategyParams` and calls `apply` itself, no separate engine involved. `None` if
-    /// this rule has no registered strategy.
-    pub fn dispatch_repair(
-        &self, issue: &Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore,
+    /// Dispatches this rule's own strategy against `issue` (already merged by
+    /// `run_checks_typed`) — builds `StrategyParams` and calls `apply` itself, no separate engine
+    /// involved. `None` if this rule has no registered strategy.
+    pub fn dispatch_repair_typed(
+        &self, issue: &I, maze: &mut Maze<T>, rng: &mut dyn RngCore,
         preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: impl Fn() -> f64,
+        now_ms: &dyn Fn() -> f64,
     ) -> Option<RepairResult>;
+}
+
+/// Type-erased view of `Rule<T, I>` for the one place genuine cross-`I` heterogeneity is
+/// unavoidable: `Stage.rules` (a `Stage` deliberately groups rules of different `I` together).
+/// `Box<dyn Issue>`/`&dyn Issue` cross this boundary; `Stage` never mixes an `Issue` from one
+/// rule into another rule's `dispatch_repair` call — `dispatch_repair`'s own doc comment states
+/// this as the caller invariant its internal downcast (`expect()`, not `Result`) relies on.
+pub trait RuleTrait<T: Tessellation> {
+    fn id(&self) -> &str;
+    fn kind(&self) -> IssueKind;   // I::KIND, object-safe mirror for erased callers
+    fn local_check_ids(&self) -> Vec<&str>;
+    fn has_strategy(&self) -> bool;
+    fn run_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<Box<dyn Issue>>;
+    fn report_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Vec<Box<dyn Issue>>;
+    fn dispatch_repair(&self, issue: &dyn Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<RepairResult>;
 }
 ```
 
-`kind` is the same caller-supplied, caller-trusted invariant it always was — core never verifies
-that every check in a `Rule` actually produces `kind`; that validation happens entirely on the
-caller side (`maze-runner/src/runner.rs::build_qc_and_repair`, `"checks in rule {id} produce
-different issue kinds"`) before a `Rule` is ever constructed.
+There is no `kind: IssueKind` field on `Rule<T, I>` to independently agree with anymore — the
+pre-#113 caller-trusted invariant ("every check in a `Rule` actually produces `kind`", validated
+by `maze-runner/src/runner.rs::build_qc_and_repair`'s `"checks in rule {id} produce different
+issue kinds"` check) is now a type error at construction: a `Box<dyn Check<T, I>>` for the wrong
+concrete type simply cannot be pushed into a `Vec<(String, Box<dyn Check<T, I>>)>`.
+`maze-runner`'s factory (`build_rule_for!` macro, one arm per concrete `I`) still runs a runtime
+check — but only for turning an untyped `type_id: &str` from JSON into a compile-time-known `I`
+choice (a config-parsing concern, not something `Rule<T, I>` itself needs to verify).
 
 ```rust
 /// Bundles the timing accumulators `Stage::run_repair` threads through one fixpoint loop —
@@ -303,16 +361,18 @@ pub(crate) struct TimingSink<'a> {
 /// A user-defined, named, ordered group of `Rule`s — drives its own fixpoint repair loop over
 /// only its own rules' checks (stage-scoped QC — the pre-#106 stage-agnostic pass, which ran
 /// every check across every stage on every iteration regardless of which stage was active, is
-/// gone). See GitHub issue #65 for the original stage concept.
+/// gone). See GitHub issue #65 for the original stage concept, GitHub issue #113 for why `rules`
+/// is `Box<dyn RuleTrait<T>>` (erased) rather than `Rule<T>` (a `Stage` deliberately groups rules
+/// of different concrete `Issue` types together).
 pub struct Stage<T: Tessellation> {
     pub id: String,
     pub name: String,
-    rules: Vec<Rule<T>>,
+    rules: Vec<Box<dyn RuleTrait<T>>>,
 }
 
 impl<T: Tessellation> Stage<T> {
-    pub fn new(id: String, name: String, rules: Vec<Rule<T>>) -> Self;
-    pub fn rules(&self) -> &[Rule<T>];
+    pub fn new(id: String, name: String, rules: Vec<Box<dyn RuleTrait<T>>>) -> Self;
+    pub fn rules(&self) -> &[Box<dyn RuleTrait<T>>];
 
     /// Drives this stage's own fixpoint repair loop until convergence (no active issues),
     /// no-progress (same active rule/issue set twice in a row), or the shared `budget` (see
@@ -326,11 +386,11 @@ impl<T: Tessellation> Stage<T> {
         now_ms: impl Fn() -> f64,
     ) -> StageOutcome;
 
-    /// One report pass over every rule in this stage (`Rule::report_checks` semantics).
+    /// One report pass over every rule in this stage (`RuleTrait::report_checks` semantics).
     pub(crate) fn run_report(
         &self, maze: &Maze<T>, rng: &mut dyn RngCore,
         timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: impl Fn() -> f64,
-    ) -> Vec<Issue>;
+    ) -> Vec<Box<dyn Issue>>;
 }
 
 pub(crate) enum StageOutcome {
@@ -373,14 +433,14 @@ impl<T: Tessellation> QualityControlEngine<T> {
     pub fn run_full(
         &self, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState,
         limits: RepairLimits, now_ms: impl Fn() -> f64,
-    ) -> (Vec<Issue>, GenerationTiming);
+    ) -> (Vec<Box<dyn Issue>>, GenerationTiming);
 
-    /// Check-only mode — no repair, `report_check` semantics everywhere (one `Issue` per flagged
+    /// Check-only mode — no repair, `report_check` semantics everywhere (one issue per flagged
     /// problem instance). Replaces both the pre-#106 final-report pass inside `build_maze` and
     /// `build_analytics_snapshot`'s own QC-only call — issue #106 unifies these into one code
     /// path with one semantics (a deliberate behavior change for the analytics caller, which
     /// previously used `repair_check`-batched semantics — see GitHub issue #106's discussion).
-    pub fn run_check_only(&self, maze: &Maze<T>, rng: &mut dyn RngCore, now_ms: impl Fn() -> f64) -> Vec<Issue>;
+    pub fn run_check_only(&self, maze: &Maze<T>, rng: &mut dyn RngCore, now_ms: impl Fn() -> f64) -> Vec<Box<dyn Issue>>;
 }
 ```
 
@@ -453,11 +513,11 @@ Behavior per case:
 
 ### InvalidLoopRandomStrategy
 
-Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producing check (`MinLoopLengthCheck`: shorter than a threshold; `MaxLoopLengthCheck`: longer than a threshold; future checks may flag cycles invalid for other reasons) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters. The strategy itself is agnostic to *why* a cycle was flagged invalid — it only consumes `IssueData::InvalidLoops`.
+Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producing check (`MinLoopLengthCheck`: shorter than a threshold; `MaxLoopLengthCheck`: longer than a threshold; future checks may flag cycles invalid for other reasons) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters. The strategy itself is agnostic to *why* a cycle was flagged invalid — it only consumes `InvalidLoopIssue`.
 
-**`issue.data` is mandatory for this kind**, not an optional optimization: the producing check already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply. This is a per-kind decision (see `quality_control.md`), not a general rule for all strategies.
+`InvalidLoopIssue`'s fields are always populated (not optional at the type level, unlike the pre-#113 `Option<IssueData>`) — the producing check already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply.
 
-- If `issue.data` is `Some(IssueData::InvalidLoops { all, invalid })`: cuts the cycles at indices `invalid` into `all`. An empty `invalid` is valid — nothing to break, returns `Fixed` immediately.
+- `issue: &InvalidLoopIssue` gives `all`/`invalid` directly: cuts the cycles at indices `invalid` into `all`. An empty `invalid` is valid — nothing to break, returns `Fixed` immediately.
 - If `data` is missing or the wrong variant: this is a malformed call (should never happen in a normal pipeline run, where the check always attaches data) — returns `Failed`, not "already fixed".
 - For each cycle: filters candidates to edges still present in the graph (`Graph::edge(id).is_some()` — an earlier cut in the same `apply` may have already broken a cycle sharing an edge with this one) **and not in `preset_state.preset_edges`** — preset Passage/OneWay connections are never removed, filtered out upfront so the random pick never wastes a sample on a protected edge.
 - Picks one random survivor from the filtered candidates and removes it via `try_remove_edge` (which re-checks `preset_state` as a final guard) plus its reverse (`Graph::edge_between(to, from)`, also via `try_remove_edge`), if any. If `try_remove_edge` ever refuses (defensive — shouldn't happen given the upfront filter), the candidate is dropped and another is picked at random; this repeats until either a cut succeeds or no candidates remain for that cycle.
@@ -468,7 +528,7 @@ Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producin
 
 ### InvalidLoopScoredStrategy
 
-Handles `INVALID_LOOP`, same mandatory-`issue.data` contract as `InvalidLoopRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (each `Rule` binds exactly one strategy), not a replacement.
+`RepairStrategy<T, InvalidLoopIssue>`, same field-shape contract as `InvalidLoopRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (each `Rule` binds exactly one strategy), not a replacement.
 
 Instead of picking a random edge from each invalid cycle, scores every still-present, non-preset-protected candidate edge in the cycle being cut and picks the highest-scoring one (ties broken via `rng`). The goal: bias cuts toward edges that simultaneously break several invalid loops at once (fewer total cuts needed to clear the issue) while avoiding edges that would also break a cycle the maze is meant to keep.
 
@@ -498,7 +558,7 @@ Same candidate filtering (existence + preset-protection), same cut mechanics (`t
 
 Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #51 (passage mode) and issue #88 (`one_way` connection mode). Merges each flagged undersized SCC region into a neighboring region, via either a full bidirectional passage or a pair of one-way edges (`connection_mode`), picked by **geometric adjacency** (`field.neighbors`) — not graph adjacency, since two regions can be neighbors with no existing edge between any of their cell pairs at all.
 
-**`issue.data` is mandatory for this kind**: `invalid` (which `maze.analysis.scc(&maze.graph).components` indices are undersized) is the producing check's result — there is no other channel to learn it.
+`invalid` on `RegionNeedsExpansionIssue` (which `maze.analysis.scc(&maze.graph).components` indices are undersized) is the producing check's result — there is no other channel to learn it.
 
 **Parameters:**
 
@@ -508,7 +568,7 @@ Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #51 (passage mode) and iss
 | `connection_mode` | Enum | `passage` | `passage`, `one_way` | How to bridge the region into its chosen neighbor |
 | `prefer_partially_connected` | Bool | `true` | — | Prefer a neighbor that already has a one-way edge to/from the flagged region over one with no connection at all |
 
-- If `issue.data` is missing or the wrong variant: returns `Failed` (malformed call, not "already fixed").
+
 - If `invalid` is empty: returns `Fixed` immediately — nothing to expand.
 - Processes each flagged region index from `invalid` in turn. For a region already merged away earlier in the same `apply` call (because an earlier merge picked it as the neighbor), it is skipped — the SCC index space is stale for it once a previous merge happened, but no recomputation is needed: skipping is enough since the region's nodes already belong to whatever region absorbed them.
 - For a region, candidate neighbors are found by scanning every node in the region, then every `field.neighbors(node)` cell, and looking up that neighbor cell's current SCC component (from `maze.analysis.scc(&maze.graph)`, fetched once at the start of `apply` — the graph hasn't mutated yet at that point). A neighbor cell in the same component is skipped (not a different region).
@@ -535,7 +595,7 @@ Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #51 (passage mode) and iss
 
 Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #89. Merges each flagged undersized SCC region into a neighboring region via a `Teleport` edge instead of a geometric passage. Unlike `ExpandRegionPassageStrategy`, **any node pair across the two regions is a valid candidate** — teleport endpoints don't need to be geometrically adjacent, so there's no `field.neighbors` scan at all; every other SCC component is an eligible neighbor regardless of geometric position. Shares target-selection (`target_mode`/`prefer_partially_connected`) and merge-loop bookkeeping with `ExpandRegionPassageStrategy` via `region_merge_core` (see above) — only candidate discovery and the actual connection mechanism are specific to this strategy.
 
-**`issue.data` is mandatory for this kind**, same contract as `ExpandRegionPassageStrategy`: `invalid` is the producing check's result — there is no other channel to learn it.
+Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansionIssue` is the producing check's result — there is no other channel to learn it.
 
 **Parameters:**
 
@@ -546,7 +606,7 @@ Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #89. Merges each flagged u
 | `prefer_partially_connected` | Bool | `true` | — | Prefer a neighbor that already has **any** edge (any `EdgeKind`, not just `Teleport`) to/from the flagged region over one with no connection at all (`region_merge_core`) |
 | `min_distance` | Float | `1.0` | `[0, 1000]` | Minimum logical (graph hop-count) distance a freshly-picked endpoint must keep from an already-occupied endpoint in the same region; rounded to the nearest non-negative integer before use |
 
-- If `issue.data` is missing or the wrong variant: returns `Failed`. If `invalid` is empty: returns `Fixed` immediately.
+- If `invalid` is empty: returns `Fixed` immediately.
 - Candidate neighbors: every other SCC component (`scc.components`), full stop — no adjacency filter. For each, the graph's edges are scanned once (`O(E)`, not `O(region_size * neighbor_size)` — a region can be tiny while a neighbor is the bulk of the maze) to find one representative existing edge per direction, if any (`outbound`: a `region -> neighbor` edge of any kind; `inbound`: `neighbor -> region`, any kind). A neighbor already fully connected in both directions is still a valid candidate (target-selection may still pick it; `apply` then no-ops for it, see below).
 - **Merging always ends up covering both directions** — a region isn't strongly connected to its neighbor with just one directed edge, so `direction_mode` only decides the *mechanism*, never whether both directions get covered:
   - `two_way`: both directions share **one** node pair `(a, b)` — a matched two-way teleport, the same shape as a preset `TeleportDirection::TwoWay` connection (`Specs/preset-connections.md`). Added via `try_add_bidirectional_teleport` (`generation::mod`) — same strict "both directions free by preset state, or mutate nothing" contract as `try_add_bidirectional_edge`, and completion-aware against **any** existing edge kind in a direction (not just `Teleport`) before adding.
@@ -563,9 +623,9 @@ Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #89. Merges each flagged u
 
 Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #90. Unlike `ExpandRegionPassageStrategy`/`TeleportRegionMergeStrategy`, which each implement one specific merge mechanism, this strategy picks *which* nested region-merge strategy to actually run: it holds any number of nested strategies under one slot, each with a weight, and delegates to `dispatch_weighted` (see "Weighted nested dispatch" above) — weighted-random selection without replacement, retrying a different nested strategy if the chosen one returns `Failed`, until one succeeds or every candidate has been tried.
 
-The parent issue is passed through to the nested call **unchanged** — unlike `ReduceSccCountStrategy`, which synthesizes a new `Issue` naming which regions to merge, this strategy only picks the merge *mechanism*; which regions need merging is already `issue.data`'s `invalid`, untouched (see the `apply()` behavior list below for what this implies for a multi-region batch).
+The parent issue is passed through to the nested call **unchanged** — unlike `ReduceSccCountStrategy`, which synthesizes a new issue naming which regions to merge, this strategy only picks the merge *mechanism*; which regions need merging is already the incoming `RegionNeedsExpansionIssue.invalid`, untouched (see the `apply()` behavior list below for what this implies for a multi-region batch).
 
-**`issue.data` is mandatory for this kind**, same contract as `ExpandRegionPassageStrategy`: `invalid` is the producing check's result — there is no other channel to learn it.
+Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansionIssue` is the producing check's result — there is no other channel to learn it.
 
 No configurable parameters of its own — weights live per nested candidate (below), not as a top-level `StrategyParam`.
 
@@ -573,8 +633,6 @@ No configurable parameters of its own — weights live per nested candidate (bel
 
 **Weight resolution** (`resolve_weight`): each nested candidate's weight is read from its own `NestedStrategyConfig.param_overrides["weight"]` — a string, parsed as `f64`. Missing, unparsable, non-finite, or `<= 0.0` all fall back to `1.0` (one fallback rule, no separate branches for NaN/∞/negative/zero/malformed text). No upper clamp — `weight` isn't a declared `StrategyParam` of the nested strategy (it lives in `param_overrides` as this dispatcher's own convention on top of whatever params the nested strategy already exposes), so there's nothing to clamp against; an arbitrarily large weight simply dominates selection, which is safe and predictable. This fallback guarantees that whenever at least one nested candidate is configured, the pool passed to `dispatch_weighted` always has a strictly positive total weight. A `debug_assert!` rejects any nested candidate that declares its own `StrategyParam` literally named `"weight"` — that would collide with this dispatcher's reserved `param_overrides` key.
 
-- `debug_assert_eq!(issue.kind, self.handles())`.
-- If `issue.data` is missing or the wrong variant: returns `Failed`.
 - If `invalid` is empty: returns `Fixed` immediately (idempotency), without touching `rng` or `nested`.
 - Nested entries are filtered to `slot_id == SLOT_MERGE_TARGET` — a defensive runtime check, not the primary validation (`maze-runner`'s `build_nested` already guarantees this at config-build time); it only guards direct `apply()` calls made outside the runner, same posture `ReduceSccCountStrategy` takes toward its own single slot.
 - If no candidate fills the slot after filtering: returns `Failed`.
@@ -582,9 +640,9 @@ No configurable parameters of its own — weights live per nested candidate (bel
 
 ### MissingRegionsStrategy
 
-Handles `MISSING_REGIONS` — see GitHub issue #59. For each `RegionClass` short of its configured minimum (a `-N` entry in `issue.data`'s `balance_by_class`, see `quality_control.md`'s `IssueData::MissingRegions`), tries to either reuse an existing region or grow a new one and convert it into the target class by adding/removing one-way edges. `+N` entries are not creation targets themselves — they are a **spendable budget** the strategy may draw on, when a candidate region of the matching class is too small, to merge in a geometrically-adjacent same-class region rather than leaving the candidate undersized.
+Handles `MISSING_REGIONS` — see GitHub issue #59. For each `RegionClass` short of its configured minimum (a `-N` entry in the incoming `MissingRegionsIssue.balance_by_class`, see `quality_control.md`), tries to either reuse an existing region or grow a new one and convert it into the target class by adding/removing one-way edges. `+N` entries are not creation targets themselves — they are a **spendable budget** the strategy may draw on, when a candidate region of the matching class is too small, to merge in a geometrically-adjacent same-class region rather than leaving the candidate undersized.
 
-**`issue.data` is mandatory for this kind**, same contract as `InvalidLoopRandomStrategy`/`ExpandRegionPassageStrategy`: `balance_by_class` is the producing check's result, there is no other channel to learn it.
+Same contract as `InvalidLoopRandomStrategy`/`ExpandRegionPassageStrategy`: `balance_by_class` on `MissingRegionsIssue` is the producing check's result, there is no other channel to learn it.
 
 **Parameters:**
 
@@ -619,14 +677,14 @@ Handles `MISSING_REGIONS` — see GitHub issue #59. For each `RegionClass` short
 
 **Critical path constraint**: nodes on the critical path (the shortest start→finish route) are never used as a reuse candidate's member, a growth seed, or a cross-component absorption target, in either the reuse or growth path — checked the same way `ExpandRegionPassageStrategy` and the other region strategies do.
 
-- If `issue.data` is missing or the wrong variant, or `maze.meta.start`/`finish` is unset: returns `Failed`.
+- If `maze.meta.start`/`finish` is unset: returns `Failed`.
 - Returns `Fixed` if at least one shortfall item across all classes was successfully created; `Failed` if none were (including the case where every class's item exhausted `MAX_TOTAL_FAILURES` before succeeding).
 
 ### ReduceSccCountStrategy
 
 Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far only) user of the nested-strategy mechanism (see "Nested strategies" above): `SccCountCheck`'s issue carries no specific regions to fix (unlike `REGION_NEEDS_EXPANSION`'s `RegionsNeedingExpansion`), so this strategy picks which regions to merge itself, then delegates the actual merge to a nested strategy.
 
-**`issue.data` is mandatory for this kind**: `IssueData::ExcessiveSccCount { max_scc_count }` is the producing check's configured threshold — there is no other channel to learn it.
+`max_scc_count` on `ExcessiveSccCountIssue` is the producing check's configured threshold — there is no other channel to learn it.
 
 **Parameters:**
 
@@ -638,7 +696,7 @@ Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far on
 
 - `scc = maze.analysis.scc(&maze.graph)`; `count = scc.components.len()`. If `count <= max_scc_count`: returns `Fixed { score: None }` immediately (idempotency) without touching `nested` or `rng`.
 - Otherwise selects exactly `count - max_scc_count` components to merge, ordered by `merge_priority`: `smallest`/`largest` sort by `(component size, component id)` for deterministic tie-breaking; `random` performs a seeded Fisher-Yates shuffle over component ids via `rng`. Only the first `count - max_scc_count` selected ids are used.
-- Builds a synthetic `Issue::with_data(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid: chosen, invalid_sources: {} })` — never published anywhere outside this `apply` call (see "Nested strategies"' synthesized-issues rule above).
+- Builds a synthetic `RegionNeedsExpansionIssue { meta: IssueMeta::default(), invalid: chosen, invalid_sources: Default::default() }`, passed to the nested `ErasedRepairStrategy::apply` call as `&synthetic as &dyn Issue` — never published anywhere outside this `apply` call (see "Nested strategies"' synthesized-issues rule above).
 - Looks up the nested strategy filling `merge_target` in the `nested` slice passed into `apply` (defensive `debug_assert!` that at most one entry fills the slot, even though `build_nested` already enforces `max: Some(1)` at config-build time) — if none is present, returns `Failed`.
 - Delegates: builds the nested strategy's own `StrategyParams` from its `param_overrides`, then calls its `apply()` with the synthetic issue, the same `maze`/`snapshots`/`rng`/`preset_state`, and its own `nested` list (empty for `ExpandRegionPassageStrategy` today, but recursion is supported). Returns whatever `RepairResult` the nested call produces, unchanged — a merge failure (e.g. every candidate region has no geometrically-adjacent neighbor, or every candidate pair is preset-blocked) propagates as `Failed` the same way it would for a direct `ExpandRegionPassageStrategy` dispatch.
 - **Does not itself guarantee full convergence to `max_scc_count` in one call** — like every other strategy that delegates region selection to `ExpandRegionPassageStrategy`, chosen regions can end up merging into each other rather than into fresh neighbors, so the net component-count reduction from one `apply()` call can be less than the number of regions picked. Full convergence is the pipeline's fixpoint loop's job across iterations, not a single `apply()` call's contract — same accepted imprecision `ExpandRegionPassageStrategy` itself already documents for its own `invalid` set.
@@ -647,13 +705,12 @@ Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far on
 
 Handles `INVALID_TELEPORT` — see GitHub issue #74. The single, fixed fix strategy for every per-teleport validation check (`TeleportDuplicatesConnectionCheck`, `TeleportWaypointDistanceCheck`, and any future per-teleport check reusing this kind): remove each flagged teleport edge outright. No configurable parameters, no alternative strategy — unlike `INVALID_LOOP` (which has both `InvalidLoopRandomStrategy` and `InvalidLoopScoredStrategy`), a teleport is a single edge, not a cycle with multiple candidate edges to choose between, so there is nothing to pick.
 
-**`issue.data` is mandatory for this kind**: `IssueData::InvalidTeleports { invalid }` is the producing check's result (which specific teleport `EdgeId`s to remove) — there is no other channel to learn them.
+`invalid` on `InvalidTeleportIssue` is the producing check's result (which specific teleport `EdgeId`s to remove) — there is no other channel to learn them.
 
-- If `issue.data` is `Some(IssueData::InvalidTeleports { invalid })`: removes each `EdgeId` in `invalid` via `try_remove_teleport_with_reverse` (`generation::mod`) — looks the edge up by its own id rather than by node pair (necessary because `Graph::edge_between(from, to)` can return an arbitrary edge of any kind between a pair, which would risk removing the wrong one when a `Teleport` and a `Basic` edge coexist in the same direction — the exact scenario `TeleportDuplicatesConnectionCheck` flags), and **also removes the opposite-direction `Teleport` edge, if any** (`Graph::teleport_reverse`), so a two-way teleport is never left silently downgraded to one-way just because a check's edge selector (e.g. an `EntryOnly`-style one) only inspected/flagged one direction. An empty `invalid` is valid — nothing to remove, returns `Fixed` immediately.
-- If `data` is missing or the wrong variant: malformed call (should never happen in a normal pipeline run) — returns `Failed`, not "already fixed".
+- `issue: &InvalidTeleportIssue` gives `invalid` directly: removes each `EdgeId` in `invalid` via `try_remove_teleport_with_reverse` (`generation::mod`) — looks the edge up by its own id rather than by node pair (necessary because `Graph::edge_between(from, to)` can return an arbitrary edge of any kind between a pair, which would risk removing the wrong one when a `Teleport` and a `Basic` edge coexist in the same direction — the exact scenario `TeleportDuplicatesConnectionCheck` flags), and **also removes the opposite-direction `Teleport` edge, if any** (`Graph::teleport_reverse`), so a two-way teleport is never left silently downgraded to one-way just because a check's edge selector (e.g. an `EntryOnly`-style one) only inspected/flagged one direction. An empty `invalid` is valid — nothing to remove, returns `Fixed` immediately.
 - **Preset protection is `Basic`-only**: `try_remove_edge_by_id` (used internally by `try_remove_teleport_with_reverse` for each direction) checks `preset_state.preset_edges` only when the edge being removed is itself `EdgeKind::Basic`. A `Teleport` edge can never be a preset connection (only Passage/OneWay presets exist, and both always build `EdgeKind::Basic` edges — see `preset_state.rs`/`Specs/post-edit.md`), so a `Teleport` duplicating a preset-protected `Basic` connection is still removable: the protection belongs to the `Basic` edge, not to the `(from, to)` pair as a whole.
 - Returns `Fixed { score: None }` whether or not any edges were actually removed (a preset-protected `Basic` edge is never a candidate here in the first place, since `invalid` only ever contains `Teleport` ids).
-- **Route protection (GitHub issue #78) lives entirely on the producing checks, not here.** Each per-teleport check has its own `protect_route` param (default `true`, see `quality_control.md`) and simply never includes a route-critical teleport in `invalid` to begin with — `issue.data` never contains an edge this strategy shouldn't remove, so the strategy itself stays a pure "remove everything flagged" executor with no route-awareness of its own.
+- **Route protection (GitHub issue #78) lives entirely on the producing checks, not here.** Each per-teleport check has its own `protect_route` param (default `true`, see `quality_control.md`) and simply never includes a route-critical teleport in `invalid` to begin with — the incoming `InvalidTeleportIssue` never contains an edge this strategy shouldn't remove, so the strategy itself stays a pure "remove everything flagged" executor with no route-awareness of its own.
 
 ### TeleportGroupProximityStrategy
 
@@ -669,11 +726,11 @@ Handles `TELEPORT_GROUP_PROXIMITY` — see GitHub issue #75. Distinct from `Remo
 - `random` — removes a random teleport from the pair.
 - `problematic` — removes whichever teleport in the pair belongs to more *other* problematic pairs (computed once up front over the full pair set the check found, not a running count — so the choice reflects the check's original findings, not whichever edge happens to be processed first).
 
-**`issue.data` is mandatory for this kind**: `IssueData::TeleportProximityPairs { pairs }` is the producing check's result (which teleport pairs are too close) — there is no other channel to learn them.
+`pairs` on `TeleportGroupProximityIssue` is the producing check's result (which teleport pairs are too close) — there is no other channel to learn them.
 
-- If `issue.data` is `Some(IssueData::TeleportProximityPairs { pairs })`: iterates `pairs` in order. Removing a teleport immediately drops every problematic pair that references it — if either side of the current pair was already removed while resolving an earlier pair in the same `apply()` call, that pair is skipped rather than acted on a second time (removal is idempotent by construction, but skipping avoids a pointless removal call and keeps `problematic`'s membership counts meaningful as a static snapshot). An empty `pairs` is valid — nothing to remove, returns `Fixed` immediately.
+- `issue: &TeleportGroupProximityIssue` gives `pairs` directly: iterates `pairs` in order. Removing a teleport immediately drops every problematic pair that references it — if either side of the current pair was already removed while resolving an earlier pair in the same `apply()` call, that pair is skipped rather than acted on a second time (removal is idempotent by construction, but skipping avoids a pointless removal call and keeps `problematic`'s membership counts meaningful as a static snapshot). An empty `pairs` is valid — nothing to remove, returns `Fixed` immediately.
 - **`protect_route` (GitHub issue #78, default `true`)**: when enabled and the side `priority` picked (`to_remove`) lies on the maze's current start→finish route (`graph::route_protection::is_teleport_route_protected` — also true if a two-way teleport's *other* direction is the route hop), the strategy falls back to removing the *other* side of the pair instead — unless that side is also route-critical, in which case neither is removed. Either way the pair still counts as resolved (`Fixed`, not `Failed`) — a route-critical teleport spared by this flag is a deliberate outcome, not an unhandled case. Disabling it reproduces the pre-#78 behavior exactly (`priority`'s pick is always removed, regardless of route).
-- If `data` is missing or the wrong variant: malformed call — returns `Failed`, not "already fixed", same contract as `RemoveTeleportStrategy`.
+
 - Uses `try_remove_teleport_with_reverse` (`generation::mod`) for the actual removal, on whichever side (`to_remove` or the `protect_route` `fallback`) actually gets removed — same preset-protection semantics as `RemoveTeleportStrategy` (`Basic`-only; a `Teleport` edge can never itself be preset-protected), and same reverse-removal guarantee: if the removed side is one direction of a two-way teleport, its opposite direction is removed too. Both `EdgeId`s the call reports removed (own + reverse, when present) are added to the `removed` tracking set, not just the one the loop nominally picked — so a later pair referencing the reverse direction is correctly treated as already resolved instead of attempting (and potentially mis-selecting) a fresh removal.
 - Returns `Fixed { score: None }` regardless of how many pairs actually needed a removal.
 - **Why this strategy (not just its check) also needs `protect_route`**: unlike the per-edge checks (which simply drop a route-critical candidate from `invalid`), `TeleportGroupProximityCheck` only excludes a *pair* when *both* sides are route-critical (see `quality_control.md`) — a pair with exactly one route-critical side is still reported, because the non-route side remains a legitimate removal target. The strategy is what actually decides *which* side to spare in that mixed case.
@@ -709,7 +766,7 @@ pub fn build_maze<T: Tessellation>(
     limits: RepairLimits,
     preset_start: Option<NodeId>,
     preset_finish: Option<NodeId>,
-) -> (Maze<T>, Vec<Issue>, GenerationTiming)
+) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming)
 ```
 
 `build_maze`, `MAX_REPAIR_ITERATIONS`, and `RepairLimits` are re-exported from `maze_core` root.
@@ -721,7 +778,7 @@ pub fn build_maze<T: Tessellation>(
     field: Field<T>, graph: Graph, seed: u64, qc_engine: QualityControlEngine<T>,
     preset_state: &PresetState, limits: RepairLimits,
     preset_start: Option<NodeId>, preset_finish: Option<NodeId>,
-) -> (Maze<T>, Vec<Issue>, GenerationTiming) {
+) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming) {
     let mut maze = Maze::new(field, graph);
     maze.meta.start = preset_start;
     maze.meta.finish = preset_finish;
@@ -735,23 +792,23 @@ The second return value is the list of unresolved issues after all repair iterat
 
 Time is measured via a small internal `now_ms()` helper, not `std::time::Instant` directly — `Instant` panics on `wasm32-unknown-unknown` (no syscall backing it). Native (including `cargo test`) reads a process-lifetime monotonic clock; the `wasm32` target reads `js_sys::Date::now()` instead. Either way, the value is only ever used for measuring elapsed duration within one `build_maze` call.
 
-**Full algorithm** (`QualityControlEngine::run_full` → `run_repair_stages` → `Stage::run_repair` → `Rule::run_checks`/`dispatch_repair`):
+**Full algorithm** (`QualityControlEngine::run_full` → `run_repair_stages` → `Stage::run_repair` → `RuleTrait::run_checks`/`dispatch_repair`, delegating internally to `Rule<T, I>::run_checks_typed`/`dispatch_repair_typed`):
 
 1. `run_full` constructs one `GenerationTiming` accumulator for the whole call — every level below only *updates* it (via smaller `(f64, u32)` tuple maps folded in afterward), never creates its own.
 2. `run_repair_stages` constructs one `RepairBudget` (wraps `RepairLimits` plus `iterations_done`/`start_ms`, plus whichever limit fired / rules no-progressed) **before the first stage**, then iterates `self.stages` in order (`for stage in &self.stages`), passing the *same* `&mut RepairBudget` into every `stage.run_repair(...)` call — the budget is shared across all stages, never reset per stage (see below). A stage reporting `StageOutcome::Done` advances to the next; `LimitReached`/`NoProgress` stops the whole sequence — this mirrors the pre-#106 pipeline's `break 'stages'` exactly, just without needing a loop label, since the inner fixpoint loop is now entirely inside `Stage::run_repair` and simply `return`s a `StageOutcome` instead of breaking through several loop levels.
 3. **Inside `Stage::run_repair`** (one stage's own fixpoint loop, `failed`/no-progress fingerprint local to this call):
    - Check `budget.exhausted(now_ms)` (max_iterations checked before time_budget) → `Some(kind)` means `LimitReached(kind)`.
    - `budget.iterations_done += 1`.
-   - **`collect_active`: run QC — stage-scoped, not stage-agnostic.** For each `Rule` in `self.rules` (in `Vec` order), skipping ids already in the local `failed` set, call `rule.run_checks(maze, rng, ...)` — this only runs **this stage's own** checks, unlike the pre-#106 pipeline, which ran every check across every stage every iteration (explicitly called out as wasteful, see GitHub issue #106). **Rule-level merge happens inside `run_checks` itself**, not here: a rule's own multiple checks fold into at most one `Issue` via `merge_issue` (moved from `pipeline.rs` to `quality_control/rule.rs` — same function, same per-`IssueData`-variant merge rules: `InvalidLoops` via a three-step normalize→dedup→remap canonical merge, `RegionsNeedingExpansion`/`InvalidTeleports`/`TeleportProximityPairs` via plain dedup-union, `MissingRegions` takes the value further from zero per class — see "Rule, Stage, and the unified QualityControlEngine" above and `quality_control.md`'s "Dedup interaction" for the full per-variant rules, unchanged by this refactor). Keep only rules with `Some(issue)` **and** `rule.has_strategy()` → `active: Vec<(&Rule, Issue)>`, sorted by `rule.id` once, immediately — the same sorted order is then reused by both the progress check and dispatch below, matching the pre-#106 pipeline's deterministic dispatch order (`active.sort_unstable_by` by rule id).
+   - **`collect_active`: run QC — stage-scoped, not stage-agnostic.** For each `Box<dyn RuleTrait<T>>` in `self.rules` (in `Vec` order), skipping ids already in the local `failed` set, call `rule.run_checks(maze, rng, ...)` — this only runs **this stage's own** checks, unlike the pre-#106 pipeline, which ran every check across every stage every iteration (explicitly called out as wasteful, see GitHub issue #106). **Rule-level merge happens inside `run_checks_typed` itself**, not here: a rule's own multiple checks fold into at most one issue via `IssueMerge::merge` (moved from `pipeline.rs` to `quality_control/rule.rs`, and from a runtime `merge_issue` function to each concrete type's own `IssueMerge` impl by GitHub issue #113 — same per-type merge rules: `InvalidLoopIssue` via a three-step normalize→dedup→remap canonical merge, `RegionNeedsExpansionIssue`/`InvalidTeleportIssue`/`TeleportGroupProximityIssue` via plain dedup-union, `MissingRegionsIssue` takes the value further from zero per class — see "Rule, Stage, and the unified QualityControlEngine" above and `quality_control.md`'s "Dedup interaction" for the full per-type rules). Keep only rules with `Some(issue)` **and** `rule.has_strategy()` → `active: Vec<(&dyn RuleTrait<T>, Box<dyn Issue>)>`, sorted by `rule.id()` once, immediately — the same sorted order is then reused by both the progress check and dispatch below, matching the pre-#106 pipeline's deterministic dispatch order (`active.sort_unstable_by` by rule id).
    - If `active` is empty: `StageOutcome::Done` — this stage is finished.
-   - **Progress guard**: compare `active` (already sorted) against the previous iteration's snapshot, element-wise, on `(rule.id, issue)` — full `Issue` equality (`PartialEq`, covering `data`/`source_checks`/`details`), same as before #106: catches true no-progress (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid — GitHub issue #27). Equal → `StageOutcome::NoProgress(rule_ids)`.
-   - Otherwise snapshot `active` as `(rule.id.clone(), issue.clone())` pairs for the next iteration's comparison, then dispatch: for each `(rule, issue)` in `active`'s order, call `rule.dispatch_repair(issue, maze, rng, preset_state, ...)` directly (no lookup — `active` already holds a reference to the `Rule`, not just its id) — `Failed` → add `rule.id` to the local `failed` set; `Fixed { score: Some(s) }` → set `maze.meta.route_score` if not already set.
+   - **Progress guard**: compare `active` (already sorted) against the previous iteration's snapshot, element-wise, on `(rule.id(), issue)` — full value equality via `Issue::eq_dyn` (object-safe, downcasts both sides to the same concrete type and compares by `PartialEq` — different concrete types always compare unequal), covering every field of the concrete issue, same semantics as before #113: catches true no-progress (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid — GitHub issue #27). Equal → `StageOutcome::NoProgress(rule_ids)`.
+   - Otherwise snapshot `active` as `(rule.id().to_string(), issue.clone_box())` pairs for the next iteration's comparison, then dispatch: for each `(rule, issue)` in `active`'s order, call `rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, ...)` directly (no lookup — `active` already holds a reference to the rule, not just its id) — `Failed` → add `rule.id()` to the local `failed` set; `Fixed { score: Some(s) }` → set `maze.meta.route_score` if not already set.
    - Loop.
 4. Back in `run_repair_stages`: fold each stage's timing tuples into `GenerationTiming`'s `TimingEntry` maps. Return the final `RepairBudget`.
-5. `run_full` runs the **unconditional final report pass** (`collect_final_report`, regardless of how the stage sequence ended) — walks `self.stages` again, concatenating `stage.run_report(...)` (i.e. `Rule::report_checks`, `report_check`-based, one `Issue` per flagged instance — see GitHub issue #102) for every rule in every stage. Same effective check set as the pre-#106 stage-agnostic final pass, just reached by walking the same stage/rule hierarchy instead of a flat check list.
-6. Pushes `REPAIR_LIMIT_REACHED`/`QC_NO_PROGRESS` synthetic issues based on the returned `RepairBudget`, same as before. Returns `(remaining, timing)`.
+5. `run_full` runs the **unconditional final report pass** (`collect_final_report`, regardless of how the stage sequence ended) — walks `self.stages` again, concatenating `stage.run_report(...)` (i.e. `RuleTrait::report_checks`, `report_check`-based, one issue per flagged instance — see GitHub issue #102) for every rule in every stage. Same effective check set as the pre-#106 stage-agnostic final pass, just reached by walking the same stage/rule hierarchy instead of a flat check list.
+6. Pushes `RepairLimitReachedIssue`/`QcNoProgressIssue` synthetic issues (`Box::new(...) as Box<dyn Issue>`) based on the returned `RepairBudget`, same as before. Returns `(remaining, timing)`.
 
-Two rules producing the same `IssueKind` are fully independent through this — each owns its own checks and strategy, its own fingerprint (within whichever stage owns it), and its own `failed` tracking; there is no shared routing table for either to collide on. A failure on one rule does not affect another rule's repair dispatch, in the same or a different stage. A no-progress break, however, *does* stop every later stage — see above.
+Two rules producing the same concrete `Issue` type are fully independent through this — each owns its own checks and strategy, its own fingerprint (within whichever stage owns it), and its own `failed` tracking; there is no shared routing table for either to collide on. A failure on one rule does not affect another rule's repair dispatch, in the same or a different stage. A no-progress break, however, *does* stop every later stage — see above.
 
 ### Stages and the repair budget
 
@@ -779,16 +836,16 @@ pub struct GenerationTiming {
     pub per_strategy: HashMap<&'static str, TimingEntry>,
 }
 
-pub fn build_maze<T: Tessellation>(...) -> (Maze<T>, Vec<Issue>, GenerationTiming)
+pub fn build_maze<T: Tessellation>(...) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming)
 ```
 
 - `initial_build_ms` is left at `0.0` by `build_maze` itself — it only runs the QC/repair fixpoint loop, not the initial `generate_maze`/`generate_maze_steps` call. `maze-wasm::run_generate` is the only caller that also runs that stage; it times it with the same `now_ms()` clock and fills `timing.initial_build_ms` in after `build_maze` returns.
-- `qc_total_ms`/`per_check` cover every `Rule::run_checks` call across the whole `run_full` call — every fixpoint iteration's QC pass (`run_repair_stages`) plus the final unconditional report pass (`collect_final_report`, `Rule::report_checks`) that computes `remaining`. Since GitHub issue #106, this is `QualityControlEngine::run_full`'s single accumulator, not a separate timed/untimed method pair — see "Rule, Stage, and the unified QualityControlEngine" above.
-- `repair_total_ms`/`per_strategy` cover every `Rule::dispatch_repair` call (one per fixpoint iteration's active rule).
+- `qc_total_ms`/`per_check` cover every `RuleTrait::run_checks` call across the whole `run_full` call — every fixpoint iteration's QC pass (`run_repair_stages`) plus the final unconditional report pass (`collect_final_report`, `RuleTrait::report_checks`) that computes `remaining`. Since GitHub issue #106, this is `QualityControlEngine::run_full`'s single accumulator, not a separate timed/untimed method pair — see "Rule, Stage, and the unified QualityControlEngine" above.
+- `repair_total_ms`/`per_strategy` cover every `RuleTrait::dispatch_repair` call (one per fixpoint iteration's active rule).
 - `per_check` is keyed by **check type id** (`Check::check_type_id()`, e.g. `"min_loop_length"` — the same string as `available_checks()`'s `CheckDescriptor.id`), not by instance id — two active instances of the same type (GitHub issue #60) aggregate into one entry, since the issue calls for per-check-*type* timing, not per-configured-instance.
 - `per_strategy` is keyed by **strategy id** (`RepairStrategy::strategy_id()`, e.g. `"invalid_loop_random"` — the same string as `StrategyConfig.id`), not by rule id — two rules backed by the same strategy aggregate into one entry.
-- **Nested strategies (see "Nested strategies" above) are not timed separately.** `Rule::dispatch_repair` only wraps the top-level `strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` entry, with no separate entry for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading `per_strategy` cannot distinguish a parent's own work from its nested delegate's.
-- `QualityControlEngine::run_full` (timed, drives repair) and `run_check_only` (untimed — check-only callers, e.g. `build_analytics_snapshot`, have no generation to time and pass a throwaway one-off accumulator internally) are the two entry points — there is no separate `run`/`run_timed` method pair anymore; each `Rule`'s own `run_checks`/`report_checks`/`dispatch_repair` methods take the timing accumulator and `now_ms: impl Fn() -> f64` clock as parameters (injected so the same wasm/native-aware clock from `pipeline.rs` is reused) and wrap each `Check::repair_check`/`report_check`/`RepairStrategy::apply` call internally.
+- **Nested strategies (see "Nested strategies" above) are not timed separately.** `Rule::dispatch_repair_typed` only wraps the top-level `strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` entry, with no separate entry for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading `per_strategy` cannot distinguish a parent's own work from its nested delegate's.
+- `QualityControlEngine::run_full` (timed, drives repair) and `run_check_only` (untimed — check-only callers, e.g. `build_analytics_snapshot`, have no generation to time and pass a throwaway one-off accumulator internally) are the two entry points — there is no separate `run`/`run_timed` method pair anymore; each `Rule`'s own `run_checks_typed`/`report_checks_typed`/`dispatch_repair_typed` methods (exposed to `Stage` via the erased `RuleTrait` wrappers) take the timing accumulator and `now_ms` clock as parameters (injected so the same wasm/native-aware clock from `pipeline.rs` is reused) and wrap each `Check::repair_check`/`report_check`/`RepairStrategy::apply` call internally.
 - `now_ms()` (`pipeline.rs`) is `pub`, not private, specifically so `maze-wasm::run_generate` can time the initial-build stage with the same clock.
 
 `maze-wasm`'s `GenerationTimingDto` (see `analytics-web.md`) is the serialized form, surfaced on `MazeSnapshot.timing` — `Some` only for snapshots from a full generation run (`run_generate`); `None` for analytics-only paths (post-edit, `compute_analytics`) that never call `build_maze`.

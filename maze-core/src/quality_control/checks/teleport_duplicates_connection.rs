@@ -4,8 +4,7 @@ use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, INVALID_TELEPORT};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::{Issue, InvalidTeleportIssue};
 
 /// Flags a teleport edge as invalid when a regular (`EdgeKind::Basic`) connection already exists
 /// between the same pair of vertices in the same direction — see GitHub issue #74. Redundant: a
@@ -22,10 +21,10 @@ pub struct TeleportDuplicatesConnectionCheck {
     pub protect_route: bool,
 }
 
-impl<T: Tessellation> Check<T> for TeleportDuplicatesConnectionCheck {
+impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportDuplicatesConnectionCheck {
     fn check_type_id(&self) -> &'static str { "teleport_duplicates_connection" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore) {
         let invalid: Vec<_> = maze.graph.edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .filter(|teleport| {
@@ -40,11 +39,7 @@ impl<T: Tessellation> Check<T> for TeleportDuplicatesConnectionCheck {
         if invalid.is_empty() {
             return;
         }
-        issues.push(Issue::with_data_from_check(
-            INVALID_TELEPORT,
-            IssueData::InvalidTeleports { invalid },
-            &self.instance_id,
-        ));
+        issues.push(InvalidTeleportIssue::new_from_check(&self.instance_id, invalid));
     }
 }
 
@@ -102,9 +97,8 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, INVALID_TELEPORT);
         let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
-        assert_eq!(issues[0].data, Some(IssueData::InvalidTeleports { invalid: vec![teleport_id] }));
+        assert_eq!(issues[0].invalid, vec![teleport_id]);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
     }
 
@@ -130,10 +124,9 @@ mod tests {
         check.repair_check(&maze, &mut issues, &mut rng);
 
         assert_eq!(issues.len(), 1, "both directions merge into one issue from a single check call");
-        let IssueData::InvalidTeleports { invalid } = issues[0].data.as_ref().unwrap() else { panic!() };
         let mut teleport_ids: Vec<_> = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).map(|e| e.id).collect();
         teleport_ids.sort_unstable();
-        let mut flagged = invalid.clone();
+        let mut flagged = issues[0].invalid.clone();
         flagged.sort_unstable();
         assert_eq!(flagged, teleport_ids, "both teleport directions must be flagged, not just one");
     }

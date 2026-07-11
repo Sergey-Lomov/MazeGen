@@ -19,7 +19,7 @@ fn repro_86_farthest_endpoints_wrong_finish() {
     println!("start={:?} finish={:?}", result.start, result.finish);
     assert!(result.start.is_some(), "preset start must be honored");
     assert!(result.finish.is_some(), "farthest_endpoints must assign a finish");
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
     assert!(kinds.is_empty(), "no remaining issues expected, got {kinds:?}");
 }
 
@@ -72,7 +72,7 @@ fn repro_287903_alternative_not_created() {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
     println!("remaining_issues={kinds:?}");
 }
 
@@ -87,7 +87,7 @@ fn repro_268_trap_reuse_vs_carve() {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
     println!("remaining_issues={kinds:?}");
 }
 
@@ -102,7 +102,7 @@ fn repro_268_carve_trap_from_path() {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
     println!("remaining_issues={kinds:?}");
 }
 
@@ -117,7 +117,7 @@ fn repro_qc_experiment_small_regions_not_merged() {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
     println!("remaining_issues={kinds:?}");
     let scc_count = result.region_sizes.values().map(|v| v.len()).sum::<usize>();
     assert_eq!(scc_count, 1, "all 25 single-node regions must merge into one");
@@ -137,7 +137,7 @@ fn repro_qc_experiment_locked_small_regions_not_merged() {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
     println!("remaining_issues={kinds:?}");
     let scc_count = result.region_sizes.values().map(|v| v.len()).sum::<usize>();
     assert_eq!(scc_count, 1, "all 25 single-node regions must merge into one, even with every node auto-locked");
@@ -153,7 +153,7 @@ fn repro_268_alternative_not_created() {
         let sizes = result.region_sizes.get(&cls).cloned().unwrap_or_default();
         println!("final {cls:?}: count={} sizes={sizes:?}", sizes.len());
     }
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
     println!("remaining_issues={kinds:?}");
 }
 
@@ -166,7 +166,7 @@ fn repro_268_alternative_not_created() {
 #[test]
 fn repro_95_qc_only_official_export() {
     let result = run_fixture("tests/fixtures/issue-95-qc-only-official.json", 42);
-    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind.as_str()).collect();
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
     assert!(kinds.is_empty(), "no remaining issues expected, got {kinds:?}");
     assert!(result.start.is_some(), "farthest_endpoints must assign a start");
     assert!(result.finish.is_some(), "farthest_endpoints must assign a finish");

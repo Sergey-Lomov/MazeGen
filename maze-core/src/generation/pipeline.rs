@@ -79,7 +79,7 @@ pub fn build_maze<T: Tessellation>(
     limits: RepairLimits,
     preset_start: Option<crate::ids::NodeId>,
     preset_finish: Option<crate::ids::NodeId>,
-) -> (Maze<T>, Vec<Issue>, GenerationTiming) {
+) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming) {
     let mut maze = Maze::new(field, graph);
     maze.meta.start = preset_start;
     maze.meta.finish = preset_finish;

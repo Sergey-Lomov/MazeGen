@@ -9,7 +9,7 @@ use crate::generation_config::{GenerateConfig, build_generation_config, build_re
 use crate::dto::{EdgeDto, EdgeKindDto, GenerationStepDto};
 use crate::analytics::build_analytics_snapshot;
 
-pub fn run_generate<T: Tessellation>(
+pub fn run_generate<T: Tessellation + 'static>(
     seed: u64,
     field: Field<T>,
     start: T::Point,
@@ -74,7 +74,7 @@ pub fn run_generate<T: Tessellation>(
 }
 
 /// Thin wrapper that also returns `check_types` map needed by `build_analytics_snapshot`.
-pub fn build_qc_and_repair_with_types<T: Tessellation>(
+pub fn build_qc_and_repair_with_types<T: Tessellation + 'static>(
     config: &GenerateConfig,
 ) -> Result<(maze_core::quality_control::QualityControlEngine<T>, HashMap<String, String>), String> {
     use std::collections::HashSet;

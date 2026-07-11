@@ -5,10 +5,10 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::repair::RepairResult;
-use crate::quality_control::issue_data::RepairLimitKind;
+use crate::quality_control::issue_kinds::RepairLimitKind;
 use super::engine::RepairBudget;
 use super::issue::Issue;
-use super::rule::Rule;
+use super::rule::RuleTrait;
 
 /// Result of one `Stage::run_repair` call — what happened to this stage's own fixpoint loop.
 /// `QualityControlEngine::run_repair_stages` decides what to do next (advance, or stop the whole
@@ -39,15 +39,15 @@ pub(crate) struct TimingSink<'a> {
 pub struct Stage<T: Tessellation> {
     pub id: String,
     pub name: String,
-    rules: Vec<Rule<T>>,
+    rules: Vec<Box<dyn RuleTrait<T>>>,
 }
 
 impl<T: Tessellation> Stage<T> {
-    pub fn new(id: String, name: String, rules: Vec<Rule<T>>) -> Self {
+    pub fn new(id: String, name: String, rules: Vec<Box<dyn RuleTrait<T>>>) -> Self {
         Self { id, name, rules }
     }
 
-    pub fn rules(&self) -> &[Rule<T>] {
+    pub fn rules(&self) -> &[Box<dyn RuleTrait<T>>] {
         &self.rules
     }
 
@@ -65,16 +65,17 @@ impl<T: Tessellation> Stage<T> {
         timing: &mut TimingSink,
         now_ms: impl Fn() -> f64,
     ) -> StageOutcome {
+        let now_ms: &dyn Fn() -> f64 = &now_ms;
         let mut failed: HashSet<String> = HashSet::new();
-        let mut previous_active: Option<Vec<(String, Issue)>> = None;
+        let mut previous_active: Option<Vec<(String, Box<dyn Issue>)>> = None;
         loop {
-            if let Some(limit) = budget.exhausted(&now_ms) {
+            if let Some(limit) = budget.exhausted(now_ms) {
                 return StageOutcome::LimitReached(limit);
             }
             budget.iterations_done += 1;
 
             let qc_start = now_ms();
-            let active = self.collect_active(maze, rng, timing.per_check, &now_ms, &failed);
+            let active = self.collect_active(maze, rng, timing.per_check, now_ms, &failed);
             *timing.qc_total_ms += now_ms() - qc_start;
 
             if active.is_empty() {
@@ -82,13 +83,13 @@ impl<T: Tessellation> Stage<T> {
             }
 
             if Self::check_progress(&active, &previous_active) {
-                let rule_ids = active.iter().map(|(rule, _)| rule.id.clone()).collect();
+                let rule_ids = active.iter().map(|(rule, _)| rule.id().to_string()).collect();
                 return StageOutcome::NoProgress(rule_ids);
             }
-            previous_active = Some(active.iter().map(|(rule, issue)| (rule.id.clone(), issue.clone())).collect());
+            previous_active = Some(active.iter().map(|(rule, issue)| (rule.id().to_string(), issue.clone_box())).collect());
 
             let repair_start = now_ms();
-            self.dispatch(&active, maze, rng, preset_state, timing.per_strategy, &now_ms, &mut failed);
+            self.dispatch(&active, maze, rng, preset_state, timing.per_strategy, now_ms, &mut failed);
             *timing.repair_total_ms += now_ms() - repair_start;
         }
     }
@@ -102,10 +103,11 @@ impl<T: Tessellation> Stage<T> {
         rng: &mut dyn RngCore,
         timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: impl Fn() -> f64,
-    ) -> Vec<Issue> {
+    ) -> Vec<Box<dyn Issue>> {
+        let now_ms: &dyn Fn() -> f64 = &now_ms;
         let mut issues = Vec::new();
         for rule in &self.rules {
-            issues.append(&mut rule.report_checks(maze, rng, timing, &now_ms));
+            issues.append(&mut rule.report_checks(maze, rng, timing, now_ms));
         }
         issues
     }
@@ -122,20 +124,20 @@ impl<T: Tessellation> Stage<T> {
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
         timing: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: &impl Fn() -> f64,
+        now_ms: &dyn Fn() -> f64,
         failed: &HashSet<String>,
-    ) -> Vec<(&'a Rule<T>, Issue)> {
+    ) -> Vec<(&'a dyn RuleTrait<T>, Box<dyn Issue>)> {
         // `run_checks` runs for every non-failed rule, including ones with no strategy — a
         // no-strategy rule's checks must still execute every iteration (matches the pre-#106
         // pipeline's stage-agnostic QC pass for such rules), not just once in the final report.
         // Only the has_strategy() filter, applied AFTER run_checks, decides what enters `active`
         // for the fixpoint/dispatch machinery below.
-        let mut active: Vec<(&'a Rule<T>, Issue)> = self.rules.iter()
-            .filter(|rule| !failed.contains(&rule.id))
-            .filter_map(|rule| rule.run_checks(maze, rng, timing, now_ms).map(|issue| (rule, issue)))
+        let mut active: Vec<(&'a dyn RuleTrait<T>, Box<dyn Issue>)> = self.rules.iter()
+            .filter(|rule| !failed.contains(rule.id()))
+            .filter_map(|rule| rule.run_checks(maze, rng, timing, now_ms).map(|issue| (rule.as_ref(), issue)))
             .filter(|(rule, _)| rule.has_strategy())
             .collect();
-        active.sort_unstable_by(|(a, _), (b, _)| a.id.cmp(&b.id));
+        active.sort_unstable_by(|(a, _), (b, _)| a.id().cmp(b.id()));
         active
     }
 
@@ -145,13 +147,13 @@ impl<T: Tessellation> Stage<T> {
     /// fingerprint: two iterations producing the same rule id with genuinely different issue
     /// content (e.g. a different cycle flagged invalid) must not be mistaken for a stall. This
     /// mirrors the exact comparison the pre-#106 flat pipeline already performed.
-    fn check_progress(active: &[(&Rule<T>, Issue)], previous: &Option<Vec<(String, Issue)>>) -> bool {
+    fn check_progress(active: &[(&dyn RuleTrait<T>, Box<dyn Issue>)], previous: &Option<Vec<(String, Box<dyn Issue>)>>) -> bool {
         let Some(previous) = previous else { return false };
         if active.len() != previous.len() {
             return false;
         }
         active.iter().zip(previous.iter()).all(|((rule, issue), (prev_id, prev_issue))| {
-            rule.id == *prev_id && issue == prev_issue
+            rule.id() == prev_id && issue.eq_dyn(prev_issue.as_ref())
         })
     }
 
@@ -162,18 +164,18 @@ impl<T: Tessellation> Stage<T> {
     /// matching the original flat pipeline).
     fn dispatch(
         &self,
-        active: &[(&Rule<T>, Issue)],
+        active: &[(&dyn RuleTrait<T>, Box<dyn Issue>)],
         maze: &mut Maze<T>,
         rng: &mut dyn RngCore,
         preset_state: &PresetState,
         timing: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: &impl Fn() -> f64,
+        now_ms: &dyn Fn() -> f64,
         failed: &mut HashSet<String>,
     ) {
         for (rule, issue) in active {
-            let Some(result) = rule.dispatch_repair(issue, maze, rng, preset_state, timing, now_ms) else { continue };
+            let Some(result) = rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, timing, now_ms) else { continue };
             match result {
-                RepairResult::Failed => { failed.insert(rule.id.clone()); }
+                RepairResult::Failed => { failed.insert(rule.id().to_string()); }
                 RepairResult::Fixed { score: Some(s) } => {
                     if maze.meta.route_score.is_none() {
                         maze.meta.route_score = Some(s);
@@ -189,32 +191,37 @@ impl<T: Tessellation> Stage<T> {
 mod check_progress_tests {
     use super::*;
     use crate::space::SquareTessellation;
-    use crate::quality_control::MISSING_ENDPOINTS;
+    use crate::quality_control::MissingEndpointsIssue;
+    use crate::quality_control::rule::Rule;
 
-    fn rule(id: &str) -> Rule<SquareTessellation> {
-        Rule::new(id.to_string(), MISSING_ENDPOINTS, vec![], None, HashMap::new(), vec![])
+    fn rule(id: &str) -> Rule<SquareTessellation, MissingEndpointsIssue> {
+        Rule::new(id.to_string(), vec![], None, HashMap::new(), vec![])
+    }
+
+    fn issue() -> Box<dyn Issue> {
+        Box::new(MissingEndpointsIssue::new_from_check("check"))
     }
 
     #[test]
     fn no_previous_is_never_progress() {
         let r = rule("a");
-        let active = vec![(&r, Issue::new(MISSING_ENDPOINTS))];
+        let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![(&r, issue())];
         assert!(!Stage::<SquareTessellation>::check_progress(&active, &None));
     }
 
     #[test]
     fn identical_single_rule_and_issue_is_no_progress() {
         let r = rule("a");
-        let active = vec![(&r, Issue::new(MISSING_ENDPOINTS))];
-        let previous = Some(vec![("a".to_string(), Issue::new(MISSING_ENDPOINTS))]);
+        let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![(&r, issue())];
+        let previous = Some(vec![("a".to_string(), issue())]);
         assert!(Stage::<SquareTessellation>::check_progress(&active, &previous));
     }
 
     #[test]
     fn different_rule_id_is_progress() {
         let r = rule("b");
-        let active = vec![(&r, Issue::new(MISSING_ENDPOINTS))];
-        let previous = Some(vec![("a".to_string(), Issue::new(MISSING_ENDPOINTS))]);
+        let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![(&r, issue())];
+        let previous = Some(vec![("a".to_string(), issue())]);
         assert!(!Stage::<SquareTessellation>::check_progress(&active, &previous));
     }
 
@@ -223,8 +230,16 @@ mod check_progress_tests {
         // Regression for GitHub issue #27: same rule id, genuinely different issue content
         // (a detail that changed) must NOT look like no-progress.
         let r = rule("a");
-        let active = vec![(&r, Issue::new_from_check(MISSING_ENDPOINTS, "check").with_detail("check", "tick", "1".to_string()))];
-        let previous = Some(vec![("a".to_string(), Issue::new_from_check(MISSING_ENDPOINTS, "check").with_detail("check", "tick", "0".to_string()))]);
+        let active_issue: Box<dyn Issue> = Box::new(
+            MissingEndpointsIssue::new_from_check("check")
+        );
+        let previous_issue: Box<dyn Issue> = Box::new({
+            let mut i = MissingEndpointsIssue::new_from_check("check");
+            i.meta_mut().push_source("other");
+            i
+        });
+        let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![(&r, active_issue)];
+        let previous = Some(vec![("a".to_string(), previous_issue)]);
         assert!(!Stage::<SquareTessellation>::check_progress(&active, &previous));
     }
 
@@ -232,14 +247,14 @@ mod check_progress_tests {
     fn different_length_is_progress() {
         let r_a = rule("a");
         let r_b = rule("b");
-        let active = vec![(&r_a, Issue::new(MISSING_ENDPOINTS)), (&r_b, Issue::new(MISSING_ENDPOINTS))];
-        let previous = Some(vec![("a".to_string(), Issue::new(MISSING_ENDPOINTS))]);
+        let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![(&r_a, issue()), (&r_b, issue())];
+        let previous = Some(vec![("a".to_string(), issue())]);
         assert!(!Stage::<SquareTessellation>::check_progress(&active, &previous));
     }
 
     #[test]
     fn empty_active_against_empty_previous_is_no_progress() {
-        let active: Vec<(&Rule<SquareTessellation>, Issue)> = vec![];
+        let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![];
         let previous = Some(vec![]);
         assert!(Stage::<SquareTessellation>::check_progress(&active, &previous));
     }

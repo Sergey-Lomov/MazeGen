@@ -2,7 +2,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::Issue;
+use crate::quality_control::InvalidTeleportIssue;
 use super::teleport_geometric_length_core::{build_issue, find_invalid_teleports};
 
 pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000.0;
@@ -20,10 +20,10 @@ pub struct TeleportMaxGeometricLengthCheck {
     pub protect_route: bool,
 }
 
-impl<T: Tessellation> Check<T> for TeleportMaxGeometricLengthCheck {
+impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportMaxGeometricLengthCheck {
     fn check_type_id(&self) -> &'static str { "teleport_max_geometric_length" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore) {
         let invalid = find_invalid_teleports(maze, self.protect_route, |d| d > self.max_length);
         if let Some(issue) = build_issue(invalid, &self.instance_id, "max_length", self.max_length) {
             issues.push(issue);
@@ -37,8 +37,6 @@ mod tests {
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::quality_control::issue::INVALID_TELEPORT;
-    use crate::quality_control::issue_data::IssueData;
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "teleport_max_geometric_length";
@@ -62,9 +60,8 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng);
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, INVALID_TELEPORT);
         let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
-        assert_eq!(issues[0].data, Some(IssueData::InvalidTeleports { invalid: vec![teleport_id] }));
+        assert_eq!(issues[0].invalid, vec![teleport_id]);
     }
 
     #[test]
@@ -130,10 +127,9 @@ mod tests {
         check.repair_check(&maze, &mut issues, &mut rng);
 
         assert_eq!(issues.len(), 1, "both directions merge into one issue from a single check call");
-        let IssueData::InvalidTeleports { invalid } = issues[0].data.as_ref().unwrap() else { panic!() };
         let mut teleport_ids: Vec<_> = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).map(|e| e.id).collect();
         teleport_ids.sort_unstable();
-        let mut flagged = invalid.clone();
+        let mut flagged = issues[0].invalid.clone();
         flagged.sort_unstable();
         assert_eq!(flagged, teleport_ids, "both teleport directions must be flagged, not just one");
     }

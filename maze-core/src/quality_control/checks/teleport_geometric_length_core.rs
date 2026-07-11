@@ -3,8 +3,7 @@ use crate::ids::EdgeId;
 use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::{Tessellation, geometric_distance};
-use crate::quality_control::issue::{Issue, INVALID_TELEPORT};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::InvalidTeleportIssue;
 
 /// Shared filter/issue-building logic for `TeleportMinGeometricLengthCheck` and
 /// `TeleportMaxGeometricLengthCheck` — see GitHub issue #74/#78. Each check owns only its
@@ -28,11 +27,11 @@ pub fn find_invalid_teleports<T: Tessellation>(
         .collect()
 }
 
-pub fn build_issue(invalid: Vec<EdgeId>, instance_id: &str, detail_key: &'static str, threshold: f64) -> Option<Issue> {
+pub fn build_issue(invalid: Vec<EdgeId>, instance_id: &str, detail_key: &'static str, threshold: f64) -> Option<InvalidTeleportIssue> {
     if invalid.is_empty() {
         return None;
     }
-    let issue = Issue::with_data_from_check(INVALID_TELEPORT, IssueData::InvalidTeleports { invalid }, instance_id)
+    let issue = InvalidTeleportIssue::new_from_check(instance_id, invalid)
         .with_detail(instance_id, detail_key, threshold.to_string());
     Some(issue)
 }

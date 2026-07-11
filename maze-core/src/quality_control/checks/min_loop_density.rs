@@ -5,8 +5,7 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, density_per_100};
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, MISSING_LOOPS};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::{Issue, MissingLoopsIssue};
 
 pub const MIN_LOOP_DENSITY_DEFAULT: u32 = 30;
 pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
@@ -24,10 +23,10 @@ pub struct MinLoopDensityCheck {
     pub avg_loop_length_estimate: u32,
 }
 
-impl<T: Tessellation> Check<T> for MinLoopDensityCheck {
+impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
     fn check_type_id(&self) -> &'static str { "min_loop_density" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingLoopsIssue>, _rng: &mut dyn RngCore) {
         let field_cells = maze.field.node_count();
         if field_cells == 0 {
             return;
@@ -58,7 +57,7 @@ impl<T: Tessellation> Check<T> for MinLoopDensityCheck {
             return;
         }
 
-        let issue = Issue::with_data_from_check(MISSING_LOOPS, IssueData::Missing { missing }, &self.instance_id)
+        let issue = MissingLoopsIssue::new_from_check(&self.instance_id, missing)
             .with_detail(&self.instance_id, "missing", missing.to_string());
         issues.push(issue);
     }
@@ -113,12 +112,8 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].kind, MISSING_LOOPS);
+        assert_eq!(issues[0].missing, 3);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        match &issues[0].data {
-            Some(IssueData::Missing { missing }) => assert_eq!(*missing, 3),
-            other => panic!("expected Missing, got {other:?}"),
-        }
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
             Some(&"3".to_string()),
@@ -133,10 +128,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        match &issues[0].data {
-            Some(IssueData::Missing { missing }) => assert_eq!(*missing, 1, "ceil(1/4) must round up to 1, not truncate to 0"),
-            other => panic!("expected Missing, got {other:?}"),
-        }
+        assert_eq!(issues[0].missing, 1, "ceil(1/4) must round up to 1, not truncate to 0");
     }
 
     #[test]
@@ -153,10 +145,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng());
         assert_eq!(issues.len(), 1);
-        match &issues[0].data {
-            Some(IssueData::Missing { missing }) => assert!(*missing > 0),
-            other => panic!("expected Missing, got {other:?}"),
-        }
+        assert!(issues[0].missing > 0);
     }
 
     #[test]

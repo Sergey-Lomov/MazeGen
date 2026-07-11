@@ -4,8 +4,8 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::nav::NavGraph;
 use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
-use crate::quality_control::issue::{Issue, INVALID_LOOP};
-use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
+use crate::quality_control::InvalidLoopIssue;
+use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 /// Shared cycle-enumeration/issue-building skeleton for the loop-based checks
 /// (`MinLoopLengthCheck`, `MaxLoopLengthCheck`, `LoopDistanceFromStartCheck`,
@@ -32,7 +32,7 @@ pub fn find_invalid_cycles<T: Tessellation>(
     Some((nav, cycles, flagged))
 }
 
-/// Builds the `INVALID_LOOP` issue for a set of `flagged` cycle indices (as returned by
+/// Builds the `InvalidLoopIssue` for a set of `flagged` cycle indices (as returned by
 /// `find_invalid_cycles`), including the `detail_key`/`detail_value` pair (e.g. `"threshold"` /
 /// the threshold as a string).
 pub fn build_issue(
@@ -43,7 +43,7 @@ pub fn build_issue(
     instance_id: &str,
     detail_key: &'static str,
     detail_value: impl ToString,
-) -> Issue {
+) -> InvalidLoopIssue {
     let all = resolve_to_edge_ids(nav, cycles, graph);
     debug_assert!(flagged.iter().all(|&idx| idx < all.len()),
         "flagged must only contain valid indices into all — built from the same `cycles` it resolves");
@@ -51,7 +51,7 @@ pub fn build_issue(
     for &idx in &flagged {
         invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(instance_id.to_string());
     }
-    Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: flagged, invalid_sources }, instance_id)
+    InvalidLoopIssue::new_from_check(instance_id, all, flagged, invalid_sources)
         .with_detail(instance_id, detail_key, detail_value.to_string())
 }
 
