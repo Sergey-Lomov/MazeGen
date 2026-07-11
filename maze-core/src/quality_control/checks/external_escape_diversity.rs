@@ -1,12 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::nav::NavNodeId;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, INVALID_LOOP};
-use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
+use crate::quality_control::issue::Issue;
+use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
 
@@ -24,28 +23,12 @@ impl<T: Tessellation> Check<T> for ExternalEscapeDiversityCheck {
     fn check_type_id(&self) -> &'static str { "external_escape_diversity" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let nav = &nav;
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some(cycles) = find_deduped_simple_cycles(nav) else { return };
+        let Some((nav, cycles, low_diversity)) = find_invalid_cycles(maze, |nav, cycle| {
+            distinct_exit_count(nav, cycle) < self.min_distinct_exits
+        }) else { return };
 
-        let low_diversity: Vec<usize> = cycles.iter().enumerate()
-            .filter(|(_, cycle)| distinct_exit_count(nav, cycle) < self.min_distinct_exits)
-            .map(|(idx, _)| idx)
-            .collect();
-        if low_diversity.is_empty() {
-            return;
-        }
-        let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
-        debug_assert!(low_diversity.iter().all(|&idx| idx < all.len()),
-            "low_diversity must only contain valid indices into all — built from the same `cycles` it resolves");
-        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<String>> = HashMap::new();
-        for &idx in &low_diversity {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
-        }
-        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: low_diversity, invalid_sources }, &self.instance_id)
-            .with_detail(&self.instance_id, "min_distinct_exits", self.min_distinct_exits.to_string());
-        issues.push(issue);
+        issues.push(build_issue(&nav, &cycles, low_diversity, &maze.graph, &self.instance_id, "min_distinct_exits", self.min_distinct_exits));
     }
 }
 
@@ -78,6 +61,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::quality_control::issue::INVALID_LOOP;
+    use crate::quality_control::issue_data::IssueData;
 
     const TEST_ID: &str = "external_escape_diversity";
 

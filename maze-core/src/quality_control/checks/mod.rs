@@ -2,6 +2,7 @@ pub mod missing_endpoints;
 pub mod unreachable_finish;
 pub mod min_loops_count;
 pub mod min_loop_density;
+mod cycle_check_core;
 pub mod min_loop_length;
 pub mod max_loop_length;
 pub mod external_escape_diversity;

@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, INVALID_LOOP};
-use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
+use crate::quality_control::issue::Issue;
+use super::cycle_check_core::{find_invalid_cycles, build_issue, tile_length};
 
 pub const MIN_LOOP_LENGTH_DEFAULT: u32 = 10;
 
@@ -18,40 +16,16 @@ impl<T: Tessellation> Check<T> for MinLoopLengthCheck {
     fn check_type_id(&self) -> &'static str { "min_loop_length" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let nav = &nav;
         // Silently skip on overflow (see `CycleSearchResult::TooManyCycles`) rather than
         // hang on a dense, heavily preset-connected graph (issue #22) — this check is
         // toggleable, so a maze that can't be analyzed here just doesn't get this check,
         // same as if it were disabled.
-        let Some(cycles) = find_deduped_simple_cycles(nav) else { return };
+        let Some((nav, cycles, short)) = find_invalid_cycles(maze, |nav, cycle| {
+            tile_length(nav, cycle) < self.min_loop_length
+        }) else { return };
 
-        let short: Vec<usize> = cycles.iter().enumerate()
-            .filter(|(_, cycle)| tile_length(nav, cycle) < self.min_loop_length)
-            .map(|(idx, _)| idx)
-            .collect();
-        if short.is_empty() {
-            return;
-        }
-        let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
-        debug_assert!(short.iter().all(|&idx| idx < all.len()),
-            "short must only contain valid indices into all — built from the same `cycles` it resolves");
-        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<String>> = HashMap::new();
-        for &idx in &short {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
-        }
-        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: short, invalid_sources }, &self.instance_id)
-            .with_detail(&self.instance_id, "threshold", self.min_loop_length.to_string());
-        issues.push(issue);
+        issues.push(build_issue(&nav, &cycles, short, &maze.graph, &self.instance_id, "threshold", self.min_loop_length));
     }
-}
-
-/// Tile-length of a nav-edge cycle: sum of each edge's tile-hop count
-/// (`path.len() - 1`), measured in base-graph tile-hops, not nav-edge count.
-fn tile_length(nav: &crate::graph::nav::NavGraph, cycle: &[usize]) -> u32 {
-    cycle.iter()
-        .map(|&idx| (nav.edge_by_idx(idx).path.len() as u32).saturating_sub(1))
-        .sum()
 }
 
 #[cfg(test)]
@@ -61,6 +35,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::quality_control::issue::INVALID_LOOP;
+    use crate::quality_control::issue_data::IssueData;
 
     const TEST_ID: &str = "min_loop_length";
 

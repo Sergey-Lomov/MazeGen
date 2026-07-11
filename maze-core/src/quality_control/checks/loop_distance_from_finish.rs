@@ -1,12 +1,10 @@
-use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
 use crate::graph::distance_map::cycle_min_distance;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, INVALID_LOOP};
-use crate::quality_control::issue_data::{IssueData, canonical_cycle_key};
+use crate::quality_control::issue::Issue;
+use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const LOOP_DISTANCE_FROM_FINISH_DEFAULT: u32 = 0;
 
@@ -26,30 +24,12 @@ impl<T: Tessellation> Check<T> for LoopDistanceFromFinishCheck {
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
         let Some(dist_from_finish) = maze.analysis.distance_from_finish(&maze.graph, &maze.meta) else { return };
-        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let nav = &nav;
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some(cycles) = find_deduped_simple_cycles(nav) else { return };
+        let Some((nav, cycles, too_close)) = find_invalid_cycles(maze, |nav, cycle| {
+            cycle_min_distance(nav, cycle, &dist_from_finish) < self.min_distance_from_finish as usize
+        }) else { return };
 
-        let too_close: Vec<usize> = cycles.iter().enumerate()
-            .filter(|(_, cycle)| {
-                cycle_min_distance(nav, cycle, &dist_from_finish) < self.min_distance_from_finish as usize
-            })
-            .map(|(idx, _)| idx)
-            .collect();
-        if too_close.is_empty() {
-            return;
-        }
-        let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
-        debug_assert!(too_close.iter().all(|&idx| idx < all.len()),
-            "too_close must only contain valid indices into all — built from the same `cycles` it resolves");
-        let mut invalid_sources: HashMap<Vec<crate::ids::EdgeId>, Vec<String>> = HashMap::new();
-        for &idx in &too_close {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
-        }
-        let issue = Issue::with_data_from_check(INVALID_LOOP, IssueData::InvalidLoops { all, invalid: too_close, invalid_sources }, &self.instance_id)
-            .with_detail(&self.instance_id, "min_distance_from_finish", self.min_distance_from_finish.to_string());
-        issues.push(issue);
+        issues.push(build_issue(&nav, &cycles, too_close, &maze.graph, &self.instance_id, "min_distance_from_finish", self.min_distance_from_finish));
     }
 }
 
@@ -60,6 +40,8 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::quality_control::issue::INVALID_LOOP;
+    use crate::quality_control::issue_data::IssueData;
     use crate::meta::MazeMeta;
 
     const TEST_ID: &str = "loop_distance_from_finish";
