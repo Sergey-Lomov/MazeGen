@@ -11,6 +11,7 @@ pub mod max_loop_density;
 pub mod scc_count;
 pub mod min_region_size;
 pub mod min_region_ratio;
+mod region_size_check_core;
 pub mod min_region_count;
 pub mod teleport_duplicates_connection;
 pub mod teleport_waypoint_distance;

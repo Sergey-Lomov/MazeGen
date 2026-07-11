@@ -1,11 +1,10 @@
-use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::graph::region_class::{RegionClass, ALL_REGION_CLASSES};
+use crate::graph::region_class::RegionClass;
 use crate::quality_control::check::Check;
-use crate::quality_control::issue::{Issue, REGION_NEEDS_EXPANSION};
-use crate::quality_control::issue_data::IssueData;
+use crate::quality_control::issue::Issue;
+use super::region_size_check_core::{find_invalid_regions, build_issue};
 
 pub const MIN_REGION_RATIO_DEFAULT: u32 = 25;
 
@@ -27,63 +26,17 @@ impl<T: Tessellation> Check<T> for MinRegionRatioCheck {
     fn check_type_id(&self) -> &'static str { "min_region_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<Issue>, _rng: &mut dyn RngCore) {
-        if self.region_classes.is_empty() {
-            return;
-        }
         let field_cells = maze.field.node_count();
         if field_cells == 0 {
             return;
         }
-        let scc = maze.analysis.scc(&maze.graph);
-        let classes = if self.region_classes.len() == ALL_REGION_CLASSES.len() {
-            None
-        } else {
-            if maze.meta.start.is_none() || maze.meta.finish.is_none() {
-                return;
-            }
-            Some(maze.analysis.region_classes(&maze.graph, &maze.meta))
-        };
-        let invalid: Vec<usize> = scc.components.iter().enumerate()
-            .filter(|(idx, region)| {
-                region.len() as u64 * 100 < self.min_region_ratio as u64 * field_cells as u64
-                    && classes.as_ref().is_none_or(|c| c.get(idx).is_some_and(|class| self.region_classes.contains(class)))
-            })
-            .map(|(idx, _)| idx)
-            .collect();
-        if invalid.is_empty() {
+        let min_region_ratio = self.min_region_ratio;
+        let Some(invalid) = find_invalid_regions(maze, &self.region_classes, |len| {
+            len as u64 * 100 < min_region_ratio as u64 * field_cells as u64
+        }) else {
             return;
-        }
-        let mut invalid_sources: HashMap<usize, Vec<String>> = HashMap::new();
-        for &idx in &invalid {
-            invalid_sources.entry(idx).or_default().push(self.instance_id.clone());
-        }
-
-        // `region_classes` detail: the actual `RegionClass`es among the flagged regions (not the
-        // full configured filter — a filter covering several classes may still have only one of
-        // them actually undersized this pass), so the UI can name which region class is short
-        // instead of a generic "region(s) below N%". Needs `classes` computed even when the
-        // filter is "all classes" (where the fast `None` path above skips it) — falls back to no
-        // detail (generic label) if start/finish aren't set yet, same as the `None`-filter case
-        // above already tolerates for detection itself.
-        if let Some(classes) = classes.or_else(|| {
-            (maze.meta.start.is_some() && maze.meta.finish.is_some())
-                .then(|| maze.analysis.region_classes(&maze.graph, &maze.meta))
-        }) {
-            let mut detail_classes: Vec<&'static str> = invalid.iter()
-                .filter_map(|idx| classes.get(idx))
-                .map(|c| c.as_str())
-                .collect();
-            detail_classes.sort_unstable();
-            detail_classes.dedup();
-            let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, &self.instance_id)
-                .with_detail(&self.instance_id, "min_region_ratio", self.min_region_ratio.to_string())
-                .with_detail(&self.instance_id, "region_classes", detail_classes.join(","));
-            issues.push(issue);
-        } else {
-            let issue = Issue::with_data_from_check(REGION_NEEDS_EXPANSION, IssueData::RegionsNeedingExpansion { invalid, invalid_sources }, &self.instance_id)
-                .with_detail(&self.instance_id, "min_region_ratio", self.min_region_ratio.to_string());
-            issues.push(issue);
-        }
+        };
+        issues.push(build_issue(maze, invalid, &self.instance_id, "min_region_ratio", self.min_region_ratio));
     }
 }
 
@@ -92,8 +45,11 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
+    use crate::graph::region_class::ALL_REGION_CLASSES;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::quality_control::issue::REGION_NEEDS_EXPANSION;
+    use crate::quality_control::issue_data::IssueData;
 
     const TEST_ID: &str = "min_region_ratio";
 
