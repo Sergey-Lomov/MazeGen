@@ -60,14 +60,6 @@ impl Graph {
         self.version
     }
 
-    /// Forces `version` strictly past `version` — used by `SnapshotStack::restore` after
-    /// swapping in an older graph copy, so `MazeAnalysis`'s version-keyed cache always treats
-    /// the restored graph as stale, even though its own version field is lower than the
-    /// pre-restore version.
-    pub(crate) fn force_bump_past(&mut self, version: u64) {
-        self.version = version.checked_add(1).expect("Graph version overflowed u64");
-    }
-
     pub fn add_node(&mut self, id: NodeId) {
         self.nodes.push(Node { id });
         self.outgoing.insert(id, Vec::new());
@@ -168,6 +160,23 @@ impl Graph {
         }).copied()
     }
 
+    /// Structural-only dry-run for a `MutationCommand` builder (`cmd_remove_edge`/
+    /// `cmd_remove_edge_by_id`/`cmd_remove_teleport_with_reverse` in `generation::mod`, GitHub
+    /// issue #118): is there an edge to remove at all. Does not consult `PresetState` — that stays
+    /// the caller's own concern (`generation::remove_edge_between_feasible`/`try_remove_*`), same
+    /// separation of concerns as today. Advisory only: used by a strategy building its own
+    /// `Vec<MutationCommand>` to decide whether emitting a command is worthwhile, never by
+    /// `apply_commands` at commit time (which calls the real `try_*` helper instead — see
+    /// `Specs/repair.md`).
+    ///
+    /// There is no `can_add_edge` counterpart: every `try_add_*` helper is completion-aware/
+    /// idempotent (adds whichever direction is missing, or is a no-op if the edge already exists),
+    /// so an add command never fails for a structural reason — only removal has a real
+    /// "does this even exist" structural precondition worth checking ahead of time.
+    pub(crate) fn can_remove_edge(&self, id: EdgeId) -> bool {
+        self.edge(id).is_some()
+    }
+
     /// Returns the opposite-direction `Teleport` edge of a two-way teleport, if any — `id` must
     /// itself be a `Teleport` edge. A two-way teleport is two independent `EdgeId`s in this graph
     /// (no `reverse_edge` link like `NavEdge` has), so this scans for a `Teleport` edge going
@@ -235,41 +244,6 @@ impl Graph {
 impl Default for Graph {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod force_bump_past_tests {
-    use super::*;
-
-    #[test]
-    fn bumps_strictly_past_given_version() {
-        let mut g = Graph::new();
-        g.force_bump_past(5);
-        assert_eq!(g.version(), 6);
-    }
-
-    #[test]
-    fn unconditionally_sets_version_to_arg_plus_one() {
-        // force_bump_past always sets version = arg + 1, regardless of the graph's current
-        // version — it is not a max()-style guard. Callers (SnapshotStack::restore) are
-        // responsible for passing the version recorded right before the restore, not an
-        // arbitrary one — passing a stale, lower value would actually decrease the version.
-        let mut g = Graph::new();
-        g.add_node(0);
-        g.add_node(1);
-        g.add_edge(0, 1, EdgeKind::Basic);
-        assert_eq!(g.version(), 1);
-
-        g.force_bump_past(g.version());
-        assert_eq!(g.version(), 2);
-    }
-
-    #[test]
-    #[should_panic(expected = "Graph version overflowed u64")]
-    fn panics_on_u64_overflow() {
-        let mut g = Graph::new();
-        g.force_bump_past(u64::MAX);
     }
 }
 

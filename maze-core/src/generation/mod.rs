@@ -290,6 +290,25 @@ pub(crate) fn try_add_edge(
     try_add_edge_kind(graph, src, dst, EdgeKind::Basic, elements.one_way_chance, preset_state, rng);
 }
 
+/// Shared feasibility predicate for `try_add_bidirectional_edge`/`cmd_add_bidirectional_edge`
+/// (GitHub issue #118): neither direction of the pair may be blocked by `preset_state`. The one
+/// place this "both directions free" check is written, so apply-time and construction-time
+/// feasibility can never disagree — see `MutationCommand`'s own doc comment. `pub(crate)`, not
+/// private: strategies building their own pre-mutation feasibility check against a `&Maze`
+/// snapshot (e.g. `ExpandRegionPassageStrategy::pair_connectable`,
+/// `TeleportRegionMergeStrategy::teleport_bidirectional_blocked`,
+/// `MissingLoopsRandomStrategy::apply`'s own inline check) call this directly instead of
+/// re-deriving the same preset-lock formula — one definition, used by every side that needs it.
+pub(crate) fn bidirectional_edge_feasible(preset_state: &PresetState, a: NodeId, b: NodeId) -> bool {
+    let fwd_blocked = preset_state.blocked.contains(&(a, b))
+        || preset_state.locked_out.contains(&a)
+        || preset_state.locked_in.contains(&b);
+    let bwd_blocked = preset_state.blocked.contains(&(b, a))
+        || preset_state.locked_out.contains(&b)
+        || preset_state.locked_in.contains(&a);
+    !(fwd_blocked || bwd_blocked)
+}
+
 /// try_add_bidirectional_edge: strict "both directions free, or skip the pair" connect for
 /// repair strategies (`MissingLoopsRandomStrategy`, `ExpandRegionPassageStrategy`) that need a
 /// full passage, not the base-generation `try_add_edge` one_way_chance coin flip. Completion-
@@ -303,13 +322,7 @@ pub(crate) fn try_add_bidirectional_edge(
     b: NodeId,
     preset_state: &PresetState,
 ) -> bool {
-    let fwd_blocked = preset_state.blocked.contains(&(a, b))
-        || preset_state.locked_out.contains(&a)
-        || preset_state.locked_in.contains(&b);
-    let bwd_blocked = preset_state.blocked.contains(&(b, a))
-        || preset_state.locked_out.contains(&b)
-        || preset_state.locked_in.contains(&a);
-    if fwd_blocked || bwd_blocked {
+    if !bidirectional_edge_feasible(preset_state, a, b) {
         return false;
     }
     if graph.edge_between(a, b).is_none() {
@@ -336,9 +349,9 @@ pub(crate) fn try_add_directed_teleport(
     b: NodeId,
     preset_state: &PresetState,
 ) -> bool {
-    if preset_state.locked_out.contains(&a) { return false; }
-    if preset_state.locked_in.contains(&b) { return false; }
-    if preset_state.blocked.contains(&(a, b)) { return false; }
+    if !directed_edge_feasible(preset_state, a, b) {
+        return false;
+    }
     if graph.edge_between(a, b).is_none() {
         graph.add_edge(a, b, EdgeKind::Teleport);
     }
@@ -358,13 +371,7 @@ pub(crate) fn try_add_bidirectional_teleport(
     b: NodeId,
     preset_state: &PresetState,
 ) -> bool {
-    let fwd_blocked = preset_state.blocked.contains(&(a, b))
-        || preset_state.locked_out.contains(&a)
-        || preset_state.locked_in.contains(&b);
-    let bwd_blocked = preset_state.blocked.contains(&(b, a))
-        || preset_state.locked_out.contains(&b)
-        || preset_state.locked_in.contains(&a);
-    if fwd_blocked || bwd_blocked {
+    if !bidirectional_edge_feasible(preset_state, a, b) {
         return false;
     }
     if graph.edge_between(a, b).is_none() {
@@ -376,6 +383,13 @@ pub(crate) fn try_add_bidirectional_teleport(
     true
 }
 
+/// Shared feasibility predicate for `try_remove_edge`/`cmd_remove_edge` (GitHub issue #118): the
+/// node pair must not be a preset (Basic) connection. See `bidirectional_edge_feasible`'s own
+/// doc comment for why this is factored out (and `pub(crate)`) rather than re-derived on each side.
+pub(crate) fn remove_edge_between_feasible(preset_state: &PresetState, from: NodeId, to: NodeId) -> bool {
+    !preset_state.preset_edges.contains(&(from, to))
+}
+
 /// try_remove_edge: respects PresetState before removing a directed edge.
 /// Returns true if the edge was removed, false if it is protected by a preset connection.
 pub(crate) fn try_remove_edge(
@@ -384,7 +398,7 @@ pub(crate) fn try_remove_edge(
     to: NodeId,
     preset_state: &PresetState,
 ) -> bool {
-    if preset_state.preset_edges.contains(&(from, to)) {
+    if !remove_edge_between_feasible(preset_state, from, to) {
         return false;
     }
     let Some(id) = graph.edge_between(from, to) else { return false; };
@@ -413,7 +427,7 @@ pub(crate) fn try_remove_edge_by_id(
     preset_state: &PresetState,
 ) -> bool {
     let Some(edge) = graph.edge(id) else { return false; };
-    if edge.kind == EdgeKind::Basic && preset_state.preset_edges.contains(&(edge.from, edge.to)) {
+    if edge.kind == EdgeKind::Basic && !remove_edge_between_feasible(preset_state, edge.from, edge.to) {
         return false;
     }
     graph.remove_edge(id);
@@ -447,6 +461,17 @@ pub(crate) fn try_remove_teleport_with_reverse(
     removed
 }
 
+/// Shared feasibility predicate for `try_add_directed_edge`/`try_add_directed_teleport` and their
+/// `cmd_*` counterparts (GitHub issue #118): the single `from -> to` direction must not be
+/// blocked by `preset_state`. See `bidirectional_edge_feasible`'s own doc comment for why this is
+/// factored out (and `pub(crate)`) rather than re-derived on each side —
+/// `TeleportRegionMergeStrategy::teleport_directed_blocked` uses this directly.
+pub(crate) fn directed_edge_feasible(preset_state: &PresetState, from: NodeId, to: NodeId) -> bool {
+    !preset_state.locked_out.contains(&from)
+        && !preset_state.locked_in.contains(&to)
+        && !preset_state.blocked.contains(&(from, to))
+}
+
 /// try_add_directed_edge: adds a single one-way edge `from -> to`, respecting PresetState.
 /// Unlike `try_add_bidirectional_edge`, never adds the reverse direction — for repair
 /// strategies that need an explicit one-way connection (e.g. `MissingRegionsStrategy`).
@@ -457,13 +482,321 @@ pub(crate) fn try_add_directed_edge(
     to: NodeId,
     preset_state: &PresetState,
 ) -> bool {
-    if preset_state.locked_out.contains(&from) { return false; }
-    if preset_state.locked_in.contains(&to) { return false; }
-    if preset_state.blocked.contains(&(from, to)) { return false; }
+    if !directed_edge_feasible(preset_state, from, to) {
+        return false;
+    }
     if graph.edge_between(from, to).is_none() {
         graph.add_edge(from, to, EdgeKind::Basic);
     }
     true
+}
+
+// --- MutationCommand builders (GitHub issue #118) ---
+//
+// Read-only counterparts of the `try_*` helpers above, for a `RepairStrategy` holding only `&Maze`
+// (never `&mut Maze`, see `Specs/repair.md`'s mutation-command contract). Each `cmd_*` function
+// checks the same feasibility a strategy would need before proposing a mutation and, if feasible,
+// returns the equivalent `MutationCommand`(s) instead of mutating — `apply_commands` (see
+// `quality_control::rule`) later calls the matching `try_*` for real, so these two paths can never
+// disagree about "was this even worth proposing" vs. "is this still valid to apply".
+//
+// Maintenance rule: every `try_*` above needs a `cmd_*` counterpart here (see `MutationCommand`'s
+// own doc comment) — a strategy cannot reach a mutating helper that has none, since it never holds
+// `&mut Graph`.
+
+use crate::repair::command::MutationCommand;
+
+// Step 1 of GitHub issue #118's migration (Specs/repair.md): additive, not yet wired into any
+// caller — strategies still mutate `&mut Maze` directly today. `#[allow(dead_code)]` until step 2
+// switches `RepairStrategy::apply` to call these instead of the `try_*` helpers above.
+// Add-side `cmd_*` builders only ever consult `PresetState`, never `Graph` — every `try_add_*`
+// counterpart is completion-aware/idempotent (adds whichever direction is missing, or is a no-op
+// if the edge already exists) and so never fails for a *structural* reason, only a preset one
+// (see each `try_add_*`'s own doc comment). There is no `can_add_edge`-style dry-run check to
+// share here because there is nothing it could catch that preset feasibility doesn't already
+// cover — see `Graph::can_add_edge`'s doc comment for where a structural check would matter.
+
+#[allow(dead_code)]
+pub(crate) fn cmd_add_directed_edge(from: NodeId, to: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
+    if !directed_edge_feasible(preset_state, from, to) { return vec![]; }
+    vec![MutationCommand::AddDirectedEdge { from, to }]
+}
+
+#[allow(dead_code)]
+pub(crate) fn cmd_add_bidirectional_edge(a: NodeId, b: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
+    if !bidirectional_edge_feasible(preset_state, a, b) { return vec![]; }
+    // One command covers both directions — mirrors try_add_bidirectional_edge's own atomic
+    // "complete whichever direction is missing" contract; see MutationCommand's doc comment.
+    vec![MutationCommand::AddBidirectionalEdge { a, b }]
+}
+
+#[allow(dead_code)]
+pub(crate) fn cmd_add_directed_teleport(a: NodeId, b: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
+    if !directed_edge_feasible(preset_state, a, b) { return vec![]; }
+    vec![MutationCommand::AddDirectedTeleport { from: a, to: b }]
+}
+
+#[allow(dead_code)]
+pub(crate) fn cmd_add_bidirectional_teleport(a: NodeId, b: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
+    if !bidirectional_edge_feasible(preset_state, a, b) { return vec![]; }
+    vec![MutationCommand::AddBidirectionalTeleport { a, b }]
+}
+
+#[allow(dead_code)]
+pub(crate) fn cmd_remove_edge(graph: &Graph, from: NodeId, to: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
+    if !remove_edge_between_feasible(preset_state, from, to) { return vec![]; }
+    let Some(id) = graph.edge_between(from, to) else { return vec![]; };
+    if !graph.can_remove_edge(id) { return vec![]; }
+    vec![MutationCommand::RemoveEdgeBetween { from, to }]
+}
+
+#[allow(dead_code)]
+pub(crate) fn cmd_remove_edge_by_id(graph: &Graph, id: crate::ids::EdgeId, preset_state: &PresetState) -> Vec<MutationCommand> {
+    if !graph.can_remove_edge(id) { return vec![]; }
+    let edge = graph.edge(id).expect("can_remove_edge just confirmed this id exists");
+    if edge.kind == EdgeKind::Basic && !remove_edge_between_feasible(preset_state, edge.from, edge.to) {
+        return vec![];
+    }
+    vec![MutationCommand::RemoveEdge { id }]
+}
+
+#[allow(dead_code)]
+pub(crate) fn cmd_remove_teleport_with_reverse(graph: &Graph, id: crate::ids::EdgeId, preset_state: &PresetState) -> Vec<MutationCommand> {
+    if !graph.can_remove_edge(id) { return vec![]; }
+    let _ = preset_state; // re-checked for real by try_remove_teleport_with_reverse at apply time
+    vec![MutationCommand::RemoveTeleportWithReverse { id }]
+}
+
+/// Direct unit tests for the `cmd_*` `MutationCommand` builders and the feasibility predicates
+/// they share with their `try_*` mutating counterparts (GitHub issue #118, `Specs/repair.md`).
+/// These builders had no direct test coverage before — only exercised transitively (and only
+/// while still `#[allow(dead_code)]`, i.e. not exercised at all) — so this module specifically
+/// covers: each builder proposing the right command when feasible, and being blocked by the same
+/// `PresetState` conditions its `try_*` counterpart is blocked by (the property the shared
+/// predicates exist to guarantee).
+#[cfg(test)]
+mod cmd_builders_tests {
+    use super::*;
+    use crate::graph::EdgeKind;
+    use crate::space::{Field, SquareTessellation, square_rect};
+
+    fn graph_and_nodes(n: usize) -> (Graph, Vec<NodeId>) {
+        let mut ids = crate::IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(n, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<NodeId> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        (g, nodes)
+    }
+
+    #[test]
+    fn cmd_add_directed_edge_proposes_when_feasible() {
+        let (_, nodes) = graph_and_nodes(2);
+        let cmds = cmd_add_directed_edge(nodes[0], nodes[1], &PresetState::empty());
+        assert_eq!(cmds, vec![MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] }]);
+    }
+
+    #[test]
+    fn cmd_add_directed_edge_blocked_by_locked_out() {
+        let (_, nodes) = graph_and_nodes(2);
+        let mut preset_state = PresetState::empty();
+        preset_state.locked_out.insert(nodes[0]);
+        assert!(cmd_add_directed_edge(nodes[0], nodes[1], &preset_state).is_empty());
+    }
+
+    #[test]
+    fn cmd_add_directed_edge_blocked_by_locked_in() {
+        let (_, nodes) = graph_and_nodes(2);
+        let mut preset_state = PresetState::empty();
+        preset_state.locked_in.insert(nodes[1]);
+        assert!(cmd_add_directed_edge(nodes[0], nodes[1], &preset_state).is_empty());
+    }
+
+    #[test]
+    fn cmd_add_directed_edge_blocked_by_blocked_pair() {
+        let (_, nodes) = graph_and_nodes(2);
+        let mut preset_state = PresetState::empty();
+        preset_state.blocked.insert((nodes[0], nodes[1]));
+        assert!(cmd_add_directed_edge(nodes[0], nodes[1], &preset_state).is_empty());
+    }
+
+    #[test]
+    fn cmd_add_bidirectional_edge_proposes_when_feasible() {
+        let (_, nodes) = graph_and_nodes(2);
+        let cmds = cmd_add_bidirectional_edge(nodes[0], nodes[1], &PresetState::empty());
+        assert_eq!(cmds, vec![MutationCommand::AddBidirectionalEdge { a: nodes[0], b: nodes[1] }]);
+    }
+
+    #[test]
+    fn cmd_add_bidirectional_edge_blocked_if_either_direction_blocked() {
+        let (_, nodes) = graph_and_nodes(2);
+        let mut preset_state = PresetState::empty();
+        preset_state.blocked.insert((nodes[1], nodes[0])); // only the reverse direction blocked
+        assert!(cmd_add_bidirectional_edge(nodes[0], nodes[1], &preset_state).is_empty(),
+            "bidirectional add must require BOTH directions free");
+    }
+
+    #[test]
+    fn cmd_add_directed_teleport_proposes_when_feasible() {
+        let (_, nodes) = graph_and_nodes(2);
+        let cmds = cmd_add_directed_teleport(nodes[0], nodes[1], &PresetState::empty());
+        assert_eq!(cmds, vec![MutationCommand::AddDirectedTeleport { from: nodes[0], to: nodes[1] }]);
+    }
+
+    #[test]
+    fn cmd_add_directed_teleport_blocked_by_preset() {
+        let (_, nodes) = graph_and_nodes(2);
+        let mut preset_state = PresetState::empty();
+        preset_state.blocked.insert((nodes[0], nodes[1]));
+        assert!(cmd_add_directed_teleport(nodes[0], nodes[1], &preset_state).is_empty());
+    }
+
+    #[test]
+    fn cmd_add_bidirectional_teleport_proposes_when_feasible() {
+        let (_, nodes) = graph_and_nodes(2);
+        let cmds = cmd_add_bidirectional_teleport(nodes[0], nodes[1], &PresetState::empty());
+        assert_eq!(cmds, vec![MutationCommand::AddBidirectionalTeleport { a: nodes[0], b: nodes[1] }]);
+    }
+
+    #[test]
+    fn cmd_add_bidirectional_teleport_blocked_if_either_direction_blocked() {
+        let (_, nodes) = graph_and_nodes(2);
+        let mut preset_state = PresetState::empty();
+        preset_state.locked_out.insert(nodes[1]);
+        assert!(cmd_add_bidirectional_teleport(nodes[0], nodes[1], &preset_state).is_empty());
+    }
+
+    #[test]
+    fn cmd_remove_edge_proposes_when_edge_exists() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let cmds = cmd_remove_edge(&g, nodes[0], nodes[1], &PresetState::empty());
+        assert_eq!(cmds, vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }]);
+    }
+
+    #[test]
+    fn cmd_remove_edge_empty_when_no_edge_exists() {
+        let (g, nodes) = graph_and_nodes(2);
+        assert!(cmd_remove_edge(&g, nodes[0], nodes[1], &PresetState::empty()).is_empty(),
+            "must not propose removing an edge that structurally doesn't exist");
+    }
+
+    #[test]
+    fn cmd_remove_edge_blocked_by_preset_protection() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let mut preset_state = PresetState::empty();
+        preset_state.preset_edges.insert((nodes[0], nodes[1]));
+        assert!(cmd_remove_edge(&g, nodes[0], nodes[1], &preset_state).is_empty());
+    }
+
+    #[test]
+    fn cmd_remove_edge_by_id_proposes_when_edge_exists() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let cmds = cmd_remove_edge_by_id(&g, id, &PresetState::empty());
+        assert_eq!(cmds, vec![MutationCommand::RemoveEdge { id }]);
+    }
+
+    #[test]
+    fn cmd_remove_edge_by_id_empty_when_id_stale() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.remove_initial_edge(id);
+        assert!(cmd_remove_edge_by_id(&g, id, &PresetState::empty()).is_empty(),
+            "a removed edge's stale id must not be proposed for removal again");
+    }
+
+    #[test]
+    fn cmd_remove_edge_by_id_blocked_by_preset_protection_for_basic_edge() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let mut preset_state = PresetState::empty();
+        preset_state.preset_edges.insert((nodes[0], nodes[1]));
+        assert!(cmd_remove_edge_by_id(&g, id, &preset_state).is_empty());
+    }
+
+    #[test]
+    fn cmd_remove_edge_by_id_ignores_preset_edges_for_teleport_kind() {
+        // preset_edges only ever protects Basic edges (see try_remove_edge_by_id's own doc
+        // comment) — a Teleport sharing the same (from, to) pair must still be removable.
+        let (mut g, nodes) = graph_and_nodes(2);
+        let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let mut preset_state = PresetState::empty();
+        preset_state.preset_edges.insert((nodes[0], nodes[1]));
+        assert_eq!(cmd_remove_edge_by_id(&g, id, &preset_state), vec![MutationCommand::RemoveEdge { id }]);
+    }
+
+    #[test]
+    fn cmd_remove_teleport_with_reverse_proposes_when_edge_exists() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let cmds = cmd_remove_teleport_with_reverse(&g, id, &PresetState::empty());
+        assert_eq!(cmds, vec![MutationCommand::RemoveTeleportWithReverse { id }]);
+    }
+
+    #[test]
+    fn cmd_remove_teleport_with_reverse_empty_when_id_stale() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        g.remove_initial_edge(id);
+        assert!(cmd_remove_teleport_with_reverse(&g, id, &PresetState::empty()).is_empty());
+    }
+
+    /// Cross-checks a `cmd_*` builder's verdict against its `try_*` counterpart's actual result
+    /// for every corner of the shared feasibility predicate — the exact property the refactor to
+    /// shared predicates (`directed_edge_feasible`/`bidirectional_edge_feasible`/
+    /// `remove_edge_between_feasible`) exists to guarantee can never regress silently.
+    #[test]
+    fn cmd_and_try_agree_on_every_preset_lock_combination_for_directed_edge() {
+        for (lock_out, lock_in, blocked) in [
+            (false, false, false), (true, false, false), (false, true, false), (false, false, true),
+        ] {
+            let (mut g, nodes) = graph_and_nodes(2);
+            let mut preset_state = PresetState::empty();
+            if lock_out { preset_state.locked_out.insert(nodes[0]); }
+            if lock_in { preset_state.locked_in.insert(nodes[1]); }
+            if blocked { preset_state.blocked.insert((nodes[0], nodes[1])); }
+
+            let proposed = !cmd_add_directed_edge(nodes[0], nodes[1], &preset_state).is_empty();
+            let applied = try_add_directed_edge(&mut g, nodes[0], nodes[1], &preset_state);
+            assert_eq!(proposed, applied,
+                "cmd_add_directed_edge and try_add_directed_edge disagreed for locks ({lock_out}, {lock_in}, {blocked})");
+        }
+    }
+
+    #[test]
+    fn cmd_and_try_agree_on_every_preset_lock_combination_for_bidirectional_edge() {
+        for (lock_out_a, lock_in_b, blocked_fwd) in [
+            (false, false, false), (true, false, false), (false, true, false), (false, false, true),
+        ] {
+            let (mut g, nodes) = graph_and_nodes(2);
+            let mut preset_state = PresetState::empty();
+            if lock_out_a { preset_state.locked_out.insert(nodes[0]); }
+            if lock_in_b { preset_state.locked_in.insert(nodes[1]); }
+            if blocked_fwd { preset_state.blocked.insert((nodes[0], nodes[1])); }
+
+            let proposed = !cmd_add_bidirectional_edge(nodes[0], nodes[1], &preset_state).is_empty();
+            let applied = try_add_bidirectional_edge(&mut g, nodes[0], nodes[1], &preset_state);
+            assert_eq!(proposed, applied,
+                "cmd_add_bidirectional_edge and try_add_bidirectional_edge disagreed for locks ({lock_out_a}, {lock_in_b}, {blocked_fwd})");
+        }
+    }
+
+    #[test]
+    fn cmd_and_try_agree_on_preset_protection_for_remove_edge_by_id() {
+        for protected in [false, true] {
+            let (mut g, nodes) = graph_and_nodes(2);
+            let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+            let mut preset_state = PresetState::empty();
+            if protected { preset_state.preset_edges.insert((nodes[0], nodes[1])); }
+
+            let proposed = !cmd_remove_edge_by_id(&g, id, &preset_state).is_empty();
+            let applied = try_remove_edge_by_id(&mut g, id, &preset_state);
+            assert_eq!(proposed, applied,
+                "cmd_remove_edge_by_id and try_remove_edge_by_id disagreed for protected={protected}");
+        }
+    }
 }
 
 #[cfg(test)]

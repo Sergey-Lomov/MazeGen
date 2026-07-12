@@ -1,15 +1,28 @@
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::{IssueKindConst, TeleportGroupProximityIssue};
-use crate::generation::{PresetState, try_remove_teleport_with_reverse};
+use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::snapshot::SnapshotStack;
+use crate::repair::command::MutationCommand;
 use crate::graph::route_protection::is_teleport_route_protected;
+
+/// Records `id` (and its opposite-direction `Teleport` counterpart, if any) as resolved, mirroring
+/// what `try_remove_teleport_with_reverse`'s returned `Vec<EdgeId>` tracked under the old in-place
+/// contract — read-only here (GitHub issue #118, `Specs/repair.md`'s immutable-snapshot contract):
+/// a `Teleport` edge can never itself be preset-protected (only Basic edges can), so removal is
+/// always logically "successful" for the purpose of this bookkeeping regardless of whether the
+/// resulting `RemoveTeleportWithReverse` command later gets dropped on revalidation.
+fn mark_removed<T: Tessellation>(maze: &Maze<T>, id: EdgeId, removed: &mut std::collections::HashSet<EdgeId>) {
+    removed.insert(id);
+    if let Some(reverse_id) = maze.graph.teleport_reverse(id) {
+        removed.insert(reverse_id);
+    }
+}
 
 pub const PARAM_PRIORITY: &str = "priority";
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
@@ -62,16 +75,15 @@ impl<T: Tessellation> RepairStrategy<T, TeleportGroupProximityIssue> for Telepor
     fn apply(
         &self,
         issue: &TeleportGroupProximityIssue,
-        maze: &mut Maze<T>,
-        _snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
-        preset_state: &PresetState,
+        _preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
+    ) -> (RepairResult, Vec<MutationCommand>) {
         let pairs = &issue.pairs;
         if pairs.is_empty() {
-            return RepairResult::Fixed { score: None };
+            return (RepairResult::Fixed { score: None }, vec![]);
         }
 
         let priority = match params.get(PARAM_PRIORITY) {
@@ -90,6 +102,7 @@ impl<T: Tessellation> RepairStrategy<T, TeleportGroupProximityIssue> for Telepor
         }
 
         let mut removed: std::collections::HashSet<EdgeId> = std::collections::HashSet::new();
+        let mut commands = Vec::new();
         for &(a, b) in pairs {
             // Removing a teleport drops every pair referencing it — if either side of this pair
             // was already removed while resolving an earlier pair, this one is already resolved.
@@ -117,15 +130,17 @@ impl<T: Tessellation> RepairStrategy<T, TeleportGroupProximityIssue> for Telepor
                     // both removed ids are recorded so a later pair referencing either one (e.g.
                     // the reverse direction, close to some other teleport too) is skipped as
                     // already resolved instead of attempting a no-op removal.
-                    removed.extend(try_remove_teleport_with_reverse(&mut maze.graph, fallback, preset_state));
+                    commands.push(MutationCommand::RemoveTeleportWithReverse { id: fallback });
+                    mark_removed(maze, fallback, &mut removed);
                 }
                 continue;
             }
 
-            removed.extend(try_remove_teleport_with_reverse(&mut maze.graph, to_remove, preset_state));
+            commands.push(MutationCommand::RemoveTeleportWithReverse { id: to_remove });
+            mark_removed(maze, to_remove, &mut removed);
         }
 
-        RepairResult::Fixed { score: None }
+        (RepairResult::Fixed { score: None }, commands)
     }
 }
 
@@ -140,6 +155,21 @@ mod tests {
     use crate::{Graph, IdGenerator};
     use crate::space::{SquareTessellation, square_rect};
     use crate::quality_control::Issue as _;
+    use crate::quality_control::rule::apply_commands;
+
+    fn apply_and_commit<T: Tessellation>(
+        strategy: &impl RepairStrategy<T, TeleportGroupProximityIssue>,
+        issue: &TeleportGroupProximityIssue,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult {
+        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
+        apply_commands(maze, preset_state, commands);
+        result
+    }
 
     fn params_with_priority(priority: &str) -> StrategyParams {
         let mut overrides = HashMap::new();
@@ -176,7 +206,7 @@ mod tests {
         let (mut maze, _, _) = maze_with_two_teleports();
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(PRIORITY_RANDOM), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority(PRIORITY_RANDOM), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -185,7 +215,7 @@ mod tests {
         let (mut maze, id_a, id_b) = maze_with_two_teleports();
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![(id_a, id_b)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(PRIORITY_RANDOM), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority(PRIORITY_RANDOM), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
         assert_eq!(remaining, 1, "exactly one teleport of the pair must survive");
@@ -207,7 +237,7 @@ mod tests {
 
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![(id_a, id_b), (id_a, id_c)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(id_a).is_none(), "a (member of 2 pairs) must be removed");
@@ -222,7 +252,7 @@ mod tests {
         let (mut maze, id_a, id_b) = maze_with_two_teleports();
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![(id_a, id_b)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
         assert_eq!(remaining, 1, "a tie must still resolve to removing exactly one of the pair");
@@ -248,7 +278,7 @@ mod tests {
             <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, TeleportGroupProximityIssue>>::params(&TeleportGroupProximityStrategy),
             None,
         );
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_override_params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &no_override_params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(id_a).is_none(), "default priority must behave like 'problematic' and remove a (member of 2 pairs)");
@@ -280,7 +310,7 @@ mod tests {
         // (b, a) then (a, c): a is in the second slot of pair 1, first slot of pair 2.
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![(id_b, id_a), (id_a, id_c)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(id_a).is_none(), "a (member of 2 pairs) must be removed");
@@ -307,7 +337,7 @@ mod tests {
         // "problematic" priority deterministically picks `a` (member of both pairs) both times
         // it's evaluated -- the second pair's evaluation must detect `a` is already removed and
         // skip acting on it again, rather than then removing `c` too.
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
@@ -349,7 +379,7 @@ mod tests {
             vec![(a_fwd, id_b), (a_fwd, id_d), (a_bwd, id_c), (id_c, id_f), (id_f, id_g)],
         );
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority(PRIORITY_PROBLEMATIC), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(a_fwd).is_none(), "a_fwd (member of 2 pairs) must be removed");
@@ -377,7 +407,7 @@ mod tests {
 
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![(id_a, id_b)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(id_a).is_some(), "route-critical teleport a must survive");
@@ -401,7 +431,7 @@ mod tests {
 
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![(id_a, id_b)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }), "pair must still report Fixed even when neither side is removed");
 
         assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive");
@@ -430,7 +460,7 @@ mod tests {
 
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![(id_a, id_b), (id_a, id_c)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority_and_protect(PRIORITY_PROBLEMATIC, true), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority_and_protect(PRIORITY_PROBLEMATIC, true), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive both pair resolutions");
@@ -458,7 +488,7 @@ mod tests {
 
         let issue = TeleportGroupProximityIssue::new_from_check("test", vec![(id_a, b_fwd)]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &params_with_priority_and_protect(PRIORITY_RANDOM, true), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive");
@@ -488,7 +518,7 @@ mod tests {
             <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, TeleportGroupProximityIssue>>::params(&TeleportGroupProximityStrategy),
             None,
         );
-        let result = RepairStrategy::apply(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_override_params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng, &no_override_params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive: protect_route defaults to true with no override");

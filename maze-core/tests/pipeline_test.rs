@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Maze};
@@ -11,7 +11,7 @@ use maze_core::quality_control::{
     MissingEndpointsIssue, InvalidLoopIssue, InvalidLoopRequirement, RepairLimitReachedIssue, QcNoProgressIssue,
     RepairLimitKind,
 };
-use maze_core::repair::{RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, SnapshotStack};
+use maze_core::repair::{RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, MutationCommand};
 
 type BoxedCheck<T, I> = Box<dyn Check<T, I>>;
 
@@ -162,8 +162,8 @@ fn pipeline_warns_when_strategy_always_fails() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for AlwaysFail {
         fn strategy_id(&self) -> &'static str { "always_fail" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
-            RepairResult::Failed
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Failed, vec![])
         }
     }
 
@@ -209,9 +209,9 @@ fn never_converging_setup(
     impl<F: Fn() + Send + Sync> RepairStrategy<SquareTessellation, MissingEndpointsIssue> for NoOpFix<F> {
         fn strategy_id(&self) -> &'static str { "no_op_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             (self.on_apply)();
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -275,8 +275,8 @@ fn pipeline_surfaces_qc_no_progress_with_stuck_rule_id() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for NoOpFix {
         fn strategy_id(&self) -> &'static str { "no_op_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
-            RepairResult::Fixed { score: None }
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -307,13 +307,14 @@ fn pipeline_merges_issues_from_duplicate_checks_into_one_strategy_call() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for CountingStrategy {
         fn strategy_id(&self) -> &'static str { "counting_strategy" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, maze: &Maze<SquareTessellation>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             self.count.fetch_add(1, Ordering::SeqCst);
             let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
             nodes.sort_unstable();
-            maze.meta.start = nodes.first().copied();
-            maze.meta.finish = nodes.last().copied();
-            RepairResult::Fixed { score: None }
+            let mut commands = Vec::new();
+            if let Some(&first) = nodes.first() { commands.push(MutationCommand::SetStart(first)); }
+            if let Some(&last) = nodes.last() { commands.push(MutationCommand::SetFinish(last)); }
+            (RepairResult::Fixed { score: None }, commands)
         }
     }
 
@@ -605,11 +606,11 @@ fn stage_2_rule_does_not_dispatch_until_stage_1_resolves() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for RequiresEndpoints {
         fn strategy_id(&self) -> &'static str { "requires_endpoints" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, maze: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             if maze.meta.start.is_none() || maze.meta.finish.is_none() {
                 self.calls_before_endpoints_set.fetch_add(1, Ordering::SeqCst);
             }
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -650,8 +651,8 @@ fn failed_rule_in_stage_1_does_not_block_stage_2() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for AlwaysFail {
         fn strategy_id(&self) -> &'static str { "always_fail" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
-            RepairResult::Failed
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Failed, vec![])
         }
     }
 
@@ -662,9 +663,9 @@ fn failed_rule_in_stage_1_does_not_block_stage_2() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for CountingFix {
         fn strategy_id(&self) -> &'static str { "counting_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             self.count.fetch_add(1, Ordering::SeqCst);
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -709,8 +710,8 @@ fn failed_rule_in_middle_stage_does_not_block_last_stage() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for AlwaysFail {
         fn strategy_id(&self) -> &'static str { "always_fail" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
-            RepairResult::Failed
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Failed, vec![])
         }
     }
     struct AlwaysStage2IssueCheck;
@@ -736,9 +737,9 @@ fn failed_rule_in_middle_stage_does_not_block_last_stage() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for CountingFix {
         fn strategy_id(&self) -> &'static str { "counting_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             self.count.fetch_add(1, Ordering::SeqCst);
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -786,8 +787,8 @@ fn no_progress_in_stage_1_aborts_stage_2_entirely() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for NoOpFix {
         fn strategy_id(&self) -> &'static str { "no_op_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
-            RepairResult::Fixed { score: None }
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -798,9 +799,9 @@ fn no_progress_in_stage_1_aborts_stage_2_entirely() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for CountingFix {
         fn strategy_id(&self) -> &'static str { "counting_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             self.count.fetch_add(1, Ordering::SeqCst);
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -837,8 +838,8 @@ fn no_progress_in_middle_stage_aborts_last_stage_too() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for NoOpFix {
         fn strategy_id(&self) -> &'static str { "no_op_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
-            RepairResult::Fixed { score: None }
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
     let stage_3_calls = Arc::new(AtomicUsize::new(0));
@@ -848,9 +849,9 @@ fn no_progress_in_middle_stage_aborts_last_stage_too() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for CountingFix {
         fn strategy_id(&self) -> &'static str { "counting_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             self.count.fetch_add(1, Ordering::SeqCst);
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -889,12 +890,13 @@ fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for OneShotFix {
         fn strategy_id(&self) -> &'static str { "one_shot_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, maze: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
             nodes.sort_unstable();
-            maze.meta.start = nodes.first().copied();
-            maze.meta.finish = nodes.last().copied();
-            RepairResult::Fixed { score: None }
+            let mut commands = Vec::new();
+            if let Some(&first) = nodes.first() { commands.push(MutationCommand::SetStart(first)); }
+            if let Some(&last) = nodes.last() { commands.push(MutationCommand::SetFinish(last)); }
+            (RepairResult::Fixed { score: None }, commands)
         }
     }
 
@@ -916,8 +918,8 @@ fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for NoOpFix2 {
         fn strategy_id(&self) -> &'static str { "no_op_fix_2" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
-            RepairResult::Fixed { score: None }
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
 
@@ -964,11 +966,11 @@ fn stage_with_only_no_strategy_rules_is_skipped_instantly_between_dispatchable_s
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for RequiresEndpoints {
         fn strategy_id(&self) -> &'static str { "requires_endpoints" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, maze: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, maze: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             if maze.meta.start.is_some() && maze.meta.finish.is_some() {
                 self.called_with_endpoints_set.fetch_add(1, Ordering::SeqCst);
             }
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
     struct AlwaysIssueCheck;
@@ -1035,9 +1037,9 @@ fn no_strategy_rule_checks_run_every_iteration_not_just_final_report() {
     impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for MultiIterationFix {
         fn strategy_id(&self) -> &'static str { "multi_iteration_fix" }
 
-        fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<SquareTessellation>, _: &mut SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> RepairResult {
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
             self.counter.fetch_add(1, Ordering::SeqCst);
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
     // Ticks a shared counter into each issue's detail, same technique as `NeverConvergingCheck`
@@ -1090,4 +1092,72 @@ fn no_strategy_rule_checks_run_every_iteration_not_just_final_report() {
     // the final report pass — before the fix this asserted 1 (final report only).
     assert_eq!(no_strategy_check_calls.load(Ordering::SeqCst), 4,
         "no-strategy rule's check must run every fixpoint iteration (3) plus the final report pass (1), not just the final report");
+}
+
+/// End-to-end test for the "commands dropped" no-progress signal (GitHub issue #118,
+/// `Specs/repair.md`'s no-progress guard extension) through the full `build_maze` pipeline, not
+/// just `Stage::dispatch` in isolation. A strategy always proposes removing an edge that was
+/// already removed by an earlier call — `apply_commands` revalidates against the live graph and
+/// silently drops it every time, so `ApplyOutcome` is always `applied == 0, proposed == 1` —
+/// meanwhile the producing check ticks a counter into the issue's own detail every call, so the
+/// raw issue content genuinely differs iteration to iteration and the existing `(rule_id, Issue)`
+/// value-equality guard never fires. Without the `stalled_commands` extension this would loop
+/// until `RepairLimits` (or forever, with no cap) instead of stopping via `QcNoProgressIssue`
+/// after 2 consecutive stalled iterations.
+#[test]
+fn pipeline_stops_via_stalled_commands_guard_when_content_keeps_changing_but_nothing_ever_applies() {
+    use maze_core::repair::{RepairResult, RepairStrategy};
+
+    struct TickingCheck {
+        counter: Arc<AtomicUsize>,
+    }
+    impl Check<SquareTessellation, MissingEndpointsIssue> for TickingCheck {
+        fn check_type_id(&self) -> &'static str { "ticking_check" }
+
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
+            let n = self.counter.fetch_add(1, Ordering::SeqCst);
+            issues.push(
+                MissingEndpointsIssue::new_from_check("ticking_check")
+                    .with_detail("ticking_check", "tick", n.to_string()),
+            );
+        }
+    }
+
+    struct AlwaysProposesAnAlreadyRemovedEdge {
+        edge_id: maze_core::ids::EdgeId,
+        calls: Arc<AtomicUsize>,
+    }
+    impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for AlwaysProposesAnAlreadyRemovedEdge {
+        fn strategy_id(&self) -> &'static str { "always_proposes_stale_removal" }
+
+        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            // The edge behind this id was already removed before the pipeline ever started (see
+            // below) — every apply() call proposes removing it again, and apply_commands must
+            // revalidate-and-drop it every single time (RemoveEdge { id } -> can_remove_edge is
+            // false once the edge is gone), so applied stays 0 forever.
+            (RepairResult::Fixed { score: None }, vec![MutationCommand::RemoveEdge { id: self.edge_id }])
+        }
+    }
+
+    let (field, mut graph) = make_generated_graph(1);
+    let edge_id = graph.edges().next().map(|e| e.id).expect("generated graph must have at least one edge");
+    graph.remove_initial_edge(edge_id);
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let qc = engine_with_rule(
+        vec![("ticking_check", Box::new(TickingCheck { counter: Arc::new(AtomicUsize::new(0)) }))],
+        Box::new(AlwaysProposesAnAlreadyRemovedEdge { edge_id, calls: Arc::clone(&calls) }),
+    );
+
+    // No hard iteration cap — if the stalled_commands guard didn't exist, this would only ever
+    // stop via RepairLimits::default()'s MAX_REPAIR_ITERATIONS; asserting a small call count here
+    // proves the guard stopped the loop well before that cap, specifically at the stalled-commands
+    // threshold (2 consecutive stalls).
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), RepairLimits::default(), None, None);
+
+    assert_eq!(calls.load(Ordering::SeqCst), 2,
+        "strategy must be called exactly twice — the stalled_commands guard must stop the loop after 2 consecutive applied==0 iterations, not run until RepairLimits' cap");
+    assert!(warnings.iter().any(|i| as_issue::<QcNoProgressIssue>(i.as_ref()).is_some()),
+        "must surface QcNoProgressIssue, the same signal an explicit no-progress or Failed rule would produce");
 }

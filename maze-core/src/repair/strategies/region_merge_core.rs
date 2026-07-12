@@ -99,3 +99,157 @@ pub fn run_merge_loop(
 
     any_fixed
 }
+
+/// Direct unit tests for `region_merge_core`'s pure logic — no `Maze`/`Graph`/`Field` setup
+/// needed, unlike the (much heavier) tests in the two strategies that consume this module
+/// (`ExpandRegionPassageStrategy`, `TeleportRegionMergeStrategy`), which only exercise it
+/// transitively. `ConnectedComponents`/`build_scc` aren't constructible from bare component
+/// sizes, so `pick_by_mode`'s `largest`/`smallest` arms (which read `scc.components[i].len()`)
+/// are covered by those strategies' own tests instead — this module covers everything that
+/// doesn't need a real `ConnectedComponents`.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+    use crate::random::MazeRng;
+
+    /// `pick_by_mode`'s `random`/`prefer_needy`/unrecognized-mode arms never read
+    /// `scc.components` (only `largest`/`smallest` do) -- a trivial empty `ConnectedComponents`
+    /// is enough for every test in this module, avoiding a real `Graph`/`build_scc` setup.
+    fn empty_scc() -> ConnectedComponents {
+        ConnectedComponents { components: vec![], node_component: std::collections::HashMap::new() }
+    }
+
+    #[test]
+    fn narrow_to_partial_returns_partial_when_preferred_and_nonempty() {
+        let pool = vec![0, 1, 2];
+        let partial = vec![1];
+        assert_eq!(narrow_to_partial(&pool, &partial, true), &[1]);
+    }
+
+    #[test]
+    fn narrow_to_partial_falls_back_to_pool_when_partial_is_empty() {
+        let pool = vec![0, 1, 2];
+        let partial: Vec<ComponentId> = vec![];
+        assert_eq!(narrow_to_partial(&pool, &partial, true), &pool[..]);
+    }
+
+    #[test]
+    fn narrow_to_partial_returns_full_pool_when_preference_is_off() {
+        let pool = vec![0, 1, 2];
+        let partial = vec![1];
+        assert_eq!(narrow_to_partial(&pool, &partial, false), &pool[..]);
+    }
+
+    #[test]
+    fn pick_by_mode_empty_pool_returns_none() {
+        let mut rng = MazeRng::seed_from_u64(1);
+        let needy = HashSet::new();
+        assert_eq!(pick_by_mode(&[], &empty_scc(), MODE_RANDOM, &needy, &mut rng), None);
+    }
+
+    #[test]
+    fn pick_by_mode_random_picks_uniformly_from_pool() {
+        let mut rng = MazeRng::seed_from_u64(1);
+        let needy = HashSet::new();
+        let pool = vec![0, 1, 2];
+        let picked = pick_by_mode(&pool, &empty_scc(), MODE_RANDOM, &needy, &mut rng);
+        assert!(picked.is_some_and(|p| pool.contains(&p)));
+    }
+
+    #[test]
+    fn pick_by_mode_unrecognized_mode_falls_back_to_random_pick_from_pool() {
+        let mut rng = MazeRng::seed_from_u64(1);
+        let needy = HashSet::new();
+        let pool = vec![0, 1, 2];
+        let picked = pick_by_mode(&pool, &empty_scc(), "not_a_real_mode", &needy, &mut rng);
+        assert!(picked.is_some_and(|p| pool.contains(&p)));
+    }
+
+    #[test]
+    fn pick_by_mode_prefer_needy_picks_only_from_needy_subset_when_available() {
+        let needy: HashSet<ComponentId> = [1].into_iter().collect();
+        let pool = vec![0, 1, 2];
+        for seed in 0..20 {
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let picked = pick_by_mode(&pool, &empty_scc(), MODE_PREFER_NEEDY, &needy, &mut rng);
+            assert_eq!(picked, Some(1), "seed {seed}: must always pick the sole needy candidate");
+        }
+    }
+
+    #[test]
+    fn pick_by_mode_prefer_needy_falls_back_to_whole_pool_when_none_needy() {
+        let needy: HashSet<ComponentId> = HashSet::new();
+        let pool = vec![0, 1, 2];
+        for seed in 0..20 {
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let picked = pick_by_mode(&pool, &empty_scc(), MODE_PREFER_NEEDY, &needy, &mut rng);
+            assert!(picked.is_some_and(|p| pool.contains(&p)), "seed {seed}: must fall back to the whole pool when nothing is needy");
+        }
+    }
+
+    #[test]
+    fn run_merge_loop_returns_false_when_nothing_merges() {
+        let invalid = vec![0, 1, 2];
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy| None);
+        assert!(!any_fixed);
+    }
+
+    #[test]
+    fn run_merge_loop_returns_true_when_at_least_one_region_merges() {
+        let invalid = vec![0, 1];
+        let any_fixed = run_merge_loop(&invalid, |region, _needy| {
+            if region == 0 { Some((99, true)) } else { None }
+        });
+        assert!(any_fixed);
+    }
+
+    #[test]
+    fn run_merge_loop_does_not_count_a_found_but_unapplied_candidate() {
+        // find_candidate returns Some((neighbor, applied: false)) for every region -- a
+        // candidate was found but the connection itself failed to apply (e.g. one_way mode
+        // needing a second distinct pair that doesn't exist) -- must not count as any_fixed.
+        let invalid = vec![0, 1];
+        let any_fixed = run_merge_loop(&invalid, |_region, _needy| Some((99, false)));
+        assert!(!any_fixed);
+    }
+
+    #[test]
+    fn run_merge_loop_skips_a_region_already_merged_away_as_someone_elses_neighbor() {
+        // Region 0 merges into region 1 (itself in `invalid`, hence "needy") -- region 1 must
+        // then be marked merged_away and skipped when its own turn comes up in the LIFO pop
+        // order, never calling find_candidate for it a second time.
+        use std::cell::RefCell;
+        let invalid = vec![1, 0]; // pop order: 0 first, then 1
+        let calls: RefCell<Vec<ComponentId>> = RefCell::new(Vec::new());
+        let any_fixed = run_merge_loop(&invalid, |region, _needy| {
+            calls.borrow_mut().push(region);
+            if region == 0 { Some((1, true)) } else { Some((99, true)) }
+        });
+        assert!(any_fixed);
+        assert_eq!(calls.into_inner(), vec![0], "region 1 must never be dispatched -- it was merged away as region 0's neighbor");
+    }
+
+    #[test]
+    fn run_merge_loop_passes_the_correct_needy_set_excluding_self_and_merged_away() {
+        // 3 flagged regions: 0, 1, 2. When region 2 (popped first, LIFO) is dispatched, needy
+        // must be {0, 1} (everyone else in `invalid`, excluding itself). Region 2 merges into
+        // region 1 (needy), marking it merged_away; when region 0 is dispatched next (region 1
+        // popped in between but skipped since merged_away, never reaching find_candidate),
+        // needy must be {2} -- region 1 excluded (merged_away), region 2 still included (it
+        // was processed itself, but processing doesn't merge it away; only being *chosen as
+        // someone else's neighbor* does). Captures the needy set seen at each dispatched call.
+        use std::cell::RefCell;
+        let invalid = vec![0, 1, 2]; // pop order: 2, 1, 0
+        let seen: RefCell<Vec<(ComponentId, Vec<ComponentId>)>> = RefCell::new(Vec::new());
+        run_merge_loop(&invalid, |region, needy| {
+            let mut sorted: Vec<ComponentId> = needy.iter().copied().collect();
+            sorted.sort_unstable();
+            seen.borrow_mut().push((region, sorted));
+            if region == 2 { Some((1, true)) } else { None }
+        });
+        let seen = seen.into_inner();
+        assert_eq!(seen[0], (2, vec![0, 1]), "region 2's needy set is every other flagged region");
+        assert_eq!(seen[1], (0, vec![2]), "region 1 is now merged_away and excluded, but region 2 (not merged_away itself) still counts as needy");
+    }
+}

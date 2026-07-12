@@ -6,16 +6,14 @@ use crate::graph::scc::ComponentId;
 use crate::graph::region_class::RegionClass;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
-use crate::repair::snapshot::SnapshotStack;
+use crate::repair::draft::DraftMaze;
 
 use super::{MAX_REUSE_ATTEMPTS, GrowContext};
 use super::convert::convert_region;
-use crate::generation::{try_add_directed_edge, try_remove_edge};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn try_reuse<T: Tessellation>(
-    maze: &mut Maze<T>,
-    snapshots: &mut SnapshotStack,
+    outer: &mut DraftMaze<T>,
     target: RegionClass,
     min_region_size: usize,
     excess_budget: &mut HashMap<RegionClass, i32>,
@@ -24,9 +22,9 @@ pub(super) fn try_reuse<T: Tessellation>(
 ) -> Option<HashSet<NodeId>> {
     let committed_nodes = ctx.committed_nodes;
     let preset_state = ctx.preset_state;
-    let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
-    let route = maze.analysis.route_info(&maze.graph, &maze.meta);
+    let scc = outer.maze.analysis.scc(&outer.maze.graph);
+    let classes = outer.maze.analysis.region_classes(&outer.maze.graph, &outer.maze.meta);
+    let route = outer.maze.analysis.route_info(&outer.maze.graph, &outer.maze.meta);
     let critical: HashSet<NodeId> = route.as_ref().map(|r| r.path.iter().copied().collect()).unwrap_or_default();
 
     let mut candidates: Vec<ComponentId> = scc.components.iter().enumerate()
@@ -51,10 +49,10 @@ pub(super) fn try_reuse<T: Tessellation>(
     // always `true, true` — plain inbound/outbound edges need an actual field-adjacent bridge; a
     // future teleport-based bridging mechanism, with no geometric placement requirement, would
     // pass the corresponding flag(s) as `false` instead).
-    let reachable_from_start = maze.analysis.reachable_from_start(&maze.graph, &maze.meta).unwrap_or_default();
-    let reachable_to_finish = maze.analysis.reachable_to_finish(&maze.graph, &maze.meta).unwrap_or_default();
+    let reachable_from_start = outer.maze.analysis.reachable_from_start(&outer.maze.graph, &outer.maze.meta).unwrap_or_default();
+    let reachable_to_finish = outer.maze.analysis.reachable_to_finish(&outer.maze.graph, &outer.maze.meta).unwrap_or_default();
     let border_count = filter_by_border(
-        maze, &mut candidates, target, &classes, &scc, &reachable_from_start, &reachable_to_finish,
+        &outer.maze, &mut candidates, target, &classes, &scc, &reachable_from_start, &reachable_to_finish,
         ctx.inbound_requires_geometry, ctx.outbound_requires_geometry,
     );
 
@@ -68,28 +66,29 @@ pub(super) fn try_reuse<T: Tessellation>(
     for &idx in candidates.iter().take(take) {
         let mut members: HashSet<NodeId> = scc.components[idx].iter().copied().collect();
 
-        // Each candidate gets its own snapshot/restore — `convert_region` can perform more
-        // than one mutation before its final membership-check fails (e.g. the inbound edge
-        // in `Unreachable -> Alternative`, added before the outbound search even starts), so
-        // a failed candidate is not guaranteed to leave the graph as it found it on its own.
-        // The absorption loop below is part of the same snapshot unit: a candidate too small
-        // for `min_region_size` borrows excess-budgeted neighbors of ANY class with remaining
-        // surplus (per GitHub issue #59's "Region Balance" model) before conversion is even
-        // attempted, and a failed candidate must roll that borrowing back along with everything
-        // else.
-        snapshots.snapshot(maze);
+        // Each candidate gets its own nested draft (DraftMaze wraps DraftMaze,
+        // Specs/repair.md) — `convert_region` can perform more than one mutation before its
+        // final membership-check fails (e.g. the inbound edge in `Unreachable -> Alternative`,
+        // added before the outbound search even starts), so a failed candidate is not guaranteed
+        // to leave the graph as it found it on its own. The absorption loop below runs against
+        // the same nested draft: a candidate too small for `min_region_size` borrows
+        // excess-budgeted neighbors of ANY class with remaining surplus (per GitHub issue #59's
+        // "Region Balance" model) before conversion is even attempted, and a failed candidate
+        // must roll that borrowing back along with everything else — simply by dropping `inner`.
+        let mut inner = DraftMaze::new(outer.maze.draft());
         let budget_before = excess_budget.clone();
 
         absorb_until_min_size(
-            maze, &mut members, idx, min_region_size, &scc, &classes, excess_budget, &critical, ctx, rng,
+            &mut inner, &mut members, idx, min_region_size, &scc, &classes, excess_budget, &critical, ctx, rng,
         );
 
-        let converted = convert_region(maze, &members, target, preset_state, rng);
+        let converted = convert_region(&mut inner, &members, target, preset_state, rng);
 
         if let Some(result) = converted {
+            outer.absorb(inner);
             return Some(result);
         }
-        snapshots.restore(maze);
+        // Failed candidate: `inner` is simply dropped — nothing was ever applied to `outer`.
         *excess_budget = budget_before;
     }
     None
@@ -155,7 +154,7 @@ pub(super) fn prioritize_candidates(
 /// `min_region_size` or the edge pool is exhausted with nothing left to try.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn absorb_until_min_size<T: Tessellation>(
-    maze: &mut Maze<T>,
+    draft: &mut DraftMaze<T>,
     members: &mut HashSet<NodeId>,
     candidate_idx: ComponentId,
     min_region_size: usize,
@@ -171,7 +170,7 @@ pub(super) fn absorb_until_min_size<T: Tessellation>(
     let mut allowed_components: HashSet<ComponentId> = HashSet::from([candidate_idx]);
     'outer: while members.len() < min_region_size {
         let mut edge_pool: Vec<(NodeId, NodeId, ComponentId)> = members.iter()
-            .flat_map(|&m| maze.field.neighbors(m).into_iter().map(move |nb| (m, nb)))
+            .flat_map(|&m| draft.maze.field.neighbors(m).into_iter().map(move |nb| (m, nb)))
             .filter(|(_, nb)| !critical.contains(nb) && !committed_nodes.contains(nb))
             .filter_map(|(m, nb)| {
                 let component = scc.component_of(nb)?;
@@ -192,14 +191,14 @@ pub(super) fn absorb_until_min_size<T: Tessellation>(
         while !edge_pool.is_empty() {
             let i = rng.random_range(0..edge_pool.len());
             let (from, to, component) = edge_pool.remove(i);
-            let forward_added = try_add_directed_edge(&mut maze.graph, from, to, preset_state);
-            let bidirectional_added = forward_added && try_add_directed_edge(&mut maze.graph, to, from, preset_state);
+            let forward_added = draft.try_add_directed_edge(from, to, preset_state);
+            let bidirectional_added = forward_added && draft.try_add_directed_edge(to, from, preset_state);
             if !bidirectional_added {
                 // Roll back a lone forward edge if only the return direction was blocked —
                 // this pair is being discarded, so it must not leave a one-way edge behind
                 // that a later pair (or the caller's own snapshot/restore) doesn't expect.
                 if forward_added {
-                    let _ = try_remove_edge(&mut maze.graph, from, to, &PresetState::empty());
+                    let _ = draft.try_remove_edge(from, to, &PresetState::empty());
                 }
                 continue;
             }

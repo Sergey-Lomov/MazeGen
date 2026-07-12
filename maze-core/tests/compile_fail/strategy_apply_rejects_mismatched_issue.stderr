@@ -1,7 +1,7 @@
 error[E0308]: mismatched types
-  --> tests/compile_fail/strategy_apply_rejects_mismatched_issue.rs:29:40
+  --> tests/compile_fail/strategy_apply_rejects_mismatched_issue.rs:27:40
    |
-29 |     assert_apply::<T, _, _>(&strategy, &issue, maze, snapshots, rng, params, preset_state);
+27 |     assert_apply::<T, _, _>(&strategy, &issue, maze, rng, params, preset_state);
    |     -----------------------            ^^^^^^ expected `&MissingLoopsIssue`, found `&InvalidLoopIssue`
    |     |
    |     arguments to this function are incorrect

@@ -1,4 +1,4 @@
-use rand::RngCore;
+﻿use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::{RegionNeedsExpansionIssue, Issue, REGION_NEEDS_EXPANSION};
@@ -6,7 +6,7 @@ use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
-use crate::repair::snapshot::SnapshotStack;
+use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::{dispatch_weighted, WeightedCandidate};
 
 /// `param_overrides` key a nested candidate's selection weight is read from — see
@@ -85,16 +85,15 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedR
     fn apply(
         &self,
         issue: &RegionNeedsExpansionIssue,
-        maze: &mut Maze<T>,
-        snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         _params: &StrategyParams,
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
+    ) -> (RepairResult, Vec<MutationCommand>) {
         let invalid = &issue.invalid;
         if invalid.is_empty() {
-            return RepairResult::Fixed { score: None };
+            return (RepairResult::Fixed { score: None }, vec![]);
         }
 
         // Defensive runtime filter, not the primary validation: `maze-runner`'s `build_nested`
@@ -105,7 +104,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedR
         let candidate_configs: Vec<&NestedStrategyConfig<T>> =
             nested.iter().filter(|n| n.slot.slot_id == SLOT_MERGE_TARGET).collect();
         if candidate_configs.is_empty() {
-            return RepairResult::Failed;
+            return (RepairResult::Failed, vec![]);
         }
 
         debug_assert!(
@@ -118,7 +117,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedR
             .map(|&config| WeightedCandidate { config, weight: resolve_weight(&config.param_overrides) })
             .collect();
 
-        dispatch_weighted(issue as &dyn Issue, maze, snapshots, rng, preset_state, &candidates)
+        dispatch_weighted(issue as &dyn Issue, maze, rng, preset_state, &candidates)
     }
 }
 
@@ -136,6 +135,21 @@ mod tests {
     use crate::repair::strategies::{ExpandRegionPassageStrategy, TeleportRegionMergeStrategy};
     use crate::repair::strategy::ErasedRepairStrategy;
     use std::collections::HashMap;
+    use crate::quality_control::rule::apply_commands;
+
+    fn apply_and_commit<T: Tessellation>(
+        strategy: &impl RepairStrategy<T, RegionNeedsExpansionIssue>,
+        issue: &RegionNeedsExpansionIssue,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult {
+        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
+        apply_commands(maze, preset_state, commands);
+        result
+    }
 
     fn no_params() -> StrategyParams {
         build_params(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, RegionNeedsExpansionIssue>>::params(&WeightedRegionMergeStrategy), None)
@@ -170,7 +184,7 @@ mod tests {
         let mut rng_a = MazeRng::seed_from_u64(1);
         let mut rng_b = MazeRng::seed_from_u64(1);
         let edges_before = maze.graph.edges().count();
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng_a, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng_a, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), edges_before);
         assert_eq!(rng_a.next_u64(), rng_b.next_u64(), "rng must not be consumed on the empty-invalid idempotency path");
@@ -181,7 +195,7 @@ mod tests {
         let mut maze = maze_4_singletons();
         let issue = issue_for(vec![0]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -197,7 +211,7 @@ mod tests {
             param_overrides: HashMap::new(),
             nested: vec![],
         }];
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -208,7 +222,7 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(ExpandRegionPassageStrategy), None)];
         let edges_before = maze.graph.edges().count();
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Fixed { .. }));
         assert!(maze.graph.edges().count() > edges_before, "delegate must have actually merged the region");
     }
@@ -226,7 +240,7 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(ExpandRegionPassageStrategy), None)];
         let edges_before = maze.graph.edges().count();
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Fixed { .. }));
         // Each successful merge in a 1x4 singleton chain adds exactly one bidirectional passage
         // (2 directed edges) between geometrically-adjacent nodes — two regions merged means two
@@ -246,7 +260,7 @@ mod tests {
         let issue = issue_for(vec![0]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(ExpandRegionPassageStrategy), Some("not_a_number"))];
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Fixed { .. }), "a broken weight override must not break apply — falls back to default");
     }
 
@@ -271,7 +285,7 @@ mod tests {
             nested_with(Box::new(ExpandRegionPassageStrategy), None),
             nested_with(Box::new(TeleportRegionMergeStrategy), None),
         ];
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &nested);
+        let result = apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &nested);
         assert!(matches!(result, RepairResult::Fixed { .. }), "teleport candidate must succeed after the geometry-blocked candidate fails");
         let has_basic_bridge = maze.graph.edges().any(|e| {
             (e.from == nodes[0] && e.to == nodes[1]) || (e.from == nodes[1] && e.to == nodes[0])
@@ -289,7 +303,7 @@ mod tests {
             nested_with(Box::new(ExpandRegionPassageStrategy), Some("2.0")),
             nested_with(Box::new(TeleportRegionMergeStrategy), Some("1.0")),
         ];
-        RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &no_params(), &PresetState::empty(), &nested_a);
+        apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &nested_a);
 
         let mut maze_b = maze_4_singletons();
         let mut rng_b = MazeRng::seed_from_u64(99);
@@ -297,7 +311,7 @@ mod tests {
             nested_with(Box::new(ExpandRegionPassageStrategy), Some("2.0")),
             nested_with(Box::new(TeleportRegionMergeStrategy), Some("1.0")),
         ];
-        RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &no_params(), &PresetState::empty(), &nested_b);
+        apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &nested_b);
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();
@@ -313,11 +327,11 @@ mod tests {
             &[StrategyParam { id: WEIGHT_KEY, label: "Weight", kind: crate::repair::StrategyParamKind::Float { default: 1.0, min: 0.0, max: 1.0 } }]
         }
         fn apply(
-            &self, _issue: &RegionNeedsExpansionIssue, _maze: &mut Maze<T>, _snapshots: &mut SnapshotStack,
+            &self, _issue: &RegionNeedsExpansionIssue, _maze: &Maze<T>,
             _rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState,
             _nested: &[NestedStrategyConfig<T>],
-        ) -> RepairResult {
-            RepairResult::Fixed { score: None }
+        ) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
     crate::impl_erased_repair_strategy!(DeclaresWeightParamStrategy, RegionNeedsExpansionIssue);
@@ -329,6 +343,6 @@ mod tests {
         let issue = issue_for(vec![0]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(DeclaresWeightParamStrategy), None)];
-        RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     }
 }

@@ -14,7 +14,7 @@ pub use issue_kinds::{
     TeleportGroupProximityIssue,
 };
 pub use check::Check;
-pub use rule::{Rule, RuleTrait};
+pub use rule::{Rule, RuleTrait, ApplyOutcome};
 pub use stage::Stage;
 pub use engine::QualityControlEngine;
 pub use checks::{

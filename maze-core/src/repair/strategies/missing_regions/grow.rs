@@ -1,19 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use rand::{Rng, RngCore};
-use crate::Maze;
 use crate::ids::NodeId;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
 use crate::graph::region_class::RegionClass;
 use crate::space::Tessellation;
-use crate::generation::{PresetState, try_add_directed_edge, try_remove_edge};
-use crate::repair::snapshot::SnapshotStack;
+use crate::generation::PresetState;
+use crate::repair::draft::DraftMaze;
 
 use super::{MAX_GROW_ATTEMPTS, GrowContext};
 use super::convert::convert_region;
 
 pub(super) fn try_grow<T: Tessellation>(
-    maze: &mut Maze<T>,
-    snapshots: &mut SnapshotStack,
+    outer: &mut DraftMaze<T>,
     target: RegionClass,
     locality: f64,
     min_region_size: usize,
@@ -23,9 +21,9 @@ pub(super) fn try_grow<T: Tessellation>(
 ) -> Option<HashSet<NodeId>> {
     let committed_nodes = ctx.committed_nodes;
     let preset_state = ctx.preset_state;
-    let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
-    let route = maze.analysis.route_info(&maze.graph, &maze.meta);
+    let scc = outer.maze.analysis.scc(&outer.maze.graph);
+    let region_classes = outer.maze.analysis.region_classes(&outer.maze.graph, &outer.maze.meta);
+    let route = outer.maze.analysis.route_info(&outer.maze.graph, &outer.maze.meta);
     let critical: HashSet<NodeId> = route.as_ref().map(|r| r.path.iter().copied().collect()).unwrap_or_default();
 
     // Seed candidates: any node not on the critical path and not already committed this
@@ -65,15 +63,15 @@ pub(super) fn try_grow<T: Tessellation>(
     // pass the corresponding flag(s) as `false`, disabling that side's contribution to the
     // border score entirely — every seed then ties at score 0 and the shuffle alone decides
     // order, same as `filter_by_border`'s `false` case in `try_reuse`).
-    let reachable_from_start = maze.analysis.reachable_from_start(&maze.graph, &maze.meta).unwrap_or_default();
-    let reachable_to_finish = maze.analysis.reachable_to_finish(&maze.graph, &maze.meta).unwrap_or_default();
+    let reachable_from_start = outer.maze.analysis.reachable_from_start(&outer.maze.graph, &outer.maze.meta).unwrap_or_default();
+    let reachable_to_finish = outer.maze.analysis.reachable_to_finish(&outer.maze.graph, &outer.maze.meta).unwrap_or_default();
     let needs_inbound = ctx.inbound_requires_geometry && matches!(target, RegionClass::Trap | RegionClass::Alternative);
     let needs_outbound = ctx.outbound_requires_geometry && matches!(target, RegionClass::Alternative);
     let border_score = |n: NodeId| -> usize {
         if !needs_inbound && !needs_outbound {
             return 0;
         }
-        maze.field.neighbors(n).into_iter()
+        outer.maze.field.neighbors(n).into_iter()
             .filter(|nb| {
                 (needs_inbound && reachable_from_start.contains(nb))
                     || (needs_outbound && reachable_to_finish.contains(nb))
@@ -90,30 +88,32 @@ pub(super) fn try_grow<T: Tessellation>(
     for &seed in seed_candidates.iter().take(take) {
         let Some(seed_component) = scc.component_of(seed) else { continue };
 
-        // Each seed gets its own snapshot/restore — cross-region crossing (via
-        // `try_open_excess_neighbor`) adds real bridging edges before `convert_region` even
-        // runs; if this seed's attempt fails at any later step, those additions must not leak
-        // into the next seed's attempt or into a later seed's eventual success. `excess_budget`
-        // is deliberately NOT part of this snapshot — it's an in-memory accounting map, not
-        // graph state, and a failed attempt's crossings already happened against real candidate
-        // components; per GitHub issue #59's "Region Balance Consistency" rule the spend must
-        // be undone on rollback too, so a failed attempt restores its own debited budget below.
-        snapshots.snapshot(maze);
+        // Each seed gets its own nested draft (DraftMaze wraps DraftMaze, Specs/repair.md) —
+        // cross-region crossing (via `try_open_excess_neighbor`) adds bridging edges before
+        // `convert_region` even runs; if this seed's attempt fails at any later step, those
+        // additions must not leak into the next seed's attempt or into a later seed's eventual
+        // success. `excess_budget` is deliberately NOT part of this nesting — it's an in-memory
+        // accounting map, not graph state, and a failed attempt's crossings already happened
+        // against real candidate components; per GitHub issue #59's "Region Balance Consistency"
+        // rule the spend must be undone on rollback too, so a failed attempt restores its own
+        // debited budget below.
+        let mut inner = DraftMaze::new(outer.maze.draft());
         let budget_before = excess_budget.clone();
 
-        if let Some(members) = grow_front(maze, seed, seed_component, &scc, &region_classes, excess_budget, locality, min_region_size, &critical, ctx, rng) {
+        if let Some(members) = grow_front(&mut inner, seed, seed_component, &scc, &region_classes, excess_budget, locality, min_region_size, &critical, ctx, rng) {
             // Sever members from the rest of their parent region(s) before conversion — part of
             // this growth attempt's budget, not a separate connect step. Internal connectivity
             // of `members` is guaranteed by construction (every node was added via a real
             // bidirectional graph edge to an already-included node), so no post-hoc bridging is
             // needed here — only the boundary to the outside world needs cutting.
-            if sever_from_parent(maze, &members, preset_state)
-                && let Some(result) = convert_region(maze, &members, target, preset_state, rng) {
+            if sever_from_parent(&mut inner, &members, preset_state)
+                && let Some(result) = convert_region(&mut inner, &members, target, preset_state, rng) {
+                outer.absorb(inner);
                 return Some(result);
             }
         }
 
-        snapshots.restore(maze);
+        // Failed attempt: `inner` is simply dropped — nothing was ever applied to `outer`.
         *excess_budget = budget_before;
     }
     None
@@ -144,7 +144,7 @@ pub(super) fn try_grow<T: Tessellation>(
 /// Crossing never touches `critical`/`ctx.committed_nodes`, same as same-component growth.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn grow_front<T: Tessellation>(
-    maze: &mut Maze<T>,
+    draft: &mut DraftMaze<T>,
     seed: NodeId,
     seed_component: ComponentId,
     scc: &ConnectedComponents,
@@ -166,7 +166,7 @@ pub(super) fn grow_front<T: Tessellation>(
         if frontier.is_empty() {
             // Same-component front-expansion has nowhere left to go -- try crossing into a
             // bordering component with spare excess budget before giving up entirely.
-            let Some(opened) = try_open_excess_neighbor(maze, &in_region, scc, region_classes, excess_budget, critical, &allowed_components, ctx, rng) else {
+            let Some(opened) = try_open_excess_neighbor(draft, &in_region, scc, region_classes, excess_budget, critical, &allowed_components, ctx, rng) else {
                 return None;
             };
             allowed_components.insert(opened.component);
@@ -182,8 +182,8 @@ pub(super) fn grow_front<T: Tessellation>(
         };
         let src = frontier[fi];
 
-        let mut candidates: Vec<NodeId> = maze.graph.outgoing_neighbors(src)
-            .filter(|n| maze.graph.edge_between(*n, src).is_some())
+        let mut candidates: Vec<NodeId> = draft.maze.graph.outgoing_neighbors(src)
+            .filter(|n| draft.maze.graph.edge_between(*n, src).is_some())
             .filter(|n| !in_region.contains(n) && !critical.contains(n) && !committed_nodes.contains(n))
             .filter(|n| scc.component_of(*n).is_some_and(|c| allowed_components.contains(&c)))
             .collect();
@@ -222,7 +222,7 @@ pub(super) struct OpenedNeighbor {
 /// spent, or every bridging attempt is preset-blocked).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn try_open_excess_neighbor<T: Tessellation>(
-    maze: &mut Maze<T>,
+    draft: &mut DraftMaze<T>,
     in_region: &HashSet<NodeId>,
     scc: &ConnectedComponents,
     region_classes: &HashMap<ComponentId, RegionClass>,
@@ -235,7 +235,7 @@ pub(super) fn try_open_excess_neighbor<T: Tessellation>(
     let committed_nodes = ctx.committed_nodes;
     let preset_state = ctx.preset_state;
     let mut bordering: Vec<(NodeId, NodeId, ComponentId)> = in_region.iter()
-        .flat_map(|&m| maze.field.neighbors(m).into_iter().map(move |nb| (m, nb)))
+        .flat_map(|&m| draft.maze.field.neighbors(m).into_iter().map(move |nb| (m, nb)))
         .filter(|(_, nb)| !critical.contains(nb) && !committed_nodes.contains(nb))
         .filter_map(|(m, nb)| scc.component_of(nb).map(|c| (m, nb, c)))
         .filter(|(_, _, c)| !allowed_components.contains(c))
@@ -254,14 +254,14 @@ pub(super) fn try_open_excess_neighbor<T: Tessellation>(
         if budget <= 0 {
             continue;
         }
-        let forward_added = maze.graph.edge_between(member, neighbor).is_some()
-            || try_add_directed_edge(&mut maze.graph, member, neighbor, preset_state);
+        let forward_added = draft.maze.graph.edge_between(member, neighbor).is_some()
+            || draft.try_add_directed_edge(member, neighbor, preset_state);
         let bidirectional_added = forward_added
-            && (maze.graph.edge_between(neighbor, member).is_some()
-                || try_add_directed_edge(&mut maze.graph, neighbor, member, preset_state));
+            && (draft.maze.graph.edge_between(neighbor, member).is_some()
+                || draft.try_add_directed_edge(neighbor, member, preset_state));
         if !bidirectional_added {
-            if forward_added && maze.graph.edge_between(neighbor, member).is_none() {
-                let _ = try_remove_edge(&mut maze.graph, member, neighbor, &PresetState::empty());
+            if forward_added && draft.maze.graph.edge_between(neighbor, member).is_none() {
+                let _ = draft.try_remove_edge(member, neighbor, &PresetState::empty());
             }
             continue;
         }
@@ -282,17 +282,17 @@ pub(super) fn try_open_excess_neighbor<T: Tessellation>(
 /// component, so `members` becomes its own isolated (`Unreachable`) component before entering
 /// `convert_region`. Returns false if any required cut is blocked by `preset_state` — caller
 /// treats that as a failed growth attempt for this seed.
-pub(super) fn sever_from_parent<T: Tessellation>(maze: &mut Maze<T>, members: &HashSet<NodeId>, preset_state: &PresetState) -> bool {
+pub(super) fn sever_from_parent<T: Tessellation>(draft: &mut DraftMaze<T>, members: &HashSet<NodeId>, preset_state: &PresetState) -> bool {
     let mut to_cut: Vec<(NodeId, NodeId)> = Vec::new();
     for &n in members {
-        for neighbor in maze.field.neighbors(n) {
+        for neighbor in draft.maze.field.neighbors(n) {
             if members.contains(&neighbor) {
                 continue;
             }
-            if maze.graph.edge_between(n, neighbor).is_some() {
+            if draft.maze.graph.edge_between(n, neighbor).is_some() {
                 to_cut.push((n, neighbor));
             }
-            if maze.graph.edge_between(neighbor, n).is_some() {
+            if draft.maze.graph.edge_between(neighbor, n).is_some() {
                 to_cut.push((neighbor, n));
             }
         }
@@ -300,7 +300,7 @@ pub(super) fn sever_from_parent<T: Tessellation>(maze: &mut Maze<T>, members: &H
     to_cut.sort_unstable();
     to_cut.dedup();
     for (from, to) in to_cut {
-        if maze.graph.edge_between(from, to).is_some() && !try_remove_edge(&mut maze.graph, from, to, preset_state) {
+        if draft.maze.graph.edge_between(from, to).is_some() && !draft.try_remove_edge(from, to, preset_state) {
             return false;
         }
     }

@@ -76,13 +76,12 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     fn apply(
         &self,
         issue: &I,
-        maze: &mut Maze<T>,
-        snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult;
+    ) -> (RepairResult, Vec<MutationCommand>);
 }
 
 /// Type-erased view of `RepairStrategy<T, I>` for the one place genuine cross-`I` heterogeneity
@@ -109,10 +108,10 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     /// below), never produced by a `Check::repair_check` call, so there is no requirement to pass.
     fn requirement_erased(&self, params: &StrategyParams) -> Box<dyn std::any::Any>;
     fn apply(
-        &self, issue: &dyn Issue, maze: &mut Maze<T>, snapshots: &mut SnapshotStack,
+        &self, issue: &dyn Issue, maze: &Maze<T>,
         rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult;
+    ) -> (RepairResult, Vec<MutationCommand>);
 }
 ```
 
@@ -123,7 +122,45 @@ known (a `Rule<T, I>`'s own checks and strategy), there is nothing to compare at
 
 `MissingRegionsStrategy` is the only strategy currently marked experimental (`is_experimental() -> true`) — its region reuse/growth heuristics are new (GitHub issue #59) and less predictable in result quality and performance than the other built-in strategies.
 
-`snapshots: &mut SnapshotStack` lets a strategy push/pop `(Graph, MazeMeta)` rollback points around a sequence of mutating actions it wants to be able to undo (see `MissingRegionsStrategy`'s reuse/growth attempts) — opt-in, most strategies never call it. One `SnapshotStack` is constructed per `apply()` call by `Rule::dispatch_repair_typed` (see "Rule, Stage, and the unified QualityControlEngine" below), threaded through unchanged into any nested `apply()` call (see below) — nested calls never get their own stack.
+**Mutation-command contract (GitHub issue #118).** `maze: &Maze<T>` is an immutable snapshot — a strategy never mutates it directly. Instead, `apply` inspects `maze` and returns `(RepairResult, Vec<MutationCommand>)`: a list of proposed mutations, applied and individually revalidated against the real `Maze` immediately after `apply` returns (see "Where commands are applied and revalidated" below), not a batch the strategy commits itself. This replaces the pre-#118 contract, where `apply` took `maze: &mut Maze<T>` plus `snapshots: &mut SnapshotStack` (push/pop `(Graph, MazeMeta)` rollback points around a mutating sequence it wanted to undo) and mutated the graph in place.
+
+**Why**: the old contract required strategies handling a *batch* of flagged items in one `apply()` call (e.g. many invalid cycles) to mutate the graph as they went — but a mutation for item 1 could invalidate indices/ids item 2's candidate search had already resolved from pre-mutation state, corrupting the batch mid-flight. GitHub issues #98/#99 worked around this by splitting several batched issue kinds into one-issue-per-item, trading a full QC pass per item for correctness. Under the immutable-snapshot contract, every command in a returned batch is built against the *same*, never-mutated snapshot — index/id staleness within one `apply()` call is structurally impossible, since nothing mutates until after the strategy has already finished deciding. This opens the door to reverting #98/#99's split later (a separate, not-yet-done follow-up — see each split issue's own tracking) without reintroducing the original bug.
+
+```rust
+pub enum MutationCommand {
+    AddDirectedEdge { from: NodeId, to: NodeId },
+    AddBidirectionalEdge { a: NodeId, b: NodeId },
+    AddDirectedTeleport { from: NodeId, to: NodeId },
+    AddBidirectionalTeleport { a: NodeId, b: NodeId },
+    RemoveEdge { id: EdgeId },              // mirrors try_remove_edge_by_id's contract
+    RemoveEdgeBetween { from: NodeId, to: NodeId }, // mirrors try_remove_edge's contract
+    RemoveTeleportWithReverse { id: EdgeId }, // mirrors try_remove_teleport_with_reverse's contract
+    SetStart(NodeId),   // idempotent -- applied only if meta.start is still unset
+    SetFinish(NodeId),  // idempotent -- applied only if meta.finish is still unset
+}
+```
+
+One variant per existing `generation::mod` mutating helper (`try_*`), not lower-level graph primitives — each variant preserves that helper's own all-or-nothing atomicity as a single revalidatable unit (e.g. `AddBidirectionalEdge` is one command, not two independent `AddDirectedEdge`s, since `try_add_bidirectional_edge`'s "both directions free, or skip the pair" guarantee wouldn't survive independent per-direction revalidation). `SetStart`/`SetFinish` have no paired `try_*`/`cmd_*` helper — they mutate `MazeMeta`, not `Graph`, so there's no edge-feasibility check to share.
+
+**Building commands** (`cmd_*` functions in `generation/mod.rs`, e.g. `cmd_add_bidirectional_edge`, `cmd_remove_edge_by_id`): read-only counterparts of the mutating `try_*` helpers, checking the same feasibility (preset-state locks, shared with `try_*` via a private predicate like `bidirectional_edge_feasible`/`directed_edge_feasible`/`remove_edge_between_feasible`) and, if feasible, returning the equivalent `MutationCommand`(s) instead of mutating. **Maintenance rule**: every new public mutating helper in `generation::mod` must gain its own `MutationCommand` variant and paired `cmd_*` builder in the same commit — a strategy holding only `&Maze` has no other way to reach it. There is no compiler enforcement for this; kept in mind on review. Add-side `cmd_*` builders take no `&Graph` — every `try_add_*` is completion-aware/idempotent (never fails for a structural reason, only a preset one), so there's no structural dry-run worth sharing on that side; `Graph::can_remove_edge(id)` is the one structural dry-run that matters, used by the remove-side `cmd_*` builders (there's no `can_add_edge` counterpart, for the same reason).
+
+**`DraftMaze` (only `MissingRegionsStrategy`)**: a strategy that needs intermediate mutate-and-inspect state before committing to a final command list (region reuse/growth attempts) works against a `Maze::draft()` — a cheap independent working copy (`field`/`graph`/`meta` cloned, `MazeAnalysis` cache always fresh, never inherited) — wrapped in a thin `DraftMaze<T>` that auto-records every mutation as a `MutationCommand` at the moment it happens, via mirrored `try_add_directed_edge`/`try_add_bidirectional_edge`/`try_remove_edge`/`try_remove_edge_by_id` methods that delegate into the real `generation::try_*` helper and push the matching command on success. The strategy keeps calling mutation methods exactly as it would against a plain `Maze`, just through `.maze` on this wrapper, and the command log falls out for free — no manual parallel command list, no post-hoc graph diff.
+
+`DraftMaze` **nests**: a strategy needing per-candidate rollback inside a larger multi-step attempt (`MissingRegionsStrategy::try_reuse`/`try_grow`) takes `DraftMaze::new(outer.maze.draft())` for each candidate, tries it, and on failure simply drops the inner `DraftMaze` — ordinary Rust drop, nothing to undo. On success, `outer.absorb(inner)` extends `outer`'s own command log with `inner.into_commands()` and replaces `outer.maze` with `inner.maze`'s final state, so the next attempt at `outer`'s level sees this one's committed effect. This replaces the old `SnapshotStack`'s per-candidate `snapshot`/`restore` pair with an ordinary owned value that simply goes out of scope on failure.
+
+**Where commands are applied and revalidated** (`apply_commands`, `quality_control::rule`): `Rule::dispatch_repair_typed` calls `strategy.apply(issue, maze, ...)` against an immutable borrow, gets back `(result, commands)`, then applies `commands` to the real `&mut Maze<T>` immediately — the Rule-level commit point, not batched across the whole `Stage`:
+
+```rust
+pub struct ApplyOutcome { pub proposed: usize, pub applied: usize }
+
+pub fn apply_commands<T: Tessellation>(
+    maze: &mut Maze<T>, preset_state: &PresetState, commands: Vec<MutationCommand>,
+) -> ApplyOutcome;
+```
+
+Each command is applied via the real `try_*` helper (the single source of truth for "can this be applied right now," structural + preset state both), in `Vec` order. A command that no longer holds by commit time (its structural precondition changed since the strategy read its snapshot, e.g. a preceding command in the same batch already removed the edge it also targeted) is silently dropped — not an error, does not change the strategy's own returned `RepairResult`, and does not block the rest of the batch from applying. This revalidate-and-drop mechanism is what structurally replaces #98/#99's one-issue-per-item split: a batched issue's stale sub-command is simply skipped instead of corrupting state or requiring the whole batch be rejected.
+
+**Contract for partially-applied batches**: a strategy must treat any subset of its own commands landing (the rest silently dropped) as an acceptable outcome — it has no way to detect partial application after the fact (`apply_commands` runs after `apply()` already returned) and must not rely on all-or-nothing application across multiple commands. If two mutations must both apply or neither, they must be one `MutationCommand`, not two (see `AddBidirectionalEdge` above) — not something the strategy checks after the fact.
 
 `nested: &[NestedStrategyConfig<T>]` carries this rule's configured nested strategies (empty for every strategy without nested slots — the overwhelming majority, which simply ignore the parameter). See "Nested strategies" below.
 
@@ -181,7 +218,7 @@ pub struct NestedStrategyConfig<T: Tessellation> {
 
 **Synthesized issues never join the shared issue pool.** A parent strategy that delegates to a nested one builds its own concrete `Issue` value for the nested call (e.g. `ReduceSccCountStrategy` builds a `RegionNeedsExpansionIssue` naming the regions it picked, then passes `&synthetic as &dyn Issue` into the nested `ErasedRepairStrategy::apply` call) — this issue exists only as a local variable inside the parent's `apply()` and is discarded afterward. It is never added to `remaining_issues`, never surfaces in `maze-wasm`'s `IssueDto` list, and never reaches the web UI. The user only ever sees the original top-level issue (e.g. `EXCESSIVE_SCC_COUNT`) that the parent strategy itself was dispatched for.
 
-**Rollback stays the mutating strategy's own responsibility.** A nested call does not introduce a second snapshot mechanism or double bookkeeping — the same `&mut SnapshotStack` passed into the parent's `apply()` is passed straight through into the nested call, unchanged. If the nested strategy mutates the graph and then returns `Failed`, the parent does not roll those mutations back on the nested strategy's behalf; that is exactly the same contract every `RepairStrategy` already has today (e.g. `ExpandRegionPassageStrategy` does not snapshot around its own `try_add_bidirectional_edge` calls) — nesting changes nothing about who owns rollback.
+**Command concatenation order, not rollback.** A nested call needs no rollback mechanism at all under the immutable-snapshot contract — the same never-mutated `&Maze` the parent received is passed straight through into the nested call, unchanged, so there is nothing for the nested strategy to have mutated in the first place. The parent calls the nested `ErasedRepairStrategy::apply` (with a synthetic issue of the slot's `kind`, against that same `&Maze`), gets back `(result, nested_commands)`, and **concatenates**: its own commands accumulated so far, then `nested_commands` (`own_commands_so_far.extend(nested_commands)` — parent, then nested). If the nested strategy returns `Failed`, its returned commands are simply not incorporated into whatever the parent ultimately returns for that path (see `dispatch_weighted` below for the retry-on-`Failed` case) — there is no mutation to undo, only a `Vec` to discard.
 
 ### Weighted nested dispatch (`dispatch_weighted`)
 
@@ -198,12 +235,11 @@ pub struct WeightedCandidate<'a, T: Tessellation> {
 
 pub fn dispatch_weighted<T: Tessellation>(
     issue: &dyn Issue,
-    maze: &mut Maze<T>,
-    snapshots: &mut SnapshotStack,
+    maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
     candidates: &[WeightedCandidate<T>],
-) -> RepairResult;
+) -> (RepairResult, Vec<MutationCommand>);
 ```
 
 `dispatch_weighted` operates entirely at the erased boundary — `issue: &dyn Issue`, not a
@@ -217,17 +253,17 @@ whose own `I` may differ from the caller's.
   implementation of one such convention.
 - **Weight contract**: every weight must be finite and `> 0.0` — the caller's responsibility,
   `debug_assert!`-checked defensively on entry, never silently substituted. Empty `candidates`
-  returns `Failed` immediately without touching `rng` or `snapshots`.
+  returns `Failed` immediately without touching `rng`.
 - **Who builds `StrategyParams`**: `dispatch_weighted` itself, via `build_params(strategy.params(),
   Some(&config.param_overrides))` for whichever candidate it is about to try — callers pass raw
   `NestedStrategyConfig`s, never pre-built `StrategyParams`.
 - **Selection**: without replacement, weighted-random over the remaining pool (cumulative-weight
   pick via `rng`), repeated until a `Fixed` result or the pool is exhausted.
-- **`SnapshotStack` ownership**: `snapshots.snapshot(maze)` before each attempt. On `Fixed`, that
-  snapshot is discarded via `snapshots.discard_last()` (not restored) — the mutation is kept and
-  the stack ends the call at the same depth it had on entry (no net growth). On `Failed`,
-  `snapshots.restore(maze)` undoes exactly that attempt's mutations before the next pick is tried
-  on a clean graph.
+- **No rollback bookkeeping needed** (GitHub issue #118's immutable-snapshot contract): every
+  attempt is called against the same immutable `&Maze` — nothing mutates the real graph mid-call,
+  so a `Failed` candidate's returned commands are simply discarded (never concatenated); the next
+  weighted pick tries again against the identical unmutated snapshot. A `Fixed` candidate's
+  commands are returned as-is.
 - **Recursion**: each attempt is called with `&config.nested` passed straight through — a
   nested-under-nested chain is not truncated by this helper.
 - **Only `Fixed`/`Failed`**: `RepairResult` is a two-variant enum today; the helper's `match` has
@@ -325,13 +361,15 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
     ) -> Vec<I>;
 
     /// Dispatches this rule's own strategy against `issue` (already merged by
-    /// `run_checks_typed`) — builds `StrategyParams` and calls `apply` itself, no separate engine
-    /// involved. `None` if this rule has no registered strategy.
+    /// `run_checks_typed`) — builds `StrategyParams`, calls `apply` itself (no separate engine
+    /// involved), then immediately applies and revalidates the returned commands against the real
+    /// `maze` via `apply_commands` (see "Mutation-command contract" above) — the Rule-level commit
+    /// point, not batched across the whole `Stage`. `None` if this rule has no registered strategy.
     pub fn dispatch_repair_typed(
         &self, issue: &I, maze: &mut Maze<T>, rng: &mut dyn RngCore,
         preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: &dyn Fn() -> f64,
-    ) -> Option<RepairResult>;
+    ) -> Option<(RepairResult, ApplyOutcome)>;
 }
 
 /// Type-erased view of `Rule<T, I>` for the one place genuine cross-`I` heterogeneity is
@@ -346,7 +384,7 @@ pub trait RuleTrait<T: Tessellation> {
     fn has_strategy(&self) -> bool;
     fn run_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<Box<dyn Issue>>;
     fn report_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Vec<Box<dyn Issue>>;
-    fn dispatch_repair(&self, issue: &dyn Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<RepairResult>;
+    fn dispatch_repair(&self, issue: &dyn Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<(RepairResult, ApplyOutcome)>;
 }
 ```
 
@@ -683,7 +721,7 @@ Same contract as `InvalidLoopRandomStrategy`/`ExpandRegionPassageStrategy`: `bal
   2. **Add**: for each side `members` needs but doesn't have after the audit, add one — inbound first if needed, then outbound if needed. Each side tries every field-adjacent candidate edge (shuffled, **no attempt cap** — every candidate is tried before giving up, unlike the old fixed-budget candidate search), each as its own add + membership-check + undo-if-not-yet-matching unit (a candidate pair already connected before the attempt is never touched, so a pre-existing edge unrelated to this attempt is never destroyed).
   3. Final **membership-check**: every node in `members` must resolve to a single SCC classified as `target`.
 
-  Returns failure if `members` isn't coherent to begin with, if any audit removal is preset-blocked, or if no combination of adds lands on `target`. `convert_region` carries no snapshot/restore of its own — a failed call may leave audit removals or partial adds in the graph; the caller (`try_reuse`/`try_grow`) is responsible for a full snapshot before calling it and a restore on failure, and both already do this around the whole candidate (including absorbed neighbors).
+  Returns failure if `members` isn't coherent to begin with, if any audit removal is preset-blocked, or if no combination of adds lands on `target`. `convert_region` carries no rollback of its own — a failed call may leave audit removals or partial adds recorded in the `DraftMaze` it was given; the caller (`try_reuse`/`try_grow`) is responsible for calling it against its own nested `DraftMaze` (`DraftMaze` wraps `DraftMaze` — see "Mutation-command contract" above) and simply dropping that nested draft on failure, discarding everything recorded in it, and both already do this around the whole candidate (including absorbed neighbors).
 
 **Region growth** (fallback if reuse fails): seeds front-expansion from any node not on the critical path and not already committed this `apply` call (including a node currently classified `Path`, as long as it isn't on the critical path itself — a tree-shaped maze with no cycles has its single SCC classified entirely `Path`, so without this a tree-shaped maze could never grow a Trap/Alternative/Unreachable region from scratch). Up to `MAX_GROW_ATTEMPTS` seeds are tried, prioritized the same way reuse candidates are (border-count with the needed reachability side).
 
@@ -691,7 +729,7 @@ Same contract as `InvalidLoopRandomStrategy`/`ExpandRegionPassageStrategy`: `bal
 - After growth stops (whether single- or multi-component), every edge between the grown set and the rest of its original parent component(s) is severed (`sever_from_parent`) so the set becomes its own isolated (`Unreachable`) component. No separate post-growth bridging step is needed even when growth crossed into a second component: `try_open_excess_neighbor` already added a real bidirectional edge from `in_region` into the crossed component's entry node at the moment of crossing, before folding it into the frontier — so by the time `sever_from_parent` runs, the grown set is already one coherent SCC and severance only has to cut the *outward*-facing edges to the rest of the original parent component(s), never re-establish internal connectivity.
 - Conversion then proceeds identically to the reuse path's audit-based `convert_region` — severance guarantees the grown set starts fully isolated (`Unreachable`), so the audit step's inbound/outbound removal is a no-op here (nothing to remove), and only the add step actually does anything.
 
-**Region Balance Consistency**: the budget map (`excess_budget`, seeded once per `apply` call from `balance_by_class`'s positive entries) is mutated in place as components are absorbed, but every absorption happens inside the same snapshot/restore unit as its candidate's reuse/growth attempt — a failed attempt (membership-check fails, or every connect candidate is exhausted) restores both the graph snapshot **and** a separately-saved copy of the budget map from before the attempt started, so a rolled-back absorption never leaves a debited budget behind. The budget is only ever durably spent by an attempt that reaches a successful, fully committed conversion.
+**Region Balance Consistency**: the budget map (`excess_budget`, seeded once per `apply` call from `balance_by_class`'s positive entries) is mutated in place as components are absorbed, but every absorption happens inside the same nested-`DraftMaze` unit as its candidate's reuse/growth attempt — a failed attempt (membership-check fails, or every connect candidate is exhausted) drops that nested `DraftMaze` **and** restores a separately-saved copy of the budget map from before the attempt started, so a rolled-back absorption never leaves a debited budget behind. The budget is only ever durably spent by an attempt that reaches a successful, fully committed conversion (`outer.absorb(inner)`).
 
 **Critical path constraint**: nodes on the critical path (the shortest start→finish route) are never used as a reuse candidate's member, a growth seed, or a cross-component absorption target, in either the reuse or growth path — checked the same way `ExpandRegionPassageStrategy` and the other region strategies do.
 
@@ -716,7 +754,7 @@ Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far on
 - Otherwise selects exactly `count - max_scc_count` components to merge, ordered by `merge_priority`: `smallest`/`largest` sort by `(component size, component id)` for deterministic tie-breaking; `random` performs a seeded Fisher-Yates shuffle over component ids via `rng`. Only the first `count - max_scc_count` selected ids are used.
 - Builds a synthetic `RegionNeedsExpansionIssue { meta: IssueMeta::default(), invalid: chosen, invalid_sources: Default::default() }`, passed to the nested `ErasedRepairStrategy::apply` call as `&synthetic as &dyn Issue` — never published anywhere outside this `apply` call (see "Nested strategies"' synthesized-issues rule above).
 - Looks up the nested strategy filling `merge_target` in the `nested` slice passed into `apply` (defensive `debug_assert!` that at most one entry fills the slot, even though `build_nested` already enforces `max: Some(1)` at config-build time) — if none is present, returns `Failed`.
-- Delegates: builds the nested strategy's own `StrategyParams` from its `param_overrides`, then calls its `apply()` with the synthetic issue, the same `maze`/`snapshots`/`rng`/`preset_state`, and its own `nested` list (empty for `ExpandRegionPassageStrategy` today, but recursion is supported). Returns whatever `RepairResult` the nested call produces, unchanged — a merge failure (e.g. every candidate region has no geometrically-adjacent neighbor, or every candidate pair is preset-blocked) propagates as `Failed` the same way it would for a direct `ExpandRegionPassageStrategy` dispatch.
+- Delegates: builds the nested strategy's own `StrategyParams` from its `param_overrides`, then calls its `apply()` with the synthetic issue, the same `maze`/`rng`/`preset_state`, and its own `nested` list (empty for `ExpandRegionPassageStrategy` today, but recursion is supported). Returns whatever `(RepairResult, Vec<MutationCommand>)` the nested call produces, unchanged — the parent has accumulated no commands of its own before delegating, so the nested call's commands are the entire returned batch, already in "parent, then nested" order. A merge failure (e.g. every candidate region has no geometrically-adjacent neighbor, or every candidate pair is preset-blocked) propagates as `Failed` the same way it would for a direct `ExpandRegionPassageStrategy` dispatch.
 - **Does not itself guarantee full convergence to `max_scc_count` in one call** — like every other strategy that delegates region selection to `ExpandRegionPassageStrategy`, chosen regions can end up merging into each other rather than into fresh neighbors, so the net component-count reduction from one `apply()` call can be less than the number of regions picked. Full convergence is the pipeline's fixpoint loop's job across iterations, not a single `apply()` call's contract — same accepted imprecision `ExpandRegionPassageStrategy` itself already documents for its own `invalid` set.
 
 ### RemoveTeleportStrategy
@@ -820,7 +858,8 @@ Time is measured via a small internal `now_ms()` helper, not `std::time::Instant
    - **`collect_active`: run QC — stage-scoped, not stage-agnostic.** For each `Box<dyn RuleTrait<T>>` in `self.rules` (in `Vec` order), skipping ids already in the local `failed` set, call `rule.run_checks(maze, rng, ...)` — this only runs **this stage's own** checks, unlike the pre-#106 pipeline, which ran every check across every stage every iteration (explicitly called out as wasteful, see GitHub issue #106). **Rule-level merge happens inside `run_checks_typed` itself**, not here: a rule's own multiple checks fold into at most one issue via `IssueMerge::merge` (moved from `pipeline.rs` to `quality_control/rule.rs`, and from a runtime `merge_issue` function to each concrete type's own `IssueMerge` impl by GitHub issue #113 — same per-type merge rules: `InvalidLoopIssue` via a three-step normalize→dedup→remap canonical merge, `RegionNeedsExpansionIssue`/`InvalidTeleportIssue`/`TeleportGroupProximityIssue` via plain dedup-union, `MissingRegionsIssue` takes the value further from zero per class — see "Rule, Stage, and the unified QualityControlEngine" above and `quality_control.md`'s "Dedup interaction" for the full per-type rules). Keep only rules with `Some(issue)` **and** `rule.has_strategy()` → `active: Vec<(&dyn RuleTrait<T>, Box<dyn Issue>)>`, sorted by `rule.id()` once, immediately — the same sorted order is then reused by both the progress check and dispatch below, matching the pre-#106 pipeline's deterministic dispatch order (`active.sort_unstable_by` by rule id).
    - If `active` is empty: `StageOutcome::Done` — this stage is finished.
    - **Progress guard**: compare `active` (already sorted) against the previous iteration's snapshot, element-wise, on `(rule.id(), issue)` — full value equality via `Issue::eq_dyn` (object-safe, downcasts both sides to the same concrete type and compares by `PartialEq` — different concrete types always compare unequal), covering every field of the concrete issue, same semantics as before #113: catches true no-progress (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid — GitHub issue #27). Equal → `StageOutcome::NoProgress(rule_ids)`.
-   - Otherwise snapshot `active` as `(rule.id().to_string(), issue.clone_box())` pairs for the next iteration's comparison, then dispatch: for each `(rule, issue)` in `active`'s order, call `rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, ...)` directly (no lookup — `active` already holds a reference to the rule, not just its id) — `Failed` → add `rule.id()` to the local `failed` set; `Fixed { score: Some(s) }` → set `maze.meta.route_score` if not already set.
+   - Otherwise snapshot `active` as `(rule.id().to_string(), issue.clone_box())` pairs for the next iteration's comparison, then dispatch: for each `(rule, issue)` in `active`'s order, call `rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, ...)` directly (no lookup — `active` already holds a reference to the rule, not just its id), getting back `(RepairResult, ApplyOutcome)` — `Failed` → add `rule.id()` to the local `failed` set; `Fixed { score: Some(s) }` → set `maze.meta.route_score` if not already set.
+   - **Extended no-progress guard, "commands dropped" signal** (GitHub issue #118, independent of the `(rule_id, Issue)` value-equality guard above): `Stage::run_repair` tracks, per rule, a streak of consecutive iterations where `ApplyOutcome.applied == 0 && ApplyOutcome.proposed > 0` (the rule proposed a non-empty command batch but every command got dropped on revalidation) — reset to `0` the moment a rule applies at least one command in some iteration. `proposed == 0 && applied == 0` (nothing proposed at all) is not counted as a stall — a strategy that legitimately proposes nothing this call isn't confused with one whose proposals keep getting rejected. Reaching a streak of 2 (same cadence as the value-equality guard) adds the rule to `failed` and to a `StageOutcome::NoProgress` the same way the value-equality guard does — this catches an infinite propose-reject loop where the issue *content* keeps changing between iterations (so the value-equality guard never fires) while nothing about the real graph ever actually changes. Different proposed command sets across stalled iterations still count as the same stall condition — the guard doesn't separately track *which* commands were proposed, only whether any landed.
    - Loop.
 4. Back in `run_repair_stages`: fold each stage's timing tuples into `GenerationTiming`'s `TimingEntry` maps. Return the final `RepairBudget`.
 5. `run_full` runs the **unconditional final report pass** (`collect_final_report`, regardless of how the stage sequence ended) — walks `self.stages` again, concatenating `stage.run_report(...)` (i.e. `RuleTrait::report_checks`, `report_check`-based, one issue per flagged instance — see GitHub issue #102) for every rule in every stage. Same effective check set as the pre-#106 stage-agnostic final pass, just reached by walking the same stage/rule hierarchy instead of a flat check list.

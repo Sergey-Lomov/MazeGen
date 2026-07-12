@@ -420,11 +420,11 @@ fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst + IssueRequire
                 .expect("downcast_strategy: requirement_erased must return this strategy's own I::Requirement — handles() == I::KIND was already checked below")
         }
         fn apply(
-            &self, issue: &I, maze: &mut maze_core::Maze<T>, snapshots: &mut maze_core::repair::SnapshotStack,
+            &self, issue: &I, maze: &maze_core::Maze<T>,
             rng: &mut dyn rand::RngCore, params: &maze_core::repair::StrategyParams,
             preset_state: &maze_core::generation::PresetState, nested: &[NestedStrategyConfig<T>],
-        ) -> maze_core::repair::RepairResult {
-            self.inner.apply(issue, maze, snapshots, rng, params, preset_state, nested)
+        ) -> (maze_core::repair::RepairResult, Vec<maze_core::repair::MutationCommand>) {
+            self.inner.apply(issue, maze, rng, params, preset_state, nested)
         }
     }
     if strategy.handles() != I::KIND {
@@ -998,8 +998,8 @@ mod nested_strategy_tests {
         impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for UnboundedSlotStrategy {
             fn strategy_id(&self) -> &'static str { "test_unbounded_slot_strategy" }
             fn expected_nested(&self) -> &'static [NestedSlot] { UNBOUNDED_SLOT }
-            fn apply(&self, _: &ExcessiveSccCountIssue, _: &mut Maze<T>, _: &mut maze_core::repair::SnapshotStack, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> RepairResult {
-                RepairResult::Failed
+            fn apply(&self, _: &ExcessiveSccCountIssue, _: &Maze<T>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> (RepairResult, Vec<maze_core::repair::MutationCommand>) {
+                (RepairResult::Failed, vec![])
             }
         }
         maze_core::impl_erased_repair_strategy!(UnboundedSlotStrategy, ExcessiveSccCountIssue);
@@ -1074,7 +1074,7 @@ mod build_strategy_tests {
         "random_endpoints", "farthest_endpoints", "scored_endpoints",
         "invalid_loop_random", "invalid_loop_scored", "missing_loops_random",
         "expand_region_passage", "teleport_region_merge", "missing_regions", "reduce_scc_count",
-        "remove_teleport", "teleport_group_proximity",
+        "weighted_region_merge", "remove_teleport", "teleport_group_proximity",
     ];
 
     #[test]

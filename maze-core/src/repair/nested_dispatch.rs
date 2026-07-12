@@ -6,7 +6,7 @@ use crate::generation::PresetState;
 use super::params::build_params;
 use super::result::RepairResult;
 use super::strategy::NestedStrategyConfig;
-use super::snapshot::SnapshotStack;
+use super::command::MutationCommand;
 
 // `dispatch_weighted` operates at the erased boundary — nested candidates (`NestedStrategyConfig`)
 // hold `Box<dyn ErasedRepairStrategy<T>>`, whose own kind may differ from the caller's own `I`
@@ -28,18 +28,17 @@ pub struct WeightedCandidate<'a, T: Tessellation> {
 ///
 /// **Weight contract**: every `weight` must be finite and `> 0.0` — the caller's responsibility;
 /// `debug_assert!`-checked defensively on entry, never silently substituted. Empty `candidates`
-/// returns `Failed` immediately without touching `rng` or `snapshots`.
+/// returns `Failed` immediately without touching `rng`.
 ///
 /// **Owns `StrategyParams` construction**: for each attempt, builds the nested strategy's
 /// `StrategyParams` from `config.strategy.params()` and `config.param_overrides` — callers pass
 /// raw `NestedStrategyConfig`s, never pre-built `StrategyParams`.
 ///
-/// **Owns `SnapshotStack` bookkeeping around each attempt**: `snapshots.snapshot(maze)` before
-/// calling a candidate's `apply()`. If the attempt returns `Fixed`, that snapshot is discarded
-/// via `snapshots.discard_last()` (not restored) — the mutation is kept, and the stack ends the
-/// call at the same depth it had on entry, no net growth. If the attempt returns `Failed`,
-/// `snapshots.restore(maze)` undoes exactly that attempt's mutations before the next weighted
-/// pick is tried on a clean graph.
+/// **No rollback bookkeeping needed** (GitHub issue #118, `Specs/repair.md`'s immutable-snapshot
+/// contract): every attempt is called against the same immutable `&Maze` — nothing mutates the
+/// real graph mid-call, so a `Failed` candidate's returned commands are simply discarded (never
+/// concatenated); the next weighted pick tries again against the identical unmutated snapshot. A
+/// `Fixed` candidate's commands are returned as-is.
 ///
 /// **Recursion**: each attempt is called with `&config.nested` passed straight through — a
 /// nested-under-nested strategy chain is not truncated here.
@@ -49,12 +48,11 @@ pub struct WeightedCandidate<'a, T: Tessellation> {
 /// force a compile error here rather than a silently wrong runtime fallthrough.
 pub fn dispatch_weighted<T: Tessellation>(
     issue: &dyn Issue,
-    maze: &mut Maze<T>,
-    snapshots: &mut SnapshotStack,
+    maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
     candidates: &[WeightedCandidate<T>],
-) -> RepairResult {
+) -> (RepairResult, Vec<MutationCommand>) {
     debug_assert!(
         candidates.iter().all(|c| c.weight.is_finite() && c.weight > 0.0),
         "dispatch_weighted: every candidate weight must be finite and > 0.0"
@@ -75,23 +73,21 @@ pub fn dispatch_weighted<T: Tessellation>(
         }
         let entry = pool.remove(chosen_idx);
 
-        snapshots.snapshot(maze);
         let params = build_params(entry.config.strategy.params(), Some(&entry.config.param_overrides));
-        let result = entry.config.strategy.apply(
-            issue, maze, snapshots, rng, &params, preset_state, &entry.config.nested,
+        let (result, commands) = entry.config.strategy.apply(
+            issue, maze, rng, &params, preset_state, &entry.config.nested,
         );
         match result {
             RepairResult::Fixed { .. } => {
-                snapshots.discard_last();
-                return result;
+                return (result, commands);
             }
             RepairResult::Failed => {
-                snapshots.restore(maze);
+                // commands discarded — never applied against the real Maze in the first place.
             }
         }
     }
 
-    RepairResult::Failed
+    (RepairResult::Failed, vec![])
 }
 
 #[cfg(test)]
@@ -110,45 +106,45 @@ mod tests {
 
     static DUMMY_SLOT: NestedSlot = NestedSlot { slot_id: "dummy", kind: MISSING_ENDPOINTS, min: 0, max: None };
 
-    /// Mutates the graph deterministically (adds one fixed edge) then always fails — used to
-    /// verify per-attempt rollback.
+    /// Proposes a command deterministically (add one fixed edge) then always fails — used to
+    /// verify a failed candidate's commands are discarded, never applied.
     struct AlwaysFailedStrategy;
     impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for AlwaysFailedStrategy {
         fn strategy_id(&self) -> &'static str { "test_always_failed" }
         fn apply(
             &self,
             _issue: &MissingEndpointsIssue,
-            maze: &mut Maze<T>,
-            _snapshots: &mut SnapshotStack,
+            maze: &Maze<T>,
             _rng: &mut dyn RngCore,
             _params: &StrategyParams,
             _preset_state: &PresetState,
             _nested: &[NestedStrategyConfig<T>],
-        ) -> RepairResult {
+        ) -> (RepairResult, Vec<MutationCommand>) {
             let nodes: Vec<NodeId> = maze.graph.nodes().map(|n| n.id).collect();
-            if nodes.len() >= 2 {
-                let _ = crate::generation::try_add_bidirectional_edge(&mut maze.graph, nodes[0], nodes[1], &PresetState::empty());
-            }
-            RepairResult::Failed
+            let commands = if nodes.len() >= 2 {
+                vec![MutationCommand::AddBidirectionalEdge { a: nodes[0], b: nodes[1] }]
+            } else {
+                vec![]
+            };
+            (RepairResult::Failed, commands)
         }
     }
     crate::impl_erased_repair_strategy!(AlwaysFailedStrategy, MissingEndpointsIssue);
 
-    /// Never mutates, always succeeds.
+    /// Never proposes anything, always succeeds.
     struct AlwaysFixedStrategy;
     impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for AlwaysFixedStrategy {
         fn strategy_id(&self) -> &'static str { "test_always_fixed" }
         fn apply(
             &self,
             _issue: &MissingEndpointsIssue,
-            _maze: &mut Maze<T>,
-            _snapshots: &mut SnapshotStack,
+            _maze: &Maze<T>,
             _rng: &mut dyn RngCore,
             _params: &StrategyParams,
             _preset_state: &PresetState,
             _nested: &[NestedStrategyConfig<T>],
-        ) -> RepairResult {
-            RepairResult::Fixed { score: None }
+        ) -> (RepairResult, Vec<MutationCommand>) {
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
     crate::impl_erased_repair_strategy!(AlwaysFixedStrategy, MissingEndpointsIssue);
@@ -163,15 +159,14 @@ mod tests {
         fn apply(
             &self,
             _issue: &MissingEndpointsIssue,
-            _maze: &mut Maze<T>,
-            _snapshots: &mut SnapshotStack,
+            _maze: &Maze<T>,
             _rng: &mut dyn RngCore,
             _params: &StrategyParams,
             _preset_state: &PresetState,
             nested: &[NestedStrategyConfig<T>],
-        ) -> RepairResult {
+        ) -> (RepairResult, Vec<MutationCommand>) {
             self.seen_len.set(Some(nested.len()));
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, vec![])
         }
     }
     crate::impl_erased_repair_strategy!(RecordsReceivedNestedStrategy, MissingEndpointsIssue);
@@ -194,14 +189,15 @@ mod tests {
 
     #[test]
     fn empty_candidates_returns_failed_without_touching_rng() {
-        let mut maze = maze_2_nodes();
+        let maze = maze_2_nodes();
         let mut rng_a = MazeRng::seed_from_u64(1);
         let mut rng_b = MazeRng::seed_from_u64(1);
 
-        let result = dispatch_weighted::<SquareTessellation>(
-            &issue(), &mut maze, &mut SnapshotStack::new(), &mut rng_a, &PresetState::empty(), &[],
+        let (result, commands) = dispatch_weighted::<SquareTessellation>(
+            &issue(), &maze, &mut rng_a, &PresetState::empty(), &[],
         );
         assert!(matches!(result, RepairResult::Failed));
+        assert!(commands.is_empty());
 
         // rng_a must not have advanced past rng_b, which was never touched.
         assert_eq!(rng_a.next_u64(), rng_b.next_u64());
@@ -209,7 +205,7 @@ mod tests {
 
     #[test]
     fn all_failed_candidates_exhaust_pool_and_return_failed() {
-        let mut maze = maze_2_nodes();
+        let maze = maze_2_nodes();
         let mut rng = MazeRng::seed_from_u64(1);
         let configs = vec![
             no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
@@ -218,11 +214,9 @@ mod tests {
         ];
         let candidates: Vec<WeightedCandidate<SquareTessellation>> =
             configs.iter().map(|c| WeightedCandidate { config: c, weight: 1.0 }).collect();
-        let edges_before = maze.graph.edges().count();
-        let mut snapshots = SnapshotStack::new();
-        let result = dispatch_weighted(&issue(), &mut maze, &mut snapshots, &mut rng, &PresetState::empty(), &candidates);
+        let (result, commands) = dispatch_weighted(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
         assert!(matches!(result, RepairResult::Failed));
-        assert_eq!(maze.graph.edges().count(), edges_before, "every failed attempt must be rolled back");
+        assert!(commands.is_empty(), "every failed attempt's commands must be discarded");
     }
 
     #[test]
@@ -231,14 +225,14 @@ mod tests {
         // time, so this observes dispatch_weighted's own selection order rather than any
         // candidate's behavior.
         fn run_order() -> Vec<&'static str> {
-            let mut maze = maze_2_nodes();
+            let maze = maze_2_nodes();
             let mut rng = MazeRng::seed_from_u64(42);
             struct Tracking { name: &'static str, order: std::rc::Rc<std::cell::RefCell<Vec<&'static str>>> }
             impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for Tracking {
                 fn strategy_id(&self) -> &'static str { self.name }
-                fn apply(&self, _: &MissingEndpointsIssue, _: &mut Maze<T>, _: &mut SnapshotStack, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> RepairResult {
+                fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<T>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> (RepairResult, Vec<MutationCommand>) {
                     self.order.borrow_mut().push(self.name);
-                    RepairResult::Failed
+                    (RepairResult::Failed, vec![])
                 }
             }
             crate::impl_erased_repair_strategy!(Tracking, MissingEndpointsIssue);
@@ -250,8 +244,7 @@ mod tests {
             ];
             let candidates: Vec<WeightedCandidate<SquareTessellation>> =
                 configs.iter().map(|c| WeightedCandidate { config: c, weight: 1.0 }).collect();
-            let mut snapshots = SnapshotStack::new();
-            dispatch_weighted(&issue(), &mut maze, &mut snapshots, &mut rng, &PresetState::empty(), &candidates);
+            dispatch_weighted(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
             let result = order.borrow().clone();
             result
         }
@@ -260,43 +253,23 @@ mod tests {
     }
 
     #[test]
-    fn failed_then_fixed_candidate_ends_fixed_with_no_trace_of_failed_mutation() {
-        let mut maze = maze_2_nodes();
+    fn failed_then_fixed_candidate_ends_fixed_with_no_trace_of_failed_commands() {
+        let maze = maze_2_nodes();
         let mut rng = MazeRng::seed_from_u64(7);
-        let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
         let configs = vec![
             no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
             no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy)),
         ];
         let candidates: Vec<WeightedCandidate<SquareTessellation>> =
             configs.iter().map(|c| WeightedCandidate { config: c, weight: 1.0 }).collect();
-        let mut snapshots = SnapshotStack::new();
-        let result = dispatch_weighted(&issue(), &mut maze, &mut snapshots, &mut rng, &PresetState::empty(), &candidates);
+        let (result, commands) = dispatch_weighted(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
         assert!(matches!(result, RepairResult::Fixed { .. }));
-        let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-        assert_eq!(edges_before, edges_after, "AlwaysFailedStrategy's edge must have been rolled back regardless of pick order");
-    }
-
-    #[test]
-    fn snapshot_stack_depth_unchanged_after_fixed() {
-        let mut maze = maze_2_nodes();
-        let mut rng = MazeRng::seed_from_u64(3);
-        let configs = vec![no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy))];
-        let candidates: Vec<WeightedCandidate<SquareTessellation>> =
-            configs.iter().map(|c| WeightedCandidate { config: c, weight: 1.0 }).collect();
-        let mut snapshots = SnapshotStack::new();
-        // Push one unrelated pre-existing snapshot to make sure dispatch_weighted only ever pops
-        // what it itself pushed.
-        snapshots.snapshot(&maze);
-        let result = dispatch_weighted(&issue(), &mut maze, &mut snapshots, &mut rng, &PresetState::empty(), &candidates);
-        assert!(matches!(result, RepairResult::Fixed { .. }));
-        // The one snapshot we pushed ourselves must still be there.
-        snapshots.restore(&mut maze); // does not panic => exactly one entry remained
+        assert!(commands.is_empty(), "AlwaysFailedStrategy's proposed command must not leak into the final Fixed result");
     }
 
     #[test]
     fn nested_config_is_passed_through_to_the_candidate() {
-        let mut maze = maze_2_nodes();
+        let maze = maze_2_nodes();
         let mut rng = MazeRng::seed_from_u64(9);
         let seen_len = std::rc::Rc::new(Cell::new(None));
         let inner_nested = vec![no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy))];
@@ -307,8 +280,7 @@ mod tests {
             nested: inner_nested,
         };
         let candidates = vec![WeightedCandidate { config: &config, weight: 1.0 }];
-        let mut snapshots = SnapshotStack::new();
-        let result = dispatch_weighted(&issue(), &mut maze, &mut snapshots, &mut rng, &PresetState::empty(), &candidates);
+        let (result, _commands) = dispatch_weighted(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
         assert!(matches!(result, RepairResult::Fixed { .. }));
         assert_eq!(seen_len.get(), Some(1), "dispatch_weighted must pass config.nested through, not &[]");
     }

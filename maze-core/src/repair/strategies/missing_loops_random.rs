@@ -4,11 +4,11 @@ use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::quality_control::MissingLoopsIssue;
-use crate::generation::{PresetState, try_add_bidirectional_edge};
+use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::snapshot::SnapshotStack;
+use crate::repair::command::MutationCommand;
 
 pub const PARAM_RESERVE_PERCENT: &str = "reserve_percent";
 
@@ -40,16 +40,15 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
     fn apply(
         &self,
         issue: &MissingLoopsIssue,
-        maze: &mut Maze<T>,
-        _snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
+    ) -> (RepairResult, Vec<MutationCommand>) {
         let missing = issue.missing;
         if missing == 0 {
-            return RepairResult::Fixed { score: None };
+            return (RepairResult::Fixed { score: None }, vec![]);
         }
 
         let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(50.0);
@@ -59,6 +58,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
         let mut pool: Vec<NodeId> = maze.field.all_points().filter_map(|p| maze.field.node_at(p)).collect();
         let mut failed: HashSet<NodeId> = HashSet::new();
         let mut added: u32 = 0;
+        // Pairs proposed as a bidirectional-edge command so far this call — stands in for what
+        // an earlier real mutation would have made observable via `edge_between` under the old
+        // in-place contract (GitHub issue #118, `Specs/repair.md`'s immutable-snapshot contract).
+        let mut proposed_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
+        let mut commands = Vec::new();
 
         while added < target && !pool.is_empty() {
             let pick = rng.random_range(0..pool.len());
@@ -72,16 +76,20 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
                 let dst = neighbors.swap_remove(n_pick);
 
                 let already_connected = maze.graph.edge_between(src, dst).is_some()
-                    || maze.graph.edge_between(dst, src).is_some();
+                    || maze.graph.edge_between(dst, src).is_some()
+                    || proposed_pairs.contains(&(src, dst))
+                    || proposed_pairs.contains(&(dst, src));
                 if already_connected {
                     continue;
                 }
                 // Strictly bidirectional: skip the pair unless both directions are
                 // unblocked, rather than `can_connect`'s "at least one direction" contract.
-                if !try_add_bidirectional_edge(&mut maze.graph, src, dst, preset_state) {
+                if !crate::generation::bidirectional_edge_feasible(preset_state, src, dst) {
                     continue;
                 }
 
+                commands.push(MutationCommand::AddBidirectionalEdge { a: src, b: dst });
+                proposed_pairs.insert((src, dst));
                 added += 1;
                 connected = true;
                 break;
@@ -94,9 +102,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
         }
 
         if added == 0 {
-            return RepairResult::Failed;
+            return (RepairResult::Failed, vec![]);
         }
-        RepairResult::Fixed { score: None }
+        (RepairResult::Fixed { score: None }, commands)
     }
 }
 
@@ -112,6 +120,21 @@ mod tests {
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, Field};
     use crate::repair::params::build_params;
+    use crate::quality_control::rule::apply_commands;
+
+    fn apply_and_commit<T: Tessellation>(
+        strategy: &impl RepairStrategy<T, MissingLoopsIssue>,
+        issue: &MissingLoopsIssue,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult {
+        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
+        apply_commands(maze, preset_state, commands);
+        result
+    }
 
     fn no_params() -> StrategyParams {
         build_params(<MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy), None)
@@ -135,7 +158,7 @@ mod tests {
         let issue = missing_issue(0);
         let mut rng = MazeRng::seed_from_u64(7);
         let edges_before: Vec<_> = maze.graph.edges().map(|e| e.id).collect();
-        let result = RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let edges_after: Vec<_> = maze.graph.edges().map(|e| e.id).collect();
         assert_eq!(edges_before, edges_after);
@@ -146,7 +169,7 @@ mod tests {
         let mut maze = maze_grid(4);
         let issue = missing_issue(2);
         let mut rng = MazeRng::seed_from_u64(42);
-        let result = RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         // 2 missing * (1 + 50%) = 3 connections, each bidirectional => 6 edges.
         assert_eq!(maze.graph.edges().count(), 6);
@@ -171,7 +194,7 @@ mod tests {
 
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 0);
     }
@@ -193,7 +216,7 @@ mod tests {
 
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 0);
     }
@@ -212,7 +235,7 @@ mod tests {
 
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 0);
     }
@@ -231,7 +254,7 @@ mod tests {
 
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 0);
     }
@@ -247,7 +270,7 @@ mod tests {
             Some(&overrides),
         );
         let mut rng = MazeRng::seed_from_u64(42);
-        let result = RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         // 2 missing * (1 + 0%) = 2 connections => 4 directed edges, vs 6 with the 50% default.
         assert_eq!(maze.graph.edges().count(), 4);
@@ -265,7 +288,7 @@ mod tests {
 
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         // Only existing pair on a 1x2 field is already connected — nothing new can be added.
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 2);
@@ -277,11 +300,11 @@ mod tests {
 
         let mut maze_a = maze_grid(4);
         let mut rng_a = MazeRng::seed_from_u64(123);
-        RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &[]);
 
         let mut maze_b = maze_grid(4);
         let mut rng_b = MazeRng::seed_from_u64(123);
-        RepairStrategy::apply(&MissingLoopsRandomStrategy, &issue, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &[]);
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();

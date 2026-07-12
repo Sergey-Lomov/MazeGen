@@ -6,7 +6,7 @@ use crate::quality_control::{Issue, IssueKind, IssueRequirement};
 use crate::generation::PresetState;
 use super::params::{StrategyParam, StrategyParams};
 use super::result::RepairResult;
-use super::snapshot::SnapshotStack;
+use super::command::MutationCommand;
 
 /// Describes one nested-strategy slot a parent strategy accepts — what `IssueKind` the
 /// synthetic issue the parent builds for it will carry, and how many strategies may fill this
@@ -91,15 +91,16 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
         &[]
     }
 
-    /// `snapshots`/`rng` are owned by the caller (`Rule::dispatch_repair_typed`), one instance
+    /// `maze` is an immutable snapshot — see GitHub issue #118, `Specs/repair.md`'s
+    /// mutation-command contract. A strategy never mutates `Maze` directly; it inspects `maze`
+    /// (and, for a strategy needing intermediate state — currently only `MissingRegionsStrategy`
+    /// — a `maze.draft()`/`DraftMaze` working copy, see `repair::draft`) and returns the list of
+    /// `MutationCommand`s it wants applied. The caller (`Rule::dispatch_repair_typed`) applies and
+    /// revalidates those commands against the real `Maze` immediately after this call returns —
+    /// a command that no longer holds by then is silently dropped, not an error, and does not
+    /// change the `RepairResult` this method returns. `rng` is owned by the caller, one instance
     /// per top-level `apply()` call, shared across the whole call including any nested
-    /// delegation. **A strategy that delegates to one of its `nested` entries must pass this
-    /// same `snapshots`/`rng` straight through to the nested `apply()` call, never construct a
-    /// fresh `SnapshotStack`/RNG for it** — see `Specs/repair.md`'s "Nested strategies" section
-    /// ("Rollback stays the mutating strategy's own responsibility"). Passing a fresh
-    /// `SnapshotStack` instead would silently break the single-rollback-stack invariant every
-    /// other strategy in a nested chain relies on. `ReduceSccCountStrategy` is the reference
-    /// implementation of this pattern.
+    /// delegation.
     ///
     /// `nested` carries this call's configured nested-strategy assignments, resolved against
     /// `expected_nested()` — empty for every strategy that declares no nested slots (the
@@ -107,17 +108,19 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// nested slots is responsible for locating the entry for each slot it needs (matching on
     /// `NestedStrategyConfig::slot`) and calling `entry.strategy.apply(...)` (the erased
     /// `ErasedRepairStrategy::apply`, taking `&dyn Issue`) with a synthesized issue of that
-    /// slot's `kind` — core does not dispatch nested calls on the strategy's behalf.
+    /// slot's `kind`, against the same `&Maze` it was itself given (never a mutated copy — there
+    /// is nothing to mutate here since `maze` is immutable) — then **concatenating** the nested
+    /// call's returned commands onto its own, own-commands-so-far first (`parent, then nested`,
+    /// see `Specs/repair.md`). Core does not dispatch nested calls on the strategy's behalf.
     fn apply(
         &self,
         issue: &I,
-        maze: &mut Maze<T>,
-        snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult;
+    ) -> (RepairResult, Vec<MutationCommand>);
 }
 
 /// Type-erased view of `RepairStrategy<T, I>` for the one place genuine cross-`I` heterogeneity
@@ -146,13 +149,12 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn apply(
         &self,
         issue: &dyn Issue,
-        maze: &mut Maze<T>,
-        snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult;
+    ) -> (RepairResult, Vec<MutationCommand>);
 }
 
 /// Generates `impl ErasedRepairStrategy<T> for $StrategyTy`, delegating each method to
@@ -189,13 +191,12 @@ macro_rules! impl_erased_repair_strategy {
             fn apply(
                 &self,
                 issue: &dyn $crate::quality_control::Issue,
-                maze: &mut $crate::Maze<T>,
-                snapshots: &mut $crate::repair::SnapshotStack,
+                maze: &$crate::Maze<T>,
                 rng: &mut dyn ::rand::RngCore,
                 params: &$crate::repair::StrategyParams,
                 preset_state: &$crate::generation::PresetState,
                 nested: &[$crate::repair::NestedStrategyConfig<T>],
-            ) -> $crate::repair::RepairResult {
+            ) -> ($crate::repair::RepairResult, Vec<$crate::repair::MutationCommand>) {
                 let typed: &$IssueTy = $crate::quality_control::Issue::as_any(issue)
                     .downcast_ref::<$IssueTy>()
                     .expect(concat!(
@@ -204,7 +205,7 @@ macro_rules! impl_erased_repair_strategy {
                     ") — caller (build_nested/parent strategy) is responsible for kind agreement"
                 ));
                 <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::apply(
-                    self, typed, maze, snapshots, rng, params, preset_state, nested,
+                    self, typed, maze, rng, params, preset_state, nested,
                 )
             }
         }

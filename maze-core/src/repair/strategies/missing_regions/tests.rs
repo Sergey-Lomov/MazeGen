@@ -3,6 +3,7 @@ use super::grow::{grow_front, try_open_excess_neighbor, sever_from_parent, Opene
 use super::reuse::{filter_by_border, absorb_until_min_size, prioritize_candidates};
 use super::convert::{convert_region, membership_matches};
 use super::GrowContext;
+use crate::repair::draft::DraftMaze;
 use std::collections::HashMap as StdHashMap;
 use rand::SeedableRng;
 use crate::random::MazeRng;
@@ -18,6 +19,22 @@ fn default_params() -> StrategyParams {
         <MissingRegionsStrategy as RepairStrategy<SquareTessellation, MissingRegionsIssue>>::params(&MissingRegionsStrategy),
         None,
     )
+}
+
+/// Runs `MissingRegionsStrategy::apply` under the new immutable-`&Maze` + returned-commands
+/// contract and commits the resulting commands back onto `maze` in place, so a test's existing
+/// post-condition assertions on `maze.graph`/`maze.analysis`/`maze.meta` keep working exactly as
+/// they did when `apply` mutated the maze directly. Returns the `RepairResult`.
+fn apply_and_commit(
+    issue: &MissingRegionsIssue,
+    maze: &mut Maze<SquareTessellation>,
+    rng: &mut dyn rand::RngCore,
+    params: &StrategyParams,
+    preset_state: &PresetState,
+) -> RepairResult {
+    let (result, commands) = RepairStrategy::apply(&MissingRegionsStrategy, issue, maze, rng, params, preset_state, &[]);
+    crate::quality_control::rule::apply_commands(maze, preset_state, commands);
+    result
 }
 
 fn test_ctx<'a>(committed_nodes: &'a HashSet<NodeId>, preset_state: &'a PresetState) -> GrowContext<'a> {
@@ -60,7 +77,7 @@ fn apply_fails_without_start_or_finish() {
     maze.meta.start = None;
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Failed));
 }
 
@@ -69,7 +86,7 @@ fn apply_reuses_unreachable_region_into_trap() {
     let (mut maze, nodes) = maze_with_path_and_unreachables();
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(7);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
@@ -85,7 +102,7 @@ fn apply_path_class_is_skipped_not_failed() {
     let issue = issue_for(vec![(RegionClass::Path, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Failed));
     let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_before, edges_after, "Path-only request must not mutate the graph");
@@ -108,7 +125,7 @@ fn apply_fails_when_no_candidates_at_all() {
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Failed));
     let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_before, edges_after, "failed attempts must leave the graph untouched");
@@ -128,7 +145,7 @@ fn apply_respects_preset_blocked_pairs_during_reuse() {
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(3);
     let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &preset_state, &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &preset_state);
     assert!(matches!(result, RepairResult::Failed));
     let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_before, edges_after);
@@ -139,12 +156,12 @@ fn apply_is_deterministic_for_fixed_seed() {
     let (mut maze_a, _) = maze_with_path_and_unreachables();
     let issue_a = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng_a = MazeRng::seed_from_u64(99);
-    RepairStrategy::apply(&MissingRegionsStrategy, &issue_a, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &default_params(), &PresetState::empty(), &[]);
+    apply_and_commit(&issue_a, &mut maze_a, &mut rng_a, &default_params(), &PresetState::empty());
 
     let (mut maze_b, _) = maze_with_path_and_unreachables();
     let issue_b = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng_b = MazeRng::seed_from_u64(99);
-    RepairStrategy::apply(&MissingRegionsStrategy, &issue_b, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &default_params(), &PresetState::empty(), &[]);
+    apply_and_commit(&issue_b, &mut maze_b, &mut rng_b, &default_params(), &PresetState::empty());
 
     let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
     let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();
@@ -156,7 +173,7 @@ fn apply_never_uses_critical_path_nodes_as_seed_or_bridge_target() {
     let (mut maze, nodes) = maze_with_path_and_unreachables();
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(11);
-    RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     // Critical path nodes (0,1,2) must keep their original outgoing edges only to each
     // other -- they should not have been absorbed into the new Trap region's component.
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -192,7 +209,7 @@ fn apply_grows_when_no_reusable_unreachable_region_exists() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(5);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -255,7 +272,7 @@ fn apply_grows_from_a_tree_shaped_maze_with_no_non_path_regions_at_all() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(5);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }), "growth must succeed even with zero pre-existing non-Path regions");
 
     let classes_after = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -284,7 +301,7 @@ fn apply_two_trap_regions_both_succeed_via_reuse() {
     let (mut maze, nodes) = maze_with_many_unreachables();
     let issue = issue_for(vec![(RegionClass::Trap, 2)]);
     let mut rng = MazeRng::seed_from_u64(13);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -300,7 +317,7 @@ fn apply_second_item_never_reuses_first_items_committed_nodes() {
     let (mut maze, nodes) = maze_with_many_unreachables();
     let issue = issue_for(vec![(RegionClass::Trap, 2)]);
     let mut rng = MazeRng::seed_from_u64(13);
-    RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
 
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
@@ -336,7 +353,7 @@ fn apply_partial_success_within_one_class_is_fixed() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 2)]);
     let mut rng = MazeRng::seed_from_u64(21);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -352,7 +369,7 @@ fn apply_max_total_failures_aborts_remaining_classes() {
     let issue = issue_for(vec![(RegionClass::Trap, 1), (RegionClass::Alternative, 1)]);
     let mut rng = MazeRng::seed_from_u64(21);
     let edges_before: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Failed));
     let edges_after: Vec<_> = maze.graph.edges().map(|e| (e.from, e.to)).collect();
     assert_eq!(edges_before, edges_after, "every attempted mutation must have been rolled back");
@@ -386,7 +403,7 @@ fn apply_growth_never_crosses_into_a_different_scc_component() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(17);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     // node 5 must remain its own untouched Unreachable singleton -- not absorbed into the
     // grown/converted Trap region, and not connected to anything.
@@ -476,7 +493,7 @@ fn apply_merges_a_too_small_region_with_an_excess_budgeted_neighbor_to_reach_min
 
     let issue = issue_with_balance(vec![(RegionClass::Trap, -1), (RegionClass::Unreachable, 1)]);
     let mut rng = MazeRng::seed_from_u64(17);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }), "must succeed by merging region6 with {{n3,n4,n5}} using the Unreachable surplus budget");
 
     // All 4 nodes must now be one single Trap region -- proves both the cross-component
@@ -513,7 +530,7 @@ fn apply_reuses_undersized_region_alone_without_excess_budget() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(17);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }), "no excess budget -- region6 must still be reusable alone, below min_region_size");
 
     let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -556,7 +573,7 @@ fn apply_does_not_leak_inbound_edge_from_a_failed_unreachable_to_alternative_can
 
         let issue = issue_for(vec![(RegionClass::Alternative, 1)]);
         let mut rng = MazeRng::seed_from_u64(seed);
-        let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &preset_state, &[]);
+        let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &preset_state);
         if matches!(result, RepairResult::Fixed { score: None }) {
             // Whatever succeeded, node 3 must never have gained an inbound edge unless it
             // is itself the final committed Alternative region (in which case it would also
@@ -606,7 +623,7 @@ fn apply_reuse_prioritizes_the_region_actually_bordering_the_path() {
         let (mut maze, _) = maze_with_one_bordering_region_and_decoys();
         let issue = issue_for(vec![(RegionClass::Trap, 1)]);
         let mut rng = MazeRng::seed_from_u64(seed);
-        let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }), "seed {seed}: must succeed by prioritizing the bordering region over decoys");
     }
 }
@@ -643,7 +660,7 @@ fn apply_makes_trap_from_unreachable_region_with_existing_outbound_edge_to_finis
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(990043);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let classes_after = maze.analysis.region_classes(&maze.graph, &maze.meta);
@@ -706,7 +723,7 @@ fn apply_undo_does_not_destroy_a_pre_existing_edge_shared_by_two_candidates() {
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(990043);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -858,12 +875,13 @@ fn absorb_until_min_size_absorbs_a_neighbor_of_a_different_class_when_it_has_bud
     let mut budget = HashMap::from([(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
 
-    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    absorb_until_min_size(&mut draft, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng);
 
     assert!(members.contains(&trap_neighbor), "trap_neighbor has its own budget -- must be absorbed despite being a different class");
     assert_eq!(budget.get(&RegionClass::Trap), None, "trap_neighbor's budget (1) fully spent on its own 1-node size -- entry removed");
-    assert!(maze.graph.edge_between(candidate, trap_neighbor).is_some(), "a bidirectional bridge must have been added");
-    assert!(maze.graph.edge_between(trap_neighbor, candidate).is_some(), "a bidirectional bridge must have been added");
+    assert!(draft.maze.graph.edge_between(candidate, trap_neighbor).is_some(), "a bidirectional bridge must have been added");
+    assert!(draft.maze.graph.edge_between(trap_neighbor, candidate).is_some(), "a bidirectional bridge must have been added");
 }
 
 #[test]
@@ -880,11 +898,12 @@ fn absorb_until_min_size_does_not_absorb_when_the_neighbor_has_no_budget() {
     let mut budget: HashMap<RegionClass, i32> = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
 
-    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    absorb_until_min_size(&mut draft, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng);
 
     assert!(!members.contains(&trap_neighbor), "no budget entry for Trap at all -- trap_neighbor must remain outside members");
     assert_eq!(members.len(), 1, "members must stay at just the candidate's own node");
-    assert!(maze.graph.edge_between(candidate, trap_neighbor).is_none(), "no edge should have been added");
+    assert!(draft.maze.graph.edge_between(candidate, trap_neighbor).is_none(), "no edge should have been added");
 }
 
 #[test]
@@ -929,13 +948,14 @@ fn absorb_until_min_size_skips_a_blocked_edge_and_succeeds_via_another_in_the_po
     let mut budget = HashMap::from([(RegionClass::Trap, 2)]);
     let mut rng = MazeRng::seed_from_u64(1);
 
-    absorb_until_min_size(&mut maze, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &preset_state), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    absorb_until_min_size(&mut draft, &mut members, candidate_idx, 2, &scc, &classes, &mut budget, &critical, &test_ctx(&HashSet::new(), &preset_state), &mut rng);
 
     assert!(members.contains(&trap_a) && members.contains(&trap_b), "the component must still be absorbed via the non-blocked edge");
-    assert!(maze.graph.edge_between(candidate, trap_a).is_none(), "the blocked edge must never have been added");
-    assert!(maze.graph.edge_between(trap_a, candidate).is_none(), "the blocked edge must never have been added");
-    assert!(maze.graph.edge_between(candidate, trap_b).is_some(), "the non-blocked edge must have been added instead");
-    assert!(maze.graph.edge_between(trap_b, candidate).is_some(), "the non-blocked edge must have been added instead");
+    assert!(draft.maze.graph.edge_between(candidate, trap_a).is_none(), "the blocked edge must never have been added");
+    assert!(draft.maze.graph.edge_between(trap_a, candidate).is_none(), "the blocked edge must never have been added");
+    assert!(draft.maze.graph.edge_between(candidate, trap_b).is_some(), "the non-blocked edge must have been added instead");
+    assert!(draft.maze.graph.edge_between(trap_b, candidate).is_some(), "the non-blocked edge must have been added instead");
 }
 
 #[test]
@@ -1003,12 +1023,13 @@ fn convert_region_unreachable_to_trap_adds_inbound_from_scratch() {
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Trap, &PresetState::empty(), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Trap, &PresetState::empty(), &mut rng);
 
     assert!(result.is_some(), "must add an inbound edge and land on Trap");
-    assert!(maze.graph.edge_between(nodes[1], candidate).is_some(), "inbound edge from finish must have been added");
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
-    let scc = maze.analysis.scc(&maze.graph);
+    assert!(draft.maze.graph.edge_between(nodes[1], candidate).is_some(), "inbound edge from finish must have been added");
+    let classes = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.meta);
+    let scc = draft.maze.analysis.scc(&draft.maze.graph);
     assert_eq!(classes.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Trap));
 }
 
@@ -1051,11 +1072,12 @@ fn convert_region_unreachable_to_alternative_adds_both_inbound_and_outbound() {
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Alternative, &PresetState::empty(), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Alternative, &PresetState::empty(), &mut rng);
 
     assert!(result.is_some(), "must add both inbound and outbound edges and land on Alternative");
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
-    let scc = maze.analysis.scc(&maze.graph);
+    let classes = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.meta);
+    let scc = draft.maze.analysis.scc(&draft.maze.graph);
     assert_eq!(classes.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Alternative));
 }
 
@@ -1108,12 +1130,13 @@ fn convert_region_trap_to_alternative_adds_outbound_only() {
     assert_eq!(classes_before.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Trap), "sanity: candidate must start as Trap");
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Alternative, &PresetState::empty(), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Alternative, &PresetState::empty(), &mut rng);
 
     assert!(result.is_some(), "must add an outbound edge and land on Alternative");
-    assert!(maze.graph.edge_between(candidate, other).is_some(), "outbound edge into finish-reachable territory must have been added");
+    assert!(draft.maze.graph.edge_between(candidate, other).is_some(), "outbound edge into finish-reachable territory must have been added");
     // Original inbound edge (mid->candidate) must remain untouched -- Trap->Alternative never touches inbound.
-    assert!(maze.graph.edge_between(mid, candidate).is_some(), "pre-existing inbound edge must be preserved");
+    assert!(draft.maze.graph.edge_between(mid, candidate).is_some(), "pre-existing inbound edge must be preserved");
 }
 
 #[test]
@@ -1124,10 +1147,11 @@ fn convert_region_trap_to_unreachable_cuts_inbound() {
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Unreachable, &PresetState::empty(), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Unreachable, &PresetState::empty(), &mut rng);
 
     assert!(result.is_some(), "must cut the inbound edge and land on Unreachable");
-    assert!(maze.graph.edge_between(mid, candidate).is_none(), "inbound edge must have been removed");
+    assert!(draft.maze.graph.edge_between(mid, candidate).is_none(), "inbound edge must have been removed");
 }
 
 /// 1x4 row: 0=start, 1=finish. Directed edges 0->2 (inbound from start) and 2->1 (outbound to
@@ -1161,11 +1185,12 @@ fn convert_region_alternative_to_trap_cuts_outbound() {
     assert_eq!(classes_before.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Alternative), "sanity: candidate must start as Alternative");
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Trap, &PresetState::empty(), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Trap, &PresetState::empty(), &mut rng);
 
     assert!(result.is_some(), "must cut the outbound edge and land on Trap");
-    assert!(maze.graph.edge_between(candidate, nodes[1]).is_none(), "outbound edge to finish must have been removed");
-    assert!(maze.graph.edge_between(nodes[0], candidate).is_some(), "inbound edge must be preserved -- Alternative->Trap never touches inbound");
+    assert!(draft.maze.graph.edge_between(candidate, nodes[1]).is_none(), "outbound edge to finish must have been removed");
+    assert!(draft.maze.graph.edge_between(nodes[0], candidate).is_some(), "inbound edge must be preserved -- Alternative->Trap never touches inbound");
 }
 
 #[test]
@@ -1175,10 +1200,11 @@ fn convert_region_alternative_to_unreachable_cuts_inbound() {
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Unreachable, &PresetState::empty(), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Unreachable, &PresetState::empty(), &mut rng);
 
     assert!(result.is_some(), "must cut the inbound edge and land on Unreachable");
-    assert!(maze.graph.edge_between(nodes[0], candidate).is_none(), "inbound edge must have been removed");
+    assert!(draft.maze.graph.edge_between(nodes[0], candidate).is_none(), "inbound edge must have been removed");
 }
 
 /// 1x5 row: 0=start, 1=finish (edge 0->1), 2=candidate (singleton Unreachable, no inbound, but
@@ -1210,13 +1236,14 @@ fn convert_region_audits_away_a_hidden_outbound_edge_before_landing_on_trap() {
     assert_eq!(classes_before.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Unreachable), "sanity: candidate must start Unreachable despite already reaching finish");
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Trap, &PresetState::empty(), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Trap, &PresetState::empty(), &mut rng);
 
     assert!(result.is_some(), "audit must cut the hidden outbound edge before the inbound bridge, landing on Trap");
-    assert!(maze.graph.edge_between(candidate, nodes[1]).is_none(), "hidden outbound edge must have been audited away");
-    assert!(maze.graph.edge_between(nodes[1], candidate).is_some(), "inbound edge must have been added");
-    let classes_after = maze.analysis.region_classes(&maze.graph, &maze.meta);
-    let scc_after = maze.analysis.scc(&maze.graph);
+    assert!(draft.maze.graph.edge_between(candidate, nodes[1]).is_none(), "hidden outbound edge must have been audited away");
+    assert!(draft.maze.graph.edge_between(nodes[1], candidate).is_some(), "inbound edge must have been added");
+    let classes_after = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.meta);
+    let scc_after = draft.maze.analysis.scc(&draft.maze.graph);
     assert_eq!(classes_after.get(&scc_after.component_of(candidate).unwrap()).copied(), Some(RegionClass::Trap));
 }
 
@@ -1230,10 +1257,11 @@ fn convert_region_fails_when_audit_removal_is_preset_blocked() {
     preset_state.preset_edges.insert((mid, candidate));
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Unreachable, &preset_state, &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Unreachable, &preset_state, &mut rng);
 
     assert!(result.is_none(), "audit removal blocked by preset -- whole candidate must fail");
-    assert!(maze.graph.edge_between(mid, candidate).is_some(), "preset-protected edge must remain untouched");
+    assert!(draft.maze.graph.edge_between(mid, candidate).is_some(), "preset-protected edge must remain untouched");
 }
 
 #[test]
@@ -1245,10 +1273,11 @@ fn convert_region_fails_when_every_add_candidate_is_preset_blocked() {
     preset_state.blocked.insert((nodes[1], candidate));
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Trap, &preset_state, &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Trap, &preset_state, &mut rng);
 
     assert!(result.is_none(), "sole inbound candidate blocked -- conversion must fail");
-    assert!(maze.graph.edge_between(nodes[1], candidate).is_none(), "no edge should have leaked in");
+    assert!(draft.maze.graph.edge_between(nodes[1], candidate).is_none(), "no edge should have leaked in");
 }
 
 #[test]
@@ -1258,10 +1287,11 @@ fn convert_region_no_op_when_already_the_target_class() {
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
 
-    let result = convert_region(&mut maze, &members, RegionClass::Unreachable, &PresetState::empty(), &mut rng);
+    let mut draft = DraftMaze::new(maze);
+    let result = convert_region(&mut draft, &members, RegionClass::Unreachable, &PresetState::empty(), &mut rng);
 
     assert_eq!(result, Some(members), "already Unreachable -- no-op commit must succeed without any mutation");
-    assert!(maze.graph.edge_between(nodes[1], candidate).is_none(), "no edge should have been added for a no-op");
+    assert!(draft.maze.graph.edge_between(nodes[1], candidate).is_none(), "no edge should have been added for a no-op");
 }
 
 #[test]
@@ -1340,8 +1370,9 @@ fn grow_front_with_locality_one_stays_depth_first_on_a_single_arm() {
     let mut budget = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let result = grow_front(
-        &mut maze, hub, seed_component, &scc, &region_classes, &mut budget,
+        &mut draft, hub, seed_component, &scc, &region_classes, &mut budget,
         1.0, 5, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
@@ -1367,8 +1398,9 @@ fn grow_front_with_locality_zero_spreads_breadth_first_across_arms() {
             .map(|r| r.path.into_iter().collect()).unwrap_or_default();
         let mut budget = HashMap::new();
         let mut rng = MazeRng::seed_from_u64(seed);
+        let mut draft = DraftMaze::new(maze);
         let result = grow_front(
-            &mut maze, hub, seed_component, &scc, &region_classes, &mut budget,
+            &mut draft, hub, seed_component, &scc, &region_classes, &mut budget,
             0.0, 4, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
         );
         let members = result.expect("must grow to min_region_size");
@@ -1418,8 +1450,9 @@ fn grow_front_only_expands_through_bidirectional_edges() {
     let mut budget = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let result = grow_front(
-        &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
+        &mut draft, seed, seed_component, &scc, &region_classes, &mut budget,
         0.5, 2, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
@@ -1443,8 +1476,9 @@ fn grow_front_fails_when_only_one_way_neighbors_are_available() {
     let mut budget = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let result = grow_front(
-        &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
+        &mut draft, seed, seed_component, &scc, &region_classes, &mut budget,
         0.5, 3, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
@@ -1481,14 +1515,15 @@ fn try_open_excess_neighbor_bridges_a_single_node_and_debits_full_component_size
     let mut budget = HashMap::from([(RegionClass::Unreachable, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &mut draft, &in_region, &scc, &region_classes, &mut budget, &critical,
         &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     assert_eq!(opened, Some(OpenedNeighbor { node: neighbor, component: neighbor_component }));
-    assert!(maze.graph.edge_between(seed, neighbor).is_some(), "forward bridge edge must be added");
-    assert!(maze.graph.edge_between(neighbor, seed).is_some(), "bridge must be bidirectional");
+    assert!(draft.maze.graph.edge_between(seed, neighbor).is_some(), "forward bridge edge must be added");
+    assert!(draft.maze.graph.edge_between(neighbor, seed).is_some(), "bridge must be bidirectional");
     assert_eq!(budget.get(&RegionClass::Unreachable), None, "1-node component fully spends a budget of 1 -- entry removed");
 }
 
@@ -1505,14 +1540,15 @@ fn try_open_excess_neighbor_returns_none_without_budget_for_the_bordering_class(
     let mut budget: HashMap<RegionClass, i32> = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &mut draft, &in_region, &scc, &region_classes, &mut budget, &critical,
         &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     assert_eq!(opened, None, "no excess budget for neighbor's class -- must not cross");
-    assert!(maze.graph.edge_between(seed, neighbor).is_none(), "no edge should have been added");
-    assert!(maze.graph.edge_between(neighbor, seed).is_none());
+    assert!(draft.maze.graph.edge_between(seed, neighbor).is_none(), "no edge should have been added");
+    assert!(draft.maze.graph.edge_between(neighbor, seed).is_none());
 }
 
 #[test]
@@ -1530,13 +1566,14 @@ fn try_open_excess_neighbor_skips_a_critical_bordering_node() {
     let mut budget = HashMap::from([(RegionClass::Unreachable, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &mut draft, &in_region, &scc, &region_classes, &mut budget, &critical,
         &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
     assert_eq!(opened, None, "neighbor is on the critical path -- must never be crossed into");
-    assert!(maze.graph.edge_between(seed, neighbor).is_none());
+    assert!(draft.maze.graph.edge_between(seed, neighbor).is_none());
 }
 
 #[test]
@@ -1553,13 +1590,14 @@ fn try_open_excess_neighbor_skips_a_committed_bordering_node() {
     let mut budget = HashMap::from([(RegionClass::Unreachable, 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &mut draft, &in_region, &scc, &region_classes, &mut budget, &critical,
         &HashSet::from([seed_component]), &test_ctx(&committed, &PresetState::empty()), &mut rng,
     );
 
     assert_eq!(opened, None, "neighbor was already committed by an earlier region item -- must never be crossed into");
-    assert!(maze.graph.edge_between(seed, neighbor).is_none());
+    assert!(draft.maze.graph.edge_between(seed, neighbor).is_none());
 }
 
 #[test]
@@ -1577,14 +1615,15 @@ fn try_open_excess_neighbor_respects_preset_blocked_bridge() {
     preset_state.blocked.insert((seed, neighbor));
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &mut draft, &in_region, &scc, &region_classes, &mut budget, &critical,
         &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &preset_state), &mut rng,
     );
 
     assert_eq!(opened, None, "the only bordering candidate's bridge is preset-blocked -- must fail without leaking a partial edge");
-    assert!(maze.graph.edge_between(seed, neighbor).is_none(), "no forward edge must leak from the blocked attempt");
-    assert!(maze.graph.edge_between(neighbor, seed).is_none());
+    assert!(draft.maze.graph.edge_between(seed, neighbor).is_none(), "no forward edge must leak from the blocked attempt");
+    assert!(draft.maze.graph.edge_between(neighbor, seed).is_none());
     assert_eq!(budget.get(&RegionClass::Unreachable), Some(&1), "a fully-blocked attempt must not debit the budget");
 }
 
@@ -1606,14 +1645,15 @@ fn try_open_excess_neighbor_respects_preset_blocked_return_direction() {
     preset_state.blocked.insert((neighbor, seed));
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let opened = try_open_excess_neighbor(
-        &mut maze, &in_region, &scc, &region_classes, &mut budget, &critical,
+        &mut draft, &in_region, &scc, &region_classes, &mut budget, &critical,
         &HashSet::from([seed_component]), &test_ctx(&HashSet::new(), &preset_state), &mut rng,
     );
 
     assert_eq!(opened, None, "return direction blocked -- whole candidate must be rejected");
-    assert!(maze.graph.edge_between(seed, neighbor).is_none(), "speculative forward edge must be rolled back, not left as a one-way leak");
-    assert!(maze.graph.edge_between(neighbor, seed).is_none());
+    assert!(draft.maze.graph.edge_between(seed, neighbor).is_none(), "speculative forward edge must be rolled back, not left as a one-way leak");
+    assert!(draft.maze.graph.edge_between(neighbor, seed).is_none());
 }
 
 #[test]
@@ -1643,8 +1683,9 @@ fn grow_front_crosses_into_excess_budgeted_neighbor_component_and_continues_grow
     let mut budget = HashMap::from([(RegionClass::Unreachable, 2)]);
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let result = grow_front(
-        &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
+        &mut draft, seed, seed_component, &scc, &region_classes, &mut budget,
         0.5, 3, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
@@ -1707,14 +1748,15 @@ fn grow_front_does_not_cross_into_a_neighbor_component_while_other_frontier_node
         let (mut maze, _) = maze_with_uneven_branches_and_a_bridgeable_neighbor();
         let mut budget = HashMap::from([(RegionClass::Unreachable, 100)]);
         let mut rng = MazeRng::seed_from_u64(seed_val);
+        let mut draft = DraftMaze::new(maze);
         let result = grow_front(
-            &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
+            &mut draft, seed, seed_component, &scc, &region_classes, &mut budget,
             0.0, 4, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
         );
         let members = result.unwrap_or_else(|| panic!("seed {seed_val}: same-component set alone reaches min_region_size=4, must not need to cross"));
         assert_eq!(members, HashSet::from([seed, dead_end, long_a, long_b]), "seed {seed_val}: must consume all 4 same-component nodes, never touching bridgeable");
         assert_eq!(budget.get(&RegionClass::Unreachable), Some(&100), "seed {seed_val}: excess budget must remain untouched -- no crossing should have happened");
-        assert!(maze.graph.edge_between(dead_end, bridgeable).is_none(), "seed {seed_val}: no bridge to bridgeable must have been added");
+        assert!(draft.maze.graph.edge_between(dead_end, bridgeable).is_none(), "seed {seed_val}: no bridge to bridgeable must have been added");
     }
 }
 
@@ -1729,8 +1771,9 @@ fn grow_front_fails_when_frontier_exhausted_and_no_excess_budget_to_cross() {
     let mut budget: HashMap<RegionClass, i32> = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
 
+    let mut draft = DraftMaze::new(maze);
     let result = grow_front(
-        &mut maze, seed, seed_component, &scc, &region_classes, &mut budget,
+        &mut draft, seed, seed_component, &scc, &region_classes, &mut budget,
         0.5, 2, &critical, &test_ctx(&HashSet::new(), &PresetState::empty()), &mut rng,
     );
 
@@ -1781,17 +1824,18 @@ fn sever_from_parent_removes_external_edges_but_keeps_internal_connectivity() {
     let outside = nodes[7];
     let members: HashSet<NodeId> = [center, up, down, left, right].into_iter().collect();
 
-    assert!(sever_from_parent(&mut maze, &members, &PresetState::empty()));
+    let mut draft = DraftMaze::new(maze);
+    assert!(sever_from_parent(&mut draft, &members, &PresetState::empty()));
 
-    assert!(maze.graph.edge_between(up, outside).is_none(), "external edge must be cut (outbound)");
-    assert!(maze.graph.edge_between(outside, up).is_none(), "external edge must be cut (inbound)");
+    assert!(draft.maze.graph.edge_between(up, outside).is_none(), "external edge must be cut (outbound)");
+    assert!(draft.maze.graph.edge_between(outside, up).is_none(), "external edge must be cut (inbound)");
 
     for &(a, b) in &[(center, up), (center, down), (center, left), (center, right)] {
-        assert!(maze.graph.edge_between(a, b).is_some(), "internal edge {a:?}->{b:?} must survive severance");
-        assert!(maze.graph.edge_between(b, a).is_some(), "internal edge {b:?}->{a:?} must survive severance");
+        assert!(draft.maze.graph.edge_between(a, b).is_some(), "internal edge {a:?}->{b:?} must survive severance");
+        assert!(draft.maze.graph.edge_between(b, a).is_some(), "internal edge {b:?}->{a:?} must survive severance");
     }
 
-    let scc = maze.analysis.scc(&maze.graph);
+    let scc = draft.maze.analysis.scc(&draft.maze.graph);
     let members_component = scc.component_of(center);
     for &m in &members {
         assert_eq!(scc.component_of(m), members_component, "members must remain one connected SCC after severance");
@@ -1812,7 +1856,8 @@ fn sever_from_parent_fails_when_a_required_cut_is_preset_blocked() {
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((up, outside));
 
-    assert!(!sever_from_parent(&mut maze, &members, &preset_state), "a preset-protected external edge blocks the whole severance");
+    let mut draft = DraftMaze::new(maze);
+    assert!(!sever_from_parent(&mut draft, &members, &preset_state), "a preset-protected external edge blocks the whole severance");
 }
 
 /// 1x2 path (start=0, finish=1) plus 6 singleton Unreachable seed candidates: `bordering`(2) is
@@ -1851,8 +1896,9 @@ fn try_grow_border_priority_on_always_picks_the_bordering_seed_first() {
             committed_nodes: &HashSet::new(), preset_state: &PresetState::empty(),
             inbound_requires_geometry: true, outbound_requires_geometry: true,
         };
+        let mut draft = DraftMaze::new(maze);
         let result = try_grow(
-            &mut maze, &mut SnapshotStack::new(), RegionClass::Trap, 0.5, 1,
+            &mut draft, RegionClass::Trap, 0.5, 1,
             &mut excess_budget, &ctx, &mut rng,
         );
         let members = result.unwrap_or_else(|| panic!("seed {seed}: growth must succeed with MAX_GROW_ATTEMPTS covering the bordering seed when priority is ON"));
@@ -1877,8 +1923,9 @@ fn try_grow_border_priority_off_sometimes_fails_by_missing_the_bordering_seed() 
             committed_nodes: &HashSet::new(), preset_state: &PresetState::empty(),
             inbound_requires_geometry: false, outbound_requires_geometry: false,
         };
+        let mut draft = DraftMaze::new(maze);
         let result = try_grow(
-            &mut maze, &mut SnapshotStack::new(), RegionClass::Trap, 0.5, 1,
+            &mut draft, RegionClass::Trap, 0.5, 1,
             &mut excess_budget, &ctx, &mut rng,
         );
         if result.is_none() {
@@ -1913,7 +1960,7 @@ fn apply_end_to_end_grown_region_has_no_leftover_edge_to_its_original_neighborho
 
     let issue = issue_for(vec![(RegionClass::Trap, 1)]);
     let mut rng = MazeRng::seed_from_u64(5);
-    let result = RepairStrategy::apply(&MissingRegionsStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     // The Trap region must be exactly one SCC -- nothing left half-connected to the rest of

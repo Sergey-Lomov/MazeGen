@@ -10,6 +10,11 @@ use super::engine::RepairBudget;
 use super::issue::Issue;
 use super::rule::RuleTrait;
 
+/// No-progress guard threshold for the "commands dropped" signal (see `Stage::run_repair`'s
+/// `stalled_commands` tracking, GitHub issue #118) — same cadence as the existing
+/// `(rule_id, Issue)` comparison, which also stops after two identical iterations in a row.
+const STALLED_COMMANDS_THRESHOLD: u32 = 2;
+
 /// Result of one `Stage::run_repair` call — what happened to this stage's own fixpoint loop.
 /// `QualityControlEngine::run_repair_stages` decides what to do next (advance, or stop the whole
 /// stage sequence) based on this — a `Stage` never knows whether it is the last one or not.
@@ -68,6 +73,12 @@ impl<T: Tessellation> Stage<T> {
         let now_ms: &dyn Fn() -> f64 = &now_ms;
         let mut failed: HashSet<String> = HashSet::new();
         let mut previous_active: Option<Vec<(String, Box<dyn Issue>)>> = None;
+        // Per-rule streak of consecutive iterations where the rule proposed a non-empty command
+        // batch but zero commands applied — independent signal from the (rule_id, Issue) guard
+        // below, covering an infinite propose-reject loop where the issue content keeps changing
+        // (so the value-equality guard never fires) while nothing about the real graph ever
+        // actually changes. See GitHub issue #118, Specs/repair.md's no-progress guard extension.
+        let mut stalled_commands: HashMap<String, u32> = HashMap::new();
         loop {
             if let Some(limit) = budget.exhausted(now_ms) {
                 return StageOutcome::LimitReached(limit);
@@ -89,8 +100,12 @@ impl<T: Tessellation> Stage<T> {
             previous_active = Some(active.iter().map(|(rule, issue)| (rule.id().to_string(), issue.clone_box())).collect());
 
             let repair_start = now_ms();
-            self.dispatch(&active, maze, rng, preset_state, timing.per_strategy, now_ms, &mut failed);
+            let stalled = self.dispatch(&active, maze, rng, preset_state, timing.per_strategy, now_ms, &mut failed, &mut stalled_commands);
             *timing.repair_total_ms += now_ms() - repair_start;
+
+            if !stalled.is_empty() {
+                return StageOutcome::NoProgress(stalled);
+            }
         }
     }
 
@@ -162,6 +177,15 @@ impl<T: Tessellation> Stage<T> {
     /// so future iterations of this stage's loop skip it; a `Fixed` outcome with a route score
     /// sets `maze.meta.route_score` if not already set (first strategy to report a score wins,
     /// matching the original flat pipeline).
+    ///
+    /// Also tracks the "commands dropped" no-progress signal (GitHub issue #118,
+    /// `Specs/repair.md`): `stalled_commands` counts, per rule, consecutive iterations where the
+    /// rule proposed a non-empty `MutationCommand` batch but zero of them applied
+    /// (`ApplyOutcome.applied == 0 && proposed > 0`) — reset to 0 the moment a rule applies at
+    /// least one command. Returns the ids of rules whose streak just reached
+    /// `STALLED_COMMANDS_THRESHOLD`, added to `failed` the same way a `Failed` result is (both
+    /// are permanent for the rest of this `run_repair` call) — `run_repair`'s caller treats a
+    /// non-empty return the same as `StageOutcome::NoProgress`.
     fn dispatch(
         &self,
         active: &[(&dyn RuleTrait<T>, Box<dyn Issue>)],
@@ -171,9 +195,11 @@ impl<T: Tessellation> Stage<T> {
         timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: &dyn Fn() -> f64,
         failed: &mut HashSet<String>,
-    ) {
+        stalled_commands: &mut HashMap<String, u32>,
+    ) -> Vec<String> {
+        let mut newly_stalled = Vec::new();
         for (rule, issue) in active {
-            let Some(result) = rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, timing, now_ms) else { continue };
+            let Some((result, outcome)) = rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, timing, now_ms) else { continue };
             match result {
                 RepairResult::Failed => { failed.insert(rule.id().to_string()); }
                 RepairResult::Fixed { score: Some(s) } => {
@@ -183,7 +209,19 @@ impl<T: Tessellation> Stage<T> {
                 }
                 RepairResult::Fixed { score: None } => {}
             }
+
+            if outcome.applied > 0 {
+                stalled_commands.remove(rule.id());
+            } else if outcome.proposed > 0 {
+                let streak = stalled_commands.entry(rule.id().to_string()).or_insert(0);
+                *streak += 1;
+                if *streak >= STALLED_COMMANDS_THRESHOLD {
+                    failed.insert(rule.id().to_string());
+                    newly_stalled.push(rule.id().to_string());
+                }
+            }
         }
+        newly_stalled
     }
 }
 
@@ -257,5 +295,165 @@ mod check_progress_tests {
         let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![];
         let previous = Some(vec![]);
         assert!(Stage::<SquareTessellation>::check_progress(&active, &previous));
+    }
+}
+
+/// Tests for the "commands dropped" no-progress signal (GitHub issue #118, `Specs/repair.md`) —
+/// `Stage::dispatch`'s `stalled_commands` tracking, independent of the `(rule_id, Issue)` guard
+/// covered by `check_progress_tests` above. A mock `RuleTrait` lets each test control exactly what
+/// `ApplyOutcome` a rule reports per call, without needing a real `Check`/`RepairStrategy` pair.
+#[cfg(test)]
+mod stalled_commands_tests {
+    use super::*;
+    use std::cell::RefCell;
+    use crate::space::SquareTessellation;
+    use crate::quality_control::{MissingEndpointsIssue, IssueKind, MISSING_ENDPOINTS};
+    use crate::quality_control::rule::ApplyOutcome;
+
+    /// A `RuleTrait` mock that always reports one issue (so it stays in `active`) and returns a
+    /// caller-scripted sequence of `ApplyOutcome`s from `dispatch_repair`, one per call, cycling
+    /// the last entry if called more times than scripted.
+    struct ScriptedRule {
+        id: String,
+        outcomes: RefCell<std::vec::IntoIter<ApplyOutcome>>,
+        last: RefCell<ApplyOutcome>,
+    }
+    impl ScriptedRule {
+        fn new(id: &str, outcomes: Vec<ApplyOutcome>) -> Self {
+            Self { id: id.to_string(), outcomes: RefCell::new(outcomes.into_iter()), last: RefCell::new(ApplyOutcome::default()) }
+        }
+    }
+    impl RuleTrait<SquareTessellation> for ScriptedRule {
+        fn id(&self) -> &str { &self.id }
+        fn kind(&self) -> IssueKind { MISSING_ENDPOINTS }
+        fn local_check_ids(&self) -> Vec<&str> { vec![] }
+        fn has_strategy(&self) -> bool { true }
+        fn run_checks(&self, _: &Maze<SquareTessellation>, _: &mut dyn RngCore, _: &mut HashMap<&'static str, (f64, u32)>, _: &dyn Fn() -> f64) -> Option<Box<dyn Issue>> {
+            Some(Box::new(MissingEndpointsIssue::new_from_check("check")))
+        }
+        fn report_checks(&self, _: &Maze<SquareTessellation>, _: &mut dyn RngCore, _: &mut HashMap<&'static str, (f64, u32)>, _: &dyn Fn() -> f64) -> Vec<Box<dyn Issue>> { vec![] }
+        fn dispatch_repair(&self, _: &dyn Issue, _: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &PresetState, _: &mut HashMap<&'static str, (f64, u32)>, _: &dyn Fn() -> f64) -> Option<(RepairResult, ApplyOutcome)> {
+            let next = self.outcomes.borrow_mut().next();
+            let outcome = next.unwrap_or_else(|| *self.last.borrow());
+            *self.last.borrow_mut() = outcome;
+            Some((RepairResult::Fixed { score: None }, outcome))
+        }
+    }
+
+    fn empty_maze() -> Maze<SquareTessellation> {
+        let mut ids = crate::IdGenerator::new();
+        let field = crate::space::Field::new(crate::space::square_rect(1, 1), &mut ids).unwrap();
+        let mut g = crate::Graph::new();
+        field.build_nodes(&mut g);
+        Maze::new(field, g)
+    }
+
+    fn dispatch_once(
+        rule: &dyn RuleTrait<SquareTessellation>,
+        maze: &mut Maze<SquareTessellation>,
+        failed: &mut HashSet<String>,
+        stalled_commands: &mut HashMap<String, u32>,
+    ) -> Vec<String> {
+        let stage = Stage::<SquareTessellation>::new("s".to_string(), "S".to_string(), vec![]);
+        let issue: Box<dyn Issue> = Box::new(MissingEndpointsIssue::new_from_check("check"));
+        let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![(rule, issue)];
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        use rand::SeedableRng;
+        let mut timing = HashMap::new();
+        stage.dispatch(&active, maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0, failed, stalled_commands)
+    }
+
+    #[test]
+    fn applied_zero_with_nonzero_proposed_increments_streak_but_does_not_stall_on_first_hit() {
+        let rule = ScriptedRule::new("r", vec![ApplyOutcome { proposed: 3, applied: 0 }]);
+        let mut maze = empty_maze();
+        let mut failed = HashSet::new();
+        let mut stalled_commands = HashMap::new();
+        let newly_stalled = dispatch_once(&rule, &mut maze, &mut failed, &mut stalled_commands);
+        assert!(newly_stalled.is_empty(), "a single stalled iteration must not trip the guard yet");
+        assert!(!failed.contains("r"));
+        assert_eq!(stalled_commands.get("r"), Some(&1));
+    }
+
+    #[test]
+    fn two_consecutive_stalled_iterations_trips_the_guard() {
+        let rule = ScriptedRule::new("r", vec![
+            ApplyOutcome { proposed: 3, applied: 0 },
+            ApplyOutcome { proposed: 5, applied: 0 }, // different proposed count -- must still count as the same stall condition
+        ]);
+        let mut maze = empty_maze();
+        let mut failed = HashSet::new();
+        let mut stalled_commands = HashMap::new();
+
+        dispatch_once(&rule, &mut maze, &mut failed, &mut stalled_commands);
+        let newly_stalled = dispatch_once(&rule, &mut maze, &mut failed, &mut stalled_commands);
+
+        assert_eq!(newly_stalled, vec!["r".to_string()], "second consecutive stall must trip the guard");
+        assert!(failed.contains("r"), "a stalled rule must be added to failed, same as an explicit Failed result");
+    }
+
+    #[test]
+    fn applying_at_least_one_command_resets_the_streak() {
+        let rule = ScriptedRule::new("r", vec![
+            ApplyOutcome { proposed: 3, applied: 0 },
+            ApplyOutcome { proposed: 2, applied: 1 }, // progress -- resets the streak
+            ApplyOutcome { proposed: 4, applied: 0 },
+        ]);
+        let mut maze = empty_maze();
+        let mut failed = HashSet::new();
+        let mut stalled_commands = HashMap::new();
+
+        dispatch_once(&rule, &mut maze, &mut failed, &mut stalled_commands);
+        assert_eq!(stalled_commands.get("r"), Some(&1));
+
+        dispatch_once(&rule, &mut maze, &mut failed, &mut stalled_commands);
+        assert!(!stalled_commands.contains_key("r"), "applying at least one command must reset the streak entirely");
+
+        let newly_stalled = dispatch_once(&rule, &mut maze, &mut failed, &mut stalled_commands);
+        assert!(newly_stalled.is_empty(), "streak must restart from zero after the reset, not carry over the pre-reset count");
+        assert_eq!(stalled_commands.get("r"), Some(&1));
+        assert!(!failed.contains("r"));
+    }
+
+    #[test]
+    fn zero_proposed_and_zero_applied_does_not_count_as_a_stall() {
+        // A rule whose strategy legitimately proposed nothing this call (e.g. already-idempotent)
+        // must not be confused with one whose proposals keep getting dropped on revalidation.
+        let rule = ScriptedRule::new("r", vec![
+            ApplyOutcome { proposed: 0, applied: 0 },
+            ApplyOutcome { proposed: 0, applied: 0 },
+            ApplyOutcome { proposed: 0, applied: 0 },
+        ]);
+        let mut maze = empty_maze();
+        let mut failed = HashSet::new();
+        let mut stalled_commands = HashMap::new();
+
+        for _ in 0..3 {
+            let newly_stalled = dispatch_once(&rule, &mut maze, &mut failed, &mut stalled_commands);
+            assert!(newly_stalled.is_empty());
+        }
+        assert!(!stalled_commands.contains_key("r"));
+        assert!(!failed.contains("r"));
+    }
+
+    #[test]
+    fn independent_rules_track_separate_streaks() {
+        let rule_a = ScriptedRule::new("a", vec![ApplyOutcome { proposed: 1, applied: 0 }]);
+        let rule_b = ScriptedRule::new("b", vec![ApplyOutcome { proposed: 1, applied: 1 }]);
+        let mut maze = empty_maze();
+        let mut failed = HashSet::new();
+        let mut stalled_commands = HashMap::new();
+
+        let stage = Stage::<SquareTessellation>::new("s".to_string(), "S".to_string(), vec![]);
+        let issue_a: Box<dyn Issue> = Box::new(MissingEndpointsIssue::new_from_check("check"));
+        let issue_b: Box<dyn Issue> = Box::new(MissingEndpointsIssue::new_from_check("check"));
+        let active: Vec<(&dyn RuleTrait<SquareTessellation>, Box<dyn Issue>)> = vec![(&rule_a, issue_a), (&rule_b, issue_b)];
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        use rand::SeedableRng;
+        let mut timing = HashMap::new();
+        stage.dispatch(&active, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0, &mut failed, &mut stalled_commands);
+
+        assert_eq!(stalled_commands.get("a"), Some(&1));
+        assert!(!stalled_commands.contains_key("b"), "a rule that applied a command must never gain a streak entry");
     }
 }

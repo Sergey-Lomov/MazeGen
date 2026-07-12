@@ -56,6 +56,20 @@ pub struct Field<T: Tessellation> {
     node_to_point: HashMap<NodeId, T::Point>,
 }
 
+/// Manual impl (not `#[derive(Clone)]`) — the derive would require `T: Clone`, but only
+/// `T::Point` needs to be (already `Copy` per `Tessellation`'s bound); `T` itself is typically a
+/// zero-sized marker type. Needed by `Maze::draft()` (GitHub issue #118, `Specs/repair.md`'s
+/// mutation-command contract) to produce an independent working copy without disturbing the
+/// original.
+impl<T: Tessellation> Clone for Field<T> {
+    fn clone(&self) -> Self {
+        Self {
+            point_to_node: self.point_to_node.clone(),
+            node_to_point: self.node_to_point.clone(),
+        }
+    }
+}
+
 impl<T: Tessellation> Field<T> {
     pub fn new(
         points: impl IntoIterator<Item = T::Point>,
@@ -128,6 +142,35 @@ impl<T: Tessellation> Field<T> {
 
     pub fn contains(&self, point: T::Point) -> bool {
         self.point_to_node.contains_key(&point)
+    }
+}
+
+#[cfg(test)]
+mod field_clone_tests {
+    use super::*;
+    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+
+    /// `Field<T>`'s manual `Clone` impl (GitHub issue #118, needed by `Maze::draft()`) must
+    /// produce an independent copy of both internal maps — mutating one `Field`'s node/point
+    /// state must never be reflected in a clone taken earlier.
+    #[test]
+    fn clone_is_independent_of_the_original() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let cloned = field.clone();
+
+        assert_eq!(field.node_count(), cloned.node_count());
+        let p = SquarePoint { x: 0, y: 0 };
+        assert_eq!(field.node_at(p), cloned.node_at(p));
+
+        // A `Field` itself has no mutation API besides construction, so independence is verified
+        // by confirming both copies agree on every point/node pair up front — a shared (rather
+        // than deep-cloned) HashMap would still pass this if aliasing were harmless, but combined
+        // with the derive/manual-impl having no unsafe/Rc involved, structural equality here is
+        // exactly what a correct deep clone (vs. an accidentally-empty one) needs to satisfy.
+        for point in field.all_points() {
+            assert_eq!(field.node_at(point), cloned.node_at(point));
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-use rand::{Rng, RngCore};
+﻿use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::{ExcessiveSccCountIssue, RegionNeedsExpansionIssue, REGION_NEEDS_EXPANSION};
@@ -6,7 +6,7 @@ use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams, build_params};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
-use crate::repair::snapshot::SnapshotStack;
+use crate::repair::command::MutationCommand;
 
 pub const PARAM_MERGE_PRIORITY: &str = "merge_priority";
 
@@ -90,13 +90,12 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for ReduceSccCou
     fn apply(
         &self,
         issue: &ExcessiveSccCountIssue,
-        maze: &mut Maze<T>,
-        snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
+    ) -> (RepairResult, Vec<MutationCommand>) {
         let max_scc_count = issue.max_scc_count;
 
         // Idempotency check comes before the nested-strategy lookup — an already-resolved issue
@@ -107,7 +106,7 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for ReduceSccCou
         let scc = maze.analysis.scc(&maze.graph);
         let count = scc.components.len() as u32;
         if count <= max_scc_count {
-            return RepairResult::Fixed { score: None };
+            return (RepairResult::Fixed { score: None }, vec![]);
         }
         let to_merge = (count - max_scc_count) as usize;
 
@@ -120,7 +119,7 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for ReduceSccCou
         debug_assert!(matching.len() <= 1,
             "ReduceSccCountStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_MERGE_TARGET}\" should prevent more than one nested strategy filling it");
         let Some(&merge_target) = matching.first() else {
-            return RepairResult::Failed;
+            return (RepairResult::Failed, vec![]);
         };
 
         let mode = match params.get(PARAM_MERGE_PRIORITY) {
@@ -131,13 +130,15 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for ReduceSccCou
         let sizes: Vec<usize> = scc.components.iter().map(|c| c.len()).collect();
         let chosen = select_merge_candidates(&sizes, mode, to_merge, rng);
         if chosen.is_empty() {
-            return RepairResult::Fixed { score: None };
+            return (RepairResult::Fixed { score: None }, vec![]);
         }
 
         let synthetic = RegionNeedsExpansionIssue::synthetic(chosen);
 
         let nested_params = build_params(merge_target.strategy.params(), Some(&merge_target.param_overrides));
-        merge_target.strategy.apply(&synthetic as &dyn crate::quality_control::Issue, maze, snapshots, rng, &nested_params, preset_state, &merge_target.nested)
+        // Parent has accumulated no commands of its own before delegating — nested_commands are
+        // the entire returned batch, already in "parent, then nested" order (Specs/repair.md).
+        merge_target.strategy.apply(&synthetic as &dyn crate::quality_control::Issue, maze, rng, &nested_params, preset_state, &merge_target.nested)
     }
 }
 
@@ -152,6 +153,21 @@ mod tests {
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, Field};
     use crate::repair::strategies::ExpandRegionPassageStrategy;
+    use crate::quality_control::rule::apply_commands;
+
+    fn apply_and_commit<T: Tessellation>(
+        strategy: &impl RepairStrategy<T, ExcessiveSccCountIssue>,
+        issue: &ExcessiveSccCountIssue,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult {
+        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
+        apply_commands(maze, preset_state, commands);
+        result
+    }
 
     // `select_merge_candidates` needs no Maze/Graph/Field setup at all — pure sort/shuffle logic
     // over plain sizes, unlike the rest of this file's tests which all build a real maze just to
@@ -299,7 +315,7 @@ mod tests {
         let mut maze = maze_4_singletons();
         let issue = issue_for(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -312,7 +328,7 @@ mod tests {
         let issue = issue_for(4);
         let mut rng = MazeRng::seed_from_u64(1);
         let edges_before = maze.graph.edges().count();
-        let result = RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), edges_before);
     }
@@ -325,7 +341,7 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = expand_region_passage_nested();
         let edges_before = maze.graph.edges().count();
-        let result = RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), edges_before);
     }
@@ -344,7 +360,7 @@ mod tests {
         let issue = issue_for(2);
         let mut rng = MazeRng::seed_from_u64(7);
         let nested = expand_region_passage_nested_legacy_fast_path();
-        let result = RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let fresh = Maze::<SquareTessellation>::new(maze.field, maze.graph);
         let scc = fresh.analysis.scc(&fresh.graph);
@@ -366,7 +382,7 @@ mod tests {
             let mut rng = MazeRng::seed_from_u64(3);
             let nested = expand_region_passage_nested();
             let count_before = maze.analysis.scc(&maze.graph).components.len();
-            let result = RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with_priority(mode), &PresetState::empty(), &nested);
+            let result = apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze, &mut rng, &params_with_priority(mode), &PresetState::empty(), &nested);
             assert!(matches!(result, RepairResult::Fixed { score: None }), "mode {mode} must succeed");
             let fresh = Maze::<SquareTessellation>::new(maze.field, maze.graph);
             let scc = fresh.analysis.scc(&fresh.graph);
@@ -381,7 +397,7 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(11);
         let nested = expand_region_passage_nested();
         let edges_before = maze.graph.edges().count();
-        let result = RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         // A merge via ExpandRegionPassageStrategy adds a full bidirectional passage (2 edges).
         assert_eq!(maze.graph.edges().count(), edges_before + 2, "nested strategy must have actually added a passage");
@@ -404,7 +420,7 @@ mod tests {
         let issue = issue_for(1);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = expand_region_passage_nested();
-        let result = RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &nested);
+        let result = apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &nested);
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -415,12 +431,12 @@ mod tests {
         let mut maze_a = maze_4_singletons();
         let mut rng_a = MazeRng::seed_from_u64(99);
         let nested_a = expand_region_passage_nested();
-        RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &params_with_priority(PRIORITY_RANDOM), &PresetState::empty(), &nested_a);
+        apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze_a, &mut rng_a, &params_with_priority(PRIORITY_RANDOM), &PresetState::empty(), &nested_a);
 
         let mut maze_b = maze_4_singletons();
         let mut rng_b = MazeRng::seed_from_u64(99);
         let nested_b = expand_region_passage_nested();
-        RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &params_with_priority(PRIORITY_RANDOM), &PresetState::empty(), &nested_b);
+        apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze_b, &mut rng_b, &params_with_priority(PRIORITY_RANDOM), &PresetState::empty(), &nested_b);
 
         let edges_a: Vec<_> = maze_a.graph.edges().map(|e| (e.from, e.to)).collect();
         let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to)).collect();
@@ -441,7 +457,7 @@ mod tests {
             param_overrides: std::collections::HashMap::new(),
             nested: vec![],
         }];
-        let result = RepairStrategy::apply(&ReduceSccCountStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
+        let result = apply_and_commit(&ReduceSccCountStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Failed));
     }
 }

@@ -1,13 +1,14 @@
-﻿use rand::{Rng, RngCore};
+﻿use std::collections::HashSet;
+use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
-use crate::generation::{PresetState, try_remove_edge};
+use crate::generation::PresetState;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::snapshot::SnapshotStack;
+use crate::repair::command::MutationCommand;
 use super::cycle_cut_set::{edge_to_cycles_map, discard_cycles_with_edge, candidate_edges};
 
 pub struct InvalidLoopRandomStrategy;
@@ -29,33 +30,39 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomS
     fn apply(
         &self,
         issue: &InvalidLoopIssue,
-        maze: &mut Maze<T>,
-        _snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         _params: &StrategyParams,
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
-        apply_cuts(&issue.all, &issue.invalid, maze, rng, preset_state)
+    ) -> (RepairResult, Vec<MutationCommand>) {
+        (RepairResult::Fixed { score: None }, apply_cuts(&issue.all, &issue.invalid, maze, rng, preset_state))
     }
 }
 
 crate::impl_erased_repair_strategy!(InvalidLoopRandomStrategy, InvalidLoopIssue);
 
+/// Builds the list of edge-removal commands for every pending cycle — never mutates `maze`
+/// (GitHub issue #118, `Specs/repair.md`'s immutable-snapshot contract). `already_cut` tracks,
+/// locally to this call, every edge already proposed for removal so far (own direction and
+/// reverse), standing in for what an earlier cut's real mutation would otherwise have made
+/// observable through `maze.graph.edge`/`edge_between` under the old in-place contract.
 fn apply_cuts<T: Tessellation>(
     all: &[Vec<EdgeId>],
     short: &[usize],
-    maze: &mut Maze<T>,
+    maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
-) -> RepairResult {
+) -> Vec<MutationCommand> {
     let owners = edge_to_cycles_map(all);
     let mut pending: Vec<usize> = short.to_vec();
+    let mut already_cut: HashSet<EdgeId> = HashSet::new();
+    let mut commands = Vec::new();
 
     while let Some(idx) = pending.pop() {
         let Some(cycle) = all.get(idx) else { continue };
         // Drop preset-protected and already-cut edges upfront so the random pick never wastes a sample on them.
-        let mut candidates = candidate_edges(cycle, maze, preset_state);
+        let mut candidates = candidate_edges(cycle, maze, preset_state, &already_cut);
 
         while !candidates.is_empty() {
             let pick = rng.random_range(0..candidates.len());
@@ -64,11 +71,15 @@ fn apply_cuts<T: Tessellation>(
                 let edge = maze.graph.edge(cut).expect("checked above");
                 (edge.from, edge.to)
             };
-            if try_remove_edge(&mut maze.graph, from, to, preset_state) {
-                let reverse = maze.graph.edge_between(to, from);
-                try_remove_edge(&mut maze.graph, to, from, preset_state);
+            if !preset_state.preset_edges.contains(&(from, to)) {
+                commands.push(MutationCommand::RemoveEdge { id: cut });
+                already_cut.insert(cut);
                 discard_cycles_with_edge(&mut pending, &owners, cut);
-                if let Some(reverse_id) = reverse {
+                if let Some(reverse_id) = maze.graph.edge_between(to, from) {
+                    if !already_cut.contains(&reverse_id) {
+                        commands.push(MutationCommand::RemoveEdge { id: reverse_id });
+                        already_cut.insert(reverse_id);
+                    }
                     discard_cycles_with_edge(&mut pending, &owners, reverse_id);
                 }
                 break;
@@ -77,7 +88,7 @@ fn apply_cuts<T: Tessellation>(
             candidates.swap_remove(pick);
         }
     }
-    RepairResult::Fixed { score: None }
+    commands
 }
 
 #[cfg(test)]
@@ -92,6 +103,21 @@ mod tests {
     use crate::quality_control::checks::MinLoopLengthCheck;
     use crate::repair::params::{build_params, StrategyParams};
     use crate::generation::PresetState;
+    use crate::quality_control::rule::apply_commands;
+
+    fn apply_and_commit<T: Tessellation>(
+        strategy: &impl RepairStrategy<T, InvalidLoopIssue>,
+        issue: &InvalidLoopIssue,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult {
+        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
+        apply_commands(maze, preset_state, commands);
+        result
+    }
 
     fn maze_with_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
@@ -139,7 +165,7 @@ mod tests {
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(7);
-        let result = RepairStrategy::apply(&InvalidLoopRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         // Fresh Maze/MazeAnalysis: `maze`'s cached nav_graph (built by the check above,
@@ -155,7 +181,7 @@ mod tests {
         let mut maze = maze_with_triangle();
         let issue = InvalidLoopIssue::new_from_check("min_loop_length", vec![], vec![], Default::default());
         let mut rng = MazeRng::seed_from_u64(7);
-        let result = RepairStrategy::apply(&InvalidLoopRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -172,11 +198,11 @@ mod tests {
 
         let mut maze_a = maze_with_triangle();
         let mut rng_a = MazeRng::seed_from_u64(123);
-        RepairStrategy::apply(&InvalidLoopRandomStrategy, &issue, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_a, &mut rng_a, &no_params(), &PresetState::empty(), &[]);
 
         let mut maze_b = maze_with_triangle();
         let mut rng_b = MazeRng::seed_from_u64(123);
-        RepairStrategy::apply(&InvalidLoopRandomStrategy, &issue, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_b, &mut rng_b, &no_params(), &PresetState::empty(), &[]);
 
         let remaining_a: Vec<_> = maze_a.graph.edges().map(|e| e.id).collect();
         let remaining_b: Vec<_> = maze_b.graph.edges().map(|e| e.id).collect();
@@ -207,7 +233,7 @@ mod tests {
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(99);
-        let result = RepairStrategy::apply(&InvalidLoopRandomStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -249,7 +275,7 @@ mod tests {
         for seed in 0..20 {
             let mut maze_try = build();
             let mut rng = MazeRng::seed_from_u64(seed);
-            let result = RepairStrategy::apply(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+            let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut rng, &no_params(), &PresetState::empty(), &[]);
             assert!(matches!(result, RepairResult::Fixed { score: None }));
             let d_degree = maze_try.graph.edges().filter(|e| e.from == d || e.to == d).count();
             assert!(d_degree > 0, "seed {seed}: D must keep at least one edge — it must not be fully cut off");
@@ -287,7 +313,7 @@ mod tests {
         check.repair_check(&maze_full, &mut full_issues, &mut check_rng, InvalidLoopRequirement::all());
         let full_issue = full_issues.into_iter().next().unwrap();
         let mut rng_full = MazeRng::seed_from_u64(42);
-        RepairStrategy::apply(&InvalidLoopRandomStrategy, &full_issue, &mut maze_full, &mut SnapshotStack::new(), &mut rng_full, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(&InvalidLoopRandomStrategy, &full_issue, &mut maze_full, &mut rng_full, &no_params(), &PresetState::empty(), &[]);
 
         let mut maze_invalid_only = build();
         let mut invalid_only_issues = Vec::new();
@@ -295,7 +321,7 @@ mod tests {
         check.repair_check(&maze_invalid_only, &mut invalid_only_issues, &mut check_rng2, InvalidLoopRequirement::empty());
         let invalid_only_issue = invalid_only_issues.into_iter().next().unwrap();
         let mut rng_invalid_only = MazeRng::seed_from_u64(42);
-        RepairStrategy::apply(&InvalidLoopRandomStrategy, &invalid_only_issue, &mut maze_invalid_only, &mut SnapshotStack::new(), &mut rng_invalid_only, &no_params(), &PresetState::empty(), &[]);
+        apply_and_commit(&InvalidLoopRandomStrategy, &invalid_only_issue, &mut maze_invalid_only, &mut rng_invalid_only, &no_params(), &PresetState::empty(), &[]);
 
         let remaining_full: std::collections::HashSet<_> = maze_full.graph.edges().map(|e| e.id).collect();
         let remaining_invalid_only: std::collections::HashSet<_> = maze_invalid_only.graph.edges().map(|e| e.id).collect();
@@ -331,7 +357,7 @@ mod tests {
             let mut maze_try = maze_with_triangle();
             // Re-fetch the issue per-maze since EdgeIds are stable across identical construction.
             let mut rng = MazeRng::seed_from_u64(seed);
-            let result = RepairStrategy::apply(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
+            let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut rng, &no_params(), &preset_state, &[]);
             assert!(matches!(result, RepairResult::Fixed { score: None }));
             assert!(maze_try.graph.edge_between(unprotected_from, unprotected_to).is_none(),
                 "the only unprotected edge must be cut regardless of seed {seed}");

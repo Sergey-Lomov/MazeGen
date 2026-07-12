@@ -1,12 +1,12 @@
-use rand::RngCore;
+﻿use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::InvalidTeleportIssue;
-use crate::generation::{PresetState, try_remove_teleport_with_reverse};
+use crate::generation::PresetState;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::snapshot::SnapshotStack;
+use crate::repair::command::MutationCommand;
 
 /// Handles `INVALID_TELEPORT` — see GitHub issue #74. The single, fixed fix strategy for every
 /// per-teleport validation check: remove each flagged teleport edge outright. No configurable
@@ -32,17 +32,16 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportIssue> for RemoveTeleport
     fn apply(
         &self,
         issue: &InvalidTeleportIssue,
-        maze: &mut Maze<T>,
-        _snapshots: &mut SnapshotStack,
+        _maze: &Maze<T>,
         _rng: &mut dyn RngCore,
         _params: &StrategyParams,
-        preset_state: &PresetState,
+        _preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
-        for &edge_id in &issue.invalid {
-            try_remove_teleport_with_reverse(&mut maze.graph, edge_id, preset_state);
-        }
-        RepairResult::Fixed { score: None }
+    ) -> (RepairResult, Vec<MutationCommand>) {
+        let commands = issue.invalid.iter()
+            .map(|&id| MutationCommand::RemoveTeleportWithReverse { id })
+            .collect();
+        (RepairResult::Fixed { score: None }, commands)
     }
 }
 
@@ -59,6 +58,21 @@ mod tests {
     use crate::quality_control::check::Check;
     use crate::quality_control::checks::TeleportDuplicatesConnectionCheck;
     use crate::repair::params::build_params;
+    use crate::quality_control::rule::apply_commands;
+
+    fn apply_and_commit<T: Tessellation>(
+        strategy: &impl RepairStrategy<T, InvalidTeleportIssue>,
+        issue: &InvalidTeleportIssue,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult {
+        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
+        apply_commands(maze, preset_state, commands);
+        result
+    }
 
     fn maze_with_duplicate_teleport() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
@@ -85,7 +99,7 @@ mod tests {
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&RemoveTeleportStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport));
@@ -112,7 +126,7 @@ mod tests {
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&RemoveTeleportStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport), "both teleport directions must be removed");
@@ -135,7 +149,7 @@ mod tests {
 
         let issue = InvalidTeleportIssue::new_from_check("test", vec![forward_id]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&RemoveTeleportStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(forward_id).is_none(), "the flagged forward direction must be removed");
@@ -158,7 +172,7 @@ mod tests {
 
         let issue = InvalidTeleportIssue::new_from_check("test", vec![teleport_id]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&RemoveTeleportStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         assert!(maze.graph.edge(teleport_id).is_none());
@@ -170,7 +184,7 @@ mod tests {
         let mut maze = maze_with_duplicate_teleport();
         let issue = InvalidTeleportIssue::new_from_check("test", vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&RemoveTeleportStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -192,7 +206,7 @@ mod tests {
         preset_state.preset_edges.insert((basic_edge.from, basic_edge.to));
 
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = RepairStrategy::apply(&RemoveTeleportStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &preset_state, &[]);
+        let result = apply_and_commit(&RemoveTeleportStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(!maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport), "teleport must be removed even though the duplicated Basic pair is preset-protected");
         assert!(maze.graph.edges().any(|e| e.kind == EdgeKind::Basic), "the preset-protected Basic edge itself must survive");

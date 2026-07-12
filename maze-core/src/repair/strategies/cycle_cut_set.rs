@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
@@ -30,14 +30,20 @@ pub(super) fn discard_cycles_with_edge(
 }
 
 /// Candidate edges for cutting within one cycle: must still exist in the graph (an earlier cut
-/// in this same `apply` may have already removed it) and must not be preset-protected.
+/// in this same `apply` may have already removed it), must not be preset-protected, and must not
+/// already be proposed for removal earlier in the same `apply` call — `already_cut` tracks that
+/// last condition, since `maze` (GitHub issue #118, `Specs/repair.md`'s immutable-snapshot
+/// contract) is never actually mutated mid-call anymore; the strategy tracks its own pending
+/// removals locally instead of observing them through a real graph mutation.
 pub(super) fn candidate_edges<T: Tessellation>(
     cycle: &[EdgeId],
     maze: &Maze<T>,
     preset_state: &PresetState,
+    already_cut: &HashSet<EdgeId>,
 ) -> Vec<EdgeId> {
     cycle.iter().copied()
-        .filter(|&id| maze.graph.edge(id).is_some())
+        .filter(|id| maze.graph.edge(*id).is_some())
+        .filter(|id| !already_cut.contains(id))
         .filter(|&id| {
             let edge = maze.graph.edge(id).expect("checked above");
             !preset_state.preset_edges.contains(&(edge.from, edge.to))
@@ -103,7 +109,7 @@ mod tests {
     fn candidate_edges_filters_out_removed_edges() {
         let (mut maze, edges) = make_maze_and_edges(3);
         maze.graph.remove_edge(edges[0]);
-        let candidates = candidate_edges(&edges, &maze, &PresetState::empty());
+        let candidates = candidate_edges(&edges, &maze, &PresetState::empty(), &HashSet::new());
         assert_eq!(candidates, vec![edges[1]]);
     }
 
@@ -113,21 +119,30 @@ mod tests {
         let edge0 = maze.graph.edge(edges[0]).unwrap();
         let mut preset_state = PresetState::empty();
         preset_state.preset_edges.insert((edge0.from, edge0.to));
-        let candidates = candidate_edges(&edges, &maze, &preset_state);
+        let candidates = candidate_edges(&edges, &maze, &preset_state, &HashSet::new());
         assert_eq!(candidates, vec![edges[1]]);
     }
 
     #[test]
     fn candidate_edges_returns_all_when_nothing_filtered() {
         let (maze, edges) = make_maze_and_edges(3);
-        let candidates = candidate_edges(&edges, &maze, &PresetState::empty());
+        let candidates = candidate_edges(&edges, &maze, &PresetState::empty(), &HashSet::new());
         assert_eq!(candidates, edges);
     }
 
     #[test]
     fn candidate_edges_empty_cycle_returns_empty() {
         let (maze, _) = make_maze_and_edges(3);
-        let candidates = candidate_edges(&[], &maze, &PresetState::empty());
+        let candidates = candidate_edges(&[], &maze, &PresetState::empty(), &HashSet::new());
         assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn candidate_edges_filters_out_already_cut_edges() {
+        let (maze, edges) = make_maze_and_edges(3);
+        let mut already_cut = HashSet::new();
+        already_cut.insert(edges[0]);
+        let candidates = candidate_edges(&edges, &maze, &PresetState::empty(), &already_cut);
+        assert_eq!(candidates, vec![edges[1]]);
     }
 }

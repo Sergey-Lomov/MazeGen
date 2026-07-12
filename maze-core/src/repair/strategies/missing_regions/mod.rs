@@ -9,7 +9,8 @@ use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::snapshot::SnapshotStack;
+use crate::repair::command::MutationCommand;
+use crate::repair::draft::DraftMaze;
 
 mod convert;
 mod grow;
@@ -89,16 +90,15 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
     fn apply(
         &self,
         issue: &MissingRegionsIssue,
-        maze: &mut Maze<T>,
-        snapshots: &mut SnapshotStack,
+        maze: &Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
+    ) -> (RepairResult, Vec<MutationCommand>) {
         let balance_by_class = &issue.balance_by_class;
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
-            return RepairResult::Failed;
+            return (RepairResult::Failed, vec![]);
         }
 
         let locality = params.get(PARAM_LOCALITY).and_then(|v| v.as_float()).unwrap_or(0.5);
@@ -133,6 +133,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
         let mut total_failures: u32 = 0;
         let mut any_fixed = false;
 
+        // Running draft (DraftMaze wraps DraftMaze, Specs/repair.md) — starts as `maze.draft()`,
+        // then updated after each successfully committed region so the *next* shortfall item
+        // sees prior items' committed changes, mirroring the original in-place mutation
+        // sequencing while keeping every mutation off the real `Maze` until `apply()` returns.
+        let mut current = DraftMaze::new(maze.draft());
+
         'classes: for class in classes {
             // `Path` is never a valid creation target (see Specs/repair.md) — skipped without
             // consuming attempt budget, doesn't block other classes.
@@ -146,25 +152,27 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
                     break 'classes;
                 }
 
-                snapshots.snapshot(maze);
                 let ctx = GrowContext {
                     committed_nodes: &committed_nodes,
                     preset_state,
                     inbound_requires_geometry: INBOUND_REQUIRES_GEOMETRY,
                     outbound_requires_geometry: OUTBOUND_REQUIRES_GEOMETRY,
                 };
+                let mut attempt = DraftMaze::new(current.maze.draft());
                 let outcome = attempt_one_region(
-                    maze, snapshots, class, locality, min_region_size, &mut excess_budget, &ctx, rng,
+                    &mut attempt, class, locality, min_region_size, &mut excess_budget, &ctx, rng,
                 );
 
                 match outcome {
                     Some(members) => {
+                        current.absorb(attempt);
                         committed_nodes.extend(members);
                         remaining -= 1;
                         any_fixed = true;
                     }
                     None => {
-                        snapshots.restore(maze);
+                        // Failed attempt: `attempt` is simply dropped — nothing was ever applied
+                        // to `current`.
                         total_failures += 1;
                     }
                 }
@@ -172,9 +180,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
         }
 
         if any_fixed {
-            RepairResult::Fixed { score: None }
+            (RepairResult::Fixed { score: None }, current.into_commands())
         } else {
-            RepairResult::Failed
+            (RepairResult::Failed, vec![])
         }
     }
 }
@@ -182,11 +190,10 @@ impl<T: Tessellation> RepairStrategy<T, MissingRegionsIssue> for MissingRegionsS
 crate::impl_erased_repair_strategy!(MissingRegionsStrategy, MissingRegionsIssue);
 
 /// One full region-item attempt: try reuse first, fall back to growth. Returns the committed
-/// region's `members` on success (caller is responsible for NOT restoring the snapshot in that
-/// case), or `None` on failure (caller restores).
+/// region's `members` on success — the caller (`apply`) is responsible for absorbing `attempt`
+/// into its running draft in that case — or `None` on failure (caller drops `attempt`).
 fn attempt_one_region<T: Tessellation>(
-    maze: &mut Maze<T>,
-    snapshots: &mut SnapshotStack,
+    attempt: &mut DraftMaze<T>,
     target: RegionClass,
     locality: f64,
     min_region_size: usize,
@@ -194,8 +201,8 @@ fn attempt_one_region<T: Tessellation>(
     ctx: &GrowContext,
     rng: &mut dyn RngCore,
 ) -> Option<HashSet<NodeId>> {
-    if let Some(members) = try_reuse(maze, snapshots, target, min_region_size, excess_budget, ctx, rng) {
+    if let Some(members) = try_reuse(attempt, target, min_region_size, excess_budget, ctx, rng) {
         return Some(members);
     }
-    try_grow(maze, snapshots, target, locality, min_region_size, excess_budget, ctx, rng)
+    try_grow(attempt, target, locality, min_region_size, excess_budget, ctx, rng)
 }

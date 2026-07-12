@@ -248,6 +248,96 @@ impl<T: Tessellation> Maze<T> {
             analysis: MazeAnalysis::default(),
         }
     }
+
+    /// An independent working copy for a `RepairStrategy` that needs to mutate-and-inspect
+    /// intermediate state before committing to a final `MutationCommand` list (GitHub issue #118,
+    /// `Specs/repair.md`) — currently only `MissingRegionsStrategy`'s reuse/growth attempts. Fresh
+    /// `MazeAnalysis` cache (never cloned — it would otherwise carry stale cache entries keyed
+    /// against a graph version this copy has already diverged from); `field`/`graph`/`meta` are
+    /// cloned so mutating the draft never touches `self`. Never applied automatically — a
+    /// strategy that mutates a draft must go through `DraftMaze` (see `repair::draft`) to get a
+    /// `Vec<MutationCommand>` back out of it.
+    pub fn draft(&self) -> Maze<T> {
+        Maze {
+            field: self.field.clone(),
+            graph: self.graph.clone(),
+            meta: self.meta.clone(),
+            analysis: MazeAnalysis::default(),
+        }
+    }
+}
+
+/// Direct unit tests for `Maze::draft()` (GitHub issue #118, `Specs/repair.md`) — the working-copy
+/// mechanism `DraftMaze` builds on. Had no direct coverage before, only exercised transitively via
+/// `MissingRegionsStrategy`'s own tests.
+#[cfg(test)]
+mod draft_tests {
+    use super::*;
+    use crate::graph::EdgeKind;
+    use crate::space::{Field, SquareTessellation, square_rect};
+
+    fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(n, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        (Maze::new(field, g), nodes)
+    }
+
+    #[test]
+    fn draft_copies_graph_edges_and_meta() {
+        let (mut maze, nodes) = maze_n(2);
+        maze.graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        maze.meta.start = Some(nodes[0]);
+        maze.meta.finish = Some(nodes[1]);
+
+        let draft = maze.draft();
+        assert!(draft.graph.edge_between(nodes[0], nodes[1]).is_some());
+        assert_eq!(draft.meta.start, Some(nodes[0]));
+        assert_eq!(draft.meta.finish, Some(nodes[1]));
+    }
+
+    #[test]
+    fn mutating_draft_graph_never_touches_the_original() {
+        let (maze, nodes) = maze_n(2);
+        let mut draft = maze.draft();
+        draft.graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+
+        assert!(draft.graph.edge_between(nodes[0], nodes[1]).is_some());
+        assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none(),
+            "mutating the draft's graph must never affect the original Maze");
+    }
+
+    #[test]
+    fn mutating_original_after_draft_never_touches_the_draft() {
+        let (mut maze, nodes) = maze_n(2);
+        let draft = maze.draft();
+        maze.graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+
+        assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
+        assert!(draft.graph.edge_between(nodes[0], nodes[1]).is_none(),
+            "a draft taken before a later mutation on the original must not see that mutation");
+    }
+
+    #[test]
+    fn draft_gets_a_fresh_analysis_cache_not_the_original_stale_one() {
+        let (mut maze, nodes) = maze_n(2);
+        maze.meta.start = Some(nodes[0]);
+        // Populate the original's nav_graph cache before drafting.
+        let _ = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+
+        let mut draft = maze.draft();
+        // Mutate the draft's graph directly (bypassing DraftMaze, to isolate draft()'s own
+        // cache-freshness contract) — if the draft had inherited the original's cache keyed on the
+        // pre-mutation graph version, nav_graph would wrongly reuse it instead of rebuilding.
+        draft.graph.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        draft.meta.finish = Some(nodes[1]);
+
+        let nav = draft.analysis.nav_graph(&draft.graph, &draft.meta);
+        assert!(nav.nav_node_for(nodes[1]).is_some(),
+            "draft's fresh analysis cache must reflect the draft's own graph, not stale/inherited state");
+    }
 }
 
 #[cfg(test)]
