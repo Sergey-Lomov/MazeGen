@@ -28,7 +28,22 @@ IMPORTANT: These rules override the default commit behavior.
 
 ## Code exploration
 
-- Before reaching for Grep/Glob/Explore agent in this repo, check whether `code-index` MCP tools (`search_code_advanced`, `get_symbol_body`, `find_files`, `get_file_summary`) fit better — not a hard rule, but easy to forget mid-session, so check it as a reflex. Fall back to Grep/Glob freely when code-index is unavailable (`needs_deep_index`) or clearly the wrong tool for the search.
+DEFAULT RULE
+
+For code exploration, use `code-index` MCP tools first.
+
+Preferred tools:
+
+- search_code_advanced
+- get_symbol_body
+- find_files
+- get_file_summary
+
+Use Grep/Glob/Explore only if:
+
+- code-index cannot answer the query;
+- code-index reports `needs_deep_index`;
+- the task is clearly outside code-index's capabilities.
 
 ## Debugging
 
