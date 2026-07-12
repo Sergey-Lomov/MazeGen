@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 rand = "0.9"
 rand_xoshiro = "0.7"
+bitflags = "2"
 
 [dev-dependencies]
 trybuild = "1"

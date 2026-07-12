@@ -298,6 +298,19 @@ pub trait IssueMerge: Issue + IssueKindConst {
     fn merge(&mut self, other: Self);
 }
 
+/// Describes what subset of `Self` a `RepairStrategy<T, Self>` may ask its producing `Check` to
+/// compute (see `RepairStrategy::requirement`) — see GitHub issue #105. Every concrete `Issue`
+/// type implements this (with `type Requirement = ()` where no narrower variant exists yet),
+/// so `Check<T, I>`/`RepairStrategy<T, I>` can bound on it uniformly rather than splitting into
+/// two parallel trait hierarchies for "has a requirement" vs "doesn't".
+///
+/// `Self::Requirement::default()` **must** mean "compute everything" — `Check::report_check`'s
+/// default body (`quality_control/check.rs`) has no strategy to consult, so it always passes the
+/// default and relies on this meaning "full".
+pub trait IssueRequirement: Issue {
+    type Requirement: Default + Copy + 'static;
+}
+
 #[cfg(test)]
 mod dyn_issue_tests {
     use super::*;

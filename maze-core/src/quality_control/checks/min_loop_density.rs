@@ -26,7 +26,7 @@ pub struct MinLoopDensityCheck {
 impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
     fn check_type_id(&self) -> &'static str { "min_loop_density" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingLoopsIssue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingLoopsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let field_cells = maze.field.node_count();
         if field_cells == 0 {
             return;
@@ -99,7 +99,7 @@ mod tests {
         let maze = maze_with_one_triangle();
         let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 30, avg_loop_length_estimate: 10 };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "30% density meets a minimum of 30");
     }
 
@@ -110,7 +110,7 @@ mod tests {
         let maze = maze_with_one_triangle();
         let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].missing, 3);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
@@ -126,7 +126,7 @@ mod tests {
         let maze = maze_with_one_triangle();
         let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 40, avg_loop_length_estimate: 4 };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].missing, 1, "ceil(1/4) must round up to 1, not truncate to 0");
     }
@@ -143,7 +143,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert!(issues[0].missing > 0);
     }
@@ -172,7 +172,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
@@ -182,7 +182,7 @@ mod tests {
         let maze = maze_with_one_triangle();
         let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 31, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
     }
 }

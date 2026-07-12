@@ -17,7 +17,7 @@ mod teleport_group_proximity;
 
 pub use missing_endpoints::MissingEndpointsIssue;
 pub use unreachable_finish::UnreachableFinishIssue;
-pub use invalid_loop::InvalidLoopIssue;
+pub use invalid_loop::{InvalidLoopIssue, InvalidLoopRequirement};
 pub use missing_loops::MissingLoopsIssue;
 pub use cycle_analysis_overflowed::CycleAnalysisOverflowedIssue;
 pub use repair_limit_reached::{RepairLimitReachedIssue, RepairLimitKind};

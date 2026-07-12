@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, REGION_NEEDS_EXPANSION};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REGION_NEEDS_EXPANSION};
 
 /// Produced by any check that flags an SCC region as needing expansion for a check-specific
 /// reason (currently `MinRegionSizeCheck`/`MinRegionRatioCheck`; future checks may flag a region
@@ -37,6 +37,10 @@ impl RegionNeedsExpansionIssue {
 
 impl IssueKindConst for RegionNeedsExpansionIssue {
     const KIND: IssueKind = REGION_NEEDS_EXPANSION;
+}
+
+impl IssueRequirement for RegionNeedsExpansionIssue {
+    type Requirement = ();
 }
 
 impl Issue for RegionNeedsExpansionIssue {

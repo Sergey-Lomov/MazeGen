@@ -56,10 +56,17 @@ construction, so the old `debug_assert_eq!(issue.kind, self.handles())` pattern 
 "Debug contract" section) is now a compile error if violated, not a debug-only runtime check.
 
 ```rust
-pub trait RepairStrategy<T: Tessellation, I: Issue> {
+pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// Strategy id — matches `maze-wasm`'s `StrategyConfig.id` (e.g. `"invalid_loop_random"`).
     fn strategy_id(&self) -> &'static str;
     fn params(&self) -> &'static [StrategyParam] { &[] }
+    /// What subset of `I` this strategy needs its producing `Check` to compute — see GitHub
+    /// issue #105 and `quality_control.md`'s `IssueRequirement`/`Check::repair_check` sections.
+    /// Resolved once by `Rule::new` (not per fixpoint iteration) and threaded into every
+    /// `Check::repair_check` call in that rule. Default `I::Requirement::default()` — which
+    /// `IssueRequirement`'s contract fixes to mean "compute everything" — so an unmigrated
+    /// strategy changes nothing.
+    fn requirement(&self, _params: &StrategyParams) -> I::Requirement { I::Requirement::default() }
     /// Whether this strategy is experimental (results/performance may be unpredictable).
     /// Surfaced to the UI as a warning, not enforced by core. Default `false`.
     fn is_experimental(&self) -> bool { false }
@@ -92,6 +99,15 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn params(&self) -> &'static [StrategyParam];
     fn is_experimental(&self) -> bool;
     fn expected_nested(&self) -> &'static [NestedSlot];
+    /// Erased form of `RepairStrategy::requirement` — returns `Box<dyn Any>` wrapping the
+    /// strategy's own `I::Requirement`. The only caller, `maze-runner`'s `downcast_strategy`,
+    /// already knows the concrete `I` (generic over it) and downcasts this back via
+    /// `downcast::<I::Requirement>()`. Needed because `requirement()`'s return type is generic
+    /// over `I` and can't cross the erased boundary any other way — same rationale as `apply`'s
+    /// `&dyn Issue` erasure. **A parent strategy delegating to a nested slot never calls this** —
+    /// a nested strategy's issue is synthesized directly by the parent (see "Nested strategies"
+    /// below), never produced by a `Check::repair_check` call, so there is no requirement to pass.
+    fn requirement_erased(&self, params: &StrategyParams) -> Box<dyn std::any::Any>;
     fn apply(
         &self, issue: &dyn Issue, maze: &mut Maze<T>, snapshots: &mut SnapshotStack,
         rng: &mut dyn RngCore, params: &StrategyParams, preset_state: &PresetState,
@@ -515,7 +531,7 @@ Behavior per case:
 
 Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producing check (`MinLoopLengthCheck`: shorter than a threshold; `MaxLoopLengthCheck`: longer than a threshold; future checks may flag cycles invalid for other reasons) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters. The strategy itself is agnostic to *why* a cycle was flagged invalid — it only consumes `InvalidLoopIssue`.
 
-`InvalidLoopIssue`'s fields are always populated (not optional at the type level, unlike the pre-#113 `Option<IssueData>`) — the producing check already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply.
+`InvalidLoopIssue`'s fields are never optional at the type level (unlike the pre-#113 `Option<IssueData>`), but their content depends on `requirement()` (see GitHub issue #105, `quality_control.md`'s `IssueRequirement` section) — the producing check already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply. `requirement()` returns `InvalidLoopRequirement::empty()` — `apply` only ever reads `all`/`invalid` through `apply_cuts`, which seeds its pending set from `invalid`'s indices and only ever shrinks it (`discard_cycles_with_edge`'s `retain`), so a valid cycle's entry is never read; `invalid_sources` isn't read at all. A re-indexed `all` containing only the invalid cycles (the base layer, `VALID_CYCLES` unset) produces the identical result — proven by a dedicated test (`apply_result_is_identical_for_full_and_invalid_only_requirement`) that cuts the same seed against both requirement values and asserts the same edges survive.
 
 - `issue: &InvalidLoopIssue` gives `all`/`invalid` directly: cuts the cycles at indices `invalid` into `all`. An empty `invalid` is valid — nothing to break, returns `Fixed` immediately.
 - If `data` is missing or the wrong variant: this is a malformed call (should never happen in a normal pipeline run, where the check always attaches data) — returns `Failed`, not "already fixed".
@@ -531,6 +547,8 @@ Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producin
 `RepairStrategy<T, InvalidLoopIssue>`, same field-shape contract as `InvalidLoopRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (each `Rule` binds exactly one strategy), not a replacement.
 
 Instead of picking a random edge from each invalid cycle, scores every still-present, non-preset-protected candidate edge in the cycle being cut and picks the highest-scoring one (ties broken via `rng`). The goal: bias cuts toward edges that simultaneously break several invalid loops at once (fewer total cuts needed to clear the issue) while avoiding edges that would also break a cycle the maze is meant to keep.
+
+Unlike `InvalidLoopRandomStrategy`, `requirement()` returns `InvalidLoopRequirement::VALID_CYCLES` — the `other_overlap` scoring term below walks every valid cycle in `all` to penalize edges shared with a loop the maze must keep, so the `VALID_CYCLES` layer is required by the algorithm itself, not left set out of inertia.
 
 **Parameters:**
 

@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, EXCESSIVE_SCC_COUNT};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, EXCESSIVE_SCC_COUNT};
 
 /// Produced by `SccCountCheck` (paired with `EXCESSIVE_SCC_COUNT`) — mandatory for this kind:
 /// `max_scc_count` is the configured threshold the check compared against, needed by
@@ -28,6 +28,10 @@ impl ExcessiveSccCountIssue {
 
 impl IssueKindConst for ExcessiveSccCountIssue {
     const KIND: IssueKind = EXCESSIVE_SCC_COUNT;
+}
+
+impl IssueRequirement for ExcessiveSccCountIssue {
+    type Requirement = ();
 }
 
 impl Issue for ExcessiveSccCountIssue {

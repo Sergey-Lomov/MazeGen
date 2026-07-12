@@ -22,7 +22,7 @@ pub struct MinRegionCountCheck {
 impl<T: Tessellation> Check<T, MissingRegionsIssue> for MinRegionCountCheck {
     fn check_type_id(&self) -> &'static str { "min_region_count" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingRegionsIssue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingRegionsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
             return;
         }
@@ -131,7 +131,7 @@ mod tests {
         let maze = Maze::new(field, g);
         let c = check(vec![(RegionClass::Trap, 1)]);
         let mut issues = Vec::new();
-        c.repair_check(&maze, &mut issues, &mut rng());
+        c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "endpoints unset — classification unavailable, not this check's failure mode");
     }
 
@@ -140,7 +140,7 @@ mod tests {
         let (maze, _, _) = maze_with_trap_tail();
         let c = check(vec![(RegionClass::Trap, 2)]);
         let mut issues = Vec::new();
-        c.repair_check(&maze, &mut issues, &mut rng());
+        c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "nodes 3 and 4 are both Trap regions, meeting a minimum of 2 exactly");
     }
 
@@ -149,7 +149,7 @@ mod tests {
         let (maze, _, _) = maze_with_trap_tail();
         let c = check(vec![(RegionClass::Unreachable, 0)]);
         let mut issues = Vec::new();
-        c.repair_check(&maze, &mut issues, &mut rng());
+        c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "min_count=0 means this class is never checked, even at 0 unreachable regions");
     }
 
@@ -158,7 +158,7 @@ mod tests {
         let (maze, _, _) = maze_with_trap_tail();
         let c = check(vec![(RegionClass::Trap, 3)]);
         let mut issues = Vec::new();
-        c.repair_check(&maze, &mut issues, &mut rng());
+        c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(issues[0].balance_by_class, HashMap::from([(RegionClass::Trap, -1)]), "2 trap regions found, 3 required -> -1");
@@ -169,7 +169,7 @@ mod tests {
         let (maze, _, _) = maze_with_trap_tail();
         let c = check(vec![(RegionClass::Trap, 3)]);
         let mut issues = Vec::new();
-        c.repair_check(&maze, &mut issues, &mut rng());
+        c.repair_check(&maze, &mut issues, &mut rng(), ());
         let details = &issues[0].details()[TEST_ID];
         assert_eq!(details.get("min_count"), Some(&"3".to_string()), "single deficit class -- UI needs the exact configured minimum to render \"fewer than required (N)\"");
     }
@@ -189,7 +189,7 @@ mod tests {
         // once, no single N to show.
         let c = check(vec![(RegionClass::Trap, 1), (RegionClass::Alternative, 1)]);
         let mut issues = Vec::new();
-        c.repair_check(&maze, &mut issues, &mut rng());
+        c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         let details = &issues[0].details()[TEST_ID];
         assert_eq!(details.get("min_count"), None, "two deficit classes at once -- no single min_count to report");
@@ -203,7 +203,7 @@ mod tests {
         let (maze, _, _) = maze_with_trap_tail();
         let c = check(vec![(RegionClass::Trap, 1)]);
         let mut issues = Vec::new();
-        c.repair_check(&maze, &mut issues, &mut rng());
+        c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "2 trap regions found, 1 required -> +1 surplus, no deficit anywhere -- must not fire");
     }
 
@@ -213,7 +213,7 @@ mod tests {
         // Trap: 2 found, min 3 -> -1. Path: 3 found (start, mid, finish), min 1 -> +2.
         let c = check(vec![(RegionClass::Trap, 3), (RegionClass::Path, 1)]);
         let mut issues = Vec::new();
-        c.repair_check(&maze, &mut issues, &mut rng());
+        c.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "one instance, one issue, even with multiple classes off-target");
         assert_eq!(issues[0].balance_by_class, HashMap::from([(RegionClass::Trap, -1), (RegionClass::Path, 2)]));
     }

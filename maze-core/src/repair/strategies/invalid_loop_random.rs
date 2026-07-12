@@ -2,7 +2,7 @@
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
-use crate::quality_control::InvalidLoopIssue;
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
 use crate::generation::{PresetState, try_remove_edge};
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
@@ -14,6 +14,17 @@ pub struct InvalidLoopRandomStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomStrategy {
     fn strategy_id(&self) -> &'static str { "invalid_loop_random" }
+
+    /// Proof this is safe (see GitHub issue #105): `apply` reads `issue.all`/`issue.invalid`
+    /// only through `apply_cuts`, which builds `owners = edge_to_cycles_map(all)` and seeds
+    /// `pending` with exactly `invalid`'s indices. `discard_cycles_with_edge` only ever shrinks
+    /// `pending` via `retain` — it never adds an index outside what `pending` already holds — so
+    /// no valid-cycle entry in `owners` is ever read. `invalid_sources` isn't read at all. A
+    /// re-indexed `all` containing only the invalid cycles produces the identical result — so the
+    /// `VALID_CYCLES` layer is never needed.
+    fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
+        InvalidLoopRequirement::empty()
+    }
 
     fn apply(
         &self,
@@ -98,12 +109,22 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(maze, &mut issues, &mut check_rng);
+        check.repair_check(maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         !issues.is_empty()
     }
 
     fn no_params() -> StrategyParams {
         build_params(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, InvalidLoopIssue>>::params(&InvalidLoopRandomStrategy), None)
+    }
+
+    /// Guards the `requirement()` override itself (see GitHub issue #105) — a regression to
+    /// `VALID_CYCLES`/`all()` wouldn't break correctness (this strategy tolerates extra data) but
+    /// would silently reintroduce the wasted computation the mechanism exists to avoid, without
+    /// failing any behavioral test that already passes `all()` explicitly.
+    #[test]
+    fn requirement_requests_no_layers() {
+        let requirement = <InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, InvalidLoopIssue>>::requirement(&InvalidLoopRandomStrategy, &no_params());
+        assert_eq!(requirement, InvalidLoopRequirement::empty());
     }
 
     #[test]
@@ -114,7 +135,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(7);
@@ -145,7 +166,7 @@ mod tests {
             let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
             let mut issues = Vec::new();
             let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-            check.repair_check(&maze, &mut issues, &mut check_rng);
+            check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
             issues.into_iter().next().unwrap()
         };
 
@@ -182,7 +203,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(99);
@@ -219,7 +240,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
 
         let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
@@ -235,6 +256,52 @@ mod tests {
         }
     }
 
+    /// See GitHub issue #105 — `InvalidLoopRandomStrategy::requirement()` requests `empty()`;
+    /// this proves the optimization doesn't change observable behavior: the same seed cuts the
+    /// exact same edges whether the check computed `all()` (with the valid loop resolved too) or
+    /// `empty()` (valid loop skipped entirely).
+    #[test]
+    fn apply_result_is_identical_for_full_and_invalid_only_requirement() {
+        // Triangle (invalid, 3 tile-hops) plus a separate valid 10-tile-hop loop sharing no edges.
+        fn build() -> Maze<SquareTessellation> {
+            let mut ids = IdGenerator::new();
+            let field = crate::space::Field::new(square_rect(13, 1), &mut ids).unwrap();
+            let mut g = Graph::new();
+            field.build_nodes(&mut g);
+            let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+            g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+            g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+            g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+            for i in 3..12 {
+                g.add_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
+            }
+            g.add_edge(nodes[12], nodes[3], EdgeKind::Basic);
+            Maze::new(field, g)
+        }
+
+        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
+
+        let mut maze_full = build();
+        let mut full_issues = Vec::new();
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze_full, &mut full_issues, &mut check_rng, InvalidLoopRequirement::all());
+        let full_issue = full_issues.into_iter().next().unwrap();
+        let mut rng_full = MazeRng::seed_from_u64(42);
+        RepairStrategy::apply(&InvalidLoopRandomStrategy, &full_issue, &mut maze_full, &mut SnapshotStack::new(), &mut rng_full, &no_params(), &PresetState::empty(), &[]);
+
+        let mut maze_invalid_only = build();
+        let mut invalid_only_issues = Vec::new();
+        let mut check_rng2 = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze_invalid_only, &mut invalid_only_issues, &mut check_rng2, InvalidLoopRequirement::empty());
+        let invalid_only_issue = invalid_only_issues.into_iter().next().unwrap();
+        let mut rng_invalid_only = MazeRng::seed_from_u64(42);
+        RepairStrategy::apply(&InvalidLoopRandomStrategy, &invalid_only_issue, &mut maze_invalid_only, &mut SnapshotStack::new(), &mut rng_invalid_only, &no_params(), &PresetState::empty(), &[]);
+
+        let remaining_full: std::collections::HashSet<_> = maze_full.graph.edges().map(|e| e.id).collect();
+        let remaining_invalid_only: std::collections::HashSet<_> = maze_invalid_only.graph.edges().map(|e| e.id).collect();
+        assert_eq!(remaining_full, remaining_invalid_only, "same seed must cut the same edges regardless of requirement");
+    }
+
     #[test]
     fn apply_does_not_cut_a_preset_protected_edge() {
         // Triangle where two of the three edges are preset-protected — only one
@@ -244,7 +311,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
 
         let cycle = issue.all[issue.invalid[0]].clone();

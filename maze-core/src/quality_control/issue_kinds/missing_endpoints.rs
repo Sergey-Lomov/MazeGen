@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, MISSING_ENDPOINTS};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS};
 
 /// The maze has no start and/or no finish set — see `MISSING_ENDPOINTS`'s doc comment. Carries
 /// no data beyond `IssueMeta`.
@@ -20,6 +20,10 @@ impl MissingEndpointsIssue {
 
 impl IssueKindConst for MissingEndpointsIssue {
     const KIND: IssueKind = MISSING_ENDPOINTS;
+}
+
+impl IssueRequirement for MissingEndpointsIssue {
+    type Requirement = ();
 }
 
 impl Issue for MissingEndpointsIssue {

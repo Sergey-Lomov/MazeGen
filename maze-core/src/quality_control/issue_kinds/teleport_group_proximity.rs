@@ -1,5 +1,5 @@
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, TELEPORT_GROUP_PROXIMITY};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, TELEPORT_GROUP_PROXIMITY};
 
 /// Produced by any check that flags a pair of teleport edges as topologically too close to each
 /// other (paired with `TELEPORT_GROUP_PROXIMITY`) — currently only `TeleportGroupProximityCheck`,
@@ -28,6 +28,10 @@ impl TeleportGroupProximityIssue {
 
 impl IssueKindConst for TeleportGroupProximityIssue {
     const KIND: IssueKind = TELEPORT_GROUP_PROXIMITY;
+}
+
+impl IssueRequirement for TeleportGroupProximityIssue {
+    type Requirement = ();
 }
 
 impl Issue for TeleportGroupProximityIssue {

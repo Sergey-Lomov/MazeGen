@@ -5,7 +5,7 @@ use maze_core::quality_control::InvalidLoopIssue;
 use maze_core::repair::{MissingLoopsRandomStrategy, RepairStrategy};
 use maze_core::space::SquareTessellation;
 
-fn assert_apply<T: maze_core::space::Tessellation, I: maze_core::quality_control::Issue, S: RepairStrategy<T, I>>(
+fn assert_apply<T: maze_core::space::Tessellation, I: maze_core::quality_control::IssueRequirement, S: RepairStrategy<T, I>>(
     strategy: &S,
     issue: &I,
     maze: &mut maze_core::Maze<T>,

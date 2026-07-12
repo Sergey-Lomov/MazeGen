@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, REPAIR_LIMIT_REACHED};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REPAIR_LIMIT_REACHED};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepairLimitKind {
@@ -32,6 +32,10 @@ impl RepairLimitReachedIssue {
 
 impl IssueKindConst for RepairLimitReachedIssue {
     const KIND: IssueKind = REPAIR_LIMIT_REACHED;
+}
+
+impl IssueRequirement for RepairLimitReachedIssue {
+    type Requirement = ();
 }
 
 impl Issue for RepairLimitReachedIssue {

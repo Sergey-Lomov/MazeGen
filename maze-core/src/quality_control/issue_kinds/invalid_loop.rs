@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, INVALID_LOOP};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_LOOP};
 use super::canonical_cycle_key;
 
 /// Produced by any check that flags cycles invalid for a check-specific reason (currently
@@ -43,6 +43,39 @@ impl InvalidLoopIssue {
 
 impl IssueKindConst for InvalidLoopIssue {
     const KIND: IssueKind = INVALID_LOOP;
+}
+
+bitflags::bitflags! {
+    /// See GitHub issue #105 — what a `RepairStrategy<T, InvalidLoopIssue>` may ask its producing
+    /// `Check` to compute, as a set of optional layers on top of the base data a check always
+    /// builds (the flagged/invalid cycles themselves, resolved to `EdgeId`s). Currently one flag
+    /// exists (`VALID_CYCLES`); more may be added later as independent layers, each requestable
+    /// on its own.
+    ///
+    /// `Default` is **all flags set** ("compute everything"), not empty — `IssueRequirement`'s
+    /// contract requires `Default` to mean "full", since `Check::report_check` has no strategy to
+    /// consult and always passes the default.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct InvalidLoopRequirement: u8 {
+        /// Resolve every valid (non-flagged) cycle into `all` too (not just the invalid ones),
+        /// and build `invalid_sources`. Without this flag, a check builds only the base layer:
+        /// `all`/`invalid` cover exactly the flagged cycles, `invalid_sources` stays empty. Only
+        /// a strategy that never reads a valid cycle's content may omit this flag — see
+        /// `InvalidLoopRandomStrategy::requirement`'s doc comment for the proof this is safe there.
+        const VALID_CYCLES = 1 << 0;
+    }
+}
+
+impl Default for InvalidLoopRequirement {
+    /// Per `IssueRequirement`'s contract — default means "compute everything". See this type's
+    /// doc comment.
+    fn default() -> Self {
+        Self::all()
+    }
+}
+
+impl IssueRequirement for InvalidLoopIssue {
+    type Requirement = InvalidLoopRequirement;
 }
 
 impl Issue for InvalidLoopIssue {
@@ -145,6 +178,15 @@ mod tests {
             invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(source_check.to_string());
         }
         InvalidLoopIssue::new_from_check(source_check, all, invalid, invalid_sources)
+    }
+
+    /// See GitHub issue #105 — `IssueRequirement`'s contract requires `Default` to mean "compute
+    /// everything". The `bitflags!` macro's own derive would give `empty()`; this guards the
+    /// hand-written `impl Default` actually overrides that to `all()`, since `Check::report_check`
+    /// relies on this exact meaning and has no other way to be caught if it silently regressed.
+    #[test]
+    fn default_requirement_is_all_flags_set() {
+        assert_eq!(InvalidLoopRequirement::default(), InvalidLoopRequirement::all());
     }
 
     #[test]

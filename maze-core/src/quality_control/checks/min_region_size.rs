@@ -21,7 +21,7 @@ pub struct MinRegionSizeCheck {
 impl<T: Tessellation> Check<T, RegionNeedsExpansionIssue> for MinRegionSizeCheck {
     fn check_type_id(&self) -> &'static str { "min_region_size" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<RegionNeedsExpansionIssue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<RegionNeedsExpansionIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let min_region_size = self.min_region_size;
         let Some(invalid) = find_invalid_regions(maze, &self.region_classes, |len| (len as u32) < min_region_size) else {
             return;
@@ -64,7 +64,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
     }
 
@@ -73,7 +73,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(issues[0].invalid.len(), 1, "only the singleton region is undersized");
@@ -88,7 +88,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "singleton region has size 1, not below a minimum of 1");
     }
 
@@ -97,7 +97,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: Vec::new() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "no region class is selected, so no region can match");
     }
 
@@ -110,7 +110,7 @@ mod tests {
             region_classes: vec![crate::graph::region_class::RegionClass::Trap],
         };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "start/finish are unset, so RegionClass can't be computed for a non-All filter");
     }
 
@@ -132,7 +132,7 @@ mod tests {
             region_classes: vec![crate::graph::region_class::RegionClass::Unreachable],
         };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].invalid.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1");
         assert_eq!(
@@ -147,7 +147,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("region_classes")),

@@ -42,7 +42,7 @@ pub struct TeleportSuperHubAvoidanceCheck {
 impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportSuperHubAvoidanceCheck {
     fn check_type_id(&self) -> &'static str { "teleport_super_hub_avoidance" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let mut outgoing_count: HashMap<NodeId, u32> = HashMap::new();
         for edge in maze.graph.edges() {
             *outgoing_count.entry(edge.from).or_insert(0) += 1;
@@ -92,7 +92,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty());
     }
 
@@ -112,7 +112,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
         let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
         assert_eq!(issues[0].invalid, vec![teleport_id]);
@@ -137,7 +137,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
     }
 
@@ -154,7 +154,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty());
     }
 
@@ -177,7 +177,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::Entry, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty(), "exit hub with 3 outgoing must not be considered under Entry, and entry's own 1 outgoing (the teleport) does not exceed max_connections=2");
     }
 
@@ -200,7 +200,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 5, edge: TeleportHubEdgeSelector::Exit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty(), "entry hub with 3 outgoing must not be considered under ExitOnly, and exit's own 1 outgoing must not exceed max_connections=5");
     }
 
@@ -219,7 +219,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::Exit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
     }
 
@@ -238,7 +238,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "exit exceeding max must be caught even though entry alone (1 outgoing, the teleport) does not");
     }
 
@@ -256,7 +256,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 0, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty());
     }
 
@@ -278,7 +278,7 @@ mod tests {
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 2, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
 
         assert_eq!(issues.len(), 1, "both directions merge into one issue from a single check call");
         let mut teleport_ids: Vec<_> = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).map(|e| e.id).collect();

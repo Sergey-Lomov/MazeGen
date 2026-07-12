@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, UNREACHABLE_FINISH};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, UNREACHABLE_FINISH};
 
 /// The finish is set but not reachable from the start — see `UNREACHABLE_FINISH`'s doc comment.
 /// Carries no data beyond `IssueMeta`.
@@ -15,6 +15,10 @@ impl UnreachableFinishIssue {
 
 impl IssueKindConst for UnreachableFinishIssue {
     const KIND: IssueKind = UNREACHABLE_FINISH;
+}
+
+impl IssueRequirement for UnreachableFinishIssue {
+    type Requirement = ();
 }
 
 impl Issue for UnreachableFinishIssue {

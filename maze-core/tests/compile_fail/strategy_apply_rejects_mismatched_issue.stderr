@@ -11,7 +11,7 @@ error[E0308]: mismatched types
 note: function defined here
   --> tests/compile_fail/strategy_apply_rejects_mismatched_issue.rs:8:4
    |
- 8 | fn assert_apply<T: maze_core::space::Tessellation, I: maze_core::quality_control::Issue, S: RepairStrategy<T, I>>(
+ 8 | fn assert_apply<T: maze_core::space::Tessellation, I: maze_core::quality_control::IssueRequirement, S: RepairStrategy<T, I>>(
    |    ^^^^^^^^^^^^
  9 |     strategy: &S,
 10 |     issue: &I,

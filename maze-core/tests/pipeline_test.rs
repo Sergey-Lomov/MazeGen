@@ -6,9 +6,9 @@ use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationAlgorithm, EdgeBasedParams, ElementsConfig, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{
-    QualityControlEngine, Rule, RuleTrait, Stage, Check, Issue, IssueMerge,
+    QualityControlEngine, Rule, RuleTrait, Stage, Check, Issue, IssueMerge, IssueRequirement,
     MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck,
-    MissingEndpointsIssue, InvalidLoopIssue, RepairLimitReachedIssue, QcNoProgressIssue,
+    MissingEndpointsIssue, InvalidLoopIssue, InvalidLoopRequirement, RepairLimitReachedIssue, QcNoProgressIssue,
     RepairLimitKind,
 };
 use maze_core::repair::{RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, SnapshotStack};
@@ -26,7 +26,7 @@ fn as_issue<I: Issue>(issue: &dyn Issue) -> Option<&I> {
 /// repeating the `Rule`/`Stage` boilerplate at every call site — replaces the pre-#106
 /// `engine_with_rule` (which built a separate `QualityControlEngine`+`RepairEngine` pair; checks
 /// now live physically inside the `Rule`).
-fn engine_with_rule<T: maze_core::space::Tessellation + 'static, I: Issue + IssueMerge + 'static>(
+fn engine_with_rule<T: maze_core::space::Tessellation + 'static, I: IssueRequirement + IssueMerge + 'static>(
     checks: Vec<(&str, BoxedCheck<T, I>)>,
     strategy: Box<dyn RepairStrategy<T, I>>,
 ) -> QualityControlEngine<T> {
@@ -38,7 +38,7 @@ fn engine_with_rule<T: maze_core::space::Tessellation + 'static, I: Issue + Issu
 /// Builds a `QualityControlEngine` with two independent single-check rules, each with its own
 /// strategy and own Issue type, both in the same single stage (same rationale as
 /// `engine_with_rule`).
-fn two_rules<T: maze_core::space::Tessellation + 'static, IA: Issue + IssueMerge + 'static, IB: Issue + IssueMerge + 'static>(
+fn two_rules<T: maze_core::space::Tessellation + 'static, IA: IssueRequirement + IssueMerge + 'static, IB: IssueRequirement + IssueMerge + 'static>(
     a: (Vec<(&str, BoxedCheck<T, IA>)>, Box<dyn RepairStrategy<T, IA>>),
     b: (Vec<(&str, BoxedCheck<T, IB>)>, Box<dyn RepairStrategy<T, IB>>),
 ) -> QualityControlEngine<T> {
@@ -189,7 +189,7 @@ struct NeverConvergingCheck {
 impl Check<SquareTessellation, MissingEndpointsIssue> for NeverConvergingCheck {
     fn check_type_id(&self) -> &'static str { "never_converging_check" }
 
-    fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+    fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
         let n = self.counter.fetch_add(1, Ordering::SeqCst);
         issues.push(
             MissingEndpointsIssue::new_from_check("missing_endpoints")
@@ -267,7 +267,7 @@ fn pipeline_surfaces_qc_no_progress_with_stuck_rule_id() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysSameIssueCheck {
         fn check_type_id(&self) -> &'static str { "always_same_issue_check" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             issues.push(MissingEndpointsIssue::new_from_check("missing_endpoints"));
         }
     }
@@ -465,7 +465,7 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     impl Check<SquareTessellation, InvalidLoopIssue> for FakeInvalidLoopCheck {
         fn check_type_id(&self) -> &'static str { "fake_invalid_loop_check" }
 
-        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn rand::RngCore, _requirement: InvalidLoopRequirement) {
             // Real checks recompute from current graph state — this fake one must too, or it
             // would keep reporting an already-broken cycle as invalid forever, masking real
             // pipeline behavior (fixpoint exit) behind a check that never reflects the repair.
@@ -537,7 +537,7 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     impl Check<SquareTessellation, InvalidLoopIssue> for AlternatingInvalidLoopCheck {
         fn check_type_id(&self) -> &'static str { "alternating_invalid_loop_check" }
 
-        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn rand::RngCore, _requirement: InvalidLoopRequirement) {
             let cycle = if self.triangle_a.iter().all(|&eid| maze.graph.edge(eid).is_some()) {
                 &self.triangle_a
             } else if self.triangle_b.iter().all(|&eid| maze.graph.edge(eid).is_some()) {
@@ -576,7 +576,7 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
 /// Builds a two-stage `QualityControlEngine`: stage 1 has `rule_a` (strategy `strategy_a`),
 /// stage 2 has `rule_b` (strategy `strategy_b`) — same shape `two_rules` uses, but split across
 /// two `Stage`s instead of one.
-fn two_stages<T: maze_core::space::Tessellation + 'static, IA: Issue + IssueMerge + 'static, IB: Issue + IssueMerge + 'static>(
+fn two_stages<T: maze_core::space::Tessellation + 'static, IA: IssueRequirement + IssueMerge + 'static, IB: IssueRequirement + IssueMerge + 'static>(
     a: (Vec<(&str, BoxedCheck<T, IA>)>, Box<dyn RepairStrategy<T, IA>>),
     b: (Vec<(&str, BoxedCheck<T, IB>)>, Box<dyn RepairStrategy<T, IB>>),
 ) -> QualityControlEngine<T> {
@@ -617,7 +617,7 @@ fn stage_2_rule_does_not_dispatch_until_stage_1_resolves() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysUnreachableFinishIssueCheck {
         fn check_type_id(&self) -> &'static str { "always_unreachable_finish_check" }
 
-        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             // Stand-in "stage 2" issue: fires every QC pass regardless of maze state, so the
             // test can observe whether stage 2 ever dispatches before stage 1 is done — the
             // real gate is `calls_before_endpoints_set` above, not this check's own logic.
@@ -677,7 +677,7 @@ fn failed_rule_in_stage_1_does_not_block_stage_2() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysFinishUnreachableIssueCheck {
         fn check_type_id(&self) -> &'static str { "always_finish_unreachable_check" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             issues.push(MissingEndpointsIssue::new_from_check("unreachable_finish"));
         }
     }
@@ -717,7 +717,7 @@ fn failed_rule_in_middle_stage_does_not_block_last_stage() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysStage2IssueCheck {
         fn check_type_id(&self) -> &'static str { "always_stage2_issue_check" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             issues.push(MissingEndpointsIssue::new_from_check("stage2_check"));
         }
     }
@@ -725,7 +725,7 @@ fn failed_rule_in_middle_stage_does_not_block_last_stage() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysStage3IssueCheck {
         fn check_type_id(&self) -> &'static str { "always_stage3_issue_check" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             issues.push(MissingEndpointsIssue::new_from_check("stage3_check"));
         }
     }
@@ -778,7 +778,7 @@ fn no_progress_in_stage_1_aborts_stage_2_entirely() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysSameIssueCheck {
         fn check_type_id(&self) -> &'static str { "always_same_issue_check" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             issues.push(MissingEndpointsIssue::new_from_check("missing_endpoints"));
         }
     }
@@ -829,7 +829,7 @@ fn no_progress_in_middle_stage_aborts_last_stage_too() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysSameIssueCheck {
         fn check_type_id(&self) -> &'static str { "always_same_issue_check" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             issues.push(MissingEndpointsIssue::new_from_check("stage2_check"));
         }
     }
@@ -904,7 +904,7 @@ fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for NeverConvergingCheck2 {
         fn check_type_id(&self) -> &'static str { "never_converging_check_2" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             let n = self.counter.fetch_add(1, Ordering::SeqCst);
             issues.push(
                 MissingEndpointsIssue::new_from_check("unreachable_finish")
@@ -975,7 +975,7 @@ fn stage_with_only_no_strategy_rules_is_skipped_instantly_between_dispatchable_s
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysIssueCheck {
         fn check_type_id(&self) -> &'static str { "stage3_check" }
 
-        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             if maze.meta.start.is_some() && maze.meta.finish.is_some() {
                 issues.push(MissingEndpointsIssue::new_from_check("stage3_check"));
             }
@@ -1025,7 +1025,7 @@ fn no_strategy_rule_checks_run_every_iteration_not_just_final_report() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for CountingCheck {
         fn check_type_id(&self) -> &'static str { "counting_check" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, _issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, _issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             self.calls.fetch_add(1, Ordering::SeqCst);
         }
     }
@@ -1049,7 +1049,7 @@ fn no_strategy_rule_checks_run_every_iteration_not_just_final_report() {
     impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysMissingEndpointsCheck {
         fn check_type_id(&self) -> &'static str { "always_missing_endpoints" }
 
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore) {
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             let n = self.counter.fetch_add(1, Ordering::SeqCst);
             issues.push(
                 MissingEndpointsIssue::new_from_check("always_missing_endpoints")

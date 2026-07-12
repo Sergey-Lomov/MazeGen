@@ -106,7 +106,33 @@ pub trait IssueKindConst: Issue + Sized {
 pub trait IssueMerge: Issue + IssueKindConst {
     fn merge(&mut self, other: Self);
 }
+
+/// See GitHub issue #105. Describes what subset of `Self` a `RepairStrategy<T, Self>` may ask its
+/// producing `Check` to compute — every concrete `Issue` type implements this (`type Requirement
+/// = ()` where no narrower variant exists yet), so `Check<T, I>`/`RepairStrategy<T, I>` can bound
+/// on it uniformly instead of splitting into two parallel trait hierarchies. `Self::Requirement::
+/// default()` **must** mean "compute everything" — `Check::report_check`'s default body has no
+/// strategy to consult and always passes the default.
+pub trait IssueRequirement: Issue {
+    type Requirement: Default + Copy + 'static;
+}
 ```
+
+**`InvalidLoopIssue`'s `Requirement` — a bitflags layer set, not the whole story yet.**
+`InvalidLoopRequirement` (in `issue_kinds/invalid_loop.rs`) is a `bitflags!` type with one flag,
+`VALID_CYCLES`. A `Check` producing `InvalidLoopIssue` always builds the base layer (the flagged/
+invalid cycles, resolved to `EdgeId`s); `VALID_CYCLES` set additionally resolves every non-flagged
+cycle into `all` and builds `invalid_sources` — unset, `all`/`invalid` cover only the flagged
+cycles (re-indexed from `0`) and `invalid_sources` stays empty. `Default` is `Self::all()` (every
+flag set), per `IssueRequirement`'s contract, via a hand-written `impl Default` (the `bitflags!`
+macro's own derive would give `empty()` instead). Bitflags were chosen over a plain enum so a
+future second, independent layer doesn't force a combinatorial variant explosion (`Full`,
+`SourceOnly`, `SourceAndFull`, ...) — each new layer is one more flag, requestable independently of
+the others. A strategy requests a set of flags via `RepairStrategy::requirement()` (see
+`repair.md`'s "RepairStrategy trait" section) — it must name the specific flag(s) its `apply()`
+actually reads (e.g. `InvalidLoopRequirement::VALID_CYCLES`), not `all()`, unless it genuinely needs
+every layer that exists today; `all()` used as a stand-in for "the one flag I need" silently starts
+requesting any future flag too.
 
 `dyn Issue` is object-safe through exactly `kind()`/`meta()`/`meta_mut()`/`as_any()`/`eq_dyn()`/
 `clone_box()` — the only methods callable on `&dyn Issue`/`Box<dyn Issue>`. `eq_dyn`/`clone_box`
@@ -183,18 +209,28 @@ only the two genuinely-heterogeneous boundaries above do.
 ### Check trait
 
 ```rust
-pub trait Check<T: Tessellation, I: Issue> {
+pub trait Check<T: Tessellation, I: IssueRequirement> {
     fn check_type_id(&self) -> &'static str;
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<I>, rng: &mut dyn RngCore);
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<I>, rng: &mut dyn RngCore, requirement: I::Requirement);
 
     fn report_check(&self, maze: &Maze<T>, rng: &mut dyn RngCore) -> Vec<I> {
         let mut issues = Vec::new();
-        self.repair_check(maze, &mut issues, rng);
+        self.repair_check(maze, &mut issues, rng, I::Requirement::default());
         issues
     }
 }
 ```
+
+**`requirement` — see GitHub issue #105.** The bound rule's strategy's `RepairStrategy::requirement()`
+(see `repair.md`'s "RepairStrategy trait" section), resolved once by `Rule::new` — not re-resolved
+per fixpoint iteration — and threaded into every `repair_check` call that rule makes. A check is
+free to ignore it and always compute the maximal `I` (the correct, safe default for a check that
+hasn't been migrated to branch on it — e.g. any check whose `I::Requirement` is `()`, or an
+`InvalidLoopIssue`-producing check that hasn't been taught to skip `VALID_CYCLES` resolution).
+`report_check`'s default body always passes `I::Requirement::default()` — it has no strategy to
+consult, and `IssueRequirement`'s contract fixes `default()` to mean "compute everything", so the
+final QC report is never accidentally built from a narrowed issue.
 
 - **Read-only**: `maze` is immutable. A `Check` must not mutate any state.
 - **No side effects**: neither method may access global state or perform I/O.

@@ -81,7 +81,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut check_rng = MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, ());
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(1);
@@ -108,7 +108,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut check_rng = MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, ());
         let issue = issues.into_iter().next().unwrap();
 
         let mut rng = MazeRng::seed_from_u64(1);
@@ -184,7 +184,7 @@ mod tests {
         let check = TeleportDuplicatesConnectionCheck { instance_id: "teleport_duplicates_connection".to_string(), protect_route: true };
         let mut issues = Vec::new();
         let mut check_rng = MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, ());
         let issue = issues.into_iter().next().unwrap();
 
         let basic_edge = maze.graph.edges().find(|e| e.kind == EdgeKind::Basic).unwrap();

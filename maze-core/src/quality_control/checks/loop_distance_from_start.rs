@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::distance_map::cycle_min_distance;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue};
+use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement};
 use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const LOOP_DISTANCE_FROM_START_DEFAULT: u32 = 0;
@@ -22,14 +22,15 @@ pub struct LoopDistanceFromStartCheck {
 impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromStartCheck {
     fn check_type_id(&self) -> &'static str { "loop_distance_from_start" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, _requirement: InvalidLoopRequirement) {
+        // Not yet migrated to honor `_requirement` — always computes all(), see GitHub issue #105.
         let Some(dist_from_start) = maze.analysis.distance_from_start(&maze.graph, &maze.meta) else { return };
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
         let Some((nav, cycles, too_early)) = find_invalid_cycles(maze, |nav, cycle| {
             cycle_min_distance(nav, cycle, &dist_from_start) < self.min_distance_from_start as usize
         }) else { return };
 
-        issues.push(build_issue(&nav, &cycles, too_early, &maze.graph, &self.instance_id, "min_distance_from_start", self.min_distance_from_start));
+        issues.push(build_issue(&nav, &cycles, too_early, &maze.graph, &self.instance_id, "min_distance_from_start", self.min_distance_from_start, InvalidLoopRequirement::all()));
     }
 }
 
@@ -75,7 +76,7 @@ mod tests {
         let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].invalid.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
@@ -91,7 +92,7 @@ mod tests {
         let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "cycle is 10 tiles out, threshold is 5");
     }
 
@@ -133,7 +134,7 @@ mod tests {
         let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].all.len(), 2, "both cycles must be enumerated");
         assert_eq!(issues[0].invalid.len(), 1, "only the near cycle is below the threshold");
@@ -145,7 +146,7 @@ mod tests {
         let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 0 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
     }
 
@@ -156,7 +157,7 @@ mod tests {
         let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "missing start is MissingEndpointsCheck's job");
     }
 
@@ -174,7 +175,7 @@ mod tests {
         let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty());
     }
 
@@ -203,7 +204,7 @@ mod tests {
         let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 }

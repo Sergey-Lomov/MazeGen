@@ -6,9 +6,9 @@ pub mod stage;
 pub mod engine;
 pub mod checks;
 
-pub use issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, QC_NO_PROGRESS, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_GROUP_PROXIMITY};
+pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, QC_NO_PROGRESS, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_GROUP_PROXIMITY};
 pub use issue_kinds::{
-    MissingEndpointsIssue, UnreachableFinishIssue, InvalidLoopIssue, MissingLoopsIssue,
+    MissingEndpointsIssue, UnreachableFinishIssue, InvalidLoopIssue, InvalidLoopRequirement, MissingLoopsIssue,
     CycleAnalysisOverflowedIssue, RepairLimitReachedIssue, RepairLimitKind, QcNoProgressIssue,
     ExcessiveSccCountIssue, RegionNeedsExpansionIssue, MissingRegionsIssue, InvalidTeleportIssue,
     TeleportGroupProximityIssue,

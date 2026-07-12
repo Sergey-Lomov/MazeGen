@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, QC_NO_PROGRESS};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, QC_NO_PROGRESS};
 
 /// Carried by `QC_NO_PROGRESS` (see that const's doc comment) — the rule ids whose merged
 /// `(rule_id, Issue)` pair was byte-for-byte identical to the previous iteration's, the condition
@@ -18,6 +18,10 @@ impl QcNoProgressIssue {
 
 impl IssueKindConst for QcNoProgressIssue {
     const KIND: IssueKind = QC_NO_PROGRESS;
+}
+
+impl IssueRequirement for QcNoProgressIssue {
+    type Requirement = ();
 }
 
 impl Issue for QcNoProgressIssue {

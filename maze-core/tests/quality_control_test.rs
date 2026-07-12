@@ -1,7 +1,7 @@
 use maze_core::{Graph, IdGenerator, Maze, RegionClass};
 use maze_core::space::{Field, SquareTessellation, square_rect};
 use maze_core::quality_control::{
-    Rule, Check, Issue, IssueMerge, MissingEndpointsCheck, UnreachableFinishCheck, MinRegionCountCheck,
+    Rule, Check, Issue, IssueMerge, IssueRequirement, MissingEndpointsCheck, UnreachableFinishCheck, MinRegionCountCheck,
     MissingEndpointsIssue, UnreachableFinishIssue, MissingRegionsIssue,
 };
 use maze_core::graph::EdgeKind;
@@ -18,7 +18,7 @@ fn make_empty_square_maze() -> Maze<SquareTessellation> {
 
 fn now_ms_stub() -> f64 { 0.0 }
 
-fn run_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge>(
+fn run_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge + IssueRequirement>(
     checks: Vec<(String, Box<dyn Check<T, I>>)>,
     maze: &Maze<T>,
 ) -> Vec<I> {
@@ -28,7 +28,7 @@ fn run_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge>(
     rule.run_checks_typed(maze, &mut rng, &mut timing, &now_ms_stub).into_iter().collect::<Vec<_>>()
 }
 
-fn report_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge>(
+fn report_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge + IssueRequirement>(
     checks: Vec<(String, Box<dyn Check<T, I>>)>,
     maze: &Maze<T>,
 ) -> Vec<I> {

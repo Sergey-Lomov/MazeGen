@@ -3,7 +3,7 @@ use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
-use crate::quality_control::InvalidLoopIssue;
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
 use crate::generation::{PresetState, try_remove_edge};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -47,6 +47,13 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
+    }
+
+    /// Needs every valid cycle, not just invalid ones — `apply` walks the full `all` to compute
+    /// `other_overlap` (how many valid cycles a candidate edge would also break), so
+    /// `VALID_CYCLES` is required by the algorithm itself, not left set out of inertia.
+    fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
+        InvalidLoopRequirement::VALID_CYCLES
     }
 
     fn apply(
@@ -162,6 +169,16 @@ mod tests {
         build_params(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, InvalidLoopIssue>>::params(&InvalidLoopScoredStrategy), None)
     }
 
+    /// Guards the `requirement()` override itself (see GitHub issue #105) — `apply` reads
+    /// `other_overlap` from every valid cycle in `all`, so a regression to `empty()` (or anything
+    /// short of `VALID_CYCLES`) would silently break scoring without failing any behavioral test
+    /// that always constructs its issue via `all()` directly.
+    #[test]
+    fn requirement_requests_valid_cycles() {
+        let requirement = <InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, InvalidLoopIssue>>::requirement(&InvalidLoopScoredStrategy, &no_params());
+        assert_eq!(requirement, InvalidLoopRequirement::VALID_CYCLES);
+    }
+
     #[test]
     fn score_is_bonus_minus_penalty() {
         assert_eq!(score(0, 0, 5.0, 6.0), 0.0);
@@ -197,7 +214,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(maze, &mut issues, &mut check_rng);
+        check.repair_check(maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         !issues.is_empty()
     }
 
@@ -207,7 +224,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
 
         // Run from many seeds: the shared A->B edge should always be the one cut, since it
@@ -237,7 +254,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
 
         let nodes = shared_edge_triangle_nodes(&maze.field);
@@ -296,7 +313,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
         assert_eq!(issue.invalid.len(), 1, "only the triangle should be invalid; the long loop must stay valid");
 
@@ -321,7 +338,7 @@ mod tests {
         let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
 
         // Protect the shared A->B edge — the strategy must fall back to cutting something else.

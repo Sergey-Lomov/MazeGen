@@ -4,7 +4,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::nav::NavGraph;
 use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
-use crate::quality_control::InvalidLoopIssue;
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 /// Shared cycle-enumeration/issue-building skeleton for the loop-based checks
@@ -35,6 +35,14 @@ pub fn find_invalid_cycles<T: Tessellation>(
 /// Builds the `InvalidLoopIssue` for a set of `flagged` cycle indices (as returned by
 /// `find_invalid_cycles`), including the `detail_key`/`detail_value` pair (e.g. `"threshold"` /
 /// the threshold as a string).
+///
+/// `requirement` (see GitHub issue #105) controls how much of `cycles` actually gets resolved:
+/// - `VALID_CYCLES` set — every cycle in `cycles` (valid and invalid) is resolved into `all`,
+///   `invalid_sources` is built. Unchanged from pre-#105 behavior.
+/// - `VALID_CYCLES` unset — only the `flagged` cycles are resolved; `all` ends up containing just
+///   those, re-indexed from `0`, `invalid` becomes `0..flagged.len()`, `invalid_sources` is left
+///   empty. Only a strategy proven not to read a valid cycle's content may omit this flag — see
+///   `InvalidLoopRandomStrategy::requirement`'s doc comment.
 pub fn build_issue(
     nav: &NavGraph,
     cycles: &[Vec<usize>],
@@ -43,15 +51,24 @@ pub fn build_issue(
     instance_id: &str,
     detail_key: &'static str,
     detail_value: impl ToString,
+    requirement: InvalidLoopRequirement,
 ) -> InvalidLoopIssue {
-    let all = resolve_to_edge_ids(nav, cycles, graph);
-    debug_assert!(flagged.iter().all(|&idx| idx < all.len()),
-        "flagged must only contain valid indices into all — built from the same `cycles` it resolves");
-    let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
-    for &idx in &flagged {
-        invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(instance_id.to_string());
-    }
-    InvalidLoopIssue::new_from_check(instance_id, all, flagged, invalid_sources)
+    let (all, invalid, invalid_sources) = if requirement.contains(InvalidLoopRequirement::VALID_CYCLES) {
+        let all = resolve_to_edge_ids(nav, cycles, graph);
+        debug_assert!(flagged.iter().all(|&idx| idx < all.len()),
+            "flagged must only contain valid indices into all — built from the same `cycles` it resolves");
+        let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
+        for &idx in &flagged {
+            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(instance_id.to_string());
+        }
+        (all, flagged, invalid_sources)
+    } else {
+        let flagged_cycles: Vec<Vec<usize>> = flagged.iter().map(|&idx| cycles[idx].clone()).collect();
+        let all = resolve_to_edge_ids(nav, &flagged_cycles, graph);
+        let invalid: Vec<usize> = (0..all.len()).collect();
+        (all, invalid, HashMap::new())
+    };
+    InvalidLoopIssue::new_from_check(instance_id, all, invalid, invalid_sources)
         .with_detail(instance_id, detail_key, detail_value.to_string())
 }
 

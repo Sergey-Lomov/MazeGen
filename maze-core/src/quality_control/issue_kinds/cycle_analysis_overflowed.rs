@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, CYCLE_ANALYSIS_OVERFLOWED};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, CYCLE_ANALYSIS_OVERFLOWED};
 
 /// Raised directly by `build_analytics_snapshot` when cycle enumeration overflows — see
 /// `CYCLE_ANALYSIS_OVERFLOWED`'s doc comment. Not produced by any `Check<T, I>`, so it's always
@@ -16,6 +16,10 @@ impl CycleAnalysisOverflowedIssue {
 
 impl IssueKindConst for CycleAnalysisOverflowedIssue {
     const KIND: IssueKind = CYCLE_ANALYSIS_OVERFLOWED;
+}
+
+impl IssueRequirement for CycleAnalysisOverflowedIssue {
+    type Requirement = ();
 }
 
 impl Issue for CycleAnalysisOverflowedIssue {

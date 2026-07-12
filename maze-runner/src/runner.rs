@@ -35,7 +35,7 @@ use maze_core::{
         RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy,
     },
     RegionClass, GenerationTiming,
-    quality_control::Issue,
+    quality_control::{Issue, IssueRequirement},
 };
 use crate::config::{
     GenerateConfig, CheckInstanceConfig, StrategyConfig, TessellationType,
@@ -400,16 +400,25 @@ fn build_strategy_erased<T: Tessellation>(id: &str) -> Result<Box<dyn ErasedRepa
 /// the strategy's true `I`). So this checks `erased.handles() == I::KIND` explicitly and returns
 /// `Err` on mismatch, the same way `build_nested`'s own kind check works — a wiring bug becomes a
 /// loud config-build error instead of a silent wrong-behavior risk.
-fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst>(strategy: Box<dyn ErasedRepairStrategy<T>>) -> Result<Box<dyn RepairStrategy<T, I>>, String> {
-    struct ErasedAsTyped<T: Tessellation, I: Issue> {
+fn downcast_strategy<T: Tessellation + 'static, I: IssueKindConst + IssueRequirement>(strategy: Box<dyn ErasedRepairStrategy<T>>) -> Result<Box<dyn RepairStrategy<T, I>>, String> {
+    struct ErasedAsTyped<T: Tessellation, I: IssueRequirement> {
         inner: Box<dyn ErasedRepairStrategy<T>>,
         _marker: std::marker::PhantomData<I>,
     }
-    impl<T: Tessellation + 'static, I: Issue> RepairStrategy<T, I> for ErasedAsTyped<T, I> {
+    impl<T: Tessellation + 'static, I: IssueRequirement> RepairStrategy<T, I> for ErasedAsTyped<T, I> {
         fn strategy_id(&self) -> &'static str { self.inner.strategy_id() }
         fn params(&self) -> &'static [maze_core::repair::StrategyParam] { self.inner.params() }
         fn is_experimental(&self) -> bool { self.inner.is_experimental() }
         fn expected_nested(&self) -> &'static [NestedSlot] { self.inner.expected_nested() }
+        // See GitHub issue #105 — forwards through the erased boundary via requirement_erased,
+        // downcasting back to this rule's concrete I::Requirement. Without this override the
+        // default (Full) would silently win here regardless of what the real strategy declares,
+        // since build_qc_and_repair resolves every registry strategy through this wrapper.
+        fn requirement(&self, params: &maze_core::repair::StrategyParams) -> I::Requirement {
+            *self.inner.requirement_erased(params)
+                .downcast::<I::Requirement>()
+                .expect("downcast_strategy: requirement_erased must return this strategy's own I::Requirement — handles() == I::KIND was already checked below")
+        }
         fn apply(
             &self, issue: &I, maze: &mut maze_core::Maze<T>, snapshots: &mut maze_core::repair::SnapshotStack,
             rng: &mut dyn rand::RngCore, params: &maze_core::repair::StrategyParams,
@@ -1180,7 +1189,7 @@ mod build_check_tests {
 
         let mut issues = Vec::new();
         let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "distance=1.1 must flag a pair of teleports 1 tile-hop apart, proving the fractional value wasn't truncated to 0 or 1");
     }
 }

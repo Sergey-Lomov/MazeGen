@@ -4,7 +4,7 @@ use crate::Maze;
 use crate::graph::nav::NavNodeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue};
+use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement};
 use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
@@ -22,13 +22,15 @@ pub struct ExternalEscapeDiversityCheck {
 impl<T: Tessellation> Check<T, InvalidLoopIssue> for ExternalEscapeDiversityCheck {
     fn check_type_id(&self) -> &'static str { "external_escape_diversity" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, _requirement: InvalidLoopRequirement) {
+        // Not yet migrated to honor `_requirement` — always computes all() (see GitHub issue
+        // #105's "what does NOT change" section: only min/max_loop_length branch on it so far).
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
         let Some((nav, cycles, low_diversity)) = find_invalid_cycles(maze, |nav, cycle| {
             distinct_exit_count(nav, cycle) < self.min_distinct_exits
         }) else { return };
 
-        issues.push(build_issue(&nav, &cycles, low_diversity, &maze.graph, &self.instance_id, "min_distinct_exits", self.min_distinct_exits));
+        issues.push(build_issue(&nav, &cycles, low_diversity, &maze.graph, &self.instance_id, "min_distinct_exits", self.min_distinct_exits, InvalidLoopRequirement::all()));
     }
 }
 
@@ -113,7 +115,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].invalid.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
@@ -129,7 +131,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "8 distinct exit destinations should clear a threshold of 3");
     }
 
@@ -139,7 +141,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 0 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
     }
 
@@ -167,7 +169,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
@@ -184,7 +186,7 @@ mod tests {
         let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty());
     }
 }

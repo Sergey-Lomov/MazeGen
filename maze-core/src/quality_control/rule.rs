@@ -5,15 +5,19 @@ use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::repair::{RepairStrategy, RepairResult, NestedStrategyConfig, SnapshotStack, params::{build_params, StrategyParams}};
 use super::check::Check;
-use super::issue::{Issue, IssueMerge, IssueKind};
+use super::issue::{Issue, IssueRequirement, IssueMerge, IssueKind};
 
-/// One rule's strategy assignment — checks + strategy + param overrides, held together so `Rule`
-/// can build `StrategyParams` and dispatch repair by itself. `None` on `Rule::strategy` (not this
-/// type) means "no_fix".
-struct RuleStrategy<T: Tessellation, I: Issue + IssueMerge> {
+/// One rule's strategy assignment — checks + strategy + resolved params/requirement, held
+/// together so `Rule` can dispatch repair by itself. `None` on `Rule::strategy` (not this type)
+/// means "no_fix". `params`/`requirement` are resolved once in `Rule::new` (not `param_overrides`
+/// kept around raw) — see GitHub issue #105: both are pure functions of `strategy`+
+/// `param_overrides`, computed once and reused by every `dispatch_repair_typed`/`run_checks_typed`
+/// call instead of rebuilt per call.
+struct RuleStrategy<T: Tessellation, I: IssueRequirement + IssueMerge> {
     strategy: Box<dyn RepairStrategy<T, I>>,
-    param_overrides: HashMap<String, String>,
     nested: Vec<NestedStrategyConfig<T>>,
+    params: StrategyParams,
+    requirement: I::Requirement,
 }
 
 /// A user-defined QC rule: a set of checks producing one `Issue` type `I`, driving its own check
@@ -27,13 +31,13 @@ struct RuleStrategy<T: Tessellation, I: Issue + IssueMerge> {
 /// concern of this type — `Rule` only stores each check's own `local_id`, unique within this
 /// rule's `checks`. Composite id construction lives entirely in
 /// `QualityControlEngine::check_id_to_rule` (the one place across the whole engine that needs it).
-pub struct Rule<T: Tessellation, I: Issue + IssueMerge> {
+pub struct Rule<T: Tessellation, I: IssueRequirement + IssueMerge> {
     pub id: String,
     checks: Vec<(String, Box<dyn Check<T, I>>)>,
     strategy: Option<RuleStrategy<T, I>>,
 }
 
-impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
+impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
     pub fn new(
         id: String,
         checks: Vec<(String, Box<dyn Check<T, I>>)>,
@@ -41,7 +45,11 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
         param_overrides: HashMap<String, String>,
         nested: Vec<NestedStrategyConfig<T>>,
     ) -> Self {
-        let strategy = strategy.map(|strategy| RuleStrategy { strategy, param_overrides, nested });
+        let strategy = strategy.map(|strategy| {
+            let params = build_params(strategy.params(), Some(&param_overrides));
+            let requirement = strategy.requirement(&params);
+            RuleStrategy { strategy, nested, params, requirement }
+        });
         Self { id, checks, strategy }
     }
 
@@ -65,11 +73,17 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
         timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: &dyn Fn() -> f64,
     ) -> Option<I> {
+        // Resolved once per call (not per check) from the bound strategy's cached requirement —
+        // no_fix (no strategy) falls back to the default (all()), same as an unmigrated check
+        // always got before this mechanism existed. See GitHub issue #105.
+        let requirement = self.strategy.as_ref()
+            .map(|s| s.requirement)
+            .unwrap_or_default();
         let mut merged: Option<I> = None;
         for (_, check) in &self.checks {
             let issues = timed(timing, check.check_type_id(), now_ms, || {
                 let mut v = Vec::new();
-                check.repair_check(maze, &mut v, rng);
+                check.repair_check(maze, &mut v, rng, requirement);
                 v
             });
             for issue in issues {
@@ -111,10 +125,9 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
         now_ms: &dyn Fn() -> f64,
     ) -> Option<RepairResult> {
         let rule_strategy = self.strategy.as_ref()?;
-        let params: StrategyParams = build_params(rule_strategy.strategy.params(), Some(&rule_strategy.param_overrides));
         let mut snapshots = SnapshotStack::new();
         let start = now_ms();
-        let result = rule_strategy.strategy.apply(issue, maze, &mut snapshots, rng, &params, preset_state, &rule_strategy.nested);
+        let result = rule_strategy.strategy.apply(issue, maze, &mut snapshots, rng, &rule_strategy.params, preset_state, &rule_strategy.nested);
         let elapsed = now_ms() - start;
         let entry = timing.entry(rule_strategy.strategy.strategy_id()).or_insert((0.0, 0));
         entry.0 += elapsed;
@@ -158,7 +171,7 @@ pub trait RuleTrait<T: Tessellation> {
     ) -> Option<RepairResult>;
 }
 
-impl<T: Tessellation, I: Issue + IssueMerge + 'static> RuleTrait<T> for Rule<T, I> {
+impl<T: Tessellation, I: IssueRequirement + IssueMerge + 'static> RuleTrait<T> for Rule<T, I> {
     fn id(&self) -> &str {
         &self.id
     }
@@ -219,4 +232,96 @@ fn timed<R>(
     entry.0 += elapsed;
     entry.1 += 1;
     result
+}
+
+/// See GitHub issue #105 — proves `Rule::new` resolves a strategy's `requirement()` once and
+/// `run_checks_typed` actually threads that exact value into every `Check::repair_check` call in
+/// the rule, rather than defaulting to `I::Requirement::default()` or resolving it again per call.
+#[cfg(test)]
+mod requirement_wiring_tests {
+    use std::cell::RefCell;
+    use rand::SeedableRng;
+    use crate::space::SquareTessellation;
+    use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
+    use crate::repair::{RepairResult, RepairStrategy, NestedStrategyConfig, SnapshotStack};
+    use crate::repair::params::StrategyParams;
+    use crate::generation::PresetState;
+    use super::*;
+
+    /// Records every `requirement` value it's called with — lets the test assert exactly what
+    /// `Rule::run_checks_typed` threads through, not just that *an* issue was produced.
+    struct RecordingCheck {
+        received: std::rc::Rc<RefCell<Vec<InvalidLoopRequirement>>>,
+    }
+    impl Check<SquareTessellation, InvalidLoopIssue> for RecordingCheck {
+        fn check_type_id(&self) -> &'static str { "recording_check" }
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, _issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, requirement: InvalidLoopRequirement) {
+            self.received.borrow_mut().push(requirement);
+        }
+    }
+
+    struct InvalidOnlyStrategy;
+    impl RepairStrategy<SquareTessellation, InvalidLoopIssue> for InvalidOnlyStrategy {
+        fn strategy_id(&self) -> &'static str { "invalid_only_test_strategy" }
+        fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
+            InvalidLoopRequirement::empty()
+        }
+        fn apply(
+            &self, _issue: &InvalidLoopIssue, _maze: &mut Maze<SquareTessellation>,
+            _snapshots: &mut SnapshotStack, _rng: &mut dyn RngCore, _params: &StrategyParams,
+            _preset_state: &PresetState, _nested: &[NestedStrategyConfig<SquareTessellation>],
+        ) -> RepairResult {
+            RepairResult::Fixed { score: None }
+        }
+    }
+
+    fn empty_maze() -> Maze<SquareTessellation> {
+        let mut ids = crate::IdGenerator::new();
+        let field = crate::space::Field::new(crate::space::square_rect(1, 1), &mut ids).unwrap();
+        let mut g = crate::Graph::new();
+        field.build_nodes(&mut g);
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn run_checks_typed_threads_the_strategys_resolved_requirement_into_repair_check() {
+        let received = std::rc::Rc::new(RefCell::new(Vec::new()));
+        let check = RecordingCheck { received: received.clone() };
+        let rule: Rule<SquareTessellation, InvalidLoopIssue> = Rule::new(
+            "r".to_string(),
+            vec![("a".to_string(), Box::new(check) as Box<dyn Check<SquareTessellation, InvalidLoopIssue>>)],
+            Some(Box::new(InvalidOnlyStrategy)),
+            HashMap::new(),
+            vec![],
+        );
+
+        let maze = empty_maze();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        let mut timing = HashMap::new();
+        rule.run_checks_typed(&maze, &mut rng, &mut timing, &|| 0.0);
+
+        assert_eq!(received.borrow().as_slice(), &[InvalidLoopRequirement::empty()],
+            "the strategy's resolved requirement must reach the check's repair_check call");
+    }
+
+    #[test]
+    fn no_fix_rule_falls_back_to_full() {
+        let received = std::rc::Rc::new(RefCell::new(Vec::new()));
+        let check = RecordingCheck { received: received.clone() };
+        let rule: Rule<SquareTessellation, InvalidLoopIssue> = Rule::new(
+            "r".to_string(),
+            vec![("a".to_string(), Box::new(check) as Box<dyn Check<SquareTessellation, InvalidLoopIssue>>)],
+            None,
+            HashMap::new(),
+            vec![],
+        );
+
+        let maze = empty_maze();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        let mut timing = HashMap::new();
+        rule.run_checks_typed(&maze, &mut rng, &mut timing, &|| 0.0);
+
+        assert_eq!(received.borrow().as_slice(), &[InvalidLoopRequirement::all()],
+            "a rule with no strategy (no_fix) must still pass all() to its checks");
+    }
 }

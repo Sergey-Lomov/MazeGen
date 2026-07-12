@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, INVALID_TELEPORT};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_TELEPORT};
 
 /// Produced by any check that flags a teleport edge (`EdgeKind::Teleport`) invalid for a
 /// check-specific reason — currently `TeleportDuplicatesConnectionCheck`,
@@ -29,6 +29,10 @@ impl InvalidTeleportIssue {
 
 impl IssueKindConst for InvalidTeleportIssue {
     const KIND: IssueKind = INVALID_TELEPORT;
+}
+
+impl IssueRequirement for InvalidTeleportIssue {
+    type Requirement = ();
 }
 
 impl Issue for InvalidTeleportIssue {

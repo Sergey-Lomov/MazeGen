@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, MISSING_LOOPS};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_LOOPS};
 
 /// Produced by any check that flags the maze as short on loops overall (currently only
 /// `MinLoopsCountCheck`/`MinLoopDensityCheck`; future checks needing more loops added may reuse
@@ -23,6 +23,10 @@ impl MissingLoopsIssue {
 
 impl IssueKindConst for MissingLoopsIssue {
     const KIND: IssueKind = MISSING_LOOPS;
+}
+
+impl IssueRequirement for MissingLoopsIssue {
+    type Requirement = ();
 }
 
 impl Issue for MissingLoopsIssue {

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::quality_control::{Issue, IssueKind};
+use crate::quality_control::{Issue, IssueKind, IssueRequirement};
 use crate::generation::PresetState;
 use super::params::{StrategyParam, StrategyParams};
 use super::result::RepairResult;
@@ -58,7 +58,7 @@ pub struct NestedStrategyConfig<T: Tessellation> {
     pub nested: Vec<NestedStrategyConfig<T>>,
 }
 
-pub trait RepairStrategy<T: Tessellation, I: Issue> {
+pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// Strategy id — matches `maze-wasm`'s `StrategyConfig.id` (e.g. `"invalid_loop_random"`).
     /// Used to aggregate per-strategy timing, distinct from `rule_id` (a rule may use any
     /// registered strategy, and the same strategy can back multiple rules).
@@ -66,6 +66,15 @@ pub trait RepairStrategy<T: Tessellation, I: Issue> {
 
     fn params(&self) -> &'static [StrategyParam] {
         &[]
+    }
+
+    /// What subset of `I` this strategy needs its producing `Check` to compute — see GitHub
+    /// issue #105. Resolved once by `Rule::new` (not per fixpoint iteration) and threaded into
+    /// every `Check::repair_check` call in that rule. Default `I::Requirement::default()` —
+    /// which `IssueRequirement`'s contract fixes to mean "compute everything" — so an
+    /// unmigrated strategy changes nothing.
+    fn requirement(&self, _params: &StrategyParams) -> I::Requirement {
+        I::Requirement::default()
     }
 
     /// Whether this strategy is experimental — its results or performance may still be
@@ -127,6 +136,13 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn params(&self) -> &'static [StrategyParam];
     fn is_experimental(&self) -> bool;
     fn expected_nested(&self) -> &'static [NestedSlot];
+    /// Erased form of `RepairStrategy::requirement` — see GitHub issue #105. Returns
+    /// `Box<dyn Any>` wrapping the strategy's own `I::Requirement`; the only caller,
+    /// `maze-runner`'s `downcast_strategy`, already knows the concrete `I` (it's generic over it)
+    /// and downcasts this back via `downcast_ref::<I::Requirement>()`. Needed because
+    /// `RepairStrategy::requirement()`'s return type is generic over `I` and can't cross the
+    /// erased boundary any other way — same rationale as `apply`'s `&dyn Issue` erasure.
+    fn requirement_erased(&self, params: &StrategyParams) -> Box<dyn std::any::Any>;
     fn apply(
         &self,
         issue: &dyn Issue,
@@ -166,6 +182,9 @@ macro_rules! impl_erased_repair_strategy {
             }
             fn expected_nested(&self) -> &'static [$crate::repair::NestedSlot] {
                 <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::expected_nested(self)
+            }
+            fn requirement_erased(&self, params: &$crate::repair::StrategyParams) -> Box<dyn ::std::any::Any> {
+                Box::new(<Self as $crate::repair::RepairStrategy<T, $IssueTy>>::requirement(self, params))
             }
             fn apply(
                 &self,

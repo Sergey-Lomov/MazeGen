@@ -49,7 +49,7 @@ pub struct TeleportWaypointDistanceCheck {
 impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanceCheck {
     fn check_type_id(&self) -> &'static str { "teleport_waypoint_distance" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let dist_from_start = maze.analysis.distance_from_start(&maze.graph, &maze.meta);
         let dist_from_finish = maze.analysis.distance_from_finish(&maze.graph, &maze.meta);
         let (need_start, need_finish) = match self.waypoint {
@@ -156,7 +156,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
     }
@@ -173,7 +173,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty());
     }
 
@@ -193,7 +193,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty());
     }
 
@@ -225,7 +225,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "exit at distance 2 from start must be caught even though entry is unreachable/far");
     }
 
@@ -258,7 +258,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "entry is 2 tiles from finish (reverse-reachable) even though far from start");
     }
 
@@ -279,7 +279,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
     }
 
@@ -297,7 +297,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "protect_route disabled must flag the teleport exactly like before #78");
     }
 
@@ -313,7 +313,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty(), "a threshold of 0 should never flag any teleport");
     }
 
@@ -330,7 +330,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty(), "missing start is MissingEndpointsCheck's job");
     }
 
@@ -360,7 +360,7 @@ mod tests {
         };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty(), "unreachable entry must not be treated as distance 0");
     }
 }

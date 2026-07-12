@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::graph::region_class::RegionClass;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueMeta, IssueKind, MISSING_REGIONS};
+use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_REGIONS};
 
 /// Produced by `MinRegionCountCheck` (paired with `MISSING_REGIONS`) — carries the region balance
 /// per `RegionClass` (`Specs/repair.md`'s "Region Balance" data model): `-N` means the maze is
@@ -29,6 +29,10 @@ impl MissingRegionsIssue {
 
 impl IssueKindConst for MissingRegionsIssue {
     const KIND: IssueKind = MISSING_REGIONS;
+}
+
+impl IssueRequirement for MissingRegionsIssue {
+    type Requirement = ();
 }
 
 impl Issue for MissingRegionsIssue {
