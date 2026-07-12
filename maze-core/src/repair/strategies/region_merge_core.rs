@@ -6,8 +6,10 @@ use crate::graph::scc::{ComponentId, ConnectedComponents};
 /// undersized SCC region into a neighboring region (`ExpandRegionPassageStrategy` — geometric
 /// adjacency — and `TeleportRegionMergeStrategy` — any node pair, no adjacency requirement).
 /// Each strategy owns its own candidate-discovery (what counts as a "neighbor" and how a
-/// bridging connection is actually applied) — only region selection and the merge-loop
-/// bookkeeping (`pending`/`merged_away`/`needy`) live here.
+/// bridging connection is actually applied) — only target selection lives here. Since GitHub
+/// issue #99, one `apply()` call merges exactly one region (`issue.region_id`), so there is no
+/// merge-loop batch bookkeeping to share any more — `needy` (below) is built from
+/// `issue.other_invalid` instead of a same-call batch.
 pub const PARAM_TARGET_MODE: &str = "target_mode";
 pub const PARAM_PREFER_PARTIALLY_CONNECTED: &str = "prefer_partially_connected";
 
@@ -59,43 +61,3 @@ pub fn narrow_to_partial<'a>(
     if prefer_partial && !partial.is_empty() { partial } else { pool }
 }
 
-/// Runs the shared "merge every flagged region into a chosen neighbor" loop: pops region ids
-/// from `invalid` (LIFO), skips ones already absorbed by an earlier merge in this call
-/// (`merged_away`), and calls `find_candidate` for each remaining one to pick a neighbor and
-/// apply the actual connection. `find_candidate` receives the region's id and the current
-/// `needy` set (every other still-unmerged flagged region) and returns `Some((neighbor_idx,
-/// applied))` — `applied` is whether the connection actually succeeded (a candidate can be found
-/// but fail to bridge, e.g. `one_way` mode needing a second distinct pair that doesn't exist) —
-/// or `None` if the region has no eligible neighbor at all. If the chosen neighbor was itself a
-/// needy region, it's marked `merged_away` so a later iteration doesn't try to expand it again.
-///
-/// Returns `true` if at least one region was successfully merged (caller maps this to
-/// `Fixed`/`Failed`).
-pub fn run_merge_loop(
-    invalid: &[ComponentId],
-    mut find_candidate: impl FnMut(ComponentId, &HashSet<ComponentId>) -> Option<(ComponentId, bool)>,
-) -> bool {
-    let mut pending: Vec<ComponentId> = invalid.to_vec();
-    let mut merged_away: HashSet<ComponentId> = HashSet::new();
-    let mut any_fixed = false;
-
-    while let Some(region_idx) = pending.pop() {
-        if merged_away.contains(&region_idx) {
-            continue;
-        }
-
-        let needy: HashSet<ComponentId> =
-            invalid.iter().copied().filter(|i| *i != region_idx && !merged_away.contains(i)).collect();
-
-        let Some((neighbor_idx, applied)) = find_candidate(region_idx, &needy) else { continue };
-        if !applied {
-            continue;
-        }
-        any_fixed = true;
-        if needy.contains(&neighbor_idx) {
-            merged_away.insert(neighbor_idx);
-        }
-    }
-
-    any_fixed
-}

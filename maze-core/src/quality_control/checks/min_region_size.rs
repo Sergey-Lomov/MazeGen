@@ -3,8 +3,8 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::region_class::RegionClass;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, RegionNeedsExpansionIssue};
-use super::region_size_check_core::{find_invalid_regions, build_issue};
+use crate::quality_control::{RegionNeedsExpansionIssue, RegionNeedsExpansionRequirement};
+use super::region_size_check_core::{find_invalid_regions, build_repair_issue, build_report_issues};
 
 pub const MIN_REGION_SIZE_DEFAULT: u32 = 20;
 
@@ -21,12 +21,20 @@ pub struct MinRegionSizeCheck {
 impl<T: Tessellation> Check<T, RegionNeedsExpansionIssue> for MinRegionSizeCheck {
     fn check_type_id(&self) -> &'static str { "min_region_size" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<RegionNeedsExpansionIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<RegionNeedsExpansionIssue>, _rng: &mut dyn RngCore, requirement: RegionNeedsExpansionRequirement) {
         let min_region_size = self.min_region_size;
         let Some(invalid) = find_invalid_regions(maze, &self.region_classes, |len| (len as u32) < min_region_size) else {
             return;
         };
-        issues.push(build_issue(maze, invalid, &self.instance_id, "min_region_size", self.min_region_size));
+        issues.push(build_repair_issue(maze, &invalid, &self.instance_id, "min_region_size", self.min_region_size, requirement));
+    }
+
+    fn report_check(&self, maze: &Maze<T>, _rng: &mut dyn RngCore) -> Vec<RegionNeedsExpansionIssue> {
+        let min_region_size = self.min_region_size;
+        let Some(invalid) = find_invalid_regions(maze, &self.region_classes, |len| (len as u32) < min_region_size) else {
+            return Vec::new();
+        };
+        build_report_issues(maze, &invalid, &self.instance_id, "min_region_size", self.min_region_size)
     }
 }
 
@@ -36,6 +44,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::graph::region_class::ALL_REGION_CLASSES;
+    use crate::quality_control::Issue;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, square_rect};
 
@@ -64,7 +73,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::all());
         assert!(issues.is_empty());
     }
 
@@ -73,10 +82,11 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::all());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        assert_eq!(issues[0].invalid.len(), 1, "only the singleton region is undersized");
+        assert_eq!(issues[0].region.len(), 1, "only the singleton region is undersized");
+        assert!(issues[0].other_invalid.is_empty(), "only one undersized region exists");
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_region_size")),
             Some(&"2".to_string()),
@@ -88,7 +98,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 1, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::all());
         assert!(issues.is_empty(), "singleton region has size 1, not below a minimum of 1");
     }
 
@@ -97,7 +107,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: Vec::new() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::all());
         assert!(issues.is_empty(), "no region class is selected, so no region can match");
     }
 
@@ -110,7 +120,7 @@ mod tests {
             region_classes: vec![crate::graph::region_class::RegionClass::Trap],
         };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::all());
         assert!(issues.is_empty(), "start/finish are unset, so RegionClass can't be computed for a non-All filter");
     }
 
@@ -132,9 +142,9 @@ mod tests {
             region_classes: vec![crate::graph::region_class::RegionClass::Unreachable],
         };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::all());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1");
+        assert_eq!(issues[0].region.len(), 1, "only node 2's Unreachable region should be flagged, not the Path regions 0/1");
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("region_classes")),
             Some(&"unreachable".to_string()),
@@ -147,12 +157,54 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::all());
         assert_eq!(issues.len(), 1);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("region_classes")),
             None,
             "start/finish unset -> RegionClass can't be computed, so no region_classes detail is added",
         );
+    }
+
+    /// 1x4 row, no edges at all -> 4 singleton SCC regions, all undersized against a minimum of 2.
+    fn maze_with_four_small_regions() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn repair_check_merges_every_undersized_region_into_one_issue_with_requirement_all() {
+        let maze = maze_with_four_small_regions();
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::all());
+        assert_eq!(issues.len(), 1, "repair_check must still produce one merged issue per rule dispatch");
+        assert_eq!(issues[0].other_invalid.len(), 3, "the other three undersized regions land in other_invalid");
+    }
+
+    #[test]
+    fn repair_check_leaves_other_invalid_empty_when_requirement_is_empty() {
+        let maze = maze_with_four_small_regions();
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), RegionNeedsExpansionRequirement::empty());
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].other_invalid.is_empty(), "empty() must not resolve other_invalid");
+    }
+
+    #[test]
+    fn report_check_produces_one_issue_per_undersized_region() {
+        let maze = maze_with_four_small_regions();
+        let check = MinRegionSizeCheck { instance_id: TEST_ID.to_string(), min_region_size: 2, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let mut rng = rng();
+
+        let report = check.report_check(&maze, &mut rng);
+        assert_eq!(report.len(), 4, "report_check must produce one issue per undersized region, not one merged issue");
+        for issue in &report {
+            assert!(issue.other_invalid.is_empty(), "report-path issues never carry other_invalid");
+        }
     }
 }

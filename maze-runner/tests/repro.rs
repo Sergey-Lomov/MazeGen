@@ -47,15 +47,20 @@ fn repro_template() {
 /// 9:1 weight split with only a handful of undersized regions to merge, not a bug. Scanning
 /// several other seeds against the same fixture confirms `dispatch_weighted` does pick the
 /// one_way candidate at roughly the configured ~10% rate, and successfully-applied one-way edges
-/// do survive into the final graph unchanged (this test's own assertion, at seed 0). Kept as a
-/// regression guard, not proof of the original report — see also
+/// do survive into the final graph unchanged (this test's own assertion). Kept as a regression
+/// guard, not proof of the original report — see also
 /// `expand_region_passage::one_way_rolls_back_the_lone_successful_direction_when_the_other_is_preset_blocked`
 /// for a related atomicity hardening found while investigating (a partially-applied one-way could
 /// otherwise leave a stray directed edge that a later repair pass silently completes into a full
 /// passage, which would look like exactly this report from the outside).
+///
+/// Seed pinned to 1, not 0: GitHub issue #99 (one `RegionNeedsExpansionIssue` per undersized
+/// region instead of one batched issue per rule dispatch) changed how many `dispatch_weighted`
+/// calls happen per fixpoint iteration and therefore the `rng` draw sequence for every seed —
+/// seed 0 no longer happens to land on the one_way candidate for this fixture, seed 1 does.
 #[test]
 fn repro_315556_weighted_one_way_edges_survive_when_picked() {
-    let result = run_fixture("tests/fixtures/weighted_1_9_repro.json", 0);
+    let result = run_fixture("tests/fixtures/weighted_1_9_repro.json", 1);
     let one_way: Vec<_> = result.graph.edges()
         .filter(|e| result.graph.edge_between(e.to, e.from).is_none())
         .collect();

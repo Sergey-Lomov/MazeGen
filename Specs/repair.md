@@ -234,25 +234,28 @@ whose own `I` may differ from the caller's.
   no wildcard arm on purpose, so a future third variant forces a compile error here rather than a
   silently wrong fallthrough.
 
-**Known limitation, not solved here**: `dispatch_weighted` operates on one `Issue` per call. When
-an `Issue` bundles several independent sub-problems (e.g. `RegionsNeedingExpansion`'s `invalid:
-Vec<usize>` can list many undersized regions at once), a caller that dispatches once on the whole
-bundled issue lets a single weighted pick decide the nested mechanism for the *entire* batch —
-the configured weight ratio then governs which mechanism handles the whole issue, not each
-sub-problem individually, and with few `dispatch_weighted` calls overall (most of a run's items
-folded into one or two big-batch issues) the observed mechanism-choice frequency can drift far
-from the configured ratio simply from having too few independent picks to sample from. A per-item
-dispatch helper was tried and reverted (GitHub issue #90's follow-up) — it broke `region_merge_core
+**Known limitation, largely resolved for `RegionNeedsExpansionIssue`**: `dispatch_weighted`
+operates on one `Issue` per call. When an `Issue` bundles several independent sub-problems, a
+caller that dispatches once on the whole bundled issue lets a single weighted pick decide the
+nested mechanism for the *entire* batch — the configured weight ratio then governs which mechanism
+handles the whole issue, not each sub-problem individually, and with few `dispatch_weighted` calls
+overall (most of a run's items folded into one or two big-batch issues) the observed
+mechanism-choice frequency can drift far from the configured ratio simply from having too few
+independent picks to sample from. A per-item dispatch helper inside `WeightedRegionMergeStrategy`
+itself was tried and reverted (GitHub issue #90's follow-up) — it broke `region_merge_core
 ::run_merge_loop`'s single-SCC-snapshot-per-batch invariant, since re-dispatching per region forced
 a fresh (and potentially differently-numbered) SCC snapshot after each region's own merge. The
 actual fix is to stop bundling multiple sub-problems into one `Issue` in the first place. GitHub
-issue #98 did exactly this for `InvalidLoopIssue` (one `Issue` per invalid cycle now, not a
-`Vec<usize>` batch — see `quality_control.md`'s `InvalidLoopIssue` section) — issues #99–#101 cover
-the same split for `RegionsNeedingExpansion`/`InvalidTeleports`/`TeleportProximityPairs`, not yet
-done. Note that #98's fix doesn't by itself resolve `dispatch_weighted`'s own limitation described
-here, since no `dispatch_weighted` caller currently dispatches on `InvalidLoopIssue` — it closes the
-same *category* of problem (batched sub-problems inside one `Issue`) for a different consumer
-(direct `RepairStrategy::apply`, not nested dispatch).
+issue #98 did exactly this for `InvalidLoopIssue` (one `Issue` per invalid cycle, not a `Vec<usize>`
+batch — see `quality_control.md`'s `InvalidLoopIssue` section); GitHub issue #99 did the same split
+for `RegionNeedsExpansionIssue` (one `Issue` per undersized region — `region_merge_core
+::run_merge_loop` is gone entirely, along with the snapshot-reuse invariant it existed to protect,
+since `WeightedRegionMergeStrategy` now dispatches exactly once per `apply()` call against exactly
+one region). `InvalidTeleports`/`TeleportProximityPairs` (issues #100–#101) haven't had the same
+split yet. Note that #98/#99's fix doesn't by itself resolve `dispatch_weighted`'s own limitation
+described here for a future still-batched kind, since no `dispatch_weighted` caller dispatches on
+`InvalidLoopIssue` either — the fix closes the same *category* of problem (batched sub-problems
+inside one `Issue`) at its source (the `Issue` shape itself), not inside `dispatch_weighted`.
 
 ### Rule, Stage, and the unified QualityControlEngine
 
@@ -567,18 +570,19 @@ Same candidate filtering (existence + preset-protection), same cut mechanics (`t
 
 ### region_merge_core (shared, not a strategy)
 
-`maze-core/src/repair/strategies/region_merge_core.rs` — logic shared by every strategy that merges an undersized SCC region into a neighboring region (`ExpandRegionPassageStrategy` and `TeleportRegionMergeStrategy` below), factored out once issue #89 needed the same target-selection/merge-loop bookkeeping a second time with a different candidate-discovery rule (geometric adjacency vs. any node pair). Not itself a `RepairStrategy` — just a module the strategies import from.
+`maze-core/src/repair/strategies/region_merge_core.rs` — logic shared by every strategy that merges an undersized SCC region into a neighboring region (`ExpandRegionPassageStrategy` and `TeleportRegionMergeStrategy` below), factored out once issue #89 needed the same target-selection bookkeeping a second time with a different candidate-discovery rule (geometric adjacency vs. any node pair). Not itself a `RepairStrategy` — just a module the strategies import from. Since GitHub issue #99 (one `RegionNeedsExpansionIssue` per undersized region, not a `Vec<usize>` batch), this module holds only target-selection helpers — the multi-region merge-loop bookkeeping it used to share (`run_merge_loop`/`merged_away`) is gone entirely, since one `apply()` call now merges exactly one region.
 
 - `PARAM_TARGET_MODE` / `MODE_LARGEST` / `MODE_SMALLEST` / `MODE_RANDOM` / `MODE_PREFER_NEEDY` / `MODE_OPTIONS`, `PARAM_PREFER_PARTIALLY_CONNECTED` — the shared param ids/enum values both strategies expose under these exact names.
-- `pick_by_mode(pool, scc, mode, needy, rng) -> Option<ComponentId>` — `largest`/`smallest` by `components[i].len()`, `prefer_needy` biased toward flagged neighbors (falls back to the whole pool if none are needy), `random` (or any unrecognized mode) uniform via `rng`. `pool` must already be sorted by the caller for reproducible tie-breaking (component ids are typically collected from a `HashMap`'s randomized-per-process iteration order).
+- `pick_by_mode(pool, scc, mode, needy, rng) -> Option<ComponentId>` — `largest`/`smallest` by `components[i].len()`, `prefer_needy` biased toward flagged neighbors (falls back to the whole pool if none are needy), `random` (or any unrecognized mode) uniform via `rng`. `pool` must already be sorted by the caller for reproducible tie-breaking (component ids are typically collected from a `HashMap`'s randomized-per-process iteration order). `needy` is built by the caller from `issue.other_invalid` (below) — every *other* undersized region found in the same QC pass, not just this call's own candidate pool, so `prefer_needy` can steer toward another flagged region even one `TeleportRegionMergeStrategy` would reach with no geometric adjacency at all.
 - `narrow_to_partial(pool, partial, prefer_partial) -> &[ComponentId]` — the `prefer_partially_connected` pre-filter: returns `partial` if the flag is on and non-empty, otherwise the full `pool`. Each strategy computes its own `partial` subset (what "partially connected" means is strategy-specific — bridging-pair state for `ExpandRegionPassageStrategy`, any-edge-kind state for `TeleportRegionMergeStrategy`) and passes it in.
-- `run_merge_loop(invalid, find_candidate) -> bool` — the shared "merge every flagged region into a chosen neighbor" loop: pops region ids from `invalid` (LIFO), skips ones already absorbed by an earlier merge in the same call (`merged_away`), and calls the caller-supplied `find_candidate(region_idx, needy) -> Option<(neighbor_idx, applied)>` closure for each remaining one. If the chosen neighbor was itself a needy (flagged) region, it's marked `merged_away` so a later iteration doesn't try to expand it again. Returns `true` if at least one region was successfully merged (`applied == true` for at least one call) — callers map this to `Fixed`/`Failed`. `find_candidate` owns everything strategy-specific: candidate discovery, target selection (via `pick_by_mode`/`narrow_to_partial`), and the actual connection.
 
 ### ExpandRegionPassageStrategy
 
-Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #51 (passage mode) and issue #88 (`one_way` connection mode). Merges each flagged undersized SCC region into a neighboring region, via either a full bidirectional passage or a pair of one-way edges (`connection_mode`), picked by **geometric adjacency** (`field.neighbors`) — not graph adjacency, since two regions can be neighbors with no existing edge between any of their cell pairs at all.
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #51 (passage mode), issue #88 (`one_way` connection mode), and issue #99 (one `apply()` call merges exactly one region). Merges the flagged undersized SCC region into a neighboring region, via either a full bidirectional passage or a pair of one-way edges (`connection_mode`), picked by **geometric adjacency** (`field.neighbors`) — not graph adjacency, since two regions can be neighbors with no existing edge between any of their cell pairs at all.
 
-`invalid` on `RegionNeedsExpansionIssue` (which `maze.analysis.scc(&maze.graph).components` indices are undersized) is the producing check's result — there is no other channel to learn it.
+`issue.region_id`/`issue.region` name the one region this call merges — the producing check's result, there is no other channel to learn it. `issue.other_invalid` (every other undersized region found in the same QC pass) is resolved only when `requirement()` asks for it.
+
+`requirement()` returns `RegionNeedsExpansionRequirement::OTHER_INVALID` only when `target_mode == prefer_needy`, `empty()` otherwise — `apply` only ever consults `needy` under that one mode, so every other mode skips the extra QC-pass computation (see GitHub issue #99/#105).
 
 **Parameters:**
 
@@ -588,34 +592,31 @@ Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #51 (passage mode) and iss
 | `connection_mode` | Enum | `passage` | `passage`, `one_way` | How to bridge the region into its chosen neighbor |
 | `prefer_partially_connected` | Bool | `true` | — | Prefer a neighbor that already has a one-way edge to/from the flagged region over one with no connection at all |
 
-
-- If `invalid` is empty: returns `Fixed` immediately — nothing to expand.
-- Processes each flagged region index from `invalid` in turn. For a region already merged away earlier in the same `apply` call (because an earlier merge picked it as the neighbor), it is skipped — the SCC index space is stale for it once a previous merge happened, but no recomputation is needed: skipping is enough since the region's nodes already belong to whatever region absorbed them.
-- For a region, candidate neighbors are found by scanning every node in the region, then every `field.neighbors(node)` cell, and looking up that neighbor cell's current SCC component (from `maze.analysis.scc(&maze.graph)`, fetched once at the start of `apply` — the graph hasn't mutated yet at that point). A neighbor cell in the same component is skipped (not a different region).
+- `scc = maze.analysis.scc(&maze.graph)`, fetched once at the start of `apply`. If `issue.region_id` no longer resolves to a component in this snapshot (defensive — shouldn't happen in practice), returns `Failed` immediately.
+- Candidate neighbors are found by scanning every node in the region, then every `field.neighbors(node)` cell, and looking up that neighbor cell's current SCC component. A neighbor cell in the same component is skipped (not a different region).
 - A candidate pair is rejected if blocked by preset state — both directions must be free (`blocked`/`locked_out`/`locked_in`), same strict "fully bidirectional or skip" contract `MissingLoopsRandomStrategy` uses. An existing one-way edge between the pair is **not** a blocker by itself — it's just another valid candidate; the strategy only adds whichever direction is still missing.
 - **`target_mode == random && connection_mode == passage && !prefer_partially_connected`** (the original, pre-issue-#88 contract, preserved verbatim for determinism parity with existing callers such as `ReduceSccCountStrategy`): returns the first geometrically-adjacent, non-blocked neighbor found while scanning — does not enumerate every neighbor first, never touches `rng`. One representative bridging cell pair (the first found) is used for the passage. Since `prefer_partially_connected` now defaults to `true`, this fast path is only reached with an explicit `prefer_partially_connected: false` override — the default configuration always goes through the full-enumeration path below.
 - **Every other combination** enumerates every distinct neighboring component first, collecting *every* bridging cell pair per neighbor (not just one representative — needed for `one_way`'s max-separation placement below) plus whether a directed edge already exists in either direction (via any pair) between the region and that neighbor:
   - If `prefer_partially_connected` is `true` and at least one neighbor has exactly one direction already connected (a "partial" neighbor): the candidate pool is narrowed to just the partial neighbors; `target_mode` then applies within that narrowed pool. If no neighbor is partial, the pool falls back to every neighbor (this priority level is a pre-filter ahead of `target_mode`, not a tie-break within it).
   - `largest` / `smallest`: picks by `components[i].len()`.
-  - `prefer_needy`: if any pool member is also in `invalid` (and not already merged away), picks uniformly at random among those via `rng`; otherwise falls back to picking uniformly at random among the whole pool.
+  - `prefer_needy`: if any pool member is also in `issue.other_invalid` (the other undersized regions found this QC pass), picks uniformly at random among those via `rng`; otherwise falls back to picking uniformly at random among the whole pool.
   - `random` (only reachable here when `connection_mode == one_way` or `prefer_partially_connected == true`): picks uniformly at random among the whole pool via `rng`.
   - The pool's component ids are collected into a `Vec` and **sorted** before any tie-breaking or `rng`-indexed pick — required for the Determinism Contract, since the ids start out keys of a `HashMap` whose iteration order is randomized per-process.
 - **`connection_mode == passage`**: adds a full bidirectional passage across the first bridging cell pair found for the chosen neighbor (completion-aware — an existing one-way edge on that pair is completed into a full passage, not duplicated), via `try_add_bidirectional_edge`.
 - **`connection_mode == one_way`**: ensures both a `region -> neighbor` and a `neighbor -> region` directed edge exist between the region and its chosen neighbor, each through its own bridging cell pair — never the same pair for both directions, since that would just be an ordinary passage.
   - If the chosen neighbor already has one direction connected (partial), only the missing direction is added, through whichever of the neighbor's remaining bridging pairs maximizes the *minimum* geometric distance (by the region-side node) to every pair already carrying the existing edge — farthest from the closest occupied pair, not just from one arbitrarily chosen occupied pair, since a partial connection can span more than one bridging pair (e.g. manual preset/post-edit edges predating the repair pass).
   - If neither direction exists yet, the two of the neighbor's bridging pairs that are farthest apart from each other (by `geometric_distance` between their region-side nodes, checked over every pair combination) are picked, one per direction.
-  - If the chosen neighbor has only one bridging cell pair (can't support two separated directions), the merge for that neighbor fails and the region as a whole is skipped for this iteration — it is **not** retried against a different neighbor within the same `apply` call (single-candidate selection, same as `passage` mode).
+  - If the chosen neighbor has only one bridging cell pair (can't support two separated directions), the merge for that neighbor fails — this call returns `Failed`, it does **not** retry against a different neighbor within the same `apply` call (single-candidate selection, same as `passage` mode).
   - Each direction is added via `try_add_directed_edge` (single directed `Basic` edge, preset-checked on the forward direction only).
-- If a region has no neighboring region at all (isolated field cell, or every candidate pair preset-blocked): that region is skipped, not a hard failure for the whole call.
-- After a successful merge, if the absorbed neighbor's component index was also in `invalid`, it is marked merged-away so a later iteration in the same `apply` call doesn't try to expand it again as a separate region.
-- Returns `Fixed` if at least one region was successfully merged; `Failed` if none were (e.g. every flagged region was isolated, fully preset-blocked, or — `one_way` mode only — every candidate neighbor had just one bridging pair).
+- If the region has no neighboring region at all (isolated field cell, or every candidate pair preset-blocked), or the chosen neighbor's connection attempt fails (e.g. `one_way`'s single-bridging-pair case above): returns `Failed`.
+- Returns `Fixed` if the merge succeeded.
 - **Out of scope** (separate strategy for the same issue kind): teleport expansion — see `TeleportRegionMergeStrategy` below.
 
 ### TeleportRegionMergeStrategy
 
-Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #89. Merges each flagged undersized SCC region into a neighboring region via a `Teleport` edge instead of a geometric passage. Unlike `ExpandRegionPassageStrategy`, **any node pair across the two regions is a valid candidate** — teleport endpoints don't need to be geometrically adjacent, so there's no `field.neighbors` scan at all; every other SCC component is an eligible neighbor regardless of geometric position. Shares target-selection (`target_mode`/`prefer_partially_connected`) and merge-loop bookkeeping with `ExpandRegionPassageStrategy` via `region_merge_core` (see above) — only candidate discovery and the actual connection mechanism are specific to this strategy.
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #89 and issue #99 (one `apply()` call merges exactly one region). Merges the flagged undersized SCC region into a neighboring region via a `Teleport` edge instead of a geometric passage. Unlike `ExpandRegionPassageStrategy`, **any node pair across the two regions is a valid candidate** — teleport endpoints don't need to be geometrically adjacent, so there's no `field.neighbors` scan at all; every other SCC component is an eligible neighbor regardless of geometric position. Shares target-selection (`target_mode`/`prefer_partially_connected`) with `ExpandRegionPassageStrategy` via `region_merge_core` (see above) — only candidate discovery and the actual connection mechanism are specific to this strategy.
 
-Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansionIssue` is the producing check's result — there is no other channel to learn it.
+Same contract as `ExpandRegionPassageStrategy`: `issue.region_id`/`issue.region` name the one region this call merges, `issue.other_invalid` is resolved only when `requirement()` asks for it — same `requirement()` rule (`OTHER_INVALID` only under `target_mode == prefer_needy`) as `ExpandRegionPassageStrategy`.
 
 **Parameters:**
 
@@ -626,7 +627,7 @@ Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansi
 | `prefer_partially_connected` | Bool | `true` | — | Prefer a neighbor that already has **any** edge (any `EdgeKind`, not just `Teleport`) to/from the flagged region over one with no connection at all (`region_merge_core`) |
 | `min_distance` | Float | `1.0` | `[0, 1000]` | Minimum logical (graph hop-count) distance a freshly-picked endpoint must keep from an already-occupied endpoint in the same region; rounded to the nearest non-negative integer before use |
 
-- If `invalid` is empty: returns `Fixed` immediately.
+- `scc = maze.analysis.scc(&maze.graph)`, fetched once at the start of `apply`. If `issue.region_id` no longer resolves to a component in this snapshot (defensive — shouldn't happen in practice): returns `Failed` immediately.
 - Candidate neighbors: every other SCC component (`scc.components`), full stop — no adjacency filter. For each, the graph's edges are scanned once (`O(E)`, not `O(region_size * neighbor_size)` — a region can be tiny while a neighbor is the bulk of the maze) to find one representative existing edge per direction, if any (`outbound`: a `region -> neighbor` edge of any kind; `inbound`: `neighbor -> region`, any kind). A neighbor already fully connected in both directions is still a valid candidate (target-selection may still pick it; `apply` then no-ops for it, see below).
 - **Merging always ends up covering both directions** — a region isn't strongly connected to its neighbor with just one directed edge, so `direction_mode` only decides the *mechanism*, never whether both directions get covered:
   - `two_way`: both directions share **one** node pair `(a, b)` — a matched two-way teleport, the same shape as a preset `TeleportDirection::TwoWay` connection (`Specs/preset-connections.md`). Added via `try_add_bidirectional_teleport` (`generation::mod`) — same strict "both directions free by preset state, or mutate nothing" contract as `try_add_bidirectional_edge`, and completion-aware against **any** existing edge kind in a direction (not just `Teleport`) before adding.
@@ -636,16 +637,18 @@ Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansi
   - Added directed edges use `try_add_directed_teleport` (`generation::mod`) — idempotent against **any** existing edge kind in that direction (mirrors the strategy's own any-kind "partial connection" concept), preset-checked on the forward direction only.
 - **Endpoint picking with `min_distance`** (`pick_node_away_from`): a node is drawn uniformly at random from the target region, retried up to an internal attempt cap (a circuit breaker, not a tunable parameter) until its logical distance to every "away from" reference node is `>= min_distance`; if every attempt fails, falls back to whichever sampled candidate maximized that minimum distance. Never fails outright (unless the region is empty, which can't happen for a real SCC component) — `min_distance` is a soft preference honored best-effort, not a hard requirement that can abort the merge.
 - **Logical distance** (`bfs_min_distance`): `min(dist(a -> b), dist(b -> a))` via directed BFS hop-count within the current graph, in each direction — a region's two directions from a node can have different lengths, so the metric takes whichever is shorter. Purely graph-topological, unrelated to `space::geometric_distance` (which `ExpandRegionPassageStrategy`'s `one_way` mode uses instead, for its geometrically-adjacent candidate pairs).
-- If a chosen neighbor is already connected in both directions: `apply` returns `Fixed` immediately for that region without mutating (idempotency), same posture as `ExpandRegionPassageStrategy`'s "already a full passage" completion-aware behavior. **Defensive only, not reachable in practice**: if a directed path exists both `region -> neighbor` and `neighbor -> region` (through any edge), the two are already the same SCC by definition — `REGION_NEEDS_EXPANSION` would never name them as two separate regions to merge in the first place. No real maze state can trigger this branch; it exists purely as a safety net against a stale/inconsistent `scc` snapshot.
-- Returns `Fixed` if at least one region was successfully merged; `Failed` if none were (e.g. `invalid`'s region has no other SCC component at all — a single-component maze).
+- If a chosen neighbor is already connected in both directions: `apply` returns `Fixed` immediately without mutating (idempotency), same posture as `ExpandRegionPassageStrategy`'s "already a full passage" completion-aware behavior. **Defensive only, not reachable in practice**: if a directed path exists both `region -> neighbor` and `neighbor -> region` (through any edge), the two are already the same SCC by definition — `REGION_NEEDS_EXPANSION` would never name them as two separate regions to merge in the first place. No real maze state can trigger this branch; it exists purely as a safety net against a stale/inconsistent `scc` snapshot.
+- Returns `Fixed` if the merge succeeded; `Failed` if the region has no other SCC component at all (a single-component maze).
 
 ### WeightedRegionMergeStrategy
 
 Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #90. Unlike `ExpandRegionPassageStrategy`/`TeleportRegionMergeStrategy`, which each implement one specific merge mechanism, this strategy picks *which* nested region-merge strategy to actually run: it holds any number of nested strategies under one slot, each with a weight, and delegates to `dispatch_weighted` (see "Weighted nested dispatch" above) — weighted-random selection without replacement, retrying a different nested strategy if the chosen one returns `Failed`, until one succeeds or every candidate has been tried.
 
-The parent issue is passed through to the nested call **unchanged** — unlike `ReduceSccCountStrategy`, which synthesizes a new issue naming which regions to merge, this strategy only picks the merge *mechanism*; which regions need merging is already the incoming `RegionNeedsExpansionIssue.invalid`, untouched (see the `apply()` behavior list below for what this implies for a multi-region batch).
+The parent issue is passed through to the nested call **unchanged** — this strategy only picks the merge *mechanism*; which region needs merging is already `issue.region_id`.
 
-Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansionIssue` is the producing check's result — there is no other channel to learn it.
+**One dispatch per `apply()` call, exactly matching one region** — since GitHub issue #99, `RegionNeedsExpansionIssue` names exactly one region, so this strategy's own weight-ratio-vs-batch-size mismatch (GitHub issue #90's follow-up, which tried and reverted per-region dispatch inside this strategy) no longer applies: the fixpoint loop calling `apply()` once per rule dispatch already means once per region, so `dispatch_weighted`'s single weighted pick governs exactly one region's merge, not a batch.
+
+Same contract as `ExpandRegionPassageStrategy`: `issue.region_id`/`issue.region` name the one region this call merges — the producing check's result, there is no other channel to learn it.
 
 No configurable parameters of its own — weights live per nested candidate (below), not as a top-level `StrategyParam`.
 
@@ -653,10 +656,9 @@ No configurable parameters of its own — weights live per nested candidate (bel
 
 **Weight resolution** (`resolve_weight`): each nested candidate's weight is read from its own `NestedStrategyConfig.param_overrides["weight"]` — a string, parsed as `f64`. Missing, unparsable, non-finite, or `<= 0.0` all fall back to `1.0` (one fallback rule, no separate branches for NaN/∞/negative/zero/malformed text). No upper clamp — `weight` isn't a declared `StrategyParam` of the nested strategy (it lives in `param_overrides` as this dispatcher's own convention on top of whatever params the nested strategy already exposes), so there's nothing to clamp against; an arbitrarily large weight simply dominates selection, which is safe and predictable. This fallback guarantees that whenever at least one nested candidate is configured, the pool passed to `dispatch_weighted` always has a strictly positive total weight. A `debug_assert!` rejects any nested candidate that declares its own `StrategyParam` literally named `"weight"` — that would collide with this dispatcher's reserved `param_overrides` key.
 
-- If `invalid` is empty: returns `Fixed` immediately (idempotency), without touching `rng` or `nested`.
 - Nested entries are filtered to `slot_id == SLOT_MERGE_TARGET` — a defensive runtime check, not the primary validation (`maze-runner`'s `build_nested` already guarantees this at config-build time); it only guards direct `apply()` calls made outside the runner, same posture `ReduceSccCountStrategy` takes toward its own single slot.
 - If no candidate fills the slot after filtering: returns `Failed`.
-- Otherwise wraps each filtered candidate in a `WeightedCandidate` (config + resolved weight) and delegates to `dispatch_weighted` with the **original, unmodified** `issue` — one weighted pick decides the merge mechanism for the whole `invalid` batch at once; the chosen nested strategy's own `apply()` is responsible for merging as many regions in the batch as it can (see "Known limitation, not solved here" under "Weighted nested dispatch" above for why this isn't split per-region).
+- Otherwise wraps each filtered candidate in a `WeightedCandidate` (config + resolved weight) and delegates to `dispatch_weighted` with the **original, unmodified** `issue`.
 
 ### MissingRegionsStrategy
 
@@ -702,7 +704,7 @@ Same contract as `InvalidLoopRandomStrategy`/`ExpandRegionPassageStrategy`: `bal
 
 ### ReduceSccCountStrategy
 
-Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far only) user of the nested-strategy mechanism (see "Nested strategies" above): `SccCountCheck`'s issue carries no specific regions to fix (unlike `REGION_NEEDS_EXPANSION`'s `RegionsNeedingExpansion`), so this strategy picks which regions to merge itself, then delegates the actual merge to a nested strategy.
+Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far only) user of the nested-strategy mechanism (see "Nested strategies" above): `SccCountCheck`'s issue carries no specific regions to fix (unlike `REGION_NEEDS_EXPANSION`'s `RegionNeedsExpansionIssue`), so this strategy picks which regions to merge itself, then delegates each one's actual merge to a nested strategy.
 
 `max_scc_count` on `ExcessiveSccCountIssue` is the producing check's configured threshold — there is no other channel to learn it.
 
@@ -715,11 +717,14 @@ Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The first (and so far on
 **Nested slots**: exactly one, `slot_id = "merge_target"` (exported as `SLOT_MERGE_TARGET`), `kind = REGION_NEEDS_EXPANSION`, `min = 1`, `max = Some(1)` — a single nested strategy, typically `ExpandRegionPassageStrategy`, does the actual merge.
 
 - `scc = maze.analysis.scc(&maze.graph)`; `count = scc.components.len()`. If `count <= max_scc_count`: returns `Fixed { score: None }` immediately (idempotency) without touching `nested` or `rng`.
-- Otherwise selects exactly `count - max_scc_count` components to merge, ordered by `merge_priority`: `smallest`/`largest` sort by `(component size, component id)` for deterministic tie-breaking; `random` performs a seeded Fisher-Yates shuffle over component ids via `rng`. Only the first `count - max_scc_count` selected ids are used.
-- Builds a synthetic `RegionNeedsExpansionIssue { meta: IssueMeta::default(), invalid: chosen, invalid_sources: Default::default() }`, passed to the nested `ErasedRepairStrategy::apply` call as `&synthetic as &dyn Issue` — never published anywhere outside this `apply` call (see "Nested strategies"' synthesized-issues rule above).
 - Looks up the nested strategy filling `merge_target` in the `nested` slice passed into `apply` (defensive `debug_assert!` that at most one entry fills the slot, even though `build_nested` already enforces `max: Some(1)` at config-build time) — if none is present, returns `Failed`.
-- Delegates: builds the nested strategy's own `StrategyParams` from its `param_overrides`, then calls its `apply()` with the synthetic issue, the same `maze`/`snapshots`/`rng`/`preset_state`, and its own `nested` list (empty for `ExpandRegionPassageStrategy` today, but recursion is supported). Returns whatever `RepairResult` the nested call produces, unchanged — a merge failure (e.g. every candidate region has no geometrically-adjacent neighbor, or every candidate pair is preset-blocked) propagates as `Failed` the same way it would for a direct `ExpandRegionPassageStrategy` dispatch.
-- **Does not itself guarantee full convergence to `max_scc_count` in one call** — like every other strategy that delegates region selection to `ExpandRegionPassageStrategy`, chosen regions can end up merging into each other rather than into fresh neighbors, so the net component-count reduction from one `apply()` call can be less than the number of regions picked. Full convergence is the pipeline's fixpoint loop's job across iterations, not a single `apply()` call's contract — same accepted imprecision `ExpandRegionPassageStrategy` itself already documents for its own `invalid` set.
+- Otherwise loops exactly `count - max_scc_count` times. **Since GitHub issue #99** (`RegionNeedsExpansionIssue` can only ever name one region), each iteration:
+  1. Re-fetches `scc = maze.analysis.scc(&maze.graph)` fresh — a merge changes both the component count and every remaining `ComponentId`'s numbering, so a `ComponentId` picked from a stale snapshot could name the wrong region (or no longer exist at all) on a later iteration.
+  2. Picks exactly one region via `select_merge_candidates(sizes, merge_priority, 1, rng)`: `smallest`/`largest` sort by `(component size, component id)` for deterministic tie-breaking; `random` performs a seeded Fisher-Yates shuffle over component ids via `rng`. Stops the loop early (not a hard failure) if no candidate remains.
+  3. Builds a synthetic single-region `RegionNeedsExpansionIssue::synthetic(region_id, region)` (`meta: IssueMeta::new()`, `other_invalid: vec![]`), passed to the nested `ErasedRepairStrategy::apply` call as `&synthetic as &dyn Issue` — never published anywhere outside this `apply` call (see "Nested strategies"' synthesized-issues rule above).
+  4. Delegates: builds the nested strategy's own `StrategyParams` from its `param_overrides` (once, outside the loop), then calls its `apply()` with the synthetic issue, the same `maze`/`snapshots`/`rng`/`preset_state`, and its own `nested` list (empty for `ExpandRegionPassageStrategy` today, but recursion is supported). A `Failed` result for one region doesn't abort the loop — the remaining iterations still run, each against a freshly re-fetched snapshot.
+- Returns `Fixed { score: None }` if at least one iteration's nested dispatch succeeded; `Failed` if every one did (or no nested strategy filled the slot).
+- **Does not itself guarantee full convergence to `max_scc_count` in one call** — chosen regions can end up merging into each other rather than into fresh neighbors, so the net component-count reduction from one `apply()` call can be less than `count - max_scc_count`. Full convergence is the pipeline's fixpoint loop's job across iterations, not a single `apply()` call's contract — same accepted imprecision `ExpandRegionPassageStrategy` itself already documents for its own dispatch.
 
 ### RemoveTeleportStrategy
 

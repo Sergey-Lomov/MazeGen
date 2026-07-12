@@ -23,7 +23,7 @@ pub use cycle_analysis_overflowed::CycleAnalysisOverflowedIssue;
 pub use repair_limit_reached::{RepairLimitReachedIssue, RepairLimitKind};
 pub use qc_no_progress::QcNoProgressIssue;
 pub use excessive_scc_count::ExcessiveSccCountIssue;
-pub use region_needs_expansion::RegionNeedsExpansionIssue;
+pub use region_needs_expansion::{RegionNeedsExpansionIssue, RegionNeedsExpansionRequirement};
 pub use missing_regions::MissingRegionsIssue;
 pub use invalid_teleport::InvalidTeleportIssue;
 pub use teleport_group_proximity::TeleportGroupProximityIssue;

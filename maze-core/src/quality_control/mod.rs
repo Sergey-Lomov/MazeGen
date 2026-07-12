@@ -10,7 +10,7 @@ pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, 
 pub use issue_kinds::{
     MissingEndpointsIssue, UnreachableFinishIssue, InvalidLoopIssue, InvalidLoopRequirement, MissingLoopsIssue,
     CycleAnalysisOverflowedIssue, RepairLimitReachedIssue, RepairLimitKind, QcNoProgressIssue,
-    ExcessiveSccCountIssue, RegionNeedsExpansionIssue, MissingRegionsIssue, InvalidTeleportIssue,
+    ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsExpansionRequirement, MissingRegionsIssue, InvalidTeleportIssue,
     TeleportGroupProximityIssue,
 };
 pub use check::Check;

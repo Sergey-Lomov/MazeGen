@@ -48,22 +48,22 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         raw_issues.push(Box::new(CycleAnalysisOverflowedIssue::default()));
     }
 
-    // Computed once here (before the issues map needs it for `RegionsNeedingExpansion`) and reused
-    // below for `graph_analytics_dto.node_component` — cached per `graph.version()`, so the
-    // second call is a cache hit, not a recomputation.
+    // Used below for `graph_analytics_dto.node_component` — cached per `graph.version()`.
     let scc = maze.analysis.scc(&maze.graph);
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         let issue = issue.as_ref();
         // Grouped by source check id (not one flat list) so a merged issue rendered as several
-        // bubbles (one per `source_checks` entry) highlights only the cycles *that check*
+        // bubbles (one per `source_checks` entry) highlights only the cycles/regions *that check*
         // flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment. Since GitHub issue
-        // #98, `report_check`/`run_check_only` produce one `InvalidLoopIssue` per invalid cycle
-        // (not one merged batch) — each issue's own `source_checks()` names every check id that
-        // flagged its single `cycle`, already resolved to `EdgeId`s, no further resolve needed
-        // here. Two different issues (from two different checks) flagging the *same* physical
-        // cycle deliberately do NOT collapse into one entry — each check's bubble must show its
-        // own cycle independently, even if it happens to be the same edge set as another check's.
+        // #98 (cycles) / #99 (regions), `report_check`/`run_check_only` produce one
+        // `InvalidLoopIssue`/`RegionNeedsExpansionIssue` per invalid cycle/undersized region (not
+        // one merged batch) — each issue's own `source_checks()` names every check id that flagged
+        // its single `cycle`/`region`, already resolved to `EdgeId`s/`NodeId`s, no further resolve
+        // needed here. Two different issues (from two different checks) flagging the *same*
+        // physical cycle/region deliberately do NOT collapse into one entry — each check's bubble
+        // must show its own cycle/region independently, even if it happens to be the same edge/
+        // node set as another check's.
         let mut invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
         if let Some(InvalidLoopIssue { cycle, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
             let edge_pairs: Vec<[u32; 2]> = cycle.iter().filter_map(|&eid| {
@@ -82,11 +82,11 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             }
         }
         let mut region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>> = HashMap::new();
-        if let Some(RegionNeedsExpansionIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<RegionNeedsExpansionIssue>() {
-            for &idx in invalid {
-                let Some(region) = scc.components.get(idx) else { continue };
-                let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
-                for source in invalid_sources.get(&idx).into_iter().flatten() {
+        if let Some(RegionNeedsExpansionIssue { region, .. }) = issue.as_any().downcast_ref::<RegionNeedsExpansionIssue>() {
+            let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
+            let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+            for source in issue.source_checks() {
+                if seen.insert(source.as_str()) {
                     region_needs_expansion_nodes.entry(source.clone()).or_default().push(node_ids.clone());
                 }
             }

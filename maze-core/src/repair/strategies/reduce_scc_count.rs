@@ -64,13 +64,19 @@ fn select_merge_candidates(sizes: &[usize], mode: &str, to_merge: usize, rng: &m
 
 /// Handles `EXCESSIVE_SCC_COUNT` — see GitHub issue #68. The graph has more strongly-connected
 /// components than a check's configured limit allows, but `SccCountCheck`'s issue carries no
-/// specific regions to merge (unlike `REGION_NEEDS_EXPANSION`'s `RegionsNeedingExpansion`).
+/// specific regions to merge (unlike `REGION_NEEDS_EXPANSION`'s `RegionNeedsExpansionIssue`).
 /// Instead of duplicating `ExpandRegionPassageStrategy`'s merge logic, this strategy picks which
 /// regions to merge (by `merge_priority`: smallest/largest/random, however many are needed to
-/// reach `max_scc_count`), synthesizes a `RegionsNeedingExpansion` issue naming them, and
-/// delegates the actual merge to a nested strategy (typically `ExpandRegionPassageStrategy`)
-/// filling the `merge_target` slot. The synthetic issue is never published to the shared issue
-/// pool — only the original `EXCESSIVE_SCC_COUNT` issue is ever visible to the user.
+/// reach `max_scc_count`), then loops over them, synthesizing one single-region
+/// `RegionNeedsExpansionIssue` per iteration and delegating its merge to a nested strategy
+/// (typically `ExpandRegionPassageStrategy`) filling the `merge_target` slot — since GitHub issue
+/// #99, a `RegionNeedsExpansionIssue` can only ever name one region, so one nested dispatch per
+/// chosen region replaces the old single whole-batch dispatch. The SCC snapshot is re-fetched
+/// before each dispatch (a merge changes both the component count and every remaining
+/// `ComponentId`'s numbering — see `graph::scc`) and candidate selection re-runs against the fresh
+/// snapshot each time, rather than trusting `ComponentId`s picked from a now-stale snapshot. The
+/// synthetic issue is never published to the shared issue pool — only the original
+/// `EXCESSIVE_SCC_COUNT` issue is ever visible to the user.
 ///
 /// **`issue.data` is mandatory for this kind**: `max_scc_count` is the producing check's
 /// configured threshold — there is no other channel to learn it.
@@ -128,16 +134,31 @@ impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for ReduceSccCou
             _ => PRIORITY_SMALLEST,
         };
 
-        let sizes: Vec<usize> = scc.components.iter().map(|c| c.len()).collect();
-        let chosen = select_merge_candidates(&sizes, mode, to_merge, rng);
-        if chosen.is_empty() {
-            return RepairResult::Fixed { score: None };
+        let nested_params = build_params(merge_target.strategy.params(), Some(&merge_target.param_overrides));
+
+        // Re-fetches the SCC snapshot and re-picks candidates against it on every iteration — a
+        // merge changes both the component count and every remaining `ComponentId`'s numbering
+        // (see `graph::scc`), so a `ComponentId` picked from a stale snapshot could name the wrong
+        // region (or no longer exist at all) for a later iteration.
+        let mut any_fixed = false;
+        for _ in 0..to_merge {
+            let scc = maze.analysis.scc(&maze.graph);
+            let sizes: Vec<usize> = scc.components.iter().map(|c| c.len()).collect();
+            let Some(&region_id) = select_merge_candidates(&sizes, mode, 1, rng).first() else { break };
+            let region = scc.components[region_id].clone();
+
+            let synthetic = RegionNeedsExpansionIssue::synthetic(region_id, region);
+            let result = merge_target.strategy.apply(&synthetic as &dyn crate::quality_control::Issue, maze, snapshots, rng, &nested_params, preset_state, &merge_target.nested);
+            if matches!(result, RepairResult::Fixed { .. }) {
+                any_fixed = true;
+            }
         }
 
-        let synthetic = RegionNeedsExpansionIssue::synthetic(chosen);
-
-        let nested_params = build_params(merge_target.strategy.params(), Some(&merge_target.param_overrides));
-        merge_target.strategy.apply(&synthetic as &dyn crate::quality_control::Issue, maze, snapshots, rng, &nested_params, preset_state, &merge_target.nested)
+        if any_fixed {
+            RepairResult::Fixed { score: None }
+        } else {
+            RepairResult::Failed
+        }
     }
 }
 

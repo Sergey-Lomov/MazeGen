@@ -62,7 +62,7 @@ Always use the named constant — never use string literals or enum variants inl
 
 **Hard rule: `IssueKind` is a semantic category, not a producer id.** `InvalidLoop` means "this cycle is invalid for some check-specific reason" — it does not identify *which* check found it. Multiple checks can legitimately produce the same `IssueKind` for different underlying reasons — currently `MinLoopLengthCheck` (cycles shorter than a threshold) and `MaxLoopLengthCheck` (cycles longer than a threshold); future checks may flag cycles invalid for still other reasons and reuse this same kind rather than inventing a new one per reason. Which check(s) actually contributed to a given `Issue` is tracked separately, in `Issue.source_checks` (below) — never by adding more `IssueKind` variants.
 
-`RegionNeedsExpansion` mirrors `InvalidLoop`'s role for SCC regions: a semantic category ("this region needs to be expanded for some check-specific reason"), not tied to size specifically or to any one reason. Currently produced by `MinRegionSizeCheck` (region smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller than a configured share of the field), but future checks may flag a region as needing expansion for reasons unrelated to size and reuse this same kind. Carries `IssueData::RegionsNeedingExpansion` — see that variant's doc comment.
+`RegionNeedsExpansion` mirrors `InvalidLoop`'s role for SCC regions: a semantic category ("this region needs to be expanded for some check-specific reason"), not tied to size specifically or to any one reason. Currently produced by `MinRegionSizeCheck` (region smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller than a configured share of the field), but future checks may flag a region as needing expansion for reasons unrelated to size and reuse this same kind. Carries `RegionNeedsExpansionIssue` — see that type's doc comment.
 
 **`CycleAnalysisOverflowed` is not a toggleable QC check** — every other kind here is produced by a `Check<T, I>` implementation the user selects via `config.checks`; this one is raised directly by `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) whenever `GraphAnalytics::cycle_analysis_overflowed` is true (cycle enumeration aborted past `MAX_SIMPLE_CYCLES` — see `graph-analytics.md`). It bypasses `QualityControlEngine` entirely: `build_analytics_snapshot` pushes `Box::new(CycleAnalysisOverflowedIssue::default())` straight into the issue list after the engine (or `issues_override`) has already run, so it surfaces unconditionally — same `IssuesBlock`/`FeatureCard` UI as any other issue, but with no corresponding `Check<T, I>` or `RepairStrategy` and no way for a user to disable it. `IssueKind::from_str` still parses it like any other kind (used to validate `config.strategies` keys), but no strategy can ever be registered against it — see `from_str`'s doc comment.
 
@@ -230,7 +230,7 @@ document the invariant the caller must uphold instead of runtime-validating it o
 compile-time-checked path (a `Rule<T, I>`'s own checks and strategy) never needs this at all;
 only the two genuinely-heterogeneous boundaries above do.
 
-- **Dedup interaction**: multiple checks may produce an issue of the same concrete type in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single issue via `IssueMerge::merge` rather than keeping only the first and dropping the rest. The merge rule is per-concrete-type: for `InvalidLoopIssue` (see GitHub issue #98), the first non-empty check's `cycle_id`/`cycle` wins and never changes; each subsequent check's own `cycle_id` folds into `other_invalid` (still an invalid cycle from this rule's perspective, just not the one this merged issue leads with), and `other_invalid`/`other_valid` union directly as plain index sets (no remap needed — every check in one `Rule` reads the same `MazeAnalysis::cycles()` snapshot within one QC pass, so an index means the same cycle on both sides); after the union, `cycle_id` is scrubbed from both lists and anything in `other_invalid` is scrubbed from `other_valid` (mirrors `new_from_check`'s own normalization), and the final lists are sorted ascending rather than left in `HashSet` iteration order, so the same inputs merged in the same order always produce a byte-identical result. `source_checks`/`details` (via `IssueMeta`) are unioned the same way as every other type. A type whose fields have no sensible merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
+- **Dedup interaction**: multiple checks may produce an issue of the same concrete type in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single issue via `IssueMerge::merge` rather than keeping only the first and dropping the rest. The merge rule is per-concrete-type: for `InvalidLoopIssue` (see GitHub issue #98), the first non-empty check's `cycle_id`/`cycle` wins and never changes; each subsequent check's own `cycle_id` folds into `other_invalid` (still an invalid cycle from this rule's perspective, just not the one this merged issue leads with), and `other_invalid`/`other_valid` union directly as plain index sets (no remap needed — every check in one `Rule` reads the same `MazeAnalysis::cycles()` snapshot within one QC pass, so an index means the same cycle on both sides); after the union, `cycle_id` is scrubbed from both lists and anything in `other_invalid` is scrubbed from `other_valid` (mirrors `new_from_check`'s own normalization), and the final lists are sorted ascending rather than left in `HashSet` iteration order, so the same inputs merged in the same order always produce a byte-identical result. `source_checks`/`details` (via `IssueMeta`) are unioned the same way as every other type. `RegionNeedsExpansionIssue` (see GitHub issue #99) mirrors this exact rule for `region_id`/`region`/`other_invalid` — no `other_valid` equivalent, since "valid" (large-enough) regions have no auxiliary use for a merge strategy the way valid cycles do for `InvalidLoopScoredStrategy`. A type whose fields have no sensible merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 - **Not exposed over WASM**: the WASM layer serializes `kind()`, `source_checks()`, and `details()` (see `IssueDto` below) but never a concrete type's own data fields directly — those stay internal, Check-to-Strategy plumbing only, except where `analytics.rs` explicitly downcasts to build a payload DTO (`InvalidLoopIssue`/`RegionNeedsExpansionIssue`) or a synthetic detail entry (`RepairLimitReachedIssue`/`QcNoProgressIssue`, both raised outside any `Check<T, I>` — see their own doc comments in `issue_kinds/`).
 
 ### Check trait
@@ -445,7 +445,9 @@ pub struct MinRegionSizeCheck {
 }
 ```
 
-Flags SCC regions with fewer tiles than a configured absolute minimum — see GitHub issue #50. Uses `maze.analysis.scc(&maze.graph)` (same cache `SccCountCheck` reads), and flags every component whose `len()` is below `min_region_size`. If no region is undersized, the check is silent. Otherwise fires a single `RegionNeedsExpansionIssue::new_from_check("min_region_size", invalid, invalid_sources)` with `.with_detail("min_region_size", "min_region_size", self.min_region_size.to_string())` chained on — `invalid` holds every undersized component's index into `scc.components`.
+Flags SCC regions with fewer tiles than a configured absolute minimum — see GitHub issue #50. Uses `maze.analysis.scc(&maze.graph)` (same cache `SccCountCheck` reads), and flags every component whose `len()` is below `min_region_size` (`region_size_check_core::find_invalid_regions`, shared with `MinRegionRatioCheck` — see GitHub issue #108). If no region is undersized, the check is silent.
+
+`repair_check` (shared `region_size_check_core::build_repair_issue`) builds a single `RegionNeedsExpansionIssue`, GitHub issue #99: `region_id`/`region` are always the first flagged component's index/sorted member `NodeId`s (resolved regardless of `requirement`, since `region` is needed for `PartialEq`/no-progress comparison independent of what a strategy asked for); `other_invalid` (every other flagged component's index) is resolved from the rest only if `requirement` asks for it. `.with_detail("min_region_size", "min_region_size", self.min_region_size.to_string())` chained on. `report_check` (shared `build_report_issues`) instead builds one `RegionNeedsExpansionIssue` per flagged component, for the final QC report.
 
 `region_classes` restricts the check to SCC regions of the listed `RegionClass`(es) (Path/Alternative/Unreachable/Trap — see `graph-analytics.md`'s "Region Classes" section) — see GitHub issue #54. Empty means no region matches (the check is always silent). All four classes (`ALL_REGION_CLASSES`, the wasm layer's `"all"` dropdown option) means every region is checked, the pre-#54 behavior, and skips computing `RegionClass`es entirely (no `start`/`finish` requirement in that case). For any other non-empty subset, the check additionally needs `maze.analysis.region_classes(&maze.graph, start, finish)` to look up each component's class; if either `maze.meta.start` or `maze.meta.finish` is `None`, the check is silent (classification unavailable — same failure mode `MinRegionCountCheck` has).
 
@@ -460,11 +462,11 @@ pub struct MinRegionRatioCheck {
 }
 ```
 
-Counterpart to `MinRegionSizeCheck` using a relative threshold instead of an absolute tile count — see GitHub issue #50. Flags every SCC region covering less than `min_region_ratio` percent of the field (`maze.field.node_count()`): `region.len() * 100 < min_region_ratio * field_cells`. Silently skips (no issue) if the field has zero cells. If no region is undersized, the check is silent. Otherwise fires a single `RegionNeedsExpansionIssue::new_from_check("min_region_ratio", invalid, invalid_sources)` with `.with_detail("min_region_ratio", "min_region_ratio", self.min_region_ratio.to_string())` chained on.
+Counterpart to `MinRegionSizeCheck` using a relative threshold instead of an absolute tile count — see GitHub issue #50. Flags every SCC region covering less than `min_region_ratio` percent of the field (`maze.field.node_count()`): `region.len() * 100 < min_region_ratio * field_cells`. Silently skips (no issue) if the field has zero cells. If no region is undersized, the check is silent. `repair_check`/`report_check` build `RegionNeedsExpansionIssue`s the same way `MinRegionSizeCheck` does (shared `region_size_check_core`, GitHub issue #99/#108), with `.with_detail("min_region_ratio", "min_region_ratio", self.min_region_ratio.to_string())` chained on.
 
 `region_classes` works exactly as for `MinRegionSizeCheck` above — see GitHub issue #54.
 
-Can be active alongside `MinRegionSizeCheck` — both produce `REGION_NEEDS_EXPANSION` and merge into one issue (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section): since both checks read the same `scc()` cache entry within one QC pass, a region's component index is stable across the merge, so unioning `invalid` and `invalid_sources` needs no remap, unlike the cycle-index remap `merge_invalid_loops` must do.
+Can be active alongside `MinRegionSizeCheck` — both produce `REGION_NEEDS_EXPANSION` and, within one rule's `repair_check` pass, merge into one issue the same way any two checks sharing a rule and an `Issue` type do (see `quality_control.md`'s `IssueMerge` "Dedup interaction" note): since both checks read the same `scc()` cache entry within one QC pass, a region's component index is stable across the merge, so unioning `other_invalid` needs no remap, unlike the cycle-index remap `InvalidLoopIssue::merge` must do.
 
 ### MinRegionCountCheck
 
@@ -708,15 +710,18 @@ populated in that case now, since a report-path `InvalidLoopIssue` is never empt
 `IssuePayloadDto::RegionNeedsExpansion.nodes` mirrors `InvalidLoop.edges`'s role for
 `region_needs_expansion` issues (currently produced by `MinRegionSizeCheck`/`MinRegionRatioCheck`)
 — keyed by source check instance id for the same reason, so hovering one check's bubble
-highlights only the regions that check flagged. Each inner `Vec<u32>` is one flagged region's
-member maze node ids (not edges — the web client derives the region's perimeter and fill
-client-side from this node set, the same way it derives preset boundary walls from a cell set;
-see `IssueHighlightOverlay.ts`/`issueHighlightSelectors.ts`). Built from
-`RegionNeedsExpansionIssue.invalid` (indices into
-`maze.analysis.scc(&maze.graph).components`) and `invalid_sources` (keyed by component index, no
-remap needed within one QC pass — see `RegionNeedsExpansionIssue`'s doc comment above).
-`payload` is only `RegionNeedsExpansion` when the issue is `region_needs_expansion` and at least
-one check flagged a region — otherwise it's `None`.
+highlights only the regions that check flagged. `build_analytics_snapshot` builds it from the
+report path (`report_check`/`run_check_only`), which since GitHub issue #99 yields one
+`RegionNeedsExpansionIssue` per undersized region rather than one merged batch: for each such
+issue, `issue.region` (already resolved to member `NodeId`s — no separate `scc()` lookup needed
+here) is added to the bucket for every id in `issue.source_checks()`, the same "two different
+issues flagging the same physical region don't collapse into one bucket entry" rule
+`InvalidLoop.edges` uses. Each inner `Vec<u32>` is one flagged region's member maze node ids (not
+edges — the web client derives the region's perimeter and fill client-side from this node set,
+the same way it derives preset boundary walls from a cell set; see
+`IssueHighlightOverlay.ts`/`issueHighlightSelectors.ts`). `payload` is only `RegionNeedsExpansion`
+when the issue is `region_needs_expansion` — always populated in that case now, since a
+report-path `RegionNeedsExpansionIssue` is never empty.
 
 ### CheckDescriptor
 

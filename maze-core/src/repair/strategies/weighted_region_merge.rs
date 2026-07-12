@@ -50,25 +50,14 @@ fn resolve_weight(param_overrides: &std::collections::HashMap<String, String>) -
 /// random selection without replacement, retrying a different nested strategy if the chosen one
 /// returns `Failed`, until one succeeds or every candidate has been tried.
 ///
-/// The parent issue is passed through to the nested call unchanged (unlike
-/// `ReduceSccCountStrategy`, which synthesizes a new `Issue` naming which regions to merge) —
-/// this strategy only picks the merge *mechanism*, not which regions need merging; that's
-/// already `issue.data`'s `invalid`.
+/// The parent issue is passed through to the nested call unchanged — this strategy only picks the
+/// merge *mechanism*, not which region needs merging; that's already `issue.region_id`.
 ///
-/// **One dispatch per `apply()` call, not per region**: `issue.data.invalid` can carry several
-/// independent undersized regions in one batch — the chosen nested strategy's own `apply()`
-/// (via `region_merge_core::run_merge_loop`) is responsible for merging as many of them as it
-/// can within that single call, using one `maze.analysis.scc()` snapshot for the whole batch.
-/// Splitting `invalid` into one independent dispatch per region was tried (see GitHub issue #90's
-/// follow-up) and reverted: it broke the snapshot-reuse the batch loop relies on (a `ComponentId`
-/// from `invalid` is only stable within the SCC snapshot it was read from, and re-dispatching
-/// per region forced a fresh, possibly differently-numbered snapshot for each one after an
-/// earlier region's merge). The proper fix for the weight-ratio-vs-batch-size mismatch this was
-/// meant to address is to stop bundling several regions into one issue in the first place — see
-/// GitHub issue #99 — not to fragment the dispatch here.
-///
-/// **`issue.data` is mandatory for this kind**, same contract as `ExpandRegionPassageStrategy`:
-/// `invalid` is the producing check's result — there is no other channel to learn it.
+/// **One dispatch per `apply()` call, exactly matching one region**: since GitHub issue #99, an
+/// issue names exactly one undersized region, so this strategy's own weight-ratio-vs-batch-size
+/// mismatch (see GitHub issue #90's follow-up, which tried and reverted per-region dispatch here)
+/// no longer applies — the fixpoint loop calling `apply()` once per rule dispatch already means
+/// once per region.
 pub struct WeightedRegionMergeStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedRegionMergeStrategy {
@@ -92,11 +81,6 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedR
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult {
-        let invalid = &issue.invalid;
-        if invalid.is_empty() {
-            return RepairResult::Fixed { score: None };
-        }
-
         // Defensive runtime filter, not the primary validation: `maze-runner`'s `build_nested`
         // already guarantees every entry in `nested` fills a slot this strategy actually
         // declared (the sole `merge_target` slot here). This filter only protects direct
@@ -151,8 +135,16 @@ mod tests {
         Maze::new(field, g)
     }
 
-    fn issue_for(invalid: Vec<usize>) -> RegionNeedsExpansionIssue {
-        RegionNeedsExpansionIssue::new_from_check("test", invalid, Default::default())
+    /// Resolves `node`'s current region id/members via a fresh `scc()` and builds a single-region
+    /// issue for it.
+    fn issue_for_node<T: Tessellation>(maze: &Maze<T>, node: crate::ids::NodeId) -> RegionNeedsExpansionIssue {
+        let scc = maze.analysis.scc(&maze.graph);
+        let region_id = scc.component_of(node).unwrap();
+        RegionNeedsExpansionIssue::new_from_check("test", region_id, scc.components[region_id].clone(), Vec::new())
+    }
+
+    fn node0<T: Tessellation>(maze: &Maze<T>) -> crate::ids::NodeId {
+        maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).next().unwrap()
     }
 
     fn nested_with(strategy: Box<dyn ErasedRepairStrategy<SquareTessellation>>, weight: Option<&str>) -> NestedStrategyConfig<SquareTessellation> {
@@ -164,22 +156,10 @@ mod tests {
     }
 
     #[test]
-    fn apply_fixed_immediately_on_empty_invalid_without_rng_or_nested() {
-        let mut maze = maze_4_singletons();
-        let issue = issue_for(vec![]);
-        let mut rng_a = MazeRng::seed_from_u64(1);
-        let mut rng_b = MazeRng::seed_from_u64(1);
-        let edges_before = maze.graph.edges().count();
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng_a, &no_params(), &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Fixed { score: None }));
-        assert_eq!(maze.graph.edges().count(), edges_before);
-        assert_eq!(rng_a.next_u64(), rng_b.next_u64(), "rng must not be consumed on the empty-invalid idempotency path");
-    }
-
-    #[test]
     fn apply_fails_when_no_candidate_fills_the_slot() {
-        let mut maze = maze_4_singletons();
-        let issue = issue_for(vec![0]);
+        let maze = maze_4_singletons();
+        let issue = issue_for_node(&maze, node0(&maze));
+        let mut maze = maze;
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
@@ -187,8 +167,9 @@ mod tests {
 
     #[test]
     fn apply_fails_when_nested_slot_id_does_not_match() {
-        let mut maze = maze_4_singletons();
-        let issue = issue_for(vec![0]);
+        let maze = maze_4_singletons();
+        let issue = issue_for_node(&maze, node0(&maze));
+        let mut maze = maze;
         let mut rng = MazeRng::seed_from_u64(1);
         static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: REGION_NEEDS_EXPANSION, min: 1, max: None };
         let nested = vec![NestedStrategyConfig {
@@ -203,35 +184,15 @@ mod tests {
 
     #[test]
     fn apply_delegates_to_single_candidate_and_actually_merges() {
-        let mut maze = maze_4_singletons();
-        let issue = issue_for(vec![0]);
+        let maze = maze_4_singletons();
+        let issue = issue_for_node(&maze, node0(&maze));
+        let mut maze = maze;
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(ExpandRegionPassageStrategy), None)];
         let edges_before = maze.graph.edges().count();
         let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
         assert!(matches!(result, RepairResult::Fixed { .. }));
         assert!(maze.graph.edges().count() > edges_before, "delegate must have actually merged the region");
-    }
-
-    #[test]
-    fn apply_forwards_a_multi_region_batch_unchanged_and_merges_more_than_one_region() {
-        // 1x4 chain: 0-1-2-3, four singleton regions. `invalid: vec![0, 2]` names two of them —
-        // if `WeightedRegionMergeStrategy::apply` silently truncated `invalid` to its first
-        // element (or otherwise failed to forward the full batch to the nested strategy), only
-        // one merge would happen instead of two. `ExpandRegionPassageStrategy`'s own
-        // `run_merge_loop` is what actually walks the whole batch in one `apply()` call — this
-        // test only proves the batch reaches it intact, not `run_merge_loop`'s own behavior.
-        let mut maze = maze_4_singletons();
-        let issue = issue_for(vec![0, 2]);
-        let mut rng = MazeRng::seed_from_u64(1);
-        let nested = vec![nested_with(Box::new(ExpandRegionPassageStrategy), None)];
-        let edges_before = maze.graph.edges().count();
-        let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
-        assert!(matches!(result, RepairResult::Fixed { .. }));
-        // Each successful merge in a 1x4 singleton chain adds exactly one bidirectional passage
-        // (2 directed edges) between geometrically-adjacent nodes — two regions merged means two
-        // such passages, not one.
-        assert_eq!(maze.graph.edges().count() - edges_before, 4, "both regions in the batch must have been merged, not just the first");
     }
 
     #[test]
@@ -242,8 +203,9 @@ mod tests {
         assert_eq!(resolve_weight(&HashMap::new()), DEFAULT_WEIGHT, "missing weight must fall back to default");
         assert_eq!(resolve_weight(&HashMap::from([(WEIGHT_KEY.to_string(), "3.5".to_string())])), 3.5);
 
-        let mut maze = maze_4_singletons();
-        let issue = issue_for(vec![0]);
+        let maze = maze_4_singletons();
+        let issue = issue_for_node(&maze, node0(&maze));
+        let mut maze = maze;
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(ExpandRegionPassageStrategy), Some("not_a_number"))];
         let result = RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);
@@ -265,7 +227,7 @@ mod tests {
         preset_state.blocked.insert((nodes[0], nodes[1]));
         preset_state.blocked.insert((nodes[1], nodes[0]));
 
-        let issue = issue_for(vec![0]);
+        let issue = issue_for_node(&maze, nodes[0]);
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![
             nested_with(Box::new(ExpandRegionPassageStrategy), None),
@@ -281,7 +243,8 @@ mod tests {
 
     #[test]
     fn apply_is_deterministic_for_fixed_seed() {
-        let issue = issue_for(vec![0]);
+        let maze_probe = maze_4_singletons();
+        let issue = issue_for_node(&maze_probe, node0(&maze_probe));
 
         let mut maze_a = maze_4_singletons();
         let mut rng_a = MazeRng::seed_from_u64(99);
@@ -326,7 +289,7 @@ mod tests {
     #[should_panic(expected = "collides with resolve_weight's reserved param_overrides key")]
     fn apply_panics_in_debug_when_a_candidate_declares_its_own_weight_param() {
         let mut maze = maze_4_singletons();
-        let issue = issue_for(vec![0]);
+        let issue = issue_for_node(&maze, node0(&maze));
         let mut rng = MazeRng::seed_from_u64(1);
         let nested = vec![nested_with(Box::new(DeclaresWeightParamStrategy), None)];
         RepairStrategy::apply(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &nested);

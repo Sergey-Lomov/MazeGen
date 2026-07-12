@@ -5,14 +5,14 @@ use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
 use crate::space::Tessellation;
-use crate::quality_control::RegionNeedsExpansionIssue;
+use crate::quality_control::{RegionNeedsExpansionIssue, RegionNeedsExpansionRequirement};
 use crate::generation::{PresetState, try_add_directed_teleport, try_add_bidirectional_teleport};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::snapshot::SnapshotStack;
 use crate::repair::strategies::region_merge_core::{
-    self, PARAM_TARGET_MODE, PARAM_PREFER_PARTIALLY_CONNECTED, MODE_OPTIONS, MODE_RANDOM,
+    self, PARAM_TARGET_MODE, PARAM_PREFER_PARTIALLY_CONNECTED, MODE_OPTIONS, MODE_RANDOM, MODE_PREFER_NEEDY,
 };
 
 pub const PARAM_DIRECTION_MODE: &str = "direction_mode";
@@ -51,19 +51,18 @@ static PARAMS: &[StrategyParam] = &[
     },
 ];
 
-/// Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #89. Merges each flagged undersized SCC
+/// Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #89. Merges the flagged undersized SCC
 /// region into a neighboring region via a teleport edge instead of a geometric passage —
 /// teleport endpoints don't need to be geometrically adjacent, so **any** node pair across the
 /// two regions is a valid candidate (no `field.neighbors` adjacency requirement at all, unlike
 /// `ExpandRegionPassageStrategy`).
 ///
-/// Shares target-selection (`target_mode`/`prefer_partially_connected`) and merge-loop bookkeeping
-/// with `ExpandRegionPassageStrategy` via `region_merge_core` — only candidate discovery (any
-/// node pair vs geometric neighbors) and the actual connection (`Teleport` edges vs `Basic`) are
+/// Shares target-selection (`target_mode`/`prefer_partially_connected`) with
+/// `ExpandRegionPassageStrategy` via `region_merge_core` — only candidate discovery (any node
+/// pair vs geometric neighbors) and the actual connection (`Teleport` edges vs `Basic`) are
 /// strategy-specific.
 ///
-/// **`issue.data` is mandatory for this kind**: `invalid` (which `scc().components` indices
-/// are undersized) is the producing check's result — there's no other channel to learn it.
+/// One `apply()` call now merges exactly one region (`issue.region_id`) — see GitHub issue #99.
 pub struct TeleportRegionMergeStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportRegionMergeStrategy {
@@ -71,6 +70,21 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
+    }
+
+    /// `apply` only consults `needy` (via `MODE_PREFER_NEEDY`) when `target_mode` is actually set
+    /// to `prefer_needy` — requesting `OTHER_INVALID` unconditionally would waste a QC pass'
+    /// worth of computation for every other mode. See GitHub issue #99/#105.
+    fn requirement(&self, params: &StrategyParams) -> RegionNeedsExpansionRequirement {
+        let mode = match params.get(PARAM_TARGET_MODE) {
+            Some(StrategyParamValue::Enum(s)) => s.as_str(),
+            _ => MODE_RANDOM,
+        };
+        if mode == MODE_PREFER_NEEDY {
+            RegionNeedsExpansionRequirement::OTHER_INVALID
+        } else {
+            RegionNeedsExpansionRequirement::empty()
+        }
     }
 
     fn apply(
@@ -83,11 +97,6 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult {
-        let invalid = &issue.invalid;
-        if invalid.is_empty() {
-            return RepairResult::Fixed { score: None };
-        }
-
         let mode = match params.get(PARAM_TARGET_MODE) {
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => MODE_RANDOM,
@@ -106,16 +115,18 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
         };
 
         let scc = maze.analysis.scc(&maze.graph);
+        let region_idx = issue.region_id;
+        let Some(region) = scc.components.get(region_idx) else { return RepairResult::Failed };
+        let needy: HashSet<ComponentId> = issue.other_invalid.iter().copied().collect();
 
-        let any_fixed = region_merge_core::run_merge_loop(invalid, |region_idx, needy| {
-            let region = scc.components.get(region_idx)?;
-            find_merge_candidate(
-                region, region_idx, &scc, &mut *maze, preset_state, mode, direction_mode,
-                prefer_partial, min_distance, needy, rng,
-            )
-        });
+        let Some((_, applied)) = find_merge_candidate(
+            region, region_idx, &scc, &mut *maze, preset_state, mode, direction_mode,
+            prefer_partial, min_distance, &needy, rng,
+        ) else {
+            return RepairResult::Failed;
+        };
 
-        if any_fixed {
+        if applied {
             RepairResult::Fixed { score: None }
         } else {
             RepairResult::Failed
@@ -146,11 +157,9 @@ impl NeighborInfo {
 
 /// Scans only `region`'s own nodes' incident edges — `O(region_size * avg_degree)` rather than
 /// `O(E)` over the whole graph, since `region` is tiny (undersized by definition) while the graph
-/// as a whole (and any one neighboring component) can be the bulk of the maze. This runs once per
-/// region per `run_merge_loop` iteration, so keeping it scoped to the region avoids a full-graph
-/// rescan on every one of potentially many flagged regions. Keeps the first edge found per
-/// direction as the representative endpoint (deterministic given `outgoing_neighbors`/
-/// `incoming_neighbors`'s stable iteration order).
+/// as a whole (and any one neighboring component) can be the bulk of the maze. Keeps the first
+/// edge found per direction as the representative endpoint (deterministic given
+/// `outgoing_neighbors`/`incoming_neighbors`'s stable iteration order).
 fn collect_neighbors(
     region: &[NodeId],
     region_idx: ComponentId,
@@ -425,18 +434,23 @@ mod tests {
         (Maze::new(field, g), nodes)
     }
 
-    fn issue_for(invalid: Vec<usize>) -> RegionNeedsExpansionIssue {
-        RegionNeedsExpansionIssue::new_from_check("test", invalid, StdHashMap::new())
+    /// Resolves `node`'s current region id/members via a fresh `scc()` and builds a single-region
+    /// issue for it, folding `other_invalid` in as the other-undersized-regions layer.
+    fn issue_for_node<T: Tessellation>(maze: &Maze<T>, node: NodeId, other_invalid: Vec<usize>) -> RegionNeedsExpansionIssue {
+        let scc = maze.analysis.scc(&maze.graph);
+        let region_id = scc.component_of(node).unwrap();
+        RegionNeedsExpansionIssue::new_from_check("test", region_id, scc.components[region_id].clone(), other_invalid)
     }
 
     #[test]
-    fn apply_fixed_immediately_when_invalid_is_empty() {
+    fn apply_fails_when_region_no_longer_exists() {
         let (mut maze, _) = maze_4_singletons();
-        let issue = issue_for(vec![]);
+        let scc = maze.analysis.scc(&maze.graph);
+        let issue = RegionNeedsExpansionIssue::new_from_check("test", scc.components.len(), vec![], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let edges_before = maze.graph.edges().count();
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
-        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), edges_before);
     }
 
@@ -447,9 +461,9 @@ mod tests {
         let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
         let mut g = G::new();
         field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let region_idx = maze.analysis.scc(&maze.graph).components.len() - 1;
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &default_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
@@ -460,8 +474,7 @@ mod tests {
         // node[0] and node[3] are not geometrically adjacent (1x4 row, no edges) -- teleport
         // merge must still succeed, unlike ExpandRegionPassageStrategy which requires adjacency.
         let (mut maze, nodes) = maze_4_singletons();
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_TWO_WAY, false, 0.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -476,8 +489,7 @@ mod tests {
     #[test]
     fn one_way_merges_non_adjacent_regions_via_two_distinct_pairs() {
         let (mut maze, nodes) = maze_4_singletons();
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_ONE_WAY, false, 0.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -506,8 +518,7 @@ mod tests {
         // (there's only one node to pick from), degenerating into a two-way-shaped connection --
         // acceptable, since a single-cell region has no room to keep two distinct points apart.
         let (mut maze, nodes) = maze_4_singletons();
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         // High min_distance (unreachable for singleton regions) must still complete, not hang or panic.
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_ONE_WAY, false, 50.0), &PresetState::empty(), &[]);
@@ -537,8 +548,7 @@ mod tests {
     #[test]
     fn one_way_uses_two_distinct_pairs_when_region_has_more_than_one_node() {
         let (mut maze, nodes) = maze_two_2cell_regions();
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(3);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_ONE_WAY, false, 1.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -560,8 +570,7 @@ mod tests {
         let (mut maze, nodes) = maze_4_singletons();
         maze.graph.add_edge(nodes[0], nodes[3], EK::Basic);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         // prefer_partially_connected=true pins target selection to nodes[3]'s region (the only
         // partially-connected one) regardless of MODE_RANDOM's usual pool -- otherwise nodes[1]
@@ -590,8 +599,7 @@ mod tests {
         g.add_bidirectional_edge(nodes[3], nodes[4], EK::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[2]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[2], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_LARGEST, DIRECTION_TWO_WAY, false, 0.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -612,8 +620,7 @@ mod tests {
         g.add_bidirectional_edge(nodes[3], nodes[4], EK::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[2]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[2], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_SMALLEST, DIRECTION_TWO_WAY, false, 0.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -636,8 +643,7 @@ mod tests {
         g.add_edge(nodes[2], nodes[0], EK::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[2]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[2], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_LARGEST, DIRECTION_TWO_WAY, true, 0.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -670,8 +676,7 @@ mod tests {
         g.add_edge(row0[0], row1[0], EK::Basic); // existing outbound partial connection
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(row0[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, row0[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_ONE_WAY, false, 2.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -706,8 +711,7 @@ mod tests {
         g.add_edge(row0[0], row1[0], EK::Basic); // existing outbound partial connection
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(row0[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, row0[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         // min_distance = 100 is unreachable in a 3-cell row (max hop distance is 2).
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_ONE_WAY, false, 100.0), &PresetState::empty(), &[]);
@@ -739,8 +743,7 @@ mod tests {
         g.add_bidirectional_edge(row1[1], row1[2], EK::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(row0[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, row0[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_ONE_WAY, false, 100.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }), "must fall back, not fail, when min_distance is unreachable for a fresh pair");
@@ -770,8 +773,7 @@ mod tests {
         g.add_edge(row0[0], row1[0], EK::Basic); // existing outbound partial connection
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(row0[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, row0[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_TWO_WAY, false, 2.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -800,8 +802,7 @@ mod tests {
         g.add_edge(row0[0], row1[0], EK::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(row0[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, row0[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_TWO_WAY, false, 100.0), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }), "two_way must fall back, not fail, when min_distance is unreachable");
@@ -823,14 +824,12 @@ mod tests {
     #[test]
     fn is_deterministic_for_fixed_seed() {
         let (mut maze_a, nodes_a) = maze_4_singletons();
-        let region_idx_a = maze_a.analysis.scc(&maze_a.graph).component_of(nodes_a[0]).unwrap();
-        let issue_a = issue_for(vec![region_idx_a]);
+        let issue_a = issue_for_node(&maze_a, nodes_a[0], vec![]);
         let mut rng_a = MazeRng::seed_from_u64(99);
         RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue_a, &mut maze_a, &mut SnapshotStack::new(), &mut rng_a, &default_params(), &PresetState::empty(), &[]);
 
         let (mut maze_b, nodes_b) = maze_4_singletons();
-        let region_idx_b = maze_b.analysis.scc(&maze_b.graph).component_of(nodes_b[0]).unwrap();
-        let issue_b = issue_for(vec![region_idx_b]);
+        let issue_b = issue_for_node(&maze_b, nodes_b[0], vec![]);
         let mut rng_b = MazeRng::seed_from_u64(99);
         RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue_b, &mut maze_b, &mut SnapshotStack::new(), &mut rng_b, &default_params(), &PresetState::empty(), &[]);
 
@@ -845,8 +844,7 @@ mod tests {
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(nodes[0]);
 
-        let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0]).unwrap();
-        let issue = issue_for(vec![region_idx]);
+        let issue = issue_for_node(&maze, nodes[0], vec![]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &params_with(MODE_RANDOM, DIRECTION_TWO_WAY, false, 0.0), &PresetState::empty(), &[]);
         // Sanity: without lock, this succeeds (used to contrast below).
@@ -857,8 +855,7 @@ mod tests {
         // succeed via that specific node -- but since candidates are drawn at random from a
         // single-node region, node[0] is the only option, so the merge must fail outright.
         let (mut maze2, nodes2) = maze_4_singletons();
-        let region_idx2 = maze2.analysis.scc(&maze2.graph).component_of(nodes2[0]).unwrap();
-        let issue2 = issue_for(vec![region_idx2]);
+        let issue2 = issue_for_node(&maze2, nodes2[0], vec![]);
         let mut rng2 = MazeRng::seed_from_u64(1);
         let result2 = RepairStrategy::apply(&TeleportRegionMergeStrategy, &issue2, &mut maze2, &mut SnapshotStack::new(), &mut rng2, &params_with(MODE_RANDOM, DIRECTION_TWO_WAY, false, 0.0), &preset_state, &[]);
         assert!(matches!(result2, RepairResult::Failed));
