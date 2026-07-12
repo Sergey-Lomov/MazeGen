@@ -126,20 +126,7 @@ mod tests {
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, Field};
-    use crate::quality_control::rule::apply_commands;
-    use crate::repair::params::StrategyParams;
-
-    fn apply_and_commit<T: Tessellation>(
-        strategy: &impl RepairStrategy<T, MissingEndpointsIssue>,
-        issue: &MissingEndpointsIssue,
-        maze: &mut Maze<T>,
-        rng: &mut dyn RngCore,
-        preset_state: &PresetState,
-    ) -> RepairResult {
-        let (result, commands) = strategy.apply(issue, maze, rng, &StrategyParams::new(), preset_state, &[]);
-        apply_commands(maze, preset_state, commands);
-        result
-    }
+    use crate::repair::strategies::test_utils::apply_and_commit_default as apply_and_commit;
 
     fn issue() -> MissingEndpointsIssue { MissingEndpointsIssue::default() }
 

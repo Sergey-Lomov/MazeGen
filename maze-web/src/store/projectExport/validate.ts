@@ -132,6 +132,27 @@ function validatePairArray<T>(
   });
 }
 
+/** Throws if any entry in `items` shares an `id` with an earlier entry — shared by every
+ * validated array whose entries carry a client-minted id (`postEdit.teleports`,
+ * `quality.rules[].checks`, `presets.teleports`), where a duplicate signals file corruption
+ * rather than something recoverable with a default. `label` names the id field in the error
+ * message (e.g. "teleport id", "localId"). */
+function assertUniqueIds<T>(items: T[], getId: (item: T) => number, label: string, path: string): void {
+  const seen = new Set<number>();
+  for (const item of items) {
+    const id = getId(item);
+    if (seen.has(id)) throw new Error(`Duplicate ${label} ${id} at ${path}`);
+    seen.add(id);
+  }
+}
+
+function validateTeleportDirection(v: unknown, path: string): "forward" | "backward" | "two_way" {
+  const direction = assertString(v, path);
+  if (direction !== "forward" && direction !== "backward" && direction !== "two_way")
+    throw new Error(`Invalid teleport direction at ${path}: ${direction}`);
+  return direction;
+}
+
 // ─── Section validators ──────────────────────────────────────────────────────
 
 function validateTessellationConfig(v: unknown, path = "tessellation.config"): TessellationConfig {
@@ -194,14 +215,11 @@ function validatePostEditEdge(v: unknown, path: string): PostEditEdge {
 
 function validatePostEditTeleportEntry(v: unknown, path: string): PostEditTeleportEntry {
   const obj = assertObject(v, path);
-  const direction = assertString(obj.direction, `${path}.direction`);
-  if (direction !== "forward" && direction !== "backward" && direction !== "two_way")
-    throw new Error(`Invalid post-edit teleport direction at ${path}.direction: ${direction}`);
   return {
     id: assertNumber(obj.id, `${path}.id`),
     from: assertNumber(obj.from, `${path}.from`),
     to: assertNumber(obj.to, `${path}.to`),
-    direction: direction as PostEditTeleportEntry["direction"],
+    direction: validateTeleportDirection(obj.direction, `${path}.direction`),
   };
 }
 
@@ -220,11 +238,7 @@ function validatePostEdit(v: unknown): ProjectFilePostEdit {
   const teleports = obj.teleports != null
     ? assertArray(obj.teleports, "postEdit.teleports").map((t, i) => validatePostEditTeleportEntry(t, `postEdit.teleports[${i}]`))
     : [];
-  const seenTeleportIds = new Set<number>();
-  for (const t of teleports) {
-    if (seenTeleportIds.has(t.id)) throw new Error(`Duplicate teleport id ${t.id} at postEdit.teleports`);
-    seenTeleportIds.add(t.id);
-  }
+  assertUniqueIds(teleports, (t) => t.id, "teleport id", "postEdit.teleports");
   return { edges, meta, teleports };
 }
 
@@ -235,8 +249,6 @@ function validateCoordPair(v: unknown, path: string): [number, number] {
 
 function validatePresetConnectionEntry(v: unknown, path: string): PresetConnectionEntry {
   const obj = assertObject(v, path);
-  const fromArr = assertArray(obj.from, `${path}.from`);
-  const toArr = assertArray(obj.to, `${path}.to`);
   const state = assertString(obj.state, `${path}.state`);
   const source = assertString(obj.source, `${path}.source`);
   if (state !== "wall" && state !== "passage" && state !== "one_way_forward" && state !== "one_way_backward" && state !== "undefined")
@@ -244,8 +256,8 @@ function validatePresetConnectionEntry(v: unknown, path: string): PresetConnecti
   if (source !== "user" && source !== "default")
     throw new Error(`Invalid preset connection source at ${path}.source: ${source}`);
   return {
-    from: [assertNumber(fromArr[0], `${path}.from[0]`), assertNumber(fromArr[1], `${path}.from[1]`)],
-    to: [assertNumber(toArr[0], `${path}.to[0]`), assertNumber(toArr[1], `${path}.to[1]`)],
+    from: validateCoordPair(obj.from, `${path}.from`),
+    to: validateCoordPair(obj.to, `${path}.to`),
     state: state as PresetConnectionEntry["state"],
     source: source as "user" | "default",
   };
@@ -292,11 +304,7 @@ function validateQcRule(v: unknown, path: string, index: number): ProjectFileQcR
   const name = typeof obj.name === "string" ? obj.name : m["quality.default_rule_name"]({ n: index + 1 });
   const kind = typeof obj.kind === "string" ? obj.kind : "";
   const checks = assertArray(obj.checks, `${path}.checks`).map((c, i) => validateCheckInstance(c, `${path}.checks[${i}]`));
-  const seenLocalIds = new Set<number>();
-  for (const c of checks) {
-    if (seenLocalIds.has(c.localId)) throw new Error(`Duplicate localId ${c.localId} at ${path}.checks`);
-    seenLocalIds.add(c.localId);
-  }
+  assertUniqueIds(checks, (c) => c.localId, "localId", `${path}.checks`);
   const strategyId = obj.strategyId === null || obj.strategyId === undefined ? null : assertString(obj.strategyId, `${path}.strategyId`);
   const disabled = assertBoolean(obj.disabled, `${path}.disabled`);
   const ruleDisabled = typeof obj.ruleDisabled === "boolean" ? obj.ruleDisabled : false;
@@ -323,16 +331,11 @@ function validateQcStage(v: unknown, path: string): ProjectFileStage {
 
 function validatePresetTeleportEntry(v: unknown, path: string): PresetTeleportEntry {
   const obj = assertObject(v, path);
-  const fromArr = assertArray(obj.from, `${path}.from`);
-  const toArr = assertArray(obj.to, `${path}.to`);
-  const direction = assertString(obj.direction, `${path}.direction`);
-  if (direction !== "forward" && direction !== "backward" && direction !== "two_way")
-    throw new Error(`Invalid preset teleport direction at ${path}.direction: ${direction}`);
   return {
     id: assertNumber(obj.id, `${path}.id`),
-    from: [assertNumber(fromArr[0], `${path}.from[0]`), assertNumber(fromArr[1], `${path}.from[1]`)],
-    to: [assertNumber(toArr[0], `${path}.to[0]`), assertNumber(toArr[1], `${path}.to[1]`)],
-    direction: direction as PresetTeleportEntry["direction"],
+    from: validateCoordPair(obj.from, `${path}.from`),
+    to: validateCoordPair(obj.to, `${path}.to`),
+    direction: validateTeleportDirection(obj.direction, `${path}.direction`),
   };
 }
 
@@ -440,11 +443,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const teleports = presetsObj.teleports != null
     ? assertArray(presetsObj.teleports, "presets.teleports").map((v, i) => validatePresetTeleportEntry(v, `presets.teleports[${i}]`))
     : [];
-  const seenTeleportIds = new Set<number>();
-  for (const t of teleports) {
-    if (seenTeleportIds.has(t.id)) throw new Error(`Duplicate teleport id ${t.id} at presets.teleports`);
-    seenTeleportIds.add(t.id);
-  }
+  assertUniqueIds(teleports, (t) => t.id, "teleport id", "presets.teleports");
 
   // postEdit
   const postEdit = migrated.postEdit === null || migrated.postEdit === undefined

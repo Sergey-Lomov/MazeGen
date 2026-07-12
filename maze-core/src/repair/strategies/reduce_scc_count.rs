@@ -153,21 +153,7 @@ mod tests {
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, Field};
     use crate::repair::strategies::ExpandRegionPassageStrategy;
-    use crate::quality_control::rule::apply_commands;
-
-    fn apply_and_commit<T: Tessellation>(
-        strategy: &impl RepairStrategy<T, ExcessiveSccCountIssue>,
-        issue: &ExcessiveSccCountIssue,
-        maze: &mut Maze<T>,
-        rng: &mut dyn RngCore,
-        params: &StrategyParams,
-        preset_state: &PresetState,
-        nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
-        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
-        apply_commands(maze, preset_state, commands);
-        result
-    }
+    use crate::repair::strategies::test_utils::apply_and_commit;
 
     // `select_merge_candidates` needs no Maze/Graph/Field setup at all — pure sort/shuffle logic
     // over plain sizes, unlike the rest of this file's tests which all build a real maze just to

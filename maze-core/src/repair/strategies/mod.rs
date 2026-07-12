@@ -27,3 +27,46 @@ pub use reduce_scc_count::ReduceSccCountStrategy;
 pub use remove_teleport::RemoveTeleportStrategy;
 pub use teleport_group_proximity::{TeleportGroupProximityStrategy, PARAM_PRIORITY, PRIORITY_RANDOM, PRIORITY_PROBLEMATIC};
 pub use weighted_region_merge::{WeightedRegionMergeStrategy, SLOT_MERGE_TARGET as WEIGHTED_REGION_MERGE_SLOT_MERGE_TARGET};
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use rand::RngCore;
+    use crate::Maze;
+    use crate::space::Tessellation;
+    use crate::generation::PresetState;
+    use crate::repair::params::StrategyParams;
+    use crate::repair::result::RepairResult;
+    use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
+    use crate::quality_control::rule::apply_commands;
+    use crate::quality_control::issue::IssueRequirement;
+
+    /// Calls `strategy.apply` then immediately applies the returned commands to `maze` — mirrors
+    /// `Rule::dispatch_repair_typed`'s own apply-then-commit sequencing (GitHub issue #118), so
+    /// test assertions on `maze` after the call see the fully-committed result.
+    pub fn apply_and_commit<T: Tessellation, I: IssueRequirement>(
+        strategy: &impl RepairStrategy<T, I>,
+        issue: &I,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        params: &StrategyParams,
+        preset_state: &PresetState,
+        nested: &[NestedStrategyConfig<T>],
+    ) -> RepairResult {
+        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
+        apply_commands(maze, preset_state, commands);
+        result
+    }
+
+    /// Convenience wrapper for strategies whose tests never need param overrides or nested
+    /// strategies — same commit sequencing as `apply_and_commit`, with `StrategyParams::new()`
+    /// and an empty `nested` slice filled in.
+    pub fn apply_and_commit_default<T: Tessellation, I: IssueRequirement>(
+        strategy: &impl RepairStrategy<T, I>,
+        issue: &I,
+        maze: &mut Maze<T>,
+        rng: &mut dyn RngCore,
+        preset_state: &PresetState,
+    ) -> RepairResult {
+        apply_and_commit(strategy, issue, maze, rng, &StrategyParams::new(), preset_state, &[])
+    }
+}

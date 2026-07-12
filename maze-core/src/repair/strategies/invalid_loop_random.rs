@@ -103,21 +103,7 @@ mod tests {
     use crate::quality_control::checks::MinLoopLengthCheck;
     use crate::repair::params::{build_params, StrategyParams};
     use crate::generation::PresetState;
-    use crate::quality_control::rule::apply_commands;
-
-    fn apply_and_commit<T: Tessellation>(
-        strategy: &impl RepairStrategy<T, InvalidLoopIssue>,
-        issue: &InvalidLoopIssue,
-        maze: &mut Maze<T>,
-        rng: &mut dyn RngCore,
-        params: &StrategyParams,
-        preset_state: &PresetState,
-        nested: &[NestedStrategyConfig<T>],
-    ) -> RepairResult {
-        let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
-        apply_commands(maze, preset_state, commands);
-        result
-    }
+    use crate::repair::strategies::test_utils::apply_and_commit;
 
     fn maze_with_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();

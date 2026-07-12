@@ -1,134 +1,19 @@
 import type { StateCreator } from "zustand";
-import { generateMaze, getAvailableChecks, getAvailableStrategies } from "../../wasm/mazeService";
+import { getAvailableChecks, getAvailableStrategies } from "../../wasm/mazeService";
 import { initWasm } from "../../wasm/wasmLoader";
-import type { InitialGenerationConfig, GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot, CheckDescriptor, StrategyConfig, StrategyDescriptor } from "../../wasm/types";
-import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
-import { configAllCells } from "../../pixi/tessellationCells";
-import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports } from "../../pixi/postEditUtils";
-import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot } from "../storeTypes";
-import type { MazeStore, GenerationState, GenerationActions, PostEditTool, QcRuleState, CheckInstance, RepairStageState, NestedStrategyState, PathSegment } from "../storeTypes";
-import { activeTessellationOf, buildResetMazeState, debugStaleOf } from "../storeHelpers";
-import { warmCartesianCache } from "../../pixi/cartesianCache";
-import * as m from "~/paraglide/messages";
+import type { InitialGenerationConfig } from "../../wasm/types";
+import { entriesForSlot } from "../storeTypes";
+import type { MazeStore, GenerationState, GenerationActions, QcRuleState, NestedStrategyState, PathSegment } from "../storeTypes";
+import { debugStaleOf, buildResetMazeState } from "../storeHelpers";
+import {
+  resolveCheckKind, isTypeAlreadyActive, defaultParamsFor, buildDefaultNestedStrategies,
+  newRule, newStage, appendRuleToStage, updateNestedAt,
+} from "./generationSliceHelpers";
+import { generateWithSeed } from "./generateConfigBuilder";
 
-// Rule-kind matching across the store (addCheck/newRule below, RulesColumn's candidate filter,
-// useQualityViewModel) all assume one issue kind per check and read issue_kinds[0]. No current
-// check produces more than one kind, but nothing enforces it at the descriptor level — warn
-// loudly instead of silently dropping the other kinds if that assumption is ever violated.
-function resolveCheckKind(descriptor: CheckDescriptor): string {
-  if (descriptor.issue_kinds.length > 1) {
-    console.error(`check "${descriptor.id}" produces multiple issue kinds (${descriptor.issue_kinds.join(", ")}); rules only support one kind per check — using "${descriptor.issue_kinds[0]}"`);
-  }
-  return descriptor.issue_kinds[0];
-}
-
-// Most checks may only have one active instance at a time, across all rules — only checks with
-// `allow_multiple_instances` (none currently — see GitHub issue #60, retired) can have several
-// independent configurations active simultaneously. Exported so component-layer
-// candidate filters (RulesColumn, CheckSelectDialog) apply the exact same predicate the store
-// itself enforces, instead of each re-implementing it.
-export function isTypeAlreadyActive(rules: QcRuleState[], typeId: string): boolean {
-  return rules.some((g) => g.checks.some((c) => c.typeId === typeId));
-}
-
-function defaultParamsFor(descriptor: { params: CheckDescriptor["params"] }): Record<string, string> {
-  return Object.fromEntries(
-    descriptor.params.map((p) => {
-      const k = p.kind;
-      const def = k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
-      return [p.id, def];
-    })
-  );
-}
-
-// Auto-fills every mandatory nested slot (`min >= 1`) of `strategyId` with the first available
-// strategy that handles the slot's kind, recursively — so a nested-capable strategy is never left
-// in a state where its own `apply()` is guaranteed to fail for lack of a nested assignment (see
-// GitHub issue #68's `ReduceSccCountStrategy`). "First compatible candidate" is a placeholder the
-// user is expected to review/change on the rule's own card (`NestedStrategyPanel`'s edit button)
-// — not a considered recommendation. A slot with no compatible candidate at all is left unfilled
-// (defensive: shouldn't happen for any shipped strategy, but this must not crash if it did).
-// `depth` guards against a future registry addition where two nested-capable strategies end up
-// mutually compatible (A's slot resolves to B, B's slot resolves back to A) — nothing in the
-// registry shape itself rules that out, so this recursion isn't otherwise provably finite.
-function buildDefaultNestedStrategies(strategyId: string, availableStrategies: StrategyDescriptor[], depth = 0): NestedStrategyState[] {
-  if (depth >= MAX_NESTED_STRATEGY_DEPTH) return [];
-  const descriptor = availableStrategies.find((s) => s.id === strategyId);
-  if (!descriptor) return [];
-  return descriptor.nested_slots
-    .filter((slot) => slot.min >= 1)
-    .map((slot): NestedStrategyState | undefined => {
-      const candidate = availableStrategies.find((s) => s.handles === slot.kind);
-      if (!candidate) return undefined;
-      return {
-        slotId: slot.slot_id,
-        strategyId: candidate.id,
-        params: defaultParamsFor(candidate),
-        nested: buildDefaultNestedStrategies(candidate.id, availableStrategies, depth + 1),
-      };
-    })
-    .filter((n): n is NestedStrategyState => n !== undefined);
-}
-
-// Default rule name = the issue kind's own label (the same text shown in IssueSelectDialog's
-// picker), mirroring `qualityI18n.resolveIssueLabel`'s fallback to the raw kind — duplicated
-// here rather than imported to keep the store layer free of component-layer imports.
-function defaultRuleName(kind: string): string {
-  const fn = (m as unknown as Record<string, (() => string) | undefined>)[`issue.${kind}.label`];
-  return fn?.() ?? kind;
-}
-
-// `name` is plain user-editable text seeded from the current locale at creation time (renaming
-// UI not implemented yet) — it does not re-translate later, same as any other user-entered
-// string would not. `id` is a UUID, not a counter-derived string — a module-level counter resets
-// on store re-initialization (HMR, project load, undo/redo replay) while previously-created rules
-// (e.g. from an imported project) keep their old ids, so a fresh counter can mint an id that
-// collides with one already in use. `nextLocalCheckId` starts at `checks.length` (the lowest id
-// not already in use among the member checks passed in at creation).
-function newRule(kind: string, checks: CheckInstance[], strategyId: string | null, disabled: boolean, availableStrategies: StrategyDescriptor[]): QcRuleState {
-  return {
-    id: `rule_${crypto.randomUUID()}`,
-    name: defaultRuleName(kind),
-    kind,
-    checks,
-    nextLocalCheckId: checks.length,
-    strategyId,
-    disabled,
-    ruleDisabled: false,
-    nestedStrategies: strategyId ? buildDefaultNestedStrategies(strategyId, availableStrategies) : [],
-  };
-}
-
-// Default stage name — the very first stage (index 0) is seeded as "Путевые точки" ("Waypoints"),
-// since it's the one every fresh project starts with and typically holds the endpoint-placement
-// rules; later stages fall back to "Stage N" by creation-order position, not renumbered on
-// rename/reorder (same pattern as `defaultRuleName`'s "Rule N" fallback in `validateQcRule`, see
-// projectExport). `id` is a UUID for the same reason `newRule`'s `id` is — see that function's
-// doc comment.
-function newStage(index: number, ruleIds: string[] = []): RepairStageState {
-  return {
-    id: `stage_${crypto.randomUUID()}`,
-    name: index === 0 ? m["quality.default_stage_name"]() : `Stage ${index + 1}`,
-    ruleIds,
-    disabled: false,
-  };
-}
-
-// Appends `ruleId` to a stage's `ruleIds` — the "new rule goes at the end" placement used by
-// `addCheck` (singleton path), `createRule`, and `removeCheckFromRule`'s new-singleton path.
-// `targetStageId`, when given and resolving to a known stage, receives the rule (the per-stage
-// "+ Add rule" toolbar button — see RulesColumn); otherwise falls back to the last stage. `stages`
-// can legitimately be empty (there is no "at least one stage" invariant — a stage is only ever
-// created explicitly via `addStage`, or implicitly here) — in that case a fresh stage is created
-// to hold the new rule, rather than the rule ending up in no stage at all.
-function appendRuleToStage(stages: RepairStageState[], ruleId: string, targetStageId?: string): RepairStageState[] {
-  if (stages.length === 0) return [newStage(0, [ruleId])];
-  if (targetStageId && stages.some((s) => s.id === targetStageId)) {
-    return stages.map((s) => s.id === targetStageId ? { ...s, ruleIds: [...s.ruleIds, ruleId] } : s);
-  }
-  return stages.map((s, i) => i === stages.length - 1 ? { ...s, ruleIds: [...s.ruleIds, ruleId] } : s);
-}
+export { isTypeAlreadyActive } from "./generationSliceHelpers";
+export { fieldConfigToWasm, buildGenerateConfig, generateWithSeed, buildExactGenerateCallPayload, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
+export type { StoreSet, StoreGet } from "./generateConfigBuilder";
 
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (set, get) => ({
   nodes: [],
@@ -299,7 +184,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       .filter((d) => d.allow_multiple_instances || !isTypeAlreadyActive(state.rules, d.id));
     if (descriptors.length === 0) return {};
     const checkKind = resolveCheckKind(descriptors[0]);
-    const checks: CheckInstance[] = descriptors.map((descriptor, i) => ({
+    const checks = descriptors.map((descriptor, i) => ({
       localId: i,
       typeId: descriptor.id,
       params: initialCheckParams?.[descriptor.id] ?? defaultParamsFor(descriptor),
@@ -307,13 +192,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     const strategyParams = { ...state.strategyParams };
     if (strategyId && !strategyParams[strategyId]) {
       const strategyDescriptor = state.availableStrategies.find((s) => s.id === strategyId);
-      strategyParams[strategyId] = initialStrategyParams ?? Object.fromEntries(
-        (strategyDescriptor?.params ?? []).map((p) => {
-          const k = p.kind;
-          const def = k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
-          return [p.id, def];
-        })
-      );
+      strategyParams[strategyId] = initialStrategyParams ?? defaultParamsFor({ params: strategyDescriptor?.params ?? [] });
     }
     const rule = newRule(checkKind, checks, strategyId, false, state.availableStrategies);
     const stages = appendRuleToStage(state.stages, rule.id, targetStageId);
@@ -384,40 +263,25 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   // The same `slot_id` string appearing at two different depths never collides, since each
   // lookup only ever searches within its own parent's list, never the whole tree.
   setNestedStrategy: (ruleId, path, strategyId) => set((state) => {
-    function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
-      const [{ slotId, index }, ...rest] = remainingPath;
-      const siblings = entriesForSlot(list, slotId);
-      const target = siblings[index];
-      if (!target) return list; // stale path (entry was removed elsewhere) — no-op.
-      if (rest.length === 0) {
-        if (strategyId === null) return list.filter((n) => n !== target);
-        const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
-        const params = descriptor ? defaultParamsFor(descriptor) : {};
-        const nested = buildDefaultNestedStrategies(strategyId, state.availableStrategies);
-        return list.map((n) => n === target ? { slotId, strategyId, params, nested } : n);
-      }
-      return list.map((n) => n === target ? { ...n, nested: updateList(n.nested, rest) } : n);
-    }
+    const transform = (target: NestedStrategyState): NestedStrategyState[] => {
+      if (strategyId === null) return [];
+      const descriptor = state.availableStrategies.find((s) => s.id === strategyId);
+      const params = descriptor ? defaultParamsFor(descriptor) : {};
+      const nested = buildDefaultNestedStrategies(strategyId, state.availableStrategies);
+      return [{ slotId: target.slotId, strategyId, params, nested }];
+    };
     return {
-      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
+      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, transform) } : g),
       debugStale: debugStaleOf(state),
     };
   }),
 
-  setNestedStrategyParam: (ruleId, path, paramId, value) => set((state) => {
-    function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
-      const [{ slotId, index }, ...rest] = remainingPath;
-      const siblings = entriesForSlot(list, slotId);
-      const target = siblings[index];
-      if (!target) return list;
-      if (rest.length === 0) return list.map((n) => n === target ? { ...n, params: { ...n.params, [paramId]: value } } : n);
-      return list.map((n) => n === target ? { ...n, nested: updateList(n.nested, rest) } : n);
-    }
-    return {
-      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
-      debugStale: debugStaleOf(state),
-    };
-  }),
+  setNestedStrategyParam: (ruleId, path, paramId, value) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId
+      ? { ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, (target) => [{ ...target, params: { ...target.params, [paramId]: value } }]) }
+      : g),
+    debugStale: debugStaleOf(state),
+  })),
 
   // Appends a fresh entry (defaulted to the first strategy handling `slotKind`) after every
   // existing sibling sharing the target slot's `slotId` — the target slot is `path`'s last
@@ -450,19 +314,12 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   // by one, since `index` is a list position — see `PathSegment`), unlike
   // `setNestedStrategy(..., null)` which is reserved for clearing a single-entry slot back to
   // "unset" rather than shrinking a multi-entry slot's list.
-  removeNestedStrategy: (ruleId, path) => set((state) => {
-    function updateList(list: NestedStrategyState[], remainingPath: PathSegment[]): NestedStrategyState[] {
-      const [{ slotId, index }, ...rest] = remainingPath;
-      const target = entriesForSlot(list, slotId)[index];
-      if (!target) return list;
-      if (rest.length === 0) return list.filter((n) => n !== target);
-      return list.map((n) => n === target ? { ...n, nested: updateList(n.nested, rest) } : n);
-    }
-    return {
-      rules: state.rules.map((g) => g.id === ruleId ? { ...g, nestedStrategies: updateList(g.nestedStrategies, path) } : g),
-      debugStale: debugStaleOf(state),
-    };
-  }),
+  removeNestedStrategy: (ruleId, path) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId
+      ? { ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, () => []) }
+      : g),
+    debugStale: debugStaleOf(state),
+  })),
 
   toggleStrategyDisabled: (ruleId) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId ? { ...g, disabled: !g.disabled } : g),
@@ -616,231 +473,3 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
   setRepairTimeBudgetSecs: (v) => set({ repairTimeBudgetSecs: v }),
 });
-
-export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
-export type StoreGet = () => MazeStore;
-
-export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConfig {
-  const t = cfg.type;
-  const tessellation_type = t.startsWith("hex") ? "hex" as const
-    : (t.startsWith("tri") || t.startsWith("triangle")) ? "tri" as const
-    : "square" as const;
-  const points = configAllCells(cfg);
-  return { tessellation_type, points };
-}
-
-// Recursively builds one nested `StrategyConfig` from a `NestedStrategyState` — mirrors
-// `ruleToConfig`'s param-filtering (only descriptor-known param ids are forwarded), plus its own
-// `slot_id` and recursively-built `nested` list. Unlike top-level strategies, nested params are
-// per-node (`n.params`), not looked up in the global `strategyParams` map — see
-// `NestedStrategyState`'s doc comment for why (two rules must be able to configure the same
-// nested strategy independently). `depth` guards against a pathologically deep tree (e.g. loaded
-// from a project file) blowing the call stack on every `generate()` call — see
-// `MAX_NESTED_STRATEGY_DEPTH`'s doc comment.
-//
-// `NESTED_STRATEGY_WEIGHT_PARAM_ID` is forwarded unconditionally, alongside whatever the
-// descriptor declares — a dispatcher like `weighted_region_merge` reads a nested entry's weight
-// straight out of its own `param_overrides["weight"]` (`Specs/repair.md`'s "WeightedRegionMerge-
-// Strategy" section), deliberately NOT as a declared `StrategyParam` of the nested strategy
-// itself (weight is the *dispatcher's* convention, not the nested strategy's own knob) — so the
-// normal "only descriptor-known ids" filter would silently drop it.
-export const NESTED_STRATEGY_WEIGHT_PARAM_ID = "weight";
-
-function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): StrategyConfig {
-  const descriptor = state.availableStrategies.find((s) => s.id === n.strategyId);
-  const params: Record<string, string> = {};
-  if (descriptor) {
-    for (const p of descriptor.params) {
-      if (n.params[p.id] !== undefined) params[p.id] = n.params[p.id];
-    }
-  }
-  if (n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID] !== undefined) {
-    params[NESTED_STRATEGY_WEIGHT_PARAM_ID] = n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID];
-  }
-  return {
-    id: n.strategyId,
-    params,
-    slot_id: n.slotId,
-    nested: depth >= MAX_NESTED_STRATEGY_DEPTH ? [] : n.nested.map((child) => nestedToConfig(state, child, depth + 1)),
-  };
-}
-
-// Builds one `QcRuleConfig` from a `QcRuleState` — `ruleDisabled` filtering happens in
-// `buildGenerateConfig` before this is called (per-stage, per rule), not here.
-function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: { local_id: string; type_id: string; params: Record<string, string> }[]; strategy: StrategyConfig | null } {
-  let strategy: StrategyConfig | null = null;
-  if (g.strategyId && !g.disabled) {
-    const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
-    const paramOverrides = state.strategyParams[g.strategyId] ?? {};
-    const params: Record<string, string> = {};
-    if (descriptor) {
-      for (const p of descriptor.params) {
-        if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
-      }
-    }
-    const nested = g.nestedStrategies.map((n) => nestedToConfig(state, n));
-    strategy = { id: g.strategyId, params, ...(nested.length > 0 ? { nested } : {}) };
-  }
-  // Order preserved from `QcRuleState.checks` — no resorting, so serialization/test
-  // determinism doesn't depend on Map/object iteration order at this layer.
-  const checks = g.checks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params }));
-  return { id: g.id, checks, strategy };
-}
-
-export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
-  if (state.isEditingField && state.fieldPoints.size < 2) return null;
-  const ruleById = new Map(state.rules.map((g) => [g.id, g]));
-  // A `disabled` stage is omitted entirely — as if it didn't exist for this run, same as a
-  // `ruleDisabled` rule being omitted from its stage's `rules` below (not sent with an empty
-  // `rules: []`, which would still be a real, dispatchable-if-non-empty stage entry).
-  // `ruleDisabled` filtering happens here, per stage, before any config crosses the wasm
-  // boundary — a disabled rule is simply absent from `stage.rules`, not sent as `strategy: null`
-  // (that shape is reserved for a rule that legitimately has no strategy assigned). Every
-  // remaining rule is sent, including ones with no strategy — `strategy: null` for those, not an
-  // omitted entry. The wasm layer still needs the rule's check composition to merge/attribute
-  // issues correctly even when nothing repairs them (see Specs/repair.md). An empty stage after
-  // this filtering is sent as-is (`rules: []`) — core handles a stage with no dispatchable rules
-  // as a trivial degenerate case (see Specs/repair.md's "Stages" section).
-  const stages = state.stages
-    .filter((s) => !s.disabled)
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      rules: s.ruleIds
-        .map((id) => ruleById.get(id))
-        .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled)
-        .map((g) => ruleToConfig(state, g)),
-    }));
-  const activeTessellation = activeTessellationOf(state);
-  const customPts = state.isEditingField ? state.fieldPoints : undefined;
-  const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
-  const validPresets = Array.from(state.presetConnections.values())
-    .filter(e => e.state !== "undefined" && !invalidKeys.has(`${e.from[0]},${e.from[1]}-${e.to[0]},${e.to[1]}`))
-    .map(e => ({ from: e.from, to: e.to, state: e.state as import("../../wasm/types").PresetConnectionState }));
-  const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, activeTessellation, customPts);
-  const validTeleportPresets = state.presetTeleports
-    .filter(t => !invalidTeleportIds.has(t.id))
-    .map(t => ({ from: t.from, to: t.to, state: presetTeleportEntryToState(t.direction) }));
-  const lockedEntries = new Map(state.lockedNodes);
-  for (const key of state.autoLockedNodes) {
-    if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
-  }
-  const locked_nodes = Array.from(lockedEntries.entries()).map(([key, kind]) => {
-    const [x, y] = key.split(",").map(Number);
-    return { point: [x, y] as [number, number], kind };
-  });
-  const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, activeTessellation, customPts);
-  return {
-    tessellation: fieldConfigToWasm(activeTessellation),
-    stages,
-    ...(state.repairMaxIterations != null ? { repair_max_iterations: state.repairMaxIterations } : {}),
-    ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
-    initial: state.initialConfig,
-    elements: state.elementsConfig,
-    preset_connections: [...validPresets, ...validTeleportPresets],
-    locked_nodes,
-    ...(state.presetStart && !invalidMarkers.start ? { preset_start: state.presetStart } : {}),
-    ...(state.presetGenSource ? { preset_gen_source: state.presetGenSource } : {}),
-    ...(state.presetFinish && !invalidMarkers.finish ? { preset_finish: state.presetFinish } : {}),
-  };
-}
-
-/** Applies QC experiment mode's config overrides in place — no preset protection at all
- *  (including locked nodes, manual or auto-computed): the whole point is letting QC/repair
- *  freely rework a hand-crafted preset setup. Shared by `generateWithSeed` (the real call) and
- *  `buildExactGenerateCallPayload` (the debug-export call), so both stay in sync. */
-function applyQcExperimentOverrides(config: GenerateConfig): void {
-  config.qc_experiment = true;
-  config.locked_nodes = [];
-}
-
-export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, skipConfirmPostEdit = false, qcExperiment = false): void {
-  const state = get();
-  if (state.isEditingField && state.fieldPoints.size < 2) {
-    set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
-    return;
-  }
-  const activeTessellation = activeTessellationOf(state);
-  const debugMode = state.debugMode;
-  const config = buildGenerateConfig(state);
-  if (!config) return;
-  if (qcExperiment) {
-    applyQcExperimentOverrides(config);
-  } else if (debugMode) {
-    config.debug = true;
-  }
-  try {
-    const snapshot = generateMaze(seed, config);
-    warmCartesianCache(activeTessellation);
-    let debugSnapshot: GenerationStepsSnapshot | null = null;
-    if (debugMode && snapshot.debug_steps.length > 0) {
-      // Step 0 is a client-side synthetic "empty graph" state; WASM only emits steps where edges were added.
-      const steps = [{ edges: [], active_nodes: [], current_src: null }, ...snapshot.debug_steps];
-      debugSnapshot = { nodes: snapshot.nodes, steps };
-    }
-    const lastStep = debugSnapshot ? debugSnapshot.steps.length - 1 : 0;
-    const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges);
-    set({
-      nodes: snapshot.nodes,
-      edges: snapshot.edges,
-      start: snapshot.start,
-      finish: snapshot.finish,
-      navNodes: snapshot.nav_nodes,
-      navEdges: snapshot.nav_edges,
-      graphAnalytics: snapshot.graph_analytics,
-      selectedNode: null,
-      issues: snapshot.issues,
-      error: null,
-      activeTessellationConfig: activeTessellation,
-      nodeStats: snapshot.node_stats,
-      edgeStats: snapshot.edge_stats,
-      teleportEdgeStats: snapshot.teleport_edge_stats,
-      routeInfo: snapshot.route_info,
-      timing: snapshot.timing,
-      generationStatus: "done",
-      debugSnapshot,
-      debugStep: lastStep,
-      debugStale: false,
-      postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(snapshot.edges),
-      postEditDraftTeleports: generatedTeleports,
-      _nextPostEditTeleportId: nextTeleportId,
-      postEditTeleportPendingFrom: null,
-      postEditEdges: null,
-      postEditTeleportEdges: [],
-      postEditMeta: null,
-      postEditAnalytics: null,
-      postEditDraftMeta: { start: snapshot.start, finish: snapshot.finish },
-      postEditTool: "wall" as PostEditTool,
-      postEditDirty: false,
-      mazeDirty: true,
-      _generatedStart: snapshot.start,
-      _generatedFinish: snapshot.finish,
-    });
-    if (!skipConfirmPostEdit) void get().confirmPostEdit();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    set({ error: msg, generationStatus: "error" });
-  }
-}
-
-/**
- * Builds the exact `{ seed, config }` payload that the last actual `generateWithSeed` call sent
- * into `generateMaze` -- same `buildGenerateConfig(state)` call, same seed resolution (the last
- * seed actually used, falling back to the configured one), and `lastUsedQcExperiment` (not the
- * live `qcExperiment` toggle, which may have been flipped since without a new run happening) --
- * but instead of calling the wasm core, returns it for download. Lets a bug report attach the
- * literal input the core received, without anyone hand-reconstructing the JS->wasm config-building
- * logic (tessellation point centering/ordering, rule composition, etc.) by hand and risking drift
- * from the real code path. Returns `null` under the same precondition `generateWithSeed` bails out on.
- */
-export function buildExactGenerateCallPayload(get: StoreGet): { seed: number; config: GenerateConfig } | null {
-  const state = get();
-  if (state.isEditingField && state.fieldPoints.size < 2) return null;
-  const seed = state.lastUsedSeed ?? state.seed;
-  const config = buildGenerateConfig(state);
-  if (!config) return null;
-  if (state.lastUsedQcExperiment) {
-    applyQcExperimentOverrides(config);
-  }
-  return { seed, config };
-}

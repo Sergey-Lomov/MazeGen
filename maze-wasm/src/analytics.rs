@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use rand::SeedableRng;
+use serde::Serialize;
+use wasm_bindgen::prelude::*;
 use maze_core::random::MazeRng;
 use maze_core::{
     space::Tessellation,
@@ -9,12 +11,17 @@ use maze_core::{
     },
     quality_control::issue_kinds::canonical_cycle_key,
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
+    graph::{Graph, EdgeKind},
+    ids::IdGenerator,
+    space::{Field, SquarePoint, HexPoint, TriPoint},
     Maze,
 };
 use crate::dto::{
     EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
     NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
+    ComputeAnalyticsConfig, PostEditEdgeDto,
 };
+use crate::generation_config::{self, GenerateConfig, TessellationType};
 
 /// Compute analytics snapshot from a fully-built maze (GraphInput).
 /// Independent of the generation pipeline — accepts any Maze<T> with a populated graph.
@@ -262,12 +269,134 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     })
 }
 
+#[wasm_bindgen]
+pub fn compute_analytics(config: JsValue) -> Result<JsValue, JsValue> {
+    let cfg: ComputeAnalyticsConfig = serde_wasm_bindgen::from_value(config)
+        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
+    dispatch_compute_analytics(cfg)
+}
+
+fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, JsValue> {
+    match cfg.tessellation.tessellation_type {
+        TessellationType::Square => {
+            let pts: Vec<SquarePoint> = cfg.tessellation.points.iter()
+                .map(|&[x, y]| SquarePoint { x, y }).collect();
+            run_compute_analytics::<maze_core::space::SquareTessellation>(cfg, pts, |p: SquarePoint| (p.x, p.y))
+        }
+        TessellationType::Hex => {
+            let pts: Vec<HexPoint> = cfg.tessellation.points.iter()
+                .map(|&[q, r]| HexPoint { q, r }).collect();
+            run_compute_analytics::<maze_core::space::HexTessellation>(cfg, pts, |p: HexPoint| (p.q, p.r))
+        }
+        TessellationType::Tri => {
+            let pts: Vec<TriPoint> = cfg.tessellation.points.iter()
+                .map(|&[col, row]| TriPoint { col, row }).collect();
+            run_compute_analytics::<maze_core::space::TriTessellation>(cfg, pts, |p: TriPoint| (p.col, p.row))
+        }
+    }
+}
+
+/// Wraps each analytics-only check in its own synthetic singleton rule — see the call site's
+/// doc comment in `run_compute_analytics` for why. Split out so the wrapping itself (one rule
+/// per check, distinct ids, no strategy) can be unit-tested without going through `JsValue`.
+// Wraps every active check in its own singleton rule, all under one synthetic stage — this path
+// never dispatches repair (analytics-only, `QualityControlEngine::run_check_only`, see GitHub
+// issue #106), so stage granularity has no observable effect here; a single stage is the
+// simplest shape satisfying `build_qc_and_repair`'s "every strategy-bearing rule must be in a
+// stage" invariant (moot here, since no rule has a strategy).
+fn analytics_only_stages(checks: Vec<generation_config::CheckInstanceConfig>) -> Vec<generation_config::StageConfig> {
+    let rules: Vec<generation_config::QcRuleConfig> = checks.into_iter()
+        .enumerate()
+        .map(|(i, instance)| generation_config::QcRuleConfig {
+            id: format!("analytics_only_{i}"),
+            checks: vec![instance],
+            strategy: None,
+        })
+        .collect();
+    vec![generation_config::StageConfig { id: "analytics_only_stage".to_string(), name: "Analytics".to_string(), rules }]
+}
+
+/// Builds post-edit's passages (and read-only pass-through teleports) into `graph` — split out
+/// from `run_compute_analytics` so the edge-kind matching itself can be unit-tested without a
+/// `JsValue`/wasm context. "basic" adds both directions (bidirectional passage); "one_way" adds
+/// only `from→to` (direction already normalized by the caller); "teleport" adds a single directed
+/// `EdgeKind::Teleport` edge — a two-way teleport arrives as two separate "teleport" entries (one
+/// per direction), matching how the web side extracts them 1:1 from the generated `EdgeDto` list
+/// (see `extractTeleportEdges`), the same way "one_way" already represents only one direction
+/// per entry unlike "basic".
+fn build_graph_from_post_edit_edges(graph: &mut Graph, edges: &[PostEditEdgeDto]) -> Result<(), String> {
+    for e in edges {
+        let from_id = e.from as u64;
+        let to_id   = e.to   as u64;
+        match e.kind.as_str() {
+            "basic" => {
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
+                graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
+            }
+            "one_way" => {
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
+            }
+            "teleport" => {
+                graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
+            }
+            other => return Err(format!("unknown edge kind: {other}")),
+        }
+    }
+    Ok(())
+}
+
+fn run_compute_analytics<T: Tessellation + 'static>(
+    cfg: ComputeAnalyticsConfig,
+    pts: Vec<T::Point>,
+    point_to_xy: impl Fn(T::Point) -> (i32, i32),
+) -> Result<JsValue, JsValue>
+where
+    T::Point: Copy,
+{
+    if pts.is_empty() {
+        return Err(JsValue::from_str("tessellation points must not be empty"));
+    }
+
+    let mut ids = IdGenerator::new();
+    let field = Field::<T>::new(pts, &mut ids)
+        .map_err(|e| JsValue::from_str(e))?;
+
+    let mut graph = Graph::new();
+    field.build_nodes(&mut graph);
+
+    build_graph_from_post_edit_edges(&mut graph, &cfg.edges)
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    let mut maze = Maze::<T>::new(field, graph);
+    maze.meta.start  = cfg.start.map(|id| id as u64);
+    maze.meta.finish = cfg.finish.map(|id| id as u64);
+
+    // Build QC engine from config (no repair). Each active check becomes its own synthetic
+    // singleton rule (id/kind discarded immediately below) — `build_qc_and_repair` is rule-driven
+    // (see GitHub issue #60) and no longer accepts a flat check list, but this path has no real
+    // rules of its own and never dispatches repair (see `build_analytics_snapshot`'s
+    // `run_check_only` path, GitHub issue #106), so a throwaway one-check-per-rule wrapper is the
+    // simplest way to satisfy that shape without rule semantics actually mattering here.
+    let stages = analytics_only_stages(cfg.checks);
+    let qc_config = GenerateConfig {
+        tessellation: cfg.tessellation,
+        stages,
+        ..GenerateConfig::default()
+    };
+    let (qc_engine, check_types) = crate::runner::build_qc_and_repair_with_types::<T>(&qc_config)
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, point_to_xy)
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use maze_core::graph::EdgeKind;
-    use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
-    use maze_core::{Graph, IdGenerator};
+    use maze_core::space::{SquareTessellation, SquarePoint, square_rect};
     use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
 
     #[test]
@@ -355,5 +484,90 @@ mod tests {
         // a region, which is always "path" by definition.
         assert!(!snapshot.graph_analytics.region_classes.is_empty());
         assert!(snapshot.graph_analytics.region_classes.values().all(|c| c == "path"));
+    }
+
+    #[test]
+    fn analytics_only_stages_wraps_each_check_in_its_own_singleton_rule() {
+        let checks = vec![
+            generation_config::CheckInstanceConfig { local_id: "a".to_string(), type_id: "missing_endpoints".to_string(), params: HashMap::new() },
+            generation_config::CheckInstanceConfig { local_id: "b".to_string(), type_id: "unreachable_finish".to_string(), params: HashMap::new() },
+        ];
+        let stages = analytics_only_stages(checks);
+        assert_eq!(stages.len(), 1, "analytics-only path uses one synthetic stage");
+        let rules = &stages[0].rules;
+        assert_eq!(rules.len(), 2);
+        assert_ne!(rules[0].id, rules[1].id, "each synthetic rule needs a distinct id");
+        for rule in rules {
+            assert_eq!(rule.checks.len(), 1, "one check per synthetic rule");
+            assert!(rule.strategy.is_none(), "analytics-only path never dispatches repair");
+        }
+    }
+
+    fn edge(from: u32, to: u32, kind: &str) -> PostEditEdgeDto {
+        PostEditEdgeDto { from, to, kind: kind.to_string() }
+    }
+
+    fn graph_with_nodes(ids: &[u64]) -> Graph {
+        let mut graph = Graph::new();
+        for &id in ids { graph.add_node(id); }
+        graph
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_basic_adds_both_directions() {
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "basic")]).unwrap();
+        assert!(graph.edge_between(1, 2).is_some());
+        assert!(graph.edge_between(2, 1).is_some());
+        assert_eq!(graph.edges().count(), 2);
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_one_way_adds_only_forward() {
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "one_way")]).unwrap();
+        assert!(graph.edge_between(1, 2).is_some());
+        assert!(graph.edge_between(2, 1).is_none());
+        assert_eq!(graph.edges().count(), 1);
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_teleport_adds_only_forward_as_teleport_kind() {
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "teleport")]).unwrap();
+        let e = graph.edges().find(|e| e.from == 1 && e.to == 2).expect("teleport edge must exist");
+        assert_eq!(e.kind, EdgeKind::Teleport);
+        assert!(graph.edge_between(2, 1).is_none(), "one \"teleport\" entry must add only one direction");
+        assert_eq!(graph.edges().count(), 1);
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_two_teleport_entries_produce_two_way_teleport() {
+        // A two-way teleport is represented as two separate "teleport" entries (one per
+        // direction), not a single entry that auto-adds both — mirrors how the web side
+        // extracts each directed EdgeDto from generation 1:1 (see extractTeleportEdges).
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "teleport"), edge(2, 1, "teleport")]).unwrap();
+        assert!(graph.edges().any(|e| e.from == 1 && e.to == 2 && e.kind == EdgeKind::Teleport));
+        assert!(graph.edges().any(|e| e.from == 2 && e.to == 1 && e.kind == EdgeKind::Teleport));
+        assert_eq!(graph.edges().count(), 2);
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_teleport_coexists_with_parallel_basic() {
+        // A Basic and a Teleport edge in the same direction between the same pair must both
+        // survive — kind-aware dedup in Graph::add_edge allows this (see graph::parallel_edges_tests).
+        let mut graph = graph_with_nodes(&[1, 2]);
+        build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "basic"), edge(1, 2, "teleport")]).unwrap();
+        assert!(graph.edges().any(|e| e.from == 1 && e.to == 2 && e.kind == EdgeKind::Basic));
+        assert!(graph.edges().any(|e| e.from == 1 && e.to == 2 && e.kind == EdgeKind::Teleport));
+        assert_eq!(graph.edges().count(), 3, "basic(2 directions) + teleport(1 direction) = 3 edges");
+    }
+
+    #[test]
+    fn build_graph_from_post_edit_edges_unknown_kind_is_rejected() {
+        let mut graph = graph_with_nodes(&[1, 2]);
+        let err = build_graph_from_post_edit_edges(&mut graph, &[edge(1, 2, "wall")]).unwrap_err();
+        assert!(err.contains("wall"), "error must mention the offending kind, got: {err}");
     }
 }

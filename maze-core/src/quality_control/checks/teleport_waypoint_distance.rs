@@ -1,6 +1,7 @@
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
+use crate::graph::distance_map::min_optional_distance;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
@@ -70,14 +71,10 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
             let nav_id = nav.nav_node_for(node_id)?;
             let mut best: Option<usize> = None;
             if need_start {
-                if let Some(d) = dist_from_start.as_ref().and_then(|m| m.get(&nav_id)) {
-                    best = Some(best.map_or(*d, |b: usize| b.min(*d)));
-                }
+                best = min_optional_distance(best, dist_from_start.as_ref().and_then(|m| m.get(&nav_id)).copied());
             }
             if need_finish {
-                if let Some(d) = dist_from_finish.as_ref().and_then(|m| m.get(&nav_id)) {
-                    best = Some(best.map_or(*d, |b: usize| b.min(*d)));
-                }
+                best = min_optional_distance(best, dist_from_finish.as_ref().and_then(|m| m.get(&nav_id)).copied());
             }
             best
         };
@@ -90,13 +87,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
                     TeleportEdgeSelector::EntryOnly => None,
                     TeleportEdgeSelector::EntryOrExit => waypoint_distance(t.to),
                 };
-                let closest = match (entry_dist, exit_dist) {
-                    (Some(a), Some(b)) => Some(a.min(b)),
-                    (Some(a), None) => Some(a),
-                    (None, Some(b)) => Some(b),
-                    (None, None) => None,
-                };
-                closest.is_some_and(|d| d < self.distance as usize)
+                min_optional_distance(entry_dist, exit_dist).is_some_and(|d| d < self.distance as usize)
             })
             .filter(|t| !self.protect_route || !is_teleport_route_protected(maze, t.id))
             .map(|e| e.id)

@@ -53,6 +53,17 @@ pub(crate) fn cycle_min_distance(nav: &NavGraph, cycle: &[usize], dist_map: &Has
         .unwrap_or(usize::MAX)
 }
 
+/// `a.min(b)` treating `None` as absent rather than infinite — `None` only when both are `None`.
+/// Shared by every check that reduces two independently-optional tile distances (e.g. distance
+/// to each of two waypoints, or forward/reverse distance between two nav-nodes) to their closest.
+pub(crate) fn min_optional_distance(a: Option<usize>, b: Option<usize>) -> Option<usize> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(x.min(y)),
+        (Some(x), None) | (None, Some(x)) => Some(x),
+        (None, None) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
