@@ -1,15 +1,16 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
+use crate::graph::cycles::resolve_to_edge_ids;
 use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
 use crate::generation::{PresetState, try_remove_edge};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::snapshot::SnapshotStack;
-use super::cycle_cut_set::{edge_to_cycles_map, discard_cycles_with_edge, candidate_edges};
+use super::cycle_cut_set::candidate_edges;
 
 pub const PARAM_SHORT_OVERLAP_WEIGHT: &str = "short_overlap_weight";
 pub const PARAM_OTHER_OVERLAP_WEIGHT: &str = "other_overlap_weight";
@@ -27,19 +28,20 @@ static PARAMS: &[StrategyParam] = &[
     },
 ];
 
-/// Handles INVALID_LOOP like `InvalidLoopRandomStrategy`, but picks which edge to cut
-/// from each short cycle by score instead of uniformly at random. The score is currently just
-/// the cycle-overlap term below, but the strategy is meant to grow more scoring terms over
-/// time (à la `ScoredEndpointsStrategy`) — keep new criteria additive into the same score
-/// rather than introducing a separate strategy per criterion.
+/// Handles INVALID_LOOP like `InvalidLoopRandomStrategy`, but picks which edge to cut from the
+/// issue's main cycle by score instead of uniformly at random. The score is currently just the
+/// cycle-overlap term below, but the strategy is meant to grow more scoring terms over time (à la
+/// `ScoredEndpointsStrategy`) — keep new criteria additive into the same score rather than
+/// introducing a separate strategy per criterion.
 ///
-/// For a candidate edge within the cycle being cut, `short_overlap` counts how many *other*
-/// short cycles (also in `short`) also contain that edge, and `other_overlap` counts how many
-/// *non-short* (valid, long-enough) cycles in `all` contain it. Score is
+/// For a candidate edge within `issue.cycle`, `short_overlap` counts how many cycles in
+/// `issue.other_invalid` also contain that edge (plus one for `issue.cycle`'s own membership —
+/// a constant offset across every candidate, left in rather than special-cased), and
+/// `other_overlap` counts how many cycles in `issue.other_valid` contain it. Score is
 /// `short_overlap * short_overlap_weight - other_overlap * other_overlap_weight`; the
 /// highest-scoring candidate is cut. This biases cuts toward edges that simultaneously break
-/// several short loops (fewer total cuts needed) while avoiding edges that would also break a
-/// cycle the maze is meant to keep.
+/// several invalid loops at once (fewer total repair iterations needed) while avoiding edges that
+/// would also break a cycle the maze is meant to keep.
 pub struct InvalidLoopScoredStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredStrategy {
@@ -49,11 +51,11 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
         PARAMS
     }
 
-    /// Needs every valid cycle, not just invalid ones — `apply` walks the full `all` to compute
-    /// `other_overlap` (how many valid cycles a candidate edge would also break), so
-    /// `VALID_CYCLES` is required by the algorithm itself, not left set out of inertia.
+    /// Needs both auxiliary layers — `apply` walks `other_invalid`/`other_valid` to compute
+    /// `short_overlap`/`other_overlap`, so both are required by the algorithm itself (see GitHub
+    /// issue #98/#105).
     fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
-        InvalidLoopRequirement::VALID_CYCLES
+        InvalidLoopRequirement::OTHER_INVALID | InvalidLoopRequirement::OTHER_VALID
     }
 
     fn apply(
@@ -66,32 +68,35 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult {
-        let (all, invalid) = (&issue.all, &issue.invalid);
-
         let short_overlap_weight = params.get(PARAM_SHORT_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
         let other_overlap_weight = params.get(PARAM_OTHER_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(6.0);
 
-        // edge -> (how many invalid cycles contain it, how many valid cycles contain it)
-        let invalid_set: std::collections::HashSet<usize> = invalid.iter().copied().collect();
+        let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+        let all_cycles = maze.analysis.cycles(&maze.graph, &maze.meta);
+
+        // edge -> (how many other_invalid cycles contain it, how many other_valid cycles contain it)
         let mut overlap: HashMap<EdgeId, (u32, u32)> = HashMap::new();
-        for (idx, cycle) in all.iter().enumerate() {
-            let is_invalid = invalid_set.contains(&idx);
-            for &eid in cycle {
-                let entry = overlap.entry(eid).or_insert((0, 0));
-                if is_invalid { entry.0 += 1; } else { entry.1 += 1; }
+        for &eid in &issue.cycle {
+            overlap.entry(eid).or_insert((0, 0)).0 += 1;
+        }
+        if let Some(cycles) = &all_cycles {
+            for &idx in &issue.other_invalid {
+                let Some(nav_cycle) = cycles.get(idx) else { continue };
+                let resolved = resolve_to_edge_ids(&nav, std::slice::from_ref(nav_cycle), &maze.graph);
+                for &eid in resolved.iter().flatten() {
+                    overlap.entry(eid).or_insert((0, 0)).0 += 1;
+                }
+            }
+            for &idx in &issue.other_valid {
+                let Some(nav_cycle) = cycles.get(idx) else { continue };
+                let resolved = resolve_to_edge_ids(&nav, std::slice::from_ref(nav_cycle), &maze.graph);
+                for &eid in resolved.iter().flatten() {
+                    overlap.entry(eid).or_insert((0, 0)).1 += 1;
+                }
             }
         }
 
-        let owners = edge_to_cycles_map(all);
-        let mut pending: Vec<usize> = invalid.to_vec();
-
-        while let Some(idx) = pending.pop() {
-            let Some(cycle) = all.get(idx) else { continue };
-            if let Some(cut) = apply_cut(cycle, &overlap, short_overlap_weight, other_overlap_weight, maze, rng, preset_state) {
-                discard_cycles_with_edge(&mut pending, &owners, cut);
-            }
-        }
-
+        apply_cut(&issue.cycle, &overlap, short_overlap_weight, other_overlap_weight, maze, rng, preset_state);
         RepairResult::Fixed { score: None }
     }
 }
@@ -105,8 +110,9 @@ fn score(short_overlap: u32, other_overlap: u32, short_overlap_weight: f64, othe
     short_overlap as f64 * short_overlap_weight - other_overlap as f64 * other_overlap_weight
 }
 
-/// Returns the cut edge's id on success, so the caller can drop any other pending cycle that
-/// shares it (see `discard_cycles_with_edge`) — `None` means every candidate was protected.
+/// One `apply()` call now breaks exactly one cycle (see GitHub issue #98 — no more pending-set
+/// batching across several invalid cycles in one strategy call). Returns the cut edge's id, or
+/// `None` if `cycle` is empty or every candidate was protected.
 fn apply_cut<T: Tessellation>(
     cycle: &[EdgeId],
     overlap: &HashMap<EdgeId, (u32, u32)>,
@@ -120,10 +126,6 @@ fn apply_cut<T: Tessellation>(
     let mut candidates = candidate_edges(cycle, maze, preset_state);
 
     while !candidates.is_empty() {
-        // This cycle's own membership counts toward `short_overlap`/`other_overlap` too — it's
-        // always in `short`, so every candidate gets +1 short_overlap from itself. That's a
-        // constant offset shared by every candidate in this cycle, so it doesn't affect which
-        // one scores highest; left in rather than special-cased for simplicity.
         let scores: Vec<f64> = candidates.iter()
             .map(|&id| {
                 let (short_overlap, other_overlap) = overlap.get(&id).copied().unwrap_or((0, 0));
@@ -170,13 +172,13 @@ mod tests {
     }
 
     /// Guards the `requirement()` override itself (see GitHub issue #105) — `apply` reads
-    /// `other_overlap` from every valid cycle in `all`, so a regression to `empty()` (or anything
-    /// short of `VALID_CYCLES`) would silently break scoring without failing any behavioral test
-    /// that always constructs its issue via `all()` directly.
+    /// `other_overlap`/`short_overlap` from `other_valid`/`other_invalid`, so a regression to
+    /// `empty()` (or anything short of both flags) would silently break scoring without failing
+    /// any behavioral test that always constructs its issue via `all()` directly.
     #[test]
-    fn requirement_requests_valid_cycles() {
+    fn requirement_requests_both_other_layers() {
         let requirement = <InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, InvalidLoopIssue>>::requirement(&InvalidLoopScoredStrategy, &no_params());
-        assert_eq!(requirement, InvalidLoopRequirement::VALID_CYCLES);
+        assert_eq!(requirement, InvalidLoopRequirement::OTHER_INVALID | InvalidLoopRequirement::OTHER_VALID);
     }
 
     #[test]
@@ -226,6 +228,7 @@ mod tests {
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
+        assert_eq!(issue.other_invalid.len(), 1, "both triangles are invalid -- one is the issue's main cycle, the other lands in other_invalid");
 
         // Run from many seeds: the shared A->B edge should always be the one cut, since it
         // (uniquely) overlaps two short cycles, scoring strictly higher than any edge that
@@ -240,43 +243,72 @@ mod tests {
             assert!(maze_try.graph.edge_between(nodes[0], nodes[1]).is_none(), "seed {seed}: shared A->B edge must be cut");
 
             let fresh = Maze::<SquareTessellation>::new(maze_try.field, maze_try.graph);
-            assert!(!check_finds_short_loop(&fresh), "seed {seed}: both triangles must be broken by one cut");
+            assert!(!check_finds_short_loop(&fresh), "seed {seed}: both triangles must be broken by one cut, since they share the cut edge");
         }
     }
 
     #[test]
-    fn cutting_a_shared_edge_spares_the_other_cycle_from_a_second_cut() {
-        // Same bowtie as above: node D has exactly two edges (B->D, D->A), both belonging only
-        // to the second triangle. Cutting the shared A->B already breaks both triangles, so the
-        // second triangle must be dropped from the pending set rather than also losing one of
-        // D's two edges — that would leave D with degree 0, fully cut off from the graph.
-        let maze = maze_with_shared_edge_triangles();
-        let check = MinLoopLengthCheck { instance_id: "min_loop_length".to_string(), min_loop_length: 10 };
-        let mut issues = Vec::new();
-        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
-        let issue = issues.into_iter().next().unwrap();
-
-        let nodes = shared_edge_triangle_nodes(&maze.field);
-        let d = nodes[3];
-
-        for seed in 0..20 {
-            let mut maze_try = maze_with_shared_edge_triangles();
-            let mut rng = MazeRng::seed_from_u64(seed);
-            let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze_try, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
-            assert!(matches!(result, RepairResult::Fixed { score: None }));
-            let d_degree = maze_try.graph.edges().filter(|e| e.from == d || e.to == d).count();
-            assert!(d_degree > 0, "seed {seed}: D must keep at least one edge — it must not be fully cut off");
-        }
-    }
-
-    #[test]
-    fn apply_succeeds_on_empty_cycle_list() {
+    fn apply_succeeds_on_empty_cycle() {
         let mut maze = maze_with_shared_edge_triangles();
-        let issue = InvalidLoopIssue::new_from_check("min_loop_length", vec![], vec![], Default::default());
+        let issue = InvalidLoopIssue::new_from_check("min_loop_length", 0, vec![], vec![], vec![]);
         let mut rng = MazeRng::seed_from_u64(7);
         let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
+    }
+
+    /// `other_invalid`/`other_valid` carrying an index past the end of `maze.analysis.cycles()`
+    /// (stale/malformed input — shouldn't happen given the constructor's normalization, but
+    /// `apply` defensively skips via `cycles.get(idx) else { continue }` rather than panicking).
+    #[test]
+    fn apply_skips_out_of_range_other_indices_without_panicking() {
+        let mut maze = maze_with_shared_edge_triangles();
+        // Only one real cycle set exists at index 0 (or a small number); 9999 is guaranteed to
+        // be out of range for `maze.analysis.cycles()`.
+        let issue = InvalidLoopIssue::new_from_check(
+            "min_loop_length", 0, vec![], vec![9999], vec![9999],
+        );
+        let mut rng = MazeRng::seed_from_u64(7);
+        let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }), "out-of-range indices must be skipped, not panic");
+    }
+
+    /// When `maze.analysis.cycles()` overflows (see `CycleSearchResult::TooManyCycles`), `apply`
+    /// must fall back to scoring using only `issue.cycle`'s own membership (the `overlap` map
+    /// built before the `if let Some(cycles)` branch) rather than panicking on the `None`.
+    #[test]
+    fn apply_degrades_gracefully_when_cycle_enumeration_overflows() {
+        const SIDE: i32 = 6;
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        use crate::space::SquarePoint;
+        for y in 0..SIDE {
+            for x in 0..SIDE {
+                let here = field.node_at(SquarePoint { x, y }).unwrap();
+                if x + 1 < SIDE {
+                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
+                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
+                }
+                if y + 1 < SIDE {
+                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
+                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
+                }
+            }
+        }
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        assert!(maze.analysis.cycles(&maze.graph, &maze.meta).is_none(), "precondition: this grid overflows enumeration");
+
+        // A manually-built 3-edge cycle from real edges in this grid, independent of enumeration.
+        let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = maze.field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let e0 = maze.graph.edge_between(a, b).unwrap();
+        let e1 = maze.graph.edge_between(b, a).unwrap();
+        let issue = InvalidLoopIssue::new_from_check("min_loop_length", 0, vec![e0, e1], vec![1], vec![2]);
+
+        let mut rng = MazeRng::seed_from_u64(7);
+        let result = RepairStrategy::apply(&InvalidLoopScoredStrategy, &issue, &mut maze, &mut SnapshotStack::new(), &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }), "overflow must not panic; apply degrades to scoring by issue.cycle membership only");
     }
 
     /// Triangle A->B->C->A (short, the cycle to break) where edge C->A also continues into a
@@ -315,7 +347,7 @@ mod tests {
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
-        assert_eq!(issue.invalid.len(), 1, "only the triangle should be invalid; the long loop must stay valid");
+        assert_eq!(issue.other_valid.len(), 1, "only the triangle is invalid; the long loop must stay valid, resolved into other_valid");
 
         let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
         let (a, c) = (nodes[0], nodes[2]);

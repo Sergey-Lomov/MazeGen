@@ -38,6 +38,7 @@ pub struct MazeAnalysis {
     region_classes: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, std::collections::HashMap<graph::scc::ComponentId, RegionClass>)>>,
     reachable_from_start: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
     reachable_to_finish: std::cell::RefCell<Option<(u64, ids::NodeId, std::collections::HashSet<ids::NodeId>)>>,
+    cycles: std::cell::RefCell<Option<(u64, Option<ids::NodeId>, Option<ids::NodeId>, Option<Vec<Vec<usize>>>)>>,
 }
 
 impl Default for MazeAnalysis {
@@ -52,6 +53,7 @@ impl Default for MazeAnalysis {
             region_classes: std::cell::RefCell::new(None),
             reachable_from_start: std::cell::RefCell::new(None),
             reachable_to_finish: std::cell::RefCell::new(None),
+            cycles: std::cell::RefCell::new(None),
         }
     }
 }
@@ -230,6 +232,30 @@ impl MazeAnalysis {
         }
         Some(cache.as_ref().unwrap().2.clone())
     }
+
+    /// Deduped simple nav-cycles (`find_all_simple_cycles` + `dedup_bidirectional_pairs`), as
+    /// nav-edge index lists — the pre-resolve level every loop-based QC check's own predicate
+    /// (tile length, distinct exit count, min distance from a waypoint) needs, since
+    /// `graph::cycles::resolve_to_edge_ids` collapses nav-edge structure (tile paths) into a
+    /// flat base-`Graph` `EdgeId` set and can't be un-resolved back into it.
+    ///
+    /// `None` on `graph::cycles::CycleSearchResult::TooManyCycles` overflow (see
+    /// `MAX_SIMPLE_CYCLES`) — callers silently skip, same rationale as `find_deduped_simple_cycles`.
+    /// Keyed on `(graph.version(), meta.start, meta.finish)` — same key as `nav_graph`/
+    /// `graph_analytics`, since cycle enumeration runs on that same pinned nav graph. The index
+    /// into the returned `Vec` is stable for every caller reading this cache entry within one
+    /// key (one graph version) — this is the "cycle id" `InvalidLoopIssue` stores instead of
+    /// re-deriving identity via `canonical_cycle_key`.
+    pub fn cycles(&self, graph: &Graph, meta: &MazeMeta) -> Option<Vec<Vec<usize>>> {
+        let key = (graph.version(), meta.start, meta.finish);
+        let mut cache = self.cycles.borrow_mut();
+        if !matches!(&*cache, Some((v, s, f, _)) if (*v, *s, *f) == key) {
+            let nav = self.nav_graph(graph, meta);
+            let cycles = graph::cycles::find_deduped_simple_cycles(&nav);
+            *cache = Some((key.0, key.1, key.2, cycles));
+        }
+        cache.as_ref().unwrap().3.clone()
+    }
 }
 
 pub struct Maze<T: Tessellation> {
@@ -380,5 +406,87 @@ mod distance_cache_tests {
         let meta_with_node1_as_start = MazeMeta { start: Some(nodes[1]), finish: Some(nodes[3]), route_score: None };
         let with_node1_as_start = maze.analysis.region_classes(&maze.graph, &meta_with_node1_as_start);
         assert_eq!(with_node1_as_start[&scc.component_of(nodes[0]).unwrap()], RegionClass::Unreachable);
+    }
+}
+
+#[cfg(test)]
+mod cycles_cache_tests {
+    use super::*;
+    use crate::graph::EdgeKind;
+    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+
+    fn triangle_maze() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn repeated_call_returns_same_result_without_graph_change() {
+        let maze = triangle_maze();
+        let first = maze.analysis.cycles(&maze.graph, &maze.meta);
+        let second = maze.analysis.cycles(&maze.graph, &maze.meta);
+        assert_eq!(first, second, "repeated call with unchanged graph must return identical result");
+        assert_eq!(first.unwrap().len(), 1, "the triangle is exactly one simple cycle");
+    }
+
+    #[test]
+    fn invalidates_on_graph_mutation() {
+        let mut maze = triangle_maze();
+        let before = maze.analysis.cycles(&maze.graph, &maze.meta).unwrap();
+        assert_eq!(before.len(), 1);
+
+        // Cut one edge of the triangle -- the cycle must disappear from the cache after
+        // graph.version() bumps, not return the stale pre-mutation result.
+        let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+        let cut = maze.graph.edge_between(nodes[2], nodes[0]).unwrap();
+        maze.graph.remove_edge(cut);
+        let after = maze.analysis.cycles(&maze.graph, &maze.meta).unwrap();
+        assert!(after.is_empty(), "cache must invalidate after graph.version() changes");
+    }
+
+    #[test]
+    fn none_on_cycle_enumeration_overflow() {
+        // Same 6x6 fully-bidirectional grid as the cycles.rs regression test for issue #22
+        // (2,444,782 simple cycles -- far past MAX_SIMPLE_CYCLES).
+        const SIDE: i32 = 6;
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        for y in 0..SIDE {
+            for x in 0..SIDE {
+                let here = field.node_at(SquarePoint { x, y }).unwrap();
+                if x + 1 < SIDE {
+                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
+                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
+                }
+                if y + 1 < SIDE {
+                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
+                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
+                }
+            }
+        }
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+        assert!(maze.analysis.cycles(&maze.graph, &maze.meta).is_none(), "overflow must yield None, not a partial result");
+    }
+
+    #[test]
+    fn key_includes_meta_start_and_finish() {
+        // Same graph.version(), different pinned start -- must not reuse a cache entry built
+        // for a different pin, since pinning start/finish can change which junction-free rings
+        // compress into passages (and therefore which cycles nav-enumeration finds).
+        let mut maze = triangle_maze();
+        let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+        let first = maze.analysis.cycles(&maze.graph, &maze.meta).unwrap();
+        maze.meta.start = Some(nodes[0]);
+        let second = maze.analysis.cycles(&maze.graph, &maze.meta).unwrap();
+        assert_eq!(first.len(), second.len(), "the triangle stays one cycle regardless of pinning");
     }
 }

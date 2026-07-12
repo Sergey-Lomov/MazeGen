@@ -119,20 +119,23 @@ pub trait IssueRequirement: Issue {
 ```
 
 **`InvalidLoopIssue`'s `Requirement` — a bitflags layer set, not the whole story yet.**
-`InvalidLoopRequirement` (in `issue_kinds/invalid_loop.rs`) is a `bitflags!` type with one flag,
-`VALID_CYCLES`. A `Check` producing `InvalidLoopIssue` always builds the base layer (the flagged/
-invalid cycles, resolved to `EdgeId`s); `VALID_CYCLES` set additionally resolves every non-flagged
-cycle into `all` and builds `invalid_sources` — unset, `all`/`invalid` cover only the flagged
-cycles (re-indexed from `0`) and `invalid_sources` stays empty. `Default` is `Self::all()` (every
-flag set), per `IssueRequirement`'s contract, via a hand-written `impl Default` (the `bitflags!`
-macro's own derive would give `empty()` instead). Bitflags were chosen over a plain enum so a
-future second, independent layer doesn't force a combinatorial variant explosion (`Full`,
+`InvalidLoopRequirement` (in `issue_kinds/invalid_loop.rs`) is a `bitflags!` type with two flags,
+`OTHER_INVALID`/`OTHER_VALID` — see GitHub issue #98. A `Check` producing `InvalidLoopIssue` always
+resolves the base layer (the single main invalid `cycle`, plus its `cycle_id` — an index into
+`MazeAnalysis::cycles()`, always populated regardless of these flags, since `cycle` is what
+`Stage`'s no-progress guard compares between fixpoint iterations, independent of what a strategy
+asked for). `OTHER_INVALID` additionally resolves the *indices* — not the edges — of every other
+invalid cycle found in the same QC pass into `other_invalid`; `OTHER_VALID` does the same for valid
+cycles into `other_valid`. Unset, the corresponding list stays empty. `Default` is `Self::all()`
+(every flag set), per `IssueRequirement`'s contract, via a hand-written `impl Default` (the
+`bitflags!` macro's own derive would give `empty()` instead). Bitflags were chosen over a plain enum
+so a future third, independent layer doesn't force a combinatorial variant explosion (`Full`,
 `SourceOnly`, `SourceAndFull`, ...) — each new layer is one more flag, requestable independently of
 the others. A strategy requests a set of flags via `RepairStrategy::requirement()` (see
 `repair.md`'s "RepairStrategy trait" section) — it must name the specific flag(s) its `apply()`
-actually reads (e.g. `InvalidLoopRequirement::VALID_CYCLES`), not `all()`, unless it genuinely needs
-every layer that exists today; `all()` used as a stand-in for "the one flag I need" silently starts
-requesting any future flag too.
+actually reads (e.g. `InvalidLoopRequirement::OTHER_INVALID | InvalidLoopRequirement::OTHER_VALID`),
+not `all()`, unless it genuinely needs every layer that exists today; `all()` used as a stand-in for
+"the flags I need" silently starts requesting any future flag too.
 
 `dyn Issue` is object-safe through exactly `kind()`/`meta()`/`meta_mut()`/`as_any()`/`eq_dyn()`/
 `clone_box()` — the only methods callable on `&dyn Issue`/`Box<dyn Issue>`. `eq_dyn`/`clone_box`
@@ -146,18 +149,42 @@ statically known, code reads `Self::KIND` directly, never `self.kind()`.
 Each concrete type carries its own data fields directly (what used to be one `IssueData` enum
 variant) plus a shared `meta: IssueMeta` for `source_checks`/`details` bookkeeping:
 
+See GitHub issue #98. `InvalidLoopIssue` describes exactly one invalid cycle, not a batch:
+
 ```rust
 pub struct InvalidLoopIssue {
     meta: IssueMeta,   // private — see accessors below
-    pub all: Vec<Vec<EdgeId>>,
-    pub invalid: Vec<usize>,
-    pub invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
+    pub cycle_id: usize,            // index into MazeAnalysis::cycles()
+    pub cycle: Vec<EdgeId>,         // that same cycle, already resolved
+    pub other_invalid: Vec<usize>,  // indices of other invalid cycles this QC pass (optional)
+    pub other_valid: Vec<usize>,    // indices of valid cycles this QC pass (optional)
 }
 impl InvalidLoopIssue {
-    pub fn new_from_check(source_check: &str, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>, invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>) -> Self;
+    pub fn new_from_check(source_check: &str, cycle_id: usize, cycle: Vec<EdgeId>, other_invalid: Vec<usize>, other_valid: Vec<usize>) -> Self;
     pub fn with_detail(self, source_check: &str, key: &'static str, value: String) -> Self;  // chainable
 }
 ```
+
+**`cycle_id`/`cycle` is a deliberate hybrid, not redundant.** `cycle_id` is the cheap handle
+(`usize`, an index into `MazeAnalysis::cycles()`) a strategy resolves through when it needs to walk
+`other_invalid`/`other_valid` without carrying a `Vec<Vec<EdgeId>>` copy of every auxiliary cycle in
+the `Issue`. `cycle` is that same cycle's content, always resolved regardless of `requirement` — it
+exists because `cycle_id` is only stable within one `MazeAnalysis::cycles()` cache entry (one
+`graph.version()`): after a repair strategy mutates the graph, the cache is rebuilt from scratch and
+the *same* physical cycle can land on a different index, while two *different* physical cycles can
+coincidentally land on the same index across two different graph versions. `Stage`'s no-progress
+guard (issue #27) compares one iteration's `Issue` against the previous iteration's by value — doing
+that comparison on `cycle_id` alone would be unsound in both directions, so `InvalidLoopIssue`'s
+`PartialEq`/`Issue::eq_dyn` impl is hand-written (not `derive`d) to compare only `cycle` and `meta`;
+`cycle_id`/`other_invalid`/`other_valid` are deliberately excluded — they're auxiliary context for a
+scoring strategy, re-enumerated from scratch every `repair_check` call, and including them would
+make the no-progress guard fire far less reliably than it should.
+
+**Normalization, not just a `debug_assert!`.** `cycle_id`, `other_invalid`, `other_valid` must
+pairwise never overlap (by index value) — `new_from_check` enforces this in the constructor itself
+(strips `cycle_id` out of both lists, strips anything in `other_invalid` out of `other_valid`), so
+the invariant holds in release builds regardless of what a caller passed in; a `debug_assert!` on
+top only catches a caller that handed in already-contradictory data before normalization ran.
 
 **`source_checks`/`details` carry a rule-scoped composite id, not a check type id** — see GitHub
 issue #60. Two active configurations of the same check type (e.g. two `min_region_count`
@@ -203,7 +230,7 @@ document the invariant the caller must uphold instead of runtime-validating it o
 compile-time-checked path (a `Rule<T, I>`'s own checks and strategy) never needs this at all;
 only the two genuinely-heterogeneous boundaries above do.
 
-- **Dedup interaction**: multiple checks may produce an issue of the same concrete type in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single issue via `IssueMerge::merge` rather than keeping only the first and dropping the rest. The merge rule is per-concrete-type: for `InvalidLoopIssue`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks`/`details` (via `IssueMeta`) are unioned. A type whose fields have no sensible merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
+- **Dedup interaction**: multiple checks may produce an issue of the same concrete type in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single issue via `IssueMerge::merge` rather than keeping only the first and dropping the rest. The merge rule is per-concrete-type: for `InvalidLoopIssue` (see GitHub issue #98), the first non-empty check's `cycle_id`/`cycle` wins and never changes; each subsequent check's own `cycle_id` folds into `other_invalid` (still an invalid cycle from this rule's perspective, just not the one this merged issue leads with), and `other_invalid`/`other_valid` union directly as plain index sets (no remap needed — every check in one `Rule` reads the same `MazeAnalysis::cycles()` snapshot within one QC pass, so an index means the same cycle on both sides); after the union, `cycle_id` is scrubbed from both lists and anything in `other_invalid` is scrubbed from `other_valid` (mirrors `new_from_check`'s own normalization), and the final lists are sorted ascending rather than left in `HashSet` iteration order, so the same inputs merged in the same order always produce a byte-identical result. `source_checks`/`details` (via `IssueMeta`) are unioned the same way as every other type. A type whose fields have no sensible merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
 - **Not exposed over WASM**: the WASM layer serializes `kind()`, `source_checks()`, and `details()` (see `IssueDto` below) but never a concrete type's own data fields directly — those stay internal, Check-to-Strategy plumbing only, except where `analytics.rs` explicitly downcasts to build a payload DTO (`InvalidLoopIssue`/`RegionNeedsExpansionIssue`) or a synthetic detail entry (`RepairLimitReachedIssue`/`QcNoProgressIssue`, both raised outside any `Check<T, I>` — see their own doc comments in `issue_kinds/`).
 
 ### Check trait
@@ -309,7 +336,7 @@ pub struct MinLoopLengthCheck {
 }
 ```
 
-A separate, unrelated check from `MinLoopsCountCheck` (that one counts total loops; this one checks individual loop *length*). Uses `maze.analysis.nav_graph(&maze.graph, &maze.meta)` (the shared, pinned-by-`meta` cache — see `analysis.md`), then `find_all_simple_cycles` (`maze-core/src/graph/cycles.rs`, Johnson's algorithm — see `graph-analytics.md` for the full description of this shared, single-source-of-truth cycle enumeration), `dedup_bidirectional_pairs` (collapses each visual loop walked in either direction to one entry, drops trivial reverse-pair turn-arounds). Every resulting cycle (short and long alike) is resolved to base-`Graph` `EdgeId`s and stored in `InvalidLoopIssue.all`; the subset whose tile-length is below `min_loop_length` becomes `invalid` (indices into `all`).
+A separate, unrelated check from `MinLoopsCountCheck` (that one counts total loops; this one checks individual loop *length*). Like `MaxLoopLengthCheck`/`ExternalEscapeDiversityCheck`/`LoopDistanceFromStartCheck`/`LoopDistanceFromFinishCheck` below, goes through the shared `cycle_check_core` module (`maze-core/src/quality_control/checks/cycle_check_core.rs`, GitHub issue #107): `find_invalid_cycles(maze, predicate)` reads cycle enumeration from `maze.analysis.cycles(&maze.graph, &maze.meta)` (one shared enumeration per QC pass across every check reading it — see `analysis.md` — rather than each check independently re-running `find_all_simple_cycles`/`dedup_bidirectional_pairs`), applies `predicate` (here, `tile_length(nav, cycle) < self.min_loop_length`) to partition cycle indices into flagged/valid, and returns `None` on `CycleSearchResult::TooManyCycles` overflow. `repair_check` then calls `build_repair_issue` (one `InvalidLoopIssue`, `cycle_id`/`cycle` = the first flagged index, `other_invalid`/`other_valid` resolved from the rest only if `requirement` asks for them — see GitHub issue #98/#105); `report_check` calls `build_report_issues` (one `InvalidLoopIssue` per flagged index, for the final QC report).
 
 Symmetric counterpart: `MaxLoopLengthCheck` (below) flags cycles whose tile-length exceeds a maximum instead. Both checks may run in the same QC pass and both produce `INVALID_LOOP` — see the merge behavior in `repair.md`'s "Pipeline" section.
 
@@ -317,7 +344,7 @@ Not a fundamental cycle basis — a basis only yields β₁ cycles relative to o
 
 Self-loop nav-edges (junction-free rings) are included — previously a known gap (a ring with at most one junction compresses into a self-loop `NavEdge` that the old `build_cyclic_core` unconditionally excluded, making such loops invisible to this check). Fixed by `find_all_simple_cycles` treating self-loops as first-class cycles.
 
-If any cycles below the threshold are found (`invalid` non-empty), fires a single `InvalidLoopIssue::new_from_check("min_loop_length", all, invalid, invalid_sources)` with `.with_detail("min_loop_length", "min_loop_length", self.min_loop_length.to_string())` chained on — the configured threshold, for the web UI to render a specific message ("loop shorter than N tiles") instead of the generic `INVALID_LOOP` label. No issue is fired if `invalid` is empty, even if `all` is not. Other checks may also produce `INVALID_LOOP` issues for different reasons in the same pass — see the pipeline's merge behavior in `repair.md`.
+`with_detail("min_loop_length", "min_loop_length", self.min_loop_length.to_string())` is chained onto every issue built — the configured threshold, for the web UI to render a specific message ("loop shorter than N tiles") instead of the generic `INVALID_LOOP` label. No issue is built if no cycle is flagged. Other checks may also produce `INVALID_LOOP` issues for different reasons in the same pass — see the pipeline's merge behavior in `repair.md`.
 
 ### MaxLoopLengthCheck
 
@@ -329,9 +356,9 @@ pub struct MaxLoopLengthCheck {
 }
 ```
 
-Symmetric counterpart to `MinLoopLengthCheck` — same cycle enumeration pipeline (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs` → tile-length filter → `resolve_to_edge_ids`), same silent skip on `CycleSearchResult::TooManyCycles` overflow, same `InvalidLoopIssue` shape. The only difference: the filter keeps cycles whose tile-length is **above** `max_loop_length` (`tile_length > max_loop_length`) instead of below a minimum.
+Symmetric counterpart to `MinLoopLengthCheck` — same `cycle_check_core`-based enumeration/build (`find_invalid_cycles` → `build_repair_issue`/`build_report_issues`), same silent skip on `CycleSearchResult::TooManyCycles` overflow, same `InvalidLoopIssue` shape. The only difference: the filter keeps cycles whose tile-length is **above** `max_loop_length` (`tile_length > max_loop_length`) instead of below a minimum.
 
-If any cycles above the threshold are found (`invalid` non-empty), fires a single `InvalidLoopIssue::new_from_check("max_loop_length", all, invalid, invalid_sources)` with `.with_detail("max_loop_length", "max_loop_length", self.max_loop_length.to_string())` chained on, same rationale as `MinLoopLengthCheck` above. No issue is fired if `invalid` is empty. Both `MinLoopLengthCheck` and `MaxLoopLengthCheck` can be active at once — they each populate their own `invalid` subset and the pipeline merges the two `INVALID_LOOP` issues canonically (see "Dedup interaction" above and `repair.md`'s "Pipeline" section); the merged issue then carries both checks' details, and the UI renders one bubble per source check.
+`with_detail("max_loop_length", "max_loop_length", self.max_loop_length.to_string())` chained on, same rationale as `MinLoopLengthCheck` above. Both `MinLoopLengthCheck` and `MaxLoopLengthCheck` can be active at once — each fires its own issue and the pipeline merges them (see "Dedup interaction" above and `repair.md`'s "Pipeline" section); the merged issue then carries both checks' details, and the UI renders one bubble per source check.
 
 ### ExternalEscapeDiversityCheck
 
@@ -343,9 +370,9 @@ pub struct ExternalEscapeDiversityCheck {
 }
 ```
 
-Detects cycles that are "locally trapped" despite having many outgoing connections — see issue #32. Uses the same enumeration pipeline as `MinLoopLengthCheck`/`MaxLoopLengthCheck` (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles`), but the filter is purely topological rather than length- or geometry-based: for each cycle, collect the set of cycle vertices (nav-nodes touched by any of its nav-edges), then count the distinct nav-nodes outside that set reached by a direct outgoing nav-edge from any cycle vertex (`distinct_exit_count`). No further traversal past that one hop, no geometry, no connected-component analysis on the rest of the graph — a cycle with 8 outgoing edges that all land on the same external node scores 1, not 8.
+Detects cycles that are "locally trapped" despite having many outgoing connections — see issue #32. Same `cycle_check_core`-based enumeration/build as `MinLoopLengthCheck`/`MaxLoopLengthCheck`, but the predicate is purely topological rather than length- or geometry-based: for each cycle, collect the set of cycle vertices (nav-nodes touched by any of its nav-edges), then count the distinct nav-nodes outside that set reached by a direct outgoing nav-edge from any cycle vertex (`distinct_exit_count`). No further traversal past that one hop, no geometry, no connected-component analysis on the rest of the graph — a cycle with 8 outgoing edges that all land on the same external node scores 1, not 8.
 
-If any cycle's distinct exit count is below `min_distinct_exits`, fires a single `InvalidLoopIssue::new_from_check("external_escape_diversity", all, invalid, invalid_sources)` with `.with_detail("external_escape_diversity", "min_distinct_exits", self.min_distinct_exits.to_string())` chained on. No issue is fired if `invalid` is empty. Can be active alongside `MinLoopLengthCheck`/`MaxLoopLengthCheck` — all three merge into one `INVALID_LOOP` issue per the same dedup rule.
+`with_detail("external_escape_diversity", "min_distinct_exits", self.min_distinct_exits.to_string())` chained on. Can be active alongside `MinLoopLengthCheck`/`MaxLoopLengthCheck` — all three merge into one `INVALID_LOOP` issue per the same dedup rule.
 
 ### LoopDistanceFromStartCheck
 
@@ -357,11 +384,11 @@ pub struct LoopDistanceFromStartCheck {
 }
 ```
 
-Flags simple cycles placed too close to `meta.start` in progression space — see GitHub issue #33. Uses `maze.analysis.distance_from_start` (`HashMap<NavNodeId, usize>`, tile distance, lazily computed and cached — see `graph-analytics.md`'s "Distance Maps" section), then the same cycle enumeration pipeline as the other loop checks (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles`). A cycle's distance from start is the **minimum** tile distance among all nav-nodes the cycle touches (every `from`/`to` endpoint of its nav-edges) — the cycle's closest point to start, not its average or farthest — computed by `cycle_min_distance` (`maze-core/src/graph/distance_map.rs`), the single shared reduction `LoopDistanceFromFinishCheck` (below) reuses too, rather than each check carrying its own copy. A nav-node unreachable from start is excluded from that minimum; if every touched nav-node is unreachable the cycle is treated as having no defined distance and never flagged.
+Flags simple cycles placed too close to `meta.start` in progression space — see GitHub issue #33. Uses `maze.analysis.distance_from_start` (`HashMap<NavNodeId, usize>`, tile distance, lazily computed and cached — see `graph-analytics.md`'s "Distance Maps" section), then the same `cycle_check_core`-based enumeration/build as the other loop checks. A cycle's distance from start is the **minimum** tile distance among all nav-nodes the cycle touches (every `from`/`to` endpoint of its nav-edges) — the cycle's closest point to start, not its average or farthest — computed by `cycle_min_distance` (`maze-core/src/graph/distance_map.rs`), the single shared reduction `LoopDistanceFromFinishCheck` (below) reuses too, rather than each check carrying its own copy. A nav-node unreachable from start is excluded from that minimum; if every touched nav-node is unreachable the cycle is treated as having no defined distance and never flagged.
 
-Silently skips (no issue, no panic) if `meta.start` is unset — `distance_from_start` returns `None` in that case, and that failure mode belongs to `MissingEndpointsCheck`, not this check.
+Silently skips (no issue) if `meta.start` is unset — `distance_from_start` returns `None` in that case, and that failure mode belongs to `MissingEndpointsCheck`, not this check.
 
-Default `0` never fires on its own — the threshold has no natural default (unlike a tile-length minimum), so the check is a no-op until a user picks a value. If any cycles closer than the threshold are found, fires a single `InvalidLoopIssue::new_from_check("loop_distance_from_start", all, invalid, invalid_sources)` with `.with_detail("loop_distance_from_start", "min_distance_from_start", self.min_distance_from_start.to_string())` chained on. Can be active alongside any other `INVALID_LOOP`-producing check — all merge into one issue per the same dedup rule.
+Default `0` never fires on its own — the threshold has no natural default (unlike a tile-length minimum), so the check is a no-op until a user picks a value. `with_detail("loop_distance_from_start", "min_distance_from_start", self.min_distance_from_start.to_string())` chained on. Can be active alongside any other `INVALID_LOOP`-producing check — all merge into one issue per the same dedup rule.
 
 ### LoopDistanceFromFinishCheck
 
@@ -373,9 +400,9 @@ pub struct LoopDistanceFromFinishCheck {
 }
 ```
 
-Symmetric counterpart to `LoopDistanceFromStartCheck` — flags simple cycles placed too close to `meta.finish` instead. Uses `maze.analysis.distance_from_finish` (distance **to** finish, following directed edges backward), same cycle enumeration pipeline, same "minimum among touched nav-nodes" rule, same silent skip on missing `meta.finish` or `TooManyCycles` overflow.
+Symmetric counterpart to `LoopDistanceFromStartCheck` — flags simple cycles placed too close to `meta.finish` instead. Uses `maze.analysis.distance_from_finish` (distance **to** finish, following directed edges backward), same `cycle_check_core`-based enumeration/build, same "minimum among touched nav-nodes" rule, same silent skip on missing `meta.finish` or `TooManyCycles` overflow.
 
-Fires `InvalidLoopIssue::new_from_check("loop_distance_from_finish", all, invalid, invalid_sources)` with `.with_detail("loop_distance_from_finish", "min_distance_from_finish", self.min_distance_from_finish.to_string())` chained on.
+`with_detail("loop_distance_from_finish", "min_distance_from_finish", self.min_distance_from_finish.to_string())` chained on.
 
 ### MaxLoopDensityCheck
 
@@ -387,13 +414,13 @@ pub struct MaxLoopDensityCheck {
 }
 ```
 
-Flags excess simple loops when too large a share of the field is covered by loops overall — see GitHub issue #37. Unlike the other loop checks, this one judges the maze's loops as a set rather than each cycle independently.
+Flags excess simple loops when too large a share of the field is covered by loops overall — see GitHub issue #37. Unlike the other loop checks, this one judges the maze's loops as a set rather than each cycle independently, so it does **not** go through `cycle_check_core` — there is no single per-cycle boolean predicate the way there is for length/distance/diversity, only a selection over the whole cycle set at once.
 
-Same cycle enumeration pipeline as the other loop checks (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles` overflow), then resolves every cycle to its base-`Graph` `EdgeId`s via `resolve_to_edge_ids` same as the others, but additionally maps each cycle's edges to the set of base-`Graph` `NodeId`s (cells) its edges touch. **Density** is the count of distinct field cells covered by any loop (a cell shared by several loops counts once), expressed per 100 field cells (`maze.field.node_count()`): `covered_cells * 100 / field_cells`. If density is at or below `max_density`, the check is silent — same as every other loop check producing no issue when nothing is wrong.
+Reads cycle enumeration from `maze.analysis.cycles(&maze.graph, &maze.meta)` directly (same shared cache the other loop checks read through `cycle_check_core`), resolves every cycle to its base-`Graph` `EdgeId`s via `resolve_to_edge_ids`, then maps each cycle's edges to the set of base-`Graph` `NodeId`s (cells) its edges touch — this check needs the resolved level up front (density is judged over base-graph cells), unlike the other five, which only resolve their one flagged/reported cycle at a time. **Density** is the count of distinct field cells covered by any loop (a cell shared by several loops counts once), expressed per 100 field cells (`maze.field.node_count()`): `covered_cells * 100 / field_cells`. If density is at or below `max_density`, the check is silent — same as every other loop check producing no issue when nothing is wrong.
 
-If density exceeds `max_density`, the check must pick which loops to flag — there is no single deterministic "worst" loop the way there is a shortest/longest one, so it shuffles the cycle indices via the `rng` passed into `check` (see the `Check` trait's `rng` note above) and flags them one at a time in that random order, recomputing the remaining covered-cell count after each pick: removing a loop only frees the cells not also covered by another loop not yet picked, so the running total is the *set difference* against the still-unselected loops' coverage, not a flat per-loop cell count. Picking stops as soon as the remaining density is at or below `max_density`, or once every loop has been picked (covers the case where even flagging all of them can't reach an unusually low `max_density`). The picked indices become `invalid`.
+If density exceeds `max_density`, the check must pick which loops to flag — there is no single deterministic "worst" loop the way there is a shortest/longest one, so it shuffles the cycle indices via the `rng` passed into `repair_check`/`report_check` (see the `Check` trait's `rng` note above) and flags them one at a time in that random order, recomputing the remaining covered-cell count after each pick: removing a loop only frees the cells not also covered by another loop not yet picked, so the running total is the *set difference* against the still-unselected loops' coverage, not a flat per-loop cell count. Picking stops as soon as the remaining density is at or below `max_density`, or once every loop has been picked (covers the case where even flagging all of them can't reach an unusually low `max_density`). This whole selection (the shared `excess_cycles` helper) runs exactly once per call regardless of how the result is packaged afterward — `repair_check` takes the first picked index as `cycle_id`/`cycle`, folding the rest into `other_invalid` if requested (`other_valid` has no meaning for this check — a cycle not picked into the selection isn't individually "valid", it just wasn't needed to reach `max_density`, so it's always left empty regardless of `requirement`); `report_check` builds one `InvalidLoopIssue` per picked index. `rng` is consulted exactly once (`order.shuffle`) per call either way, so `MAX_REPAIR_ITERATIONS`-worth of `repair_check` calls consume `rng` exactly as before this check's GitHub issue #98 migration.
 
-Fires a single `InvalidLoopIssue::new_from_check("max_loop_density", all, invalid, invalid_sources)` with `.with_detail("max_loop_density", "max_density", self.max_density.to_string())` chained on. Can be active alongside any other `INVALID_LOOP`-producing check — all merge into one issue per the same dedup rule. The flagged loops need no new repair logic — `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` cut them exactly like any other check's `invalid` entries.
+`with_detail("max_loop_density", "max_density", self.max_density.to_string())` chained on. Can be active alongside any other `INVALID_LOOP`-producing check — all merge into one issue per the same dedup rule. The flagged loops need no new repair logic — `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` cut them exactly like any other check's flagged cycle.
 
 ### SccCountCheck
 
@@ -665,15 +692,18 @@ builds while constructing the active checks for this pass — invariant: exactly
 `source_check_types` entry per distinct id appearing anywhere in any issue's `source_checks` for
 this snapshot, no extras.
 
-`IssuePayloadDto::InvalidLoop.edges` is keyed by source check instance id, not one flat list — a
-merged `invalid_loop` issue may carry cycles from several checks at once (e.g. both
-`min_loop_length`'s short loops and `max_loop_length`'s long loops), and each is attributed to its
-own check's entry so the UI can highlight only the cycles relevant to the bubble being hovered,
-not every contributing check's cycles combined. Built by looking up each invalid cycle's
-canonical key (`canonical_cycle_key`) in `InvalidLoopIssue.invalid_sources` to find which
-check(s) flagged it — the same attribution map `merge_invalid_loops` (`repair.md`'s "Pipeline"
-section) already maintains across merges. `payload` is only `InvalidLoop` when the issue is
-`invalid_loop` and at least one check flagged a cycle — otherwise it's `None`.
+`IssuePayloadDto::InvalidLoop.edges` is keyed by source check instance id, not one flat list —
+`build_analytics_snapshot` builds it from the report path (`report_check`/`run_check_only`), which
+since GitHub issue #98 yields one `InvalidLoopIssue` per invalid cycle rather than one merged
+batch: for each such issue, `issue.cycle` (already resolved to `EdgeId`s — no separate resolve step
+needed here) is added to the bucket for every id in `issue.source_checks()`. **Two different
+issues flagging the exact same physical cycle deliberately do not collapse into one bucket entry**
+— each check's bubble must highlight only the cycle(s) *that check* flagged, even if another
+check happens to have flagged the identical edge set independently; dedup only ever applies
+*within* one issue's own bucket entries (a defensive guard against a hypothetical malformed
+`source_checks()` containing a repeated id, which `IssueMeta::push_source`'s own dedup already
+prevents in practice). `payload` is only `InvalidLoop` when the issue is `invalid_loop` — always
+populated in that case now, since a report-path `InvalidLoopIssue` is never empty.
 
 `IssuePayloadDto::RegionNeedsExpansion.nodes` mirrors `InvalidLoop.edges`'s role for
 `region_needs_expansion` issues (currently produced by `MinRegionSizeCheck`/`MinRegionRatioCheck`)

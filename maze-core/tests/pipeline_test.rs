@@ -440,10 +440,16 @@ fn exact_issue_23_seed_never_isolates_a_node() {
 fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycles() {
     // Two checks unrelated to MinLoopLengthCheck's real cycle search — each hardcodes its own
     // cycle into an InvalidLoopIssue, simulating "two different reasons a cycle can be flagged
-    // invalid" (the scenario this whole pipeline-merge change exists for) without needing a real
-    // second check (e.g. max-loop-length) or touching the cycles/scoring layer. Two disjoint
-    // triangles sharing no edge, so each check's cycle is independently verifiable as broken
-    // afterward.
+    // invalid" (the scenario this pipeline-merge test exists for) without needing a real second
+    // check (e.g. max-loop-length) or touching the cycles/scoring layer. Two disjoint triangles
+    // sharing no edge, so each check's cycle is independently verifiable as broken afterward.
+    //
+    // See GitHub issue #98: one `apply()` now breaks exactly one cycle (the merged issue's main
+    // `cycle`), folding the other check's own cycle into `other_invalid` instead of also cutting
+    // it in the same call — `InvalidLoopRandomStrategy` requests `empty()` and never reads
+    // `other_invalid`. Both triangles still end up broken by the time `build_maze` converges,
+    // just across two fixpoint iterations (the fake check re-reports the still-intact triangle
+    // as its own new main cycle on the next iteration) rather than one.
     let mut ids = IdGenerator::new();
     let field = Field::new(square_rect(6, 1), &mut ids).unwrap();
     let mut g = Graph::new();
@@ -470,15 +476,9 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
             // would keep reporting an already-broken cycle as invalid forever, masking real
             // pipeline behavior (fixpoint exit) behind a check that never reflects the repair.
             if self.cycle.iter().all(|&eid| maze.graph.edge(eid).is_some()) {
-                let mut invalid_sources = HashMap::new();
-                invalid_sources.insert({
-                    let mut key = self.cycle.clone();
-                    key.sort_unstable();
-                    key
-                }, vec![self.source_check.to_string()]);
                 issues.push(InvalidLoopIssue::new_from_check(
                     self.source_check,
-                    vec![self.cycle.clone()], vec![0], invalid_sources,
+                    0, self.cycle.clone(), vec![], vec![],
                 ));
             }
         }
@@ -493,9 +493,9 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     let (maze, remaining, _timing) = build_maze(field, g, 1, qc, &PresetState::empty(), RepairLimits::default(), None, None);
 
     assert!(!remaining.iter().any(|i| as_issue::<InvalidLoopIssue>(i.as_ref()).is_some()),
-        "both checks' issues must be merged into one and resolved in a single repair call: {:?}", remaining.iter().map(|i| i.kind()).collect::<Vec<_>>());
-    // Both triangles must have lost exactly one edge each — proof the strategy received both
-    // checks' cycles via the merged issue, not just the first one's.
+        "both cycles must be broken by the time the fixpoint loop converges: {:?}", remaining.iter().map(|i| i.kind()).collect::<Vec<_>>());
+    // Both triangles must have lost at least one edge — proof the strategy eventually addressed
+    // both checks' cycles, across however many fixpoint iterations that took.
     let triangle_a_intact = g_edge_present(&maze, e0) && g_edge_present(&maze, e1) && g_edge_present(&maze, e2);
     let triangle_b_intact = g_edge_present(&maze, e3) && g_edge_present(&maze, e4) && g_edge_present(&maze, e5);
     assert!(!triangle_a_intact, "triangle A (from fake_a) must have been broken");
@@ -545,13 +545,9 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
             } else {
                 return;
             };
-            let mut invalid_sources = HashMap::new();
-            let mut key = cycle.clone();
-            key.sort_unstable();
-            invalid_sources.insert(key, vec!["missing_endpoints".to_string()]);
             issues.push(InvalidLoopIssue::new_from_check(
                 "missing_endpoints",
-                vec![cycle.clone()], vec![0], invalid_sources,
+                0, cycle.clone(), vec![], vec![],
             ));
         }
     }

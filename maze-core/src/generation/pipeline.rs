@@ -6,7 +6,11 @@ use crate::space::{Field, Tessellation};
 use crate::quality_control::{Issue, QualityControlEngine};
 use super::PresetState;
 
-pub const MAX_REPAIR_ITERATIONS: usize = 10;
+/// See GitHub issue #98: one `apply()` now fixes exactly one invalid cycle instead of batching an
+/// entire rule's findings into one call, so a maze with N invalid cycles in one rule needs N
+/// fixpoint iterations instead of one — raised from the pre-#98 value of 10 to comfortably cover
+/// that shift.
+pub const MAX_REPAIR_ITERATIONS: usize = 250;
 
 /// Caps on the repair fixpoint loop in `build_maze`. Both bounds are optional and independent —
 /// whichever is hit first stops the loop. `None` for both means the loop only stops on

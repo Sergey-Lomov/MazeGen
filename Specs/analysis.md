@@ -12,6 +12,7 @@ pub struct MazeAnalysis {
     graph_analytics: RefCell<Option<(u64, Option<NodeId>, Option<NodeId>, GraphAnalytics)>>,
     distance_from_start: RefCell<Option<(u64, NodeId, HashMap<graph::nav::NavNodeId, usize>)>>,
     distance_from_finish: RefCell<Option<(u64, NodeId, HashMap<graph::nav::NavNodeId, usize>)>>,
+    cycles: RefCell<Option<(u64, Option<NodeId>, Option<NodeId>, Option<Vec<Vec<usize>>>)>>,
 }
 ```
 
@@ -27,6 +28,7 @@ impl MazeAnalysis {
     pub fn graph_analytics(&self, graph: &Graph, meta: &MazeMeta) -> GraphAnalytics;
     pub fn distance_from_start(&self, graph: &Graph, meta: &MazeMeta) -> Option<HashMap<graph::nav::NavNodeId, usize>>;
     pub fn distance_from_finish(&self, graph: &Graph, meta: &MazeMeta) -> Option<HashMap<graph::nav::NavNodeId, usize>>;
+    pub fn cycles(&self, graph: &Graph, meta: &MazeMeta) -> Option<Vec<Vec<usize>>>;
 }
 ```
 
@@ -37,6 +39,7 @@ All return owned values (cloned out of the cache), not references — `RefCell` 
 - `route_info`: computes a route between two specific nodes, pinning exactly that `(start, finish)` pair — independent of `nav_graph`'s own cache, since a caller may want to probe a candidate pair before committing it to `meta` (or the pair may differ from `meta.start`/`meta.finish` entirely). Keyed on `(graph.version(), start, finish)`; single-slot — a different key (including a graph mutation with the same pair) triggers a rebuild, and probing alternating pairs in a loop defeats the cache entirely.
 - `graph_analytics`: keyed on `(graph.version(), meta.start, meta.finish)`, same key as `nav_graph` since it's computed directly on that pinned nav graph (cycle structure, component counts). See `graph-analytics.md`.
 - `distance_from_start`/`distance_from_finish`: keyed on `(graph.version(), meta.start)` / `(graph.version(), meta.finish)` respectively. `NavNodeId`-domain shortest-path distance in tiles (not maze `NodeId`, not nav-edge hop count) — `None` if the corresponding endpoint isn't set. See `graph-analytics.md`'s "Distance Maps" section for the full contract, including the nav-domain rationale and the underlying `compute_distance_map`/`cycle_min_distance` helpers (`graph/distance_map.rs`).
+- `cycles`: deduped simple nav-cycles (`find_all_simple_cycles` + `dedup_bidirectional_pairs`, `graph::cycles`), as nav-edge index lists — the pre-resolve level every loop-based QC check's own predicate (tile length, distinct exit count, min distance from a waypoint) needs, since resolving a nav-cycle down to a flat base-`Graph` `EdgeId` set (`graph::cycles::resolve_to_edge_ids`) discards the nav structure those predicates read. `None` on `CycleSearchResult::TooManyCycles` overflow (see `graph::cycles::MAX_SIMPLE_CYCLES`) — callers silently skip, same rationale as the pre-existing per-check overflow handling. Keyed on `(graph.version(), meta.start, meta.finish)`, same key as `nav_graph`/`graph_analytics` (built directly on that pinned nav graph). See GitHub issue #98 — added so every loop-based check reads one shared enumeration per QC pass instead of each independently re-running `find_all_simple_cycles`, and so `InvalidLoopIssue` can carry a cheap `usize` index into this cache (`cycle_id`) instead of a duplicated `Vec<EdgeId>` per auxiliary cycle reference (see `quality_control.md`'s `InvalidLoopIssue`).
 - Takes `&self` — internally uses `RefCell` so callers don't need `&mut Maze` just to populate or refresh the cache.
 
 ## Graph versioning

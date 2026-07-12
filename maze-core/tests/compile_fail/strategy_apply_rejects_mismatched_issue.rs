@@ -25,7 +25,7 @@ fn call<T: maze_core::space::Tessellation>(
     preset_state: &maze_core::generation::PresetState,
 ) {
     let strategy = MissingLoopsRandomStrategy;
-    let issue = InvalidLoopIssue::new_from_check("check", vec![], vec![], Default::default());
+    let issue = InvalidLoopIssue::new_from_check("check", 0, vec![], vec![], vec![]);
     assert_apply::<T, _, _>(&strategy, &issue, maze, snapshots, rng, params, preset_state);
 }
 

@@ -245,10 +245,14 @@ from the configured ratio simply from having too few independent picks to sample
 dispatch helper was tried and reverted (GitHub issue #90's follow-up) — it broke `region_merge_core
 ::run_merge_loop`'s single-SCC-snapshot-per-batch invariant, since re-dispatching per region forced
 a fresh (and potentially differently-numbered) SCC snapshot after each region's own merge. The
-actual fix is to stop bundling multiple sub-problems into one `Issue` in the first place — see
-GitHub issues #98–#101 (splitting `InvalidLoops`/`RegionsNeedingExpansion`/`InvalidTeleports`/
-`TeleportProximityPairs` into one `Issue` per element) — not to fragment dispatch inside a
-strategy that receives an already-bundled issue.
+actual fix is to stop bundling multiple sub-problems into one `Issue` in the first place. GitHub
+issue #98 did exactly this for `InvalidLoopIssue` (one `Issue` per invalid cycle now, not a
+`Vec<usize>` batch — see `quality_control.md`'s `InvalidLoopIssue` section) — issues #99–#101 cover
+the same split for `RegionsNeedingExpansion`/`InvalidTeleports`/`TeleportProximityPairs`, not yet
+done. Note that #98's fix doesn't by itself resolve `dispatch_weighted`'s own limitation described
+here, since no `dispatch_weighted` caller currently dispatches on `InvalidLoopIssue` — it closes the
+same *category* of problem (batched sub-problems inside one `Issue`) for a different consumer
+(direct `RepairStrategy::apply`, not nested dispatch).
 
 ### Rule, Stage, and the unified QualityControlEngine
 
@@ -529,37 +533,35 @@ Behavior per case:
 
 ### InvalidLoopRandomStrategy
 
-Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producing check (`MinLoopLengthCheck`: shorter than a threshold; `MaxLoopLengthCheck`: longer than a threshold; future checks may flag cycles invalid for other reasons) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters. The strategy itself is agnostic to *why* a cycle was flagged invalid — it only consumes `InvalidLoopIssue`.
+Handles `INVALID_LOOP`. See GitHub issue #98: one `apply()` call now breaks exactly `issue.cycle` — the single invalid cycle the issue names — by removing one random edge from it (plus its reverse, if present), a wall placed at a random point along the loop. No configurable parameters. The strategy itself is agnostic to *why* a cycle was flagged invalid — it only consumes `InvalidLoopIssue`. Multiple invalid cycles found in the same rule within one QC pass are no longer batched into a single `apply()` call: the merged issue's other cycles ride along in `other_invalid` (unread by this strategy) and each gets its own turn as the new `cycle` on a later fixpoint iteration, once the check re-detects it.
 
-`InvalidLoopIssue`'s fields are never optional at the type level (unlike the pre-#113 `Option<IssueData>`), but their content depends on `requirement()` (see GitHub issue #105, `quality_control.md`'s `IssueRequirement` section) — the producing check already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply. `requirement()` returns `InvalidLoopRequirement::empty()` — `apply` only ever reads `all`/`invalid` through `apply_cuts`, which seeds its pending set from `invalid`'s indices and only ever shrinks it (`discard_cycles_with_edge`'s `retain`), so a valid cycle's entry is never read; `invalid_sources` isn't read at all. A re-indexed `all` containing only the invalid cycles (the base layer, `VALID_CYCLES` unset) produces the identical result — proven by a dedicated test (`apply_result_is_identical_for_full_and_invalid_only_requirement`) that cuts the same seed against both requirement values and asserts the same edges survive.
+`InvalidLoopIssue`'s fields are never optional at the type level, but `other_invalid`/`other_valid`'s content depends on `requirement()` (see GitHub issue #105, `quality_control.md`'s `IssueRequirement` section) — `cycle_id`/`cycle` (the one cycle this call actually cuts) are always resolved by the producing check regardless of `requirement`, since `cycle` is also what `Stage`'s no-progress guard compares between iterations (see `quality_control.md`'s `InvalidLoopIssue` section). `requirement()` returns `InvalidLoopRequirement::empty()` — `apply` reads only `issue.cycle`, never `other_invalid`/`other_valid`, so neither auxiliary layer is ever needed here. Proven by a dedicated test (`apply_result_is_identical_for_full_and_empty_requirement`) that cuts the same seed against both requirement values and asserts the same edges survive.
 
-- `issue: &InvalidLoopIssue` gives `all`/`invalid` directly: cuts the cycles at indices `invalid` into `all`. An empty `invalid` is valid — nothing to break, returns `Fixed` immediately.
-- If `data` is missing or the wrong variant: this is a malformed call (should never happen in a normal pipeline run, where the check always attaches data) — returns `Failed`, not "already fixed".
-- For each cycle: filters candidates to edges still present in the graph (`Graph::edge(id).is_some()` — an earlier cut in the same `apply` may have already broken a cycle sharing an edge with this one) **and not in `preset_state.preset_edges`** — preset Passage/OneWay connections are never removed, filtered out upfront so the random pick never wastes a sample on a protected edge.
-- Picks one random survivor from the filtered candidates and removes it via `try_remove_edge` (which re-checks `preset_state` as a final guard) plus its reverse (`Graph::edge_between(to, from)`, also via `try_remove_edge`), if any. If `try_remove_edge` ever refuses (defensive — shouldn't happen given the upfront filter), the candidate is dropped and another is picked at random; this repeats until either a cut succeeds or no candidates remain for that cycle.
-- **Accepted imprecision, not fully solved**: removing an edge can invalidate another cycle in the same batch through subtler graph changes than a shared `EdgeId` (e.g. corridor re-compression). The existence check only catches the shared-edge case; it does not re-validate every remaining cycle entry. Acceptable for a `Random` strategy — a smarter variant that recomputes between cuts is a separate future task if needed.
+- `issue.cycle` gives the cycle to cut directly: an empty `cycle` means nothing to break (already fixed, or a synthetic/malformed call), returns `Fixed` immediately.
+- Filters candidates to edges still present in the graph (`Graph::edge(id).is_some()`) **and not in `preset_state.preset_edges`** — preset Passage/OneWay connections are never removed, filtered out upfront so the random pick never wastes a sample on a protected edge.
+- Picks one random survivor from the filtered candidates and removes it via `try_remove_edge` (which re-checks `preset_state` as a final guard) plus its reverse (`Graph::edge_between(to, from)`, also via `try_remove_edge`), if any. If `try_remove_edge` ever refuses (defensive — shouldn't happen given the upfront filter), the candidate is dropped and another is picked at random; this repeats until either a cut succeeds or no candidates remain.
 - **Does not guard connectivity or bridge status**: a cut may disconnect the maze, surfacing as `UnreachableFinish`/`MissingEndpoints` on the next QC pass. Deliberately not handled here — the pipeline's fixpoint loop (`build_maze`, up to `MAX_REPAIR_ITERATIONS`) already exists for exactly this kind of cascading repair, via the already-registered endpoint strategies.
 - **No candidate weighting** (segment length, multi-cycle membership, etc.) — the name `Random` is deliberate. `InvalidLoopScoredStrategy` (below) is the weighted alternative on the same issue kind.
 - Returns `Fixed { score: None }`.
 
 ### InvalidLoopScoredStrategy
 
-`RepairStrategy<T, InvalidLoopIssue>`, same field-shape contract as `InvalidLoopRandomStrategy` above. An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (each `Rule` binds exactly one strategy), not a replacement.
+`RepairStrategy<T, InvalidLoopIssue>`, same one-cycle-per-`apply()` contract as `InvalidLoopRandomStrategy` above (GitHub issue #98). An alternative to it — registering one or the other for `INVALID_LOOP` is a config choice (each `Rule` binds exactly one strategy), not a replacement.
 
-Instead of picking a random edge from each invalid cycle, scores every still-present, non-preset-protected candidate edge in the cycle being cut and picks the highest-scoring one (ties broken via `rng`). The goal: bias cuts toward edges that simultaneously break several invalid loops at once (fewer total cuts needed to clear the issue) while avoiding edges that would also break a cycle the maze is meant to keep.
+Instead of picking a random edge from `issue.cycle`, scores every still-present, non-preset-protected candidate edge in it and picks the highest-scoring one (ties broken via `rng`). The goal: bias the cut toward an edge that simultaneously overlaps several other invalid loops (fewer total repair iterations needed to clear all of them) while avoiding an edge shared with a cycle the maze is meant to keep.
 
-Unlike `InvalidLoopRandomStrategy`, `requirement()` returns `InvalidLoopRequirement::VALID_CYCLES` — the `other_overlap` scoring term below walks every valid cycle in `all` to penalize edges shared with a loop the maze must keep, so the `VALID_CYCLES` layer is required by the algorithm itself, not left set out of inertia.
+Unlike `InvalidLoopRandomStrategy`, `requirement()` returns `InvalidLoopRequirement::OTHER_INVALID | InvalidLoopRequirement::OTHER_VALID` — the scoring terms below need both auxiliary layers, so they're required by the algorithm itself, not left set out of inertia.
 
 **Parameters:**
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `short_overlap_weight` | Float | 5.0 | [0, 100] | Weight per other invalid cycle (in `invalid`) sharing this edge |
-| `other_overlap_weight` | Float | 6.0 | [0, 100] | Penalty per valid cycle (in `all`, not in `invalid`) sharing this edge |
+| `short_overlap_weight` | Float | 5.0 | [0, 100] | Weight per other invalid cycle (`issue.other_invalid`) sharing this edge |
+| `other_overlap_weight` | Float | 6.0 | [0, 100] | Penalty per valid cycle (`issue.other_valid`) sharing this edge |
 
-For a candidate edge, `short_overlap` counts how many cycles in `all` at indices listed in `invalid` (including the cycle currently being cut — a constant offset shared by every candidate in that cycle, so it doesn't affect which one wins) contain that `EdgeId`; `other_overlap` counts how many cycles in `all` *not* in `invalid` contain it. Score: `short_overlap * short_overlap_weight - other_overlap * other_overlap_weight`.
+For a candidate edge, `short_overlap` counts how many cycles in `issue.other_invalid` contain that `EdgeId` (plus one for `issue.cycle`'s own membership — a constant offset shared by every candidate, since `cycle` is always in its own invalid set, left in rather than special-cased); `other_overlap` counts how many cycles in `issue.other_valid` contain it. Score: `short_overlap * short_overlap_weight - other_overlap * other_overlap_weight`.
 
-The overlap counts (`edge -> (short_overlap, other_overlap)`) are computed **once** per `apply` call from the full `all` list, before any cut happens, and reused as-is for every cycle in `short` — including cycles processed later in the same `apply` call, after earlier cycles already had an edge cut. They are not recomputed between cuts, so a later cycle's candidate scores can reflect cycles that have already been (partially) broken by an earlier cut in the same call. Same accepted imprecision as `InvalidLoopRandomStrategy` regarding cross-cycle invalidation after a cut — a smarter variant that recomputes overlap between cuts is a separate future task if needed.
+The overlap counts (`edge -> (short_overlap, other_overlap)`) are computed **once** per `apply` call — resolving `issue.other_invalid`/`issue.other_valid`'s indices through `maze.analysis.cycles(&maze.graph, &maze.meta)` — before the (single) cut happens. Since one `apply()` now cuts exactly one cycle (GitHub issue #98), there is no longer a "later cycle in the same call sees a stale overlap count" concern the pre-#98 batch version had — that class of imprecision is resolved by construction, not merely accepted.
 
 Same candidate filtering (existence + preset-protection), same cut mechanics (`try_remove_edge` plus reverse), same connectivity/bridge-status non-guarantee, and same `Fixed { score: None }` return as `InvalidLoopRandomStrategy`.
 
@@ -758,7 +760,7 @@ Handles `TELEPORT_GROUP_PROXIMITY` — see GitHub issue #75. Distinct from `Remo
 Defined in `maze_core::generation::pipeline`.
 
 ```rust
-pub const MAX_REPAIR_ITERATIONS: usize = 10;
+pub const MAX_REPAIR_ITERATIONS: usize = 100;
 
 /// Caps on the repair fixpoint loop. Both bounds are optional and independent — whichever is hit
 /// first stops the loop. `None` for both means no hard cap (loop only stops on convergence or

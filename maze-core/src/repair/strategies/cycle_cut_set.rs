@@ -1,33 +1,7 @@
-use std::collections::HashMap;
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
-
-/// Maps each edge to the indices (into `all`) of every cycle that contains it. Used to find,
-/// in O(1), which other pending cycles become moot once a given edge is cut — keeps a cut from
-/// being "wasted" on a cycle that's already broken, and is meant to stay the general mechanism
-/// for dropping cycles from the pending set regardless of why a cycle stops needing a cut.
-pub(super) fn edge_to_cycles_map(all: &[Vec<EdgeId>]) -> HashMap<EdgeId, Vec<usize>> {
-    let mut map: HashMap<EdgeId, Vec<usize>> = HashMap::new();
-    for (idx, cycle) in all.iter().enumerate() {
-        for &eid in cycle {
-            map.entry(eid).or_default().push(idx);
-        }
-    }
-    map
-}
-
-/// Drops every cycle index that contains `edge_id` from `pending` — once that edge is cut, none
-/// of those cycles are still intact, so none of them need their own cut anymore.
-pub(super) fn discard_cycles_with_edge(
-    pending: &mut Vec<usize>,
-    owners: &HashMap<EdgeId, Vec<usize>>,
-    edge_id: EdgeId,
-) {
-    let Some(owned) = owners.get(&edge_id) else { return };
-    pending.retain(|idx| !owned.contains(idx));
-}
 
 /// Candidate edges for cutting within one cycle: must still exist in the graph (an earlier cut
 /// in this same `apply` may have already removed it) and must not be preset-protected.
@@ -63,40 +37,6 @@ mod tests {
             edge_ids.push(graph.add_edge(nodes[i], nodes[i + 1], EdgeKind::Basic));
         }
         (Maze::new(field, graph), edge_ids)
-    }
-
-    #[test]
-    fn edge_to_cycles_map_groups_by_edge() {
-        let all = vec![vec![1, 2, 3], vec![2, 3, 4]];
-        let map = edge_to_cycles_map(&all);
-        assert_eq!(map.get(&1), Some(&vec![0]));
-        assert_eq!(map.get(&2), Some(&vec![0, 1]));
-        assert_eq!(map.get(&3), Some(&vec![0, 1]));
-        assert_eq!(map.get(&4), Some(&vec![1]));
-    }
-
-    #[test]
-    fn edge_to_cycles_map_empty_input_is_empty() {
-        let all: Vec<Vec<EdgeId>> = vec![];
-        assert!(edge_to_cycles_map(&all).is_empty());
-    }
-
-    #[test]
-    fn discard_cycles_with_edge_removes_all_owning_cycles() {
-        let all = vec![vec![1, 2], vec![2, 3], vec![4]];
-        let owners = edge_to_cycles_map(&all);
-        let mut pending = vec![0, 1, 2];
-        discard_cycles_with_edge(&mut pending, &owners, 2);
-        assert_eq!(pending, vec![2], "cycles 0 and 1 both contain edge 2 -> both dropped");
-    }
-
-    #[test]
-    fn discard_cycles_with_edge_unknown_edge_is_noop() {
-        let all = vec![vec![1, 2]];
-        let owners = edge_to_cycles_map(&all);
-        let mut pending = vec![0];
-        discard_cycles_with_edge(&mut pending, &owners, 999);
-        assert_eq!(pending, vec![0]);
     }
 
     #[test]

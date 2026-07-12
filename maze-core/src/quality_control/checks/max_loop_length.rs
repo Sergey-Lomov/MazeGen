@@ -2,8 +2,8 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement};
-use super::cycle_check_core::{find_invalid_cycles, build_issue, tile_length};
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
+use super::cycle_check_core::{find_invalid_cycles, build_repair_issue, build_report_issues, tile_length};
 
 pub const MAX_LOOP_LENGTH_DEFAULT: u32 = 100;
 
@@ -17,17 +17,26 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for MaxLoopLengthCheck {
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, requirement: InvalidLoopRequirement) {
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some((nav, cycles, long)) = find_invalid_cycles(maze, |nav, cycle| {
+        let Some((nav, cycles, long, valid)) = find_invalid_cycles(maze, |nav, cycle| {
             tile_length(nav, cycle) > self.max_loop_length
         }) else { return };
 
-        issues.push(build_issue(&nav, &cycles, long, &maze.graph, &self.instance_id, "threshold", self.max_loop_length, requirement));
+        issues.push(build_repair_issue(&nav, &cycles, &maze.graph, &long, &valid, &self.instance_id, "threshold", self.max_loop_length, requirement));
+    }
+
+    fn report_check(&self, maze: &Maze<T>, _rng: &mut dyn RngCore) -> Vec<InvalidLoopIssue> {
+        let Some((nav, cycles, long, _valid)) = find_invalid_cycles(maze, |nav, cycle| {
+            tile_length(nav, cycle) > self.max_loop_length
+        }) else { return Vec::new() };
+
+        build_report_issues(&nav, &cycles, &maze.graph, &long, &self.instance_id, "threshold", self.max_loop_length)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::quality_control::Issue;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
@@ -55,7 +64,7 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid.len(), 1);
+        assert_eq!(issues[0].cycle.len(), 3, "the triangle is 3 edges");
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("threshold")),
@@ -123,8 +132,7 @@ mod tests {
     /// Triangle A->B->C->A (3 tile-hops, valid against threshold 9) plus a separate long loop
     /// D->E->F->G->H->I->J->K->L->M->D (10 tile-hops, invalid: > 9) sharing no edges with the
     /// triangle — one flagged cycle, one untouched valid cycle, in the same maze. Mirrors
-    /// `min_loop_length.rs`'s `full_resolves_every_cycle_invalid_only_resolves_only_flagged_ones`
-    /// — see GitHub issue #105.
+    /// `min_loop_length.rs`'s equivalent test — see GitHub issue #105/#98.
     fn maze_with_one_valid_and_one_invalid_cycle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field = Field::new(square_rect(13, 1), &mut ids).unwrap();
@@ -143,13 +151,12 @@ mod tests {
         Maze::new(field, g)
     }
 
-    /// See GitHub issue #105 — `build_issue`'s base-layer branch (`VALID_CYCLES` unset) must skip
-    /// resolving/attributing the valid cycle while still flagging exactly the same invalid cycle
+    /// See GitHub issue #105 — `build_repair_issue`'s `OTHER_VALID`-unset branch must skip
+    /// resolving the valid cycle's index while still flagging exactly the same invalid cycle
     /// as `all()` does. Same shape as `min_loop_length.rs`'s equivalent test, confirming the
-    /// `requirement` branching in the shared `cycle_check_core::build_issue` also holds for the
-    /// max-length check, not just the min-length one.
+    /// `requirement` branching in the shared `cycle_check_core` helpers also holds here.
     #[test]
-    fn full_resolves_every_cycle_invalid_only_resolves_only_flagged_ones() {
+    fn full_resolves_other_valid_empty_resolves_none() {
         let maze = maze_with_one_valid_and_one_invalid_cycle();
         let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 9 };
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -158,22 +165,38 @@ mod tests {
         check.repair_check(&maze, &mut full_issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(full_issues.len(), 1);
         let full = &full_issues[0];
-        assert_eq!(full.invalid.len(), 1, "only the long loop is invalid");
-        assert_eq!(full.all.len(), 2, "all() resolves both the invalid long loop and the valid triangle");
-        assert!(!full.invalid_sources.is_empty(), "all() builds invalid_sources");
+        assert_eq!(full.other_valid.len(), 1, "all() resolves the valid triangle's index too");
 
         let mut invalid_only_issues = Vec::new();
         check.repair_check(&maze, &mut invalid_only_issues, &mut rng, InvalidLoopRequirement::empty());
         assert_eq!(invalid_only_issues.len(), 1);
         let invalid_only = &invalid_only_issues[0];
-        assert_eq!(invalid_only.all.len(), invalid_only.invalid.len(), "empty() resolves only the flagged cycles, all == invalid in length");
-        assert_eq!(invalid_only.all.len(), 1, "only the long loop was resolved, the triangle was skipped entirely");
-        assert!(invalid_only.invalid_sources.is_empty(), "empty() does not build invalid_sources");
+        assert!(invalid_only.other_valid.is_empty(), "empty() must not resolve the valid cycle's index");
 
-        // The one cycle each variant does resolve must be the same edge set (the long loop) --
-        // the optimization changes how much is computed, never which cycle is found invalid.
-        let full_cycle_edges: std::collections::HashSet<_> = full.all[full.invalid[0]].iter().copied().collect();
-        let invalid_only_cycle_edges: std::collections::HashSet<_> = invalid_only.all[invalid_only.invalid[0]].iter().copied().collect();
-        assert_eq!(full_cycle_edges, invalid_only_cycle_edges, "both variants must flag the exact same cycle");
+        assert_eq!(full.cycle, invalid_only.cycle, "both variants must flag the exact same cycle");
+    }
+
+    #[test]
+    fn report_check_produces_one_issue_per_invalid_cycle() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(23, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        // Two disjoint long loops (11 tile-hops each) -- both invalid against max_loop_length=9.
+        for i in 0..10 {
+            g.add_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
+        }
+        g.add_edge(nodes[10], nodes[0], EdgeKind::Basic);
+        for i in 11..21 {
+            g.add_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
+        }
+        g.add_edge(nodes[21], nodes[11], EdgeKind::Basic);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let check = MaxLoopLengthCheck { instance_id: TEST_ID.to_string(), max_loop_length: 9 };
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+
+        let report = check.report_check(&maze, &mut rng);
+        assert_eq!(report.len(), 2, "report_check must produce one issue per invalid cycle");
     }
 }

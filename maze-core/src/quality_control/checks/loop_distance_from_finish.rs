@@ -3,8 +3,8 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::distance_map::cycle_min_distance;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement};
-use super::cycle_check_core::{find_invalid_cycles, build_issue};
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
+use super::cycle_check_core::{find_invalid_cycles, build_repair_issue, build_report_issues};
 
 pub const LOOP_DISTANCE_FROM_FINISH_DEFAULT: u32 = 0;
 
@@ -22,21 +22,30 @@ pub struct LoopDistanceFromFinishCheck {
 impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromFinishCheck {
     fn check_type_id(&self) -> &'static str { "loop_distance_from_finish" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, _requirement: InvalidLoopRequirement) {
-        // Not yet migrated to honor `_requirement` — always computes all(), see GitHub issue #105.
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, requirement: InvalidLoopRequirement) {
         let Some(dist_from_finish) = maze.analysis.distance_from_finish(&maze.graph, &maze.meta) else { return };
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some((nav, cycles, too_close)) = find_invalid_cycles(maze, |nav, cycle| {
+        let Some((nav, cycles, too_close, valid)) = find_invalid_cycles(maze, |nav, cycle| {
             cycle_min_distance(nav, cycle, &dist_from_finish) < self.min_distance_from_finish as usize
         }) else { return };
 
-        issues.push(build_issue(&nav, &cycles, too_close, &maze.graph, &self.instance_id, "min_distance_from_finish", self.min_distance_from_finish, InvalidLoopRequirement::all()));
+        issues.push(build_repair_issue(&nav, &cycles, &maze.graph, &too_close, &valid, &self.instance_id, "min_distance_from_finish", self.min_distance_from_finish, requirement));
+    }
+
+    fn report_check(&self, maze: &Maze<T>, _rng: &mut dyn RngCore) -> Vec<InvalidLoopIssue> {
+        let Some(dist_from_finish) = maze.analysis.distance_from_finish(&maze.graph, &maze.meta) else { return Vec::new() };
+        let Some((nav, cycles, too_close, _valid)) = find_invalid_cycles(maze, |nav, cycle| {
+            cycle_min_distance(nav, cycle, &dist_from_finish) < self.min_distance_from_finish as usize
+        }) else { return Vec::new() };
+
+        build_report_issues(&nav, &cycles, &maze.graph, &too_close, &self.instance_id, "min_distance_from_finish", self.min_distance_from_finish)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::quality_control::Issue;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
@@ -78,7 +87,7 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid.len(), 1);
+        assert_eq!(issues[0].cycle.len(), 3);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("min_distance_from_finish")),
@@ -135,8 +144,18 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].all.len(), 2, "both cycles must be enumerated");
-        assert_eq!(issues[0].invalid.len(), 1, "only the near cycle is below the threshold");
+        assert_eq!(issues[0].other_valid.len(), 1, "the far cycle is valid, resolved via all()");
+    }
+
+    #[test]
+    fn requirement_empty_does_not_resolve_other_valid() {
+        let maze = maze_with_two_triangles(20);
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5 };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::empty());
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].other_valid.is_empty(), "empty() must not resolve the valid far cycle's index");
     }
 
     #[test]
@@ -205,5 +224,21 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
+    }
+
+    #[test]
+    fn report_check_produces_one_issue_per_invalid_cycle() {
+        // Both triangles from `maze_with_two_triangles` sit well under a threshold of 100 --
+        // both invalid, so report_check must yield two issues instead of one merged issue.
+        let maze = maze_with_two_triangles(20);
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100 };
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+
+        let report = check.report_check(&maze, &mut rng);
+        assert_eq!(report.len(), 2, "report_check must produce one issue per invalid cycle");
+        for issue in &report {
+            assert!(issue.other_invalid.is_empty(), "report-path issues never carry other_invalid");
+            assert!(issue.other_valid.is_empty(), "report-path issues never carry other_valid");
+        }
     }
 }

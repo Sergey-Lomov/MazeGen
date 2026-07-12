@@ -7,7 +7,6 @@ use maze_core::{
         QualityControlEngine, Issue, CycleAnalysisOverflowedIssue, InvalidLoopIssue,
         RegionNeedsExpansionIssue, RepairLimitReachedIssue, QcNoProgressIssue,
     },
-    quality_control::issue_kinds::canonical_cycle_key,
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
     Maze,
 };
@@ -58,19 +57,26 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         let issue = issue.as_ref();
         // Grouped by source check id (not one flat list) so a merged issue rendered as several
         // bubbles (one per `source_checks` entry) highlights only the cycles *that check*
-        // flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment.
+        // flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment. Since GitHub issue
+        // #98, `report_check`/`run_check_only` produce one `InvalidLoopIssue` per invalid cycle
+        // (not one merged batch) — each issue's own `source_checks()` names every check id that
+        // flagged its single `cycle`, already resolved to `EdgeId`s, no further resolve needed
+        // here. Two different issues (from two different checks) flagging the *same* physical
+        // cycle deliberately do NOT collapse into one entry — each check's bubble must show its
+        // own cycle independently, even if it happens to be the same edge set as another check's.
         let mut invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
-        if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
-            for &idx in invalid {
-                let Some(loop_edges) = all.get(idx) else { continue };
-                let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| {
-                    let edge = maze.graph.edge(eid)?;
-                    let from = u32::try_from(edge.from).ok()?;
-                    let to = u32::try_from(edge.to).ok()?;
-                    Some([from, to])
-                }).collect();
-                let key = canonical_cycle_key(loop_edges);
-                for source in invalid_sources.get(&key).into_iter().flatten() {
+        if let Some(InvalidLoopIssue { cycle, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
+            let edge_pairs: Vec<[u32; 2]> = cycle.iter().filter_map(|&eid| {
+                let edge = maze.graph.edge(eid)?;
+                let from = u32::try_from(edge.from).ok()?;
+                let to = u32::try_from(edge.to).ok()?;
+                Some([from, to])
+            }).collect();
+            // Dedup only within this one issue's own source-check list (defensive against a
+            // malformed `source_checks()` with a repeated id) — never across different issues.
+            let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+            for source in issue.source_checks() {
+                if seen.insert(source.as_str()) {
                     invalid_loop_edges.entry(source.clone()).or_default().push(edge_pairs.clone());
                 }
             }
@@ -268,7 +274,70 @@ mod tests {
     use maze_core::graph::EdgeKind;
     use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
     use maze_core::{Graph, IdGenerator};
-    use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
+    use maze_core::quality_control::{CYCLE_ANALYSIS_OVERFLOWED, InvalidLoopIssue};
+
+    /// Two different checks independently flagging the exact same physical cycle must surface as
+    /// two separate `IssueDto` entries (one bubble per check), never collapsed into one — see
+    /// GitHub issue #98's UI invariant. Simulates the post-#98 report-path shape directly
+    /// (`issues_override`) rather than exercising real checks, since the point here is the
+    /// grouping/dedup logic in `build_analytics_snapshot` itself.
+    #[test]
+    fn two_checks_flagging_the_same_cycle_produce_two_separate_issues() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        let e2 = g.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let same_cycle = vec![e0, e1, e2];
+        let issues: Vec<Box<dyn Issue>> = vec![
+            Box::new(InvalidLoopIssue::new_from_check("rule:min_loop_length", 0, same_cycle.clone(), vec![], vec![])),
+            Box::new(InvalidLoopIssue::new_from_check("rule:max_loop_length", 0, same_cycle.clone(), vec![], vec![])),
+        ];
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), |p| (p.x, p.y)).unwrap();
+
+        let invalid_loop_issues: Vec<_> = snapshot.issues.iter()
+            .filter(|i| i.kind == "invalid_loop")
+            .collect();
+        assert_eq!(invalid_loop_issues.len(), 2, "two independent issues must stay two IssueDto entries, not merge into one");
+        for dto in &invalid_loop_issues {
+            let IssuePayloadDto::InvalidLoop { edges } = &dto.payload else { panic!("expected InvalidLoop payload") };
+            assert_eq!(edges.len(), 1, "each issue's payload must only carry its own check's entry");
+        }
+    }
+
+    /// `IssueMeta::push_source` (the only way `source_checks()` ever grows past construction,
+    /// used exclusively by `IssueMerge::merge`) already dedups by id — so a single issue's
+    /// `source_checks()` can never legitimately contain a repeat. This pins the grouping loop's
+    /// own defensive dedup (a `HashSet` guard per issue, see the loop in
+    /// `build_analytics_snapshot`) against the ordinary, non-duplicated case: one issue, one
+    /// source check, one bucket entry.
+    #[test]
+    fn one_issue_one_source_check_produces_exactly_one_bucket_entry() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        let e2 = g.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let issue = InvalidLoopIssue::new_from_check("rule:min_loop_length", 0, vec![e0, e1, e2], vec![], vec![]);
+        let issues: Vec<Box<dyn Issue>> = vec![Box::new(issue)];
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), |p| (p.x, p.y)).unwrap();
+
+        let dto = snapshot.issues.iter().find(|i| i.kind == "invalid_loop").unwrap();
+        let IssuePayloadDto::InvalidLoop { edges } = &dto.payload else { panic!("expected InvalidLoop payload") };
+        assert_eq!(edges.get("rule:min_loop_length").map(|v| v.len()), Some(1));
+    }
 
     #[test]
     fn pushes_cycle_analysis_overflowed_issue_on_overflow() {

@@ -5,7 +5,7 @@ import { sharedStyles } from "../../styles/shared";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
 
-const DEFAULT_MAX_ITERATIONS = 10;
+const DEFAULT_MAX_ITERATIONS = 250;
 const DEFAULT_TIME_BUDGET_SECS = 2;
 
 /// Local draft state, committed (clamped) to the store only on blur/Enter — not on every
