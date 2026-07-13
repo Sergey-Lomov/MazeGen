@@ -108,7 +108,6 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
       items={items}
       selectedId={selectedId}
       onSelectId={setSelectedId}
-      selectedVariant="neutral"
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}

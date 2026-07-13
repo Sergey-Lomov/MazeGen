@@ -16,16 +16,12 @@ interface Props {
   items: Item[];
   selectedId: string;
   onSelectId: (id: string) => void;
-  /** Selected-row highlight color — "primary" (blue, default) for dialogs that target an
-   * existing rule/strategy, "neutral" (grey) for the "Add new rule" flow's own dialogs, where
-   * blue would wrongly read as "already committed" before the flow finishes. */
-  selectedVariant?: "primary" | "neutral";
   rightPanel: React.ReactNode;
   footer: React.ReactNode;
   onClose: () => void;
 }
 
-export function ItemSelectDialog({ title, items, selectedId, onSelectId, selectedVariant = "primary", rightPanel, footer, onClose }: Props) {
+export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPanel, footer, onClose }: Props) {
   const body = (
     <div style={styles.content}>
       <div style={styles.leftCol}>
@@ -34,7 +30,7 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, selecte
             key={item.id}
             style={{
               ...styles.item,
-              ...(item.id === selectedId ? (selectedVariant === "neutral" ? styles.itemSelectedNeutral : styles.itemSelected) : {}),
+              ...(item.id === selectedId ? styles.itemSelected : {}),
               ...(item.disabled ? styles.itemDisabled : {}),
             }}
             disabled={item.disabled}
@@ -87,10 +83,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   itemSelected: {
     background: ui.accent.base,
-    color: ui.text.inverse,
-  },
-  itemSelectedNeutral: {
-    background: ui.text.disabled,
     color: ui.text.inverse,
   },
   itemDisabled: {

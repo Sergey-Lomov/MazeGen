@@ -48,7 +48,6 @@ export function IssueSelectDialog({ onSelect, onClose }: Props) {
       items={items}
       selectedId={selectedKind}
       onSelectId={setSelectedKind}
-      selectedVariant="neutral"
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}

@@ -110,7 +110,6 @@ export function NewRuleStrategyDialog({ kind, onBack, onConfirm, onClose }: Prop
       items={items}
       selectedId={selectedId}
       onSelectId={setSelectedId}
-      selectedVariant="neutral"
       rightPanel={rightPanel}
       footer={footer}
       onClose={onClose}
