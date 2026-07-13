@@ -9,6 +9,7 @@ export const ui = {
     input: base.bgSurfaceRaised,
     error: base.errorBg,
     warning: base.warningBg,
+    info: base.infoBg,
   },
 
   border: {
@@ -25,6 +26,7 @@ export const ui = {
     error: base.error,
     warning: base.warning,
     success: base.success,
+    info: base.info,
   },
 
   // Active accent (primary buttons, etc.) plus state modifiers derived from it.

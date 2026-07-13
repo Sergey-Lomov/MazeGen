@@ -70,7 +70,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
                 <div style={styles.fieldDescription}>{resolveNestedSlotDescription(slot.slot_id)}</div>
               )}
               <div style={styles.nestedWarning}>
-                <WarningBubble message={m["quality.nested_strategy.unconfigured_warning"]()} />
+                <WarningBubble message={m["quality.nested_strategy.unconfigured_warning"]()} severity="info" />
               </div>
             </div>
           ))}

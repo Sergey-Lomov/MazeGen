@@ -1,6 +1,7 @@
 import React from "react";
-import { ui, typography } from "../styles/theme";
+import { typography } from "../styles/theme";
 import * as m from "~/paraglide/messages";
+import { notificationPalette, type NotificationSeverity } from "./EmbeddedNotification";
 
 interface Props {
   /** Tooltip text — defaults to the experimental-strategy warning, the overwhelming majority of
@@ -9,14 +10,14 @@ interface Props {
   /** "critical" (red, same palette as `IssuesBlock`'s critical issues) for a condition that
    * guarantees a hard failure, "warning" (yellow, default) for anything softer. See
    * `WarningBubble`'s matching prop. */
-  severity?: "warning" | "critical";
+  severity?: NotificationSeverity;
 }
 
 /** Inline ⚠ badge. */
 export function WarningIcon({ title, severity = "warning" }: Props) {
   return (
     <span
-      style={{ ...styles.icon, color: severity === "critical" ? ui.text.error : ui.text.warning }}
+      style={{ ...styles.icon, color: notificationPalette(severity).text }}
       title={title ?? m["strategy.experimental_warning"]()}
     >⚠</span>
   );

@@ -4,6 +4,7 @@ import { sharedStyles } from "../styles/shared";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
 import { resolveIssue, resolveIssueSourceLabel } from "./issueRegistry";
+import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import type { IssueDto } from "../wasm/types";
@@ -42,9 +43,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const regionNodes = sourceCheck != null && issue.payload.kind === "region_needs_expansion"
     ? issue.payload.nodes[sourceCheck] ?? null
     : null;
-  const palette = severity === "critical"
-    ? { bg: ui.bg.error, text: ui.text.error }
-    : { bg: ui.bg.warning, text: ui.text.warning };
+  const palette = notificationPalette(severity);
 
   const handleMouseEnter = loopEdges != null
     ? () => setHoveredIssueLoopEdges(loopEdges.flat())
@@ -113,13 +112,10 @@ const issueStyles: Record<string, React.CSSProperties> = {
     gap: 4,
   },
   bubble: {
+    ...embeddedNotificationStyle,
     display: "flex",
     alignItems: "center",
     gap: 6,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderRadius: 6,
-    padding: "4px 8px",
   },
   bubbleClickable: {
     cursor: "pointer",

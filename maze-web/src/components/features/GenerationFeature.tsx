@@ -116,7 +116,7 @@ export function GenerationFeature({ canGenerate }: Props) {
       <div style={styles.algorithmBlock}>
         <span style={styles.sectionCaption}>{m["generation.elements"]()}</span>
         {isCanonical ? (
-          <WarningBubble message={m["generation.canonical_elements_warning"]()} />
+          <WarningBubble message={m["generation.canonical_elements_warning"]({ qualityTitle: m["quality.title"]() })} severity="info" />
         ) : (
           <div style={styles.paramValues}>
             <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.04} onChange={(v) => setElementsParam("one_way_chance", v)} />

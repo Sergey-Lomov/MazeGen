@@ -98,7 +98,7 @@
   "generation.one_way_chance": "Односторонний переход",
   "generation.teleport_chance": "Шанс телепорта",
   "generation.teleport_one_way_chance": "Шанс одностороннего телепорта",
-  "generation.canonical_elements_warning": "Канонический алгоритм: добавляет только простые проходы. Односторонние, телепорты и т.д. - через ремонт в Quality Control.",
+  "generation.canonical_elements_warning": "Канонический алгоритм: добавляет только простые проходы. Односторонние, телепорты и т.д. - через ремонт в разделе {qualityTitle}.",
 
   "debug.outdated_warning": "Снимок отладки устарел — пересгенерируйте для обновления",
   "debug.prev_step": "Предыдущий шаг",
@@ -466,7 +466,7 @@
   "param.max_connections.description": "Максимальное число исходящих связей у проверяемой вершины телепорта, при превышении которой она считается супер-хабом.",
   "quality.nested_strategy.label": "Стратегия слияния",
   "quality.nested_strategy.placeholder": "Выберите стратегию",
-  "quality.nested_strategy.unconfigured_warning": "Будет подставлена стратегия по умолчанию. Её можно изменить на карточке правила.",
+  "quality.nested_strategy.unconfigured_warning": "Стратегия использует вложенные стратегии, которые можно будет настроить в карточке правила.",
   "quality.nested_strategy.add": "Добавить вложенную стратегию",
   "quality.nested_strategy.remove": "Удалить эту вложенную стратегию",
   "quality.nested_strategy.weight_label": "Вес",

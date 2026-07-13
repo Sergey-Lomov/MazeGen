@@ -115,6 +115,8 @@ export const base = {
   warning: "#ffaa44",
   warningBg: "#2a2010",
   success: "#6dbf7e",
+  info: "#7ab3e0",
+  infoBg: "#16232e",
 
   // Canvas-only hues, kept separate from the UI accent family because they
   // identify distinct graph/maze semantics, not interactive states.
