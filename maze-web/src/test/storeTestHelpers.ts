@@ -27,7 +27,8 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
  *  that's the shape `generateWithSeed` receives from `mazeService.generateMaze` before it calls
  *  `parseTape` itself. */
 export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array } {
-  const payloadChunks = edges.map(([from, to]) => concatBytes([u64le(from), u64le(to)]));
+  // `bidirectional` always encoded `true` — mirrors RB's real behavior (GitHub issue #135).
+  const payloadChunks = edges.map(([from, to]) => concatBytes([u64le(from), u64le(to), new Uint8Array([1])]));
   const offsets: number[] = [];
   let cursor = 0;
   for (const chunk of payloadChunks) {

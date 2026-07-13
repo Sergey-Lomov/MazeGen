@@ -22,7 +22,8 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
 }
 
 function edgeAddedPayload(from: bigint, to: bigint): Uint8Array {
-  return concatBytes([u64le(from), u64le(to)]);
+  // bidirectional=true — mirrors RB's real behavior (GitHub issue #135).
+  return concatBytes([u64le(from), u64le(to), new Uint8Array([1])]);
 }
 
 interface FixtureNode {
@@ -78,29 +79,34 @@ describe("selectDebugMazeView", () => {
     expect(selectDebugMazeView(null, 0)).toBeNull();
   });
 
-  it("returns the arena's static node list and the exact edges reconstructed at debugStep", () => {
+  it("returns the arena's static node list and the exact edges reconstructed at debugStep, both directions per bidirectional EdgeAdded (GitHub issue #135)", () => {
     const arena = arenaWithEdges([[1n, 2n], [2n, 3n], [3n, 4n]]);
     const view = selectDebugMazeView(arena, 1);
     expect(view).toEqual({
       nodes,
       edges: [
         { from: 1, to: 2, kind: "basic" },
+        { from: 2, to: 1, kind: "basic" },
         { from: 2, to: 3, kind: "basic" },
+        { from: 3, to: 2, kind: "basic" },
       ],
     });
   });
 
-  it("step 0 reconstructs exactly one edge", () => {
+  it("step 0 reconstructs exactly one bidirectional edge (both directions)", () => {
     const arena = arenaWithEdges([[1n, 2n], [2n, 3n]]);
     const view = selectDebugMazeView(arena, 0);
-    expect(view?.edges).toEqual([{ from: 1, to: 2, kind: "basic" }]);
+    expect(view?.edges).toEqual([
+      { from: 1, to: 2, kind: "basic" },
+      { from: 2, to: 1, kind: "basic" },
+    ]);
   });
 
-  it("the last valid step (totalSteps - 1) reconstructs every edge in the tape", () => {
+  it("the last valid step (totalSteps - 1) reconstructs every edge in the tape, both directions each", () => {
     const edgePairs: [bigint, bigint][] = [[1n, 2n], [2n, 3n], [3n, 4n]];
     const arena = arenaWithEdges(edgePairs);
     const view = selectDebugMazeView(arena, arena.totalSteps - 1);
-    expect(view?.edges).toHaveLength(edgePairs.length);
+    expect(view?.edges).toHaveLength(edgePairs.length * 2);
   });
 
   it("converts bigint node ids to number and always tags edges as basic", () => {

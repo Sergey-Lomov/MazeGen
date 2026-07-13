@@ -37,8 +37,11 @@ pub enum RecursiveBacktrackerEvent {
     DeadEnd,
     /// A candidate was picked at random from the candidate list.
     CandidateChosen(NodeId),
-    /// An edge was added between `from` and `to`.
-    EdgeAdded { from: NodeId, to: NodeId },
+    /// An edge was added between `from` and `to`. `bidirectional` records whether the passage
+    /// opened in both directions (RB always adds both when `try_add_bidirectional_edge`
+    /// succeeds) — carried explicitly so replay consumers (e.g. the web debug view, #125) don't
+    /// have to rely on implicit knowledge that RB always double-adds.
+    EdgeAdded { from: NodeId, to: NodeId, bidirectional: bool },
     /// A vertex was marked visited.
     VertexVisited(NodeId),
     /// A vertex was popped off the stack (dead end backtrack).
@@ -60,9 +63,10 @@ impl DebugEvent for RecursiveBacktrackerEvent {
 }
 
 /// Binary encoding for the WASM boundary (GitHub issue #124). `NodeId` is `u64` — every
-/// single-id payload is 8 little-endian bytes; `EdgeAdded` is two back-to-back `NodeId`s (16
-/// bytes); `CandidatesComputed` (the only variable-length variant) is a `u32` LE length prefix
-/// followed by that many `NodeId`s; `DeadEnd` carries no data (0-byte payload).
+/// single-id payload is 8 little-endian bytes; `EdgeAdded` is two back-to-back `NodeId`s plus a
+/// 1-byte `bidirectional` flag (17 bytes, GitHub issue #135); `CandidatesComputed` (the only
+/// variable-length variant) is a `u32` LE length prefix followed by that many `NodeId`s;
+/// `DeadEnd` carries no data (0-byte payload).
 impl EncodeEventPayload for RecursiveBacktrackerEvent {
     fn type_id(&self) -> u16 {
         match self {
@@ -93,9 +97,10 @@ impl EncodeEventPayload for RecursiveBacktrackerEvent {
                 }
             }
             RecursiveBacktrackerEvent::DeadEnd => {}
-            RecursiveBacktrackerEvent::EdgeAdded { from, to } => {
+            RecursiveBacktrackerEvent::EdgeAdded { from, to, bidirectional } => {
                 out.extend_from_slice(&from.to_le_bytes());
                 out.extend_from_slice(&to.to_le_bytes());
+                out.push(if *bidirectional { 1 } else { 0 });
             }
         }
     }
@@ -140,7 +145,7 @@ pub fn generate<T: Tessellation>(
             // Preset nodes already have their edge in the graph — skip adding it again.
             if !preset_connected.contains(&chosen) {
                 try_add_bidirectional_edge(graph, current, chosen, preset_state);
-                if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen }); }
+                if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen, bidirectional: true }); }
             }
             visited.insert(chosen);
             if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexVisited(chosen)); }

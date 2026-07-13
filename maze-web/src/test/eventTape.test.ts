@@ -46,8 +46,8 @@ function scopePayload(name: string): Uint8Array {
   return new TextEncoder().encode(name);
 }
 
-function edgeAddedPayload(from: bigint, to: bigint): Uint8Array {
-  return concatBytes([u64le(from), u64le(to)]);
+function edgeAddedPayload(from: bigint, to: bigint, bidirectional = true): Uint8Array {
+  return concatBytes([u64le(from), u64le(to), new Uint8Array([bidirectional ? 1 : 0])]);
 }
 
 function vertexPayload(id: bigint): Uint8Array {
@@ -110,17 +110,17 @@ describe("mutatingRbEvents / applyRecursiveBacktracker — exact sequence", () =
     const tape = buildTwoStepTape();
     const events = mutatingRbEvents(tape);
     expect(events).toEqual([
-      { kind: "EdgeAdded", from: 1n, to: 2n },
+      { kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true },
       { kind: "VertexVisited", id: 2n },
       { kind: "VertexPushed", id: 2n },
       { kind: "VertexPopped", id: 2n },
     ]);
 
     const result = applyRecursiveBacktracker(tape, 0);
-    expect(result).toEqual({ edges: [{ from: 1n, to: 2n }], step: 0, nodeIndex: 2 });
+    expect(result).toEqual({ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], step: 0, nodeIndex: 2 });
 
     const full = applyRecursiveBacktracker(tape, 3);
-    expect(full).toEqual({ edges: [{ from: 1n, to: 2n }], step: 3, nodeIndex: 7 });
+    expect(full).toEqual({ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], step: 3, nodeIndex: 7 });
   });
 });
 
@@ -133,7 +133,7 @@ describe("mutatingRbEvents invariants", () => {
   });
 
   it("is_mutating split agrees with the Rust-side variant list", () => {
-    expect(isMutatingRbEvent({ kind: "EdgeAdded", from: 1n, to: 2n })).toBe(true);
+    expect(isMutatingRbEvent({ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true })).toBe(true);
     expect(isMutatingRbEvent({ kind: "VertexVisited", id: 1n })).toBe(true);
     expect(isMutatingRbEvent({ kind: "VertexPopped", id: 1n })).toBe(true);
     expect(isMutatingRbEvent({ kind: "VertexPushed", id: 1n })).toBe(true);
@@ -294,9 +294,18 @@ describe("mutatingRbEvents — bounded scan", () => {
     ]);
     const limited = mutatingRbEvents(tape, 2);
     expect(limited).toEqual([
-      { kind: "EdgeAdded", from: 1n, to: 2n },
-      { kind: "EdgeAdded", from: 2n, to: 3n },
+      { kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true },
+      { kind: "EdgeAdded", from: 2n, to: 3n, bidirectional: true },
     ]);
+  });
+
+  it("EdgeAdded with bidirectional=false decodes without a reverse pair", () => {
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n, false) },
+    ]);
+    expect(mutatingRbEvents(tape)).toEqual([{ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: false }]);
+    expect(applyRecursiveBacktracker(tape, 0).edges).toEqual([{ from: 1n, to: 2n }]);
   });
 });
 

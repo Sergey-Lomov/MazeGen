@@ -34,10 +34,15 @@ fn recursive_backtracker_event_log_mutating_events_match_graph_edges() {
     let edges_from_events: Vec<(_, _)> = tape
         .mutating_events()
         .filter_map(|e| match e {
-            RecursiveBacktrackerEvent::EdgeAdded { from, to } => Some((*from, *to)),
+            RecursiveBacktrackerEvent::EdgeAdded { from, to, .. } => Some((*from, *to)),
             _ => None,
         })
         .collect();
+
+    assert!(
+        tape.mutating_events().all(|e| !matches!(e, RecursiveBacktrackerEvent::EdgeAdded { bidirectional, .. } if !bidirectional)),
+        "RB always adds edges bidirectionally"
+    );
 
     let mut graph_edges: Vec<(_, _)> = graph.edges().map(|e| (e.from, e.to)).collect();
     let mut event_edges_both_dirs: Vec<(_, _)> = edges_from_events
@@ -121,7 +126,7 @@ fn recursive_backtracker_single_step_emits_exact_event_sequence() {
             RecursiveBacktrackerEvent::VertexSelected(start),
             RecursiveBacktrackerEvent::CandidatesComputed(vec![other]),
             RecursiveBacktrackerEvent::CandidateChosen(other),
-            RecursiveBacktrackerEvent::EdgeAdded { from: start, to: other },
+            RecursiveBacktrackerEvent::EdgeAdded { from: start, to: other, bidirectional: true },
             RecursiveBacktrackerEvent::VertexVisited(other),
             RecursiveBacktrackerEvent::VertexPushed(other),
         ]

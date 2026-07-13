@@ -39,7 +39,9 @@ function scopePayload(name: string): Uint8Array {
 }
 
 function edgeAddedPayload(from: bigint, to: bigint): Uint8Array {
-  return concatBytes([u64le(from), u64le(to)]);
+  // bidirectional=true (GitHub issue #135) — payload shape unused by this file's selectors
+  // (they classify by tag only), kept accurate anyway so this stays a correct wire-format mirror.
+  return concatBytes([u64le(from), u64le(to), new Uint8Array([1])]);
 }
 
 function vertexPayload(id: bigint): Uint8Array {

@@ -131,7 +131,7 @@ export type RecursiveBacktrackerEvent =
   | { kind: "CandidatesComputed"; ids: bigint[] }
   | { kind: "DeadEnd" }
   | { kind: "CandidateChosen"; id: bigint }
-  | { kind: "EdgeAdded"; from: bigint; to: bigint }
+  | { kind: "EdgeAdded"; from: bigint; to: bigint; bidirectional: boolean }
   | { kind: "VertexVisited"; id: bigint }
   | { kind: "VertexPopped"; id: bigint }
   | { kind: "VertexPushed"; id: bigint };
@@ -143,7 +143,8 @@ function readNodeId(bytes: Uint8Array, offset: number): bigint {
 /** Decodes one RB event's binary payload. Contract: only called with `tag >= 1` (a real RB wire
  *  tag) — callers (e.g. `mutatingRbEvents`) filter out `TAG_SCOPE` before invoking this; it never
  *  needs to know about scope nodes. Throws on an unrecognized tag or a `payload_len` that doesn't
- *  match the wire format (fixed size per variant, or the `4 + count * 8` formula for
+ *  match the wire format (fixed size per variant — 17 bytes for `EdgeAdded` (GitHub issue #135:
+ *  two `NodeId`s plus a 1-byte `bidirectional` flag), or the `4 + count * 8` formula for
  *  `CandidatesComputed`) — a malformed tape means a core/web build mismatch, which must surface
  *  immediately rather than silently produce a wrong reconstructed state. */
 export function decodeRecursiveBacktrackerEvent(tag: number, bytes: Uint8Array): RecursiveBacktrackerEvent {
@@ -164,8 +165,8 @@ export function decodeRecursiveBacktrackerEvent(tag: number, bytes: Uint8Array):
       expectLen(tag, bytes, 8);
       return { kind: "VertexPushed", id: readNodeId(bytes, 0) };
     case RB_TAG.EDGE_ADDED:
-      expectLen(tag, bytes, 16);
-      return { kind: "EdgeAdded", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+      expectLen(tag, bytes, 17);
+      return { kind: "EdgeAdded", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
     case RB_TAG.DEAD_END:
       expectLen(tag, bytes, 0);
       return { kind: "DeadEnd" };
@@ -283,7 +284,11 @@ function validateStepShape(name: string, step: number): void {
  *  is what makes resuming from a previous step cheap independent of how large `targetStep` itself
  *  is — a real run can produce tens of thousands of events (`Specs/event_log.md`'s WASM Boundary
  *  section), so a UI scrubbing forward one step at a time must not re-pay the cost of decoding
- *  everything before the step it's already at. */
+ *  everything before the step it's already at.
+ *
+ *  A bidirectional `EdgeAdded` (GitHub issue #135) contributes both `{from, to}` and `{to, from}`
+ *  to `edges` — RB always opens passages in both directions, and the event now carries that fact
+ *  explicitly rather than this module assuming it. */
 export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, from?: ApplyFrom): ApplyResult {
   validateStepShape("targetStep", targetStep);
   if (from) {
@@ -317,6 +322,9 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
   for (const { event } of newEvents) {
     if (event.kind === "EdgeAdded") {
       edges.push({ from: event.from, to: event.to });
+      if (event.bidirectional) {
+        edges.push({ from: event.to, to: event.from });
+      }
     }
   }
 
