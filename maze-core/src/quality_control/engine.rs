@@ -55,8 +55,8 @@ impl RepairBudget {
 /// is never an independent operation over an arbitrary issue set, it always happens in the
 /// context of one `Rule`, which already owns both what to check and how to fix it. The split
 /// existed only because checks and strategy-bearing rules used to be two independent flat lists
-/// pipeline.rs re-matched every iteration via `check_id_to_rule`; once a `Rule` owns both, that
-/// matching is no longer a separate concern. `QualityControlEngine`'s name still fits: it is
+/// pipeline.rs re-matched every iteration; once a `Rule` owns both, that matching is no longer a
+/// separate concern. `QualityControlEngine`'s name still fits: it is
 /// entirely about quality — detection and repair — never about generation, which runs before it
 /// and is out of its scope.
 pub struct QualityControlEngine<T: Tessellation> {
@@ -70,23 +70,6 @@ impl<T: Tessellation> QualityControlEngine<T> {
 
     pub fn stages(&self) -> &[Stage<T>] {
         &self.stages
-    }
-
-    /// Composite check id (`{rule_id}:{local_id}`) → rule id, across every stage/rule — pure
-    /// intospection, not a dispatch mechanism (dispatch needs no routing at all in this model,
-    /// since a check physically lives inside its own `Rule`). Kept for external DTO-attribution
-    /// consumers (`maze-wasm`) that still need to map a composite id back to its rule. This is
-    /// the one place in `maze_core` that knows the composite-id string format.
-    pub fn check_id_to_rule(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        for stage in &self.stages {
-            for rule in stage.rules() {
-                for local_id in rule.local_check_ids() {
-                    map.insert(format!("{}:{}", rule.id(), local_id), rule.id().to_string());
-                }
-            }
-        }
-        map
     }
 
     /// Runs the full check+repair process: a fixpoint repair loop per stage (in order, sharing

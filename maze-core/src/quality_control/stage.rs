@@ -326,7 +326,6 @@ mod stalled_commands_tests {
     impl RuleTrait<SquareTessellation> for ScriptedRule {
         fn id(&self) -> &str { &self.id }
         fn kind(&self) -> IssueKind { MISSING_ENDPOINTS }
-        fn local_check_ids(&self) -> Vec<&str> { vec![] }
         fn has_strategy(&self) -> bool { true }
         fn run_checks(&self, _: &Maze<SquareTessellation>, _: &mut dyn RngCore, _: &mut HashMap<&'static str, (f64, u32)>, _: &dyn Fn() -> f64) -> Option<Box<dyn Issue>> {
             Some(Box::new(MissingEndpointsIssue::new_from_check("check")))

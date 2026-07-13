@@ -301,8 +301,7 @@ entry points; internally these delegate to `Rule<T, I>`'s own `run_checks_typed`
 a flat loop reaching into all three levels at once, which is what the pre-#106
 `QualityControlEngine`+`RepairEngine`+`pipeline.rs` split did (a flat `checks: Vec<Box<dyn
 Check<T>>>` on `QualityControlEngine`, a separate `QcRule`/`RepairStage` config-only hierarchy on
-`RepairEngine`, re-matched every iteration via a `check_id_to_rule` `HashMap` built in
-`pipeline.rs`).
+`RepairEngine`, re-matched every iteration in `pipeline.rs`).
 
 **Why there is no separate `RepairEngine` type**: in this model repair is never an independent
 operation over an arbitrary issue set — it always happens in the context of one `Rule`, which
@@ -336,9 +335,7 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
     ) -> Self;
 
     /// `(local_id, &dyn Check<T, I>)` pairs, in configured order — the only way anything outside
-    /// this module observes this rule's checks. Composite-id construction (`{rule_id}:{local_id}`,
-    /// GitHub issue #60) is NOT this type's concern — it's a DTO-protocol detail, built entirely
-    /// by `QualityControlEngine::check_id_to_rule` (the one place in core that knows the format).
+    /// this module observes this rule's checks.
     pub fn checks(&self) -> impl Iterator<Item = (&str, &dyn Check<T, I>)>;
 
     pub fn has_strategy(&self) -> bool;
@@ -380,7 +377,6 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
 pub trait RuleTrait<T: Tessellation> {
     fn id(&self) -> &str;
     fn kind(&self) -> IssueKind;   // I::KIND, object-safe mirror for erased callers
-    fn local_check_ids(&self) -> Vec<&str>;
     fn has_strategy(&self) -> bool;
     fn run_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<Box<dyn Issue>>;
     fn report_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Vec<Box<dyn Issue>>;
@@ -473,13 +469,6 @@ impl<T: Tessellation> QualityControlEngine<T> {
 
     /// Ordered stages this engine dispatches, in dispatch order.
     pub fn stages(&self) -> &[Stage<T>];
-
-    /// Composite check id (`{rule_id}:{local_id}`) → rule id, across every stage/rule — pure
-    /// introspection for external DTO-attribution consumers (`maze-wasm`), not a dispatch
-    /// mechanism (dispatch needs no routing at all in this model: a check physically lives
-    /// inside its own `Rule`, so nothing has to look it up by id to know which rule it belongs
-    /// to). This is the one place in `maze_core` that knows the composite-id string format.
-    pub fn check_id_to_rule(&self) -> HashMap<String, String>;
 
     /// Full check+repair: a fixpoint repair loop per stage (in order, sharing one
     /// `RepairBudget`), then an unconditional final report pass over every stage. Replaces the

@@ -82,10 +82,6 @@ struct RuleStrategy<T: Tessellation, I: IssueRequirement + IssueMerge> {
 /// Check<T, I>>` in `checks` and the one `Box<dyn RepairStrategy<T, I>>` in `strategy` are all
 /// generic over the exact same `I`.
 ///
-/// Composite routing ids (`{rule_id}:{local_id}`) are a DTO-protocol detail (issue #60), not a
-/// concern of this type — `Rule` only stores each check's own `local_id`, unique within this
-/// rule's `checks`. Composite id construction lives entirely in
-/// `QualityControlEngine::check_id_to_rule` (the one place across the whole engine that needs it).
 pub struct Rule<T: Tessellation, I: IssueRequirement + IssueMerge> {
     pub id: String,
     checks: Vec<(String, Box<dyn Check<T, I>>)>,
@@ -199,10 +195,6 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
 pub trait RuleTrait<T: Tessellation> {
     fn id(&self) -> &str;
     fn kind(&self) -> IssueKind;
-    /// Local check ids configured on this rule, in order — the only thing
-    /// `QualityControlEngine::check_id_to_rule` actually needs from a rule's checks (composite id
-    /// construction happens entirely there).
-    fn local_check_ids(&self) -> Vec<&str>;
     fn has_strategy(&self) -> bool;
     fn run_checks(
         &self, maze: &Maze<T>, rng: &mut dyn RngCore,
@@ -233,10 +225,6 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge + 'static> RuleTrait<T> f
 
     fn kind(&self) -> IssueKind {
         I::KIND
-    }
-
-    fn local_check_ids(&self) -> Vec<&str> {
-        self.checks.iter().map(|(local_id, _)| local_id.as_str()).collect()
     }
 
     fn has_strategy(&self) -> bool {
