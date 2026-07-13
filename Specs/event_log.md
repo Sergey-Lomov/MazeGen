@@ -182,3 +182,55 @@ pub struct GenerateResult { /* snapshot: JsValue, node_table: Option<Vec<u8>>, p
 - Intermediate snapshots / checkpointing
 - Instrumenting Wilson, Kruskal, or custom algorithms
 - QC/repair narration-level logging
+
+## Web Replay Engine (#125)
+
+Module: `maze-web/src/debug/eventTape.ts`. Pure logic — no store or UI wiring (that's #126+); turns the two buffers from a `DebugTape` (see above) into "maze state at step N". `generateWithSeed` (`generateConfigBuilder.ts`) never sets `config.debug_events` — this module is exercised only via hand-built fixtures in its own unit tests, independent of a real WASM build.
+
+### Two independent layers
+
+- **Flat layer** (`nodeAt`, `mutatingRbEventsWithIndex`/`mutatingRbEvents`) — a linear forward scan over the node table by index, ignoring `parent`/`firstChild`/`nextSibling` entirely. This is what `applyRecursiveBacktracker` uses.
+- **Tree layer** (`nodeView`, mirroring Rust's `NodeView`/`NodePayload`) — walks `parent`/`firstChild`/`nextSibling` to recover the actual scope/event nesting (a future narration UI's entry point, per #126+). Not used by `applyRecursiveBacktracker`.
+
+Both layers read node records through the same `nodeAt(tape, index)` — decodes one fixed-stride (`NODE_RECORD_SIZE = 22`) record, converting the `NO_NODE` sentinel to `null`.
+
+### Recursive Backtracker decoding
+
+`decodeRecursiveBacktrackerEvent(tag, bytes)` decodes one RB event's binary payload into a discriminated union mirroring `RecursiveBacktrackerEvent`; `isMutatingRbEvent` mirrors `DebugEvent::is_mutating`'s split. Contract: only called with `tag >= 1` — callers filter out `TAG_SCOPE` first. Throws (never silently drops or returns `null`) on an unrecognized tag or a `payload_len` mismatch — for fixed-size variants the length must match exactly (8 bytes for single-`NodeId` variants, 16 for `EdgeAdded`, 0 for `DeadEnd`); for `CandidatesComputed` (variable-length) the length must equal `4 + count * 8`, where `count` is read from the payload's own length prefix. A malformed tape means a core/web build mismatch, which must surface immediately rather than silently produce a wrong reconstructed state.
+
+`mutatingRbEventsWithIndex(tape, limit?, startIndex = 0)` is the flat-layer forward scan: skip `TAG_SCOPE` nodes, decode the rest, keep only mutating events, pairing each with the arena node-table index it was decoded from (`MutatingRbEventAt { event, nodeIndex }`). `mutatingRbEvents(tape, limit?, startIndex?)` is a thin wrapper returning just the events, for callers (mainly tests) that don't need the indices. The returned array's position is the `step` unit used everywhere below — but only when `startIndex` is 0; a non-zero `startIndex` returns a sequence whose *step* numbering is relative to whatever position the caller is tracking externally (see `applyRecursiveBacktracker`, the only real caller of a non-zero `startIndex`).
+
+Both `startIndex` and `limit` bound the scan: it starts at arena index `startIndex` and stops once `limit` mutating events have been collected since then. This is what lets `applyRecursiveBacktracker` (below) avoid decoding either the already-known prefix (when resuming via `from`) or the tape's tail past `targetStep` — a real run can produce tens of thousands of events (see the WASM Boundary section above), so scrubbing forward through a large tape one step at a time must not pay the cost of decoding everything before or after the step actually needed.
+
+Wire format constants (`TAG_SCOPE`, `NO_NODE`, `NODE_RECORD_SIZE`, and the RB wire tags `VERTEX_SELECTED=1` … `VERTEX_PUSHED=8`) are exported `const`s in `eventTape.ts` — a manual TS mirror of the Rust constants in `event_log/mod.rs` and `recursive_backtracker.rs`'s `wire_tags` module (no shared codegen; both sides must be updated together on a wire-format change). Tests and any hand-built fixture import these rather than hardcoding raw numbers.
+
+### `step` semantics and `apply`
+
+`targetStep` is the 0-based index, within `mutatingRbEvents`'s flat sequence, of the **last mutating event to apply** — `targetStep=0` means exactly one event (index 0) has been applied. Valid range: `[0, totalMutatingEvents)`. "Zero events applied" (the empty initial state) isn't expressed through a call — callers represent it as `{ edges: [] }` without calling `applyRecursiveBacktracker` at all.
+
+`applyRecursiveBacktracker(tape, targetStep, from?)` → `{ edges: Edge[]; step: number; nodeIndex: number }` (`Edge = { from: bigint; to: bigint }`, `result.step === targetStep` always). `result.nodeIndex` is the arena node-table index of the mutating event at `targetStep` — passing the whole result back in as a later call's `from` (unmodified) is the documented resume contract.
+
+Bounded on both ends: the node-table scan starts at `from.nodeIndex + 1` (or 0 without `from`) via `mutatingRbEventsWithIndex(tape, targetStep - (from?.step ?? -1), scanStart)`, and stops once enough new mutating events have been collected to reach `targetStep`. So neither the already-known prefix (when resuming via `from`) nor the tape's tail past `targetStep` is ever decoded — this is what makes a resumed call's cost independent of how large `targetStep` itself is, not just independent of the tape's total size. Only `EdgeAdded` events from the new (post-`from`) slice are folded into `edges`; `VertexVisited`/`VertexPushed`/`VertexPopped` are walked over (so step indexing lines up) but aren't accumulated into the output, since this minimal state shape carries no visited-set/frontier.
+
+An out-of-range `targetStep` is detected by the bounded scan coming up short (fewer new mutating events found than needed to reach `targetStep`), not by comparing against a separately-computed total — computing the true total would require an unbounded scan, defeating the point. A `from` that doesn't actually come from a previous call on the same tape (mismatched `nodeIndex`/`step` pair, or a `nodeIndex` past the end of the node table) is guarded against explicitly: `from.nodeIndex` must be in range and must point at an actual mutating event, checked with one extra record read before the bounded scan starts — otherwise a bogus `from` would resume scanning from a meaningless position and silently produce a wrong result instead of failing loudly.
+
+`start`/`finish` are never part of the reconstructed state — Recursive Backtracker doesn't emit them; they're static config outside this engine's scope.
+
+`NodeId` (`u64` in core) is read as `bigint` (`DataView.getBigUint64`), never narrowed to `number` inside this module — full precision preserved. Converting to `number` to join against `NodeDto.id` is left to whatever future consumer (#126+) needs that join.
+
+### `from` — nearest-snapshot lookup entry point
+
+`from?: { edges: Edge[]; step: number; nodeIndex: number }` lets a caller resume from an already-known state instead of always replaying from the start — the hook future checkpointing (a separate issue) will plug into without reshaping this API. Since no checkpointing exists yet, the only caller-visible behavior today is: no `from` → replay the flat sequence from arena index 0. The documented usage is to pass a previous `applyRecursiveBacktracker` call's result straight back in as the next call's `from`, unmodified — `nodeIndex` only means something as a pair with `step` from the same result.
+
+- `from.edges` is never mutated — `applyRecursiveBacktracker` always returns a new array.
+- `from.step` and `from.nodeIndex` are each validated to be non-negative integers, independently of each other and of `targetStep`.
+- `from.step > targetStep` throws — resuming "backwards" past a resume point the caller already advanced beyond is a caller bug; going backward must call `applyRecursiveBacktracker(tape, targetStep)` without `from` (a full replay from scratch — the only correct path until checkpointing exists).
+- `from.nodeIndex >= tape.nodeCount`, or `from.nodeIndex` pointing at a scope node or a non-mutating event, throws — this is the guard against a `from` that wasn't actually produced by a previous call on this tape (see above).
+- `targetStep`/`from.step`/`from.nodeIndex` must all be integers (`Number.isInteger`), finite, and non-negative — a non-integer, `NaN`, or `Infinity` throws.
+
+### Out of Scope (#125)
+
+- Store integration (`mazeStore.ts`, `generateConfigBuilder.ts` wiring)
+- Right-panel debug UI
+- Cleanup of the old `debug_steps`/`GenerationStepDto` path
+- Intermediate snapshots / checkpointing (core-side)
