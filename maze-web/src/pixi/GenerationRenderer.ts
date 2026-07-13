@@ -6,9 +6,10 @@ import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
+import { selectDebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport } from "./renderers/types";
-import { canvas, DEBUG_ACTIVE_ALPHA } from "./colorUtils";
+import { canvas } from "./colorUtils";
 
 export class GenerationRenderer {
   private readonly gridContainer: Container;
@@ -17,8 +18,6 @@ export class GenerationRenderer {
   private readonly wallsContainer: Container;
   private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
-  private readonly debugActiveContainer: Container;
-  private readonly debugSrcContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -26,8 +25,6 @@ export class GenerationRenderer {
   private readonly walls: WallRenderer;
   private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
-  private readonly debugActive: CellFillRenderer;
-  private readonly debugSrc: CellFillRenderer;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
@@ -40,8 +37,6 @@ export class GenerationRenderer {
     this.wallsContainer = new Container();
     this.teleportContainer = new Container();
     this.markersContainer = new Container();
-    this.debugActiveContainer = new Container();
-    this.debugSrcContainer = new Container();
 
     viewport.addChild(this.gridContainer);
     viewport.addChild(this.floorContainer);
@@ -49,8 +44,6 @@ export class GenerationRenderer {
     viewport.addChild(this.wallsContainer);
     viewport.addChild(this.teleportContainer);
     viewport.addChild(this.markersContainer);
-    viewport.addChild(this.debugActiveContainer);
-    viewport.addChild(this.debugSrcContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
@@ -58,8 +51,6 @@ export class GenerationRenderer {
     this.walls = new WallRenderer(this.wallsContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
-    this.debugActive = new CellFillRenderer(this.debugActiveContainer);
-    this.debugSrc = new CellFillRenderer(this.debugSrcContainer);
 
     this.syncVisibility(useMazeStore.getState());
     this.renderAll(useMazeStore.getState());
@@ -71,8 +62,7 @@ export class GenerationRenderer {
     this.unsubscribe = useMazeStore.subscribe((state) => {
       const visibilityChanged =
         state.openCard !== prev.openCard ||
-        state.showMaze !== prev.showMaze ||
-        state.showDebugFrontier !== prev.showDebugFrontier;
+        state.showMaze !== prev.showMaze;
 
       if (visibilityChanged) {
         this.syncVisibility(state);
@@ -86,7 +76,7 @@ export class GenerationRenderer {
         state.tessellationConfig !== prev.tessellationConfig ||
         state.activeTessellationConfig !== prev.activeTessellationConfig ||
         state.debugMode !== prev.debugMode ||
-        state.debugSnapshot !== prev.debugSnapshot ||
+        state.debugArena !== prev.debugArena ||
         state.debugStep !== prev.debugStep;
 
       if (dataChanged) {
@@ -105,8 +95,6 @@ export class GenerationRenderer {
     this.wallsContainer.visible = visible;
     this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
-    this.debugActiveContainer.visible = visible && state.showDebugFrontier;
-    this.debugSrcContainer.visible = visible && state.showDebugFrontier;
     if (visible) {
       this.renderAll(state);
     }
@@ -122,14 +110,13 @@ export class GenerationRenderer {
   }
 
   private debugView(state: ReturnType<typeof useMazeStore.getState>) {
-    const snap = state.debugMode && state.debugSnapshot ? state.debugSnapshot : null;
-    const nodes = snap ? snap.nodes : state.nodes;
-    const edges = snap ? (snap.steps[state.debugStep]?.edges ?? []) : state.edges;
-    const isLastStep = snap ? state.debugStep === snap.steps.length - 1 : true;
-    const start  = (snap && !isLastStep) ? null : state.start;
-    const finish = (snap && !isLastStep) ? null : state.finish;
-    const currentStep = snap ? snap.steps[state.debugStep] : null;
-    return { nodes, edges, start, finish, currentStep };
+    const view = state.debugMode ? selectDebugMazeView(state.debugArena, state.debugStep) : null;
+    return {
+      nodes: view ? view.nodes : state.nodes,
+      edges: view ? view.edges : state.edges,
+      start: state.start,
+      finish: state.finish,
+    };
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
@@ -154,29 +141,6 @@ export class GenerationRenderer {
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
     this.markers.render({ markers: markerData });
-
-    if (!state.showDebugFrontier) return;
-
-    const debugVisible = state.debugMode && !!view.currentStep;
-    if (!debugVisible || view.nodes.length === 0) {
-      this.debugActive.render({ cells: [], color: canvas.debug.active, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
-      this.debugSrc.render({ cells: [], color: canvas.debug.currentSrc, alpha: 0.8 }, cfg);
-      return;
-    }
-
-    const activeCells: [number, number][] = [];
-    for (const nodeId of view.currentStep!.active_nodes) {
-      const node = nodeById.get(nodeId);
-      if (node) activeCells.push([node.x, node.y]);
-    }
-    this.debugActive.render({ cells: activeCells, color: canvas.debug.active, alpha: DEBUG_ACTIVE_ALPHA }, cfg);
-
-    const srcCells: [number, number][] = [];
-    if (view.currentStep!.current_src !== null) {
-      const srcNode = nodeById.get(view.currentStep!.current_src);
-      if (srcNode) srcCells.push([srcNode.x, srcNode.y]);
-    }
-    this.debugSrc.render({ cells: srcCells, color: canvas.debug.currentSrc, alpha: 0.8 }, cfg);
   }
 
   destroy(): void {
@@ -187,16 +151,12 @@ export class GenerationRenderer {
     this.walls.destroy();
     this.teleports.destroy();
     this.markers.destroy();
-    this.debugActive.destroy();
-    this.debugSrc.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
-    this.debugActiveContainer.destroy();
-    this.debugSrcContainer.destroy();
   }
 }
 

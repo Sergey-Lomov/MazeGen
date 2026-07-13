@@ -2,7 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { fieldConfigToWasm, buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks } from "./storeTestHelpers";
+import { serializeProject } from "../store/projectExport";
+import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape } from "./storeTestHelpers";
+import { parseTape } from "../debug/eventTape";
+import type { DebugArenaHandle } from "../store/storeTypes";
+
+function emptyDebugArena(): DebugArenaHandle {
+  return { tape: parseTape(new Uint8Array(0), new Uint8Array(0)), nodes: [], totalSteps: 0 };
+}
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -1339,14 +1346,71 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().debugStale).toBe(true);
   });
 
-  it("setDebugStep / setDebugAutoPlayDelay / setShowDebugFrontier update their fields", () => {
+  it("setDebugStep / setDebugAutoPlayDelay update their fields", () => {
     useMazeStore.getState().setDebugStep(3);
     useMazeStore.getState().setDebugAutoPlayDelay(500);
-    useMazeStore.getState().setShowDebugFrontier(false);
     const s = useMazeStore.getState();
     expect(s.debugStep).toBe(3);
     expect(s.debugAutoPlayDelay).toBe(500);
-    expect(s.showDebugFrontier).toBe(false);
+  });
+
+  it("generate() with debugMode on and a debug tape builds a debugArena and sets debugStep to the last step", () => {
+    const debugTape = encodeEdgeAddedTape([[1n, 2n], [2n, 3n], [3n, 4n]]);
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({ debug_events: true }));
+    const s = useMazeStore.getState();
+    expect(s.debugArena).not.toBeNull();
+    expect(s.debugArena?.totalSteps).toBe(3);
+    expect(s.debugStep).toBe(2);
+  });
+
+  it("generate() with debugMode on but a tape with zero mutating events leaves debugArena null", () => {
+    const debugTape = encodeEdgeAddedTape([]);
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
+    useMazeStore.getState().generate();
+    const s = useMazeStore.getState();
+    expect(s.debugArena).toBeNull();
+    expect(s.debugStep).toBe(0);
+  });
+
+  it("generate() with debugMode on but no debug tape (algorithm not instrumented) leaves debugArena null", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
+    useMazeStore.getState().generate();
+    const s = useMazeStore.getState();
+    expect(s.debugArena).toBeNull();
+    expect(s.debugStep).toBe(0);
+  });
+
+  it("generate() with debugMode off does not set debug_events on the config, even with a tape available", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: false });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(7, expect.not.objectContaining({ debug_events: true }));
+    expect(useMazeStore.getState().debugArena).toBeNull();
+  });
+
+  it("loadProject clamps the restored debugStep to the freshly regenerated arena's last step", () => {
+    const debugTape = encodeEdgeAddedTape([[1n, 2n], [2n, 3n]]); // totalSteps = 2, lastStep = 1
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
+    const file = serializeProject(useMazeStore.getState());
+    file.debug = { ...file.debug, debugMode: true, debugStep: 99 }; // saved step beyond this run's range
+    useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().debugStep).toBe(1);
+  });
+
+  it("loadProject restores the saved debugStep as-is when it's within the regenerated arena's range", () => {
+    const debugTape = encodeEdgeAddedTape([[1n, 2n], [2n, 3n], [3n, 4n]]); // totalSteps = 3, lastStep = 2
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
+    const file = serializeProject(useMazeStore.getState());
+    file.debug = { ...file.debug, debugMode: true, debugStep: 1 };
+    useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().debugStep).toBe(1);
   });
 
   it("regenerate is a no-op when lastUsedSeed is null", () => {
@@ -1414,14 +1478,14 @@ describe("mazeStore.qcExperiment toggle", () => {
     expect(useMazeStore.getState().lastUsedQcExperiment).toBe(false);
   });
 
-  it("setQcExperiment marks debugStale when a debug snapshot exists", () => {
-    useMazeStore.setState({ debugSnapshot: { nodes: [], steps: [] } });
+  it("setQcExperiment marks debugStale when a debug arena exists", () => {
+    useMazeStore.setState({ debugArena: emptyDebugArena() });
     useMazeStore.getState().setQcExperiment(true);
     expect(useMazeStore.getState().debugStale).toBe(true);
   });
 
-  it("setQcExperiment does not mark debugStale when there is no debug snapshot", () => {
-    useMazeStore.setState({ debugSnapshot: null, debugStale: false });
+  it("setQcExperiment does not mark debugStale when there is no debug arena", () => {
+    useMazeStore.setState({ debugArena: null, debugStale: false });
     useMazeStore.getState().setQcExperiment(true);
     expect(useMazeStore.getState().debugStale).toBe(false);
   });

@@ -1,38 +1,36 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
+import { selectDebugMazeView } from "../store/debugSelectors";
 import { ui, radius, typography, muted } from "../styles/theme";
-import { Switch } from "./Switch";
 import { StepSlider } from "./StepSlider";
 import * as m from "~/paraglide/messages";
 
 export function GenerationDebugBar() {
-  const debugSnapshot        = useMazeStore((s) => s.debugSnapshot);
-  const debugStep            = useMazeStore((s) => s.debugStep);
-  const debugStale           = useMazeStore((s) => s.debugStale);
-  const showDebugFrontier    = useMazeStore((s) => s.showDebugFrontier);
-  const delayMs              = useMazeStore((s) => s.debugAutoPlayDelay);
-  const setDebugStep         = useMazeStore((s) => s.setDebugStep);
-  const setDebugMode         = useMazeStore((s) => s.setDebugMode);
-  const setShowDebugFrontier = useMazeStore((s) => s.setShowDebugFrontier);
-  const setDelayMs           = useMazeStore((s) => s.setDebugAutoPlayDelay);
+  const debugArena  = useMazeStore((s) => s.debugArena);
+  const debugStep   = useMazeStore((s) => s.debugStep);
+  const debugStale  = useMazeStore((s) => s.debugStale);
+  const delayMs     = useMazeStore((s) => s.debugAutoPlayDelay);
+  const setDebugStep = useMazeStore((s) => s.setDebugStep);
+  const setDebugMode = useMazeStore((s) => s.setDebugMode);
+  const setDelayMs   = useMazeStore((s) => s.setDebugAutoPlayDelay);
 
   const [playing, setPlaying] = React.useState(false);
   const [delayDraft, setDelayDraft] = React.useState(String(delayMs));
-  const total = debugSnapshot?.steps.length ?? 0;
-  const currentEdges = debugSnapshot?.steps[debugStep]?.edges.length ?? 0;
+  const total = debugArena?.totalSteps ?? 0;
+  const currentEdges = debugArena ? selectDebugMazeView(debugArena, debugStep)?.edges.length ?? 0 : 0;
 
   useEffect(() => {
     if (!playing) return;
     const ms = Math.max(50, delayMs);
     const id = setInterval(() => {
-      const step = useMazeStore.getState().debugStep;
-      const snap = useMazeStore.getState().debugSnapshot;
-      const last = (snap?.steps.length ?? 1) - 1;
+      const state = useMazeStore.getState();
+      const step = state.debugStep;
+      const last = (state.debugArena?.totalSteps ?? 1) - 1;
       if (step >= last) {
         setPlaying(false);
       } else {
-        useMazeStore.getState().setDebugStep(step + 1);
+        state.setDebugStep(step + 1);
       }
     }, ms);
     return () => clearInterval(id);
@@ -40,10 +38,10 @@ export function GenerationDebugBar() {
 
   useEffect(() => { setDelayDraft(String(delayMs)); }, [delayMs]);
 
-  // Stop autoplay when snapshot changes
-  useEffect(() => { setPlaying(false); }, [debugSnapshot]);
+  // Stop autoplay when the debug arena changes
+  useEffect(() => { setPlaying(false); }, [debugArena]);
 
-  if (!debugSnapshot) return null;
+  if (!debugArena) return null;
 
   function handleClose() {
     setPlaying(false);
@@ -90,12 +88,6 @@ export function GenerationDebugBar() {
           }}
         />
         <span style={styles.label}>ms</span>
-
-        <div style={styles.divider} />
-
-        {/* Frontier toggle */}
-        <span style={styles.label}>{m["debug.frontier"]()}</span>
-        <Switch checked={showDebugFrontier} onChange={setShowDebugFrontier} />
 
         <div style={styles.divider} />
 

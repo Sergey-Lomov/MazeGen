@@ -63,7 +63,6 @@ export function serializeProject(state: MazeState): ProjectFile {
     },
     debug: {
       debugMode: state.debugMode,
-      showDebugFrontier: state.showDebugFrontier,
       debugStep: state.debugStep,
       debugAutoPlayDelay: state.debugAutoPlayDelay,
     },

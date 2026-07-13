@@ -268,11 +268,6 @@ export interface GenerationStepDto {
   current_src: number | null;
 }
 
-export interface GenerationStepsSnapshot {
-  nodes: NodeDto[];
-  steps: GenerationStepDto[];
-}
-
 export type InitialGenerationConfig =
   | ({ method: "custom_vertex_based" } & GenerationParams)
   | ({ method: "custom_edge_based" } & EdgeBasedParams)

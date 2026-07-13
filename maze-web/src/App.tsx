@@ -20,7 +20,7 @@ export function App() {
   const [ready, setReady] = useState(false);
   const loadRegistry = useMazeStore((s) => s.loadRegistry);
   const debugMode = useMazeStore((s) => s.debugMode);
-  const debugSnapshot = useMazeStore((s) => s.debugSnapshot);
+  const debugArena = useMazeStore((s) => s.debugArena);
   const openCard = useMazeStore((s) => s.openCard);
   const generationOpen = openCard === "generation";
   const qualityOpen = openCard === "quality";
@@ -58,7 +58,7 @@ export function App() {
         <FeaturesPanel onRefit={() => sceneRef.current?.refit()} />
       </div>
       <div style={styles.canvasColumn}>
-        {generationOpen && debugMode && debugSnapshot && <GenerationDebugBar />}
+        {generationOpen && debugMode && debugArena && <GenerationDebugBar />}
         <div ref={canvasRef} style={{ ...styles.canvas, display: qualityOpen ? "none" : undefined }} />
         {qualityOpen && <QualityCanvas />}
         {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}

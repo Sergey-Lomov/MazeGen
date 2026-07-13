@@ -134,9 +134,8 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       analyticsSectionsExpanded: file.analytics.sectionsExpanded,
       // debug settings
       debugMode: file.debug.debugMode,
-      showDebugFrontier: file.debug.showDebugFrontier,
       debugAutoPlayDelay: file.debug.debugAutoPlayDelay,
-      debugSnapshot: null,
+      debugArena: null,
       debugStep: 0,
       debugStale: false,
       // ui
@@ -183,10 +182,10 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     // confirmPostEdit to compute analytics over restored state
     void get().confirmPostEdit();
 
-    // If debug mode: restore the saved step clamped to actual snapshot length
+    // If debug mode: restore the saved step, clamped to the freshly (re)generated arena's range —
+    // generateWithSeed above already set debugStep to the last step of the new run.
     if (file.debug.debugMode) {
-      const snap = get().debugSnapshot;
-      const maxStep = snap ? snap.steps.length - 1 : 0;
+      const maxStep = get().debugStep;
       set({ debugStep: Math.min(file.debug.debugStep, maxStep) });
     }
   },

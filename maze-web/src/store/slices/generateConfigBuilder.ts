@@ -1,13 +1,14 @@
 import { generateMaze } from "../../wasm/mazeService";
-import type { GenerateConfig, WasmTessellationConfig, GenerationStepsSnapshot, StrategyConfig } from "../../wasm/types";
+import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports } from "../../pixi/postEditUtils";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
-import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState } from "../storeTypes";
+import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
+import { parseTape, mutatingRbEvents } from "../../debug/eventTape";
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -159,18 +160,21 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
   if (qcExperiment) {
     applyQcExperimentOverrides(config);
   } else if (debugMode) {
-    config.debug = true;
+    config.debug_events = true;
   }
   try {
-    const { snapshot } = generateMaze(seed, config);
+    const { snapshot, debugTape } = generateMaze(seed, config);
     warmCartesianCache(activeTessellation);
-    let debugSnapshot: GenerationStepsSnapshot | null = null;
-    if (debugMode && snapshot.debug_steps.length > 0) {
-      // Step 0 is a client-side synthetic "empty graph" state; WASM only emits steps where edges were added.
-      const steps = [{ edges: [], active_nodes: [], current_src: null }, ...snapshot.debug_steps];
-      debugSnapshot = { nodes: snapshot.nodes, steps };
+    let debugArena: DebugArenaHandle | null = null;
+    let lastStep = 0;
+    if (debugMode && debugTape) {
+      const tape = parseTape(debugTape.nodeTable, debugTape.payload);
+      const totalSteps = mutatingRbEvents(tape).length;
+      if (totalSteps > 0) {
+        debugArena = { tape, nodes: snapshot.nodes, totalSteps };
+        lastStep = totalSteps - 1;
+      }
     }
-    const lastStep = debugSnapshot ? debugSnapshot.steps.length - 1 : 0;
     const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges);
     set({
       nodes: snapshot.nodes,
@@ -190,7 +194,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       routeInfo: snapshot.route_info,
       timing: snapshot.timing,
       generationStatus: "done",
-      debugSnapshot,
+      debugArena,
       debugStep: lastStep,
       debugStale: false,
       postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(snapshot.edges),

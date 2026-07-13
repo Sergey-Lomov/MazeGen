@@ -479,7 +479,6 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const debugObj = optSection(migrated, "debug", "debug");
   const debug: ProjectFileDebug = {
     debugMode: optBool(debugObj, "debugMode", false),
-    showDebugFrontier: optBool(debugObj, "showDebugFrontier", true),
     debugStep: optNumber(debugObj, "debugStep", 0),
     debugAutoPlayDelay: optNumber(debugObj, "debugAutoPlayDelay", 200),
   };

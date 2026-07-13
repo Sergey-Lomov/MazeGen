@@ -1,4 +1,5 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, GenerationStepsSnapshot, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
+import type { ParsedTape } from "../debug/eventTape";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 
@@ -299,6 +300,17 @@ export interface PresetConnectionsActions {
   movePresetTeleportEndpoint: (id: number, end: "from" | "to", cell: [number, number]) => void;
 }
 
+/** Handle onto the last debug generation run's raw event tape (GitHub issue #124/#125) plus the
+ *  static node list needed to join reconstructed `bigint` node ids against `NodeDto.id`. */
+export interface DebugArenaHandle {
+  tape: ParsedTape;
+  nodes: NodeDto[];
+  /** Total mutating-event count for this tape — a static property of the arena (computed once at
+   *  generation time), not a per-step cache; lets the UI know the last valid `debugStep` without
+   *  a bounded-scan trick on every render. */
+  totalSteps: number;
+}
+
 export interface GenerationState {
   nodes: NodeDto[];
   edges: EdgeDto[];
@@ -356,10 +368,11 @@ export interface GenerationState {
   // Debug state — read-only projection, does not mutate production graph
   debugMode: boolean;
   debugAutoPlayDelay: number;
-  debugSnapshot: GenerationStepsSnapshot | null;
+  /** Raw event-tape arena from the last debug generation run (GitHub issue #124/#125) — reconstructed
+   *  maze state at `debugStep` is derived on demand via `selectDebugMazeView`, never cached here. */
+  debugArena: DebugArenaHandle | null;
   debugStep: number;
   debugStale: boolean;
-  showDebugFrontier: boolean;
   /** True after the maze has been generated since the last confirmTessellation. */
   mazeDirty: boolean;
   /** Caps on the QC repair fixpoint loop (see `Specs/repair.md`'s `RepairLimits`). Both are
@@ -475,7 +488,6 @@ export interface GenerationActions {
   setDebugMode: (v: boolean) => void;
   setDebugStep: (step: number) => void;
   setDebugAutoPlayDelay: (ms: number) => void;
-  setShowDebugFrontier: (v: boolean) => void;
   regenerate: () => void;
   setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;

@@ -1,6 +1,53 @@
 import { emptyFreePoints } from "../store/storeHelpers";
+import { RB_TAG, NO_NODE } from "../debug/eventTape";
 
 export { emptyFreePoints };
+
+function u64le(v: bigint): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, v, true);
+  return bytes;
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, c) => sum + c.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
+}
+
+/** Encodes a flat, un-nested list of top-level `EdgeAdded` nodes into the raw
+ *  `{ nodeTable, payload }` buffer pair `generateMaze()` returns as `debugTape` — mirrors
+ *  `DebugTape::encode()`'s wire format (see `Specs/event_log.md`), same shape as
+ *  `eventTape.test.ts`'s fixtures, but returning raw buffers (not a parsed `ParsedTape`) since
+ *  that's the shape `generateWithSeed` receives from `mazeService.generateMaze` before it calls
+ *  `parseTape` itself. */
+export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array } {
+  const payloadChunks = edges.map(([from, to]) => concatBytes([u64le(from), u64le(to)]));
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const chunk of payloadChunks) {
+    offsets.push(cursor);
+    cursor += chunk.byteLength;
+  }
+  const payload = concatBytes(payloadChunks);
+  const nodeTable = new Uint8Array(edges.length * 22);
+  const dv = new DataView(nodeTable.buffer);
+  edges.forEach((_, i) => {
+    const base = i * 22;
+    dv.setUint32(base + 0, NO_NODE, true); // parent
+    dv.setUint32(base + 4, NO_NODE, true); // firstChild
+    dv.setUint32(base + 8, i < edges.length - 1 ? i + 1 : NO_NODE, true); // nextSibling
+    dv.setUint16(base + 12, RB_TAG.EDGE_ADDED, true);
+    dv.setUint32(base + 14, offsets[i], true);
+    dv.setUint32(base + 18, payloadChunks[i].byteLength, true);
+  });
+  return { nodeTable, payload };
+}
 
 export const mockSnapshot = {
   nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }],

@@ -1,10 +1,10 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, GraphAnalyticsDto, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GenerationStepsSnapshot, IssueDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, GraphAnalyticsDto, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, IssueDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import { computeAutoLockedNodes } from "../pixi/fieldEditUtils";
 import type {
-  MazeState, TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
+  MazeState, TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation, DebugArenaHandle,
 } from "./storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "./storeTypes";
 
@@ -104,8 +104,8 @@ export function deriveEditState(
 }
 
 /** Stale-debug flag, recomputed identically across nearly every mutating action. */
-export function debugStaleOf(state: { debugSnapshot: GenerationStepsSnapshot | null }): boolean {
-  return state.debugSnapshot !== null;
+export function debugStaleOf(state: { debugArena: DebugArenaHandle | null }): boolean {
+  return state.debugArena !== null;
 }
 
 /** Apply an edit to the active tessellation kind's free-field point set and rebuild its config. */

@@ -99,7 +99,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
         presetGenSource: null,
         defaultEdgeState: "undefined" as const,
         fieldEditMode: "default" as const,
-        debugSnapshot: null, debugStep: 0, debugStale: false,
+        debugArena: null, debugStep: 0, debugStale: false,
       } : { debugStale: debugStaleOf(state) }),
       fieldDirty: false,
       presetsDirty: false,
@@ -121,7 +121,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
       tessellationConfig: cfg, isEditingField, fieldPoints, freeFieldPoints,
       ...buildResetMazeState(),
       error: null,
-      debugSnapshot: null, debugStep: 0, debugStale: false,
+      debugArena: null, debugStep: 0, debugStale: false,
     };
   }),
 

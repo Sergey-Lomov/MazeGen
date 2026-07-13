@@ -22,7 +22,6 @@ export interface ProjectFileAnalytics {
 
 export interface ProjectFileDebug {
   debugMode: boolean;
-  showDebugFrontier: boolean;
   debugStep: number;
   debugAutoPlayDelay: number;
 }

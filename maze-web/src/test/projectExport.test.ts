@@ -40,7 +40,6 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     showRegionClassesOverlay: false,
     analyticsSectionsExpanded: { layers: true },
     debugMode: false,
-    showDebugFrontier: true,
     debugStep: 0,
     debugAutoPlayDelay: 200,
     showPresetOrigin: false,
@@ -258,7 +257,6 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     expect(result.dirtyFlags).toEqual({ postEdit: false, field: false, presets: false, maze: false });
     expect(result.debug).toEqual({
       debugMode: false,
-      showDebugFrontier: true,
       debugStep: 0,
       debugAutoPlayDelay: 200,
     });
