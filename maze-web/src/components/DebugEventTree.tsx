@@ -3,15 +3,16 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import {
-  buildStepIndex, flattenVisibleRows, resolveHighlightTarget, stepForNode, buildNodeCoordIndex,
-  type TreeRow,
+  buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
+  displayStepForRow, type TreeRow,
 } from "../debug/debugTreeSelectors";
 import { decodeRecursiveBacktrackerEvent, isMutatingRbEvent, type RecursiveBacktrackerEvent } from "../debug/eventTape";
 import { ui, typography, muted } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
-const ROW_HEIGHT = 26;
+const ROW_MIN_HEIGHT = 26;
 const INDENT_PX = 16;
+const STEP_COL_WIDTH = 34;
 
 function narrationFor(event: RecursiveBacktrackerEvent, coords: (id: bigint) => { x: number; y: number } | null): string {
   const fmt = (id: bigint) => {
@@ -24,7 +25,11 @@ function narrationFor(event: RecursiveBacktrackerEvent, coords: (id: bigint) => 
     case "CandidatesComputed": return m["debug.tree.candidates_computed"]({ count: event.ids.length });
     case "DeadEnd": return m["debug.tree.dead_end"]();
     case "CandidateChosen": { const p = fmt(event.id); return m["debug.tree.candidate_chosen"]({ x: p.x, y: p.y }); }
-    case "EdgeAdded": { const f = fmt(event.from); const t = fmt(event.to); return m["debug.tree.edge_added"]({ fx: f.x, fy: f.y, tx: t.x, ty: t.y }); }
+    case "EdgeAdded": {
+      const f = fmt(event.from); const t = fmt(event.to);
+      const key = event.bidirectional ? "debug.tree.edge_added_bidirectional" : "debug.tree.edge_added";
+      return m[key]({ fx: f.x, fy: f.y, tx: t.x, ty: t.y });
+    }
     case "VertexVisited": { const p = fmt(event.id); return m["debug.tree.vertex_visited"]({ x: p.x, y: p.y }); }
     case "VertexPopped": { const p = fmt(event.id); return m["debug.tree.vertex_popped"]({ x: p.x, y: p.y }); }
     case "VertexPushed": { const p = fmt(event.id); return m["debug.tree.vertex_pushed"]({ x: p.x, y: p.y }); }
@@ -33,7 +38,11 @@ function narrationFor(event: RecursiveBacktrackerEvent, coords: (id: bigint) => 
 
 function rowLabel(row: TreeRow, coords: (id: bigint) => { x: number; y: number } | null): { text: string; mutating: boolean } {
   if (row.payload.kind === "scope") {
-    return { text: m["debug.tree.step_scope"](), mutating: false };
+    // Scope names are auto-numbered by `EventLog::enter_numbered` (core, issue #133) as
+    // "step 1", "step 2", ... — pull the trailing index back out for the localized label.
+    const match = /^step (\d+)$/.exec(row.payload.name);
+    const index = match ? Number(match[1]) : 0;
+    return { text: m["debug.tree.step_scope"]({ index }), mutating: false };
   }
   const event = decodeRecursiveBacktrackerEvent(row.payload.tag, row.payload.bytes);
   return { text: narrationFor(event, coords), mutating: isMutatingRbEvent(event) };
@@ -67,7 +76,10 @@ export function DebugEventTree() {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => ROW_MIN_HEIGHT,
+    // Row text now wraps instead of being ellipsis-truncated, so height varies — measure the
+    // actual rendered element rather than assuming a fixed row height.
+    measureElement: (el) => el.getBoundingClientRect().height,
   });
 
   useLayoutEffect(() => {
@@ -79,8 +91,7 @@ export function DebugEventTree() {
 
   if (!tape || !stepIndex) return null;
 
-  function toggleExpanded(nodeIndex: number, e: React.MouseEvent) {
-    e.stopPropagation();
+  function toggleExpanded(nodeIndex: number) {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(nodeIndex)) next.delete(nodeIndex);
@@ -89,8 +100,9 @@ export function DebugEventTree() {
     });
   }
 
-  function handleRowClick(row: TreeRow) {
-    setDebugStep(stepForNode(stepIndex!, row.nodeIndex));
+  function handleStepClick(step: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    setDebugStep(step);
   }
 
   return (
@@ -101,27 +113,39 @@ export function DebugEventTree() {
           const { text, mutating } = rowLabel(row, coords);
           const highlighted = row.nodeIndex === highlightedNodeIndex;
           const isExpanded = expanded.has(row.nodeIndex);
+          const displayStep = displayStepForRow(tape, stepIndex, row);
           return (
             <div
               key={row.nodeIndex}
+              ref={virtualizer.measureElement}
+              data-index={virtualRow.index}
               className="hoverable"
               style={{
                 ...styles.row,
                 transform: `translateY(${virtualRow.start}px)`,
-                paddingLeft: 8 + row.depth * INDENT_PX,
                 background: highlighted ? ui.bg.panelAlt : undefined,
               }}
-              onClick={() => handleRowClick(row)}
+              onClick={() => row.hasChildren && toggleExpanded(row.nodeIndex)}
             >
-              {row.hasChildren ? (
-                <span style={styles.disclosure} onClick={(e) => toggleExpanded(row.nodeIndex, e)}>
-                  {isExpanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
+              <span
+                data-testid="step-col"
+                className={displayStep !== null ? "hoverable" : undefined}
+                style={styles.stepCol}
+                onClick={(e) => displayStep !== null && handleStepClick(displayStep, e)}
+              >
+                {displayStep !== null ? displayStep + 1 : "—"}
+              </span>
+              <span style={{ ...styles.rowBody, paddingLeft: 8 + row.depth * INDENT_PX }}>
+                {row.hasChildren ? (
+                  <span style={styles.disclosure}>
+                    {isExpanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
+                  </span>
+                ) : (
+                  <span style={styles.disclosurePlaceholder} />
+                )}
+                <span style={row.payload.kind === "scope" ? styles.scopeText : mutating ? styles.mutatingText : styles.traceText}>
+                  {text}
                 </span>
-              ) : (
-                <span style={styles.disclosurePlaceholder} />
-              )}
-              <span style={row.payload.kind === "scope" ? styles.scopeText : mutating ? styles.mutatingText : styles.traceText}>
-                {text}
               </span>
             </div>
           );
@@ -142,18 +166,36 @@ const styles: Record<string, React.CSSProperties> = {
     top: 0,
     left: 0,
     right: 0,
-    height: ROW_HEIGHT,
+    minHeight: ROW_MIN_HEIGHT,
     display: "flex",
     alignItems: "center",
-    gap: 4,
     cursor: "default",
     paddingRight: 8,
+  },
+  stepCol: {
+    ...muted(typography.body),
+    width: STEP_COL_WIDTH,
+    flexShrink: 0,
+    textAlign: "right" as const,
+    alignSelf: "center" as const,
+    padding: "0 6px",
+    boxSizing: "border-box" as const,
+    cursor: "default",
+  },
+  rowBody: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 4,
+    flex: 1,
+    minWidth: 0,
+    padding: `${(ROW_MIN_HEIGHT - 16) / 2}px 0`,
   },
   disclosure: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     width: 14,
+    height: 16,
     flexShrink: 0,
   },
   disclosurePlaceholder: {
@@ -164,21 +206,21 @@ const styles: Record<string, React.CSSProperties> = {
     ...typography.body,
     fontWeight: 600,
     color: ui.text.primary,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+    whiteSpace: "normal",
+    wordBreak: "break-word" as const,
+    minWidth: 0,
   },
   mutatingText: {
     ...typography.body,
     color: ui.text.primary,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+    whiteSpace: "normal",
+    wordBreak: "break-word" as const,
+    minWidth: 0,
   },
   traceText: {
     ...muted(typography.body),
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+    whiteSpace: "normal",
+    wordBreak: "break-word" as const,
+    minWidth: 0,
   },
 };

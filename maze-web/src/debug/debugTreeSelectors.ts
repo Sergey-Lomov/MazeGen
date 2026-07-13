@@ -14,6 +14,10 @@ export interface StepIndex {
    *  order = emission order, per the arena's linearization invariant, so "nearest at or before"
    *  is well-defined by construction). Length === tape.nodeCount. */
   nearestStepByNodeIndex: number[];
+  /** arena nodeIndex -> debugStep, but only for nodes that are themselves a mutating event
+   *  (exact membership, unlike `nearestStepByNodeIndex`'s "at or before" semantics) — backs the
+   *  step-column label (`displayStepForRow`). */
+  mutatingNodeIndexToStep: ReadonlyMap<number, number>;
 }
 
 const stepIndexCache = new WeakMap<ParsedTape, StepIndex>();
@@ -42,7 +46,7 @@ export function buildStepIndex(tape: ParsedTape): StepIndex {
     nearestStepByNodeIndex[i] = currentStep;
   }
 
-  const result: StepIndex = { stepToNodeIndex, nearestStepByNodeIndex };
+  const result: StepIndex = { stepToNodeIndex, nearestStepByNodeIndex, mutatingNodeIndexToStep: mutatingNodeIndexSet };
   stepIndexCache.set(tape, result);
   return result;
 }
@@ -63,6 +67,41 @@ export interface TreeRow {
   depth: number;
   payload: NodePayload;
   hasChildren: boolean;
+}
+
+/** End (exclusive) of `nodeIndex`'s subtree in arena-index space — the arena's linearization
+ *  invariant (insertion order = DFS pre-order) means a node's subtree is always the contiguous
+ *  range `[nodeIndex, subtreeEnd)`. Found by walking up through ancestors' `nextSibling` until
+ *  one exists, or falling back to `tape.nodeCount` if `nodeIndex` (or an ancestor) is the last
+ *  node in the whole arena. */
+function subtreeEnd(tape: ParsedTape, nodeIndex: number): number {
+  let current: number | null = nodeIndex;
+  while (current !== null) {
+    const record = nodeAt(tape, current);
+    if (record.nextSibling !== null) return record.nextSibling;
+    current = record.parent;
+  }
+  return tape.nodeCount;
+}
+
+/** The step-column label for a row (left-hand step-number column): a mutating leaf event shows
+ *  its own `debugStep`; a trace-only leaf shows `null` (rendered as a dash); a scope shows the
+ *  step of the first mutating event anywhere in its subtree (in document/arena-index order), or
+ *  `null` if it contains none. */
+export function displayStepForRow(
+  tape: ParsedTape,
+  stepIndex: StepIndex,
+  row: Pick<TreeRow, "nodeIndex" | "payload">,
+): number | null {
+  if (row.payload.kind !== "scope") {
+    return stepIndex.mutatingNodeIndexToStep.get(row.nodeIndex) ?? null;
+  }
+  const end = subtreeEnd(tape, row.nodeIndex);
+  for (let i = row.nodeIndex + 1; i < end; i++) {
+    const step = stepIndex.mutatingNodeIndexToStep.get(i);
+    if (step !== undefined) return step;
+  }
+  return null;
 }
 
 /** DFS over the tree layer, flattened to only the rows currently visible given `expanded`. The

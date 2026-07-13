@@ -124,7 +124,7 @@ pub fn generate<T: Tessellation>(
     let mut stack: Vec<NodeId> = vec![start];
 
     while let Some(&current) = stack.last() {
-        let mut step_guard = event_log.as_deref_mut().map(|log| log.enter("step"));
+        let mut step_guard = event_log.as_deref_mut().map(|log| log.enter_numbered("step"));
         if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexSelected(current)); }
 
         let unvisited: Vec<NodeId> = field

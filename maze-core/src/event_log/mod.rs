@@ -35,6 +35,10 @@ pub trait DebugEvent {
 pub struct EventLog<E> {
     nodes: Vec<Node<E>>,
     cursor: u32,
+    /// Per-(parent scope, base name) sibling counters backing [`EventLog::enter_numbered`] /
+    /// [`ScopeGuard::enter_numbered`] — e.g. distinguishing "step 1" from "step 47" without the
+    /// caller (or a UI consumer) having to count siblings manually (see issue #133).
+    numbered_counters: std::collections::HashMap<(u32, Cow<'static, str>), u32>,
 }
 
 impl<E> EventLog<E> {
@@ -46,7 +50,17 @@ impl<E> EventLog<E> {
             next_sibling: None,
             kind: NodeKind::Scope(Cow::Borrowed("root")),
         };
-        Self { nodes: vec![root], cursor: 0 }
+        Self { nodes: vec![root], cursor: 0, numbered_counters: std::collections::HashMap::new() }
+    }
+
+    /// Next 1-based index for `base_name` among same-name siblings opened directly under the
+    /// current cursor via `enter_numbered` — independent of any plain (non-numbered) `enter`
+    /// scopes that share the same cursor and name.
+    fn next_numbered_index(&mut self, base_name: &str) -> u32 {
+        let key = (self.cursor, Cow::Owned(base_name.to_owned()));
+        let counter = self.numbered_counters.entry(key).or_insert(0);
+        *counter += 1;
+        *counter
     }
 
     fn push_child(&mut self, kind: NodeKind<E>) -> u32 {
@@ -74,6 +88,16 @@ impl<E> EventLog<E> {
         let idx = self.push_child(NodeKind::Scope(name.into()));
         self.cursor = idx;
         ScopeGuard { log: self, parent }
+    }
+
+    /// Opens a new scope as the last child of the current cursor, named `"{base_name} {n}"`
+    /// where `n` is a 1-based counter auto-incremented per (current cursor, `base_name`) pair —
+    /// e.g. successive calls with `base_name = "step"` under the same parent produce "step 1",
+    /// "step 2", ... (see issue #133). Counting is scoped to the cursor, not global, so sibling
+    /// scopes under different parents (or with a different name) number independently.
+    pub fn enter_numbered(&mut self, base_name: &str) -> ScopeGuard<'_, E> {
+        let n = self.next_numbered_index(base_name);
+        self.enter(format!("{base_name} {n}"))
     }
 
     fn emit_inner(&mut self, event: E) {
@@ -126,6 +150,14 @@ impl<'a, E> ScopeGuard<'a, E> {
         let this = std::mem::ManuallyDrop::new(self);
         let log: &'a mut EventLog<E> = unsafe { std::ptr::read(&this.log) };
         log.enter(name)
+    }
+
+    /// Nested-scope counterpart to [`EventLog::enter_numbered`] — see its docs for the naming
+    /// scheme. Consumes this guard the same way [`ScopeGuard::enter`] does.
+    pub fn enter_numbered(self, base_name: &str) -> ScopeGuard<'a, E> {
+        let this = std::mem::ManuallyDrop::new(self);
+        let log: &'a mut EventLog<E> = unsafe { std::ptr::read(&this.log) };
+        log.enter_numbered(base_name)
     }
 }
 
@@ -597,6 +629,65 @@ mod tests {
         }
         let tape = log.finish();
         assert_eq!(tape.iter().count(), 0, "no events were emitted anywhere in the tree");
+    }
+
+    // --- enter_numbered() (GitHub issue #133) ---
+
+    #[test]
+    fn enter_numbered_increments_per_cursor_and_base_name() {
+        let mut log: EventLog<TestEvent> = EventLog::new();
+        {
+            let mut g = log.enter_numbered("step");
+            g.emit(TestEvent::Mutating(1));
+        }
+        {
+            let mut g = log.enter_numbered("step");
+            g.emit(TestEvent::Mutating(2));
+        }
+        {
+            let mut g = log.enter_numbered("roll");
+            g.emit(TestEvent::Mutating(3));
+        }
+
+        let tape = log.finish();
+        let names: Vec<&str> = tape
+            .root()
+            .children()
+            .map(|c| match c.payload() {
+                NodePayload::Scope(name) => name,
+                NodePayload::Event(_) => panic!("expected only scopes"),
+            })
+            .collect();
+        assert_eq!(names, vec!["step 1", "step 2", "roll 1"]);
+    }
+
+    #[test]
+    fn enter_numbered_counts_independently_per_parent_scope() {
+        // "step" scopes opened directly under two different parent cursors (root vs. a nested
+        // "outer" scope) must number independently — the counter is keyed by (parent cursor,
+        // base name), not by base name alone.
+        let mut log: EventLog<TestEvent> = EventLog::new();
+        {
+            let mut top_step = log.enter_numbered("step");
+            top_step.emit(TestEvent::Mutating(1));
+        }
+        {
+            let outer = log.enter_numbered("outer");
+            let mut nested_step = outer.enter_numbered("step");
+            nested_step.emit(TestEvent::Mutating(2));
+        }
+
+        let tape = log.finish();
+        let root_children: Vec<_> = tape.root().children().collect();
+        assert_eq!(root_children.len(), 2);
+        assert!(matches!(root_children[0].payload(), NodePayload::Scope("step 1")));
+        assert!(matches!(root_children[1].payload(), NodePayload::Scope("outer 1")));
+
+        let nested_step = root_children[1].children().next().unwrap();
+        assert!(
+            matches!(nested_step.payload(), NodePayload::Scope("step 1")),
+            "\"step\" nested under \"outer\" is a different parent cursor than root, so it numbers independently of the top-level \"step 1\""
+        );
     }
 
     // --- encode() (GitHub issue #124) ---

@@ -62,14 +62,16 @@ fn recursive_backtracker_event_tree_nests_events_under_step_scopes() {
     let tape = log.finish();
 
     let mut saw_step_with_events = false;
+    let mut expected_index = 1;
     for child in tape.root().children() {
         match child.payload() {
             NodePayload::Scope(name) => {
-                assert_eq!(name, "step");
+                assert_eq!(name, format!("step {expected_index}"), "step scopes must be sequentially numbered (issue #133)");
                 assert!(child.children().count() > 0, "step scope must not be empty");
                 saw_step_with_events = true;
+                expected_index += 1;
             }
-            NodePayload::Event(_) => panic!("root should only contain \"step\" scopes"),
+            NodePayload::Event(_) => panic!("root should only contain \"step N\" scopes"),
         }
     }
     assert!(saw_step_with_events, "expected at least one step scope");
@@ -110,13 +112,13 @@ fn recursive_backtracker_single_step_emits_exact_event_sequence() {
     let root = tape.root();
     let mut steps = root.children();
     let step = steps.next().expect("expected at least one step scope");
-    assert!(matches!(step.payload(), NodePayload::Scope("step")));
+    assert!(matches!(step.payload(), NodePayload::Scope("step 1")));
 
     let payloads: Vec<RecursiveBacktrackerEvent> = step
         .children()
         .map(|c| match c.payload() {
             NodePayload::Event(e) => e.clone(),
-            NodePayload::Scope(_) => panic!("expected only events under \"step\""),
+            NodePayload::Scope(_) => panic!("expected only events under \"step 1\""),
         })
         .collect();
 

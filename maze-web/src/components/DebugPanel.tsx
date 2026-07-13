@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import { selectDebugMazeView } from "../store/debugSelectors";
@@ -6,6 +6,8 @@ import { ui, radius, typography, muted } from "../styles/theme";
 import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
 import * as m from "~/paraglide/messages";
+
+const MIN_PANEL_WIDTH = 320;
 
 export function DebugPanel() {
   const debugArena  = useMazeStore((s) => s.debugArena);
@@ -18,8 +20,26 @@ export function DebugPanel() {
 
   const [playing, setPlaying] = React.useState(false);
   const [delayDraft, setDelayDraft] = React.useState(String(delayMs));
+  const [width, setWidth] = useState(MIN_PANEL_WIDTH);
+  const resizing = useRef(false);
   const total = debugArena?.totalSteps ?? 0;
   const currentEdges = debugArena ? selectDebugMazeView(debugArena, debugStep)?.edges.length ?? 0 : 0;
+
+  useEffect(() => {
+    function handleMouseMove(e: MouseEvent) {
+      if (!resizing.current) return;
+      setWidth((w) => Math.max(MIN_PANEL_WIDTH, w - e.movementX));
+    }
+    function handleMouseUp() {
+      resizing.current = false;
+    }
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   useEffect(() => {
     if (!playing) return;
@@ -53,7 +73,11 @@ export function DebugPanel() {
   const atEnd   = debugStep >= total - 1;
 
   return (
-    <div style={styles.panel}>
+    <div style={{ ...styles.panel, width, minWidth: MIN_PANEL_WIDTH }}>
+      <div
+        style={styles.resizeHandle}
+        onMouseDown={(e) => { e.preventDefault(); resizing.current = true; }}
+      />
       {debugStale && (
         <div style={styles.staleAlert}>{m["debug.outdated_warning"]()}</div>
       )}
@@ -113,14 +137,22 @@ export function DebugPanel() {
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    width: 320,
-    minWidth: 320,
     background: ui.bg.panel,
     borderLeft: `1px solid ${ui.border.default}`,
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
     flexShrink: 0,
+    position: "relative",
+  },
+  resizeHandle: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: -3,
+    width: 6,
+    cursor: "ew-resize",
+    zIndex: 1,
   },
   controls: {
     display: "flex",
