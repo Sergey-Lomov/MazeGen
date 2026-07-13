@@ -28,6 +28,7 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPa
         {items.map((item) => (
           <button
             key={item.id}
+            className={item.disabled ? undefined : item.id === selectedId ? "hoverable-tint" : "hoverable"}
             style={{
               ...styles.item,
               ...(item.id === selectedId ? styles.itemSelected : {}),
@@ -75,7 +76,7 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: "left" as const,
     padding: `6px ${dialogSpacing.paddingX}px`,
     color: ui.text.secondary,
-    cursor: "pointer",
+    cursor: "default",
     width: "100%",
     display: "flex",
     alignItems: "center",

@@ -54,7 +54,7 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
         onMouseLeave={() => setHeaderHovered(false)}
       >
         <span
-          style={{ ...styles.cardLabel, cursor: "pointer" }}
+          style={{ ...styles.cardLabel, cursor: "default" }}
           onClick={() => {
             flushRef.current();
             if (strategy) onSelect({ type: "strategy", ruleId: slot.ruleId, strategyId: strategy.id });
@@ -72,7 +72,7 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
             <Switch checked={!slot.disabled} onChange={() => { flushRef.current(); toggleStrategyDisabled(slot.ruleId); }} />
           </div>
         )}
-        <button style={styles.editBtn} title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }}>✎</button>
+        <button className="hoverable" style={styles.editBtn} title={m["quality.edit_strategy"]()} onClick={() => { flushRef.current(); onEdit(); }}>✎</button>
       </div>
       {strategy && (strategy.params.length > 0 || strategy.nestedSlots.length > 0) && (
         <div style={styles.ruleStrategyParams}>

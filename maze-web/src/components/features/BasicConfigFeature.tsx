@@ -85,7 +85,7 @@ export function BasicConfigFeature() {
           </select>
         </label>
       )}
-      <button style={styles.confirmBtn} onClick={handleConfirmTessellation}>
+      <button className="hoverable-accent" style={styles.confirmBtn} onClick={handleConfirmTessellation}>
         {m["tessellation.confirm_btn"]()}
       </button>
       {showConfirm && (

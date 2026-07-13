@@ -172,6 +172,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
               </div>
               <div style={styles.stageToolbar}>
                 <button
+                  className="hoverable"
                   style={styles.stageToolbarBtn}
                   title={m["quality.add_new_rule"]()}
                   onClick={() => setNewRuleStep({ stage: "issue", targetStageId: stage.stageId })}
@@ -179,6 +180,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   <Plus size={16} color={ui.text.tertiary} />
                 </button>
                 <button
+                  className={isFirstStage ? undefined : "hoverable"}
                   style={{ ...styles.stageToolbarBtn, ...(isFirstStage ? styles.stageToolbarBtnDisabled : {}) }}
                   title={m["quality.move_stage_up"]()}
                   disabled={isFirstStage}
@@ -187,6 +189,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   <ChevronUp size={16} color={ui.text.tertiary} />
                 </button>
                 <button
+                  className={isLastStage ? undefined : "hoverable"}
                   style={{ ...styles.stageToolbarBtn, ...(isLastStage ? styles.stageToolbarBtnDisabled : {}) }}
                   title={m["quality.move_stage_down"]()}
                   disabled={isLastStage}
@@ -194,7 +197,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                 >
                   <ChevronDown size={16} color={ui.text.tertiary} />
                 </button>
-                <button style={styles.stageToolbarBtn} title={m["quality.rename_stage"]()} onClick={() => startRenameStage(stage)}>
+                <button className="hoverable" style={styles.stageToolbarBtn} title={m["quality.rename_stage"]()} onClick={() => startRenameStage(stage)}>
                   <Pencil size={15} color={ui.text.tertiary} />
                 </button>
                 <div
@@ -204,6 +207,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   <Switch checked={!stage.disabled} onChange={() => toggleStageDisabled(stage.stageId)} />
                 </div>
                 <button
+                  className="hoverable"
                   style={styles.stageToolbarBtn}
                   title={m["quality.remove_stage"]()}
                   onClick={() => setRemoveConfirmStageId(stage.stageId)}
@@ -242,6 +246,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                         )}
                         <div style={styles.ruleCardTools}>
                           <button
+                            className={isFirst ? undefined : "hoverable"}
                             style={{ ...styles.moveBtn, ...(isFirst ? styles.moveBtnDisabled : {}) }}
                             title={m["quality.move_rule_up"]()}
                             disabled={isFirst}
@@ -250,6 +255,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                             <ChevronUp size={16} color={ui.text.tertiary} />
                           </button>
                           <button
+                            className={isLast ? undefined : "hoverable"}
                             style={{ ...styles.moveBtn, ...(isLast ? styles.moveBtnDisabled : {}) }}
                             title={m["quality.move_rule_down"]()}
                             disabled={isLast}
@@ -263,8 +269,9 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                           >
                             <Switch checked={!slot.ruleDisabled} onChange={() => toggleRuleDisabled(slot.ruleId)} />
                           </div>
-                          <button style={styles.editBtn} title={m["quality.rename_rule"]()} onClick={() => startRename(slot)}>✎</button>
+                          <button className="hoverable" style={styles.editBtn} title={m["quality.rename_rule"]()} onClick={() => startRename(slot)}>✎</button>
                           <button
+                            className="hoverable"
                             style={styles.removeBtn}
                             title={m["quality.remove_rule"]()}
                             onClick={() => setRemoveConfirmRuleId(slot.ruleId)}
@@ -293,6 +300,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                             );
                           })}
                           <div
+                            className="hoverable"
                             style={styles.ruleAddCheckRow}
                             onClick={() => handleAddCheckClick(slot)}
                             title={m["quality.add_check"]()}
@@ -320,7 +328,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
         {slots.length === 0 && (
           <span style={styles.emptyHint}>{m["status.no_checks"]()}</span>
         )}
-        <button style={styles.addStageBtn} onClick={() => addStage()}>
+        <button className="hoverable" style={styles.addStageBtn} onClick={() => addStage()}>
           {m["quality.add_stage"]()}
         </button>
       </div>

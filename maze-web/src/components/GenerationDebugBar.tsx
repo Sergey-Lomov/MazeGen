@@ -60,11 +60,12 @@ export function GenerationDebugBar() {
       )}
       <div style={styles.bar}>
         {/* Step buttons */}
-        <button style={styles.iconBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>◀</button>
-        <button style={styles.iconBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>▶</button>
+        <button className="hoverable" style={styles.iconBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>◀</button>
+        <button className="hoverable" style={styles.iconBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>▶</button>
 
         {/* Autoplay */}
         <button
+          className="hoverable"
           style={styles.playBtn}
           onClick={() => setPlaying(p => !p)}
           title={playing ? m["debug.pause"]() : m["debug.play"]()}
@@ -112,7 +113,7 @@ export function GenerationDebugBar() {
         />
 
         {/* Close */}
-        <button style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}><X size={16} /></button>
+        <button className="hoverable" style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}><X size={16} /></button>
       </div>
     </>
   );
@@ -133,7 +134,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
-    cursor: "pointer",
+    cursor: "default",
     padding: "0 10px",
     flexShrink: 0,
     height: 28,
@@ -151,7 +152,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
-    cursor: "pointer",
+    cursor: "default",
     padding: "0 12px",
     flexShrink: 0,
     height: 28,
@@ -208,7 +209,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "none",
     border: "none",
     color: ui.text.tertiary,
-    cursor: "pointer",
+    cursor: "default",
     padding: "0 2px",
     flexShrink: 0,
     lineHeight: 1,

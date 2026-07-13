@@ -59,6 +59,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   return (
     <>
       <div
+        className={description ? "hoverable-tint" : undefined}
         style={{
           ...issueStyles.bubble,
           background: palette.bg,
@@ -118,7 +119,7 @@ const issueStyles: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   bubbleClickable: {
-    cursor: "pointer",
+    cursor: "default",
   },
   label: { flex: 1, ...typography.body, lineHeight: 1.4 },
   infoIcon: { ...typography.icon, flexShrink: 0, lineHeight: 1 },

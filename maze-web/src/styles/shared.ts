@@ -68,7 +68,7 @@ export const sharedStyles = {
     border: "none",
     color: ui.text.inverse,
     padding: "5px 4px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   } satisfies React.CSSProperties,
 
@@ -79,7 +79,7 @@ export const sharedStyles = {
     border: "none",
     color: ui.text.inverse,
     padding: "5px 4px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   } satisfies React.CSSProperties,
 
@@ -92,7 +92,7 @@ export const sharedStyles = {
     background: ui.bg.input,
     color: ui.text.tertiary,
     borderRadius: radius.sm,
-    cursor: "pointer",
+    cursor: "default",
   } satisfies React.CSSProperties,
 
   // Toggle button active state
@@ -108,7 +108,7 @@ export const sharedStyles = {
     background: "none",
     border: "none",
     color: ui.text.tertiary,
-    cursor: "pointer",
+    cursor: "default",
     padding: "0 2px",
   } satisfies React.CSSProperties,
 
@@ -180,7 +180,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
         border: "none",
         color: ui.text.inverse,
         padding: "5px 4px",
-        cursor: "pointer",
+        cursor: "default",
         borderRadius: radius.sm,
       };
     case "toggle":
@@ -192,7 +192,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
         background: ui.bg.input,
         color: ui.text.tertiary,
         borderRadius: radius.sm,
-        cursor: "pointer",
+        cursor: "default",
       };
     case "toggle-active":
       return {
@@ -203,7 +203,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
         background: ui.accent.base,
         color: ui.text.inverse,
         borderRadius: radius.sm,
-        cursor: "pointer",
+        cursor: "default",
       };
     case "destructive":
       return {
@@ -213,7 +213,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
         background: ui.bg.input,
         color: ui.text.error,
         borderRadius: radius.sm,
-        cursor: "pointer",
+        cursor: "default",
       };
   }
 }

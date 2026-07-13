@@ -175,12 +175,14 @@ export function FieldSetupFeature() {
     <div style={styles.root}>
       <div style={styles.toggleRow}>
         <button
+          className={isCustom ? "hoverable" : "hoverable-accent"}
           style={buttonStyle(isCustom ? "toggle" : "toggle-active")}
           onClick={handleSwitchToDefault}
         >
           {m["field.default"]()}
         </button>
         <button
+          className={isCustom ? "hoverable-accent" : "hoverable"}
           style={buttonStyle(isCustom ? "toggle-active" : "toggle")}
           onClick={() => setFieldEditMode("custom")}
         >
@@ -200,6 +202,7 @@ export function FieldSetupFeature() {
           {primitivesForKind(tessellationKind).map(([p, label]) => (
             <button
               key={p}
+              className={fieldPrimitive === p ? "hoverable-accent" : "hoverable"}
               style={buttonStyle(fieldPrimitive === p ? "toggle-active" : "toggle")}
               onClick={() => setFieldPrimitive(p as FieldPrimitive)}
             >
@@ -212,6 +215,7 @@ export function FieldSetupFeature() {
             <Switch checked={showFieldOrigin} onChange={setShowFieldOrigin} />
           </div>
           <button
+            className="hoverable-danger"
             style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
             onClick={handleClearField}
           >

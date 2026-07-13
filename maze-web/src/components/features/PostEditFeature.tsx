@@ -68,6 +68,7 @@ export function PostEditFeature() {
         {getEdgeTools().map(([t, label]) => (
           <button
             key={t}
+            className={tool === t ? "hoverable-accent" : "hoverable"}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
             onClick={() => setTool(t)}
           >
@@ -80,6 +81,7 @@ export function PostEditFeature() {
         {getTeleportTools().map(([t, label]) => (
           <button
             key={t}
+            className={tool === t ? "hoverable-accent" : "hoverable"}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
             onClick={() => setTool(t)}
           >
@@ -90,6 +92,7 @@ export function PostEditFeature() {
           {getVertexTools().map(([t, label]) => (
             <button
               key={t}
+              className={tool === t ? "hoverable-accent" : "hoverable"}
               style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
               onClick={() => setTool(t)}
             >
@@ -104,19 +107,19 @@ export function PostEditFeature() {
           {startNode && (
             <div style={styles.statusBubble}>
               <span>{m["preset.start"]()}: {startNode.x},{startNode.y}</span>
-              <button style={styles.clearTag} onClick={() => clearPostEditEndpoint("start")}><X size={16} /></button>
+              <button className="hoverable" style={styles.clearTag} onClick={() => clearPostEditEndpoint("start")}><X size={16} /></button>
             </div>
           )}
           {finishNode && (
             <div style={styles.statusBubble}>
               <span>{m["preset.finish"]()}: {finishNode.x},{finishNode.y}</span>
-              <button style={styles.clearTag} onClick={() => clearPostEditEndpoint("finish")}><X size={16} /></button>
+              <button className="hoverable" style={styles.clearTag} onClick={() => clearPostEditEndpoint("finish")}><X size={16} /></button>
             </div>
           )}
           {pendingFromNode && (
             <div style={styles.statusBubble}>
               <span>{m["preset.teleport_pending"]()}: {pendingFromNode.x},{pendingFromNode.y}</span>
-              <button style={styles.clearTag} onClick={() => setPostEditTeleportPendingFrom(null)}><X size={16} /></button>
+              <button className="hoverable" style={styles.clearTag} onClick={() => setPostEditTeleportPendingFrom(null)}><X size={16} /></button>
             </div>
           )}
           {postEditDraftTeleports.length > 0 && (
@@ -136,6 +139,7 @@ export function PostEditFeature() {
       <span style={styles.hint}>{m["post_edit.auto_confirm_hint"]()}</span>
 
       <button
+        className="hoverable-accent"
         style={{ ...buttonStyle("primary"), width: "100%" }}
         disabled={autoConfirm || !hasEdges}
         onClick={() => void confirmPostEdit()}
@@ -144,6 +148,7 @@ export function PostEditFeature() {
       </button>
 
       <button
+        className="hoverable-danger"
         style={{ ...buttonStyle("destructive"), width: "100%" }}
         onClick={() => setConfirmReset(true)}
       >
@@ -201,7 +206,7 @@ const styles: Record<string, React.CSSProperties> = {
     ...muted(typography.icon),
     background: "none",
     border: "none",
-    cursor: "pointer",
+    cursor: "default",
     padding: "0 2px",
     lineHeight: 1,
     display: "flex",

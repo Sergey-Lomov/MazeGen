@@ -118,6 +118,7 @@ export function PresetConnectionsFeature() {
         {getEdgeTools().map(([t, label]) => (
           <button
             key={t}
+            className={tool === t ? "hoverable-accent" : "hoverable"}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
             onClick={() => setTool(t)}
           >
@@ -131,6 +132,7 @@ export function PresetConnectionsFeature() {
         {getVertexTools().map(([t, label]) => (
           <button
             key={t}
+            className={tool === t ? "hoverable-accent" : "hoverable"}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
             onClick={() => setTool(t)}
           >
@@ -141,6 +143,7 @@ export function PresetConnectionsFeature() {
           {getStartFinishTools().map(([t, label]) => (
             <button
               key={t}
+              className={tool === t ? "hoverable-accent" : "hoverable"}
               style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
               onClick={() => setTool(t)}
             >
@@ -155,6 +158,7 @@ export function PresetConnectionsFeature() {
         {getGenerationTools().map(([t, label]) => (
           <button
             key={t}
+            className={tool === t ? "hoverable-accent" : "hoverable"}
             style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
             onClick={() => setTool(t)}
           >
@@ -168,6 +172,7 @@ export function PresetConnectionsFeature() {
         {(["undefined", "wall", "passage"] as const).map((s) => (
           <button
             key={s}
+            className={defaultEdgeState === s ? "hoverable-accent" : "hoverable"}
             style={buttonStyle(defaultEdgeState === s ? "toggle-active" : "toggle")}
             onClick={() => setDefaultEdgeState(s)}
           >
@@ -195,7 +200,7 @@ export function PresetConnectionsFeature() {
           {presetTeleportPendingFrom && (
             <div style={styles.statusBubble}>
               <span>{m["preset.teleport_pending"]()}: {presetTeleportPendingFrom[0]},{presetTeleportPendingFrom[1]}</span>
-              <button style={styles.clearTag} onClick={() => setPresetTeleportPendingFrom(null)}><X size={16} /></button>
+              <button className="hoverable" style={styles.clearTag} onClick={() => setPresetTeleportPendingFrom(null)}><X size={16} /></button>
             </div>
           )}
           {presetTeleports.length > 0 && (
@@ -210,25 +215,25 @@ export function PresetConnectionsFeature() {
               <span>{lockedNodes.size === 1
                 ? m["preset.nodes_locked"]({ count: lockedNodes.size })
                 : m["preset.nodes_locked_plural"]({ count: lockedNodes.size })}</span>
-              <button style={styles.clearTag} onClick={clearLockedNodes}>{m["common.clear_all"]()}</button>
+              <button className="hoverable" style={styles.clearTag} onClick={clearLockedNodes}>{m["common.clear_all"]()}</button>
             </div>
           )}
           {presetStart && (
             <div style={styles.statusBubble}>
               <span>{m["preset.start"]()}: {presetStart[0]},{presetStart[1]}</span>
-              <button style={styles.clearTag} onClick={() => setPresetStart(null)}><X size={16} /></button>
+              <button className="hoverable" style={styles.clearTag} onClick={() => setPresetStart(null)}><X size={16} /></button>
             </div>
           )}
           {presetFinish && (
             <div style={styles.statusBubble}>
               <span>{m["preset.finish"]()}: {presetFinish[0]},{presetFinish[1]}</span>
-              <button style={styles.clearTag} onClick={() => setPresetFinish(null)}><X size={16} /></button>
+              <button className="hoverable" style={styles.clearTag} onClick={() => setPresetFinish(null)}><X size={16} /></button>
             </div>
           )}
           {presetGenSource && (
             <div style={styles.statusBubble}>
               <span>{m["preset.gen_source"]()}: {presetGenSource[0]},{presetGenSource[1]}</span>
-              <button style={styles.clearTag} onClick={() => setPresetGenSource(null)}><X size={16} /></button>
+              <button className="hoverable" style={styles.clearTag} onClick={() => setPresetGenSource(null)}><X size={16} /></button>
             </div>
           )}
           {isolatedNodes.length > 0 && (
@@ -248,6 +253,7 @@ export function PresetConnectionsFeature() {
 
       {hasInvalid && (
         <button
+          className="hoverable-danger"
           style={{ ...buttonStyle("destructive"), width: "100%" }}
           onClick={() => clearInvalidPresetConnections()}
           onMouseEnter={() => setHighlightInvalidPresets(true)}
@@ -257,6 +263,7 @@ export function PresetConnectionsFeature() {
         </button>
       )}
       <button
+        className="hoverable-danger"
         style={{ ...buttonStyle("destructive"), width: "100%" }}
         onClick={() => setConfirmReset(true)}
       >
@@ -340,7 +347,7 @@ const styles: Record<string, React.CSSProperties> = {
     ...muted(typography.icon),
     background: "none",
     border: "none",
-    cursor: "pointer",
+    cursor: "default",
     padding: "0 0 0 4px",
     lineHeight: 1,
     display: "flex",

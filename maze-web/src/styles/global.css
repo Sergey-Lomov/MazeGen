@@ -83,3 +83,26 @@ input[type="number"]::-webkit-inner-spin-button {
 ::-webkit-scrollbar-thumb:hover {
   background: #666;
 }
+
+/* Hover highlight for clickable controls that have no cursor change to signal interactivity
+   (see GitHub issue #97). Variants match the background family each button style already uses:
+   neutral surfaces (input/none/transparent bg), the accent-blue primary button, and the
+   error-red destructive button. */
+.hoverable:hover {
+  background: #2d2d2d;
+}
+
+.hoverable-accent:hover {
+  background: #4c83c1;
+}
+
+.hoverable-danger:hover {
+  border-color: #ff8181;
+  color: #ff8181;
+}
+
+/* For elements with their own colored background (severity bubbles) — brightens in place
+   instead of replacing the color, so the severity tint stays legible. */
+.hoverable-tint:hover {
+  filter: brightness(1.35);
+}

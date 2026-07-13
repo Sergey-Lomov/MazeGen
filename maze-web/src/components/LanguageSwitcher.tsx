@@ -21,7 +21,7 @@ export function LanguageSwitcher() {
 const styles: Record<string, React.CSSProperties> = {
   select: {
     ...sharedStyles.select,
-    cursor: "pointer",
+    cursor: "default",
     alignSelf: "stretch",
   },
 };

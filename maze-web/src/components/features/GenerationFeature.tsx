@@ -90,7 +90,7 @@ export function GenerationFeature({ canGenerate }: Props) {
         <span style={styles.sectionCaption}>{m["generation.algorithm"]()}</span>
         <div style={{ ...styles.row, paddingLeft: 8 }}>
           <span style={styles.algorithmLabel}>{getAlgorithmLabel(method)}</span>
-          <button style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
+          <button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
         </div>
         {isVertexBased && vertexParams && (
           <div style={styles.paramValues}>
@@ -151,6 +151,7 @@ export function GenerationFeature({ canGenerate }: Props) {
       {/* Action buttons */}
       <div style={styles.btnRow}>
         <button
+          className={canGenerate ? "hoverable-accent" : undefined}
           style={{ ...styles.btnGenerate, ...(!canGenerate ? styles.btnDisabled : {}) }}
           disabled={!canGenerate}
           onClick={handleGenerate}
@@ -158,6 +159,7 @@ export function GenerationFeature({ canGenerate }: Props) {
           {m["generation.generate"]()}
         </button>
         <button
+          className={canRegenerate ? "hoverable" : undefined}
           style={{ ...styles.btnRegenerate, ...(!canRegenerate ? styles.btnDisabled : {}) }}
           disabled={!canRegenerate}
           title={regenTooltip}
@@ -223,7 +225,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     color: ui.text.tertiary,
     padding: "0 2px",
-    cursor: "pointer",
+    cursor: "default",
     lineHeight: 1,
     flexShrink: 0,
     opacity: 0.7,
@@ -253,7 +255,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     color: ui.text.inverse,
     padding: "5px 4px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
   btnRegenerate: {
@@ -263,7 +265,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 4px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
   btnDisabled: {

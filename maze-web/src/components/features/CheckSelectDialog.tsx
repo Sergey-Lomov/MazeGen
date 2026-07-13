@@ -90,9 +90,10 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
 
   const footer = (
     <>
-      <button style={styles.btnSecondary} onClick={onBack}>{m["common.back"]()}</button>
-      <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
+      <button className="hoverable" style={styles.btnSecondary} onClick={onBack}>{m["common.back"]()}</button>
+      <button className="hoverable" style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
       <button
+        className={canProceed ? "hoverable-accent" : undefined}
         style={{ ...styles.btnPrimary, ...(!canProceed ? styles.btnDisabled : {}) }}
         disabled={!canProceed}
         onClick={handleNext}
@@ -143,7 +144,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
   btnSecondary: {
@@ -152,7 +153,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 12px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
   btnDisabled: {

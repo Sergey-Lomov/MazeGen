@@ -13,7 +13,7 @@ export function AlertModal({ message, onClose }: Props) {
     <Modal title={m["common.notice"]()} size="approve" onClose={onClose}>
       <div style={styles.message}>{message}</div>
       <div style={styles.footer}>
-        <button style={styles.btnOk} onClick={onClose}>{m["common.ok"]()}</button>
+        <button className="hoverable-accent" style={styles.btnOk} onClick={onClose}>{m["common.ok"]()}</button>
       </div>
     </Modal>
   );
@@ -37,7 +37,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
 };

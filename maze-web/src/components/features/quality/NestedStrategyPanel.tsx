@@ -125,6 +125,7 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
       {!atCapacity && (
         <div style={styles.row}>
           <button
+            className="hoverable"
             style={styles.addBtn}
             onClick={() => addNestedStrategy(ruleId, [...path.slice(0, -1), { slotId: slotDesc.slotId, index: entries.length }], slotDesc.kind)}
           >
@@ -194,6 +195,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           {percent !== null && <span style={styles.weightPercent}>{percent}%</span>}
           {removable && (
             <button
+              className="hoverable"
               style={styles.removeBtn}
               title={m["quality.nested_strategy.remove"]()}
               onClick={() => removeNestedStrategy(ruleId, path)}
@@ -231,9 +233,10 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
               {resolveStrategyLabel(node.strategy.id)}
             </span>
             {node.strategy.experimental && <WarningIcon />}
-            <button style={styles.editBtn} title={m["quality.edit_strategy"]()} onClick={(e) => { e.stopPropagation(); flushRef.current(); setDialogOpen(true); }}>✎</button>
+            <button className="hoverable" style={styles.editBtn} title={m["quality.edit_strategy"]()} onClick={(e) => { e.stopPropagation(); flushRef.current(); setDialogOpen(true); }}>✎</button>
             {!showWeight && removable && (
               <button
+                className="hoverable"
                 style={styles.removeBtn}
                 title={m["quality.nested_strategy.remove"]()}
                 onClick={(e) => { e.stopPropagation(); flushRef.current(); removeNestedStrategy(ruleId, path); }}
@@ -306,7 +309,7 @@ const styles = {
     flexDirection: "column" as const,
     gap: 8,
     borderRadius: 3,
-    cursor: "pointer",
+    cursor: "default",
     padding: 4,
     margin: -4,
   },
@@ -380,7 +383,7 @@ const styles = {
     border: "none",
     color: ui.text.tertiary,
     padding: "0 2px",
-    cursor: "pointer",
+    cursor: "default",
     lineHeight: 1,
     flexShrink: 0,
   },
@@ -388,7 +391,7 @@ const styles = {
   removeBtn: {
     background: "none",
     border: "none",
-    cursor: "pointer",
+    cursor: "default",
     padding: 0,
     flexShrink: 0,
     display: "flex",
@@ -416,7 +419,7 @@ const styles = {
     background: "none",
     border: "none",
     color: ui.text.tertiary,
-    cursor: "pointer",
+    cursor: "default",
     padding: "2px 0",
     textAlign: "left" as const,
   },

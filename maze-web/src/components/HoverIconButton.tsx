@@ -26,7 +26,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     borderRadius: 3,
     color: ui.text.secondary,
-    cursor: "pointer",
+    cursor: "default",
     padding: "4px 6px",
     lineHeight: "normal",
     display: "flex",

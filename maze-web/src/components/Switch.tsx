@@ -29,7 +29,7 @@ const styles: Record<string, React.CSSProperties> = {
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
-    cursor: "pointer",
+    cursor: "default",
     flexShrink: 0,
   },
   wrapDisabled: {

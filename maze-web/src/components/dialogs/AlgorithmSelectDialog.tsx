@@ -88,8 +88,8 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
 
   const footer = (
     <>
-      <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
-      <button style={styles.btnPrimary} onClick={handleSelect}>{m["common.select"]()}</button>
+      <button className="hoverable" style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
+      <button className="hoverable-accent" style={styles.btnPrimary} onClick={handleSelect}>{m["common.select"]()}</button>
     </>
   );
 
@@ -127,7 +127,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
   btnSecondary: {
@@ -136,7 +136,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 12px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
 };

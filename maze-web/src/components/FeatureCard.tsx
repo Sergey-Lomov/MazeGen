@@ -45,6 +45,7 @@ export function FeatureCard({ title, status, comment, subtitle, expanded, onOpen
   return (
     <div style={{ ...styles.card, ...(expanded && canExpand ? styles.cardExpanded : {}) }}>
       <button
+        className={canExpand ? "hoverable" : undefined}
         style={{ ...styles.header, ...(canExpand ? styles.headerClickable : styles.headerDisabled) }}
         onClick={canExpand ? onOpen : undefined}
         disabled={!canExpand}
@@ -93,7 +94,7 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: "left",
   },
   headerClickable: {
-    cursor: "pointer",
+    cursor: "default",
   },
   headerDisabled: {
     cursor: "default",

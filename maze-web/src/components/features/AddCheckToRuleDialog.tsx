@@ -87,8 +87,9 @@ export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Prop
 
   const footer = (
     <>
-      <button style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
+      <button className="hoverable" style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
       <button
+        className={selectedId ? "hoverable-accent" : undefined}
         style={{ ...styles.btnPrimary, ...(!selectedId ? styles.btnDisabled : {}) }}
         disabled={!selectedId}
         onClick={handleAdd}
@@ -134,7 +135,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     color: ui.text.inverse,
     padding: "5px 12px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
   btnSecondary: {
@@ -143,7 +144,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     padding: "5px 12px",
-    cursor: "pointer",
+    cursor: "default",
     borderRadius: radius.sm,
   },
   btnDisabled: {

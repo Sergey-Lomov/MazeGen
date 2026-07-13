@@ -40,7 +40,7 @@ function RegionClassLegendModal({ onClose }: { onClose: () => void }) {
 
 function SectionHeader({ label, expanded, onToggle }: { label: string; expanded: boolean; onToggle: () => void }) {
   return (
-    <div style={styles.sectionHeaderRow} onClick={onToggle}>
+    <div className="hoverable" style={styles.sectionHeaderRow} onClick={onToggle}>
       {expanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
       <div style={sharedStyles.sectionHeader}>{label}</div>
     </div>
@@ -66,7 +66,7 @@ function ToggleRow({ label, checked, onChange, disabled, info }: { label: string
     <div style={styles.toggleRow}>
       <span style={{ ...styles.toggleLabel, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
       {info && (
-        <span role="button" tabIndex={0} style={styles.infoIcon} onClick={info}
+        <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={info}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") info(); }}>ℹ</span>
       )}
       <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} />
@@ -271,7 +271,7 @@ export function AnalyticsFeature() {
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: 6 },
-  sectionHeaderRow: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer" },
+  sectionHeaderRow: { display: "flex", alignItems: "center", gap: 4, cursor: "default", borderRadius: 3 },
   statBlock: { display: "flex", flexDirection: "column", gap: 3 },
   statRow: { display: "flex", alignItems: "center", gap: 6 },
   statLabel: { flex: 1, ...muted(typography.body) },
@@ -283,7 +283,7 @@ const styles: Record<string, React.CSSProperties> = {
   toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },
   toggleRow: { display: "flex", alignItems: "center", gap: 8 },
   toggleLabel: { flex: 1, ...muted(typography.body) },
-  infoIcon: { ...muted(typography.icon), lineHeight: 1, flexShrink: 0, cursor: "pointer" },
+  infoIcon: { ...muted(typography.icon), lineHeight: 1, flexShrink: 0, cursor: "default", borderRadius: 3 },
   legendRow: { display: "flex", alignItems: "flex-start", gap: 8 },
   legendSwatch: { width: 14, height: 14, borderRadius: 3, marginTop: 2, flexShrink: 0 },
   legendLabel: { ...typography.body, fontWeight: "bold" as const },

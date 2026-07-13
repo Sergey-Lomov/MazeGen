@@ -52,6 +52,7 @@ export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onH
       >
         <span style={styles.cardLabel}>{check.label}</span>
         <button
+          className="hoverable"
           style={styles.removeBtn}
           title={m["quality.remove"]()}
           onClick={(e) => {
