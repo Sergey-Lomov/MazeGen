@@ -112,7 +112,7 @@ Classifies every base-graph SCC region (`maze.analysis.scc`) relative to `meta.s
 
 ```rust
 pub enum RegionClass {
-    Path,         // on RouteInfo::path, or contains start/finish
+    Path,         // on RouteInfo::path
     Alternative,  // reachable from start AND can reach finish, but not on the shortest path
     Unreachable,  // not reachable from start at all
     Trap,         // reachable from start, but cannot reach finish
@@ -129,7 +129,7 @@ pub fn classify_regions(
 
 Every region gets exactly one class:
 
-- **Path** — the region appears in `route.path` (the single shortest start→finish route — other equal-length routes are not distinguished and fall under Alternative), or the region contains `start` or `finish` directly (always Path by definition, even if `route` is `None`, e.g. a disconnected graph).
+- **Path** — the region appears in `route.path` (the single shortest start→finish route — other equal-length routes are not distinguished and fall under Alternative). If `route` is `None` (e.g. a disconnected graph, or `start`/`finish` cut off from everything by post-edit walls), no region is Path — the region containing `start` or `finish` falls through to the reachability-based classes like any other region, so a fully walled-off `start` correctly comes out Unreachable rather than Path.
 - **Alternative** — not Path, but at least one member node is in `graph.reachable_from(start)` AND at least one member node is in `graph.reachable_to(finish)`.
 - **Unreachable** — no member node is in `graph.reachable_from(start)`.
 - **Trap** — reachable from `start`, but no member node is in `graph.reachable_to(finish)`.

@@ -8,7 +8,7 @@ use super::Graph;
 /// class — see `Specs/graph-analytics.md`'s "Region Classes" section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RegionClass {
-    /// On the shortest start→finish route (`RouteInfo::path`), or contains `start`/`finish`.
+    /// On the shortest start→finish route (`RouteInfo::path`).
     Path,
     /// Reachable from `start` and can reach `finish`, but not on the shortest path itself.
     Alternative,
@@ -57,10 +57,10 @@ impl std::fmt::Display for RegionClass {
 
 /// Classifies every SCC region in `scc` relative to `start`/`finish`. `route` is the
 /// already-computed shortest path between them (`MazeAnalysis::route_info`) — `None` is
-/// treated the same as "no region is on the path" (every reachable-and-reaching region becomes
-/// `Alternative` instead of `Path`), which cannot actually happen when `start`/`finish` are both
-/// set and connected, but is handled rather than unwrapped for robustness against a disconnected
-/// graph.
+/// treated the same as "no region is on the path" (every region falls back to the
+/// reachability-based classes below, including the ones containing `start`/`finish`
+/// themselves), which is the normal outcome for a disconnected graph, e.g. `start` walled off
+/// entirely post-edit.
 pub fn classify_regions(
     graph: &Graph,
     scc: &ConnectedComponents,
@@ -75,13 +75,8 @@ pub fn classify_regions(
         .map(|r| r.path.iter().filter_map(|n| scc.component_of(*n)).collect())
         .unwrap_or_default();
 
-    let start_component = scc.component_of(start);
-    let finish_component = scc.component_of(finish);
-
     scc.components.iter().enumerate().map(|(comp_id, members)| {
-        let is_path = path_components.contains(&comp_id)
-            || Some(comp_id) == start_component
-            || Some(comp_id) == finish_component;
+        let is_path = path_components.contains(&comp_id);
 
         let class = if is_path {
             RegionClass::Path
@@ -156,8 +151,9 @@ mod tests {
     }
 
     #[test]
-    fn start_and_finish_regions_are_always_path_even_without_route() {
-        // Disconnected: start and finish exist but no path between them — route is None.
+    fn isolated_start_region_is_unreachable_not_path() {
+        // start fully walled off (no edges at all) — its region must not be Path just because
+        // it's the start (regression for issue #104).
         let mut ids = IdGenerator::new();
         let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
@@ -168,7 +164,24 @@ mod tests {
 
         let classes = classify_regions(&g, &scc, None, a, b);
 
-        assert_eq!(classes[&scc.component_of(a).unwrap()], RegionClass::Path);
-        assert_eq!(classes[&scc.component_of(b).unwrap()], RegionClass::Path);
+        // a is trivially reachable from itself but has no edges out, so it can't reach finish.
+        assert_eq!(classes[&scc.component_of(a).unwrap()], RegionClass::Trap);
+        assert_eq!(classes[&scc.component_of(b).unwrap()], RegionClass::Unreachable);
+    }
+
+    #[test]
+    fn start_and_finish_regions_are_path_when_route_exists() {
+        let (g, nodes) = layout();
+        let start = nodes[0];
+        let finish = nodes[2];
+        let pinned: HashSet<NodeId> = [start, finish].into_iter().collect();
+        let nav = build_nav_graph_pinned(&g, &pinned);
+        let route = compute_route_info(&nav, start, finish).unwrap();
+        let scc = build_scc(&g);
+
+        let classes = classify_regions(&g, &scc, Some(&route), start, finish);
+
+        assert_eq!(classes[&scc.component_of(start).unwrap()], RegionClass::Path);
+        assert_eq!(classes[&scc.component_of(finish).unwrap()], RegionClass::Path);
     }
 }
