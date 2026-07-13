@@ -10,6 +10,7 @@ pub mod io;
 pub mod meta;
 pub mod quality_control;
 pub mod repair;
+pub mod event_log;
 
 pub use ids::{NodeId, IdGenerator};
 pub use graph::Graph;
