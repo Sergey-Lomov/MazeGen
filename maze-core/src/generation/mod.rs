@@ -11,6 +11,7 @@ mod edge_ops;
 mod mutation_commands;
 
 pub use preset_state::{PresetState, build_preset_state};
+pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent};
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, NodeLockKind, LockedNode,
@@ -62,7 +63,7 @@ fn dispatch<T: Tessellation>(
         GenerationAlgorithm::CustomEdgeBased(params) =>
             edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, on_step),
         GenerationAlgorithm::RecursiveBacktracker =>
-            recursive_backtracker::generate(graph, field, seed, start, preset_state, on_step),
+            recursive_backtracker::generate(graph, field, seed, start, preset_state, on_step, None),
         GenerationAlgorithm::WilsonAlgorithm =>
             wilson::generate(graph, field, seed, start, preset_state, on_step),
         GenerationAlgorithm::KruskalAlgorithm =>

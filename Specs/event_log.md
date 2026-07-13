@@ -1,6 +1,6 @@
 # Debug Event Log
 
-Infrastructure for narration-level generation debug logging (GitHub issue #122, part of epic #121). Replaces the old full-snapshot `debug_steps` model with a tree of scopes and events. This spec covers the core tree structure and RAII builder API only — no algorithm is instrumented yet (see issue #123), and there is no WASM boundary yet (see issue #124).
+Infrastructure for narration-level generation debug logging (GitHub issue #122, part of epic #121). Replaces the old full-snapshot `debug_steps` model with a tree of scopes and events. This spec covers the core tree structure and RAII builder API, plus the Recursive Backtracker pilot instrumentation (issue #123). There is no WASM boundary yet (see issue #124).
 
 Module: `maze-core/src/event_log/`.
 
@@ -72,9 +72,54 @@ A handle onto one arena node — the structural counterpart to `iter()`'s flat l
 
 This is what a future replay/UI consumer (#125) walks to render the tree (e.g. "step" containing a trace event followed by a "roll" sub-scope) — `iter()`/`mutating_events()` intentionally don't carry this information, since they exist purely for linear replay/inspection.
 
-## Out of Scope (this issue)
+## Recursive Backtracker Instrumentation (#123)
 
-- Concrete event types for any algorithm (#123)
+Module: `maze-core/src/generation/recursive_backtracker.rs`.
+
+Unlike the illustrative narration example in epic #121 (which describes `CustomVertexBased`'s `corridor_chance`/`branching` rolls), Recursive Backtracker is a plain stack-based DFS with no such params — the event set mirrors what the algorithm actually decides, not the epic's example verbatim.
+
+```rust
+pub enum RecursiveBacktrackerEvent {
+    VertexSelected(NodeId),
+    CandidatesComputed(Vec<NodeId>),
+    DeadEnd,
+    CandidateChosen(NodeId),
+    EdgeAdded { from: NodeId, to: NodeId },
+    VertexVisited(NodeId),
+    VertexPopped(NodeId),
+    VertexPushed(NodeId),
+}
+```
+
+- **Mutating**: `EdgeAdded`, `VertexVisited`, `VertexPopped`, `VertexPushed` — these change reconstructable state.
+- **Trace-only**: `VertexSelected`, `CandidatesComputed`, `DeadEnd`, `CandidateChosen` — narration, not replayed.
+
+**Tree shape**: one `"step"` scope per stack-top iteration (one `while let Some(&current) = stack.last()` pass), containing, in emission order:
+1. `VertexSelected` — vertex popped off the top of the stack this iteration.
+2. `CandidatesComputed` — unvisited, connectable neighbors.
+3. Either `DeadEnd` + `VertexPopped` (candidates empty), or `CandidateChosen`, optional `EdgeAdded` (skipped when the preset already connected the pair), `VertexVisited`, `VertexPushed`.
+
+**Threading**: `generate` takes `event_log: Option<&mut EventLog<RecursiveBacktrackerEvent>>` — mirrors the existing `on_step: Option<&mut StepCallback>` pattern already used for the old snapshot debug hook. `None` skips every instrumentation branch (checked via `Option::as_deref_mut()` per iteration), so callers that don't want the tape pay no cost beyond the `Option` check. The dispatcher (`generation::dispatch`) passes `None` for now — wiring a real caller-supplied log through `generate_maze`/`generate_maze_steps` is left for the WASM boundary work (#124), since core-only unit tests call `generation::generate_recursive_backtracker` (re-exported from `generation::recursive_backtracker::generate`) directly with an `EventLog`.
+
+**Not instrumented**: `preset_state`-driven edge suppression (silently skipping `try_add_bidirectional_edge` for already-preset-connected pairs) has no separate trace event — `EdgeAdded`'s absence for a given `CandidateChosen` already tells that story unambiguously.
+
+### Testing approach
+
+`maze-core/tests/generation/recursive_backtracker.rs` has exactly **one** test asserting an exact event sequence (`recursive_backtracker_single_step_emits_exact_event_sequence`, on a 1x2 field — start has a single forced neighbor, no RNG branching to account for). It pins down real payload values and emission order once, for a connecting (non-dead-end) step.
+
+Every other event-log test asserts an **invariant**, not exact payloads, so they survive narration wording changes:
+- mutating events (`EdgeAdded`) reconstruct the same edges the graph actually has,
+- tree nesting only ever produces `"step"` scopes directly under root, each non-empty,
+- `is_mutating()` agrees with the mutating/trace split for every emitted event,
+- a `None` log doesn't change generation output (zero-cost opt-out actually holds),
+- a dead end always emits `DeadEnd` followed by `VertexPopped`, with no `EdgeAdded`.
+
+This split is deliberate policy for any future `EventLog` instrumentation (Wilson, Kruskal, custom algorithms, QC/repair) — see `CLAUDE.md`'s "Testing debug event logs" section. Don't add a second exact-sequence test per algorithm variant; one forced-path exact test plus invariant tests is the target shape.
+
+## Out of Scope (#123)
+
 - WASM boundary DTO / arena export (#124)
 - Intermediate snapshots / checkpointing
 - Web-side replay/UI
+- Instrumenting Wilson, Kruskal, or custom algorithms
+- QC/repair narration-level logging

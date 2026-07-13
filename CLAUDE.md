@@ -70,3 +70,10 @@ Use Grep/Glob/Explore only if:
 **For browser-repro tests: never hardcode generation params** — seed, tessellation, checks, strategies, repair limits all come from the fixture JSON. This guarantees the test reproduces exactly what the browser ran. Regular unit tests with hand-crafted mazes may hardcode params as usual.
 
 `MazeRunResult` fields: `remaining_issues`, `region_sizes` (`HashMap<RegionClass, Vec<usize>>` sorted desc), `start`, `finish`, `timing`, `graph` (final post-repair `Graph` — inspect edge kinds/directionality).
+
+## Testing debug event logs (`EventLog`/`DebugTape`)
+
+When instrumenting an algorithm with `EventLog` (see `Specs/event_log.md`), don't write one exact-sequence test per event variant — that's a maintenance burden that breaks on every narration wording change. Instead:
+
+- **One** exact-sequence test on the smallest possible deterministic input (forces every branch via input shape, not luck of the seed) — asserts the full ordered payload list for a single scope, pinning down real values and order once.
+- Remaining tests assert **invariants**, not exact payloads: mutating events match the resulting graph state, tree nesting matches expected scope names, `is_mutating()` agrees with the mutating/trace split, `None` log doesn't change generation output. These survive narration rewording.
