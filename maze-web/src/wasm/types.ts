@@ -308,6 +308,7 @@ export interface GenerateConfig {
   preset_finish?: [number, number];
   preset_gen_source?: [number, number];
   debug?: boolean;
+  debug_events?: boolean;
   qc_experiment?: boolean;
 }
 

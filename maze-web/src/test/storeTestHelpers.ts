@@ -19,6 +19,11 @@ export const mockSnapshot = {
   timing: null,
 };
 
+/** `generateMaze`'s return shape (see `GenerateMazeResult` in `wasm/mazeService.ts`) wrapping
+ *  `mockSnapshot`, with no debug tape — the default shape for tests that don't exercise
+ *  `debug_events`. */
+export const mockGenerateMazeResult = { snapshot: mockSnapshot, debugTape: undefined };
+
 export function baseStoreState() {
   return {
     seed: 42,

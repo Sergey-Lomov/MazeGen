@@ -4,8 +4,23 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
-use crate::event_log::{DebugEvent, EventLog};
+use crate::event_log::{DebugEvent, EncodeEventPayload, EventLog};
 use super::{PresetState, try_add_bidirectional_edge, can_connect};
+
+/// Stable wire tags for [`RecursiveBacktrackerEvent`] (GitHub issue #124's binary encoding) —
+/// manually assigned, never derived from Rust enum variant order/discriminant, so the wire
+/// format doesn't silently shift when a variant is added/reordered. `0` is reserved for scope
+/// nodes (`event_log::TAG_SCOPE`) and must never be assigned here.
+mod wire_tags {
+    pub const VERTEX_SELECTED: u16 = 1;
+    pub const CANDIDATES_COMPUTED: u16 = 2;
+    pub const DEAD_END: u16 = 3;
+    pub const CANDIDATE_CHOSEN: u16 = 4;
+    pub const EDGE_ADDED: u16 = 5;
+    pub const VERTEX_VISITED: u16 = 6;
+    pub const VERTEX_POPPED: u16 = 7;
+    pub const VERTEX_PUSHED: u16 = 8;
+}
 
 /// Narration-level events for Recursive Backtracker (see GitHub issue #123). The algorithm has
 /// no `corridor_chance`/`branching`-style params (unlike `CustomVertexBased`) — each processed
@@ -41,6 +56,48 @@ impl DebugEvent for RecursiveBacktrackerEvent {
                 | RecursiveBacktrackerEvent::VertexPopped(_)
                 | RecursiveBacktrackerEvent::VertexPushed(_)
         )
+    }
+}
+
+/// Binary encoding for the WASM boundary (GitHub issue #124). `NodeId` is `u64` — every
+/// single-id payload is 8 little-endian bytes; `EdgeAdded` is two back-to-back `NodeId`s (16
+/// bytes); `CandidatesComputed` (the only variable-length variant) is a `u32` LE length prefix
+/// followed by that many `NodeId`s; `DeadEnd` carries no data (0-byte payload).
+impl EncodeEventPayload for RecursiveBacktrackerEvent {
+    fn type_id(&self) -> u16 {
+        match self {
+            RecursiveBacktrackerEvent::VertexSelected(_) => wire_tags::VERTEX_SELECTED,
+            RecursiveBacktrackerEvent::CandidatesComputed(_) => wire_tags::CANDIDATES_COMPUTED,
+            RecursiveBacktrackerEvent::DeadEnd => wire_tags::DEAD_END,
+            RecursiveBacktrackerEvent::CandidateChosen(_) => wire_tags::CANDIDATE_CHOSEN,
+            RecursiveBacktrackerEvent::EdgeAdded { .. } => wire_tags::EDGE_ADDED,
+            RecursiveBacktrackerEvent::VertexVisited(_) => wire_tags::VERTEX_VISITED,
+            RecursiveBacktrackerEvent::VertexPopped(_) => wire_tags::VERTEX_POPPED,
+            RecursiveBacktrackerEvent::VertexPushed(_) => wire_tags::VERTEX_PUSHED,
+        }
+    }
+
+    fn encode_payload(&self, out: &mut Vec<u8>) {
+        match self {
+            RecursiveBacktrackerEvent::VertexSelected(id)
+            | RecursiveBacktrackerEvent::CandidateChosen(id)
+            | RecursiveBacktrackerEvent::VertexVisited(id)
+            | RecursiveBacktrackerEvent::VertexPopped(id)
+            | RecursiveBacktrackerEvent::VertexPushed(id) => {
+                out.extend_from_slice(&id.to_le_bytes());
+            }
+            RecursiveBacktrackerEvent::CandidatesComputed(ids) => {
+                out.extend_from_slice(&(ids.len() as u32).to_le_bytes());
+                for id in ids {
+                    out.extend_from_slice(&id.to_le_bytes());
+                }
+            }
+            RecursiveBacktrackerEvent::DeadEnd => {}
+            RecursiveBacktrackerEvent::EdgeAdded { from, to } => {
+                out.extend_from_slice(&from.to_le_bytes());
+                out.extend_from_slice(&to.to_le_bytes());
+            }
+        }
     }
 }
 

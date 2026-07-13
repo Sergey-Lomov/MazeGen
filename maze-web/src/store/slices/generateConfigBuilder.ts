@@ -162,7 +162,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
     config.debug = true;
   }
   try {
-    const snapshot = generateMaze(seed, config);
+    const { snapshot } = generateMaze(seed, config);
     warmCartesianCache(activeTessellation);
     let debugSnapshot: GenerationStepsSnapshot | null = null;
     if (debugMode && snapshot.debug_steps.length > 0) {

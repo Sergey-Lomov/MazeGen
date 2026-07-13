@@ -13,6 +13,17 @@ const defaultInitial = { method: "custom_vertex_based" as const };
 const defaultElements = { one_way_chance: 0.04 };
 const defaultConfig = { tessellation: { tessellation_type: "square" as const, points: [[0, 0]] as [number, number][] }, stages: [], initial: defaultInitial, elements: defaultElements };
 
+/** Wraps a raw snapshot value in a fake `GenerateResult` (see `maze-wasm/src/result.rs`) — no
+ *  debug tape, matching the non-`debug_events` path. */
+function fakeGenerateResult(snapshot: unknown) {
+  return {
+    snapshot: () => snapshot,
+    debugTapeNodeTable: () => undefined,
+    debugTapePayload: () => undefined,
+    free: () => {},
+  };
+}
+
 beforeEach(() => {
   vi.mocked(getWasm).mockReturnValue({ generate: mockGenerate } as never);
   mockGenerate.mockReset();
@@ -37,82 +48,99 @@ const validSnapshot = {
 
 describe("generateMaze / validateSnapshot", () => {
   it("returns valid snapshot", () => {
-    mockGenerate.mockReturnValue(validSnapshot);
+    mockGenerate.mockReturnValue(fakeGenerateResult(validSnapshot));
     const cfg = { tessellation: { tessellation_type: "square" as const, points: [[0, 0], [1, 0]] as [number, number][] }, stages: [], initial: defaultInitial, elements: defaultElements };
     const result = generateMaze(42, cfg);
-    expect(result).toEqual(validSnapshot);
+    expect(result.snapshot).toEqual(validSnapshot);
+    expect(result.debugTape).toBeUndefined();
     expect(mockGenerate).toHaveBeenCalledWith(BigInt(42), cfg);
   });
 
   it("throws when raw is null", () => {
-    mockGenerate.mockReturnValue(null);
+    mockGenerate.mockReturnValue(fakeGenerateResult(null));
     expect(() => generateMaze(1, defaultConfig)).toThrow("WASM returned invalid snapshot");
   });
 
   it("throws when raw is not object", () => {
-    mockGenerate.mockReturnValue("bad");
+    mockGenerate.mockReturnValue(fakeGenerateResult("bad"));
     expect(() => generateMaze(1, defaultConfig)).toThrow("WASM returned invalid snapshot");
   });
 
   it("throws when nodes missing", () => {
-    mockGenerate.mockReturnValue({ edges: [] });
+    mockGenerate.mockReturnValue(fakeGenerateResult({ edges: [] }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("invalid nodes");
   });
 
   it("throws when node missing id", () => {
-    mockGenerate.mockReturnValue({ nodes: [{ x: 0, y: 0 }], edges: [] });
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ x: 0, y: 0 }], edges: [] }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("invalid nodes");
   });
 
   it("throws when node has non-number x", () => {
-    mockGenerate.mockReturnValue({ nodes: [{ id: 0, x: "0", y: 0 }], edges: [] });
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: "0", y: 0 }], edges: [] }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("invalid nodes");
   });
 
   it("throws when edges missing", () => {
-    mockGenerate.mockReturnValue({ nodes: [{ id: 0, x: 0, y: 0 }] });
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }] }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("invalid edges");
   });
 
   it("throws when edge missing from", () => {
-    mockGenerate.mockReturnValue({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [{ to: 0 }] });
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [{ to: 0 }] }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("invalid edges");
   });
 
   it("throws when edge.from not in nodes", () => {
-    mockGenerate.mockReturnValue({
+    mockGenerate.mockReturnValue(fakeGenerateResult({
       nodes: [{ id: 0, x: 0, y: 0 }],
       edges: [{ from: 99, to: 0 }],
       issues: [],
       nav_nodes: [],
       nav_edges: [],
-    });
+    }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("edge.from 99 not in nodes");
   });
 
   it("throws when edge.to not in nodes", () => {
-    mockGenerate.mockReturnValue({
+    mockGenerate.mockReturnValue(fakeGenerateResult({
       nodes: [{ id: 0, x: 0, y: 0 }],
       edges: [{ from: 0, to: 99 }],
       issues: [],
       nav_nodes: [],
       nav_edges: [],
-    });
+    }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("edge.to 99 not in nodes");
   });
 
   it("accepts empty nodes and edges", () => {
-    mockGenerate.mockReturnValue({ nodes: [], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [], debug_steps: [] });
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [], debug_steps: [] }));
     const result = generateMaze(0, defaultConfig);
-    expect(result.nodes).toHaveLength(0);
-    expect(result.edges).toHaveLength(0);
+    expect(result.snapshot.nodes).toHaveLength(0);
+    expect(result.snapshot.edges).toHaveLength(0);
   });
 
   it("accepts null start/finish", () => {
-    mockGenerate.mockReturnValue({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [], debug_steps: [] });
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [], debug_steps: [] }));
     const result = generateMaze(1, defaultConfig);
-    expect(result.start).toBeNull();
-    expect(result.finish).toBeNull();
+    expect(result.snapshot.start).toBeNull();
+    expect(result.snapshot.finish).toBeNull();
+  });
+
+  it("copies debug tape buffers out of WASM memory when present", () => {
+    const nodeTableBytes = new Uint8Array([1, 2, 3]);
+    const payloadBytes = new Uint8Array([4, 5, 6]);
+    mockGenerate.mockReturnValue({
+      snapshot: () => validSnapshot,
+      debugTapeNodeTable: () => nodeTableBytes,
+      debugTapePayload: () => payloadBytes,
+      free: () => {},
+    });
+    const result = generateMaze(1, defaultConfig);
+    expect(result.debugTape).toEqual({ nodeTable: nodeTableBytes, payload: payloadBytes });
+    // Must be independent copies, not the same views handed back by WASM.
+    expect(result.debugTape?.nodeTable).not.toBe(nodeTableBytes);
+    expect(result.debugTape?.payload).not.toBe(payloadBytes);
   });
 });
 

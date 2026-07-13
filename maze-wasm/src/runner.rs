@@ -3,11 +3,144 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     graph::Graph,
     space::{Field, Tessellation},
-    generation::{generate_maze, generate_maze_steps, build_preset_state, GenerationStep},
+    generation::{generate_maze, generate_maze_steps, generate_maze_with_events, build_preset_state, GenerationStep},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
 use crate::dto::{EdgeDto, EdgeKindDto, GenerationStepDto};
 use crate::analytics::build_analytics_snapshot;
+use crate::result::GenerateResult;
+
+/// Runs the initial (pre-QC/repair) generation pass and returns the legacy step trace, the
+/// encoded debug event tape, and the elapsed time for the generation call itself — split out of
+/// `run_generate` so this branch-selection/timing logic is testable natively (no `JsValue`/
+/// `serde_wasm_bindgen`, which panic outside a real WASM runtime — see GitHub issue #124's
+/// `run_initial_generation_tests` below for why `run_generate` itself can't be exercised by
+/// `cargo test`).
+///
+/// QC experiment mode skips the generation algorithm entirely — the graph already holds only
+/// preset connections (built by `build_preset_state` before this call), fed straight into
+/// `build_maze`'s QC/repair pass. `debug_steps`/the event tree have nothing to record in this
+/// case, so `debug_events`/`debug` are ignored here rather than erroring.
+///
+/// Encoding (`DebugTape::encode()`) happens *after* the timing window closes — it's a
+/// WASM-boundary transfer cost, not part of the generation algorithm, and must not inflate
+/// `initial_build_ms` (GitHub issue #56's per-stage timing breakdown).
+fn run_initial_generation<T: Tessellation>(
+    graph: &mut Graph,
+    field: &Field<T>,
+    seed: u64,
+    start_id: maze_core::ids::NodeId,
+    gen_config: maze_core::generation::GenerationConfig,
+    preset_state: &maze_core::generation::PresetState,
+    qc_experiment: bool,
+    debug_events: bool,
+    debug: bool,
+) -> (Vec<GenerationStep>, Option<maze_core::event_log::EncodedTape>, f64) {
+    use maze_core::generation::pipeline::now_ms;
+
+    let initial_build_start = now_ms();
+    let (raw_steps, tape): (Vec<GenerationStep>, Option<maze_core::event_log::DebugTape<_>>) = if qc_experiment {
+        (vec![], None)
+    } else if debug_events {
+        // `debug` and `debug_events` are independent (see GitHub issue #124) — pass `debug`
+        // through too so both debug systems can be enabled together during the migration.
+        generate_maze_with_events(graph, field, seed, start_id, gen_config, preset_state, debug)
+    } else if debug {
+        (generate_maze_steps(graph, field, seed, start_id, gen_config, preset_state), None)
+    } else {
+        generate_maze(graph, field, seed, start_id, gen_config, preset_state);
+        (vec![], None)
+    };
+    let initial_build_ms = now_ms() - initial_build_start;
+    let debug_tape = tape.map(|t| t.encode());
+
+    (raw_steps, debug_tape, initial_build_ms)
+}
+
+#[cfg(test)]
+mod run_initial_generation_tests {
+    use super::run_initial_generation;
+    use maze_core::graph::Graph;
+    use maze_core::ids::IdGenerator;
+    use maze_core::space::{Field, SquareTessellation, SquarePoint};
+    use maze_core::generation::{GenerationAlgorithm, GenerationConfig, PresetState, build_preset_state};
+
+    /// A 3x3 square field with no preset connections/locks — enough for Recursive Backtracker
+    /// to actually run and emit events.
+    fn field_and_state() -> (Graph, Field<SquareTessellation>, PresetState) {
+        let points: Vec<SquarePoint> = (0..3).flat_map(|x| (0..3).map(move |y| SquarePoint { x, y })).collect();
+        let mut ids = IdGenerator::new();
+        let field = Field::<SquareTessellation>::new(points, &mut ids).unwrap();
+        let mut graph = Graph::new();
+        field.build_nodes(&mut graph);
+        let preset_state = build_preset_state(&mut graph, &field, &[], &[], |x, y| SquarePoint { x, y });
+        (graph, field, preset_state)
+    }
+
+    fn rb_config() -> GenerationConfig {
+        GenerationConfig { algorithm: GenerationAlgorithm::RecursiveBacktracker, ..GenerationConfig::default() }
+    }
+
+    #[test]
+    fn debug_events_false_yields_no_debug_tape() {
+        let (mut graph, field, preset_state) = field_and_state();
+        let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let (_, debug_tape, _) = run_initial_generation(&mut graph, &field, 1, start, rb_config(), &preset_state, false, false, false);
+        assert!(debug_tape.is_none(), "debug_events: false must not produce a tape");
+    }
+
+    #[test]
+    fn debug_events_true_yields_correctly_strided_debug_tape() {
+        let (mut graph, field, preset_state) = field_and_state();
+        let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let (_, debug_tape, _) = run_initial_generation(&mut graph, &field, 2, start, rb_config(), &preset_state, false, true, false);
+        let tape = debug_tape.expect("debug_events: true must produce a tape");
+
+        assert!(!tape.node_table.is_empty(), "a 3x3 RB run must emit at least one event");
+        assert_eq!(tape.node_table.len() % maze_core::event_log::NODE_RECORD_SIZE, 0, "node table must be a whole number of NodeRecords");
+        assert!(!tape.payload.is_empty(), "payload arena must hold at least the root scope name");
+    }
+
+    #[test]
+    fn debug_events_true_with_non_recursive_backtracker_yields_no_tape() {
+        // generate_maze_with_events only instruments RecursiveBacktracker (see #123's scope) —
+        // debug_events must not panic on other algorithms, just produce no tape.
+        let (mut graph, field, preset_state) = field_and_state();
+        let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let config = GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, ..GenerationConfig::default() };
+        let (_, debug_tape, _) = run_initial_generation(&mut graph, &field, 3, start, config, &preset_state, false, true, false);
+        assert!(debug_tape.is_none(), "only Recursive Backtracker is instrumented so far");
+    }
+
+    #[test]
+    fn debug_events_and_debug_can_be_enabled_together() {
+        // Independent flags (see GitHub issue #124) — combining them must not panic, and both
+        // debug systems' output must be present.
+        let (mut graph, field, preset_state) = field_and_state();
+        let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let (raw_steps, debug_tape, _) = run_initial_generation(&mut graph, &field, 4, start, rb_config(), &preset_state, false, true, true);
+        assert!(debug_tape.is_some(), "debug_events: true must still produce a tape when debug is also set");
+        assert!(!raw_steps.is_empty(), "debug: true must still collect GenerationStep trace when debug_events is also set");
+    }
+
+    #[test]
+    fn qc_experiment_ignores_debug_events_and_skips_generation() {
+        let (mut graph, field, preset_state) = field_and_state();
+        let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let (raw_steps, debug_tape, _) = run_initial_generation(&mut graph, &field, 5, start, rb_config(), &preset_state, true, true, false);
+        assert!(debug_tape.is_none(), "qc_experiment must skip the event tree entirely");
+        assert!(raw_steps.is_empty());
+        assert_eq!(graph.edges().count(), 0, "qc_experiment must not run the generation algorithm at all");
+    }
+
+    #[test]
+    fn initial_build_ms_is_a_plausible_finite_duration() {
+        let (mut graph, field, preset_state) = field_and_state();
+        let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let (_, _, initial_build_ms) = run_initial_generation(&mut graph, &field, 6, start, rb_config(), &preset_state, false, true, false);
+        assert!(initial_build_ms.is_finite() && initial_build_ms >= 0.0);
+    }
+}
 
 pub fn run_generate<T: Tessellation + 'static>(
     seed: u64,
@@ -15,8 +148,8 @@ pub fn run_generate<T: Tessellation + 'static>(
     start: T::Point,
     config: &GenerateConfig,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
-) -> Result<JsValue, JsValue> {
-    use maze_core::generation::pipeline::{build_maze, now_ms};
+) -> Result<GenerateResult, JsValue> {
+    use maze_core::generation::pipeline::build_maze;
 
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
@@ -32,20 +165,9 @@ pub fn run_generate<T: Tessellation + 'static>(
         &gen_config.locked_nodes,
         |x, y| field.all_points().find(|&p| point_to_xy(p) == (x, y)).unwrap_or(start),
     );
-    let initial_build_start = now_ms();
-    // QC experiment mode skips the generation algorithm entirely — the graph built by
-    // `build_preset_state` above (preset connections only, no generated edges) is fed straight
-    // into `build_maze`'s QC/repair pass. `debug_steps` has nothing to record in this case (no
-    // generation step ever runs), so `config.debug` is ignored here rather than erroring.
-    let raw_steps: Vec<GenerationStep> = if config.qc_experiment {
-        vec![]
-    } else if config.debug {
-        generate_maze_steps(&mut graph, &field, seed, start_id, gen_config, &preset_state)
-    } else {
-        generate_maze(&mut graph, &field, seed, start_id, gen_config, &preset_state);
-        vec![]
-    };
-    let initial_build_ms = now_ms() - initial_build_start;
+    let (raw_steps, debug_tape, initial_build_ms) = run_initial_generation(
+        &mut graph, &field, seed, start_id, gen_config, &preset_state, config.qc_experiment, config.debug_events, config.debug,
+    );
 
     let (qc_engine, check_types) = build_qc_and_repair_with_types::<T>(config)
         .map_err(|e| JsValue::from_str(&e))?;
@@ -69,8 +191,13 @@ pub fn run_generate<T: Tessellation + 'static>(
     snapshot.timing = Some(timing_to_dto(timing));
 
     use serde::Serialize;
-    snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    let snapshot_js = snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    Ok(match debug_tape {
+        Some(tape) => GenerateResult::with_debug_tape(snapshot_js, tape.node_table, tape.payload),
+        None => GenerateResult::without_debug_tape(snapshot_js),
+    })
 }
 
 /// Thin wrapper that also returns `check_types` map needed by `build_analytics_snapshot`.

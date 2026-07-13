@@ -1,6 +1,6 @@
 # Debug Event Log
 
-Infrastructure for narration-level generation debug logging (GitHub issue #122, part of epic #121). Replaces the old full-snapshot `debug_steps` model with a tree of scopes and events. This spec covers the core tree structure and RAII builder API, plus the Recursive Backtracker pilot instrumentation (issue #123). There is no WASM boundary yet (see issue #124).
+Infrastructure for narration-level generation debug logging (GitHub issue #122, part of epic #121). Replaces the old full-snapshot `debug_steps` model with a tree of scopes and events. This spec covers the core tree structure and RAII builder API, the Recursive Backtracker pilot instrumentation (issue #123), and the WASM boundary's zero-copy binary transfer (issue #124).
 
 Module: `maze-core/src/event_log/`.
 
@@ -99,7 +99,7 @@ pub enum RecursiveBacktrackerEvent {
 2. `CandidatesComputed` — unvisited, connectable neighbors.
 3. Either `DeadEnd` + `VertexPopped` (candidates empty), or `CandidateChosen`, optional `EdgeAdded` (skipped when the preset already connected the pair), `VertexVisited`, `VertexPushed`.
 
-**Threading**: `generate` takes `event_log: Option<&mut EventLog<RecursiveBacktrackerEvent>>` — mirrors the existing `on_step: Option<&mut StepCallback>` pattern already used for the old snapshot debug hook. `None` skips every instrumentation branch (checked via `Option::as_deref_mut()` per iteration), so callers that don't want the tape pay no cost beyond the `Option` check. The dispatcher (`generation::dispatch`) passes `None` for now — wiring a real caller-supplied log through `generate_maze`/`generate_maze_steps` is left for the WASM boundary work (#124), since core-only unit tests call `generation::generate_recursive_backtracker` (re-exported from `generation::recursive_backtracker::generate`) directly with an `EventLog`.
+**Threading**: `generate` takes `event_log: Option<&mut EventLog<RecursiveBacktrackerEvent>>` — mirrors the existing `on_step: Option<&mut StepCallback>` pattern already used for the old snapshot debug hook. `None` skips every instrumentation branch (checked via `Option::as_deref_mut()` per iteration), so callers that don't want the tape pay no cost beyond the `Option` check. The dispatcher (`generation::dispatch`) still passes `None` for RB and is unchanged — real wiring happens through a separate function, `generation::generate_maze_with_events` (see #124's "WASM wiring" section below), which bypasses `dispatch` deliberately rather than adding a concrete `EventLog<E>` type to `dispatch`'s shared signature.
 
 **Not instrumented**: `preset_state`-driven edge suppression (silently skipping `try_add_bidirectional_edge` for already-preset-connected pairs) has no separate trace event — `EdgeAdded`'s absence for a given `CandidateChosen` already tells that story unambiguously.
 
@@ -121,5 +121,64 @@ This split is deliberate policy for any future `EventLog` instrumentation (Wilso
 - WASM boundary DTO / arena export (#124)
 - Intermediate snapshots / checkpointing
 - Web-side replay/UI
+- Instrumenting Wilson, Kruskal, or custom algorithms
+- QC/repair narration-level logging
+
+## WASM Boundary: Zero-Copy Binary Transfer (#124)
+
+Gets a `DebugTape<E>` across the WASM boundary without a naive recursive-JSON serialization pass (a non-trivial maze run can produce tens of thousands of events). Two flat buffers only — a fixed-stride node table and a single payload byte arena — both exposed to the web client via raw WASM linear memory (`ptr`/`len`), not `serde_wasm_bindgen`.
+
+### Binary format
+
+`DebugTape::encode(&self) -> EncodedTape` (`maze-core/src/event_log/mod.rs`) is the tape's canonical binary encoding — independent of WASM, so any future consumer (CLI, file, tests) can reuse it without a second encoder. `EncodedTape { node_table: Vec<u8>, payload: Vec<u8> }`.
+
+**Node table** — flat array of fixed-size records, `NODE_RECORD_SIZE = 22` bytes each, written/read only via explicit little-endian byte access (`to_le_bytes`/`from_le_bytes`) — never `#[repr(C)]`/`unsafe` transmute, so alignment is a non-issue on both the Rust side and the JS `DataView` side:
+
+```
+parent:         u32   // offset  0, NO_NODE (u32::MAX) = no parent
+first_child:    u32   // offset  4, NO_NODE = no children
+next_sibling:   u32   // offset  8, NO_NODE = no next sibling
+tag:            u16   // offset 12, TAG_SCOPE (0) or a stable event_type_id (>=1)
+payload_offset: u32   // offset 14, offset into the payload byte arena
+payload_len:    u32   // offset 18, length of the payload slice
+```
+
+**Payload byte arena** — a single `Vec<u8>` holding both scope names (UTF-8, deduplicated by the encoder — an implementation detail, not a separate format section) and event payloads. `tag == TAG_SCOPE` → the slice is a UTF-8 scope name. `tag == event_type_id` → the slice is that event variant's binary payload, encoded by `EncodeEventPayload::encode_payload`.
+
+`EncodeEventPayload` (separate from `DebugEvent`, which stays purely semantic — `is_mutating()` only) is implemented per instrumented event enum:
+```rust
+pub trait EncodeEventPayload {
+    fn type_id(&self) -> u16;
+    fn encode_payload(&self, out: &mut Vec<u8>);
+}
+```
+`type_id()` must return a stable, manually-assigned constant — never `mem::discriminant`/`#[repr(u16)]` on the Rust enum, since variant order/discriminant is not part of the wire format and must stay free to change without shifting already-encoded tapes. `RecursiveBacktrackerEvent`'s tags live in a `wire_tags` module in `recursive_backtracker.rs`. `0`/`TAG_SCOPE` is permanently reserved and must never be returned by any event's `type_id()`.
+
+Encoding conventions used by `RecursiveBacktrackerEvent` (the only instrumented enum so far): a `NodeId` (`u64`) is 8 little-endian bytes; `EdgeAdded { from, to }` is two back-to-back `NodeId`s (16 bytes); `CandidatesComputed(Vec<NodeId>)` (the only variable-length variant) is a `u32` LE length prefix followed by that many `NodeId`s — the length lives *inside* the payload slice, not as another `NodeRecord`-level offset/len tier; `DeadEnd` (unit variant) is a 0-byte payload.
+
+### WASM wiring
+
+`generation::generate_maze_with_events` (`maze-core/src/generation/mod.rs`) bypasses `dispatch()` deliberately — `dispatch` is shared across all five generation algorithms and must not be tied to one concrete `EventLog<E>` type. It matches `config.algorithm` directly: for `RecursiveBacktracker` it builds a real `EventLog`, calls `recursive_backtracker::generate` with it, and returns `Some(DebugTape)`; every other algorithm returns `None` (not instrumented yet). It also accepts a `collect_steps: bool` to optionally gather the legacy `GenerationStep` trace (`on_step`) alongside the event tree in the same pass, since `debug` and `debug_events` are independent flags on `GenerateConfig` and may both be set during the migration off the old snapshot tool.
+
+`GenerateConfig.debug_events: bool` (`maze-runner/src/config.rs`) — independent of the existing `debug` flag, so both debug systems can be toggled separately while the web UI migrates off the old one.
+
+`maze-wasm/src/runner.rs::run_generate` reads `config.debug_events`; when set, it calls `generate_maze_with_events`, encodes the resulting tape via `DebugTape::encode()`, and packs the two buffers into `GenerateResult` (`maze-wasm/src/result.rs`) — a `#[wasm_bindgen]` class replacing the plain `JsValue` `generate()` used to return directly:
+
+```rust
+#[wasm_bindgen]
+pub struct GenerateResult { /* snapshot: JsValue, node_table: Option<Vec<u8>>, payload: Option<Vec<u8>> */ }
+```
+- `.snapshot()` — the same `MazeSnapshot` shape as before #124, serialized once and cloned (cheap `JsValue` handle clone, not a re-serialization) on each call.
+- `.debugTapeNodeTable()` / `.debugTapePayload()` — `Option<js_sys::Uint8Array>`, built via `unsafe { js_sys::Uint8Array::view(...) }` directly over the owned `Vec<u8>` buffers living inside `GenerateResult`. This is a true zero-copy view into WASM linear memory, not a copy — it is invalidated ("detached buffer") by the next call into the WASM module (any `memory.grow`, including a subsequent `generate()`). Callers must read/copy the contents synchronously before making another WASM call.
+- One entry point, not two: `generate()`'s signature/contract stays single (`Result<GenerateResult, JsValue>`) rather than adding a parallel `generate_with_debug_events()` — avoids two near-duplicate paths drifting apart over time. The non-debug path pays only the cost of two `None` fields.
+- **`GenerateResult` must be `.free()`'d by the JS caller.** Like every `#[wasm_bindgen]` class, its Rust-side allocation (snapshot handle plus, when present, the `node_table`/`payload` buffers) is only released by an explicit `free()` call (or `using` — wasm-bindgen also emits `[Symbol.dispose]()`) — JS garbage collection does not reach into WASM linear memory. `mazeService.ts::generateMaze` calls `result.free()` in a `finally` block after extracting everything it needs; any future direct caller of `generate()` must do the same or leak wasm heap on every call.
+- Encoding (`DebugTape::encode()`) happens **after** `initial_build_ms` is captured — it's a WASM-boundary transfer cost, not part of the generation algorithm, and must not inflate the per-stage timing breakdown (issue #56). This branch-selection-and-timing logic (`qc_experiment`/`debug_events`/`debug` dispatch, the timing window, calling `encode()` after it closes) lives in `run_initial_generation`, a helper `run_generate` delegates to — split out specifically so it's testable under plain `cargo test`: `run_generate` itself calls into `JsValue`/`serde_wasm_bindgen`, which panic outside a real WASM runtime and can't be exercised natively, but `run_initial_generation` touches neither and is covered by `maze-wasm/src/runner.rs`'s `run_initial_generation_tests`.
+
+**Web side** (`maze-web/src/wasm/mazeService.ts`): `generateMaze()` calls `.snapshot()` and, if present, eagerly copies `debugTapeNodeTable()`/`debugTapePayload()` via `.slice()` into plain owned `Uint8Array`s (`DebugTape { nodeTable, payload }`) — this is the one point where the "read synchronously" constraint above is discharged; every consumer downstream of `generateMaze` gets safe-to-hold-onto buffers. Calls `result.free()` before returning. Returns `GenerateMazeResult { snapshot, debugTape }`.
+
+### Out of Scope (#124)
+
+- Web-side replay engine/UI consuming the decoded tape (#125+)
+- Intermediate snapshots / checkpointing
 - Instrumenting Wilson, Kruskal, or custom algorithms
 - QC/repair narration-level logging

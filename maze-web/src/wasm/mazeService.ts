@@ -32,6 +32,21 @@ function isIssueDto(v: unknown): v is IssueDto {
     typeof (v as IssueDto).kind === "string";
 }
 
+/** Debug event tape (GitHub issue #124) — node table + payload byte arena, both eagerly copied
+ *  out of WASM linear memory at read time. The WASM-side buffers are zero-copy views that get
+ *  invalidated by the next call into the WASM module (see `GenerateResult` doc comments in
+ *  `maze-wasm/src/result.rs`), so this is the point where that constraint is discharged — every
+ *  consumer downstream of `generateMaze` gets a plain owned `Uint8Array`, safe to hold onto. */
+export interface DebugTape {
+  nodeTable: Uint8Array;
+  payload: Uint8Array;
+}
+
+export interface GenerateMazeResult {
+  snapshot: MazeSnapshot;
+  debugTape: DebugTape | undefined;
+}
+
 function validateSnapshot(raw: unknown): MazeSnapshot {
   if (typeof raw !== "object" || raw === null) throw new Error("WASM returned invalid snapshot");
   const s = raw as Record<string, unknown>;
@@ -66,9 +81,26 @@ export function getAvailableStrategies(): StrategyDescriptor[] {
   return getWasm().available_strategies() as StrategyDescriptor[];
 }
 
-export function generateMaze(seed: number, config: GenerateConfig): MazeSnapshot {
-  const raw = getWasm().generate(BigInt(seed), config);
-  return validateSnapshot(raw);
+export function generateMaze(seed: number, config: GenerateConfig): GenerateMazeResult {
+  const result = getWasm().generate(BigInt(seed), config);
+  try {
+    const snapshot = validateSnapshot(result.snapshot());
+
+    // Copy the debug tape buffers out of WASM linear memory now — the WASM-side views are
+    // invalidated by the next call into the module (see `GenerateResult` doc comments in
+    // `maze-wasm/src/result.rs`), so this is the only safe place to read them.
+    const nodeTable = result.debugTapeNodeTable();
+    const payload = result.debugTapePayload();
+    const debugTape: DebugTape | undefined = nodeTable && payload
+      ? { nodeTable: nodeTable.slice(), payload: payload.slice() }
+      : undefined;
+
+    return { snapshot, debugTape };
+  } finally {
+    // `GenerateResult` is a wasm-bindgen class — its Rust-side allocation (including the debug
+    // tape buffers) is only released on an explicit `free()`, not by JS garbage collection.
+    result.free();
+  }
 }
 
 export function computeAnalytics(config: ComputeAnalyticsConfig): MazeSnapshot {

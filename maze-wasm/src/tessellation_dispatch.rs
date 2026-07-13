@@ -9,6 +9,7 @@ use maze_core::{
     },
 };
 use crate::generation_config::{GenerateConfig, TessellationType};
+use crate::result::GenerateResult;
 use crate::runner::run_generate;
 
 pub fn pick_start<P: Copy>(points: &[P], to_xy: impl Fn(P) -> (i32, i32)) -> P {
@@ -30,7 +31,7 @@ fn resolve_start<P: Copy>(pts: &[P], gen_source_xy: Option<[i32; 2]>, to_xy: imp
     pick_start(pts, to_xy)
 }
 
-pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<JsValue, JsValue> {
+pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateResult, JsValue> {
     let mut ids = IdGenerator::new();
     match config.tessellation.tessellation_type {
         TessellationType::Square => {

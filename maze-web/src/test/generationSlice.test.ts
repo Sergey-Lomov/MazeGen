@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { fieldConfigToWasm, buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { baseStoreState, emptyFreePoints, mockSnapshot, resetGenerationMocks } from "./storeTestHelpers";
+import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks } from "./storeTestHelpers";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -25,7 +25,7 @@ beforeEach(() => {
 
 describe("mazeStore.generate", () => {
   it("stores snapshot on success", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.getState().generate();
     const s = useMazeStore.getState();
     expect(s.nodes).toEqual(mockSnapshot.nodes);
@@ -37,7 +37,7 @@ describe("mazeStore.generate", () => {
   });
 
   it("calls generateMaze with current seed and tessellationConfig", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
       tessellationConfig: { type: "square", width: 3, height: 4 },
@@ -56,7 +56,7 @@ describe("mazeStore.generate", () => {
   });
 
   it("calls generateMaze with hex_parallelogram tessellationConfig", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
       tessellationConfig: { type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" },
@@ -75,7 +75,7 @@ describe("mazeStore.generate", () => {
   });
 
   it("calls generateMaze with hex_hexagon tessellationConfig", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
       tessellationConfig: { type: "hex_hexagon", radius: 3, orientation: "pointy_top" },
@@ -94,7 +94,7 @@ describe("mazeStore.generate", () => {
   });
 
   it("uses buildFreeConfig when isEditingField", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     const pts = new Set([encodePoint(0, 0), encodePoint(1, 0), encodePoint(0, 1)]);
     useMazeStore.setState({
       seed: 5,
@@ -158,14 +158,14 @@ describe("mazeStore.generate", () => {
   });
 
   it("clears selectedNode on generate", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ selectedNode: 5 });
     useMazeStore.getState().generate();
     expect(useMazeStore.getState().selectedNode).toBeNull();
   });
 
   it("passes strategyParams overrides to generateMaze", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       tessellationConfig: { type: "square", width: 10, height: 10 },
       rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {} }], nextLocalCheckId: 1, strategyId: "scored_endpoints", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
@@ -203,7 +203,7 @@ describe("mazeStore.generate", () => {
   });
 
   it("omits strategyParams not in descriptor from generateMaze call", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {} }], nextLocalCheckId: 1, strategyId: "scored_endpoints", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],
@@ -226,7 +226,7 @@ describe("mazeStore.generate", () => {
   });
 
   it("forwards a nested strategy's weight param_override even though it's not a declared param", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [{
         id: "g1", name: "Rule 1", kind: "region_needs_expansion",
@@ -272,7 +272,7 @@ describe("mazeStore.generate", () => {
   });
 
   it("sends rules with no strategy or disabled as strategy: null, not omitted", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [
         { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [] },
@@ -1055,7 +1055,7 @@ describe("mazeStore stage actions", () => {
 
 describe("buildGenerateConfig — ruleDisabled exclusion", () => {
   it("excludes a ruleDisabled rule's checks entirely from its stage's rules", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [
         { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {} }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: true, nestedStrategies: [] },
@@ -1071,7 +1071,7 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
 
 describe("buildGenerateConfig — preset_start/preset_finish", () => {
   it("includes preset_start and preset_finish when set inside the field", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       tessellationConfig: { type: "square", width: 3, height: 3 },
       presetStart: [0, 0],
@@ -1084,7 +1084,7 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   });
 
   it("omits preset_start and preset_finish when unset", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       tessellationConfig: { type: "square", width: 3, height: 3 },
       presetStart: null,
@@ -1097,7 +1097,7 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   });
 
   it("omits preset_start and preset_finish when they fall outside the field", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       tessellationConfig: { type: "square", width: 1, height: 1 },
       presetStart: [5, 5],
@@ -1356,7 +1356,7 @@ describe("mazeStore generation misc actions", () => {
   });
 
   it("regenerate calls generateMaze with the last used seed", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ lastUsedSeed: 123, rules: [] });
     useMazeStore.getState().regenerate();
     expect(generateMaze).toHaveBeenCalledWith(123, expect.anything());
@@ -1372,7 +1372,7 @@ describe("mazeStore generation misc actions", () => {
 
 describe("mazeStore.qcExperiment toggle", () => {
   it("generate() calls generateMaze with qc_experiment true and locked_nodes cleared when qcExperiment is on", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       seed: 7,
       randomSeed: false,
@@ -1388,7 +1388,7 @@ describe("mazeStore.qcExperiment toggle", () => {
   });
 
   it("setQcExperiment persists the toggle across generate() calls", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
     useMazeStore.getState().setQcExperiment(true);
     expect(useMazeStore.getState().qcExperiment).toBe(true);
@@ -1397,14 +1397,14 @@ describe("mazeStore.qcExperiment toggle", () => {
   });
 
   it("regenerate() also honors qcExperiment", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], lastUsedSeed: 7, qcExperiment: true });
     useMazeStore.getState().regenerate();
     expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({ qc_experiment: true }));
   });
 
   it("generate()/regenerate() record lastUsedQcExperiment from the toggle at call time", () => {
-    vi.mocked(generateMaze).mockReturnValue(mockSnapshot);
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], qcExperiment: true });
     useMazeStore.getState().generate();
     expect(useMazeStore.getState().lastUsedQcExperiment).toBe(true);

@@ -99,6 +99,45 @@ pub fn generate_maze_steps<T: Tessellation>(
     steps
 }
 
+/// Runs generation with narration-level event-tree logging (GitHub issue #124). Bypasses
+/// [`dispatch`] deliberately: `dispatch` is shared across all five algorithms and must not be
+/// tied to one concrete `EventLog<E>` type — only Recursive Backtracker is instrumented so far
+/// (see #123), so this matches on the algorithm directly instead of growing `dispatch`'s
+/// signature with a type every other branch would have to ignore.
+///
+/// `collect_steps: true` also collects the legacy `GenerationStep` snapshot trace alongside the
+/// event tree — `debug`/`debug_events` are independent flags (see `GenerateConfig`) and callers
+/// may enable both at once during the migration off the old snapshot debug tool.
+///
+/// Returns `None` for any algorithm other than Recursive Backtracker (not instrumented yet).
+pub fn generate_maze_with_events<T: Tessellation>(
+    graph: &mut Graph,
+    field: &Field<T>,
+    seed: u64,
+    start: NodeId,
+    config: GenerationConfig,
+    preset_state: &PresetState,
+    collect_steps: bool,
+) -> (Vec<GenerationStep>, Option<crate::event_log::DebugTape<RecursiveBacktrackerEvent>>) {
+    let mut steps: Vec<GenerationStep> = Vec::new();
+    let mut on_step = |g: &Graph, src: NodeId, active: &[NodeId]| {
+        let edges = g.edges().map(|e| GenerationEdge { from: e.from, to: e.to, kind: e.kind.clone() }).collect();
+        steps.push(GenerationStep { edges, active_nodes: active.to_vec(), current_src: src });
+    };
+    let on_step_opt: Option<&mut StepCallback<'_>> = if collect_steps { Some(&mut on_step) } else { None };
+
+    let tape = if matches!(config.algorithm, GenerationAlgorithm::RecursiveBacktracker) {
+        let mut log = crate::event_log::EventLog::new();
+        recursive_backtracker::generate(graph, field, seed, start, preset_state, on_step_opt, Some(&mut log));
+        Some(log.finish())
+    } else {
+        dispatch(graph, field, seed, start, config, preset_state, on_step_opt);
+        None
+    };
+
+    (steps, tape)
+}
+
 #[cfg(test)]
 pub(crate) mod test_utils {
     use crate::graph::Graph;
