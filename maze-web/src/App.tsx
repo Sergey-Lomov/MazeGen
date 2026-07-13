@@ -3,7 +3,7 @@ import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
 import { FeaturesPanel } from "./components/FeaturesPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
-import { GenerationDebugBar } from "./components/GenerationDebugBar";
+import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
 import { useMazeStore } from "./store/mazeStore";
 import { ui, typography, disabled } from "./styles/theme";
@@ -58,11 +58,11 @@ export function App() {
         <FeaturesPanel onRefit={() => sceneRef.current?.refit()} />
       </div>
       <div style={styles.canvasColumn}>
-        {generationOpen && debugMode && debugArena && <GenerationDebugBar />}
         <div ref={canvasRef} style={{ ...styles.canvas, display: qualityOpen ? "none" : undefined }} />
         {qualityOpen && <QualityCanvas />}
         {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}
       </div>
+      {generationOpen && debugMode && debugArena && <DebugPanel />}
     </div>
   );
 }

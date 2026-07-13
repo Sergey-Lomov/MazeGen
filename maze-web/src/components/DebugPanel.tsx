@@ -4,9 +4,10 @@ import { useMazeStore } from "../store/mazeStore";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import { ui, radius, typography, muted } from "../styles/theme";
 import { StepSlider } from "./StepSlider";
+import { DebugEventTree } from "./DebugEventTree";
 import * as m from "~/paraglide/messages";
 
-export function GenerationDebugBar() {
+export function DebugPanel() {
   const debugArena  = useMazeStore((s) => s.debugArena);
   const debugStep   = useMazeStore((s) => s.debugStep);
   const debugStale  = useMazeStore((s) => s.debugStale);
@@ -52,11 +53,11 @@ export function GenerationDebugBar() {
   const atEnd   = debugStep >= total - 1;
 
   return (
-    <>
+    <div style={styles.panel}>
       {debugStale && (
         <div style={styles.staleAlert}>{m["debug.outdated_warning"]()}</div>
       )}
-      <div style={styles.bar}>
+      <div style={styles.controls}>
         {/* Step buttons */}
         <button className="hoverable" style={styles.iconBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>◀</button>
         <button className="hoverable" style={styles.iconBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>▶</button>
@@ -89,35 +90,52 @@ export function GenerationDebugBar() {
         />
         <span style={styles.label}>ms</span>
 
-        <div style={styles.divider} />
+        {/* Close */}
+        <button className="hoverable" style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}><X size={16} /></button>
+      </div>
 
-        {/* Step counter */}
+      <div style={styles.stepRow}>
         <span style={styles.stepLabel}>
           {debugStep + 1} / {total} <span style={styles.edgeCount}>({currentEdges} edges)</span>
         </span>
-
-        {/* Slider */}
         <StepSlider
           value={debugStep}
           max={total - 1}
           style={styles.slider}
           onChange={(v) => { setPlaying(false); setDebugStep(v); }}
         />
-
-        {/* Close */}
-        <button className="hoverable" style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}><X size={16} /></button>
       </div>
-    </>
+
+      <DebugEventTree />
+    </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  bar: {
+  panel: {
+    width: 320,
+    minWidth: 320,
+    background: ui.bg.panel,
+    borderLeft: `1px solid ${ui.border.default}`,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    flexShrink: 0,
+  },
+  controls: {
     display: "flex",
     alignItems: "center",
     gap: 10,
     padding: "7px 16px",
     background: ui.bg.panelAlt,
+    borderBottom: `1px solid ${ui.border.default}`,
+    flexShrink: 0,
+  },
+  stepRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "7px 16px",
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
@@ -170,13 +188,6 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     textAlign: "right" as const,
   },
-  divider: {
-    width: 1,
-    height: 20,
-    background: ui.border.strong,
-    flexShrink: 0,
-    margin: "0 4px",
-  },
   label: {
     ...muted(typography.body),
     flexShrink: 0,
@@ -205,6 +216,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "0 2px",
     flexShrink: 0,
     lineHeight: 1,
+    marginLeft: "auto",
   },
   staleAlert: {
     ...typography.body,
