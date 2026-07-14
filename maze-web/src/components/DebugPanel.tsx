@@ -22,6 +22,10 @@ export function DebugPanel() {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const total = debugArena?.totalSteps ?? 0;
+  // Each half is sized to `total`'s digit count (the max either side can reach), not the current
+  // step's digit count, so the " / " separator stays pinned to the row's center instead of
+  // drifting as the digit count changes during scrubbing/playback.
+  const stepLabelHalfWidth = `${String(total).length}ch`;
 
   useEffect(() => {
     function handleMouseMove(e: MouseEvent) {
@@ -118,7 +122,9 @@ export function DebugPanel() {
 
       <div style={styles.stepRow}>
         <span style={styles.stepLabel}>
-          {debugStep + 1} / {total}
+          <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "right" as const }}>{debugStep + 1}</span>
+          {" / "}
+          <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "left" as const }}>{total}</span>
         </span>
         <StepSlider
           value={debugStep}
@@ -227,8 +233,11 @@ const styles: Record<string, React.CSSProperties> = {
     ...muted(typography.body),
     whiteSpace: "nowrap" as const,
     flexShrink: 0,
-    width: 70,
+  },
+  stepLabelHalf: {
+    display: "inline-block" as const,
     overflow: "hidden" as const,
+    verticalAlign: "top" as const,
   },
   slider: {
     flex: 1,

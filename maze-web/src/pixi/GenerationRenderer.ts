@@ -8,7 +8,8 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { Viewport } from "./renderers/types";
+import type { Viewport, WallEdge, TeleportEdge } from "./renderers/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { canvas } from "./colorUtils";
 
 export class GenerationRenderer {
@@ -28,7 +29,19 @@ export class GenerationRenderer {
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
-  private closedCellsCache: { nodes: NodeDto[]; edges: EdgeDto[]; result: [number, number][] } | null = null;
+
+  // Keyed on the view's nodes/edges array identity (stable across debug steps that don't change
+  // the reconstructed edge set) plus the tessellation config, since buildMazeWalls/buildMazeMarkers
+  // depend on cell geometry too. Avoids rebuilding these O(nodes + edges) structures on every
+  // debug-slider tick when the underlying view hasn't actually changed.
+  private geometryCache: {
+    nodes: NodeDto[];
+    edges: EdgeDto[];
+    cfg: TessellationConfig;
+    closedCells: [number, number][];
+    wallEdges: WallEdge[];
+    teleportEdges: TeleportEdge[];
+  } | null = null;
 
   constructor(viewport: Container) {
     this.gridContainer = new Container();
@@ -130,17 +143,21 @@ export class GenerationRenderer {
     const cells: [number, number][] = view.nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
-    if (!this.closedCellsCache || this.closedCellsCache.nodes !== view.nodes || this.closedCellsCache.edges !== view.edges) {
-      this.closedCellsCache = { nodes: view.nodes, edges: view.edges, result: buildClosedCells(view.nodes, view.edges) };
-    }
-    this.closedCells.render({ cells: this.closedCellsCache.result, color: canvas.wall.default, alpha: 1 }, cfg);
-
-    const wallEdges = buildMazeWalls(view.nodes, view.edges, cfg);
-    this.walls.render({ edges: wallEdges }, cfg);
-
     const nodeById = new Map(view.nodes.map(n => [n.id, n]));
-    const teleportEdges = buildTeleportEdges(nodeById, view.edges, cfg);
-    this.teleports.render({ edges: teleportEdges });
+
+    if (!this.geometryCache || this.geometryCache.nodes !== view.nodes || this.geometryCache.edges !== view.edges || this.geometryCache.cfg !== cfg) {
+      this.geometryCache = {
+        nodes: view.nodes,
+        edges: view.edges,
+        cfg,
+        closedCells: buildClosedCells(view.nodes, view.edges),
+        wallEdges: buildMazeWalls(view.nodes, view.edges, cfg),
+        teleportEdges: buildTeleportEdges(nodeById, view.edges, cfg),
+      };
+    }
+    this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
+    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg);
+    this.teleports.render({ edges: this.geometryCache.teleportEdges });
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
     this.markers.render({ markers: markerData });
