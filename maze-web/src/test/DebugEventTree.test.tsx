@@ -110,7 +110,7 @@ afterEach(() => {
 describe("DebugEventTree", () => {
   beforeEach(() => {
     useMazeStore.setState({
-      debugArena: { tape: buildTwoStepTape(), nodes, totalSteps: 4, checkpointFroms: [] },
+      debugArena: { tape: buildTwoStepTape(), nodes, totalSteps: 4, checkpointFroms: [], debugValueNames: [] },
       debugStep: 0,
     });
   });
@@ -217,7 +217,7 @@ describe("DebugEventTree", () => {
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
       { parent: 1, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(99n) },
     ]);
-    useMazeStore.setState({ debugArena: { tape: brokenTape, nodes, totalSteps: 1, checkpointFroms: [] }, debugStep: 0 });
+    useMazeStore.setState({ debugArena: { tape: brokenTape, nodes, totalSteps: 1, checkpointFroms: [], debugValueNames: [] }, debugStep: 0 });
 
     // Suppress React's expected error-boundary console noise for this deliberate-throw case.
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});

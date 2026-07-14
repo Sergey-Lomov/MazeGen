@@ -100,6 +100,26 @@ export function hslToRgb(h: number, s: number, l: number): number {
   return (Math.round((r + m) * 255) << 16) | (Math.round((g + m) * 255) << 8) | Math.round((b + m) * 255);
 }
 
+// Debug-value palette (GitHub issue #131's follow-up) — a handful of muted, analogous hues
+// (blue/teal/violet family, not full-spectrum like HUE_PALETTE above) at increasing lightness, so
+// simultaneously-toggled debug values read as "the same family, different shades" rather than
+// clashing unrelated colors. Lower saturation than the region palette (0.45 vs 0.65) to stay calm
+// against the maze's own busy line/wall rendering.
+const DEBUG_VALUE_HUES = [210, 190, 250]; // blue, teal, violet
+const DEBUG_VALUE_LIGHTNESS = [0.55, 0.68, 0.42]; // per pass over the hue list
+const DEBUG_VALUE_SATURATION = 0.45;
+
+export function buildDebugValuePalette(count: number): number[] {
+  const result: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const pass = Math.floor(i / DEBUG_VALUE_HUES.length);
+    const hue = DEBUG_VALUE_HUES[i % DEBUG_VALUE_HUES.length];
+    const lightness = DEBUG_VALUE_LIGHTNESS[pass % DEBUG_VALUE_LIGHTNESS.length];
+    result.push(hslToRgb(hue, DEBUG_VALUE_SATURATION, lightness));
+  }
+  return result;
+}
+
 export function buildPalette(count: number): number[] {
   const S = 0.65;
   const result: number[] = [];

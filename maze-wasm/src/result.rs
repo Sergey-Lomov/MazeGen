@@ -1,5 +1,15 @@
 use wasm_bindgen::prelude::*;
 
+/// Wire representation of `maze_core::event_log::DebugValueKind` for `GenerateResult`'s
+/// `debugValueKinds()` getter — plain strings, not a numeric enum, since this rides across the
+/// WASM boundary as a `Vec<String>` alongside `debug_value_names` (see that field's doc comment).
+fn kind_wire_str(kind: maze_core::event_log::DebugValueKind) -> &'static str {
+    match kind {
+        maze_core::event_log::DebugValueKind::Region => "region",
+        maze_core::event_log::DebugValueKind::Sequence => "sequence",
+    }
+}
+
 /// Return type of `generate()` (GitHub issue #124). Wraps the existing `MazeSnapshot` (unchanged
 /// — still one `serde_wasm_bindgen`-serialized `JsValue`) alongside an optional debug event tape,
 /// encoded as two flat byte buffers (see `maze_core::event_log::DebugTape::encode`) — populated
@@ -18,15 +28,27 @@ pub struct GenerateResult {
     payload: Option<Vec<u8>>,
     snapshot_table: Option<Vec<u8>>,
     snapshot_payload: Option<Vec<u8>>,
+    /// Debug-value names (GitHub issue #131, e.g. `"recursion_stack"`) declared by the instrumented
+    /// algorithm — see `maze_core::generation::EventedGenerationResult::debug_value_names`.
+    /// Always empty when `node_table`/`payload` are `None`. Plain `Vec<String>`, not a zero-copy
+    /// buffer — a handful of short names doesn't warrant the `Uint8Array::view` treatment the
+    /// node table/payload buffers get.
+    debug_value_names: Vec<String>,
+    /// Parallel array to `debug_value_names` — each entry is `"region"` or `"sequence"`
+    /// (`maze_core::event_log::DebugValueKind`'s wire representation), same index as its name.
+    /// A separate `Vec<String>` rather than e.g. `"name:kind"` packed into one string, matching
+    /// the existing plain-array marshaling `debug_value_names` itself uses.
+    debug_value_kinds: Vec<String>,
 }
 
 impl GenerateResult {
     pub fn without_debug_tape(snapshot: JsValue) -> Self {
-        Self { snapshot, node_table: None, payload: None, snapshot_table: None, snapshot_payload: None }
+        Self { snapshot, node_table: None, payload: None, snapshot_table: None, snapshot_payload: None, debug_value_names: Vec::new(), debug_value_kinds: Vec::new() }
     }
 
-    pub fn with_debug_tape(snapshot: JsValue, node_table: Vec<u8>, payload: Vec<u8>) -> Self {
-        Self { snapshot, node_table: Some(node_table), payload: Some(payload), snapshot_table: None, snapshot_payload: None }
+    pub fn with_debug_tape(snapshot: JsValue, node_table: Vec<u8>, payload: Vec<u8>, debug_value_names: Vec<(String, maze_core::event_log::DebugValueKind)>) -> Self {
+        let (names, kinds) = debug_value_names.into_iter().map(|(name, kind)| (name, kind_wire_str(kind).to_string())).unzip();
+        Self { snapshot, node_table: Some(node_table), payload: Some(payload), snapshot_table: None, snapshot_payload: None, debug_value_names: names, debug_value_kinds: kinds }
     }
 
     /// Attaches checkpoint buffers to an already-built result — must be chained onto
@@ -79,6 +101,19 @@ impl GenerateResult {
             (None, None) => None,
             _ => panic!("GenerateResult: snapshot_table/snapshot_payload must always be Some/None together (see with_checkpoints)"),
         }
+    }
+
+    /// Test-only accessor for `debug_value_names` — avoids the `#[wasm_bindgen]` method for the
+    /// same reason as `debug_tape_bytes`/`checkpoint_bytes`, though this field is a plain
+    /// `Vec<String>` and doesn't itself need a real WASM runtime; kept alongside the others for
+    /// consistency of the test-only accessor surface.
+    pub(crate) fn debug_value_names_bytes(&self) -> &[String] {
+        &self.debug_value_names
+    }
+
+    /// Test-only accessor for `debug_value_kinds` — see [`Self::debug_value_names_bytes`].
+    pub(crate) fn debug_value_kinds_bytes(&self) -> &[String] {
+        &self.debug_value_kinds
     }
 }
 
@@ -133,6 +168,21 @@ impl GenerateResult {
         // SAFETY: see `debug_tape_node_table`.
         self.snapshot_payload.as_deref().map(|bytes| unsafe { js_sys::Uint8Array::view(bytes) })
     }
+
+    /// Debug-value names (GitHub issue #131) declared by the instrumented algorithm — empty when
+    /// `debug_events` wasn't enabled or the algorithm isn't instrumented yet. Plain value return,
+    /// not a zero-copy view — safe to call more than once, no detachment caveat.
+    #[wasm_bindgen(js_name = debugValueNames)]
+    pub fn debug_value_names(&self) -> Vec<String> {
+        self.debug_value_names.clone()
+    }
+
+    /// Parallel to [`Self::debug_value_names`] — each entry is `"region"` or `"sequence"`, same
+    /// index as its name, see `kind_wire_str`.
+    #[wasm_bindgen(js_name = debugValueKinds)]
+    pub fn debug_value_kinds(&self) -> Vec<String> {
+        self.debug_value_kinds.clone()
+    }
 }
 
 #[cfg(test)]
@@ -153,7 +203,7 @@ mod tests {
 
     #[test]
     fn with_debug_tape_carries_both_buffers() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5]);
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new());
         let (node_table, payload) = result.debug_tape_bytes().expect("both buffers must be present");
         assert_eq!(node_table, &[1, 2, 3]);
         assert_eq!(payload, &[4, 5]);
@@ -161,14 +211,14 @@ mod tests {
 
     #[test]
     fn without_checkpoints_has_no_checkpoint_buffers() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5]);
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new());
         assert!(result.checkpoint_bytes().is_none());
     }
 
     #[test]
     fn with_checkpoints_carries_both_checkpoint_buffers() {
         let snapshot_table = vec![0u8; maze_core::event_log::CHECKPOINT_RECORD_SIZE]; // one whole record
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5])
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new())
             .with_checkpoints(snapshot_table.clone(), vec![8, 9, 10]);
         let (node_table, payload) = result.debug_tape_bytes().expect("debug tape buffers must still be present");
         assert_eq!(node_table, &[1, 2, 3]);
@@ -181,7 +231,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "not a whole number of CHECKPOINT_RECORD_SIZE")]
     fn with_checkpoints_rejects_a_table_length_not_a_multiple_of_checkpoint_record_size() {
-        GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5])
+        GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new())
             .with_checkpoints(vec![6, 7], vec![8, 9, 10]);
     }
 
@@ -191,5 +241,34 @@ mod tests {
         let snapshot_table = vec![0u8; maze_core::event_log::CHECKPOINT_RECORD_SIZE];
         GenerateResult::without_debug_tape(JsValue::UNDEFINED)
             .with_checkpoints(snapshot_table, vec![8, 9, 10]);
+    }
+
+    #[test]
+    fn without_debug_tape_has_no_debug_value_names() {
+        let result = GenerateResult::without_debug_tape(JsValue::UNDEFINED);
+        assert!(result.debug_value_names_bytes().is_empty());
+    }
+
+    #[test]
+    fn with_debug_tape_carries_debug_value_names() {
+        let result = GenerateResult::with_debug_tape(
+            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
+            vec![("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence)],
+        );
+        assert_eq!(result.debug_value_names_bytes(), &["recursion_stack".to_string()]);
+        assert_eq!(result.debug_value_kinds_bytes(), &["sequence".to_string()]);
+    }
+
+    #[test]
+    fn with_debug_tape_carries_a_region_kind_debug_value() {
+        // Guards kind_wire_str's Region arm specifically — with_debug_tape_carries_debug_value_names
+        // above only ever exercises Sequence, so a typo'd/swapped wire string for Region would
+        // otherwise ship undetected.
+        let result = GenerateResult::with_debug_tape(
+            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
+            vec![("visited".to_string(), maze_core::event_log::DebugValueKind::Region)],
+        );
+        assert_eq!(result.debug_value_names_bytes(), &["visited".to_string()]);
+        assert_eq!(result.debug_value_kinds_bytes(), &["region".to_string()]);
     }
 }

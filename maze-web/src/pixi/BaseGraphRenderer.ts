@@ -78,7 +78,14 @@ export function buildPathRenderEdges(
   return renderEdges;
 }
 
-function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
+/** Draws one edge segment (a multi-point path, margin-trimmed at both ends to clear node
+ *  circles, with a direction arrow at the midpoint unless `hasReverse`) — the same low-level
+ *  primitive `BaseGraphRenderer.drawEdges` uses internally, exported so a non-graph consumer
+ *  (e.g. `SequenceHighlightRenderer` for `DebugValueKind.Sequence` debug values, GitHub issue
+ *  #131's follow-up) can reuse the exact same visual without subclassing `BaseGraphRenderer` —
+ *  per `maze-web/CLAUDE.md`'s feature-renderer ownership rule, a debug-value overlay owned by
+ *  `GenerationRenderer` must not share a renderer instance with another feature. */
+export function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
   const pts = edge.path;
   if (pts.length < 2) return;
 

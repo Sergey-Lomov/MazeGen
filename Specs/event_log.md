@@ -238,7 +238,7 @@ An out-of-range `targetStep` is detected by the bounded scan coming up short (fe
 
 Module: `maze-web/src/store/`. Replaces the old `debugSnapshot: GenerationStepsSnapshot | null` field (full per-step snapshot array) with `debugArena: DebugArenaHandle | null` (raw arena handle + `debugStep`, see `store.md`'s Debug section) — the store now persists only the raw tape and a step number; reconstructed maze state at that step is never stored, only derived on demand via `selectDebugMazeView` (see #125/#128/#139 above).
 
-`showDebugFrontier` (the old debug-frontier highlight toggle, tied to `MazeTileRenderer`'s `activeNodes`/`current_src` fields) is dropped, not ported forward — the new replay engine has no live producer for "frontier" state (which nodes are currently reachable-but-unvisited mid-DFS), and reimplementing it against the arena/replay model was explicitly out of scope for this issue. `MazeTileRenderer.ts` itself was later deleted (dead code, zero call sites, found during #132's review) since nothing else depended on it either. Frontier highlighting was superseded by the interactive node/edge ref highlighting built in #130 (see below), which highlights on hover rather than showing a persistent frontier set.
+`showDebugFrontier` (the old debug-frontier highlight toggle, tied to `MazeTileRenderer`'s `activeNodes`/`current_src` fields) is dropped, not ported forward — the new replay engine has no live producer for "frontier" state (which nodes are currently reachable-but-unvisited mid-DFS), and reimplementing it against the arena/replay model was explicitly out of scope for this issue. `MazeTileRenderer.ts` itself was later deleted (dead code, zero call sites, found during #132's review) since nothing else depended on it either. Frontier highlighting was superseded by the interactive node/edge ref highlighting built in #130 (see below), which highlights on hover rather than showing a persistent frontier set — and later reintroduced as a persistent, non-hover highlight through the generic debug-value mechanism (#131, see below), which replays "frontier" against the arena/replay model this section's `debugArena`/`selectDebugMazeView` design was built for.
 
 `generateConfigBuilder.ts`'s config-building logic (what triggers a debug-mode `generate` call) carried over unchanged in shape — it still decides `debug`/`debug_events` flags per `GenerateConfig` (see #124's WASM wiring above) — but now builds a `DebugArenaHandle` from the WASM response instead of a `GenerationStepsSnapshot`.
 
@@ -282,7 +282,7 @@ pub const CHECKPOINT_RECORD_SIZE: usize = 12; // 4 (node_index) + 4 (offset) + 4
 
 `GenerateResult` (`maze-wasm/src/result.rs`) gained a second, independent buffer pair: `snapshot_table: Option<Vec<u8>>` / `snapshot_payload: Option<Vec<u8>>`, attached via a chainable `with_checkpoints(self, table, payload) -> Self` builder method (composes with either `with_debug_tape`/`without_debug_tape`) rather than folding checkpoint parameters into the existing constructors — keeps the two transfer concerns (event tree vs. checkpoints) independently constructible. Exposed as `.debugSnapshotTable()` / `.debugSnapshotPayload()` — `Option<js_sys::Uint8Array>`, the same zero-copy `js_sys::Uint8Array::view` pattern and next-WASM-call invalidation caveat as `.debugTapeNodeTable()`/`.debugTapePayload()` (see #124's section above).
 
-`maze-wasm/src/runner.rs`'s `run_initial_generation` encodes `checkpoints.encode()` alongside `tape.encode()` (same post-timing-window placement as the tape, so it doesn't inflate `initial_build_ms`) and returns it as a fourth tuple element — this helper stays a plain tuple (unlike `EventedGenerationResult`) since it's a small internal function, not public API.
+`maze-wasm/src/runner.rs`'s `run_initial_generation` encodes `checkpoints.encode()` alongside `tape.encode()` (same post-timing-window placement as the tape, so it doesn't inflate `initial_build_ms`) — this helper stays a plain tuple (unlike `EventedGenerationResult`) since it's a small internal function, not public API. As of #131 (see below) the tuple is `(Option<EncodedTape>, Option<EncodedCheckpoints>, Vec<String>, f64)` — tape first, checkpoints second, debug-value names third, `initial_build_ms` last.
 
 ### Web-side decoding (`maze-web/src/debug/eventTape.ts`)
 
@@ -433,3 +433,290 @@ debug fields.
 - Reusing `DebugRefHighlightOverlay`/`RegionHighlightRenderer` for other features beyond this and
   Analytics' existing issue highlighting
 - Instrumenting Wilson, Kruskal, or custom algorithms with node/edge refs
+
+## Generic Debug Values (#131)
+
+Generic, named "debug values" mechanism: an algorithm declares arbitrary session-specific ID sets
+(e.g. Recursive Backtracker's `"recursion_stack"` — vertices currently on the DFS/backtrack stack —
+and `"visited"` — every vertex marked visited so far) that evolve over a run, get reconstructed by
+replay alongside the maze graph, and are exposed in the web UI as auto-derived toggles with
+persistent canvas highlighting. Replaces the `active_nodes`/`current_src` frontier overlay dropped
+in #126 (see that section's updated note) — this time generically, not hardcoded per algorithm.
+Pilot scope, matching #123's pilot algorithm: Recursive Backtracker's `"recursion_stack"`/`"visited"`
+only; other algorithms and QC/repair debug values are out of scope.
+
+Named `"recursion_stack"`, not `"frontier"` — in graph-traversal terminology, frontier usually
+means unvisited-but-reachable candidate vertices (closer to this algorithm's own
+`unvisited`/`CandidatesComputed`), not the recursion/backtrack stack itself, so that name would
+have misrepresented what the set actually tracks.
+
+### Derived from existing mutating events, not a dedicated wire event
+
+The issue's original epic-level sketch proposed a dedicated `DebugValueChanged { name, op, item }`
+event. Implemented differently: debug-value deltas are *derived* from the payload of RB's existing
+mutating events (`VertexPushed`/`VertexPopped`) via a new trait, rather than emitting a second
+event alongside them. A dedicated event would double the mutating-event count on every push/pop
+(inflating the debug panel's step numbering — every DFS push/pop would cost two steps instead of
+one) and duplicate the same `NodeId` already carried by `VertexPushed`/`VertexPopped`. Deriving
+keeps the wire format completely unchanged (zero new bytes on the tape, no new wire tag) and
+composes with the existing replay/checkpoint machinery without touching `DebugTape`'s encoding.
+
+`DebugValueOp` (`Insert`/`Remove`) and `DebugValueDelta<Id>` (`maze-core/src/event_log/mod.rs`):
+
+```rust
+pub enum DebugValueOp { Insert, Remove }
+
+pub trait DebugValueDelta<Id> {
+    fn debug_value_deltas(&self) -> Vec<(&'static str, DebugValueOp, Id)> {
+        Vec::new()
+    }
+}
+```
+
+Generic over `Id` (not hardcoded to `crate::ids::NodeId`) so `event_log` stays free of any
+dependency on domain types — mirrors how `Node<E>`/`DebugTape<E>` are generic over the event type
+itself. Default implementation returns no deltas; only algorithms that expose debug values need to
+override it. `RecursiveBacktrackerEvent`'s impl (`maze-core/src/generation/recursive_backtracker.rs`):
+`VertexPushed(id)` → `[("recursion_stack", Insert, id)]`, `VertexPopped(id)` → `[("recursion_stack", Remove, id)]`,
+`VertexVisited(id)` → `[("visited", Insert, id)]` (monotonic — RB never unvisits a vertex, so this
+is `Insert`-only, unlike `recursion_stack`), every other variant → empty. The `"recursion_stack"`/
+`"visited"` names are `RECURSION_STACK`/`VISITED` constants referenced by both `debug_value_deltas()`
+and the static declaration below, so the declared and emitted names can't drift apart.
+
+### Static declaration, not scan-derived discovery
+
+The web-side toggle list must not be computed by scanning which deltas a particular run happened to
+emit (an earlier version of this mechanism did exactly that, in `resolveDebugArenaMetadata`) — a
+trivial run that never triggers a `VertexPushed`/`VertexPopped` (e.g. a single-node field) would
+then silently omit `"recursion_stack"` even though the algorithm still declares it. Instead, a
+canonical function `recursive_backtracker::debug_value_names() -> &'static [(&'static str, DebugValueKind)]`
+(returning `&[(RECURSION_STACK, Sequence), (VISITED, Region)]` — see "Semantic kind" below) is the
+source of truth — a static property of the algorithm, not a per-run computation.
+
+`generate_maze_with_events`'s `match config.algorithm` (`maze-core/src/generation/mod.rs`) calls
+`recursive_backtracker::debug_value_names()` in the `RecursiveBacktracker` branch and carries the
+result on `EventedGenerationResult::debug_value_names: &'static [(&'static str, DebugValueKind)]`
+(empty slice for every other algorithm, which don't reach this branch at all). This `match` is the
+*export* point for the web side, not the declaration point — instrumenting a future algorithm still
+means touching two places (its own `impl DebugValueDelta`/`debug_value_names()`, and one line
+here), but the RB-internal declaration itself can't silently diverge from what it actually emits,
+since both read the same `RECURSION_STACK`/`VISITED` constants.
+
+### WASM boundary: a plain `Vec<String>`, not a new binary buffer
+
+`debug_value_names` is a handful of short static strings — nothing like the tens-of-thousands-of-events
+scale that justifies `DebugTape`'s zero-copy binary encoding (see #124 above). It rides across the
+WASM boundary as an ordinary `Vec<String>`, not a new flat buffer pair:
+
+- `GenerateResult` (`maze-wasm/src/result.rs`) gains `debug_value_names: Vec<String>` and
+  `debug_value_kinds: Vec<String>` fields — two *parallel* arrays (kind at the same index as its
+  name), not one `Vec<(String, DebugValueKind)>`, since `DebugValueKind` itself doesn't cross the
+  WASM boundary as an enum — `kind_wire_str` renders it `"region"`/`"sequence"`. Populated by
+  `with_debug_tape`'s new fourth parameter (`Vec<(String, DebugValueKind)>`, unzipped into the two
+  fields; empty for `without_debug_tape`) and exposed as
+  `#[wasm_bindgen(js_name = debugValueNames)] pub fn debug_value_names(&self) -> Vec<String>` /
+  `#[wasm_bindgen(js_name = debugValueKinds)] pub fn debug_value_kinds(&self) -> Vec<String>` — plain
+  value returns (wasm-bindgen's standard `Vec<String>` marshaling), not the
+  `unsafe { Uint8Array::view }` zero-copy pattern
+  `debugTapeNodeTable`/`debugTapePayload`/`debugSnapshotTable`/`debugSnapshotPayload` use. No
+  detachment caveat — safe to call more than once.
+- `run_initial_generation` (`maze-wasm/src/runner.rs`) returns the name/kind pairs as the third
+  element of its `(Option<EncodedTape>, Option<EncodedCheckpoints>, Vec<(String, DebugValueKind)>, f64)`
+  tuple (collected from `EventedGenerationResult::debug_value_names` when `debug_events` is set and
+  the algorithm is instrumented; empty otherwise), which `build_generate_result` threads into
+  `GenerateResult::with_debug_tape`.
+- `mazeService.ts`'s `generateMaze()` reads `result.debugValueNames()`/`result.debugValueKinds()` and
+  zips them (`zipDebugValueNames`, asserting equal length) into `DebugValueDescriptor[]` —
+  `DebugTape.debugValueNames` — alongside the existing eager copy of the node table/payload/checkpoint
+  buffers.
+
+### Checkpoint format extension
+
+Per the issue's own framing ("debug-value sets are just more state that gets snapshotted and
+replayed the same way as graph state"), intermediate snapshot checkpoints (#128) now carry
+debug-value sets alongside the edge list — `CheckpointLog`/`CheckpointRecord`
+(`maze-core/src/event_log/checkpoint.rs`) stay untouched (still opaque byte payloads keyed by arena
+node index); only the payload *format* `CheckpointTracker` writes changes.
+
+`CheckpointTracker` (`maze-core/src/generation/recursive_backtracker.rs`) gains a
+`debug_values: BTreeMap<&'static str, Vec<NodeId>>` field alongside its existing `edges` — `Vec`,
+not `BTreeSet`, because insertion order matters for `Sequence`-kind values (see "Semantic kind"
+below); `BTreeMap` (not `HashMap`) purely for the map's own deterministic key iteration order, so
+checkpoint payload encoding is reproducible. `record()`'s signature changed from taking an explicit
+`edge_delta: Option<(NodeId, NodeId, bool)>` to taking the mutating event itself
+(`event: &RecursiveBacktrackerEvent`) — it derives both the edge delta (from `EdgeAdded`) and the
+debug-value deltas (from `event.debug_value_deltas()`) internally, folding each named list's
+`Insert` (push if not already present) / `Remove` (find and remove by value) directly.
+
+Extended checkpoint payload format: after the existing edge section (`u32` count + `(u64, u64)`
+pairs), a new section — `u32` set count, then per set: `u32` name length + UTF-8 name bytes + `u32`
+id count + that many `u64` ids, written in insertion order (not sorted). `maze-web/src/debug/eventTape.ts`'s
+checkpoint decoder (`decodeCheckpointPayload`, replacing the narrower `decodeCheckpointEdges`)
+parses both sections in one pass; `Checkpoint`/`ApplyFrom`/`ApplyResult` all gained a
+`debugValues: Map<string, bigint[]>` field alongside `edges`. `applyRecursiveBacktracker` folds
+`debugValueDeltasFor(event)` (the TS mirror of the Rust trait impl) into `debugValues` the same way
+it already folds `EdgeAdded` into `edges` — both for the bounded forward scan and the
+`from.step === targetStep` early return.
+
+### Web-side wiring
+
+`selectDebugMazeView` (`maze-web/src/store/debugSelectors.ts`) — `DebugMazeView` gained a
+`debugValues: Map<string, number[]>` field (node ids as `number`, already joined against
+`NodeDto.id`, converted from the replay engine's own `bigint`-keyed result the same way `edges` is;
+`number[]`, not `Set<number>`, preserving order for `Sequence`-kind values).
+
+`DebugArenaHandle` (`maze-web/src/store/storeTypes.ts`) gained `debugValueNames: DebugValueDescriptor[]`
+(`{ name, kind }` pairs), sourced from the WASM response (`debugTape.debugValueNames`) when the
+arena is built in `generateConfigBuilder.ts` — *not* computed by scanning the tape (see "Static
+declaration" above).
+
+`GenerationState` gained `debugValueToggles: Set<string>` (several names may be toggled on at once —
+not a single active value) and action `toggleDebugValue(name)`. Reset to empty on `setDebugMode(false)`
+(mirrors the existing `hoveredDebugRef` reset) and on every new `generate()` call (a fresh run may
+expose a different debug-value name set than the previous one).
+
+### UI: per-value toggle row
+
+`DebugPanel.tsx` renders one toggle row per `debugArena.debugValueNames` entry (section hidden
+entirely when the list is empty — e.g. any algorithm other than Recursive Backtracker). `ToggleRow`
+(`maze-web/src/components/ToggleRow.tsx`) was lifted out of `AnalyticsFeature.tsx`, where it had
+been a private local helper, into a shared component — the debug panel is now a second consumer,
+so a third hand-rolled copy would have been worse than extracting the existing one.
+
+Labels go through paraglide i18n, not the raw name — `debug.value.<name>` messages (pilot:
+`debug.value.recursion_stack`) in `messages/en.json`/`messages/ru.json`. Since a runtime string can't be
+turned into a message key automatically, `DebugPanel.tsx` keeps a small local
+`DEBUG_VALUE_LABELS: Record<string, () => string>` map from name to message lookup, falling back to
+the raw name for any debug value without a catalog entry yet (so an untranslated future debug value
+still renders as a toggle instead of crashing).
+
+### Semantic kind: `Region` vs `Sequence`
+
+Not every debug value means the same thing. `"visited"` is an unordered set — its members have no
+relationship to each other. `"recursion_stack"` is the actual DFS stack — insertion order *is* the
+information (which vertex is on top, what the backtrack path looks like). Collapsing both into an
+undifferentiated node set loses that distinction and renders them identically, which is misleading
+for a stack.
+
+`DebugValueKind` (`maze-core/src/event_log/mod.rs`) makes the distinction explicit:
+
+```rust
+pub enum DebugValueKind {
+    Region,   // unordered set, independent members — e.g. "visited"
+    Sequence, // ordered list, adjacent members connected — e.g. "recursion_stack"
+}
+```
+
+It only affects *rendering*; `debug_value_deltas()` still reports plain `Insert`/`Remove` on a
+single id regardless of kind. `recursive_backtracker::debug_value_names()` returns
+`&[(&str, DebugValueKind)]` pairs instead of bare names — `("recursion_stack", Sequence)`,
+`("visited", Region)` — so the kind is part of the same static declaration the name itself comes
+from, not a separate lookup that could drift out of sync.
+
+Because order now carries meaning, the storage backing debug-value sets changed from an unordered
+collection to an order-preserving one on both sides:
+- `CheckpointTracker::debug_values` (`maze-core/src/generation/recursive_backtracker.rs`):
+  `BTreeMap<&'static str, Vec<NodeId>>`, not `BTreeSet<NodeId>`. `Insert` pushes (only if not
+  already present — duplicates would break a `Sequence`'s edge-chain rendering), `Remove` finds
+  and removes by value. Checkpoint payload encoding is unchanged (`id_count: u32` + that many
+  `u64` ids) — only the *order* those ids are written in changed, from sorted to insertion order.
+- `maze-web/src/debug/eventTape.ts`'s `DebugValues` type: `Map<string, bigint[]>`, not
+  `Map<string, Set<bigint>>`. `applyRecursiveBacktracker`'s delta fold and
+  `decodeCheckpointPayload`'s checkpoint decode both preserve insertion order the same way.
+  `selectDebugMazeView`'s `DebugMazeView.debugValues: Map<string, number[]>` (bigint→number join)
+  likewise.
+
+Across the WASM boundary, `GenerateResult` (`maze-wasm/src/result.rs`) carries kind as a second
+parallel `Vec<String>` — `debugValueKinds()` alongside the existing `debugValueNames()`, each
+entry `"region"` or `"sequence"` at the same index as its name (`kind_wire_str`). A plain string,
+not a numeric enum, matching how `debugValueNames` itself already crosses the boundary as plain
+values rather than a packed buffer. `mazeService.ts`'s `generateMaze()` zips the two arrays into
+`DebugValueDescriptor[]` (`{ name, kind }`), asserting equal length — a mismatch would mean the
+two arrays fell out of sync on the Rust side, and failing loudly beats silently misaligning names
+against kinds.
+
+### Canvas highlighting: persistent, not hover-only, kind-dependent visual, one layer per name
+
+Distinct from `DebugRefHighlightOverlay` (#130, hover-only, driven by `hoveredDebugRef`) — toggled
+debug values stay highlighted continuously while their toggle is on, independent of mouse position.
+
+Which low-level renderer draws a debug value depends on its `DebugValueKind`:
+- `Region` — `RegionHighlightRenderer` (#130), fill only, no perimeter. Each id is passed as its
+  own one-element group (`regionGroups: ids.map(id => [id])`, `skipPerimeter: true`) — an unordered
+  debug value like `"visited"` is an arbitrary set of *disconnected* members, not a contiguous
+  area, so `buildRegionGeometry`'s shared-boundary perimeter would draw a closed outline around
+  every single cell; with cell walls already rendered underneath, that outline reads as extra wall
+  lines and makes real walls harder to read. `RegionHighlightRenderer`'s `RegionHighlightData` gained
+  an optional `skipPerimeter?: boolean` field (default `false`, preserving every other caller's
+  original fill+perimeter behavior — `IssueHighlightOverlay`, `DebugRefHighlightOverlay`) for this.
+- `Sequence` — `SequenceHighlightRenderer` (`maze-web/src/pixi/renderers/SequenceHighlightRenderer.ts`),
+  a new low-level renderer that draws an *open chain of arrows* between consecutive ids in the
+  list's order, plus a filled circle at each id — reusing `BaseGraphRenderer`'s `drawEdge` primitive
+  (exported for this purpose) for the arrows, since a stack's *order* is the point. Not closed into
+  a loop (no edge from the last id back to the first) — a DFS stack isn't a cycle. The node-circle
+  markers were added after the arrow-only version read as disconnected floating line segments —
+  same visual anchor role `BaseGraphRenderer`'s own interactive node markers serve for the
+  graph/nav-graph overlays it draws, without pulling in that class's interactive/hoverable node
+  machinery (unneeded here). Positions come from `getCellCenter(node.x, node.y, cfg)`, the same
+  tessellation-geometry function `BaseGraphRenderer`'s own node/edge layout uses — cached internally
+  keyed on `nodes`/`cfg` identity (mirroring `GenerationRenderer`'s own `geometryCache` pattern),
+  since `nodes` is the whole-maze node list and stays referentially stable across debug steps
+  within one session, so rebuilding the position map on every `render()` call (once per debug-step
+  tick during scrubbing/autoplay) would be wasted O(total node count) work regardless of how small
+  the sequence itself is.
+
+Per explicit product direction, different debug values are expected to get independently
+distinguishable colors — so `DebugValueHighlightOverlay`
+(`maze-web/src/pixi/DebugValueHighlightOverlay.ts`) holds one renderer instance (either kind, picked
+by `kindFor`) and one child `Container` *per debug-value name*, created lazily as names are toggled
+on and kept (cleared, not destroyed) when toggled off, rather than rendering every active toggle's
+ids through a single shared call. If a name's kind ever changed between renders (shouldn't happen —
+it's a static per-run declaration — but guarded defensively), the stale-kind entry is destroyed and
+rebuilt rather than fed data it can't render. `render()` takes both a `kindFor: (name: string) =>
+DebugValueKind` and a `colorFor: (name: string) => number` callback; `GenerationRenderer` builds
+`colorFor` from `buildDebugValuePalette(debugArena.debugValueNames.length)`
+(`maze-web/src/pixi/colorUtils.ts`) indexed by each name's position in the declared name list — a
+small set of calm, analogous hues (blue/teal/violet, lower saturation than the full-spectrum
+`buildPalette` used for e.g. connectivity regions), varied by lightness across passes, so
+simultaneously-toggled debug values read as related shades rather than clashing unrelated colors.
+No dedicated `debugValueHighlight` color token — the palette assigns a distinct shade to every
+declared debug value automatically, including future ones, without a catalog entry. `kindFor` is
+built from the same `debugArena.debugValueNames` list, keyed by name. Both the palette and the
+name→color/kind lookup maps are cached on `GenerationRenderer` keyed on `debugArena.debugValueNames`
+array identity — that list is stable for a whole debug session (only changes on a fresh
+`generate()`), so rebuilding it every `renderAll()` call would be wasted work on every debug-step
+tick, mirroring the same identity-cache pattern `geometryCache` already uses for walls/closed-cells.
+
+Owned by `GenerationRenderer`, per `maze-web/CLAUDE.md`'s feature-renderer ownership rule — its own
+`Container`/instance, added in the constructor alongside `debugRefHighlightContainer`/
+`debugRefHighlight`. `debugValueToggles` participates in `subscribe()`'s `dataChanged` diff.
+`renderAll()` gates rendering on `state.debugMode && state.debugValueToggles.size > 0` (mirroring
+the `debugRefHighlight` branch immediately above it), reading `debugValues` via
+`selectDebugMazeView(state.debugArena, state.debugStep)` — the same memoized selector (#125/#139)
+`debugRefHighlight`'s `view.nodes` already comes from, so no extra replay cost.
+
+### Replay-side O(1) membership check
+
+`applyRecursiveBacktracker` (`maze-web/src/debug/eventTape.ts`) folds each `debugValueDeltasFor`
+delta into a `bigint[]` per name, same as the Rust side's `Vec<NodeId>`. A naive `Array.includes`/
+`Array.indexOf` per delta would make this loop O(n²) over a run for a monotonically-growing
+`Region` value like `"visited"` (one insert per node, never removed) — and unlike the Rust-side
+`CheckpointTracker`, which only runs once at generation time, this replay function runs on *every*
+debug-step change (slider drag, autoplay tick), so the cost is repaid on every UI interaction, not
+just once. Fixed the same way as `CheckpointTracker::record`'s `DebugValueList` (see above): a
+`Map<string, Set<bigint>>` membership mirror, built fresh from the current `bigint[]` lists at the
+start of each `applyRecursiveBacktracker` call and discarded once it returns — kept internal rather
+than carried in `ApplyFrom`/`DebugValues` itself, so the public `bigint[]`/`number[]` shape every
+consumer (store selectors, render overlays) depends on doesn't change. `Remove` still does an O(n)
+`Array.indexOf`+`splice` (no reverse id→position index) — acceptable because it's only exercised by
+`Sequence` values like `"recursion_stack"`, bounded by DFS stack depth rather than total node count,
+mirroring the same asymmetric tradeoff made on the Rust side.
+
+### Out of Scope (#131)
+
+- Other algorithms' debug values (Wilson, Kruskal, custom)
+- QC/repair debug values
+- User-configurable per-value colors (colors are auto-assigned from the shared palette by name
+  position; a future issue may let users override them individually)
+- Debug value kinds beyond `Region`/`Sequence` (e.g. a weighted/scored value, a tree) — not needed
+  by any currently-instrumented algorithm

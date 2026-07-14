@@ -96,7 +96,7 @@ function threeStepArena() {
   const tape = buildThreeStepTape();
   const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
   const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
-  return { tape, nodes, totalSteps, checkpointFroms };
+  return { tape, nodes, totalSteps, checkpointFroms, debugValueNames: [] };
 }
 
 // root (0) -> "step 1" scope (1) -> EdgeAdded(1,2) (2)
@@ -133,7 +133,7 @@ function manyStepArena(stepCount: number) {
   const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
   const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
   const manyNodes: NodeDto[] = Array.from({ length: stepCount + 1 }, (_, i) => ({ id: i + 1, x: i, y: 0 }));
-  return { tape, nodes: manyNodes, totalSteps, checkpointFroms };
+  return { tape, nodes: manyNodes, totalSteps, checkpointFroms, debugValueNames: [] };
 }
 
 // jsdom has no real layout — DebugEventTree's virtualized list needs a non-zero viewport (see
@@ -183,5 +183,38 @@ describe("DebugPanel", () => {
     useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 0, debugStale: false });
     render(<DebugPanel />);
     expect(screen.queryByText(/outdated|stale/i)).not.toBeInTheDocument();
+  });
+
+  // --- Debug value toggles (GitHub issue #131) ---
+
+  it("does not render a debug-value toggle section when the arena declares no debug values", () => {
+    useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 0, debugValueToggles: new Set() });
+    render(<DebugPanel />);
+    expect(screen.queryByText("Recursion stack")).not.toBeInTheDocument();
+  });
+
+  it("renders one toggle per debugValueNames entry, using the paraglide label when known", () => {
+    const arena = { ...threeStepArena(), debugValueNames: [{ name: "recursion_stack", kind: "sequence" as const }] };
+    useMazeStore.setState({ debugArena: arena, debugStep: 0, debugValueToggles: new Set() });
+    render(<DebugPanel />);
+    expect(screen.getByText("Recursion stack")).toBeInTheDocument();
+  });
+
+  it("falls back to the raw name for a debug value with no known i18n label", () => {
+    const arena = { ...threeStepArena(), debugValueNames: [{ name: "some_future_value", kind: "region" as const }] };
+    useMazeStore.setState({ debugArena: arena, debugStep: 0, debugValueToggles: new Set() });
+    render(<DebugPanel />);
+    expect(screen.getByText("some_future_value")).toBeInTheDocument();
+  });
+
+  it("toggle reflects debugValueToggles and calls toggleDebugValue on click", () => {
+    const arena = { ...threeStepArena(), debugValueNames: [{ name: "recursion_stack", kind: "sequence" as const }] };
+    useMazeStore.setState({ debugArena: arena, debugStep: 0, debugValueToggles: new Set() });
+    render(<DebugPanel />);
+    const checkbox = screen.getByText("Recursion stack").closest("div")!.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+
+    checkbox.click();
+    expect(useMazeStore.getState().debugValueToggles.has("recursion_stack")).toBe(true);
   });
 });

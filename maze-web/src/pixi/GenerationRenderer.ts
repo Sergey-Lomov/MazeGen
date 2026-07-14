@@ -6,12 +6,14 @@ import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
+import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge } from "./renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { canvas } from "./colorUtils";
+import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
+import { canvas, buildDebugValuePalette } from "./colorUtils";
 
 export class GenerationRenderer {
   private readonly gridContainer: Container;
@@ -21,6 +23,7 @@ export class GenerationRenderer {
   private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
   private readonly debugRefHighlightContainer: Container;
+  private readonly debugValueHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -29,6 +32,7 @@ export class GenerationRenderer {
   private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly debugRefHighlight: DebugRefHighlightOverlay;
+  private readonly debugValueHighlight: DebugValueHighlightOverlay;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
@@ -46,6 +50,15 @@ export class GenerationRenderer {
     teleportEdges: TeleportEdge[];
   } | null = null;
 
+  // Keyed on `debugArena.debugValueNames` array identity, which is stable for a whole debug
+  // session (only changes on a fresh `generate()`) — avoids rebuilding the palette and
+  // name→color/kind lookup maps on every debug-step tick during scrubbing/autoplay.
+  private debugValuePaletteCache: {
+    descriptors: DebugValueDescriptor[];
+    colorByName: Map<string, number>;
+    kindByName: Map<string, DebugValueKind>;
+  } | null = null;
+
   constructor(viewport: Container) {
     this.gridContainer = new Container();
     this.floorContainer = new Container();
@@ -54,6 +67,7 @@ export class GenerationRenderer {
     this.teleportContainer = new Container();
     this.markersContainer = new Container();
     this.debugRefHighlightContainer = new Container();
+    this.debugValueHighlightContainer = new Container();
 
     viewport.addChild(this.gridContainer);
     viewport.addChild(this.floorContainer);
@@ -62,6 +76,7 @@ export class GenerationRenderer {
     viewport.addChild(this.teleportContainer);
     viewport.addChild(this.markersContainer);
     viewport.addChild(this.debugRefHighlightContainer);
+    viewport.addChild(this.debugValueHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
@@ -70,6 +85,7 @@ export class GenerationRenderer {
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.debugRefHighlight = new DebugRefHighlightOverlay(this.debugRefHighlightContainer);
+    this.debugValueHighlight = new DebugValueHighlightOverlay(this.debugValueHighlightContainer);
 
     this.syncVisibility(useMazeStore.getState());
     this.renderAll(useMazeStore.getState());
@@ -97,7 +113,8 @@ export class GenerationRenderer {
         state.debugMode !== prev.debugMode ||
         state.debugArena !== prev.debugArena ||
         state.debugStep !== prev.debugStep ||
-        state.hoveredDebugRef !== prev.hoveredDebugRef;
+        state.hoveredDebugRef !== prev.hoveredDebugRef ||
+        state.debugValueToggles !== prev.debugValueToggles;
 
       if (dataChanged) {
         this.renderAll(state);
@@ -116,6 +133,7 @@ export class GenerationRenderer {
     this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
     this.debugRefHighlightContainer.visible = visible;
+    this.debugValueHighlightContainer.visible = visible;
     if (visible) {
       this.renderAll(state);
     }
@@ -179,6 +197,32 @@ export class GenerationRenderer {
     } else {
       this.debugRefHighlight.clear();
     }
+
+    // Persistent debug-value toggle highlighting (GitHub issue #131) — same debugMode gate as
+    // debugRefHighlight above, but driven by debugValueToggles instead of a hover ref.
+    if (state.debugMode && state.debugValueToggles.size > 0) {
+      const debugMazeView = selectDebugMazeView(state.debugArena, state.debugStep);
+      const descriptors = state.debugArena?.debugValueNames ?? [];
+      if (!this.debugValuePaletteCache || this.debugValuePaletteCache.descriptors !== descriptors) {
+        const palette = buildDebugValuePalette(descriptors.length);
+        this.debugValuePaletteCache = {
+          descriptors,
+          colorByName: new Map(descriptors.map(({ name }, i) => [name, palette[i]])),
+          kindByName: new Map(descriptors.map(({ name, kind }) => [name, kind])),
+        };
+      }
+      const { colorByName, kindByName } = this.debugValuePaletteCache;
+      this.debugValueHighlight.render({
+        nodes: view.nodes,
+        debugValues: debugMazeView?.debugValues ?? new Map(),
+        toggles: state.debugValueToggles,
+        kindFor: (name) => kindByName.get(name) ?? "region",
+        colorFor: (name) => colorByName.get(name) ?? canvas.debug.refHighlight,
+        cfg,
+      });
+    } else {
+      this.debugValueHighlight.clear();
+    }
   }
 
   destroy(): void {
@@ -190,6 +234,7 @@ export class GenerationRenderer {
     this.teleports.destroy();
     this.markers.destroy();
     this.debugRefHighlight.destroy();
+    this.debugValueHighlight.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
@@ -197,6 +242,7 @@ export class GenerationRenderer {
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.debugRefHighlightContainer.destroy();
+    this.debugValueHighlightContainer.destroy();
   }
 }
 

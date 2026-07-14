@@ -1,5 +1,6 @@
 import { emptyFreePoints } from "../store/storeHelpers";
 import { RB_TAG, NO_NODE } from "../debug/eventTape";
+import type { DebugValueDescriptor } from "../debug/eventTape";
 
 export { emptyFreePoints };
 
@@ -26,7 +27,7 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
  *  `eventTape.test.ts`'s fixtures, but returning raw buffers (not a parsed `ParsedTape`) since
  *  that's the shape `generateWithSeed` receives from `mazeService.generateMaze` before it calls
  *  `parseTape` itself. */
-export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array } {
+export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array; debugValueNames: DebugValueDescriptor[] } {
   // `bidirectional` always encoded `true` — mirrors RB's real behavior (GitHub issue #135).
   const payloadChunks = edges.map(([from, to]) => concatBytes([u64le(from), u64le(to), new Uint8Array([1])]));
   const offsets: number[] = [];
@@ -47,7 +48,11 @@ export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uin
     dv.setUint32(base + 14, offsets[i], true);
     dv.setUint32(base + 18, payloadChunks[i].byteLength, true);
   });
-  return { nodeTable, payload };
+  // debugValueNames (GitHub issue #131) is a plain array in the real WASM response, not derived
+  // from these edges — fixtures using this helper aren't exercising RB's recursion_stack declaration,
+  // so an empty default is correct here; a test that specifically needs a non-empty list should
+  // override the field on the returned object.
+  return { nodeTable, payload, debugValueNames: [] };
 }
 
 function u32le(v: number): Uint8Array {
@@ -58,15 +63,31 @@ function u32le(v: number): Uint8Array {
 
 /** Encodes intermediate snapshot checkpoints (GitHub issue #128) into the raw
  *  `{ snapshotTable, snapshotPayload }` buffer pair `generateMaze()` returns as
- *  `debugTape.snapshotTable`/`snapshotPayload` — mirrors `CheckpointLog::encode()`'s wire format
- *  (see `Specs/event_log.md`). `checkpoints` must be given in ascending `nodeIndex` order, same
- *  invariant `CheckpointLog::push` enforces on the Rust side. */
-export function encodeCheckpoints(checkpoints: Array<{ nodeIndex: number; edges: [bigint, bigint][] }>): { snapshotTable: Uint8Array; snapshotPayload: Uint8Array } {
+ *  `debugTape.snapshotTable`/`snapshotPayload` — mirrors `CheckpointTracker::record`'s wire
+ *  format in `maze-core/src/generation/recursive_backtracker.rs` (see `Specs/event_log.md`):
+ *  edges (`u32` count + `(u64, u64)` pairs), then named debug-value sets (GitHub issue #131,
+ *  `u32` count of sets, each `u32` name length + UTF-8 name + `u32` id count + `u64` ids).
+ *  `checkpoints` must be given in ascending `nodeIndex` order, same invariant `CheckpointLog::push`
+ *  enforces on the Rust side. `debugValues` defaults to no sets — fixtures that don't specifically
+ *  exercise debug-value checkpointing don't need to pass it. */
+export function encodeCheckpoints(checkpoints: Array<{ nodeIndex: number; edges: [bigint, bigint][]; debugValues?: [string, bigint[]][] }>): { snapshotTable: Uint8Array; snapshotPayload: Uint8Array } {
+  const textEncoder = new TextEncoder();
   const payloadChunks: Uint8Array[] = [];
   const tableChunks: Uint8Array[] = [];
   let payloadOffset = 0;
-  for (const { nodeIndex, edges } of checkpoints) {
-    const bytes = concatBytes([u32le(edges.length), ...edges.flatMap(([from, to]) => [u64le(from), u64le(to)])]);
+  for (const { nodeIndex, edges, debugValues = [] } of checkpoints) {
+    const nameBytes = debugValues.map(([name]) => textEncoder.encode(name));
+    const bytes = concatBytes([
+      u32le(edges.length),
+      ...edges.flatMap(([from, to]) => [u64le(from), u64le(to)]),
+      u32le(debugValues.length),
+      ...debugValues.flatMap(([, ids], i) => [
+        u32le(nameBytes[i].byteLength),
+        nameBytes[i],
+        u32le(ids.length),
+        ...ids.map(u64le),
+      ]),
+    ]);
     tableChunks.push(u32le(nodeIndex), u32le(payloadOffset), u32le(bytes.byteLength));
     payloadChunks.push(bytes);
     payloadOffset += bytes.byteLength;

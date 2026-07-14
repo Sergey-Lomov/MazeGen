@@ -1,5 +1,6 @@
 import { getWasm } from "./wasmLoader";
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, GenerateConfig, ComputeAnalyticsConfig } from "./types";
+import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 
 function isNodeDto(v: unknown): v is NodeDto {
   return typeof v === "object" && v !== null &&
@@ -48,11 +49,37 @@ export interface DebugTape {
   payload: Uint8Array;
   snapshotTable?: Uint8Array;
   snapshotPayload?: Uint8Array;
+  /** Debug values (GitHub issue #131, e.g. `"recursion_stack"`) declared by the instrumented
+   *  algorithm, each with its rendering `kind` — the static list from
+   *  `GenerateResult::debugValueNames()`/`debugValueKinds()` (zipped together, see
+   *  `generateMaze()` below), not derived from what this particular run happened to emit (a
+   *  trivial run that never triggers a delta would otherwise silently omit a name the algorithm
+   *  still supports). Empty when the algorithm isn't instrumented for debug values yet. Plain
+   *  array, not a WASM buffer — no copy-before-free concern like `nodeTable`/`payload`. */
+  debugValueNames: DebugValueDescriptor[];
 }
 
 export interface GenerateMazeResult {
   snapshot: MazeSnapshot;
   debugTape: DebugTape | undefined;
+}
+
+/** Zips `GenerateResult::debugValueNames()`/`debugValueKinds()`'s parallel arrays (see
+ *  `maze-wasm/src/result.rs`'s `kind_wire_str`) into `DebugValueDescriptor`s. Both arrays are
+ *  always the same length by construction on the Rust side — asserted here so a mismatch (e.g.
+ *  a future wire-format change on one side but not the other) fails loudly instead of silently
+ *  truncating or misaligning names against kinds. */
+function zipDebugValueNames(names: string[], kinds: string[]): DebugValueDescriptor[] {
+  if (names.length !== kinds.length) {
+    throw new Error(`debugValueNames/debugValueKinds length mismatch: ${names.length} vs ${kinds.length}`);
+  }
+  return names.map((name, i) => {
+    const kind = kinds[i];
+    if (kind !== "region" && kind !== "sequence") {
+      throw new Error(`unknown debug value kind "${kind}" for "${name}"`);
+    }
+    return { name, kind: kind as DebugValueKind };
+  });
 }
 
 function validateSnapshot(raw: unknown): MazeSnapshot {
@@ -105,6 +132,7 @@ export function generateMaze(seed: number, config: GenerateConfig): GenerateMaze
           ...(snapshotTable && snapshotPayload
             ? { snapshotTable: snapshotTable.slice(), snapshotPayload: snapshotPayload.slice() }
             : {}),
+          debugValueNames: zipDebugValueNames(result.debugValueNames(), result.debugValueKinds()),
         }
       : undefined;
 

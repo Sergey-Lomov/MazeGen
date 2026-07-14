@@ -32,6 +32,48 @@ pub trait DebugEvent {
     fn is_mutating(&self) -> bool;
 }
 
+/// Insert/remove operation on a named [`DebugEvent::debug_value_deltas`] set — see issue #131.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DebugValueOp {
+    Insert,
+    Remove,
+}
+
+/// Semantic shape of a debug value's id collection — affects how the web side renders it, not how
+/// `debug_value_deltas` reports it (both kinds still use `Insert`/`Remove` on a single id). See
+/// issue #131's follow-up and `Specs/event_log.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DebugValueKind {
+    /// Unordered set of ids with no relationship between members — rendered as independent
+    /// per-node highlights (e.g. `"visited"`).
+    Region,
+    /// Ordered list of ids where adjacent members are connected — rendered as a chain of
+    /// arrows between consecutive ids, mirroring the graph/nav-graph edge visual (e.g.
+    /// `"recursion_stack"`, the DFS stack in push order).
+    Sequence,
+}
+
+/// Implemented by a concrete event enum to declare how its mutating variants affect named,
+/// session-specific "debug value" sets (e.g. Recursive Backtracker's `"recursion_stack"` — see issue
+/// #131 and `Specs/event_log.md`). Deliberately derived from the *existing* mutating events
+/// rather than a separate `DebugValueChanged` event: a dedicated event would double the mutating
+/// event count on every push/pop (inflating step numbering) and duplicate the same id already
+/// carried by e.g. `VertexPushed`/`VertexPopped`. Default implementation returns no deltas — only
+/// algorithms that expose debug values need to override this.
+///
+/// Generic over `Id` (rather than hardcoding `crate::ids::NodeId`) so `event_log` stays free of
+/// any dependency on domain types — mirrors how `Node<E>`/`DebugTape<E>` are generic over the
+/// event type itself.
+pub trait DebugValueDelta<Id> {
+    /// Named set deltas this event causes, e.g. `[("recursion_stack", DebugValueOp::Insert, id)]` for
+    /// `VertexPushed(id)`. Empty for events that don't affect any debug value. `name` is a
+    /// `'static` string (the debug value's stable identifier, shared across every event of a
+    /// given algorithm) so no allocation is needed to report it.
+    fn debug_value_deltas(&self) -> Vec<(&'static str, DebugValueOp, Id)> {
+        Vec::new()
+    }
+}
+
 /// RAII builder for a [`DebugTape`]. `enter` opens a nested scope and returns a guard;
 /// while a guard is alive it is the only way to `emit`/`enter` further, and dropping it
 /// (including on panic unwind) restores the cursor to the parent scope.

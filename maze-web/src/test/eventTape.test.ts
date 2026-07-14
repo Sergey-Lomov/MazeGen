@@ -119,10 +119,15 @@ describe("mutatingRbEvents / applyRecursiveBacktracker — exact sequence", () =
     ]);
 
     const result = applyRecursiveBacktracker(tape, 0);
-    expect(result).toEqual({ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], step: 0, nodeIndex: 2 });
+    expect(result).toEqual({ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map(), step: 0, nodeIndex: 2 });
 
     const full = applyRecursiveBacktracker(tape, 3);
-    expect(full).toEqual({ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], step: 3, nodeIndex: 7 });
+    expect(full).toEqual({
+      edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }],
+      debugValues: new Map([["visited", [2n]], ["recursion_stack", []]]),
+      step: 3,
+      nodeIndex: 7,
+    });
   });
 });
 
@@ -206,7 +211,7 @@ describe("applyRecursiveBacktracker — resume via `from`", () => {
   it("result.step always equals targetStep", () => {
     const tape = buildThreeEdgeTape();
     expect(applyRecursiveBacktracker(tape, 1).step).toBe(1);
-    expect(applyRecursiveBacktracker(tape, 1, { edges: [], step: 0, nodeIndex: 1 }).step).toBe(1);
+    expect(applyRecursiveBacktracker(tape, 1, { edges: [], debugValues: new Map(), step: 0, nodeIndex: 1 }).step).toBe(1);
   });
 
   it("does not mutate the edges array passed via `from`", () => {
@@ -220,13 +225,13 @@ describe("applyRecursiveBacktracker — resume via `from`", () => {
 
   it("throws when from.step is ahead of targetStep", () => {
     const tape = buildThreeEdgeTape();
-    expect(() => applyRecursiveBacktracker(tape, 0, { edges: [], step: 1, nodeIndex: 2 })).toThrow();
+    expect(() => applyRecursiveBacktracker(tape, 0, { edges: [], debugValues: new Map(), step: 1, nodeIndex: 2 })).toThrow();
   });
 
   it("throws when from.step is out of range", () => {
     const tape = buildThreeEdgeTape();
-    expect(() => applyRecursiveBacktracker(tape, 2, { edges: [], step: -1, nodeIndex: 0 })).toThrow();
-    expect(() => applyRecursiveBacktracker(tape, 2, { edges: [], step: 1.5, nodeIndex: 1 })).toThrow();
+    expect(() => applyRecursiveBacktracker(tape, 2, { edges: [], debugValues: new Map(), step: -1, nodeIndex: 0 })).toThrow();
+    expect(() => applyRecursiveBacktracker(tape, 2, { edges: [], debugValues: new Map(), step: 1.5, nodeIndex: 1 })).toThrow();
   });
 
   it("throws when targetStep is out of range or non-integer", () => {
@@ -244,14 +249,14 @@ describe("applyRecursiveBacktracker — resume via `from`", () => {
     // array (`newEvents[-1].nodeIndex`), throwing. This is exactly what
     // nearestCheckpointFromAtOrBefore can produce in practice (GitHub issue #128 wiring).
     const tape = buildThreeEdgeTape();
-    const from = { edges: [{ from: 1n, to: 2n }], step: 0, nodeIndex: 1 };
+    const from = { edges: [{ from: 1n, to: 2n }], debugValues: new Map(), step: 0, nodeIndex: 1 };
     const result = applyRecursiveBacktracker(tape, 0, from);
-    expect(result).toEqual({ edges: [{ from: 1n, to: 2n }], step: 0, nodeIndex: 1 });
+    expect(result).toEqual({ edges: [{ from: 1n, to: 2n }], debugValues: new Map(), step: 0, nodeIndex: 1 });
   });
 
   it("from.step === targetStep returns a new edges array, not the same reference as from.edges", () => {
     const tape = buildThreeEdgeTape();
-    const from = { edges: [{ from: 1n, to: 2n }], step: 0, nodeIndex: 1 };
+    const from = { edges: [{ from: 1n, to: 2n }], debugValues: new Map(), step: 0, nodeIndex: 1 };
     const result = applyRecursiveBacktracker(tape, 0, from);
     expect(result.edges).not.toBe(from.edges);
   });
@@ -347,12 +352,23 @@ describe("nodeAt", () => {
 interface FixtureCheckpoint {
   nodeIndex: number;
   edges: Array<[bigint, bigint]>;
+  /** Named debug-value sets (GitHub issue #131) — defaults to none for fixtures that don't
+   *  specifically exercise debug-value checkpointing. */
+  debugValues?: Array<[string, bigint[]]>;
 }
 
-function edgesPayload(edges: Array<[bigint, bigint]>): Uint8Array {
+/** Encodes one checkpoint's payload: edges, then named debug-value sets — mirrors
+ *  `CheckpointTracker::record`'s wire format in `recursive_backtracker.rs`. */
+function checkpointPayload(edges: Array<[bigint, bigint]>, debugValues: Array<[string, bigint[]]>): Uint8Array {
+  const textEncoder = new TextEncoder();
   const chunks: Uint8Array[] = [u32le(edges.length)];
   for (const [from, to] of edges) {
     chunks.push(u64le(from), u64le(to));
+  }
+  chunks.push(u32le(debugValues.length));
+  for (const [name, ids] of debugValues) {
+    const nameBytes = textEncoder.encode(name);
+    chunks.push(u32le(nameBytes.byteLength), nameBytes, u32le(ids.length), ...ids.map(u64le));
   }
   return concatBytes(chunks);
 }
@@ -362,7 +378,7 @@ function buildCheckpointFixture(checkpoints: FixtureCheckpoint[]): ParsedCheckpo
   const payloadChunks: Uint8Array[] = [];
   let payloadOffset = 0;
   for (const cp of checkpoints) {
-    const bytes = edgesPayload(cp.edges);
+    const bytes = checkpointPayload(cp.edges, cp.debugValues ?? []);
     tableChunks.push(u32le(cp.nodeIndex), u32le(payloadOffset), u32le(bytes.byteLength));
     payloadChunks.push(bytes);
     payloadOffset += bytes.byteLength;
@@ -375,7 +391,7 @@ describe("parseCheckpoints / checkpointAt", () => {
     const tape = buildCheckpointFixture([{ nodeIndex: 42, edges: [[1n, 2n], [2n, 1n]] }]);
     expect(tape.checkpointCount).toBe(1);
     expect(tape.table.byteLength).toBe(CHECKPOINT_RECORD_SIZE);
-    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 42, edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }] });
+    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 42, edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map() });
   });
 
   it("round-trips multiple checkpoints with distinct payload slices", () => {
@@ -384,16 +400,26 @@ describe("parseCheckpoints / checkpointAt", () => {
       { nodeIndex: 520, edges: [[1n, 2n], [3n, 4n], [4n, 3n]] },
     ]);
     expect(tape.checkpointCount).toBe(2);
-    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 10, edges: [{ from: 1n, to: 2n }] });
+    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 10, edges: [{ from: 1n, to: 2n }], debugValues: new Map() });
     expect(checkpointAt(tape, 1)).toEqual({
       nodeIndex: 520,
       edges: [{ from: 1n, to: 2n }, { from: 3n, to: 4n }, { from: 4n, to: 3n }],
+      debugValues: new Map(),
     });
   });
 
   it("round-trips a checkpoint with zero edges", () => {
     const tape = buildCheckpointFixture([{ nodeIndex: 5, edges: [] }]);
-    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 5, edges: [] });
+    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 5, edges: [], debugValues: new Map() });
+  });
+
+  it("round-trips a checkpoint with a named debug-value set (GitHub issue #131)", () => {
+    const tape = buildCheckpointFixture([{ nodeIndex: 7, edges: [[1n, 2n]], debugValues: [["recursion_stack", [3n, 5n, 8n]]] }]);
+    expect(checkpointAt(tape, 0)).toEqual({
+      nodeIndex: 7,
+      edges: [{ from: 1n, to: 2n }],
+      debugValues: new Map([["recursion_stack", [3n, 5n, 8n]]]),
+    });
   });
 
   it("an empty buffer has zero checkpoints", () => {
@@ -418,7 +444,7 @@ describe("resolveCheckpointFroms / nearestCheckpointFromAtOrBefore", () => {
     // Checkpoint recorded at arena node 4 (the VertexPushed event) — step 2.
     const checkpoints = buildCheckpointFixture([{ nodeIndex: 4, edges: [[1n, 2n], [2n, 1n]] }]);
     const froms = resolveCheckpointFroms(tape, checkpoints);
-    expect(froms).toEqual([{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], step: 2, nodeIndex: 4 }]);
+    expect(froms).toEqual([{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map(), step: 2, nodeIndex: 4 }]);
   });
 
   it("resolves multiple checkpoints in ascending step order", () => {
@@ -505,6 +531,6 @@ describe("resolveDebugArenaMetadata", () => {
     const checkpoints = buildCheckpointFixture([{ nodeIndex: 7, edges: [[1n, 2n]] }]); // last mutating event (VertexPopped)
     const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, checkpoints);
     expect(totalSteps).toBe(4);
-    expect(checkpointFroms).toEqual([{ edges: [{ from: 1n, to: 2n }], step: 3, nodeIndex: 7 }]);
+    expect(checkpointFroms).toEqual([{ edges: [{ from: 1n, to: 2n }], debugValues: new Map(), step: 3, nodeIndex: 7 }]);
   });
 });

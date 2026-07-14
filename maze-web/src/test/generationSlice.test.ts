@@ -8,7 +8,7 @@ import { parseTape } from "../debug/eventTape";
 import type { DebugArenaHandle } from "../store/storeTypes";
 
 function emptyDebugArena(): DebugArenaHandle {
-  return { tape: parseTape(new Uint8Array(0), new Uint8Array(0)), nodes: [], totalSteps: 0, checkpointFroms: [] };
+  return { tape: parseTape(new Uint8Array(0), new Uint8Array(0)), nodes: [], totalSteps: 0, checkpointFroms: [], debugValueNames: [] };
 }
 
 vi.mock("../wasm/mazeService", () => ({
@@ -1382,7 +1382,7 @@ describe("mazeStore generation misc actions", () => {
     useMazeStore.getState().generate();
     const s = useMazeStore.getState();
     expect(s.debugArena?.checkpointFroms).toEqual([
-      { edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }, { from: 2n, to: 3n }, { from: 3n, to: 2n }], step: 1, nodeIndex: 1 },
+      { edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }, { from: 2n, to: 3n }, { from: 3n, to: 2n }], debugValues: new Map(), step: 1, nodeIndex: 1 },
     ]);
   });
 

@@ -5,6 +5,12 @@ import { applyRecursiveBacktracker, nearestCheckpointFromAtOrBefore } from "../d
 export interface DebugMazeView {
   nodes: NodeDto[];
   edges: EdgeDto[];
+  /** Debug-value id lists (GitHub issue #131) reconstructed at this step, keyed by name — e.g.
+   *  `debugValues.get("recursion_stack")`. Node ids as `number` (already joined against `NodeDto.id`,
+   *  unlike the `bigint` ids the replay engine itself works in). `number[]`, not a `Set` — order
+   *  matters for `DebugValueKind.Sequence` values, which `DebugValueHighlightOverlay` renders as
+   *  an arrow chain in this order. */
+  debugValues: Map<string, number[]>;
 }
 
 // Single-slot memo, keyed on (arena, debugStep) identity — every consumer (currently just
@@ -32,10 +38,15 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
   if (lastArena === arena && lastStep === debugStep) return lastView;
 
   const from = nearestCheckpointFromAtOrBefore(arena.checkpointFroms, debugStep) ?? undefined;
-  const { edges } = applyRecursiveBacktracker(arena.tape, debugStep, from);
+  const { edges, debugValues } = applyRecursiveBacktracker(arena.tape, debugStep, from);
+  const numberKeyedDebugValues = new Map<string, number[]>();
+  for (const [name, ids] of debugValues) {
+    numberKeyedDebugValues.set(name, ids.map(Number));
+  }
   const view: DebugMazeView = {
     nodes: arena.nodes,
     edges: edges.map((e) => ({ from: Number(e.from), to: Number(e.to), kind: "basic" as const })),
+    debugValues: numberKeyedDebugValues,
   };
 
   lastArena = arena;

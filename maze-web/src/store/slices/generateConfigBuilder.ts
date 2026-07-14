@@ -179,7 +179,10 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
         : emptyCheckpoints;
       const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, checkpoints);
       if (totalSteps > 0) {
-        debugArena = { tape, nodes: snapshot.nodes, totalSteps, checkpointFroms };
+        // debugValueNames (GitHub issue #131) comes from the WASM response's static declaration
+        // (GenerateResult::debug_value_names()), not from scanning the tape — see
+        // resolveDebugArenaMetadata's doc comment for why.
+        debugArena = { tape, nodes: snapshot.nodes, totalSteps, checkpointFroms, debugValueNames: debugTape.debugValueNames };
         lastStep = totalSteps - 1;
       }
     }
@@ -205,6 +208,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       debugArena,
       debugStep: lastStep,
       debugStale: false,
+      debugValueToggles: new Set(),
       postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(snapshot.edges),
       postEditDraftTeleports: generatedTeleports,
       _nextPostEditTeleportId: nextTeleportId,

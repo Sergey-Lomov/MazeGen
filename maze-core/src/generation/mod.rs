@@ -11,7 +11,7 @@ mod edge_ops;
 mod mutation_commands;
 
 pub use preset_state::{PresetState, build_preset_state};
-pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent};
+pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names};
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, NodeLockKind, LockedNode,
@@ -88,6 +88,12 @@ pub struct EventedGenerationResult {
     /// Intermediate snapshot checkpoints (GitHub issue #128) — `Some` exactly when `tape` is
     /// `Some` (both come from the same Recursive Backtracker run, or neither does).
     pub checkpoints: Option<crate::event_log::CheckpointLog>,
+    /// Every debug-value name and its rendering kind (GitHub issue #131, e.g. `"recursion_stack"`)
+    /// the instrumented algorithm declares — the static list from
+    /// `recursive_backtracker::debug_value_names()`, not derived from what this particular run
+    /// happened to emit. Empty for any algorithm other than Recursive Backtracker (not
+    /// instrumented yet).
+    pub debug_value_names: &'static [(&'static str, crate::event_log::DebugValueKind)],
 }
 
 /// Runs generation with narration-level event-tree logging (GitHub issue #124). Bypasses
@@ -106,17 +112,17 @@ pub fn generate_maze_with_events<T: Tessellation>(
     config: GenerationConfig,
     preset_state: &PresetState,
 ) -> EventedGenerationResult {
-    let (tape, checkpoints) = if matches!(config.algorithm, GenerationAlgorithm::RecursiveBacktracker) {
+    let (tape, checkpoints, debug_value_names) = if matches!(config.algorithm, GenerationAlgorithm::RecursiveBacktracker) {
         let mut log = crate::event_log::EventLog::new();
         let mut checkpoint_log = crate::event_log::CheckpointLog::new();
         recursive_backtracker::generate(graph, field, seed, start, preset_state, Some(&mut log), Some(&mut checkpoint_log));
-        (Some(log.finish()), Some(checkpoint_log))
+        (Some(log.finish()), Some(checkpoint_log), recursive_backtracker::debug_value_names())
     } else {
         dispatch(graph, field, seed, start, config, preset_state);
-        (None, None)
+        (None, None, &[] as &[(&str, crate::event_log::DebugValueKind)])
     };
 
-    EventedGenerationResult { tape, checkpoints }
+    EventedGenerationResult { tape, checkpoints, debug_value_names }
 }
 
 #[cfg(test)]

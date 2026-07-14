@@ -16,6 +16,12 @@ export interface RegionHighlightData {
   width: number;
   alpha: number;
   cfg: TessellationConfig;
+  /** Skips `perimeterSegments` stroking, drawing only the cell fill. Default `false` (draws both,
+   *  the original behavior every other caller relies on). Set by `DebugValueHighlightOverlay` for
+   *  `DebugValueKind.Region` debug values (GitHub issue #131's follow-up) — a one-element-per-id
+   *  "region" draws a perimeter around every single cell, and with cell walls already rendered
+   *  underneath, that outline reads as extra wall lines and makes real walls harder to see. */
+  skipPerimeter?: boolean;
 }
 
 /** Draws region fill + perimeter for one or more SCC regions — same API contract as
@@ -34,7 +40,7 @@ export class RegionHighlightRenderer {
 
   render(data: RegionHighlightData): void {
     this.g.clear();
-    const { nodes, regionGroups, color, width, alpha, cfg } = data;
+    const { nodes, regionGroups, color, width, alpha, cfg, skipPerimeter = false } = data;
     if (regionGroups.length === 0 || nodes.length === 0) return;
 
     for (const group of regionGroups) {
@@ -47,6 +53,7 @@ export class RegionHighlightRenderer {
         }
       }
 
+      if (skipPerimeter) continue;
       for (const seg of perimeterSegments) {
         this.g.moveTo(seg.v0.x, seg.v0.y);
         this.g.lineTo(seg.v1.x, seg.v1.y);

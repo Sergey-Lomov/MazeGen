@@ -6,7 +6,7 @@ import { ui, typography, muted, disabled } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
-import { Switch } from "../Switch";
+import { ToggleRow } from "../ToggleRow";
 import { Modal } from "../Modal";
 import { canvas } from "../../pixi/colorUtils";
 import * as m from "~/paraglide/messages";
@@ -59,19 +59,6 @@ function StatRow({ label, count, pct, valueText }: { label: string; count?: numb
 
 function formatMs(ms: number): string {
   return `${ms.toFixed(1)} ms`;
-}
-
-function ToggleRow({ label, checked, onChange, disabled, info }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; info?: () => void }) {
-  return (
-    <div style={styles.toggleRow}>
-      <span style={{ ...styles.toggleLabel, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
-      {info && (
-        <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={info}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") info(); }}>ℹ</span>
-      )}
-      <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} />
-    </div>
-  );
 }
 
 export function AnalyticsFeature() {
@@ -281,9 +268,6 @@ const styles: Record<string, React.CSSProperties> = {
   scoreRow: { display: "flex", alignItems: "center", gap: 6 },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: "4px 0" },
   toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },
-  toggleRow: { display: "flex", alignItems: "center", gap: 8 },
-  toggleLabel: { flex: 1, ...muted(typography.body) },
-  infoIcon: { ...muted(typography.icon), lineHeight: 1, flexShrink: 0, cursor: "default", borderRadius: 3 },
   legendRow: { display: "flex", alignItems: "flex-start", gap: 8 },
   legendSwatch: { width: 14, height: 14, borderRadius: 3, marginTop: 2, flexShrink: 0 },
   legendLabel: { ...typography.body, fontWeight: "bold" as const },

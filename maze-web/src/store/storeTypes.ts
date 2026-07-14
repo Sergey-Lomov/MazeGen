@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
-import type { ParsedTape, ApplyFrom } from "../debug/eventTape";
+import type { ParsedTape, ApplyFrom, DebugValueDescriptor } from "../debug/eventTape";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 
@@ -315,6 +315,15 @@ export interface DebugArenaHandle {
    *  of always replaying from scratch. Empty when the run produced no checkpoints (e.g. shorter
    *  than `CHECKPOINT_INTERVAL`) or the core didn't record any (non-Recursive-Backtracker runs). */
   checkpointFroms: ApplyFrom[];
+  /** Every debug value (GitHub issue #131, e.g. `"recursion_stack"`) the instrumented algorithm
+   *  declares, name plus rendering `kind` — sourced from the WASM response's static
+   *  `debugValueNames` (`GenerateResult::debugValueNames()`/`debugValueKinds()`, mirroring the
+   *  algorithm's own declaration in Rust), *not* derived from scanning this tape's actual emitted
+   *  deltas — a trivial run that never triggers a delta would otherwise silently omit a name the
+   *  algorithm still supports. The debug panel derives its per-value toggle list from this, per
+   *  the issue's "declared, not hardcoded, on the web side" requirement. Empty for algorithms not
+   *  instrumented for debug values yet. */
+  debugValueNames: DebugValueDescriptor[];
 }
 
 /** A node/edge/cycle/region reference hovered in the debug event tree narration (GitHub issue
@@ -396,6 +405,13 @@ export interface GenerationState {
    *  (`eventTape.ts`). Reset to `null` whenever `debugMode` turns off (see `setDebugMode`), since
    *  the tree unmounts and its hover never gets a matching `onMouseLeave`. */
   hoveredDebugRef: HoveredDebugRef | null;
+  /** Names of debug values (GitHub issue #131, e.g. `"recursion_stack"`) currently toggled on in the
+   *  debug panel — several may be on at once (a `Set`, not a single active value). Drives
+   *  persistent canvas highlighting of each toggled set's node membership at the current
+   *  `debugStep`, distinct from `hoveredDebugRef`'s hover-only highlighting (#130). Reset to
+   *  empty whenever `debugArena` changes (a fresh run may not expose the same names) or
+   *  `debugMode` turns off. Not persisted/serialized, same as `hoveredDebugRef`. */
+  debugValueToggles: Set<string>;
   /** True after the maze has been generated since the last confirmTessellation. */
   mazeDirty: boolean;
   /** Caps on the QC repair fixpoint loop (see `Specs/repair.md`'s `RepairLimits`). Both are
@@ -512,6 +528,8 @@ export interface GenerationActions {
   setDebugStep: (step: number) => void;
   setDebugAutoPlayDelay: (ms: number) => void;
   setHoveredDebugRef: (ref: HoveredDebugRef | null) => void;
+  /** Flips `name`'s membership in `debugValueToggles`. */
+  toggleDebugValue: (name: string) => void;
   regenerate: () => void;
   setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;

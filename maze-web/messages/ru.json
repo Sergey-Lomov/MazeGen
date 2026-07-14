@@ -114,8 +114,10 @@
   "debug.tree.candidate_chosen": "Выбран кандидат",
   "debug.tree.edge_added": "Добавлено ребро",
   "debug.tree.vertex_visited": "Ячейка помечена посещённой",
-  "debug.tree.vertex_popped": "Ячейка снята со стека",
+  "debug.tree.vertex_popped": "Ячейка убрана из стека",
   "debug.tree.vertex_pushed": "Ячейка добавлена в стек",
+  "debug.value.recursion_stack": "Стек рекурсии",
+  "debug.value.visited": "Посещённые",
 
   "status.not_confirmed": "Ещё не подтверждено",
   "status.tessellation_confirmed": "Тесселяция подтверждена",

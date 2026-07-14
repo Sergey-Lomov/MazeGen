@@ -203,6 +203,51 @@ export function isMutatingRbEvent(event: RecursiveBacktrackerEvent): boolean {
   return event.kind === "EdgeAdded" || event.kind === "VertexVisited" || event.kind === "VertexPopped" || event.kind === "VertexPushed";
 }
 
+// --- Debug values (GitHub issue #131) ---
+
+/** A named, session-specific set of node ids an algorithm evolves over the run (e.g. Recursive
+ *  Backtracker's `"recursion_stack"`) — mirrors `DebugValueOp`/`DebugValueDelta` in
+ *  `maze-core/src/event_log/mod.rs`. Deliberately derived from the *existing* mutating events
+ *  (`VertexPushed`/`VertexPopped`) rather than a separate wire event — see that trait's doc
+ *  comment for why (no extra mutating events inflating step numbering, no payload duplication). */
+export type DebugValueOp = "insert" | "remove";
+
+export const RECURSION_STACK = "recursion_stack";
+export const VISITED = "visited";
+
+/** Semantic shape of a debug value's id collection — mirrors `DebugValueKind` in
+ *  `maze-core/src/event_log/mod.rs`. Affects rendering, not how deltas are reported (both kinds
+ *  still use `insert`/`remove` on a single id):
+ *  - `"region"` — unordered set, no relationship between members (e.g. `"visited"`), rendered as
+ *    independent per-node highlights.
+ *  - `"sequence"` — ordered list where adjacent members are connected (e.g. `"recursion_stack"`,
+ *    the DFS stack in push order), rendered as a chain of arrows between consecutive ids. */
+export type DebugValueKind = "region" | "sequence";
+
+/** One debug value the instrumented algorithm declares — name plus its rendering kind. Mirrors
+ *  the wire pair `GenerateResult::debugValueNames()`/`debugValueKinds()` return (parallel
+ *  arrays, zipped together on the JS side — see `mazeService.ts`). */
+export interface DebugValueDescriptor {
+  name: string;
+  kind: DebugValueKind;
+}
+
+/** Mirrors `RecursiveBacktrackerEvent::debug_value_deltas()` in
+ *  `maze-core/src/generation/recursive_backtracker.rs` — must be kept in sync by hand (no shared
+ *  codegen, same as the rest of this module's wire mirroring). */
+export function debugValueDeltasFor(event: RecursiveBacktrackerEvent): [string, DebugValueOp, bigint][] {
+  switch (event.kind) {
+    case "VertexPushed":
+      return [[RECURSION_STACK, "insert", event.id]];
+    case "VertexPopped":
+      return [[RECURSION_STACK, "remove", event.id]];
+    case "VertexVisited":
+      return [[VISITED, "insert", event.id]];
+    default:
+      return [];
+  }
+}
+
 export interface MutatingRbEventAt {
   event: RecursiveBacktrackerEvent;
   /** Arena node-table index this event was decoded from — lets a caller (see
@@ -247,8 +292,19 @@ export interface Edge {
   to: bigint;
 }
 
+/** Named debug-value id lists (GitHub issue #131), keyed by name — e.g.
+ *  `debugValues.get("recursion_stack")`. `bigint[]`, not `Set<bigint>` — order matters for
+ *  `DebugValueKind.Sequence` values (e.g. `"recursion_stack"`, rendered as a chain of arrows
+ *  between consecutive ids in insertion order); `Region` values are unordered by nature but a
+ *  duplicate-free array is still a valid representation, mirroring the Rust side's
+ *  `CheckpointTracker::debug_values: BTreeMap<&str, Vec<NodeId>>`. Never mutated in place by
+ *  `applyRecursiveBacktracker`; a fresh `Map`/`Array` is built whenever a delta is folded in,
+ *  mirroring `edges`' own copy-on-write discipline. */
+export type DebugValues = Map<string, bigint[]>;
+
 export interface ApplyFrom {
   edges: Edge[];
+  debugValues: DebugValues;
   step: number;
   /** Arena node-table index of the mutating event at `step` — lets `applyRecursiveBacktracker`
    *  resume the underlying node-table scan right after this node instead of re-scanning from
@@ -259,10 +315,20 @@ export interface ApplyFrom {
 
 export interface ApplyResult {
   edges: Edge[];
+  debugValues: DebugValues;
   step: number;
   /** Arena node-table index of the mutating event at `step` — pass back as `from.nodeIndex` to
    *  resume from this point without re-scanning the tape's already-known prefix. */
   nodeIndex: number;
+}
+
+/** Clones a `DebugValues` map one level deep (fresh `Map` and fresh arrays) — used whenever
+ *  `applyRecursiveBacktracker` folds in new deltas on top of an existing `from.debugValues`, so
+ *  the caller-supplied `from` is never mutated in place (same discipline as `edges`). */
+function cloneDebugValues(values: DebugValues): DebugValues {
+  const result: DebugValues = new Map();
+  for (const [name, ids] of values) result.set(name, [...ids]);
+  return result;
 }
 
 function validateStepShape(name: string, step: number): void {
@@ -311,7 +377,7 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
     // `from` already *is* the answer when it lands exactly on targetStep — the scan below would
     // ask for 0 new events and index into an empty array. No new events to decode either way.
     if (from.step === targetStep) {
-      return { edges: [...from.edges], step: targetStep, nodeIndex: from.nodeIndex };
+      return { edges: [...from.edges], debugValues: cloneDebugValues(from.debugValues), step: targetStep, nodeIndex: from.nodeIndex };
     }
   }
 
@@ -324,6 +390,18 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
   }
 
   const edges = from ? [...from.edges] : [];
+  const debugValues = from ? cloneDebugValues(from.debugValues) : new Map<string, bigint[]>();
+  // `Set` mirror of each list, membership-only — makes `insert`'s dedup check O(1) instead of an
+  // O(n) `Array.includes` scan. Without it, a monotonically-growing Region value (e.g. "visited",
+  // one insert per node, never removed) makes this loop O(n²) over a run: every scrub/autoplay
+  // tick re-scans a list approaching the full node count on every single insert. Mirrors the same
+  // fix applied to `CheckpointTracker::record` on the Rust side (`DebugValueList`, GitHub issue
+  // #142's follow-up) — built fresh here (not carried in `ApplyFrom`/`DebugValues` itself) so the
+  // public `bigint[]` shape every consumer (store selectors, render overlays) depends on doesn't
+  // change; it's discarded once this function returns.
+  const presence = new Map<string, Set<bigint>>();
+  for (const [name, ids] of debugValues) presence.set(name, new Set(ids));
+
   for (const { event } of newEvents) {
     if (event.kind === "EdgeAdded") {
       edges.push({ from: event.from, to: event.to });
@@ -331,9 +409,27 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
         edges.push({ from: event.to, to: event.from });
       }
     }
+    for (const [name, op, id] of debugValueDeltasFor(event)) {
+      let ids = debugValues.get(name);
+      let present = presence.get(name);
+      if (!ids) {
+        ids = [];
+        debugValues.set(name, ids);
+        present = new Set();
+        presence.set(name, present);
+      }
+      if (op === "insert") {
+        if (!present!.has(id)) { present!.add(id); ids.push(id); }
+      } else {
+        if (present!.delete(id)) {
+          const at = ids.indexOf(id);
+          if (at !== -1) ids.splice(at, 1);
+        }
+      }
+    }
   }
 
-  return { edges, step: targetStep, nodeIndex: newEvents[newEvents.length - 1].nodeIndex };
+  return { edges, debugValues, step: targetStep, nodeIndex: newEvents[newEvents.length - 1].nodeIndex };
 }
 
 // --- Intermediate snapshot checkpoints (GitHub issue #128) ---
@@ -369,21 +465,49 @@ export function parseCheckpoints(table: Uint8Array, payload: Uint8Array): Parsed
 export interface Checkpoint {
   nodeIndex: number;
   edges: Edge[];
+  debugValues: DebugValues;
 }
 
-/** Decodes one checkpoint record's `edges` payload: a `u32` LE length prefix followed by that
- *  many `(from: u64, to: u64)` pairs — mirrors the encoding `CheckpointTracker::record` writes in
- *  `maze-core/src/generation/recursive_backtracker.rs`. */
-function decodeCheckpointEdges(payload: Uint8Array, offset: number, len: number): Edge[] {
+/** Decodes one checkpoint's payload: a `u32` LE length prefix followed by that many
+ *  `(from: u64, to: u64)` edge pairs, then a `u32` LE count of named debug-value sets, each a
+ *  `u32` LE name length + UTF-8 name bytes + `u32` LE id count + that many `u64` LE ids — mirrors
+ *  the encoding `CheckpointTracker::record` writes in
+ *  `maze-core/src/generation/recursive_backtracker.rs`. Returns the byte offset immediately past
+ *  the decoded payload alongside the decoded value, so `checkpointAt` doesn't need to duplicate
+ *  the edges-length arithmetic to find where the debug-values section starts. */
+function decodeCheckpointPayload(payload: Uint8Array, offset: number, len: number): { edges: Edge[]; debugValues: DebugValues } {
   const bytes = payload.subarray(offset, offset + len);
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const count = dv.getUint32(0, true);
+  let pos = 0;
+
+  const edgeCount = dv.getUint32(pos, true);
+  pos += 4;
   const edges: Edge[] = [];
-  for (let i = 0; i < count; i++) {
-    const base = 4 + i * 16;
-    edges.push({ from: dv.getBigUint64(base, true), to: dv.getBigUint64(base + 8, true) });
+  for (let i = 0; i < edgeCount; i++) {
+    edges.push({ from: dv.getBigUint64(pos, true), to: dv.getBigUint64(pos + 8, true) });
+    pos += 16;
   }
-  return edges;
+
+  const debugValues: DebugValues = new Map();
+  const setCount = dv.getUint32(pos, true);
+  pos += 4;
+  const textDecoder2 = new TextDecoder();
+  for (let i = 0; i < setCount; i++) {
+    const nameLen = dv.getUint32(pos, true);
+    pos += 4;
+    const name = textDecoder2.decode(bytes.subarray(pos, pos + nameLen));
+    pos += nameLen;
+    const idCount = dv.getUint32(pos, true);
+    pos += 4;
+    const ids: bigint[] = [];
+    for (let j = 0; j < idCount; j++) {
+      ids.push(dv.getBigUint64(pos, true));
+      pos += 8;
+    }
+    debugValues.set(name, ids);
+  }
+
+  return { edges, debugValues };
 }
 
 /** Reads and decodes one fixed-stride checkpoint record by index. */
@@ -393,7 +517,8 @@ export function checkpointAt(tape: ParsedCheckpoints, index: number): Checkpoint
   const nodeIndex = dv.getUint32(base + 0, true);
   const offset = dv.getUint32(base + 4, true);
   const len = dv.getUint32(base + 8, true);
-  return { nodeIndex, edges: decodeCheckpointEdges(tape.payload, offset, len) };
+  const { edges, debugValues } = decodeCheckpointPayload(tape.payload, offset, len);
+  return { nodeIndex, edges, debugValues };
 }
 
 // --- Checkpoint-accelerated apply ---
@@ -434,7 +559,7 @@ export function resolveCheckpointFroms(tape: ParsedTape, checkpoints: ParsedChec
     while (nextCheckpoint < checkpoints.checkpointCount) {
       const checkpoint = checkpointAt(checkpoints, nextCheckpoint);
       if (checkpoint.nodeIndex !== i) break;
-      result.push({ edges: checkpoint.edges, step, nodeIndex: i });
+      result.push({ edges: checkpoint.edges, debugValues: checkpoint.debugValues, step, nodeIndex: i });
       nextCheckpoint++;
     }
     step++;
@@ -454,7 +579,13 @@ export interface DebugArenaMetadata {
  *  it once. Semantically identical to calling `mutatingRbEvents(tape).length` and
  *  `resolveCheckpointFroms(tape, checkpoints)` separately (when `checkpoints.checkpointCount === 0`,
  *  behaves exactly like counting alone). The intended, and only, caller is
- *  `generateConfigBuilder.ts`'s debug-arena construction, which always needs both values together. */
+ *  `generateConfigBuilder.ts`'s debug-arena construction, which always needs both values together.
+ *
+ *  Does *not* collect debug-value names (GitHub issue #131) — those come from the WASM response's
+ *  static `debugValueNames` (`GenerateResult::debug_value_names()`, mirroring the algorithm's own
+ *  declaration), not from scanning which deltas this particular run happened to emit. A trivial
+ *  run that never triggers a delta would otherwise silently omit a name the algorithm still
+ *  declares — see `Specs/event_log.md`'s Generic Debug Values section. */
 export function resolveDebugArenaMetadata(tape: ParsedTape, checkpoints: ParsedCheckpoints): DebugArenaMetadata {
   const checkpointFroms: ApplyFrom[] = [];
   let nextCheckpoint = 0;
@@ -470,7 +601,7 @@ export function resolveDebugArenaMetadata(tape: ParsedTape, checkpoints: ParsedC
     while (nextCheckpoint < checkpoints.checkpointCount) {
       const checkpoint = checkpointAt(checkpoints, nextCheckpoint);
       if (checkpoint.nodeIndex !== i) break;
-      checkpointFroms.push({ edges: checkpoint.edges, step, nodeIndex: i });
+      checkpointFroms.push({ edges: checkpoint.edges, debugValues: checkpoint.debugValues, step, nodeIndex: i });
       nextCheckpoint++;
     }
     step++;

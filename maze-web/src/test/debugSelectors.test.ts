@@ -71,7 +71,7 @@ const nodes: NodeDto[] = [
 ];
 
 function arenaWithEdges(edges: [bigint, bigint][]): DebugArenaHandle {
-  return { tape: buildTapeWithEdges(edges), nodes, totalSteps: edges.length, checkpointFroms: [] };
+  return { tape: buildTapeWithEdges(edges), nodes, totalSteps: edges.length, checkpointFroms: [], debugValueNames: [] };
 }
 
 describe("selectDebugMazeView", () => {
@@ -90,6 +90,7 @@ describe("selectDebugMazeView", () => {
         { from: 2, to: 3, kind: "basic" },
         { from: 3, to: 2, kind: "basic" },
       ],
+      debugValues: new Map(),
     });
   });
 
@@ -120,9 +121,9 @@ describe("selectDebugMazeView", () => {
     const edgePairs: [bigint, bigint][] = [[1n, 2n], [2n, 3n], [3n, 4n]];
     const tape = buildTapeWithEdges(edgePairs);
     // A checkpoint at arena node 0 (step 0) reflecting state after the first EdgeAdded.
-    const checkpointFroms = [{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], step: 0, nodeIndex: 0 }];
-    const arenaWithCheckpoint: DebugArenaHandle = { tape, nodes, totalSteps: edgePairs.length, checkpointFroms };
-    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, nodes, totalSteps: edgePairs.length, checkpointFroms: [] };
+    const checkpointFroms = [{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map(), step: 0, nodeIndex: 0 }];
+    const arenaWithCheckpoint: DebugArenaHandle = { tape, nodes, totalSteps: edgePairs.length, checkpointFroms, debugValueNames: [] };
+    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, nodes, totalSteps: edgePairs.length, checkpointFroms: [], debugValueNames: [] };
 
     const withCheckpoint = selectDebugMazeView(arenaWithCheckpoint, 2);
     const withoutCheckpoint = selectDebugMazeView(arenaWithoutCheckpoint, 2);

@@ -9,7 +9,7 @@ vi.mock("../store/mazeStore", () => ({
   useMazeStore: { getState: () => ({ nodes: [], graphAnalytics: null }), subscribe: () => () => {} },
 }));
 
-import { hslToRgb, buildPalette } from "../pixi/colorUtils";
+import { hslToRgb, buildPalette, buildDebugValuePalette } from "../pixi/colorUtils";
 
 describe("hslToRgb", () => {
   it("red: hsl(0, 1, 0.5) = 0xff0000", () => {
@@ -85,5 +85,40 @@ describe("buildPalette", () => {
   it("does not throw for large count", () => {
     expect(() => buildPalette(100)).not.toThrow();
     expect(buildPalette(100)).toHaveLength(100);
+  });
+});
+
+describe("buildDebugValuePalette", () => {
+  it("returns empty array for count=0", () => {
+    expect(buildDebugValuePalette(0)).toEqual([]);
+  });
+
+  it("returns correct length", () => {
+    expect(buildDebugValuePalette(1)).toHaveLength(1);
+    expect(buildDebugValuePalette(3)).toHaveLength(3);
+    expect(buildDebugValuePalette(4)).toHaveLength(4);
+    expect(buildDebugValuePalette(10)).toHaveLength(10);
+  });
+
+  it("is deterministic — same count always yields the same colors in the same order", () => {
+    expect(buildDebugValuePalette(5)).toEqual(buildDebugValuePalette(5));
+  });
+
+  it("first pass (indices 0-2) entries are all distinct colors", () => {
+    const palette = buildDebugValuePalette(3);
+    expect(new Set(palette).size).toBe(3);
+  });
+
+  it("wraps hues across passes (index 3 reuses the first hue at a different lightness than index 0)", () => {
+    const palette = buildDebugValuePalette(4);
+    // Same hue (index 0 and index 3 share DEBUG_VALUE_HUES[0]) but different lightness passes,
+    // so the two colors must differ — this is exactly the wraparound arithmetic a future edit to
+    // the hue/lightness tables or the modulo indexing could silently break.
+    expect(palette[3]).not.toBe(palette[0]);
+  });
+
+  it("does not throw for a count larger than the hue table", () => {
+    expect(() => buildDebugValuePalette(20)).not.toThrow();
+    expect(buildDebugValuePalette(20)).toHaveLength(20);
   });
 });

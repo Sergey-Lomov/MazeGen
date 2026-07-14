@@ -4,18 +4,35 @@ import { useMazeStore } from "../store/mazeStore";
 import { ui, radius, typography, muted } from "../styles/theme";
 import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
+import { ToggleRow } from "./ToggleRow";
 import * as m from "~/paraglide/messages";
 
 const MIN_PANEL_WIDTH = 320;
+
+/** Maps a debug-value name (GitHub issue #131, e.g. `"recursion_stack"`) to its i18n label. Not
+ *  auto-derived from the name — a runtime string can't be turned into a paraglide message key —
+ *  so each known name gets an explicit entry here. A name without one (a future algorithm's debug
+ *  value the message catalog hasn't caught up with yet) falls back to the raw name, so an
+ *  untranslated toggle still renders instead of crashing. */
+const DEBUG_VALUE_LABELS: Record<string, () => string> = {
+  recursion_stack: () => m["debug.value.recursion_stack"](),
+  visited: () => m["debug.value.visited"](),
+};
+
+function debugValueLabel(name: string): string {
+  return DEBUG_VALUE_LABELS[name]?.() ?? name;
+}
 
 export function DebugPanel() {
   const debugArena  = useMazeStore((s) => s.debugArena);
   const debugStep   = useMazeStore((s) => s.debugStep);
   const debugStale  = useMazeStore((s) => s.debugStale);
   const delayMs     = useMazeStore((s) => s.debugAutoPlayDelay);
+  const debugValueToggles = useMazeStore((s) => s.debugValueToggles);
   const setDebugStep = useMazeStore((s) => s.setDebugStep);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
   const setDelayMs   = useMazeStore((s) => s.setDebugAutoPlayDelay);
+  const toggleDebugValue = useMazeStore((s) => s.toggleDebugValue);
 
   const [playing, setPlaying] = React.useState(false);
   const [delayDraft, setDelayDraft] = React.useState(String(delayMs));
@@ -134,6 +151,19 @@ export function DebugPanel() {
         />
       </div>
 
+      {debugArena.debugValueNames.length > 0 && (
+        <div style={styles.debugValuesRow}>
+          {debugArena.debugValueNames.map(({ name }) => (
+            <ToggleRow
+              key={name}
+              label={debugValueLabel(name)}
+              checked={debugValueToggles.has(name)}
+              onChange={() => toggleDebugValue(name)}
+            />
+          ))}
+        </div>
+      )}
+
       <DebugEventTree />
     </div>
   );
@@ -171,6 +201,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 10,
+    padding: "7px 16px",
+    borderBottom: `1px solid ${ui.border.default}`,
+    flexShrink: 0,
+  },
+  debugValuesRow: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 6,
     padding: "7px 16px",
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,

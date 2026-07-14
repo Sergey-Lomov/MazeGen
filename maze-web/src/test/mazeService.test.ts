@@ -22,6 +22,8 @@ function fakeGenerateResult(snapshot: unknown) {
     debugTapePayload: () => undefined,
     debugSnapshotTable: () => undefined,
     debugSnapshotPayload: () => undefined,
+    debugValueNames: () => [],
+    debugValueKinds: () => [],
     free: () => {},
   };
 }
@@ -137,10 +139,12 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
+      debugValueNames: () => [],
+      debugValueKinds: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
-    expect(result.debugTape).toEqual({ nodeTable: nodeTableBytes, payload: payloadBytes });
+    expect(result.debugTape).toEqual({ nodeTable: nodeTableBytes, payload: payloadBytes, debugValueNames: [] });
     // Must be independent copies, not the same views handed back by WASM.
     expect(result.debugTape?.nodeTable).not.toBe(nodeTableBytes);
     expect(result.debugTape?.payload).not.toBe(payloadBytes);
@@ -157,6 +161,8 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => snapshotTableBytes,
       debugSnapshotPayload: () => snapshotPayloadBytes,
+      debugValueNames: () => ["recursion_stack"],
+      debugValueKinds: () => ["sequence"],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
@@ -165,9 +171,38 @@ describe("generateMaze / validateSnapshot", () => {
       payload: payloadBytes,
       snapshotTable: snapshotTableBytes,
       snapshotPayload: snapshotPayloadBytes,
+      debugValueNames: [{ name: "recursion_stack", kind: "sequence" }],
     });
     expect(result.debugTape?.snapshotTable).not.toBe(snapshotTableBytes);
     expect(result.debugTape?.snapshotPayload).not.toBe(snapshotPayloadBytes);
+  });
+
+  it("throws when debugValueNames and debugValueKinds have different lengths", () => {
+    mockGenerate.mockReturnValue({
+      snapshot: () => validSnapshot,
+      debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
+      debugTapePayload: () => new Uint8Array([4, 5, 6]),
+      debugSnapshotTable: () => undefined,
+      debugSnapshotPayload: () => undefined,
+      debugValueNames: () => ["recursion_stack", "visited"],
+      debugValueKinds: () => ["sequence"],
+      free: () => {},
+    });
+    expect(() => generateMaze(1, defaultConfig)).toThrow(/length mismatch/);
+  });
+
+  it("throws on an unrecognized debug value kind", () => {
+    mockGenerate.mockReturnValue({
+      snapshot: () => validSnapshot,
+      debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
+      debugTapePayload: () => new Uint8Array([4, 5, 6]),
+      debugSnapshotTable: () => undefined,
+      debugSnapshotPayload: () => undefined,
+      debugValueNames: () => ["recursion_stack"],
+      debugValueKinds: () => ["not_a_real_kind"],
+      free: () => {},
+    });
+    expect(() => generateMaze(1, defaultConfig)).toThrow(/unknown debug value kind/);
   });
 
   it("omits checkpoint fields entirely when no checkpoints were recorded", () => {
@@ -179,6 +214,8 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
+      debugValueNames: () => [],
+      debugValueKinds: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
