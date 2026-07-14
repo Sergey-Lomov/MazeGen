@@ -49,6 +49,17 @@ export const ui = {
     warning: base.warning,
     critical: base.error,
   },
+
+  // Debug event tree node/edge/cycle/region ref bubbles (GitHub issue #130) — exact same
+  // bg/text pair as the info notification bubble (`notificationPalette("info")`), border
+  // restored (same color as the text, matching `IssueBubble`'s own border) — a borderless
+  // version nearly disappeared against the tree row's own highlighted-row background.
+  debug: {
+    refHighlight: {
+      bg: base.infoBg,
+      text: base.info,
+    },
+  },
 } as const;
 
 export const radius = {

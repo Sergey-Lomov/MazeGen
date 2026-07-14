@@ -317,6 +317,16 @@ export interface DebugArenaHandle {
   checkpointFroms: ApplyFrom[];
 }
 
+/** A node/edge/cycle/region reference hovered in the debug event tree narration (GitHub issue
+ *  #130) — mirrors the `Token` union built from `RecursiveBacktrackerEvent` payloads in
+ *  `DebugEventTree.tsx`. `cycle`/`region` don't occur during the Recursive Backtracker pilot but
+ *  are modeled now so future QC/repair narration doesn't need a shape change. */
+export type HoveredDebugRef =
+  | { kind: "node"; id: bigint }
+  | { kind: "edge"; from: bigint; to: bigint; bidirectional: boolean }
+  | { kind: "cycle"; edges: [bigint, bigint][] }
+  | { kind: "region"; nodes: bigint[] };
+
 export interface GenerationState {
   nodes: NodeDto[];
   edges: EdgeDto[];
@@ -379,6 +389,13 @@ export interface GenerationState {
   debugArena: DebugArenaHandle | null;
   debugStep: number;
   debugStale: boolean;
+  /** Node/edge/cycle/region ref currently hovered in the debug event tree (GitHub issue #130) —
+   *  drives `DebugRefHighlightOverlay` canvas highlighting in `GenerationRenderer`. Not
+   *  persisted/serialized (no `persist`/`devtools` middleware wraps this store) — `bigint` ids
+   *  mirror the `NodeId` representation already used elsewhere in the debug layer
+   *  (`eventTape.ts`). Reset to `null` whenever `debugMode` turns off (see `setDebugMode`), since
+   *  the tree unmounts and its hover never gets a matching `onMouseLeave`. */
+  hoveredDebugRef: HoveredDebugRef | null;
   /** True after the maze has been generated since the last confirmTessellation. */
   mazeDirty: boolean;
   /** Caps on the QC repair fixpoint loop (see `Specs/repair.md`'s `RepairLimits`). Both are
@@ -494,6 +511,7 @@ export interface GenerationActions {
   setDebugMode: (v: boolean) => void;
   setDebugStep: (step: number) => void;
   setDebugAutoPlayDelay: (ms: number) => void;
+  setHoveredDebugRef: (ref: HoveredDebugRef | null) => void;
   regenerate: () => void;
   setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;

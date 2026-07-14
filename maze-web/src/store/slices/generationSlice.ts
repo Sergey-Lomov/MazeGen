@@ -53,6 +53,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   debugArena: null,
   debugStep: 0,
   debugStale: false,
+  hoveredDebugRef: null,
   mazeDirty: false,
   repairMaxIterations: 100,
   repairTimeBudgetSecs: 10,
@@ -132,9 +133,10 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       : {}),
   })),
 
-  setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false }),
+  setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false, hoveredDebugRef: null }),
   setDebugStep: (step) => set({ debugStep: step }),
   setDebugAutoPlayDelay: (ms) => set({ debugAutoPlayDelay: ms }),
+  setHoveredDebugRef: (ref) => set({ hoveredDebugRef: ref }),
 
   reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null, _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null, postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
 

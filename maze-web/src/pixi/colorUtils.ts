@@ -73,6 +73,7 @@ export const canvas = {
   debug: {
     active: hexToNumber(base.debugActive),
     currentSrc: hexToNumber(base.debugCurrentSrc),
+    refHighlight: hexToNumber(base.debugRefHighlight),
   },
 } as const;
 

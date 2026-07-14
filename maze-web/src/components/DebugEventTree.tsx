@@ -7,6 +7,7 @@ import {
   displayStepForRow, type TreeRow,
 } from "../debug/debugTreeSelectors";
 import { decodeRecursiveBacktrackerEvent, isMutatingRbEvent, type RecursiveBacktrackerEvent } from "../debug/eventTape";
+import { DebugRefBubble } from "./DebugRefBubble";
 import { ui, typography, muted } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -23,49 +24,77 @@ const TEXT_GAP = 4;
 const AVG_CHAR_WIDTH_PX = 8;
 const ROW_LINE_HEIGHT_PX = 17;
 const ROW_VERTICAL_PADDING_PX = ROW_MIN_HEIGHT - 16;
+// A ref bubble (border + padding around its "(x,y)"-shaped label) renders visibly wider than the
+// same character count of plain text — this many extra "chars" are added per bubble token when
+// pre-sizing a row, so the pre-mount estimate leans slightly wide rather than narrow. Rows are
+// re-measured via `measureElement` once mounted (see below), so this only needs to avoid being
+// grossly too small, not be exact.
+const BUBBLE_CHAR_OVERHEAD = 4;
+
+/** One piece of a tokenized narration line — plain text, or an interactive node/edge/cycle/region
+ *  reference rendered as a `DebugRefBubble` (GitHub issue #130). `kind` values mirror
+ *  `HoveredDebugRef.kind` in `storeTypes.ts` on purpose — a bubble's hover payload is its own
+ *  token verbatim, no field renaming between the two unions. */
+type Token =
+  | { kind: "text"; text: string }
+  | { kind: "node"; id: bigint }
+  | { kind: "edge"; from: bigint; to: bigint; bidirectional: boolean }
+  | { kind: "cycle"; edges: [bigint, bigint][] }
+  | { kind: "region"; nodes: bigint[] };
 
 /** Estimates a row's rendered height from its wrapped text line count, before it's ever mounted. */
-function estimateRowHeight(text: string, depth: number, containerWidth: number): number {
+function estimateRowHeight(tokens: Token[], depth: number, containerWidth: number): number {
   const availableWidth =
     containerWidth - STEP_COL_WIDTH - ROW_BODY_PADDING_LEFT - depth * INDENT_PX
     - DISCLOSURE_WIDTH - TEXT_GAP - ROW_BODY_PADDING_RIGHT;
   const charsPerLine = Math.max(1, Math.floor(availableWidth / AVG_CHAR_WIDTH_PX));
-  const lineCount = Math.max(1, Math.ceil(text.length / charsPerLine));
+  const charCount = tokens.reduce((sum, t) => sum + (t.kind === "text" ? t.text.length : bubbleLabel(t).length + BUBBLE_CHAR_OVERHEAD), 0);
+  const lineCount = Math.max(1, Math.ceil(charCount / charsPerLine));
   return Math.max(ROW_MIN_HEIGHT, lineCount * ROW_LINE_HEIGHT_PX + ROW_VERTICAL_PADDING_PX);
 }
 
-function narrationFor(event: RecursiveBacktrackerEvent, coords: (id: bigint) => { x: number; y: number } | null): string {
+/** Bubble label — coordinates only, per user decision (narration text around it stays wordless,
+ *  e.g. "Edge added", not "Edge added: 3:18 → 3:19"). Format is `x:y`, no parens/comma. */
+function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: number } | null): string {
   const fmt = (id: bigint) => {
+    if (!coords) return `${id}`;
     const p = coords(id);
-    if (!p) throw new Error(`narrationFor: node id ${id} not found in debugArena.nodes — core/web tape mismatch`);
-    return p;
+    if (!p) throw new Error(`bubbleLabel: node id ${id} not found in debugArena.nodes — core/web tape mismatch`);
+    return `${p.x}:${p.y}`;
   };
-  switch (event.kind) {
-    case "VertexSelected": { const p = fmt(event.id); return m["debug.tree.vertex_selected"]({ x: p.x, y: p.y }); }
-    case "CandidatesComputed": return m["debug.tree.candidates_computed"]({ count: event.ids.length });
-    case "DeadEnd": return m["debug.tree.dead_end"]();
-    case "CandidateChosen": { const p = fmt(event.id); return m["debug.tree.candidate_chosen"]({ x: p.x, y: p.y }); }
-    case "EdgeAdded": {
-      const f = fmt(event.from); const t = fmt(event.to);
-      const key = event.bidirectional ? "debug.tree.edge_added_bidirectional" : "debug.tree.edge_added";
-      return m[key]({ fx: f.x, fy: f.y, tx: t.x, ty: t.y });
-    }
-    case "VertexVisited": { const p = fmt(event.id); return m["debug.tree.vertex_visited"]({ x: p.x, y: p.y }); }
-    case "VertexPopped": { const p = fmt(event.id); return m["debug.tree.vertex_popped"]({ x: p.x, y: p.y }); }
-    case "VertexPushed": { const p = fmt(event.id); return m["debug.tree.vertex_pushed"]({ x: p.x, y: p.y }); }
+  switch (token.kind) {
+    case "text": return token.text;
+    case "node": return fmt(token.id);
+    case "edge": return `${fmt(token.from)} ${token.bidirectional ? "<->" : "->"} ${fmt(token.to)}`;
+    case "cycle": return token.edges.map(([f, t]) => `${fmt(f)}–${fmt(t)}`).join(", ");
+    case "region": return token.nodes.map(fmt).join(", ");
   }
 }
 
-function rowLabel(row: TreeRow, coords: (id: bigint) => { x: number; y: number } | null): { text: string; mutating: boolean } {
+function narrationTokensFor(event: RecursiveBacktrackerEvent): Token[] {
+  switch (event.kind) {
+    case "VertexSelected": return [{ kind: "text", text: m["debug.tree.vertex_selected"]() + " " }, { kind: "node", id: event.id }];
+    case "CandidatesComputed": return [{ kind: "text", text: m["debug.tree.candidates_computed"]({ count: event.ids.length }) }];
+    case "DeadEnd": return [{ kind: "text", text: m["debug.tree.dead_end"]() }];
+    case "CandidateChosen": return [{ kind: "text", text: m["debug.tree.candidate_chosen"]() + " " }, { kind: "node", id: event.id }];
+    case "EdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.bidirectional }];
+    case "VertexVisited": return [{ kind: "text", text: m["debug.tree.vertex_visited"]() + " " }, { kind: "node", id: event.id }];
+    case "VertexPopped": return [{ kind: "text", text: m["debug.tree.vertex_popped"]() + " " }, { kind: "node", id: event.id }];
+    case "VertexPushed": return [{ kind: "text", text: m["debug.tree.vertex_pushed"]() + " " }, { kind: "node", id: event.id }];
+  }
+}
+
+function rowTokens(row: TreeRow): { tokens: Token[]; mutating: boolean } {
   if (row.payload.kind === "scope") {
     // Scope names are auto-numbered by `EventLog::enter_numbered` (core, issue #133) as
     // "step 1", "step 2", ... — pull the trailing index back out for the localized label.
     const match = /^step (\d+)$/.exec(row.payload.name);
     const index = match ? Number(match[1]) : 0;
-    return { text: m["debug.tree.step_scope"]({ index }), mutating: false };
+    return { tokens: [{ kind: "text", text: m["debug.tree.step_scope"]({ index }) }], mutating: false };
   }
   const event = decodeRecursiveBacktrackerEvent(row.payload.tag, row.payload.bytes);
-  return { text: narrationFor(event, coords), mutating: isMutatingRbEvent(event) };
+  return { tokens: narrationTokensFor(event), mutating: isMutatingRbEvent(event) };
 }
 
 export function DebugEventTree() {
@@ -83,13 +112,13 @@ export function DebugEventTree() {
 
   const { rows, labels, rowIndexByNodeIndex } = useMemo(() => {
     if (!tape) {
-      return { rows: [] as TreeRow[], labels: [] as { text: string; mutating: boolean }[], rowIndexByNodeIndex: new Map<number, number>() };
+      return { rows: [] as TreeRow[], labels: [] as { tokens: Token[]; mutating: boolean }[], rowIndexByNodeIndex: new Map<number, number>() };
     }
     const rows = flattenVisibleRows(tape, expanded);
-    const labels = rows.map((row) => rowLabel(row, coords));
+    const labels = rows.map((row) => rowTokens(row));
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
     return { rows, labels, rowIndexByNodeIndex };
-  }, [tape, expanded, coords]);
+  }, [tape, expanded]);
 
   const highlightedNodeIndex = useMemo(() => {
     if (!tape || !stepIndex) return null;
@@ -104,7 +133,7 @@ export function DebugEventTree() {
     // scrollbar thumb doesn't drift behind the cursor while it's being dragged.
     estimateSize: (index) => {
       const containerWidth = scrollRef.current?.clientWidth ?? 0;
-      return estimateRowHeight(labels[index].text, rows[index].depth, containerWidth);
+      return estimateRowHeight(labels[index].tokens, rows[index].depth, containerWidth);
     },
     // Row text now wraps instead of being ellipsis-truncated, so height varies — measure the
     // actual rendered element rather than assuming a fixed row height.
@@ -140,7 +169,7 @@ export function DebugEventTree() {
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const row = rows[virtualRow.index];
-          const { text, mutating } = labels[virtualRow.index];
+          const { tokens, mutating } = labels[virtualRow.index];
           const highlighted = row.nodeIndex === highlightedNodeIndex;
           const isExpanded = expanded.has(row.nodeIndex);
           const displayStep = displayStepForRow(tape, stepIndex, row);
@@ -174,7 +203,11 @@ export function DebugEventTree() {
                   <span style={styles.disclosurePlaceholder} />
                 )}
                 <span style={row.payload.kind === "scope" ? styles.scopeText : mutating ? styles.mutatingText : styles.traceText}>
-                  {text}
+                  {tokens.map((token, i) =>
+                    token.kind === "text"
+                      ? <React.Fragment key={i}>{token.text}</React.Fragment>
+                      : <DebugRefBubble key={i} target={token} label={bubbleLabel(token, coords)} />
+                  )}
                 </span>
               </span>
             </div>

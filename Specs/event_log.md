@@ -312,3 +312,114 @@ export function resolveDebugArenaMetadata(tape: ParsedTape, checkpoints: ParsedC
 - Tuning `CHECKPOINT_INTERVAL` beyond picking a reasonable initial default
 - Delta/diff encoding between successive checkpoints (see the trade-off note above)
 - Right-panel UI changes beyond the existing debug slider (no new controls added)
+
+## Interactive Node/Edge/Cycle/Region Refs (#130)
+
+Turns the debug event tree's plain-text narration into a tokenized `Token[]` so node/edge
+mentions render as inline interactive bubbles — hovering one highlights the referenced element(s)
+on the maze canvas. Web-only; no core changes (core stays typed-events-only, per #121's
+typed-event principle — no narration text or presentation language crosses the WASM boundary).
+
+### Web-side tokenization (`maze-web/src/components/DebugEventTree.tsx`)
+
+`narrationTokensFor(event: RecursiveBacktrackerEvent): Token[]` replaces the old
+`narrationFor(): string`. `Token` is a discriminated union:
+
+```ts
+type Token =
+  | { kind: "text"; text: string }
+  | { kind: "node"; id: bigint }
+  | { kind: "edge"; from: bigint; to: bigint }
+  | { kind: "cycle"; edges: [bigint, bigint][] }      // not emitted by RB — modeled for future QC/repair narration
+  | { kind: "region"; nodes: bigint[] };               // same
+```
+
+`kind` values match `HoveredDebugRef.kind` (`maze-web/src/store/storeTypes.ts`) verbatim — a
+bubble's hover payload is its own token passed straight through, no field renaming between the
+two unions (`edge`/`cycle`'s `Token`/`HoveredDebugRef` shapes both carry `bidirectional` on the
+edge entries, sourced from `RecursiveBacktrackerEvent::EdgeAdded.bidirectional`, so the bubble's
+own arrow reflects the real edge directionality rather than assuming bidirectional). Narration
+text around a bubble is wordless (e.g. "Edge added", not "Edge added: 3:18 -> 3:19") —
+coordinates render only inside the bubble itself, formatted `x:y` (no parens/comma) via
+`bubbleLabel`; an edge bubble's separator is ASCII `->` / `<->` by `bidirectional` (not a Unicode
+arrow — those rendered poorly in the bubble's monospace font). Per explicit user decision, the
+canvas highlight makes inline coordinates in prose redundant. The `debug.tree.*` paraglide
+messages lost their `{x}`/`{y}`/`{fx}`/... coordinate interpolations accordingly.
+
+Pilot scope mirrors #123 (Recursive Backtracker only): only `node`/`edge` tokens are actually
+emitted; `cycle`/`region` exist in the type only, for QC/repair narration landing later.
+
+### `DebugRefBubble` (`maze-web/src/components/DebugRefBubble.tsx`)
+
+Hover-only — no click/modal, unlike `IssueBubble` (Analytics' equivalent for issue loop/region
+highlighting). `onMouseEnter`/`onMouseLeave` write/clear `hoveredDebugRef` in the store;
+`onClick` calls `stopPropagation()` only, so a click on the bubble doesn't bubble into the
+enclosing row's own `onClick` (step-jump / expand-collapse toggle in `DebugEventTree.tsx`) — the
+bubble itself does nothing on click.
+
+### Store (`maze-web/src/store/storeTypes.ts`, `generationSlice.ts`)
+
+```ts
+type HoveredDebugRef =
+  | { kind: "node"; id: bigint }
+  | { kind: "edge"; from: bigint; to: bigint }
+  | { kind: "cycle"; edges: [bigint, bigint][] }
+  | { kind: "region"; nodes: bigint[] };
+
+hoveredDebugRef: HoveredDebugRef | null;
+setHoveredDebugRef: (ref: HoveredDebugRef | null) => void;
+```
+
+One discriminated union, not two independent arrays (edges/nodes) — a flat array pair can't
+distinguish "one edge" from "a cycle of edges", or "a single node" from "a region's node list",
+and loses which kind is currently hovered. Not persisted/serialized — `mazeStore` has no
+`persist`/`devtools` middleware — and `bigint` ids match the representation `eventTape.ts`
+already uses elsewhere in the debug layer, so this isn't a new precedent.
+
+`setDebugMode(false)` resets `hoveredDebugRef` to `null` alongside `debugMode`/`debugStale` — the
+tree unmounts when the panel closes, so a hover in progress at that moment would never receive a
+matching `onMouseLeave` otherwise, leaving the canvas highlight stuck.
+
+### Canvas highlighting (`maze-web/src/pixi/DebugRefHighlightOverlay.ts`)
+
+Owned by `GenerationRenderer`, not `AnalyticsRenderer`/`IssueHighlightOverlay` — per
+`maze-web/CLAUDE.md`'s feature-renderer ownership rule, no renderer instance is shared across
+features. Uses a distinct accent color from Analytics' issue-highlight red (`0xff4444`):
+`canvas.debug.refHighlight` / `base.debugRefHighlight` (`#44ccff`, cyan) in `colorUtils.ts` /
+`palette.ts`, plus a matching DOM pair `ui.debug.refHighlight` (`theme.ts`) for the bubble itself.
+
+Dispatches on `HoveredDebugRef.kind`, holding one instance each of two renderer classes shared
+with Analytics (same class, separate instance — not a shared renderer instance, per the ownership
+rule):
+
+- `edge` / `cycle` → `EdgeHighlightRenderer` (`pixi/renderers/EdgeHighlightRenderer.ts`,
+  pre-existing, used as-is) — one segment for `edge`, several for `cycle`'s `edges` list. Same
+  primitive, explicit separate `switch` cases (not an implicit "edge-like" merge). Endpoint
+  circles (via the class's own small `Graphics`) still mark each referenced vertex along the
+  edge/cycle.
+- `region` → `RegionHighlightRenderer` (`pixi/renderers/RegionHighlightRenderer.ts`, new —
+  extracted from `IssueHighlightOverlay`'s former inline `drawRegion` method during this issue).
+  Same API contract as `EdgeHighlightRenderer` (constructor takes a `Container`, owns a
+  persistent `Graphics`, `render()`/`clear()`/`destroy()`) — `IssueHighlightOverlay` now holds its
+  own `RegionHighlightRenderer` instance too, for its own region-highlight rendering, instead of
+  its old private method. Geometry (`buildRegionGeometry`, cell list + perimeter segments) stays
+  in `pixi/selectors/issueHighlightSelectors.ts`, unchanged — pure, no `Graphics` dependency; only
+  the drawing half moved.
+- `node` → also `RegionHighlightRenderer`, called with a single one-element `regionGroups` entry
+  (`[[nodeId]]`) — highlights the referenced vertex's own maze tile (fill + perimeter) rather than
+  a circle marker floating at its center, since a single node is just a region of size one and the
+  same renderer already draws that shape correctly.
+
+`GenerationRenderer.renderAll` calls `debugRefHighlight.render({ nodes: view.nodes, ref:
+state.hoveredDebugRef, cfg })` only while `state.debugMode` is true (`debugRefHighlight.clear()`
+otherwise) — `view.nodes` is the already-reconstructed debug-step node list (`debugView`, per
+#125/#126), so highlighted positions always match what's currently drawn, including mid-replay.
+`hoveredDebugRef` participates in the store-subscribe `dataChanged` diff alongside the existing
+debug fields.
+
+### Out of Scope (#130)
+
+- QC/repair narration events (future epic scope, per #121 and #130 itself)
+- Reusing `DebugRefHighlightOverlay`/`RegionHighlightRenderer` for other features beyond this and
+  Analytics' existing issue highlighting
+- Instrumenting Wilson, Kruskal, or custom algorithms with node/edge refs

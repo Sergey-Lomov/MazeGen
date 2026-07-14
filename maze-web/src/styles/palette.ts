@@ -132,4 +132,5 @@ export const base = {
   teleport: "#3399ff",
   debugActive: "#4488ff",
   debugCurrentSrc: "#cccc22",
+  debugRefHighlight: "#44ccff",
 } as const;

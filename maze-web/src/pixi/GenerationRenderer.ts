@@ -5,6 +5,7 @@ import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
+import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -19,6 +20,7 @@ export class GenerationRenderer {
   private readonly wallsContainer: Container;
   private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
+  private readonly debugRefHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -26,6 +28,7 @@ export class GenerationRenderer {
   private readonly walls: WallRenderer;
   private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
+  private readonly debugRefHighlight: DebugRefHighlightOverlay;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
@@ -50,6 +53,7 @@ export class GenerationRenderer {
     this.wallsContainer = new Container();
     this.teleportContainer = new Container();
     this.markersContainer = new Container();
+    this.debugRefHighlightContainer = new Container();
 
     viewport.addChild(this.gridContainer);
     viewport.addChild(this.floorContainer);
@@ -57,6 +61,7 @@ export class GenerationRenderer {
     viewport.addChild(this.wallsContainer);
     viewport.addChild(this.teleportContainer);
     viewport.addChild(this.markersContainer);
+    viewport.addChild(this.debugRefHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
@@ -64,6 +69,7 @@ export class GenerationRenderer {
     this.walls = new WallRenderer(this.wallsContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
+    this.debugRefHighlight = new DebugRefHighlightOverlay(this.debugRefHighlightContainer);
 
     this.syncVisibility(useMazeStore.getState());
     this.renderAll(useMazeStore.getState());
@@ -90,7 +96,8 @@ export class GenerationRenderer {
         state.activeTessellationConfig !== prev.activeTessellationConfig ||
         state.debugMode !== prev.debugMode ||
         state.debugArena !== prev.debugArena ||
-        state.debugStep !== prev.debugStep;
+        state.debugStep !== prev.debugStep ||
+        state.hoveredDebugRef !== prev.hoveredDebugRef;
 
       if (dataChanged) {
         this.renderAll(state);
@@ -108,6 +115,7 @@ export class GenerationRenderer {
     this.wallsContainer.visible = visible;
     this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
+    this.debugRefHighlightContainer.visible = visible;
     if (visible) {
       this.renderAll(state);
     }
@@ -161,6 +169,16 @@ export class GenerationRenderer {
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
     this.markers.render({ markers: markerData });
+
+    // Debug-tree ref highlighting (GitHub issue #130) — only meaningful while the debug panel is
+    // open; `hoveredDebugRef` is itself reset to `null` on `setDebugMode(false)` (see
+    // `generationSlice.ts`), so this gate and that reset both independently prevent a stale
+    // highlight from surviving debug mode being closed.
+    if (state.debugMode) {
+      this.debugRefHighlight.render({ nodes: view.nodes, ref: state.hoveredDebugRef, cfg });
+    } else {
+      this.debugRefHighlight.clear();
+    }
   }
 
   destroy(): void {
@@ -171,12 +189,14 @@ export class GenerationRenderer {
     this.walls.destroy();
     this.teleports.destroy();
     this.markers.destroy();
+    this.debugRefHighlight.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
+    this.debugRefHighlightContainer.destroy();
   }
 }
 

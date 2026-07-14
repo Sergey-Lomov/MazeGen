@@ -179,6 +179,35 @@ describe("DebugEventTree", () => {
     expect(deadEndRow.querySelector('[data-testid="step-col"]')).toHaveTextContent("—");
   });
 
+  it("hovering a node/edge ref bubble sets hoveredDebugRef; leaving clears it", () => {
+    render(<DebugEventTree />);
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
+
+    const edgeBubble = screen.getByText("0:0 <-> 3:4");
+    fireEvent.mouseEnter(edgeBubble);
+    expect(useMazeStore.getState().hoveredDebugRef).toEqual({ kind: "edge", from: 1n, to: 2n, bidirectional: true });
+
+    fireEvent.mouseLeave(edgeBubble);
+    expect(useMazeStore.getState().hoveredDebugRef).toBeNull();
+  });
+
+  it("clicking a ref bubble does not bubble up to the row (no step jump, no toggle)", () => {
+    const setDebugStep = vi.fn();
+    useMazeStore.setState({ setDebugStep });
+    render(<DebugEventTree />);
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
+
+    const edgeBubble = screen.getByText("0:0 <-> 3:4");
+    fireEvent.click(edgeBubble);
+
+    expect(setDebugStep).not.toHaveBeenCalled();
+    // The row stayed expanded — a bubbled click would have hit the row's own onClick, which only
+    // toggles collapse for rows with children (this leaf row has none, so a wrongly-bubbled click
+    // would be a no-op here too; the real assertion is setDebugStep above plus the bubble still
+    // being present, proving the row's click handler never fired via the bubble).
+    expect(screen.getByText("0:0 <-> 3:4")).toBeInTheDocument();
+  });
+
   it("throws when an event references a node id absent from debugArena.nodes (fail loud, not NaN)", () => {
     // Same tape shape but VertexVisited references id 99, which isn't in `nodes`. The bad event
     // is a leaf under the top-level scope, so it's only decoded (and only throws) once expanded —
