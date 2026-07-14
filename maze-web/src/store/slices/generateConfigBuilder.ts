@@ -8,7 +8,7 @@ import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
-import { parseTape, parseCheckpoints, resolveDebugArenaMetadata } from "../../debug/eventTape";
+import { parseTape, parseCheckpoints, resolveDebugArenaMetadata, mutatingKruskalEvents } from "../../debug/eventTape";
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -169,20 +169,30 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
     let lastStep = 0;
     if (debugMode && debugTape) {
       const tape = parseTape(debugTape.nodeTable, debugTape.payload);
-      // One combined forward scan for totalSteps + checkpoints (GitHub issue #128) instead of two
-      // independent full-tape scans — see resolveDebugArenaMetadata's doc comment. checkpointFroms
-      // are ApplyFrom-ready values selectDebugMazeView can pass straight into
-      // applyRecursiveBacktracker as `from`.
-      const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
-      const checkpoints = debugTape.snapshotTable && debugTape.snapshotPayload
-        ? parseCheckpoints(debugTape.snapshotTable, debugTape.snapshotPayload)
-        : emptyCheckpoints;
-      const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, checkpoints);
+      // Kruskal (GitHub issue #146) produces no checkpoints (#128 is RB-only) — totalSteps comes
+      // from a plain mutating-event count instead of resolveDebugArenaMetadata's combined
+      // scan+checkpoint-resolution pass, and checkpointFroms is always empty.
+      let totalSteps: number;
+      let checkpointFroms: ReturnType<typeof resolveDebugArenaMetadata>["checkpointFroms"];
+      if (debugTape.eventKind === "kruskal") {
+        totalSteps = mutatingKruskalEvents(tape).length;
+        checkpointFroms = [];
+      } else {
+        // One combined forward scan for totalSteps + checkpoints (GitHub issue #128) instead of
+        // two independent full-tape scans — see resolveDebugArenaMetadata's doc comment.
+        // checkpointFroms are ApplyFrom-ready values selectDebugMazeView can pass straight into
+        // applyRecursiveBacktracker as `from`.
+        const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
+        const checkpoints = debugTape.snapshotTable && debugTape.snapshotPayload
+          ? parseCheckpoints(debugTape.snapshotTable, debugTape.snapshotPayload)
+          : emptyCheckpoints;
+        ({ totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, checkpoints));
+      }
       if (totalSteps > 0) {
         // debugValueNames (GitHub issue #131) comes from the WASM response's static declaration
         // (GenerateResult::debug_value_names()), not from scanning the tape — see
         // resolveDebugArenaMetadata's doc comment for why.
-        debugArena = { tape, nodes: snapshot.nodes, totalSteps, checkpointFroms, debugValueNames: debugTape.debugValueNames };
+        debugArena = { tape, algorithmKind: debugTape.eventKind, nodes: snapshot.nodes, totalSteps, checkpointFroms, debugValueNames: debugTape.debugValueNames };
         lastStep = totalSteps - 1;
       }
     }
@@ -209,6 +219,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       debugStep: lastStep,
       debugStale: false,
       debugValueToggles: new Set(),
+      showKruskalDsuGroups: false,
       postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(snapshot.edges),
       postEditDraftTeleports: generatedTeleports,
       _nextPostEditTeleportId: nextTeleportId,

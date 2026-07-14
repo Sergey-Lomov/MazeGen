@@ -29,10 +29,12 @@ export function DebugPanel() {
   const debugStale  = useMazeStore((s) => s.debugStale);
   const delayMs     = useMazeStore((s) => s.debugAutoPlayDelay);
   const debugValueToggles = useMazeStore((s) => s.debugValueToggles);
+  const showKruskalDsuGroups = useMazeStore((s) => s.showKruskalDsuGroups);
   const setDebugStep = useMazeStore((s) => s.setDebugStep);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
   const setDelayMs   = useMazeStore((s) => s.setDebugAutoPlayDelay);
   const toggleDebugValue = useMazeStore((s) => s.toggleDebugValue);
+  const toggleKruskalDsuGroups = useMazeStore((s) => s.toggleKruskalDsuGroups);
 
   const [playing, setPlaying] = React.useState(false);
   const [delayDraft, setDelayDraft] = React.useState(String(delayMs));
@@ -151,7 +153,7 @@ export function DebugPanel() {
         />
       </div>
 
-      {debugArena.debugValueNames.length > 0 && (
+      {(debugArena.debugValueNames.length > 0 || debugArena.algorithmKind === "kruskal") && (
         <div style={styles.debugValuesRow}>
           {debugArena.debugValueNames.map(({ name }) => (
             <ToggleRow
@@ -161,6 +163,13 @@ export function DebugPanel() {
               onChange={() => toggleDebugValue(name)}
             />
           ))}
+          {debugArena.algorithmKind === "kruskal" && (
+            <ToggleRow
+              label={m["debug.value.kruskal_dsu_groups"]()}
+              checked={showKruskalDsuGroups}
+              onChange={toggleKruskalDsuGroups}
+            />
+          )}
         </div>
       )}
 

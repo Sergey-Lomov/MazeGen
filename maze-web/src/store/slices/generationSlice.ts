@@ -55,6 +55,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   debugStale: false,
   hoveredDebugRef: null,
   debugValueToggles: new Set<string>(),
+  showKruskalDsuGroups: false,
   mazeDirty: false,
   repairMaxIterations: 100,
   repairTimeBudgetSecs: 10,
@@ -134,7 +135,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       : {}),
   })),
 
-  setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false, hoveredDebugRef: null, debugValueToggles: new Set() }),
+  setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false, hoveredDebugRef: null, debugValueToggles: new Set(), showKruskalDsuGroups: false }),
   setDebugStep: (step) => set({ debugStep: step }),
   setDebugAutoPlayDelay: (ms) => set({ debugAutoPlayDelay: ms }),
   setHoveredDebugRef: (ref) => set({ hoveredDebugRef: ref }),
@@ -144,6 +145,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     else next.add(name);
     return { debugValueToggles: next };
   }),
+  toggleKruskalDsuGroups: () => set((state) => ({ showKruskalDsuGroups: !state.showKruskalDsuGroups })),
 
   reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null, _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null, postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditDirty: false }),
 

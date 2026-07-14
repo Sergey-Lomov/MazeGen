@@ -27,7 +27,7 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
  *  `eventTape.test.ts`'s fixtures, but returning raw buffers (not a parsed `ParsedTape`) since
  *  that's the shape `generateWithSeed` receives from `mazeService.generateMaze` before it calls
  *  `parseTape` itself. */
-export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array; debugValueNames: DebugValueDescriptor[] } {
+export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array; eventKind: "recursive_backtracker"; debugValueNames: DebugValueDescriptor[] } {
   // `bidirectional` always encoded `true` — mirrors RB's real behavior (GitHub issue #135).
   const payloadChunks = edges.map(([from, to]) => concatBytes([u64le(from), u64le(to), new Uint8Array([1])]));
   const offsets: number[] = [];
@@ -52,7 +52,7 @@ export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uin
   // from these edges — fixtures using this helper aren't exercising RB's recursion_stack declaration,
   // so an empty default is correct here; a test that specifically needs a non-empty list should
   // override the field on the returned object.
-  return { nodeTable, payload, debugValueNames: [] };
+  return { nodeTable, payload, eventKind: "recursive_backtracker", debugValueNames: [] };
 }
 
 function u32le(v: number): Uint8Array {

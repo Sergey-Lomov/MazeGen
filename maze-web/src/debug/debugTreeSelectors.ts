@@ -4,8 +4,20 @@
  *  indices (what the tree layer — `nodeView`/`NodeView` — walks). Pure logic, no React/store. */
 
 import type { NodeDto } from "../wasm/types";
+import type { EventedEventKind } from "../wasm/mazeService";
 import type { ParsedTape, NodePayload } from "./eventTape";
-import { nodeAt, nodeView, mutatingRbEventsWithIndex } from "./eventTape";
+import { nodeAt, nodeView, mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex } from "./eventTape";
+
+/** Dispatches to the right algorithm's flat mutating-event scan by `algorithmKind` (GitHub issue
+ *  #146) — the only place `buildStepIndex` needs to know which concrete event enum `tape` holds.
+ *  Both scans return the same `{ nodeIndex }`-shaped entries regardless of algorithm, which is
+ *  all `buildStepIndex` itself needs. */
+function mutatingEventNodeIndices(tape: ParsedTape, algorithmKind: EventedEventKind): number[] {
+  if (algorithmKind === "kruskal") {
+    return mutatingKruskalEventsWithIndex(tape).map((e) => e.nodeIndex);
+  }
+  return mutatingRbEventsWithIndex(tape).map((e) => e.nodeIndex);
+}
 
 export interface StepIndex {
   /** debugStep -> arena nodeIndex. Length === totalSteps. */
@@ -29,15 +41,15 @@ const stepIndexCache = new WeakMap<ParsedTape, StepIndex>();
  *  is always non-empty here. Before the first mutating event, `nearestStepByNodeIndex` is
  *  clamped to step 0 — not a separate edge case, just the natural initial value of "last seen
  *  step" given that guarantee. */
-export function buildStepIndex(tape: ParsedTape): StepIndex {
+export function buildStepIndex(tape: ParsedTape, algorithmKind: EventedEventKind): StepIndex {
   const cached = stepIndexCache.get(tape);
   if (cached) return cached;
 
-  const mutating = mutatingRbEventsWithIndex(tape);
+  const mutatingNodeIndices = mutatingEventNodeIndices(tape, algorithmKind);
   const mutatingNodeIndexSet = new Map<number, number>();
-  mutating.forEach(({ nodeIndex }, step) => mutatingNodeIndexSet.set(nodeIndex, step));
+  mutatingNodeIndices.forEach((nodeIndex, step) => mutatingNodeIndexSet.set(nodeIndex, step));
 
-  const stepToNodeIndex = mutating.map((m) => m.nodeIndex);
+  const stepToNodeIndex = mutatingNodeIndices;
   const nearestStepByNodeIndex = new Array<number>(tape.nodeCount);
   let currentStep = 0;
   for (let i = 0; i < tape.nodeCount; i++) {

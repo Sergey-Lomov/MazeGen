@@ -71,7 +71,7 @@ const nodes: NodeDto[] = [
 ];
 
 function arenaWithEdges(edges: [bigint, bigint][]): DebugArenaHandle {
-  return { tape: buildTapeWithEdges(edges), nodes, totalSteps: edges.length, checkpointFroms: [], debugValueNames: [] };
+  return { tape: buildTapeWithEdges(edges), algorithmKind: "recursive_backtracker", nodes, totalSteps: edges.length, checkpointFroms: [], debugValueNames: [] };
 }
 
 describe("selectDebugMazeView", () => {
@@ -91,6 +91,7 @@ describe("selectDebugMazeView", () => {
         { from: 3, to: 2, kind: "basic" },
       ],
       debugValues: new Map(),
+      dsuGroups: null,
     });
   });
 
@@ -122,8 +123,8 @@ describe("selectDebugMazeView", () => {
     const tape = buildTapeWithEdges(edgePairs);
     // A checkpoint at arena node 0 (step 0) reflecting state after the first EdgeAdded.
     const checkpointFroms = [{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map(), step: 0, nodeIndex: 0 }];
-    const arenaWithCheckpoint: DebugArenaHandle = { tape, nodes, totalSteps: edgePairs.length, checkpointFroms, debugValueNames: [] };
-    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, nodes, totalSteps: edgePairs.length, checkpointFroms: [], debugValueNames: [] };
+    const arenaWithCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", nodes, totalSteps: edgePairs.length, checkpointFroms, debugValueNames: [] };
+    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", nodes, totalSteps: edgePairs.length, checkpointFroms: [], debugValueNames: [] };
 
     const withCheckpoint = selectDebugMazeView(arenaWithCheckpoint, 2);
     const withoutCheckpoint = selectDebugMazeView(arenaWithoutCheckpoint, 2);

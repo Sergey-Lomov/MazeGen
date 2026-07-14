@@ -10,6 +10,18 @@ fn kind_wire_str(kind: maze_core::event_log::DebugValueKind) -> &'static str {
     }
 }
 
+/// Wire representation of `maze_core::event_log::EventedEventKind` for `GenerateResult`'s
+/// `eventKind()` getter — tells the web replay engine (`maze-web/src/debug/eventTape.ts`) which
+/// concrete event enum `node_table`/`payload` were encoded from, so it knows which decoder/apply
+/// function to dispatch to (GitHub issue #146). Plain string, not a numeric enum, matching how
+/// `debug_value_names`/`debug_value_kinds` already cross the boundary as plain values.
+fn event_kind_wire_str(kind: maze_core::event_log::EventedEventKind) -> &'static str {
+    match kind {
+        maze_core::event_log::EventedEventKind::RecursiveBacktracker => "recursive_backtracker",
+        maze_core::event_log::EventedEventKind::Kruskal => "kruskal",
+    }
+}
+
 /// Return type of `generate()` (GitHub issue #124). Wraps the existing `MazeSnapshot` (unchanged
 /// — still one `serde_wasm_bindgen`-serialized `JsValue`) alongside an optional debug event tape,
 /// encoded as two flat byte buffers (see `maze_core::event_log::DebugTape::encode`) — populated
@@ -39,16 +51,28 @@ pub struct GenerateResult {
     /// A separate `Vec<String>` rather than e.g. `"name:kind"` packed into one string, matching
     /// the existing plain-array marshaling `debug_value_names` itself uses.
     debug_value_kinds: Vec<String>,
+    /// Which concrete event enum `node_table`/`payload` were encoded from (GitHub issue #146) —
+    /// `None` exactly when `node_table`/`payload` are. Wire string via `event_kind_wire_str`.
+    event_kind: Option<String>,
 }
 
 impl GenerateResult {
     pub fn without_debug_tape(snapshot: JsValue) -> Self {
-        Self { snapshot, node_table: None, payload: None, snapshot_table: None, snapshot_payload: None, debug_value_names: Vec::new(), debug_value_kinds: Vec::new() }
+        Self { snapshot, node_table: None, payload: None, snapshot_table: None, snapshot_payload: None, debug_value_names: Vec::new(), debug_value_kinds: Vec::new(), event_kind: None }
     }
 
-    pub fn with_debug_tape(snapshot: JsValue, node_table: Vec<u8>, payload: Vec<u8>, debug_value_names: Vec<(String, maze_core::event_log::DebugValueKind)>) -> Self {
+    pub fn with_debug_tape(
+        snapshot: JsValue,
+        node_table: Vec<u8>,
+        payload: Vec<u8>,
+        debug_value_names: Vec<(String, maze_core::event_log::DebugValueKind)>,
+        event_kind: maze_core::event_log::EventedEventKind,
+    ) -> Self {
         let (names, kinds) = debug_value_names.into_iter().map(|(name, kind)| (name, kind_wire_str(kind).to_string())).unzip();
-        Self { snapshot, node_table: Some(node_table), payload: Some(payload), snapshot_table: None, snapshot_payload: None, debug_value_names: names, debug_value_kinds: kinds }
+        Self {
+            snapshot, node_table: Some(node_table), payload: Some(payload), snapshot_table: None, snapshot_payload: None,
+            debug_value_names: names, debug_value_kinds: kinds, event_kind: Some(event_kind_wire_str(event_kind).to_string()),
+        }
     }
 
     /// Attaches checkpoint buffers to an already-built result — must be chained onto
@@ -114,6 +138,11 @@ impl GenerateResult {
     /// Test-only accessor for `debug_value_kinds` — see [`Self::debug_value_names_bytes`].
     pub(crate) fn debug_value_kinds_bytes(&self) -> &[String] {
         &self.debug_value_kinds
+    }
+
+    /// Test-only accessor for `event_kind` — see [`Self::debug_value_names_bytes`].
+    pub(crate) fn event_kind_bytes(&self) -> Option<&str> {
+        self.event_kind.as_deref()
     }
 }
 
@@ -183,6 +212,14 @@ impl GenerateResult {
     pub fn debug_value_kinds(&self) -> Vec<String> {
         self.debug_value_kinds.clone()
     }
+
+    /// Which concrete event enum `debugTapeNodeTable`/`debugTapePayload` were encoded from
+    /// (GitHub issue #146) — `"recursive_backtracker"` or `"kruskal"`, or `undefined` if
+    /// `debug_events` wasn't enabled. Tells the web replay engine which decoder to dispatch to.
+    #[wasm_bindgen(js_name = eventKind)]
+    pub fn event_kind(&self) -> Option<String> {
+        self.event_kind.clone()
+    }
 }
 
 #[cfg(test)]
@@ -203,7 +240,7 @@ mod tests {
 
     #[test]
     fn with_debug_tape_carries_both_buffers() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new());
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), maze_core::event_log::EventedEventKind::RecursiveBacktracker);
         let (node_table, payload) = result.debug_tape_bytes().expect("both buffers must be present");
         assert_eq!(node_table, &[1, 2, 3]);
         assert_eq!(payload, &[4, 5]);
@@ -211,14 +248,14 @@ mod tests {
 
     #[test]
     fn without_checkpoints_has_no_checkpoint_buffers() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new());
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), maze_core::event_log::EventedEventKind::RecursiveBacktracker);
         assert!(result.checkpoint_bytes().is_none());
     }
 
     #[test]
     fn with_checkpoints_carries_both_checkpoint_buffers() {
         let snapshot_table = vec![0u8; maze_core::event_log::CHECKPOINT_RECORD_SIZE]; // one whole record
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new())
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), maze_core::event_log::EventedEventKind::RecursiveBacktracker)
             .with_checkpoints(snapshot_table.clone(), vec![8, 9, 10]);
         let (node_table, payload) = result.debug_tape_bytes().expect("debug tape buffers must still be present");
         assert_eq!(node_table, &[1, 2, 3]);
@@ -231,7 +268,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "not a whole number of CHECKPOINT_RECORD_SIZE")]
     fn with_checkpoints_rejects_a_table_length_not_a_multiple_of_checkpoint_record_size() {
-        GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new())
+        GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), maze_core::event_log::EventedEventKind::RecursiveBacktracker)
             .with_checkpoints(vec![6, 7], vec![8, 9, 10]);
     }
 
@@ -254,6 +291,7 @@ mod tests {
         let result = GenerateResult::with_debug_tape(
             JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
             vec![("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence)],
+            maze_core::event_log::EventedEventKind::RecursiveBacktracker,
         );
         assert_eq!(result.debug_value_names_bytes(), &["recursion_stack".to_string()]);
         assert_eq!(result.debug_value_kinds_bytes(), &["sequence".to_string()]);
@@ -267,8 +305,27 @@ mod tests {
         let result = GenerateResult::with_debug_tape(
             JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
             vec![("visited".to_string(), maze_core::event_log::DebugValueKind::Region)],
+            maze_core::event_log::EventedEventKind::RecursiveBacktracker,
         );
         assert_eq!(result.debug_value_names_bytes(), &["visited".to_string()]);
         assert_eq!(result.debug_value_kinds_bytes(), &["region".to_string()]);
+    }
+
+    #[test]
+    fn without_debug_tape_has_no_event_kind() {
+        let result = GenerateResult::without_debug_tape(JsValue::UNDEFINED);
+        assert!(result.event_kind_bytes().is_none());
+    }
+
+    #[test]
+    fn with_debug_tape_carries_recursive_backtracker_event_kind() {
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), maze_core::event_log::EventedEventKind::RecursiveBacktracker);
+        assert_eq!(result.event_kind_bytes(), Some("recursive_backtracker"));
+    }
+
+    #[test]
+    fn with_debug_tape_carries_kruskal_event_kind() {
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), maze_core::event_log::EventedEventKind::Kruskal);
+        assert_eq!(result.event_kind_bytes(), Some("kruskal"));
     }
 }

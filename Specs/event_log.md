@@ -769,32 +769,204 @@ that decision.
 
 ### WASM boundary gates on `event_kind`, not on the algorithm
 
-`maze-wasm/src/runner.rs::run_initial_generation` must not forward a Kruskal tape to the web replay
-engine — it doesn't know how to decode Kruskal's wire tags and would either crash or silently
-misinterpret the bytes as Recursive Backtracker's. The gate is a small `is_web_decodable(kind:
-Option<EventedEventKind>) -> bool` function (currently `matches!(kind, Some(EventedEventKind::RecursiveBacktracker))`),
-called right after `generate_maze_with_events` returns: when the result's `event_kind` isn't
-web-decodable, `tape`/`checkpoints`/`debug_value_names` are all discarded (`None`/`None`/empty)
-before returning, even though `generate_maze_with_events` itself produced a real tape for Kruskal.
-Gating on the tag rather than re-matching on `gen_config.algorithm` means this can't drift out of
-sync with which algorithms get instrumented next — extending `is_web_decodable`'s `matches!` is the
-one place a future Kruskal (or Wilson) web decoder needs to touch to start forwarding that kind's
-tape across the boundary. `web/debugMode` is independent of the selected generation algorithm
-(`generateConfigBuilder.ts`), so without this gate, enabling debug mode while Kruskal is selected
-would leak undecodable bytes to the web decoder today.
+`maze-wasm/src/runner.rs::run_initial_generation` must not forward a tape to the web replay engine
+for an event kind it can't decode — that would either crash or silently misinterpret the bytes as
+the wrong algorithm's. The gate is a small `is_web_decodable(kind: Option<EventedEventKind>) -> bool`
+function — as of #146 (see below), `matches!(kind, Some(EventedEventKind::RecursiveBacktracker) |
+Some(EventedEventKind::Kruskal))` — called right after `generate_maze_with_events` returns: when the
+result's `event_kind` isn't web-decodable, `tape`/`checkpoints`/`debug_value_names` are all discarded
+(`None`/`None`/empty) before returning. Gating on the tag rather than re-matching on
+`gen_config.algorithm` means this can't drift out of sync with which algorithms get instrumented
+next — extending `is_web_decodable`'s `matches!` is the one place a future algorithm's web decoder
+needs to touch to start forwarding that kind's tape across the boundary. `web/debugMode` is
+independent of the selected generation algorithm (`generateConfigBuilder.ts`), so without this gate,
+enabling debug mode while an undecodable algorithm is selected would leak undecodable bytes to the
+web decoder.
 
 ### Kruskal checkpoints/debug values: deferred, not wired up
 
 Kruskal's arm in `generate_maze_with_events` returns `checkpoints: None` and `debug_value_names: &[]`
-— intentionally not extended to match Recursive Backtracker's checkpointing (#128) or debug-value
-declarations (#131) as part of this issue. `EventedGenerationResult`'s `checkpoints`/`debug_value_names`
-parity documentation ("`Some`/non-empty exactly when `tape` is `Some`") no longer holds universally
-across every instrumented algorithm — it holds per-algorithm-arm, and Kruskal's arm simply always
-supplies `None`/empty for those two fields regardless of `tape`.
+— not extended to match Recursive Backtracker's checkpointing (#128) or debug-value declarations
+(#131); see #146 below for what *is* covered (event instrumentation, DSU-groups replay). This still
+holds after #146 landed. `EventedGenerationResult`'s `checkpoints`/`debug_value_names` parity
+documentation ("`Some`/non-empty exactly when `tape` is `Some`") no longer holds universally across
+every instrumented algorithm — it holds per-algorithm-arm, and Kruskal's arm simply always supplies
+`None`/empty for those two fields regardless of `tape`.
 
 ### Out of Scope (#161)
 
-- A web-side Kruskal event decoder (would let `is_web_decodable` return `true` for `Kruskal` and
-  extend `maze-web/src/debug/eventTape.ts` with Kruskal wire-tag decoding)
-- Kruskal checkpointing (#128-style) or debug value declarations (#131-style)
+- Kruskal checkpointing (#128-style) or debug value declarations (#131-style) — see #146 for what
+  Kruskal instrumentation does cover
 - Instrumenting Wilson or custom algorithms
+
+## Kruskal Instrumentation (#146)
+
+Module: `maze-core/src/generation/kruskal.rs`. Second `EventLog` instrumentation after the Recursive
+Backtracker pilot (#123) — validates that the event-tree infrastructure generalizes past a single
+algorithm, and (unlike #123's initial scope) ships an end-to-end web decoder/narration/canvas
+visualization in the same issue, since #161's type-erasure work removed the architectural blocker
+that would otherwise have forced deferring the web half to a follow-up.
+
+Kruskal's single per-iteration decision is a union-find lookup on a shuffled candidate-edge list —
+a fundamentally different shape from Recursive Backtracker's stack-driven DFS, so the event set
+mirrors that instead of reusing RB's vertex-centric vocabulary:
+
+```rust
+pub enum KruskalEvent {
+    EdgesShuffled(Vec<(NodeId, NodeId)>),
+    EdgeSelected { from: NodeId, to: NodeId },
+    RootsCompared { from: NodeId, to: NodeId, root_of_from: NodeId, root_of_to: NodeId },
+    EdgeRejected,
+    EdgeAdded { from: NodeId, to: NodeId, bidirectional: bool },
+    SetsMerged { root_a: NodeId, root_b: NodeId },
+    PresetUnionsApplied(Vec<(NodeId, NodeId)>),
+}
+```
+
+- **Mutating**: `EdgeAdded`, `SetsMerged` — these change reconstructable state (the spanning-tree
+  edge set and the DSU's group structure).
+- **Trace-only**: everything else.
+
+**Tree shape**: one `"edge N"` scope per iteration of the main `for (a, b) in edges` loop (numbered
+via `EventLog::enter_numbered("edge")`, mirroring RB's `"step N"` — see #133), containing, in
+emission order:
+1. `EdgeSelected` — the candidate edge this iteration is deciding on.
+2. `RootsCompared` — the union-find roots looked up for `from`/`to`. Carries `from`/`to` again
+   (duplicating `EdgeSelected`'s pair) rather than requiring a narration consumer to remember the
+   preceding sibling event — self-sufficient payload, reads as "root of `from` is `root_of_from`,
+   root of `to` is `root_of_to`" off one event.
+3. Either `EdgeRejected` (`root_of_from == root_of_to` — the edge would create a cycle), or
+   `EdgeAdded` followed by `SetsMerged` (roots differ — the edge is added and the two sets merge).
+
+Before the main loop, if any preset connections exist, one `PresetUnionsApplied(pairs)` event is
+emitted directly under the root scope (see "DSU-groups replay" below for why).
+
+**Not carried on the wire**: `EdgeRejected`'s `from`/`to` (redundant with the immediately-preceding
+`RootsCompared`'s — see that variant's Rust doc comment) and `SetsMerged`'s resulting new root
+(`KruskalEvent::merged_root(root_a, root_b) -> NodeId` computes it as `min(root_a, root_b)`,
+mirroring `Dsu::union_by_min`'s own tie-breaking rule, so core and every replay consumer derive it
+identically instead of risking a third, independently-computed copy drifting out of sync — see that
+method's doc comment for the non-obvious invariant it depends on: `kruskal::generate`'s dense
+`node_index` must be built by sorting `NodeId`s, or `min` on `NodeId`s stops agreeing with
+`Dsu::union_by_min`'s index-based comparison).
+
+**Threading**: `kruskal::generate(..., event_log: Option<&mut EventLog<KruskalEvent>>)` — the same
+`Option<&mut T>` zero-cost-opt-out pattern as RB's `event_log`/`on_step`. `generate_maze_with_events`
+(`maze-core/src/generation/mod.rs`) has a `KruskalAlgorithm` arm building a real `EventLog`, calling
+`kruskal::generate`, and tagging the result `EventedEventKind::Kruskal` (see #161 above) —
+`checkpoints`/`debug_value_names` are always `None`/empty for this arm (deferred, not in scope here).
+
+### Wire encoding
+
+Wire tags (`kruskal.rs`'s `wire_tags` module): `EDGES_SHUFFLED=1`, `ROOTS_COMPARED=2`,
+`EDGE_REJECTED=3`, `EDGE_ADDED=4`, `SETS_MERGED=5`, `PRESET_UNIONS_APPLIED=6`, `EDGE_SELECTED=7` —
+manually assigned per #124's convention, `0`/`TAG_SCOPE` reserved.
+
+`NodeId` (`u64`) is 8 little-endian bytes per id. `EdgeSelected`/`SetsMerged` are two back-to-back
+`NodeId`s (16 bytes). `RootsCompared` is four back-to-back `NodeId`s, in order `from, to,
+root_of_from, root_of_to` (32 bytes) — this exact field order is the one thing
+`kruskal_event_payload_round_trips_for_every_variant` (`maze-core/tests/generation/kruskal.rs`)
+exists specifically to pin down, since a byte-offset/field-order mistake here silently produces
+wrong narration rather than a crash (this happened once during development — a wire-tag-uniqueness
+test alone did not catch it, only a byte-level round-trip test did). `EdgeAdded` is two back-to-back
+`NodeId`s plus a 1-byte `bidirectional` flag (17 bytes). `EdgeRejected` carries no payload (0
+bytes). `EdgesShuffled`/`PresetUnionsApplied` (the variable-length variants) are a `u32` LE length
+prefix followed by that many `(NodeId, NodeId)` pairs.
+
+### `PresetUnionsApplied` — seeding replay's initial DSU state
+
+Preset-connected node pairs are pre-unioned into the union-find structure before the main edge loop
+starts (`kruskal::generate`'s pre-union step, mirroring `preset_connected` handling elsewhere in
+generation) — but those unions happen before any event-log scope opens, so there is no corresponding
+per-pair `SetsMerged` a replay consumer could fold in to reconstruct the same starting state. Without
+`PresetUnionsApplied`, a from-scratch web replay would show every preset-connected node as its own
+singleton DSU group at step 0, when in reality they're already merged. Emitted once, as a single
+event directly under the root scope (before the first `"edge N"` scope) — a `Vec<(NodeId, NodeId)>`
+of the preset-connected pairs, analogous to `EdgesShuffled`'s shape. Not emitted at all (not even
+with an empty `pairs` list) when there are no preset connections, so a replay consumer doesn't have
+to special-case "empty" vs. "absent". Trace-only (`is_mutating()` is `false`) — it seeds replay's
+initial state rather than describing a step-by-step mutation.
+
+### Web-side DSU-groups replay
+
+Unlike Recursive Backtracker's named debug values (`"recursion_stack"`/`"visited"`, #131 — a fixed,
+statically-declared set of named id lists), Kruskal's interesting algorithm state is its union-find
+group structure: a *dynamic* number of groups that merge over the run, with no natural per-group
+name (a group's identity — its root — changes on every merge that involves it). This doesn't fit
+`DebugValueDelta`'s `Insert`/`Remove`-on-a-named-set model, so it isn't modeled as a debug value at
+all — instead, `maze-web/src/debug/eventTape.ts` provides a parallel, Kruskal-specific replay path:
+
+- `KruskalDsu` — a minimal union-find over `bigint` ids (path compression + union-by-min), operating
+  directly on `NodeId`s rather than dense indices (unlike core's `Dsu`, the web side never builds
+  core's dense-index mapping). Its `union`'s tie-break (`min(a, b)`) must stay in sync with core's
+  `Dsu::union_by_min` for a replayed root to match what `RootsCompared`/`SetsMerged` events actually
+  carried.
+- `applyKruskal(tape, targetStep) -> { edges, dsuGroups, step, nodeIndex }` — Kruskal's counterpart
+  to `applyRecursiveBacktracker`, simplified: no `debugValues` output (Kruskal declares none) and no
+  `from`-based resume (Kruskal produces no checkpoints, #128 is RB-only) — every call replays from
+  the tape's start, seeding `KruskalDsu` from `findPresetUnions(tape)` (a linear scan locating the
+  single `PresetUnionsApplied` event, if any, which always precedes the first `"edge N"` scope) then
+  folding in every `SetsMerged` up to `targetStep`. `dsuGroups: Map<bigint, bigint>` maps every id
+  the replay has seen to its current root — two ids sharing a value are in the same connected
+  component of the spanning tree built so far.
+- `selectDebugMazeView` (`maze-web/src/store/debugSelectors.ts`) dispatches on `arena.algorithmKind`
+  between `applyRecursiveBacktracker` (with checkpoint-resume) and `applyKruskal` (always
+  from-scratch); `DebugMazeView.dsuGroups: Map<number, number> | null` carries the joined
+  (`NodeDto.id`-space) result, `null` for Recursive Backtracker.
+
+### Narration (`DebugEventTree.tsx`)
+
+`kruskalNarrationTokensFor` renders, per event: `EdgeSelected` — "Edge selected: A ↔ B";
+`RootsCompared` — "Root of A = X, root of B = Y. Roots equal/different." (the same-root/different-root
+outcome is spelled out inline, not left implicit in whether an `EdgeAdded` or `EdgeRejected` follows
+— per explicit user feedback during development, narration must state the comparison's outcome in
+words); `EdgeRejected` — "Edge rejected" (the reason was already stated by the immediately-preceding
+`RootsCompared` row, so this doesn't repeat it); `EdgeAdded` — "Edge added: A ↔ B"; `SetsMerged` —
+"Sets X and Y merged. New root: Z" (`Z` via `kruskalMergedRoot`, the TS mirror of
+`KruskalEvent::merged_root`); `PresetUnionsApplied` — "N preset connection(s) pre-merged". `"edge N"`
+scope rows render as "Edge N" (mirroring RB's "Step N").
+
+### Canvas visualization: `KruskalDsuHighlightOverlay`
+
+A new toggle, `showKruskalDsuGroups` (`GenerationState`, action `toggleKruskalDsuGroups`) —
+independent of `debugValueToggles` (RB's named-set toggles): DSU groups are the algorithm's core
+state, not a named/user-declared value, so there's one on/off switch rather than one toggle per
+group. Only shown in `DebugPanel.tsx` when `debugArena.algorithmKind === "kruskal"`; reset to `false`
+on `setDebugMode(false)` and on every fresh `generate()`, mirroring `debugValueToggles`'s reset
+discipline.
+
+`KruskalDsuHighlightOverlay` (`maze-web/src/pixi/`, owned by `GenerationRenderer` per the
+feature-renderer ownership rule in `maze-web/CLAUDE.md`) renders every current non-singleton DSU
+group at once — singleton groups (a node not yet merged into anything) are filtered out, since
+highlighting every isolated cell individually would paint almost the entire field on the first
+replay step and read as noise rather than signal. Draws through `RegionHighlightRenderer` with
+`skipPerimeter: true` (fill only, no cell-outline stroke — a plain `RegionHighlightRenderer` call
+would otherwise draw a closed perimeter around every single cell, which reads as extra wall lines
+once real walls are rendered underneath). Since group membership and count change on every replay
+step (a merge reduces the group count by one), there's no stable per-group identity to key a
+persistent per-group layer by — the overlay holds a pool of `RegionHighlightRenderer` instances
+(one per currently-drawn group) resized to fit each render, resized down (destroying the spares) or
+up as needed.
+
+**Color stability**: colored by `hash(root) % PALETTE.length` into a fixed-size (64-entry)
+precomputed palette (`buildPalette`, the same full-spectrum palette connectivity-component overlays
+use elsewhere) — not by the group's position in that render's `Map` iteration order. A group's root
+id only changes when that exact group merges with another (`union_by_min` always keeps the smaller
+of the two roots), so as long as a group doesn't merge, hashing its root keeps its color stable
+across replay steps. An earlier implementation assigned colors by array position after rebuilding
+the palette every render; since `Map` iteration order isn't tied to group identity, an unrelated
+group merging elsewhere could shift every other group's position and flip its color even though
+that group itself hadn't changed — this was caught via manual browser testing, not a unit test at
+the time. The grouping/coloring logic (`groupNonSingletonsByRoot`, `colorForRoot`) was subsequently
+pulled out of the class into standalone exported pure functions specifically so this regression
+class is now covered by unit tests (`maze-web/src/test/KruskalDsuHighlightOverlay.test.ts`) instead
+of relying on manual browser testing to catch it again.
+
+### Out of Scope (#146)
+
+- Kruskal checkpointing (#128-style) or debug value declarations (#131-style) — see #161's section
+  above
+- Instrumenting Wilson or custom algorithms
+- A generalized replacement for `DebugValueDelta` that could express dynamic/unnamed group
+  structures like Kruskal's DSU groups through the same mechanism RB's named values use — DSU-groups
+  replay is a parallel, Kruskal-specific path instead (see above)

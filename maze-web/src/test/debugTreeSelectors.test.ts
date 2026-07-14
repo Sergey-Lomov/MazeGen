@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, type ParsedTape } from "../debug/eventTape";
 import {
   buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, resolveHighlightTarget,
   buildNodeCoordIndex,
@@ -93,10 +93,54 @@ function buildTwoStepTape(): ParsedTape {
   ]);
 }
 
+// Kruskal fixture, mirroring eventTape.test.ts's buildKruskalTape shape:
+//   root (0)
+//     -> "edge 1" scope (1) -> EdgeSelected (2) -> EdgeAdded(1,3) (3) -> SetsMerged (4)
+//     -> "edge 2" scope (5) -> EdgeSelected (6) -> EdgeRejected (7)
+// One connecting edge (2 mutating events: EdgeAdded, SetsMerged) followed by one rejected edge
+// (0 mutating events) — exercises buildStepIndex's "kruskal" branch (GitHub issue #146).
+function buildTwoEdgeKruskalTape(): ParsedTape {
+  const rootsPayload = concatBytes([u64le(1n), u64le(3n)]);
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: rootsPayload },
+    { parent: 1, firstChild: null, nextSibling: 4, tag: KRUSKAL_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, payloadBytes: rootsPayload },
+    { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 2") },
+    { parent: 5, firstChild: null, nextSibling: 7, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: rootsPayload },
+    { parent: 5, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
+  ]);
+}
+
+describe("buildStepIndex — kruskal dispatch (GitHub issue #146)", () => {
+  it("dispatches to the Kruskal mutating-event scan, distinct from the recursive_backtracker one", () => {
+    const tape = buildTwoEdgeKruskalTape();
+    const { stepToNodeIndex, nearestStepByNodeIndex } = buildStepIndex(tape, "kruskal");
+
+    // 2 mutating events in emission order: EdgeAdded(3), SetsMerged(4). EdgeRejected (node 7) is
+    // trace-only and must not appear.
+    expect(stepToNodeIndex).toEqual([3, 4]);
+    expect(nearestStepByNodeIndex).toEqual([0, 0, 0, 0, 1, 1, 1, 1]);
+  });
+
+  it("does not throw for a Kruskal tape with zero mutating events (every edge rejected)", () => {
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
+      { parent: 1, firstChild: null, nextSibling: 2, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
+    ]);
+    const stepIndex = buildStepIndex(tape, "kruskal");
+    expect(stepIndex.stepToNodeIndex).toEqual([]);
+    expect(() => stepForNode(stepIndex, 2)).not.toThrow();
+  });
+});
+
 describe("buildStepIndex — exact sequence", () => {
   it("produces the exact stepToNodeIndex/nearestStepByNodeIndex for the two-step fixture", () => {
     const tape = buildTwoStepTape();
-    const { stepToNodeIndex, nearestStepByNodeIndex } = buildStepIndex(tape);
+    const { stepToNodeIndex, nearestStepByNodeIndex } = buildStepIndex(tape, "recursive_backtracker");
 
     // 4 mutating events in emission order: EdgeAdded(2), VertexVisited(3), VertexPushed(4), VertexPopped(7)
     expect(stepToNodeIndex).toEqual([2, 3, 4, 7]);
@@ -111,7 +155,7 @@ describe("buildStepIndex — exact sequence", () => {
 describe("buildStepIndex / stepForNode / nodeIndexForStep invariants", () => {
   it("stepForNode is monotonic non-decreasing over arena order and never throws", () => {
     const tape = buildTwoStepTape();
-    const stepIndex = buildStepIndex(tape);
+    const stepIndex = buildStepIndex(tape, "recursive_backtracker");
     let prev = 0;
     for (let i = 0; i < tape.nodeCount; i++) {
       const step = stepForNode(stepIndex, i);
@@ -123,7 +167,7 @@ describe("buildStepIndex / stepForNode / nodeIndexForStep invariants", () => {
 
   it("nodeIndexForStep round-trips through buildStepIndex for every valid step", () => {
     const tape = buildTwoStepTape();
-    const stepIndex = buildStepIndex(tape);
+    const stepIndex = buildStepIndex(tape, "recursive_backtracker");
     const totalSteps = stepIndex.stepToNodeIndex.length;
     for (let step = 0; step < totalSteps; step++) {
       const nodeIndex = nodeIndexForStep(stepIndex, step);
@@ -138,7 +182,7 @@ describe("buildStepIndex / stepForNode / nodeIndexForStep invariants", () => {
       { parent: 1, firstChild: null, nextSibling: 3, tag: RB_TAG.VERTEX_SELECTED, payloadBytes: vertexPayload(1n) },
       { parent: 1, firstChild: null, nextSibling: null, tag: RB_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
     ]);
-    const stepIndex = buildStepIndex(tape);
+    const stepIndex = buildStepIndex(tape, "recursive_backtracker");
     expect(stepIndex.stepToNodeIndex).toEqual([]);
     expect(() => stepForNode(stepIndex, 2)).not.toThrow();
     expect(stepForNode(stepIndex, 2)).toBe(0);
@@ -193,7 +237,7 @@ describe("flattenVisibleRows", () => {
 describe("resolveHighlightTarget", () => {
   it("returns the exact node when its row is visible", () => {
     const tape = buildTwoStepTape();
-    const stepIndex = buildStepIndex(tape);
+    const stepIndex = buildStepIndex(tape, "recursive_backtracker");
     const rows = flattenVisibleRows(tape, new Set([1]));
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
 
@@ -203,7 +247,7 @@ describe("resolveHighlightTarget", () => {
 
   it("walks up to the nearest visible ancestor when the target's scope is collapsed", () => {
     const tape = buildTwoStepTape();
-    const stepIndex = buildStepIndex(tape);
+    const stepIndex = buildStepIndex(tape, "recursive_backtracker");
     const rows = flattenVisibleRows(tape, new Set()); // fully collapsed
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
 
@@ -214,7 +258,7 @@ describe("resolveHighlightTarget", () => {
 
   it("throws instead of returning null when no visible ancestor exists at all", () => {
     const tape = buildTwoStepTape();
-    const stepIndex = buildStepIndex(tape);
+    const stepIndex = buildStepIndex(tape, "recursive_backtracker");
     // Deliberately broken map — contract violation (should always contain every top-level scope,
     // see flattenVisibleRows), exercised here to pin down the fail-loud behavior fixed after review.
     const emptyMap = new Map<number, number>();

@@ -1,5 +1,6 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
 import type { ParsedTape, ApplyFrom, DebugValueDescriptor } from "../debug/eventTape";
+import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 
@@ -304,6 +305,11 @@ export interface PresetConnectionsActions {
  *  static node list needed to join reconstructed `bigint` node ids against `NodeDto.id`. */
 export interface DebugArenaHandle {
   tape: ParsedTape;
+  /** Which concrete event enum `tape` was encoded from (GitHub issue #146) — selects which
+   *  decoder/apply/narration function every consumer of this arena (`debugSelectors.ts`,
+   *  `debugTreeSelectors.ts`, `DebugEventTree.tsx`) dispatches to. Sourced from the WASM
+   *  response's `DebugTape.eventKind` (`mazeService.ts`). */
+  algorithmKind: EventedEventKind;
   nodes: NodeDto[];
   /** Total mutating-event count for this tape — a static property of the arena (computed once at
    *  generation time), not a per-step cache; lets the UI know the last valid `debugStep` without
@@ -412,6 +418,14 @@ export interface GenerationState {
    *  empty whenever `debugArena` changes (a fresh run may not expose the same names) or
    *  `debugMode` turns off. Not persisted/serialized, same as `hoveredDebugRef`. */
   debugValueToggles: Set<string>;
+  /** Whether Kruskal's union-find groups (GitHub issue #146's DSU-groups extension) are
+   *  highlighted on canvas — a single on/off toggle, not a `debugValueToggles`-style named set:
+   *  DSU groups are the algorithm's core state (not a named, user-selectable value like
+   *  `"recursion_stack"`), so there's exactly one toggle rather than one per group. Only
+   *  meaningful while `debugArena.algorithmKind === "kruskal"`; ignored otherwise. Reset to `false`
+   *  whenever `debugArena` changes or `debugMode` turns off, mirroring `debugValueToggles`. Not
+   *  persisted/serialized. */
+  showKruskalDsuGroups: boolean;
   /** True after the maze has been generated since the last confirmTessellation. */
   mazeDirty: boolean;
   /** Caps on the QC repair fixpoint loop (see `Specs/repair.md`'s `RepairLimits`). Both are
@@ -530,6 +544,8 @@ export interface GenerationActions {
   setHoveredDebugRef: (ref: HoveredDebugRef | null) => void;
   /** Flips `name`'s membership in `debugValueToggles`. */
   toggleDebugValue: (name: string) => void;
+  /** Flips `showKruskalDsuGroups`. */
+  toggleKruskalDsuGroups: () => void;
   regenerate: () => void;
   setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;

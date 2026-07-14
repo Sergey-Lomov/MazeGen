@@ -49,6 +49,12 @@ export interface DebugTape {
   payload: Uint8Array;
   snapshotTable?: Uint8Array;
   snapshotPayload?: Uint8Array;
+  /** Which concrete event enum `nodeTable`/`payload` were encoded from (GitHub issue #146) —
+   *  `"recursive_backtracker"` or `"kruskal"`, sourced from `GenerateResult::eventKind()`. Tells
+   *  downstream consumers (`generateConfigBuilder.ts`, `debugSelectors.ts`, `DebugEventTree.tsx`)
+   *  which decoder/apply/narration function to dispatch to — see `DebugArenaHandle.algorithmKind`
+   *  in `storeTypes.ts`. */
+  eventKind: EventedEventKind;
   /** Debug values (GitHub issue #131, e.g. `"recursion_stack"`) declared by the instrumented
    *  algorithm, each with its rendering `kind` — the static list from
    *  `GenerateResult::debugValueNames()`/`debugValueKinds()` (zipped together, see
@@ -57,6 +63,17 @@ export interface DebugTape {
    *  still supports). Empty when the algorithm isn't instrumented for debug values yet. Plain
    *  array, not a WASM buffer — no copy-before-free concern like `nodeTable`/`payload`. */
   debugValueNames: DebugValueDescriptor[];
+}
+
+/** Mirrors `event_kind_wire_str` in `maze-wasm/src/result.rs` — which concrete event enum a
+ *  tape's bytes were encoded from. */
+export type EventedEventKind = "recursive_backtracker" | "kruskal";
+
+function toEventedEventKind(raw: string): EventedEventKind {
+  if (raw !== "recursive_backtracker" && raw !== "kruskal") {
+    throw new Error(`unknown event kind "${raw}"`);
+  }
+  return raw;
 }
 
 export interface GenerateMazeResult {
@@ -125,16 +142,22 @@ export function generateMaze(seed: number, config: GenerateConfig): GenerateMaze
     // placeholders are created when the core recorded no checkpoints.
     const snapshotTable = result.debugSnapshotTable();
     const snapshotPayload = result.debugSnapshotPayload();
-    const debugTape: DebugTape | undefined = nodeTable && payload
-      ? {
-          nodeTable: nodeTable.slice(),
-          payload: payload.slice(),
-          ...(snapshotTable && snapshotPayload
-            ? { snapshotTable: snapshotTable.slice(), snapshotPayload: snapshotPayload.slice() }
-            : {}),
-          debugValueNames: zipDebugValueNames(result.debugValueNames(), result.debugValueKinds()),
-        }
-      : undefined;
+    let debugTape: DebugTape | undefined;
+    if (nodeTable && payload) {
+      const rawEventKind = result.eventKind();
+      if (rawEventKind === undefined) {
+        throw new Error("generateMaze: debug tape present but eventKind is missing");
+      }
+      debugTape = {
+        nodeTable: nodeTable.slice(),
+        payload: payload.slice(),
+        ...(snapshotTable && snapshotPayload
+          ? { snapshotTable: snapshotTable.slice(), snapshotPayload: snapshotPayload.slice() }
+          : {}),
+        eventKind: toEventedEventKind(rawEventKind),
+        debugValueNames: zipDebugValueNames(result.debugValueNames(), result.debugValueKinds()),
+      };
+    }
 
     return { snapshot, debugTape };
   } finally {

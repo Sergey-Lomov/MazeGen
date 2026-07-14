@@ -1,3 +1,4 @@
 /target
 maze-web/generated/
+maze-web/coverage/
 .claude/settings.local.json

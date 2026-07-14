@@ -96,7 +96,7 @@ function threeStepArena() {
   const tape = buildThreeStepTape();
   const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
   const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
-  return { tape, nodes, totalSteps, checkpointFroms, debugValueNames: [] };
+  return { tape, algorithmKind: "recursive_backtracker" as const, nodes, totalSteps, checkpointFroms, debugValueNames: [] };
 }
 
 // root (0) -> "step 1" scope (1) -> EdgeAdded(1,2) (2)
@@ -133,7 +133,7 @@ function manyStepArena(stepCount: number) {
   const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
   const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
   const manyNodes: NodeDto[] = Array.from({ length: stepCount + 1 }, (_, i) => ({ id: i + 1, x: i, y: 0 }));
-  return { tape, nodes: manyNodes, totalSteps, checkpointFroms, debugValueNames: [] };
+  return { tape, algorithmKind: "recursive_backtracker" as const, nodes: manyNodes, totalSteps, checkpointFroms, debugValueNames: [] };
 }
 
 // jsdom has no real layout — DebugEventTree's virtualized list needs a non-zero viewport (see

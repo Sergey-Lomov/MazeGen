@@ -6,7 +6,10 @@ import {
   buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
   displayStepForRow, type TreeRow,
 } from "../debug/debugTreeSelectors";
-import { decodeRecursiveBacktrackerEvent, isMutatingRbEvent, type RecursiveBacktrackerEvent } from "../debug/eventTape";
+import {
+  decodeRecursiveBacktrackerEvent, isMutatingRbEvent, type RecursiveBacktrackerEvent,
+  decodeKruskalEvent, isMutatingKruskalEvent, kruskalMergedRoot, type KruskalEvent,
+} from "../debug/eventTape";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { ui, typography, muted } from "../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -85,13 +88,64 @@ function narrationTokensFor(event: RecursiveBacktrackerEvent): Token[] {
   }
 }
 
-function rowTokens(row: TreeRow): { tokens: Token[]; mutating: boolean } {
+/** Kruskal's counterpart to `narrationTokensFor` (GitHub issue #146). Per explicit user feedback,
+ *  narration must make the edge/root relationship explicit, and state the comparison's outcome
+ *  in words rather than leaving the reader to infer it from which event follows:
+ *  1. `EdgeSelected` — "Edge selected: A <-> B"
+ *  2. `RootsCompared` — "Root of A = X, root of B = Y. Roots equal/different." — `from`/`to` ride
+ *     along in the same payload as the roots (not inferred from the preceding sibling event), and
+ *     the same-root/different-root outcome is spelled out inline rather than left implicit in
+ *     whether an `EdgeAdded` or `EdgeRejected` follows.
+ *  3. `EdgeRejected` — "Edge rejected" (the *reason* — same root — was already stated by
+ *     `RootsCompared` immediately above; this event doesn't repeat it)
+ *  4. `EdgeAdded` — "Edge added: A <-> B" (unchanged)
+ *  5. `SetsMerged` — "Sets X and Y merged. New root: Z", `Z` computed via `kruskalMergedRoot`
+ *     (mirrors core's `Dsu::union_by_min` — the wire payload doesn't carry the new root itself,
+ *     see that function's doc comment). */
+function kruskalNarrationTokensFor(event: KruskalEvent): Token[] {
+  switch (event.kind) {
+    case "EdgesShuffled": return [{ kind: "text", text: m["debug.tree.edges_shuffled"]({ count: event.edges.length }) }];
+    case "EdgeSelected":
+      return [{ kind: "text", text: m["debug.tree.edge_selected"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "RootsCompared": {
+      const rootsEqual = event.rootOfFrom === event.rootOfTo;
+      return [
+        { kind: "text", text: m["debug.tree.root_of"]() + " " }, { kind: "node", id: event.from },
+        { kind: "text", text: " = " }, { kind: "node", id: event.rootOfFrom },
+        { kind: "text", text: ", " + m["debug.tree.root_of"]() + " " }, { kind: "node", id: event.to },
+        { kind: "text", text: " = " }, { kind: "node", id: event.rootOfTo },
+        { kind: "text", text: ". " + (rootsEqual ? m["debug.tree.roots_equal"]() : m["debug.tree.roots_different"]()) },
+      ];
+    }
+    case "EdgeRejected":
+      return [{ kind: "text", text: m["debug.tree.edge_rejected"]() }];
+    case "EdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.bidirectional }];
+    case "SetsMerged": {
+      const newRoot = kruskalMergedRoot(event.rootA, event.rootB);
+      return [
+        { kind: "text", text: m["debug.tree.sets_merged"]() + " " }, { kind: "node", id: event.rootA },
+        { kind: "text", text: " / " }, { kind: "node", id: event.rootB },
+        { kind: "text", text: ". " + m["debug.tree.new_root"]() + " " }, { kind: "node", id: newRoot },
+      ];
+    }
+    case "PresetUnionsApplied":
+      return [{ kind: "text", text: m["debug.tree.preset_unions_applied"]({ count: event.pairs.length }) }];
+  }
+}
+
+function rowTokens(row: TreeRow, algorithmKind: "recursive_backtracker" | "kruskal"): { tokens: Token[]; mutating: boolean } {
   if (row.payload.kind === "scope") {
     // Scope names are auto-numbered by `EventLog::enter_numbered` (core, issue #133) as
-    // "step 1", "step 2", ... — pull the trailing index back out for the localized label.
-    const match = /^step (\d+)$/.exec(row.payload.name);
+    // "step 1"/"edge 1", ... — pull the trailing index back out for the localized label.
+    const match = /^(?:step|edge) (\d+)$/.exec(row.payload.name);
     const index = match ? Number(match[1]) : 0;
-    return { tokens: [{ kind: "text", text: m["debug.tree.step_scope"]({ index }) }], mutating: false };
+    const label = algorithmKind === "kruskal" ? m["debug.tree.edge_scope"]({ index }) : m["debug.tree.step_scope"]({ index });
+    return { tokens: [{ kind: "text", text: label }], mutating: false };
+  }
+  if (algorithmKind === "kruskal") {
+    const event = decodeKruskalEvent(row.payload.tag, row.payload.bytes);
+    return { tokens: kruskalNarrationTokensFor(event), mutating: isMutatingKruskalEvent(event) };
   }
   const event = decodeRecursiveBacktrackerEvent(row.payload.tag, row.payload.bytes);
   return { tokens: narrationTokensFor(event), mutating: isMutatingRbEvent(event) };
@@ -109,7 +163,8 @@ export function DebugEventTree() {
   const skipNextScrollRef = useRef(false);
 
   const tape = debugArena?.tape ?? null;
-  const stepIndex = useMemo(() => (tape ? buildStepIndex(tape) : null), [tape]);
+  const algorithmKind = debugArena?.algorithmKind ?? "recursive_backtracker";
+  const stepIndex = useMemo(() => (tape ? buildStepIndex(tape, algorithmKind) : null), [tape, algorithmKind]);
   const coordIndex = useMemo(() => (debugArena ? buildNodeCoordIndex(debugArena.nodes) : null), [debugArena]);
   const coords = useMemo(() => (coordIndex ? (id: bigint) => coordIndex.get(id) : () => null), [coordIndex]);
 
@@ -118,10 +173,10 @@ export function DebugEventTree() {
       return { rows: [] as TreeRow[], labels: [] as { tokens: Token[]; mutating: boolean }[], rowIndexByNodeIndex: new Map<number, number>() };
     }
     const rows = flattenVisibleRows(tape, expanded);
-    const labels = rows.map((row) => rowTokens(row));
+    const labels = rows.map((row) => rowTokens(row, algorithmKind));
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
     return { rows, labels, rowIndexByNodeIndex };
-  }, [tape, expanded]);
+  }, [tape, expanded, algorithmKind]);
 
   const highlightedNodeIndex = useMemo(() => {
     if (!tape || !stepIndex) return null;

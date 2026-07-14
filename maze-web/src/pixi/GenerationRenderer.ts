@@ -7,8 +7,10 @@ import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
+import { KruskalDsuHighlightOverlay } from "./KruskalDsuHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
+import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge } from "./renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -24,6 +26,7 @@ export class GenerationRenderer {
   private readonly markersContainer: Container;
   private readonly debugRefHighlightContainer: Container;
   private readonly debugValueHighlightContainer: Container;
+  private readonly kruskalDsuHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -33,6 +36,7 @@ export class GenerationRenderer {
   private readonly markers: WaypointsRenderer;
   private readonly debugRefHighlight: DebugRefHighlightOverlay;
   private readonly debugValueHighlight: DebugValueHighlightOverlay;
+  private readonly kruskalDsuHighlight: KruskalDsuHighlightOverlay;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
@@ -68,6 +72,7 @@ export class GenerationRenderer {
     this.markersContainer = new Container();
     this.debugRefHighlightContainer = new Container();
     this.debugValueHighlightContainer = new Container();
+    this.kruskalDsuHighlightContainer = new Container();
 
     viewport.addChild(this.gridContainer);
     viewport.addChild(this.floorContainer);
@@ -77,6 +82,7 @@ export class GenerationRenderer {
     viewport.addChild(this.markersContainer);
     viewport.addChild(this.debugRefHighlightContainer);
     viewport.addChild(this.debugValueHighlightContainer);
+    viewport.addChild(this.kruskalDsuHighlightContainer);
 
     this.grid = new GridRenderer(this.gridContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
@@ -86,6 +92,7 @@ export class GenerationRenderer {
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.debugRefHighlight = new DebugRefHighlightOverlay(this.debugRefHighlightContainer);
     this.debugValueHighlight = new DebugValueHighlightOverlay(this.debugValueHighlightContainer);
+    this.kruskalDsuHighlight = new KruskalDsuHighlightOverlay(this.kruskalDsuHighlightContainer);
 
     this.syncVisibility(useMazeStore.getState());
     this.renderAll(useMazeStore.getState());
@@ -114,7 +121,8 @@ export class GenerationRenderer {
         state.debugArena !== prev.debugArena ||
         state.debugStep !== prev.debugStep ||
         state.hoveredDebugRef !== prev.hoveredDebugRef ||
-        state.debugValueToggles !== prev.debugValueToggles;
+        state.debugValueToggles !== prev.debugValueToggles ||
+        state.showKruskalDsuGroups !== prev.showKruskalDsuGroups;
 
       if (dataChanged) {
         this.renderAll(state);
@@ -134,6 +142,7 @@ export class GenerationRenderer {
     this.markersContainer.visible = visible;
     this.debugRefHighlightContainer.visible = visible;
     this.debugValueHighlightContainer.visible = visible;
+    this.kruskalDsuHighlightContainer.visible = visible;
     if (visible) {
       this.renderAll(state);
     }
@@ -148,11 +157,10 @@ export class GenerationRenderer {
     }
   }
 
-  private debugView(state: ReturnType<typeof useMazeStore.getState>) {
-    const view = state.debugMode ? selectDebugMazeView(state.debugArena, state.debugStep) : null;
+  private debugView(state: ReturnType<typeof useMazeStore.getState>, debugMazeView: DebugMazeView | null) {
     return {
-      nodes: view ? view.nodes : state.nodes,
-      edges: view ? view.edges : state.edges,
+      nodes: debugMazeView ? debugMazeView.nodes : state.nodes,
+      edges: debugMazeView ? debugMazeView.edges : state.edges,
       // Debug replay doesn't reconstruct start/finish yet — RB doesn't emit events for them
       // (see Specs/event_log.md), so they must stay hidden rather than showing the final
       // post-generation values from the very first step.
@@ -164,7 +172,11 @@ export class GenerationRenderer {
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
     this.grid.render({ viewport: this.viewport }, cfg);
-    const view = this.debugView(state);
+    // Single call, reused below for both highlight overlays — selectDebugMazeView is itself
+    // memoized per (arena, debugStep), but calling it three times per render still meant three
+    // redundant lookups/comparisons for no benefit now that the result is just a local variable.
+    const debugMazeView = state.debugMode ? selectDebugMazeView(state.debugArena, state.debugStep) : null;
+    const view = this.debugView(state, debugMazeView);
 
     const cells: [number, number][] = view.nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
@@ -201,7 +213,6 @@ export class GenerationRenderer {
     // Persistent debug-value toggle highlighting (GitHub issue #131) — same debugMode gate as
     // debugRefHighlight above, but driven by debugValueToggles instead of a hover ref.
     if (state.debugMode && state.debugValueToggles.size > 0) {
-      const debugMazeView = selectDebugMazeView(state.debugArena, state.debugStep);
       const descriptors = state.debugArena?.debugValueNames ?? [];
       if (!this.debugValuePaletteCache || this.debugValuePaletteCache.descriptors !== descriptors) {
         const palette = buildDebugValuePalette(descriptors.length);
@@ -223,6 +234,15 @@ export class GenerationRenderer {
     } else {
       this.debugValueHighlight.clear();
     }
+
+    // Kruskal DSU-groups highlighting (GitHub issue #146) — one on/off toggle (`showKruskalDsuGroups`),
+    // not a `debugValueToggles`-style named set: DSU groups are the algorithm's core state (not a
+    // named, user-selectable value), so there's a single switch rather than one per group.
+    if (state.debugMode && state.debugArena?.algorithmKind === "kruskal" && state.showKruskalDsuGroups) {
+      this.kruskalDsuHighlight.render({ nodes: view.nodes, dsuGroups: debugMazeView?.dsuGroups ?? null, cfg });
+    } else {
+      this.kruskalDsuHighlight.clear();
+    }
   }
 
   destroy(): void {
@@ -235,6 +255,7 @@ export class GenerationRenderer {
     this.markers.destroy();
     this.debugRefHighlight.destroy();
     this.debugValueHighlight.destroy();
+    this.kruskalDsuHighlight.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
@@ -243,6 +264,7 @@ export class GenerationRenderer {
     this.markersContainer.destroy();
     this.debugRefHighlightContainer.destroy();
     this.debugValueHighlightContainer.destroy();
+    this.kruskalDsuHighlightContainer.destroy();
   }
 }
 
