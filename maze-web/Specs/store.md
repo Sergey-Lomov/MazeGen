@@ -103,22 +103,23 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 
 ### Debug
 
+Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-graph-snapshot model.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `debugMode` | `boolean` | Debug mode active |
-| `debugSnapshot` | `GenerationStepsSnapshot \| null` | Step-by-step generation snapshot |
-| `debugStep` | `number` | Current snapshot step index |
-| `debugStale` | `boolean` | Snapshot is outdated (config changed since last generate) |
-| `showDebugFrontier` | `boolean` | Show active_nodes / current_src overlays |
+| `debugArena` | `DebugArenaHandle \| null` | Raw event tape + node list from the last debug generation run; reconstructed maze state at `debugStep` is derived on demand via `selectDebugMazeView`, never cached |
+| `debugStep` | `number` | Current mutating-event step index into `debugArena.tape` |
+| `debugStale` | `boolean` | Arena is outdated (config changed since last generate) |
+| `debugAutoPlayDelay` | `number` | Delay (ms) between steps during auto-play |
 
 ## Key Invariants
 
 - `tessellationConfig` = config driving field setup UI; `activeTessellationConfig` = config used at last generation. They diverge when user changes config after generating.
 - `fieldPoints` mirrors `freeFieldPoints[tessellationKind]` when `isEditingField`.
 - `autoLockedNodes` is recomputed whenever `presetConnections`, `tessellationConfig`, or `autoLock` change.
-- `debugStale = true` whenever any generation-relevant config changes after a snapshot exists.
+- `debugStale = true` whenever any generation-relevant config changes after an arena exists.
 - `debugMode = false` clears `debugStale`.
-- Debug snapshot step 0 is a synthetic client-side empty state; WASM steps start at index 1.
 
 ## Actions
 
@@ -130,12 +131,12 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 - `setTessellationConfig(cfg)` — full config override, derives kind/shape from config type
 
 ### Generation
-- `generate()` — generates with current (possibly random) seed; sets `debugSnapshot` if `debugMode`
+- `generate()` — generates with current (possibly random) seed; sets `debugArena` if `debugMode`
 - `regenerate()` — repeats generate with `lastUsedSeed`
 - `reset()` — clears maze data
 - `setDebugMode(v)` — enable/disable; disabling also clears `debugStale`
 - `setDebugStep(n)` — set current step
-- `setShowDebugFrontier(v)` — toggle frontier overlay visibility
+- `setDebugAutoPlayDelay(ms)` — set auto-play delay
 
 ### Field
 - `addFieldPoint/removeFieldPoint/addFieldPoints/removeFieldPoints/clearFieldPoints` — mutate free-draw cell set

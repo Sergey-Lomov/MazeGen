@@ -164,7 +164,6 @@ pub fn generate<T: Tessellation>(
     seed: u64,
     start: NodeId,
     preset_state: &PresetState,
-    mut on_step: Option<&mut super::StepCallback<'_>>,
     mut event_log: Option<&mut EventLog<RecursiveBacktrackerEvent>>,
     checkpoint_log: Option<&mut CheckpointLog>,
 ) {
@@ -224,7 +223,6 @@ pub fn generate<T: Tessellation>(
                 let idx = g.emit(RecursiveBacktrackerEvent::VertexPushed(chosen));
                 if let Some(t) = checkpoints.as_mut() { t.record(idx, None); }
             }
-            if let Some(ref mut cb) = on_step { cb(graph, current, &stack); }
         }
     }
 }

@@ -55,8 +55,8 @@ pub struct TimingEntry {
 /// Per-stage and per-check/per-strategy timing breakdown for one `build_maze` call — see GitHub
 /// issue #56. `initial_build_ms` is left at `0.0` by `build_maze` itself (it only runs QC/repair,
 /// not the initial `generate_maze` stage) — `maze-wasm::run_generate` fills it in after the fact,
-/// since it's the only caller that also runs `generate_maze`/`generate_maze_steps` before
-/// `build_maze`. Every other field is fully populated by `build_maze`.
+/// since it's the only caller that also runs `generate_maze` before `build_maze`. Every other
+/// field is fully populated by `build_maze`.
 #[derive(Debug, Clone, Default)]
 pub struct GenerationTiming {
     pub initial_build_ms: f64,

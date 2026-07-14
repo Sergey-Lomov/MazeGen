@@ -104,22 +104,9 @@ The junction branch (`corridor_chance` roll failed) handles small neighbor count
 - `max = 1` → `connected = [free_neighbors[0]]` unconditionally; `junction_count` not called
 - `max >= 2` → `junction_count(max, ...)` determines connection count in range `[2, max]`
 
-## Step Snapshots (debug mode)
-
-When `debug: true` is set in `GenerateConfig`, the WASM call returns a `debug_steps` array inside `MazeSnapshot`. Each entry is a full snapshot after one step (each node processing that produces at least one edge). Steps are full snapshots, not deltas. Intended for visual debugging only — memory cost is O(nodes × edges) for large fields.
-
-Each step carries:
-- `edges` — full edge list at this step
-- `active_nodes` — node ids currently in the frontier/active set (highlighted in blue overlay)
-- `current_src` — node id chosen as source this step (always a valid node id; never null for real steps)
-
-The client prepends a synthetic first step `{ edges: [], active_nodes: [], current_src: null }` so step 0 shows the empty graph before any edges are added. Start/finish markers are hidden for all steps except the last.
-
-When `debug: false` (default), `debug_steps` is an empty array and no step data is computed.
-
 ## Teleport Connections
 
-A **teleport** is a connection type (`EdgeKind::Teleport`, alongside `EdgeKind::Basic`) that links two tiles regardless of geometric adjacency — one-way or two-way, same as a `Basic` connection. Unlike an earlier design, teleports are **not** a separate post-generation pass: each generation algorithm rolls `teleport_chance` inline, at the same point it would otherwise commit to a normal geometrically-adjacent connection, and — on a hit — substitutes or adds a non-adjacent `Teleport` edge instead. This makes teleports full participants in the maze from the moment they're added: they appear as part of the algorithm's own steps in `generate_maze_steps`'s debug output (no synthetic trailing steps), and are present from the repair pipeline's very first pass onward — cycle-removal strategies (`InvalidLoopRandomStrategy`, `InvalidLoopScoredStrategy`) can remove a `Teleport` edge exactly like a `Basic` one, since SCC/cycle code operates purely on graph traversal and never branches on edge kind. Repair strategies that *add* connections (e.g. region-merge) do not create teleports — that is a separate, not-yet-implemented capability.
+A **teleport** is a connection type (`EdgeKind::Teleport`, alongside `EdgeKind::Basic`) that links two tiles regardless of geometric adjacency — one-way or two-way, same as a `Basic` connection. Unlike an earlier design, teleports are **not** a separate post-generation pass: each generation algorithm rolls `teleport_chance` inline, at the same point it would otherwise commit to a normal geometrically-adjacent connection, and — on a hit — substitutes or adds a non-adjacent `Teleport` edge instead. This makes teleports full participants in the maze from the moment they're added: they are present from the repair pipeline's very first pass onward — cycle-removal strategies (`InvalidLoopRandomStrategy`, `InvalidLoopScoredStrategy`) can remove a `Teleport` edge exactly like a `Basic` one, since SCC/cycle code operates purely on graph traversal and never branches on edge kind. Repair strategies that *add* connections (e.g. region-merge) do not create teleports — that is a separate, not-yet-implemented capability.
 
 Only `CustomVertexBased` and `CustomEdgeBased` support `teleport_chance`/`teleport_one_way_chance` — each has its own model, described in its own section below (`CustomVertexBased`'s model is described here; `CustomEdgeBased`'s is under its own heading further down). `RecursiveBacktracker`, `WilsonAlgorithm`, and `KruskalAlgorithm` are canonical textbook algorithms with no notion of directionality or non-adjacent connections; they add only plain bidirectional passages and ignore `elements` entirely (`one_way_chance`, `teleport_chance`, `teleport_one_way_chance` have no effect on them). Any one-way passages or teleports on top of a canonical algorithm's output must be introduced afterward via QC repair strategies.
 
@@ -150,22 +137,17 @@ Algorithm parameters are passed via the `initial` field of `GenerateConfig`:
     "directionality": 0.0,
     "cyclicity": 0.0
   },
-  "elements": { "one_way_chance": 0.04, "teleport_chance": 0.0, "teleport_one_way_chance": 0.0 },
-  "debug": false
+  "elements": { "one_way_chance": 0.04, "teleport_chance": 0.0, "teleport_one_way_chance": 0.0 }
 }
 ```
 
 All numeric values are clamped to `[0.0, 1.0]` in the WASM layer before use.
 
-The `generate` WASM function accepts `debug: bool` (default `false`). When `true`, the response `MazeSnapshot` includes a populated `debug_steps: GenerationStepDto[]`. When `false`, `debug_steps` is empty and no step data is computed.
-
 ## QC Experiment Mode
 
-`GenerateConfig.qc_experiment: bool` (default `false`) skips the generation algorithm entirely — no `generate_maze`/`generate_maze_steps` call is made. The graph fed into `build_maze`'s QC/repair pass is exactly what `build_preset_state` built from the preset connections (Passage/OneWay edges applied, nothing else) — lets a user hand-craft an arbitrary preset setup and observe how QC/repair reshapes it in isolation, without generation noise.
+`GenerateConfig.qc_experiment: bool` (default `false`) skips the generation algorithm entirely — no `generate_maze` call is made. The graph fed into `build_maze`'s QC/repair pass is exactly what `build_preset_state` built from the preset connections (Passage/OneWay edges applied, nothing else) — lets a user hand-craft an arbitrary preset setup and observe how QC/repair reshapes it in isolation, without generation noise.
 
 **No preset protection in this mode.** The `PresetState` passed to `build_maze` is `PresetState::empty()` (via `PresetState::for_repair(qc_experiment)`, `maze-core/src/generation/preset_state.rs`) rather than the one `build_preset_state` actually computed — repair is free to add or remove any edge, including ones the preset setup established (Wall-blocked pairs, Passage edges, locked nodes, manual or auto-computed). The graph itself still starts from the preset setup; only the *constraints* repair would otherwise honor are dropped. `maze-wasm::run_generate` and `maze-runner::run_generate_typed` both apply this identically, so native repro tests (`maze-runner/tests/repro.rs`) faithfully reproduce browser QC-experiment behavior.
-
-`debug_steps` is always empty in this mode (no generation step ever runs) — `config.debug` is ignored, not an error, when `qc_experiment` is set.
 
 Web UI: a "QC Only" toggle (`Switch`) on the generation card, next to Generate/Re-Generate, always available (no dev/debug gating) — see GitHub issue #96 (originally a separate button, GitHub issue #93). The toggle is a persistent part of generation config: `qcExperiment` (`maze-web/src/store/storeTypes.ts`) is serialized into the project file (`ProjectFile.generation.qcExperiment`, `maze-web/src/store/projectExport/types.ts`), so loading a project restores it and the next `generate`/`regenerate` call reproduces `qc_experiment` correctly without the user re-selecting the mode. Since the toggle can be flipped after a run without a new generation happening, a separate `lastUsedQcExperiment` flag records what the last actual `generate`/`regenerate`/`loadProject` call used; the debug-export payload (`buildExactGenerateCallPayload`) reads `lastUsedQcExperiment`, not the live toggle, so it faithfully reproduces the exact config the core actually last received.
 

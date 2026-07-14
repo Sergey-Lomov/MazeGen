@@ -26,7 +26,7 @@ pub use space::{
     TriPoint, TriFace, TriTessellation, tri_rect, tri_triangle, tri_hexagon,
 };
 pub use meta::MazeMeta;
-pub use generation::{generate_maze, generate_maze_steps, build_preset_state, ElementsConfig, GenerationConfig, GenerationAlgorithm, GenerationEdge, GenerationStep, PresetConnection, PresetConnectionState, TeleportDirection, NodeLockKind, LockedNode, PresetState};
+pub use generation::{generate_maze, build_preset_state, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, TeleportDirection, NodeLockKind, LockedNode, PresetState};
 pub use generation::pipeline::{build_maze, MAX_REPAIR_ITERATIONS, RepairLimits, GenerationTiming, TimingEntry};
 
 pub struct MazeAnalysis {

@@ -20,10 +20,6 @@ Generates a maze and returns a serialized `MazeSnapshot`. Returns `Err(JsValue)`
 
 Config is deserialized as `GenerateConfig` (see below). If `null` or `undefined`, uses `GenerateConfig::default()`.
 
-### `generate_steps(seed: bigint, config: JsValue) -> Result<JsValue, JsValue>`
-
-Same as `generate` but returns a `GenerationStepsSnapshot` — each intermediate graph state during generation. Used for step-by-step debug visualization.
-
 ### `available_checks() -> JsValue`
 
 Returns `Array<CheckDescriptor>` — list of all registered quality checks.
@@ -124,17 +120,6 @@ Validation: all size fields must be `> 0`, otherwise returns error string.
 `x`/`y` are tessellation-specific logical coordinates (not pixels). Coordinate semantics depend on tessellation type and are interpreted by the web client renderer.
 
 All directed edges included — a bidirectional corridor produces two entries.
-
-### `GenerationStepsSnapshot`
-
-```ts
-{
-  nodes: Array<{ id: number, x: number, y: number }>,
-  steps: Array<{ edges: Array<{ from: number, to: number }> }>,
-}
-```
-
-Each step is a snapshot of all edges present after that generation step.
 
 ### `CheckDescriptor`
 

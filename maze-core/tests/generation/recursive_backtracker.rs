@@ -28,7 +28,7 @@ fn recursive_backtracker_is_deterministic() {
 fn recursive_backtracker_event_log_mutating_events_match_graph_edges() {
     let (mut graph, field, start) = build(4, 4);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 11, start, &empty_preset(), None, Some(&mut log), None);
+    generate_recursive_backtracker(&mut graph, &field, 11, start, &empty_preset(), Some(&mut log), None);
     let tape = log.finish();
 
     let edges_from_events: Vec<(_, _)> = tape
@@ -58,7 +58,7 @@ fn recursive_backtracker_event_log_mutating_events_match_graph_edges() {
 fn recursive_backtracker_event_tree_nests_events_under_step_scopes() {
     let (mut graph, field, start) = build(3, 3);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 3, start, &empty_preset(), None, Some(&mut log), None);
+    generate_recursive_backtracker(&mut graph, &field, 3, start, &empty_preset(), Some(&mut log), None);
     let tape = log.finish();
 
     let mut saw_step_with_events = false;
@@ -81,7 +81,7 @@ fn recursive_backtracker_event_tree_nests_events_under_step_scopes() {
 fn recursive_backtracker_event_log_none_is_zero_overhead_and_still_generates() {
     let (mut graph, field, start) = build(4, 4);
     let node_count = graph.nodes().count();
-    generate_recursive_backtracker(&mut graph, &field, 5, start, &empty_preset(), None, None, None);
+    generate_recursive_backtracker(&mut graph, &field, 5, start, &empty_preset(), None, None);
     assert_perfect_maze(&graph, node_count);
 }
 
@@ -94,14 +94,14 @@ fn recursive_backtracker_checkpoint_log_without_event_log_panics() {
     // bug that must fail loudly, not silently produce an empty checkpoint log.
     let (mut graph, field, start) = build(3, 3);
     let mut checkpoint_log = maze_core::event_log::CheckpointLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), None, None, Some(&mut checkpoint_log));
+    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), None, Some(&mut checkpoint_log));
 }
 
 #[test]
 fn recursive_backtracker_dead_end_emits_pop_without_edge() {
     let (mut graph, field, start) = build(2, 2);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), None, Some(&mut log), None);
+    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), Some(&mut log), None);
     let tape = log.finish();
 
     let has_dead_end = tape.iter().any(|e| matches!(e, RecursiveBacktrackerEvent::DeadEnd));
@@ -118,7 +118,7 @@ fn recursive_backtracker_single_step_emits_exact_event_sequence() {
     let (mut graph, field, start) = build(2, 1);
     let other = field.neighbors(start)[0];
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 0, start, &empty_preset(), None, Some(&mut log), None);
+    generate_recursive_backtracker(&mut graph, &field, 0, start, &empty_preset(), Some(&mut log), None);
     let tape = log.finish();
 
     let root = tape.root();
@@ -151,7 +151,7 @@ fn recursive_backtracker_single_step_emits_exact_event_sequence() {
 fn recursive_backtracker_event_kinds_agree_with_is_mutating() {
     let (mut graph, field, start) = build(3, 3);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 2, start, &empty_preset(), None, Some(&mut log), None);
+    generate_recursive_backtracker(&mut graph, &field, 2, start, &empty_preset(), Some(&mut log), None);
     let tape = log.finish();
 
     for event in tape.iter() {
@@ -174,7 +174,7 @@ fn recursive_backtracker_event_type_ids_are_unique_and_nonzero() {
     // against a copy-paste duplicate when a new variant is added to the registry.
     let (mut graph, field, start) = build(4, 4);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 9, start, &empty_preset(), None, Some(&mut log), None);
+    generate_recursive_backtracker(&mut graph, &field, 9, start, &empty_preset(), Some(&mut log), None);
     let tape = log.finish();
 
     let mut seen_by_variant = std::collections::HashMap::new();
@@ -200,7 +200,7 @@ fn recursive_backtracker_event_type_ids_are_unique_and_nonzero() {
 fn recursive_backtracker_encode_round_trips_tree_shape() {
     let (mut graph, field, start) = build(4, 4);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 6, start, &empty_preset(), None, Some(&mut log), None);
+    generate_recursive_backtracker(&mut graph, &field, 6, start, &empty_preset(), Some(&mut log), None);
     let tape = log.finish();
     let encoded = tape.encode();
 
@@ -227,23 +227,21 @@ fn generate_maze_with_events_returns_none_for_non_recursive_backtracker() {
         algorithm: GenerationAlgorithm::WilsonAlgorithm,
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
-    }, &empty_preset(), false);
+    }, &empty_preset());
     assert!(result.tape.is_none(), "only Recursive Backtracker is instrumented so far");
     assert!(result.checkpoints.is_none(), "only Recursive Backtracker is instrumented so far");
-    assert!(result.steps.is_empty());
 }
 
 #[test]
-fn generate_maze_with_events_collects_steps_when_requested() {
+fn generate_maze_with_events_collects_tape_for_recursive_backtracker() {
     let (mut graph, field, start) = build(3, 3);
     let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
         algorithm: GenerationAlgorithm::RecursiveBacktracker,
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
-    }, &empty_preset(), true);
+    }, &empty_preset());
     assert!(result.tape.is_some(), "Recursive Backtracker must produce a tape");
     assert!(result.checkpoints.is_some(), "Recursive Backtracker must produce a checkpoint log");
-    assert!(!result.steps.is_empty(), "collect_steps=true must populate GenerationStep trace alongside the event tree");
 }
 
 // --- Intermediate snapshot checkpointing (GitHub issue #128) ---
@@ -304,7 +302,7 @@ fn recursive_backtracker_checkpoints_match_replay_from_scratch() {
     let (mut graph, field, start) = build(20, 20);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
     let mut checkpoint_log = maze_core::event_log::CheckpointLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 42, start, &empty_preset(), None, Some(&mut log), Some(&mut checkpoint_log));
+    generate_recursive_backtracker(&mut graph, &field, 42, start, &empty_preset(), Some(&mut log), Some(&mut checkpoint_log));
     let tape = log.finish();
     let encoded_tape = tape.encode();
     let encoded_checkpoints = checkpoint_log.encode();
@@ -340,7 +338,7 @@ fn recursive_backtracker_short_run_records_no_checkpoints() {
     let (mut graph, field, start) = build(3, 3);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
     let mut checkpoint_log = maze_core::event_log::CheckpointLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), None, Some(&mut log), Some(&mut checkpoint_log));
+    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), Some(&mut log), Some(&mut checkpoint_log));
     let encoded_checkpoints = checkpoint_log.encode();
     assert!(encoded_checkpoints.table.is_empty(), "a 3x3 run must not reach CHECKPOINT_INTERVAL mutating events");
 }

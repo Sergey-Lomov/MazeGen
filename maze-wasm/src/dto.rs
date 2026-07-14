@@ -120,14 +120,6 @@ pub struct GenerationTimingDto {
 }
 
 #[derive(Serialize)]
-pub struct GenerationStepDto {
-    pub edges:        Vec<EdgeDto>,
-    pub active_nodes: Vec<u32>,
-    pub current_src:  u32,
-}
-
-
-#[derive(Serialize)]
 pub struct JunctionBucket {
     pub degree: usize,
     pub count: usize,
@@ -237,7 +229,6 @@ pub struct MazeSnapshot {
     pub teleport_edge_stats: TeleportEdgeStatsDto,
     pub route_info: Option<RouteInfoDto>,
     pub graph_analytics: GraphAnalyticsDto,
-    pub debug_steps: Vec<GenerationStepDto>,
     /// `Some` only when this snapshot came from a generation run (`run_generate`) — see
     /// `GenerationTimingDto`'s doc comment.
     pub timing: Option<GenerationTimingDto>,

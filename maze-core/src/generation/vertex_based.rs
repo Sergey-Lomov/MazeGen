@@ -4,7 +4,7 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
-use super::{ElementsConfig, GenerationParams, PresetState, StepCallback, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
+use super::{ElementsConfig, GenerationParams, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
 
 struct FrontierEntry {
     node:   NodeId,
@@ -45,10 +45,6 @@ impl GenState {
         add_to_frontier(start, None, &mut state.frontier, &mut state.in_frontier);
         state
     }
-
-    fn frontier_ids(&self) -> Vec<NodeId> {
-        self.frontier.iter().map(|e| e.node).collect()
-    }
 }
 
 pub fn generate<T: Tessellation>(
@@ -59,19 +55,18 @@ pub fn generate<T: Tessellation>(
     params: &GenerationParams,
     elements: &ElementsConfig,
     preset_state: &PresetState,
-    mut on_step: Option<&mut StepCallback<'_>>,
 ) {
     let mut state = GenState::new(graph, seed, start);
 
     loop {
         if state.frontier.is_empty() {
-            if !handle_empty_frontier(graph, field, params, elements, preset_state, &mut state, &mut on_step) {
+            if !handle_empty_frontier(graph, field, params, elements, preset_state, &mut state) {
                 break;
             }
             continue;
         }
 
-        step_from_frontier(graph, field, params, elements, preset_state, &mut state, &mut on_step);
+        step_from_frontier(graph, field, params, elements, preset_state, &mut state);
     }
 }
 
@@ -86,7 +81,6 @@ fn handle_empty_frontier<T: Tessellation>(
     elements: &ElementsConfig,
     preset_state: &PresetState,
     state: &mut GenState,
-    on_step: &mut Option<&mut StepCallback<'_>>,
 ) -> bool {
     // Teleport roll happens before any reserve lookup — a hit replaces this step's
     // entire mechanism (bridges via a teleport instead of a geometric-adjacency bridge).
@@ -106,8 +100,6 @@ fn handle_empty_frontier<T: Tessellation>(
         try_add_edge_kind(graph, bridge, src, EdgeKind::Teleport, elements.teleport_one_way_chance, preset_state, &mut state.rng);
         state.visited.insert(src);
         add_to_frontier(src, Some(bridge), &mut state.frontier, &mut state.in_frontier);
-        let frontier_ids = state.frontier_ids();
-        if let Some(cb) = on_step { cb(graph, src, &frontier_ids); }
         return true;
     }
 
@@ -140,8 +132,6 @@ fn handle_empty_frontier<T: Tessellation>(
     try_add_edge(graph, bridge, src, elements, preset_state, &mut state.rng);
     state.visited.insert(src);
     add_to_frontier(src, Some(bridge), &mut state.frontier, &mut state.in_frontier);
-    let frontier_ids = state.frontier_ids();
-    if let Some(cb) = on_step { cb(graph, src, &frontier_ids); }
     true
 }
 
@@ -155,7 +145,6 @@ fn step_from_frontier<T: Tessellation>(
     elements: &ElementsConfig,
     preset_state: &PresetState,
     state: &mut GenState,
-    on_step: &mut Option<&mut StepCallback<'_>>,
 ) {
     let fi = choose_from_frontier(&state.frontier, params, &mut state.rng);
     let src = state.frontier[fi].node;
@@ -188,16 +177,13 @@ fn step_from_frontier<T: Tessellation>(
 
     let connected = choose_connect_targets(field, params, state, &free_regular, parent, src, teleport_for_connect);
 
-    let cyclic_added = if let Some(cyclic) = cyclic_dst {
+    if let Some(cyclic) = cyclic_dst {
         if teleport_spent_on_cycle {
             try_add_edge_kind(graph, src, cyclic, EdgeKind::Teleport, elements.teleport_one_way_chance, preset_state, &mut state.rng);
         } else {
             try_add_edge(graph, src, cyclic, elements, preset_state, &mut state.rng);
         }
-        true
-    } else {
-        false
-    };
+    }
 
     // Preset neighbors: already connected by preset edges, so skip try_add_edge.
     // Just mark visited and push to frontier so the algorithm traverses through them.
@@ -220,7 +206,6 @@ fn step_from_frontier<T: Tessellation>(
     // Teleport connection: added alongside whatever corridor/junction chose above, to a
     // random unvisited node in the graph (not necessarily a geometric neighbor). Skipped if
     // the teleport roll was already spent on the cyclic edge, or if no unvisited node remains.
-    let mut teleport_dst: Option<NodeId> = None;
     if teleport_for_connect {
         let unvisited: Vec<NodeId> = state.all_nodes.iter().copied()
             .filter(|n| !state.visited.contains(n))
@@ -231,7 +216,6 @@ fn step_from_frontier<T: Tessellation>(
             state.visited.insert(dst);
             state.in_reserve.remove(&dst);
             add_to_frontier(dst, Some(src), &mut state.frontier, &mut state.in_frontier);
-            teleport_dst = Some(dst);
         }
     }
 
@@ -243,11 +227,6 @@ fn step_from_frontier<T: Tessellation>(
             state.reserve.push(n);
             state.in_reserve.insert(n);
         }
-    }
-
-    if !connected.is_empty() || !free_preset.is_empty() || cyclic_added || teleport_dst.is_some() {
-        let frontier_ids = state.frontier_ids();
-        if let Some(cb) = on_step { cb(graph, src, &frontier_ids); }
     }
 }
 

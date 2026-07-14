@@ -73,11 +73,6 @@ function validateSnapshot(raw: unknown): MazeSnapshot {
     if (!nodeIds.has(e.from)) throw new Error(`WASM snapshot: edge.from ${e.from} not in nodes`);
     if (!nodeIds.has(e.to)) throw new Error(`WASM snapshot: edge.to ${e.to} not in nodes`);
   }
-  if (!Array.isArray(s.debug_steps) || !(s.debug_steps as unknown[]).every(
-    (step: unknown) => typeof step === "object" && step !== null &&
-      Array.isArray((step as Record<string, unknown>).edges) &&
-      Array.isArray((step as Record<string, unknown>).active_nodes)
-  )) throw new Error("WASM snapshot: invalid debug_steps");
   return s as unknown as MazeSnapshot;
 }
 

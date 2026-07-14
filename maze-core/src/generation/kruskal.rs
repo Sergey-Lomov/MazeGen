@@ -12,7 +12,6 @@ pub fn generate<T: Tessellation>(
     field: &Field<T>,
     seed: u64,
     preset_state: &PresetState,
-    mut on_step: Option<&mut super::StepCallback<'_>>,
 ) {
     let mut rng = MazeRng::seed_from_u64(seed);
 
@@ -57,7 +56,6 @@ pub fn generate<T: Tessellation>(
         if ra != rb {
             dsu.union_by_min(ra, rb);
             try_add_bidirectional_edge(graph, a, b, preset_state);
-            if let Some(ref mut cb) = on_step { cb(graph, a, &[]); }
         }
     }
 }

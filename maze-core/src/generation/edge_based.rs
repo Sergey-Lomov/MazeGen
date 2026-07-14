@@ -4,7 +4,7 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
-use super::{EdgeBasedParams, ElementsConfig, PresetState, StepCallback, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
+use super::{EdgeBasedParams, ElementsConfig, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NodeState { Unseen, Active, Visited }
@@ -35,7 +35,6 @@ pub fn generate<T: Tessellation>(
     params: &EdgeBasedParams,
     elements: &ElementsConfig,
     preset_state: &PresetState,
-    mut on_step: Option<&mut StepCallback<'_>>,
 ) {
     let mut rng = MazeRng::seed_from_u64(seed);
 
@@ -105,8 +104,6 @@ pub fn generate<T: Tessellation>(
         let depth = nodes.get(&src).map(|e| e.tree_depth + 1).unwrap_or(1);
         nodes.insert(dst, NodeEntry { state: NodeState::Active, parent: Some(src), tree_depth: depth, teleport_rolled: false });
         active.push(dst);
-
-        if let Some(ref mut cb) = on_step { cb(graph, src, &active); }
 
         if is_src_exhausted(src, &nodes, preset_connected, preset_state, field) {
             remove_from_active(src, &mut active, &mut nodes);

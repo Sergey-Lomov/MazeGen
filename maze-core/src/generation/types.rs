@@ -1,6 +1,3 @@
-use crate::ids::NodeId;
-use crate::graph::EdgeKind;
-
 #[derive(Debug, Clone)]
 pub struct ElementsConfig {
     pub one_way_chance: f64,
@@ -124,16 +121,3 @@ impl Default for GenerationConfig {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct GenerationEdge {
-    pub from: NodeId,
-    pub to:   NodeId,
-    pub kind: EdgeKind,
-}
-
-#[derive(Debug, Clone)]
-pub struct GenerationStep {
-    pub edges:        Vec<GenerationEdge>,
-    pub active_nodes: Vec<NodeId>,
-    pub current_src:  NodeId,
-}

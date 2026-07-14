@@ -140,17 +140,7 @@ pub fn generate_maze<F: Field>(
     start: NodeId,
     config: GenerationConfig,
 )
-
-pub fn generate_maze_steps<F: Field>(
-    graph: &mut Graph,
-    field: &F,
-    seed: u64,
-    start: NodeId,
-    config: GenerationConfig,
-) -> Vec<GenerationStep>
 ```
-
-`generate_maze_steps` returns a snapshot of all edges after each step — used for debug visualization.
 
 Note: `start` is part of the public API for all algorithms but is only meaningful for `CustomVertexBased`, `RecursiveBacktracker`, and `WilsonAlgorithm`. `KruskalAlgorithm` ignores it.
 

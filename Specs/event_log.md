@@ -232,7 +232,6 @@ An out-of-range `targetStep` is detected by the bounded scan coming up short (fe
 
 - Store integration (`mazeStore.ts`, `generateConfigBuilder.ts` wiring)
 - Right-panel debug UI
-- Cleanup of the old `debug_steps`/`GenerationStepDto` path
 - Intermediate snapshots / checkpointing (core-side) — added in #128, see below
 
 ## Intermediate Snapshot Checkpointing (#128)

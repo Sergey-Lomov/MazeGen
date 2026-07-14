@@ -12,7 +12,6 @@ pub fn generate<T: Tessellation>(
     seed: u64,
     start: NodeId,
     preset_state: &PresetState,
-    mut on_step: Option<&mut super::StepCallback<'_>>,
 ) {
     let all_nodes: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
     let mut visited: HashSet<NodeId> = HashSet::new();
@@ -54,7 +53,6 @@ pub fn generate<T: Tessellation>(
             let Some(&dst) = next.get(&node) else { break; };
             try_add_bidirectional_edge(graph, node, dst, preset_state);
             visited.insert(node);
-            if let Some(ref mut cb) = on_step { cb(graph, node, &[]); }
             node = dst;
         }
 

@@ -45,7 +45,6 @@ const validSnapshot = {
   nav_nodes: [{ node_id: 0 }, { node_id: 1 }],
   nav_edges: [{ from: 0, to: 1, path: [0, 1] }],
   graph_analytics: { node_count: 2, edge_count: 1, component_count: 1, cycle_count: 0, cycle_region_count: 0, node_component: {}, pure_cycle_node_ids: [], pure_cycle_edge_pairs: [], cycle_analysis_overflowed: false, region_classes: {} },
-  debug_steps: [],
 };
 
 describe("generateMaze / validateSnapshot", () => {
@@ -116,14 +115,14 @@ describe("generateMaze / validateSnapshot", () => {
   });
 
   it("accepts empty nodes and edges", () => {
-    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [], debug_steps: [] }));
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [] }));
     const result = generateMaze(0, defaultConfig);
     expect(result.snapshot.nodes).toHaveLength(0);
     expect(result.snapshot.edges).toHaveLength(0);
   });
 
   it("accepts null start/finish", () => {
-    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [], debug_steps: [] }));
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [] }));
     const result = generateMaze(1, defaultConfig);
     expect(result.snapshot.start).toBeNull();
     expect(result.snapshot.finish).toBeNull();

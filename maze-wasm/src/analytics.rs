@@ -264,7 +264,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         teleport_edge_stats,
         route_info,
         graph_analytics: graph_analytics_dto,
-        debug_steps: vec![],
         timing: None,
     })
 }

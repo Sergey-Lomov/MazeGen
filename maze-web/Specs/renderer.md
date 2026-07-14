@@ -43,25 +43,22 @@ Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. R
 
 | Layer | Renderer | Purpose |
 |-------|----------|---------|
+| `gridContainer` | `GridRenderer` | Own grid layer, bottom-most (see `CLAUDE.md`'s renderer-ownership rule) |
 | `floorContainer` | `CellFillRenderer` | Fill all cells with `FLOOR_COLOR` |
 | `closedCellsContainer` | `CellFillRenderer` | Fill isolated cells (no edges) with `WALL_COLOR` |
 | `wallsContainer` | `WallRenderer` | Draw wall/passage edges |
+| `teleportContainer` | `TeleportRenderer` | Draw teleport edge markers |
 | `markersContainer` | `WaypointsRenderer` | Draw start/finish markers |
-| `debugActiveContainer` | `CellFillRenderer` | Frontier highlight (active nodes, blue) |
-| `debugSrcContainer` | `CellFillRenderer` | Current source highlight (yellow) |
 
-**Visibility:**
-- All layers: hidden when `!generationOpen || !showMaze`
-- `debugActiveContainer` / `debugSrcContainer`: additionally hidden when `!showDebugFrontier`
+**Visibility:** all layers hidden when `openCard !== "generation" || !showMaze`.
 
 **Store subscription fires `renderAll` when:**
-- `nodes`, `edges`, `start`, `finish`, `activeTessellationConfig` change
-- `debugMode`, `debugSnapshot`, `debugStep` change
+- `nodes`, `edges`, `start`, `finish`, `tessellationConfig`, `activeTessellationConfig` change
+- `debugMode`, `debugArena`, `debugStep` change
 
-**Debug view projection (`debugView`):**
-- When `debugMode && debugSnapshot`: reads nodes from snapshot, edges from `steps[debugStep].edges`
-- Start/finish hidden on all steps except the last
-- `currentStep` provides `active_nodes` and `current_src` for frontier rendering
+**Debug view projection (`debugView`)** — event-tree based (GitHub issue #124/#125), replaces the old per-step full-graph-snapshot model:
+- When `debugMode`: `selectDebugMazeView(debugArena, debugStep)` replays the event tape up to `debugStep` (from the nearest checkpoint, see `Specs/event_log.md`'s Intermediate Snapshot Checkpointing) to reconstruct `nodes`/`edges`; falls back to live `state.nodes`/`state.edges` when there's no arena yet
+- Start/finish stay hidden for the whole debug replay — Recursive Backtracker doesn't emit events for them (see `Specs/event_log.md`), so there's no reconstructed value to show until generation's real (non-debug) result is used instead
 
 **Closed cells** (`closedCells` layer): nodes with no edges (neither `from` nor `to`) in the current edge set. Rendered in `WALL_COLOR` to visually merge with walls.
 

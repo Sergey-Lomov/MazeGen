@@ -87,7 +87,6 @@ export const mockSnapshot = {
   edge_stats: { bidirectional: 0, one_way_passages: 1, walls: 0 },
   teleport_edge_stats: { two_way: 0, one_way: 0 },
   route_info: null,
-  debug_steps: [],
   timing: null,
 };
 

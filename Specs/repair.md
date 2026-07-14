@@ -885,7 +885,7 @@ pub struct GenerationTiming {
 pub fn build_maze<T: Tessellation>(...) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming)
 ```
 
-- `initial_build_ms` is left at `0.0` by `build_maze` itself — it only runs the QC/repair fixpoint loop, not the initial `generate_maze`/`generate_maze_steps` call. `maze-wasm::run_generate` is the only caller that also runs that stage; it times it with the same `now_ms()` clock and fills `timing.initial_build_ms` in after `build_maze` returns.
+- `initial_build_ms` is left at `0.0` by `build_maze` itself — it only runs the QC/repair fixpoint loop, not the initial `generate_maze` call. `maze-wasm::run_generate` is the only caller that also runs that stage; it times it with the same `now_ms()` clock and fills `timing.initial_build_ms` in after `build_maze` returns.
 - `qc_total_ms`/`per_check` cover every `RuleTrait::run_checks` call across the whole `run_full` call — every fixpoint iteration's QC pass (`run_repair_stages`) plus the final unconditional report pass (`collect_final_report`, `RuleTrait::report_checks`) that computes `remaining`. Since GitHub issue #106, this is `QualityControlEngine::run_full`'s single accumulator, not a separate timed/untimed method pair — see "Rule, Stage, and the unified QualityControlEngine" above.
 - `repair_total_ms`/`per_strategy` cover every `RuleTrait::dispatch_repair` call (one per fixpoint iteration's active rule).
 - `per_check` is keyed by **check type id** (`Check::check_type_id()`, e.g. `"min_loop_length"` — the same string as `available_checks()`'s `CheckDescriptor.id`), not by instance id — two active instances of the same type (GitHub issue #60) aggregate into one entry, since the issue calls for per-check-*type* timing, not per-configured-instance.

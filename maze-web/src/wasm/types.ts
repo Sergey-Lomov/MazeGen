@@ -149,7 +149,6 @@ export interface MazeSnapshot {
   teleport_edge_stats: TeleportEdgeStatsDto;
   route_info: RouteInfoDto | null;
   graph_analytics: GraphAnalyticsDto;
-  debug_steps: GenerationStepDto[];
   timing: GenerationTimingDto | null;
 }
 
@@ -262,12 +261,6 @@ export interface ElementsConfig {
   teleport_one_way_chance?: number;
 }
 
-export interface GenerationStepDto {
-  edges: EdgeDto[];
-  active_nodes: number[];
-  current_src: number | null;
-}
-
 export type InitialGenerationConfig =
   | ({ method: "custom_vertex_based" } & GenerationParams)
   | ({ method: "custom_edge_based" } & EdgeBasedParams)
@@ -302,7 +295,6 @@ export interface GenerateConfig {
   preset_start?: [number, number];
   preset_finish?: [number, number];
   preset_gen_source?: [number, number];
-  debug?: boolean;
   debug_events?: boolean;
   qc_experiment?: boolean;
 }

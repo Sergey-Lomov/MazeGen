@@ -172,19 +172,13 @@ pub struct GenerateConfig {
     pub preset_start: Option<[i32; 2]>,
     pub preset_finish: Option<[i32; 2]>,
     pub preset_gen_source: Option<[i32; 2]>,
-    // Only consumed by `maze-wasm` (whether to capture the step-by-step generation trace for the
-    // browser debug toolbar) — `maze-runner`'s own native repro tests never read it.
-    #[serde(default)]
-    pub debug: bool,
     // Only consumed by `maze-wasm` (whether to build the narration-level debug event tree — see
-    // GitHub issue #124) — independent from `debug` (the legacy snapshot trace) so both debug
-    // systems can be toggled separately during the migration off the old one. `maze-runner`'s
-    // own native repro tests never read it, same rationale as `debug`.
+    // GitHub issue #124) — `maze-runner`'s own native repro tests never read it.
     #[serde(default)]
     pub debug_events: bool,
     // Only consumed by `maze-wasm` (skips the generation algorithm entirely and runs QC/repair
     // directly on the preset-seeded graph) — `maze-runner`'s own native repro tests never read
-    // it, same rationale as `debug`.
+    // it, same rationale as `debug_events`.
     #[serde(default)]
     pub qc_experiment: bool,
 }
@@ -233,7 +227,6 @@ impl Default for GenerateConfig {
             preset_start: None,
             preset_finish: None,
             preset_gen_source: None,
-            debug: false,
             debug_events: false,
             qc_experiment: false,
         }

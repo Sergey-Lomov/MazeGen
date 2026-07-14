@@ -58,6 +58,5 @@
   "locked_nodes": [],
   "preset_start": [0, 1],
   "preset_finish": null,
-  "preset_gen_source": [0, 1],
-  "debug": false
+  "preset_gen_source": [0, 1]
 }
