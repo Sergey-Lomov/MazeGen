@@ -13,6 +13,7 @@ mod mutation_commands;
 pub use preset_state::{PresetState, build_preset_state};
 pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names};
 pub use kruskal::{generate as generate_kruskal, KruskalEvent};
+pub use wilson::{generate as generate_wilson, WilsonEvent};
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, NodeLockKind, LockedNode,
@@ -63,7 +64,7 @@ fn dispatch<T: Tessellation>(
         GenerationAlgorithm::RecursiveBacktracker =>
             recursive_backtracker::generate(graph, field, seed, start, preset_state, None, None),
         GenerationAlgorithm::WilsonAlgorithm =>
-            wilson::generate(graph, field, seed, start, preset_state),
+            wilson::generate(graph, field, seed, start, preset_state, None),
         GenerationAlgorithm::KruskalAlgorithm =>
             kruskal::generate(graph, field, seed, preset_state, None),
     }
@@ -143,6 +144,16 @@ pub fn generate_maze_with_events<T: Tessellation>(
             (
                 Some(log.finish().encode()),
                 Some(crate::event_log::EventedEventKind::Kruskal),
+                None,
+                &[] as &[(&str, crate::event_log::DebugValueKind)],
+            )
+        }
+        GenerationAlgorithm::WilsonAlgorithm => {
+            let mut log = crate::event_log::EventLog::new();
+            wilson::generate(graph, field, seed, start, preset_state, Some(&mut log));
+            (
+                Some(log.finish().encode()),
+                Some(crate::event_log::EventedEventKind::Wilson),
                 None,
                 &[] as &[(&str, crate::event_log::DebugValueKind)],
             )

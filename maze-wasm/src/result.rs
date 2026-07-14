@@ -19,6 +19,7 @@ fn event_kind_wire_str(kind: maze_core::event_log::EventedEventKind) -> &'static
     match kind {
         maze_core::event_log::EventedEventKind::RecursiveBacktracker => "recursive_backtracker",
         maze_core::event_log::EventedEventKind::Kruskal => "kruskal",
+        maze_core::event_log::EventedEventKind::Wilson => "wilson",
     }
 }
 
