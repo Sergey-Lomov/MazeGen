@@ -12,6 +12,7 @@ mod mutation_commands;
 
 pub use preset_state::{PresetState, build_preset_state};
 pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names};
+pub use kruskal::{generate as generate_kruskal, KruskalEvent};
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, NodeLockKind, LockedNode,
@@ -64,7 +65,7 @@ fn dispatch<T: Tessellation>(
         GenerationAlgorithm::WilsonAlgorithm =>
             wilson::generate(graph, field, seed, start, preset_state),
         GenerationAlgorithm::KruskalAlgorithm =>
-            kruskal::generate(graph, field, seed, preset_state),
+            kruskal::generate(graph, field, seed, preset_state, None),
     }
 }
 
