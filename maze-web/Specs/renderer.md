@@ -57,7 +57,7 @@ Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. R
 - `debugMode`, `debugArena`, `debugStep` change
 
 **Debug view projection (`debugView`)** — event-tree based (GitHub issue #124/#125), replaces the old per-step full-graph-snapshot model:
-- When `debugMode`: `selectDebugMazeView(debugArena, debugStep)` replays the event tape up to `debugStep` (from the nearest checkpoint, see `Specs/event_log.md`'s Intermediate Snapshot Checkpointing) to reconstruct `nodes`/`edges`; falls back to live `state.nodes`/`state.edges` when there's no arena yet
+- When `debugMode`: `selectDebugMazeView(debugArena, debugStep)` replays the event tape up to `debugStep` (from the nearest checkpoint, see `Specs/event_log.md`'s Intermediate Snapshot Checkpointing) to reconstruct `nodes`/`edges`, memoized per `(debugArena, debugStep)` pair (GitHub issue #139) so repeated calls for the same pair are free; falls back to live `state.nodes`/`state.edges` when there's no arena yet
 - Start/finish stay hidden for the whole debug replay — Recursive Backtracker doesn't emit events for them (see `Specs/event_log.md`), so there's no reconstructed value to show until generation's real (non-debug) result is used instead
 
 **Closed cells** (`closedCells` layer): nodes with no edges (neither `from` nor `to`) in the current edge set. Rendered in `WALL_COLOR` to visually merge with walls.

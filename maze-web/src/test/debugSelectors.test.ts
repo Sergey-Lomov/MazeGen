@@ -128,4 +128,29 @@ describe("selectDebugMazeView", () => {
     const withoutCheckpoint = selectDebugMazeView(arenaWithoutCheckpoint, 2);
     expect(withCheckpoint).toEqual(withoutCheckpoint);
   });
+
+  it("returns the same object reference for repeated calls with the same (arena, debugStep) pair (GitHub issue #139)", () => {
+    const arena = arenaWithEdges([[1n, 2n], [2n, 3n], [3n, 4n]]);
+    const first = selectDebugMazeView(arena, 1);
+    const second = selectDebugMazeView(arena, 1);
+    expect(second).toBe(first);
+  });
+
+  it("recomputes when debugStep changes, then again when it changes back", () => {
+    const arena = arenaWithEdges([[1n, 2n], [2n, 3n], [3n, 4n]]);
+    const atStep1 = selectDebugMazeView(arena, 1);
+    const atStep2 = selectDebugMazeView(arena, 2);
+    expect(atStep2).not.toBe(atStep1);
+    const backToStep1 = selectDebugMazeView(arena, 1);
+    expect(backToStep1).toEqual(atStep1);
+  });
+
+  it("recomputes when the arena changes even for the same debugStep", () => {
+    const arenaA = arenaWithEdges([[1n, 2n]]);
+    const arenaB = arenaWithEdges([[1n, 2n]]);
+    const viewA = selectDebugMazeView(arenaA, 0);
+    const viewB = selectDebugMazeView(arenaB, 0);
+    expect(viewB).not.toBe(viewA);
+    expect(viewB).toEqual(viewA);
+  });
 });

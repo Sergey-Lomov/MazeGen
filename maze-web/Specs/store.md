@@ -108,7 +108,7 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 | Field | Type | Description |
 |-------|------|-------------|
 | `debugMode` | `boolean` | Debug mode active |
-| `debugArena` | `DebugArenaHandle \| null` | Raw event tape + node list from the last debug generation run; reconstructed maze state at `debugStep` is derived on demand via `selectDebugMazeView`, never cached |
+| `debugArena` | `DebugArenaHandle \| null` | Raw event tape + node list from the last debug generation run; reconstructed maze state at `debugStep` is derived via `selectDebugMazeView`, memoized per `(debugArena, debugStep)` pair (GitHub issue #139) |
 | `debugStep` | `number` | Current mutating-event step index into `debugArena.tape` |
 | `debugStale` | `boolean` | Arena is outdated (config changed since last generate) |
 | `debugAutoPlayDelay` | `number` | Delay (ms) between steps during auto-play |
