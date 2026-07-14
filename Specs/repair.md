@@ -785,7 +785,8 @@ Handles `TELEPORT_GROUP_PROXIMITY` — see GitHub issue #75. Distinct from `Remo
 Defined in `maze_core::generation::pipeline`.
 
 ```rust
-pub const MAX_REPAIR_ITERATIONS: usize = 10;
+pub const MAX_REPAIR_ITERATIONS: usize = 100;
+pub const DEFAULT_REPAIR_TIME_BUDGET_SECS: f64 = 10.0;
 
 /// Caps on the repair fixpoint loop. Both bounds are optional and independent — whichever is hit
 /// first stops the loop. `None` for both means no hard cap (loop only stops on convergence or
@@ -798,7 +799,10 @@ pub struct RepairLimits {
 
 impl Default for RepairLimits {
     fn default() -> Self {
-        RepairLimits { max_iterations: Some(MAX_REPAIR_ITERATIONS), time_budget_secs: None }
+        RepairLimits {
+            max_iterations: Some(MAX_REPAIR_ITERATIONS),
+            time_budget_secs: Some(DEFAULT_REPAIR_TIME_BUDGET_SECS),
+        }
     }
 }
 

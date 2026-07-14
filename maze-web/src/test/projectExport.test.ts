@@ -14,8 +14,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" } }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }],
     strategyParams: { strategy_a: { param_b: "2" } },
-    repairMaxIterations: 10,
-    repairTimeBudgetSecs: null,
+    repairMaxIterations: 100,
+    repairTimeBudgetSecs: 10,
     presetConnections: new Map(),
     lockedNodes: new Map(),
     defaultEdgeState: "undefined",
@@ -93,8 +93,8 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     delete raw.quality.repairMaxIterations;
     delete raw.quality.repairTimeBudgetSecs;
     const reparsed = parseAndValidate(raw);
-    expect(reparsed.quality.repairMaxIterations).toBe(10);
-    expect(reparsed.quality.repairTimeBudgetSecs).toBeNull();
+    expect(reparsed.quality.repairMaxIterations).toBe(100);
+    expect(reparsed.quality.repairTimeBudgetSecs).toBe(10);
   });
 
   it("round-trips dirty post-edit draft edges", () => {

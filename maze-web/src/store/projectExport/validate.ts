@@ -423,10 +423,10 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // which would also catch the legitimate "disabled" case and silently re-enable it on load.
   const repairMaxIterations = "repairMaxIterations" in qualObj
     ? (typeof qualObj.repairMaxIterations === "number" ? qualObj.repairMaxIterations : null)
-    : 10;
+    : 100;
   const repairTimeBudgetSecs = "repairTimeBudgetSecs" in qualObj
     ? (typeof qualObj.repairTimeBudgetSecs === "number" ? qualObj.repairTimeBudgetSecs : null)
-    : null;
+    : 10;
 
   // presets
   const presetsObj = assertObject(migrated.presets, "presets");

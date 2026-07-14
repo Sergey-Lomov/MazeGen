@@ -54,8 +54,8 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   debugStep: 0,
   debugStale: false,
   mazeDirty: false,
-  repairMaxIterations: 10,
-  repairTimeBudgetSecs: null,
+  repairMaxIterations: 100,
+  repairTimeBudgetSecs: 10,
 
   loadRegistry: () => {
     return initWasm().then(() => {

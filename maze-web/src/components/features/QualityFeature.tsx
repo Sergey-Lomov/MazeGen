@@ -5,8 +5,8 @@ import { sharedStyles } from "../../styles/shared";
 import { Switch } from "../Switch";
 import * as m from "~/paraglide/messages";
 
-const DEFAULT_MAX_ITERATIONS = 10;
-const DEFAULT_TIME_BUDGET_SECS = 2;
+const DEFAULT_MAX_ITERATIONS = 100;
+const DEFAULT_TIME_BUDGET_SECS = 10;
 
 /// Local draft state, committed (clamped) to the store only on blur/Enter — not on every
 /// keystroke. Typing into a clamped-on-change number input fights the user mid-edit (e.g.

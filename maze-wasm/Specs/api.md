@@ -36,8 +36,8 @@ Returns `Array<StrategyDescriptor>` — list of all registered repair strategies
 {
   tessellation: TessellationConfig,   // default: { type: "square", width: 10, height: 10 }
   stages: StageConfig[],              // default: one stage with missing_endpoints/unreachable_finish rules
-  repair_max_iterations?: number,     // default: 10 — caps the repair fixpoint loop's iteration count
-  repair_time_budget_secs?: number,   // default: undefined (no time cap) — wall-clock budget for the repair loop
+  repair_max_iterations?: number,     // default: 100 — caps the repair fixpoint loop's iteration count
+  repair_time_budget_secs?: number,   // default: 10 — wall-clock budget (seconds) for the repair loop
   initial: InitialGenerationConfig,   // default: { method: "custom_vertex_based" }
   elements: ElementsConfig,           // default: { one_way_chance: 0.04 }
 }

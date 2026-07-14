@@ -6,7 +6,8 @@ use crate::space::{Field, Tessellation};
 use crate::quality_control::{Issue, QualityControlEngine};
 use super::PresetState;
 
-pub const MAX_REPAIR_ITERATIONS: usize = 10;
+pub const MAX_REPAIR_ITERATIONS: usize = 100;
+pub const DEFAULT_REPAIR_TIME_BUDGET_SECS: f64 = 10.0;
 
 /// Caps on the repair fixpoint loop in `build_maze`. Both bounds are optional and independent —
 /// whichever is hit first stops the loop. `None` for both means the loop only stops on
@@ -21,7 +22,10 @@ pub struct RepairLimits {
 
 impl Default for RepairLimits {
     fn default() -> Self {
-        RepairLimits { max_iterations: Some(MAX_REPAIR_ITERATIONS), time_budget_secs: None }
+        RepairLimits {
+            max_iterations: Some(MAX_REPAIR_ITERATIONS),
+            time_budget_secs: Some(DEFAULT_REPAIR_TIME_BUDGET_SECS),
+        }
     }
 }
 
