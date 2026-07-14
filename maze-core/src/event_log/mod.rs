@@ -53,6 +53,18 @@ pub enum DebugValueKind {
     Sequence,
 }
 
+/// Tags which concrete event enum an [`EncodedTape`] was built from — one variant per algorithm
+/// that has `EventLog` instrumentation (not one per generation-algorithm variant in general, most
+/// of which aren't instrumented at all). This is the single source of truth for "whose tape is
+/// this" once the concrete `E` has been erased to bytes — see GitHub issue #161: consumers that
+/// only understand some event kinds (e.g. the web replay engine, RB-only so far) filter on this
+/// tag rather than re-matching on the generation algorithm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventedEventKind {
+    RecursiveBacktracker,
+    Kruskal,
+}
+
 /// Implemented by a concrete event enum to declare how its mutating variants affect named,
 /// session-specific "debug value" sets (e.g. Recursive Backtracker's `"recursion_stack"` — see issue
 /// #131 and `Specs/event_log.md`). Deliberately derived from the *existing* mutating events

@@ -1,5 +1,5 @@
 use maze_core::generation::{generate_maze, generate_maze_with_events, generate_recursive_backtracker, recursive_backtracker_debug_value_names, GenerationAlgorithm, GenerationConfig, RecursiveBacktrackerEvent};
-use maze_core::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog, NodePayload, NO_NODE, TAG_SCOPE};
+use maze_core::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog, EventedEventKind, NodePayload, NO_NODE, TAG_SCOPE};
 use super::helpers::*;
 
 #[test]
@@ -228,7 +228,8 @@ fn generate_maze_with_events_returns_none_for_non_recursive_backtracker() {
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    assert!(result.tape.is_none(), "only Recursive Backtracker is instrumented so far");
+    assert!(result.tape.is_none(), "only Recursive Backtracker and Kruskal are instrumented so far");
+    assert!(result.event_kind.is_none(), "only Recursive Backtracker and Kruskal are instrumented so far");
     assert!(result.checkpoints.is_none(), "only Recursive Backtracker is instrumented so far");
 }
 
@@ -241,12 +242,36 @@ fn generate_maze_with_events_collects_tape_for_recursive_backtracker() {
         ..GenerationConfig::default()
     }, &empty_preset());
     assert!(result.tape.is_some(), "Recursive Backtracker must produce a tape");
+    assert_eq!(result.event_kind, Some(EventedEventKind::RecursiveBacktracker));
     assert!(result.checkpoints.is_some(), "Recursive Backtracker must produce a checkpoint log");
     assert_eq!(
         result.debug_value_names,
         &[("recursion_stack", DebugValueKind::Sequence), ("visited", DebugValueKind::Region)],
         "Recursive Backtracker declares the recursion_stack and visited debug values"
     );
+}
+
+#[test]
+fn generate_maze_with_events_collects_tape_for_kruskal() {
+    let (mut graph, field, start) = build(3, 3);
+    let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
+        algorithm: GenerationAlgorithm::KruskalAlgorithm,
+        elements: no_one_way_elements(),
+        ..GenerationConfig::default()
+    }, &empty_preset());
+    let tape = result.tape.expect("Kruskal must produce a tape");
+    assert_eq!(result.event_kind, Some(EventedEventKind::Kruskal));
+    assert!(result.checkpoints.is_none(), "Kruskal checkpointing isn't wired up yet");
+    assert!(result.debug_value_names.is_empty(), "Kruskal doesn't declare debug values yet");
+
+    assert_eq!(tape.node_table.len() % maze_core::event_log::NODE_RECORD_SIZE, 0, "node table must be a whole number of NodeRecords");
+    let record_count = tape.node_table.len() / maze_core::event_log::NODE_RECORD_SIZE;
+    let has_event_node = (0..record_count).any(|i| {
+        let base = i * maze_core::event_log::NODE_RECORD_SIZE;
+        let tag = u16::from_le_bytes(tape.node_table[base + 12..base + 14].try_into().unwrap());
+        tag != TAG_SCOPE
+    });
+    assert!(has_event_node, "a 3x3 Kruskal run must emit at least one non-scope event node");
 }
 
 #[test]

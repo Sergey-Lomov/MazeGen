@@ -37,21 +37,59 @@ fn run_initial_generation<T: Tessellation>(
     use maze_core::generation::pipeline::now_ms;
 
     let initial_build_start = now_ms();
-    let (tape, checkpoints, debug_value_names): (Option<maze_core::event_log::DebugTape<_>>, Option<maze_core::event_log::CheckpointLog>, Vec<(String, maze_core::event_log::DebugValueKind)>) = if qc_experiment {
+    let (tape, checkpoints, debug_value_names): (Option<maze_core::event_log::EncodedTape>, Option<maze_core::event_log::CheckpointLog>, Vec<(String, maze_core::event_log::DebugValueKind)>) = if qc_experiment {
         (None, None, Vec::new())
     } else if debug_events {
         let result = generate_maze_with_events(graph, field, seed, start_id, gen_config, preset_state);
-        let names = result.debug_value_names.iter().map(|(name, kind)| (name.to_string(), *kind)).collect();
-        (result.tape, result.checkpoints, names)
+        // Only forward the tape/checkpoints/names past the WASM boundary when the web replay
+        // engine can actually decode this event kind (GitHub issue #161) — it only understands
+        // Recursive Backtracker's wire tags so far. Gating on `event_kind` (a tag the tape itself
+        // carries) rather than re-matching on `gen_config.algorithm` means this check can't drift
+        // out of sync with which algorithms `generate_maze_with_events` instruments: extend
+        // `is_web_decodable` below once a new event kind gets a web decoder, and that's the only
+        // place this list needs to change.
+        if is_web_decodable(result.event_kind) {
+            let names = result.debug_value_names.iter().map(|(name, kind)| (name.to_string(), *kind)).collect();
+            (result.tape, result.checkpoints, names)
+        } else {
+            (None, None, Vec::new())
+        }
     } else {
         generate_maze(graph, field, seed, start_id, gen_config, preset_state);
         (None, None, Vec::new())
     };
     let initial_build_ms = now_ms() - initial_build_start;
-    let debug_tape = tape.map(|t| t.encode());
     let debug_checkpoints = checkpoints.map(|c| c.encode());
 
-    (debug_tape, debug_checkpoints, debug_value_names, initial_build_ms)
+    (tape, debug_checkpoints, debug_value_names, initial_build_ms)
+}
+
+/// Which [`maze_core::event_log::EventedEventKind`]s the web replay engine (`maze-web/src/debug/
+/// eventTape.ts`) can decode today — only Recursive Backtracker's wire tags (GitHub issue #161).
+/// Extend this when a new event kind gets a web decoder.
+fn is_web_decodable(kind: Option<maze_core::event_log::EventedEventKind>) -> bool {
+    matches!(kind, Some(maze_core::event_log::EventedEventKind::RecursiveBacktracker))
+}
+
+#[cfg(test)]
+mod is_web_decodable_tests {
+    use super::is_web_decodable;
+    use maze_core::event_log::EventedEventKind;
+
+    #[test]
+    fn recursive_backtracker_is_web_decodable() {
+        assert!(is_web_decodable(Some(EventedEventKind::RecursiveBacktracker)));
+    }
+
+    #[test]
+    fn kruskal_is_not_web_decodable_yet() {
+        assert!(!is_web_decodable(Some(EventedEventKind::Kruskal)));
+    }
+
+    #[test]
+    fn none_is_not_web_decodable() {
+        assert!(!is_web_decodable(None));
+    }
 }
 
 #[cfg(test)]
@@ -132,6 +170,20 @@ mod run_initial_generation_tests {
         assert!(debug_tape.is_none(), "only Recursive Backtracker is instrumented so far");
         assert!(debug_checkpoints.is_none(), "only Recursive Backtracker is instrumented so far");
         assert!(debug_value_names.is_empty(), "only Recursive Backtracker declares debug values so far");
+    }
+
+    #[test]
+    fn debug_events_true_with_kruskal_yields_no_tape() {
+        // Kruskal is instrumented in generate_maze_with_events (GitHub issue #146), but the web
+        // replay engine only decodes Recursive Backtracker's wire tags so far — run_initial_generation
+        // must gate on EventedEventKind and still yield nothing for Kruskal (see #161).
+        let (mut graph, field, preset_state) = field_and_state();
+        let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let config = GenerationConfig { algorithm: GenerationAlgorithm::KruskalAlgorithm, ..GenerationConfig::default() };
+        let (debug_tape, debug_checkpoints, debug_value_names, _) = run_initial_generation(&mut graph, &field, 4, start, config, &preset_state, false, true);
+        assert!(debug_tape.is_none(), "Kruskal's event kind isn't web-decodable yet");
+        assert!(debug_checkpoints.is_none(), "Kruskal's event kind isn't web-decodable yet");
+        assert!(debug_value_names.is_empty(), "Kruskal's event kind isn't web-decodable yet");
     }
 
     #[test]

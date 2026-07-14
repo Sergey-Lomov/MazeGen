@@ -158,7 +158,7 @@ Encoding conventions used by `RecursiveBacktrackerEvent` (the only instrumented 
 
 ### WASM wiring
 
-`generation::generate_maze_with_events` (`maze-core/src/generation/mod.rs`) bypasses `dispatch()` deliberately — `dispatch` is shared across all five generation algorithms and must not be tied to one concrete `EventLog<E>` type. It matches `config.algorithm` directly: for `RecursiveBacktracker` it builds a real `EventLog`, calls `recursive_backtracker::generate` with it, and returns `Some(DebugTape)`; every other algorithm returns `None` (not instrumented yet). It also accepts a `collect_steps: bool` to optionally gather the legacy `GenerationStep` trace (`on_step`) alongside the event tree in the same pass, since `debug` and `debug_events` are independent flags on `GenerateConfig` and may both be set during the migration off the old snapshot tool.
+`generation::generate_maze_with_events` (`maze-core/src/generation/mod.rs`) bypasses `dispatch()` deliberately — `dispatch` is shared across all five generation algorithms and must not be tied to one concrete `EventLog<E>` type. It matches `config.algorithm` directly: for `RecursiveBacktracker` it builds a real `EventLog`, calls `recursive_backtracker::generate` with it, and encodes+returns the tape; every other algorithm returns `None` (not instrumented yet — at the time of #124, this meant every algorithm besides RB; Kruskal was added later, see #161 below). It also accepts a `collect_steps: bool` to optionally gather the legacy `GenerationStep` trace (`on_step`) alongside the event tree in the same pass, since `debug` and `debug_events` are independent flags on `GenerateConfig` and may both be set during the migration off the old snapshot tool.
 
 `GenerateConfig.debug_events: bool` (`maze-runner/src/config.rs`) — independent of the existing `debug` flag, so both debug systems can be toggled separately while the web UI migrates off the old one.
 
@@ -276,7 +276,7 @@ pub const CHECKPOINT_RECORD_SIZE: usize = 12; // 4 (node_index) + 4 (offset) + 4
 - Encoding: `count: u32 LE` followed by that many `(from: u64 LE, to: u64 LE)` pairs — the same length-prefixed shape as `CandidatesComputed`'s wire format. No `EncodeEventPayload`-style trait for this — Recursive Backtracker is the only source, so the encoding is inlined in the tracker rather than introducing a second encoding abstraction.
 - Trade-off: each checkpoint encodes the **entire** accumulated edge list, not a diff from the previous checkpoint — O(edges) bytes per checkpoint. Accepted deliberately: checkpoints are infrequent (every 500 mutating events) and the format needs to be self-sufficient per the "nearest snapshot, then apply forward" replay model this is built for. A delta encoding is a possible future optimization, out of scope here.
 
-`generate_maze_with_events` (`maze-core/src/generation/mod.rs`) now returns a named struct, `EventedGenerationResult { steps, tape, checkpoints }`, instead of a growing tuple — the function is public API `maze-wasm` calls into, so a third positional tuple element would have hurt readability at both call sites. `checkpoints: Option<CheckpointLog>` is `Some` exactly when `tape` is (both come from the same Recursive Backtracker run); `None` for every other algorithm.
+`generate_maze_with_events` (`maze-core/src/generation/mod.rs`) now returns a named struct, `EventedGenerationResult { tape, event_kind, checkpoints, debug_value_names }` (see #161 below for `tape`'s `EncodedTape` type and `event_kind`'s role), instead of a growing tuple — the function is public API `maze-wasm` calls into, so a third positional tuple element would have hurt readability at both call sites. `checkpoints: Option<CheckpointLog>` is `Some` exactly when `tape` is and the run was Recursive Backtracker (Kruskal produces a tape but no checkpoints yet — see #161); `None` for every other algorithm.
 
 ### WASM boundary
 
@@ -720,3 +720,81 @@ mirroring the same asymmetric tradeoff made on the Rust side.
   position; a future issue may let users override them individually)
 - Debug value kinds beyond `Region`/`Sequence` (e.g. a weighted/scored value, a tree) — not needed
   by any currently-instrumented algorithm
+
+## Generalizing `EventedGenerationResult` (#161)
+
+Kruskal (#146) has its own `KruskalEvent` (`DebugEvent`/`EncodeEventPayload` impls, `wire_tags` module,
+`kruskal::generate(..., event_log: Option<&mut EventLog<KruskalEvent>>)`) — a second concrete event
+type that needed to flow through `EventedGenerationResult` (`maze-core/src/generation/mod.rs`)
+alongside Recursive Backtracker's `RecursiveBacktrackerEvent`, without hardcoding either into the
+struct's type.
+
+### Type erasure moves into `generate_maze_with_events`
+
+`DebugTape<E>::encode() -> EncodedTape` (see #124 above) already produces a fully non-generic
+`EncodedTape { node_table: Vec<u8>, payload: Vec<u8> }` for any `E: DebugEvent + EncodeEventPayload`.
+Previously this `.encode()` call happened one layer up, in `maze-wasm/src/runner.rs::run_initial_generation`
+— meaning `EventedGenerationResult.tape` itself still had to be `Option<DebugTape<RecursiveBacktrackerEvent>>`,
+baking in one concrete event type. The fix moves `.encode()` inside `generate_maze_with_events`
+itself, once per algorithm arm: `RecursiveBacktracker` and `KruskalAlgorithm` (the two instrumented
+algorithms) each build their own concrete `EventLog<E>`, call the algorithm's `generate`, `.finish()`
+the log, and `.encode()` it immediately, before it can leave the function. `EventedGenerationResult.tape`
+is now `Option<EncodedTape>` — the concrete `E` never has to appear in the shared struct at all, so
+adding a third instrumented algorithm (Wilson, a custom strategy) means adding a new `match` arm, not
+touching the struct's fields.
+
+### `EventedEventKind` — a tag, not a re-derivation
+
+Once `tape` is type-erased, a downstream consumer that only understands some event kinds (so far:
+the web replay engine, `maze-web/src/debug/eventTape.ts`, which only decodes Recursive Backtracker's
+wire tags — Kruskal's `wire_tags` module has no web-side counterpart yet) needs to know *whose* tape
+it received without re-deriving that from the generation algorithm. `event_log::EventedEventKind`
+(`maze-core/src/event_log/mod.rs`) is a small non-generic enum with one variant per **instrumented**
+algorithm (`RecursiveBacktracker`, `Kruskal` — not one variant per `GenerationAlgorithm` variant, since
+most aren't instrumented at all):
+
+```rust
+pub enum EventedEventKind {
+    RecursiveBacktracker,
+    Kruskal,
+}
+```
+
+`EventedGenerationResult` gains `pub event_kind: Option<EventedEventKind>` — `Some` exactly when
+`tape` is `Some`, tagging which concrete event enum it was encoded from. This is deliberately data
+carried on the result, not a second match on `config.algorithm` that a caller would have to keep in
+sync by hand: `generate_maze_with_events` is the *only* place that decides which algorithms are
+instrumented, and every other consumer reads `event_kind` off the result instead of re-implementing
+that decision.
+
+### WASM boundary gates on `event_kind`, not on the algorithm
+
+`maze-wasm/src/runner.rs::run_initial_generation` must not forward a Kruskal tape to the web replay
+engine — it doesn't know how to decode Kruskal's wire tags and would either crash or silently
+misinterpret the bytes as Recursive Backtracker's. The gate is a small `is_web_decodable(kind:
+Option<EventedEventKind>) -> bool` function (currently `matches!(kind, Some(EventedEventKind::RecursiveBacktracker))`),
+called right after `generate_maze_with_events` returns: when the result's `event_kind` isn't
+web-decodable, `tape`/`checkpoints`/`debug_value_names` are all discarded (`None`/`None`/empty)
+before returning, even though `generate_maze_with_events` itself produced a real tape for Kruskal.
+Gating on the tag rather than re-matching on `gen_config.algorithm` means this can't drift out of
+sync with which algorithms get instrumented next — extending `is_web_decodable`'s `matches!` is the
+one place a future Kruskal (or Wilson) web decoder needs to touch to start forwarding that kind's
+tape across the boundary. `web/debugMode` is independent of the selected generation algorithm
+(`generateConfigBuilder.ts`), so without this gate, enabling debug mode while Kruskal is selected
+would leak undecodable bytes to the web decoder today.
+
+### Kruskal checkpoints/debug values: deferred, not wired up
+
+Kruskal's arm in `generate_maze_with_events` returns `checkpoints: None` and `debug_value_names: &[]`
+— intentionally not extended to match Recursive Backtracker's checkpointing (#128) or debug-value
+declarations (#131) as part of this issue. `EventedGenerationResult`'s `checkpoints`/`debug_value_names`
+parity documentation ("`Some`/non-empty exactly when `tape` is `Some`") no longer holds universally
+across every instrumented algorithm — it holds per-algorithm-arm, and Kruskal's arm simply always
+supplies `None`/empty for those two fields regardless of `tape`.
+
+### Out of Scope (#161)
+
+- A web-side Kruskal event decoder (would let `is_web_decodable` return `true` for `Kruskal` and
+  extend `maze-web/src/debug/eventTape.ts` with Kruskal wire-tag decoding)
+- Kruskal checkpointing (#128-style) or debug value declarations (#131-style)
+- Instrumenting Wilson or custom algorithms
