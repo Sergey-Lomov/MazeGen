@@ -85,17 +85,17 @@ export function DebugPanel() {
       )}
       <div style={styles.controls}>
         {/* Step buttons */}
-        <button className="hoverable" style={styles.iconBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>◀</button>
-        <button className="hoverable" style={styles.iconBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>▶</button>
+        <button className="hoverable" style={styles.iconBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>❮</button>
+        <button className="hoverable" style={styles.iconBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>❯</button>
 
         {/* Autoplay */}
         <button
           className="hoverable"
           style={styles.playBtn}
           onClick={() => setPlaying(p => !p)}
-          title={playing ? m["debug.pause"]() : m["debug.play"]()}
+          title={playing ? m["debug.stop"]() : m["debug.play"]()}
         >
-          {playing ? "⏸" : "▷"}
+          {playing ? "⏹" : "▶"}
         </button>
 
         {/* Delay */}

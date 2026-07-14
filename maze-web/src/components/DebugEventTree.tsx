@@ -104,6 +104,9 @@ export function DebugEventTree() {
 
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Set right before a step-col click sets debugStep — tells the auto-scroll effect below to
+  // skip scrolling, since the user is already looking at that row and a jump would be jarring.
+  const skipNextScrollRef = useRef(false);
 
   const tape = debugArena?.tape ?? null;
   const stepIndex = useMemo(() => (tape ? buildStepIndex(tape) : null), [tape]);
@@ -128,6 +131,11 @@ export function DebugEventTree() {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
+    // Without this, TanStack Virtual's measured-size cache is keyed by plain index — collapsing
+    // a scope shifts every following row to a lower index, so a row can inherit another row's
+    // stale (e.g. two-line-tall) cached height until it happens to be re-measured. Keying by
+    // nodeIndex ties each cached size to the row it was actually measured from.
+    getItemKey: (index) => rows[index].nodeIndex,
     // Estimates wrapped line count from text length instead of assuming ROW_MIN_HEIGHT — keeps
     // getTotalSize() close to the real content height even for unmeasured rows, so the native
     // scrollbar thumb doesn't drift behind the cursor while it's being dragged.
@@ -142,11 +150,19 @@ export function DebugEventTree() {
   });
 
   useLayoutEffect(() => {
+    if (skipNextScrollRef.current) {
+      skipNextScrollRef.current = false;
+      return;
+    }
     if (highlightedNodeIndex === null) return;
     const rowIdx = rowIndexByNodeIndex.get(highlightedNodeIndex);
     if (rowIdx === undefined) return;
     virtualizer.scrollToIndex(rowIdx, { align: "center" });
-  }, [highlightedNodeIndex, rowIndexByNodeIndex, virtualizer]);
+    // Only debugStep should trigger the auto-scroll — expanding/collapsing a node changes
+    // rowIndexByNodeIndex too, which would otherwise re-run this and yank the scroll position
+    // away from the node the user just expanded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugStep]);
 
   if (!tape || !stepIndex) return null;
 
@@ -161,6 +177,7 @@ export function DebugEventTree() {
 
   function handleStepClick(step: number, e: React.MouseEvent) {
     e.stopPropagation();
+    skipNextScrollRef.current = true;
     setDebugStep(step);
   }
 
@@ -188,7 +205,6 @@ export function DebugEventTree() {
             >
               <span
                 data-testid="step-col"
-                className={displayStep !== null ? "hoverable" : undefined}
                 style={styles.stepCol}
                 onClick={(e) => displayStep !== null && handleStepClick(displayStep, e)}
               >
