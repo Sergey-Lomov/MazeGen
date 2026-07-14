@@ -99,6 +99,43 @@ function threeStepArena() {
   return { tape, nodes, totalSteps, checkpointFroms };
 }
 
+// root (0) -> "step 1" scope (1) -> EdgeAdded(1,2) (2)
+//          -> "step 2" scope (3) -> EdgeAdded(2,3) (4)
+//          -> ... stepCount scopes total, each with one mutating EdgeAdded event.
+function buildManyStepTape(stepCount: number): ParsedTape {
+  const fixtureNodes: FixtureNode[] = [
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+  ];
+  for (let i = 0; i < stepCount; i++) {
+    const scopeIndex = fixtureNodes.length;
+    const edgeIndex = scopeIndex + 1;
+    const nextScopeIndex = i < stepCount - 1 ? edgeIndex + 1 : null;
+    fixtureNodes.push({
+      parent: 0,
+      firstChild: edgeIndex,
+      nextSibling: nextScopeIndex,
+      tag: TAG_SCOPE,
+      payloadBytes: scopePayload(`step ${i + 1}`),
+    });
+    fixtureNodes.push({
+      parent: scopeIndex,
+      firstChild: null,
+      nextSibling: null,
+      tag: RB_TAG.EDGE_ADDED,
+      payloadBytes: edgeAddedPayload(BigInt(i + 1), BigInt(i + 2)),
+    });
+  }
+  return buildFixture(fixtureNodes);
+}
+
+function manyStepArena(stepCount: number) {
+  const tape = buildManyStepTape(stepCount);
+  const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
+  const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
+  const manyNodes: NodeDto[] = Array.from({ length: stepCount + 1 }, (_, i) => ({ id: i + 1, x: i, y: 0 }));
+  return { tape, nodes: manyNodes, totalSteps, checkpointFroms };
+}
+
 // jsdom has no real layout — DebugEventTree's virtualized list needs a non-zero viewport (see
 // DebugEventTree.test.tsx's own setup for the underlying reason).
 Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
@@ -121,34 +158,19 @@ describe("DebugPanel", () => {
     expect(screen.getByText(/2 \/ 3/)).toBeInTheDocument();
   });
 
-  it("shows the edge count reconstructed at the current debugStep, both directions per bidirectional EdgeAdded", () => {
+  it("keeps the step counter at the same fixed width regardless of digit count, so the slider doesn't resize as steps grow", () => {
     useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 1 });
+    const { unmount } = render(<DebugPanel />);
+    const shortLabel = screen.getByText(/2 \/ 3/);
+    const shortWidth = shortLabel.style.width;
+    expect(shortWidth).not.toBe("");
+    unmount();
+
+    // Same counter, but with a 4-digit total step count instead of a 1-digit one.
+    useMazeStore.setState({ debugArena: manyStepArena(1234), debugStep: 999 });
     render(<DebugPanel />);
-    // debugStep 1 = first two EdgeAdded events applied, each bidirectional -> 4 edges.
-    expect(screen.getByText(/\(4 edges\)/)).toBeInTheDocument();
-  });
-
-  it("recomputes the edge count when debugStep changes", () => {
-    useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 0 });
-    const { rerender } = render(<DebugPanel />);
-    expect(screen.getByText(/\(2 edges\)/)).toBeInTheDocument();
-
-    useMazeStore.setState({ debugStep: 2 });
-    rerender(<DebugPanel />);
-    expect(screen.getByText(/\(6 edges\)/)).toBeInTheDocument();
-  });
-
-  it("does not recompute the edge count when an unrelated store field changes (debugArena/debugStep memoization)", () => {
-    useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 1 });
-    const { rerender } = render(<DebugPanel />);
-    expect(screen.getByText(/\(4 edges\)/)).toBeInTheDocument();
-
-    // Force a re-render with debugArena/debugStep unchanged (same references) but some unrelated
-    // store field touched — the memoized value must not be recomputed to a different (wrong)
-    // result, and the displayed count must stay identical.
-    useMazeStore.setState({ debugAutoPlayDelay: 999 });
-    rerender(<DebugPanel />);
-    expect(screen.getByText(/\(4 edges\)/)).toBeInTheDocument();
+    const longLabel = screen.getByText(/1000 \/ 1234/);
+    expect(longLabel.style.width).toBe(shortWidth);
   });
 
   it("shows the stale-run warning when debugStale is true", () => {

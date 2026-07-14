@@ -13,6 +13,26 @@ import * as m from "~/paraglide/messages";
 const ROW_MIN_HEIGHT = 26;
 const INDENT_PX = 16;
 const STEP_COL_WIDTH = 34;
+const ROW_BODY_PADDING_LEFT = 8;
+const ROW_BODY_PADDING_RIGHT = 8;
+const DISCLOSURE_WIDTH = 14;
+const TEXT_GAP = 4;
+// typography.body: fontSize 14px — average glyph width for a proportional sans-serif font is
+// roughly 0.55-0.6x the font size; used only to pre-size virtualized rows before they're
+// measured, not for actual layout.
+const AVG_CHAR_WIDTH_PX = 8;
+const ROW_LINE_HEIGHT_PX = 17;
+const ROW_VERTICAL_PADDING_PX = ROW_MIN_HEIGHT - 16;
+
+/** Estimates a row's rendered height from its wrapped text line count, before it's ever mounted. */
+function estimateRowHeight(text: string, depth: number, containerWidth: number): number {
+  const availableWidth =
+    containerWidth - STEP_COL_WIDTH - ROW_BODY_PADDING_LEFT - depth * INDENT_PX
+    - DISCLOSURE_WIDTH - TEXT_GAP - ROW_BODY_PADDING_RIGHT;
+  const charsPerLine = Math.max(1, Math.floor(availableWidth / AVG_CHAR_WIDTH_PX));
+  const lineCount = Math.max(1, Math.ceil(text.length / charsPerLine));
+  return Math.max(ROW_MIN_HEIGHT, lineCount * ROW_LINE_HEIGHT_PX + ROW_VERTICAL_PADDING_PX);
+}
 
 function narrationFor(event: RecursiveBacktrackerEvent, coords: (id: bigint) => { x: number; y: number } | null): string {
   const fmt = (id: bigint) => {
@@ -61,12 +81,15 @@ export function DebugEventTree() {
   const coordIndex = useMemo(() => (debugArena ? buildNodeCoordIndex(debugArena.nodes) : null), [debugArena]);
   const coords = useMemo(() => (coordIndex ? (id: bigint) => coordIndex.get(id) : () => null), [coordIndex]);
 
-  const { rows, rowIndexByNodeIndex } = useMemo(() => {
-    if (!tape) return { rows: [] as TreeRow[], rowIndexByNodeIndex: new Map<number, number>() };
+  const { rows, labels, rowIndexByNodeIndex } = useMemo(() => {
+    if (!tape) {
+      return { rows: [] as TreeRow[], labels: [] as { text: string; mutating: boolean }[], rowIndexByNodeIndex: new Map<number, number>() };
+    }
     const rows = flattenVisibleRows(tape, expanded);
+    const labels = rows.map((row) => rowLabel(row, coords));
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
-    return { rows, rowIndexByNodeIndex };
-  }, [tape, expanded]);
+    return { rows, labels, rowIndexByNodeIndex };
+  }, [tape, expanded, coords]);
 
   const highlightedNodeIndex = useMemo(() => {
     if (!tape || !stepIndex) return null;
@@ -76,17 +99,24 @@ export function DebugEventTree() {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_MIN_HEIGHT,
+    // Estimates wrapped line count from text length instead of assuming ROW_MIN_HEIGHT — keeps
+    // getTotalSize() close to the real content height even for unmeasured rows, so the native
+    // scrollbar thumb doesn't drift behind the cursor while it's being dragged.
+    estimateSize: (index) => {
+      const containerWidth = scrollRef.current?.clientWidth ?? 0;
+      return estimateRowHeight(labels[index].text, rows[index].depth, containerWidth);
+    },
     // Row text now wraps instead of being ellipsis-truncated, so height varies — measure the
     // actual rendered element rather than assuming a fixed row height.
     measureElement: (el) => el.getBoundingClientRect().height,
+    overscan: 20,
   });
 
   useLayoutEffect(() => {
     if (highlightedNodeIndex === null) return;
     const rowIdx = rowIndexByNodeIndex.get(highlightedNodeIndex);
     if (rowIdx === undefined) return;
-    virtualizer.scrollToIndex(rowIdx, { align: "auto" });
+    virtualizer.scrollToIndex(rowIdx, { align: "center" });
   }, [highlightedNodeIndex, rowIndexByNodeIndex, virtualizer]);
 
   if (!tape || !stepIndex) return null;
@@ -110,7 +140,7 @@ export function DebugEventTree() {
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const row = rows[virtualRow.index];
-          const { text, mutating } = rowLabel(row, coords);
+          const { text, mutating } = labels[virtualRow.index];
           const highlighted = row.nodeIndex === highlightedNodeIndex;
           const isExpanded = expanded.has(row.nodeIndex);
           const displayStep = displayStepForRow(tape, stepIndex, row);

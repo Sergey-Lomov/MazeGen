@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
-import { selectDebugMazeView } from "../store/debugSelectors";
 import { ui, radius, typography, muted } from "../styles/theme";
 import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
@@ -23,12 +22,6 @@ export function DebugPanel() {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const total = debugArena?.totalSteps ?? 0;
-  // Memoized so a re-render triggered by unrelated store/local state (playing, delayDraft, width,
-  // ...) doesn't re-run the replay engine — only an actual debugArena/debugStep change should.
-  const currentEdges = useMemo(
-    () => (debugArena ? selectDebugMazeView(debugArena, debugStep)?.edges.length ?? 0 : 0),
-    [debugArena, debugStep]
-  );
 
   useEffect(() => {
     function handleMouseMove(e: MouseEvent) {
@@ -125,7 +118,7 @@ export function DebugPanel() {
 
       <div style={styles.stepRow}>
         <span style={styles.stepLabel}>
-          {debugStep + 1} / {total} <span style={styles.edgeCount}>({currentEdges} edges)</span>
+          {debugStep + 1} / {total}
         </span>
         <StepSlider
           value={debugStep}
@@ -234,11 +227,8 @@ const styles: Record<string, React.CSSProperties> = {
     ...muted(typography.body),
     whiteSpace: "nowrap" as const,
     flexShrink: 0,
-    width: 150,
+    width: 70,
     overflow: "hidden" as const,
-  },
-  edgeCount: {
-    color: ui.text.disabled,
   },
   slider: {
     flex: 1,
