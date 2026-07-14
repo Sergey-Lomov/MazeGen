@@ -9,6 +9,9 @@
 
 use std::borrow::Cow;
 
+pub mod checkpoint;
+pub use checkpoint::{CheckpointLog, EncodedCheckpoints, CHECKPOINT_RECORD_SIZE};
+
 enum NodeKind<E> {
     Scope(Cow<'static, str>),
     Event(E),
@@ -100,14 +103,17 @@ impl<E> EventLog<E> {
         self.enter(format!("{base_name} {n}"))
     }
 
-    fn emit_inner(&mut self, event: E) {
-        self.push_child(NodeKind::Event(event));
+    fn emit_inner(&mut self, event: E) -> u32 {
+        self.push_child(NodeKind::Event(event))
     }
 
     /// Emits an event directly into the current cursor's scope (the root scope, if no
-    /// guard is open) without opening a nested scope for it.
-    pub fn emit(&mut self, event: E) {
-        self.emit_inner(event);
+    /// guard is open) without opening a nested scope for it. Returns the arena index the event
+    /// was inserted at — an opaque handle (not exposed elsewhere as an indexable position), used
+    /// e.g. by checkpoint recording (see [`checkpoint`]) to tag a snapshot with the mutating
+    /// event it reflects state up to and including.
+    pub fn emit(&mut self, event: E) -> u32 {
+        self.emit_inner(event)
     }
 
     /// Consumes the builder, returning a read-only [`DebugTape`]. No further `enter`/`emit`
@@ -132,8 +138,9 @@ pub struct ScopeGuard<'a, E> {
 }
 
 impl<'a, E> ScopeGuard<'a, E> {
-    pub fn emit(&mut self, event: E) {
-        self.log.emit_inner(event);
+    /// Returns the arena index the event was inserted at — see [`EventLog::emit`].
+    pub fn emit(&mut self, event: E) -> u32 {
+        self.log.emit_inner(event)
     }
 
     /// Opens a nested scope under this one, consuming this guard. Only one guard can be

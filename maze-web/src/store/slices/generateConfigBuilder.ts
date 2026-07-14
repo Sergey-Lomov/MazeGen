@@ -8,7 +8,7 @@ import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
-import { parseTape, mutatingRbEvents } from "../../debug/eventTape";
+import { parseTape, parseCheckpoints, resolveDebugArenaMetadata } from "../../debug/eventTape";
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -169,9 +169,17 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
     let lastStep = 0;
     if (debugMode && debugTape) {
       const tape = parseTape(debugTape.nodeTable, debugTape.payload);
-      const totalSteps = mutatingRbEvents(tape).length;
+      // One combined forward scan for totalSteps + checkpoints (GitHub issue #128) instead of two
+      // independent full-tape scans — see resolveDebugArenaMetadata's doc comment. checkpointFroms
+      // are ApplyFrom-ready values selectDebugMazeView can pass straight into
+      // applyRecursiveBacktracker as `from`.
+      const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
+      const checkpoints = debugTape.snapshotTable && debugTape.snapshotPayload
+        ? parseCheckpoints(debugTape.snapshotTable, debugTape.snapshotPayload)
+        : emptyCheckpoints;
+      const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, checkpoints);
       if (totalSteps > 0) {
-        debugArena = { tape, nodes: snapshot.nodes, totalSteps };
+        debugArena = { tape, nodes: snapshot.nodes, totalSteps, checkpointFroms };
         lastStep = totalSteps - 1;
       }
     }

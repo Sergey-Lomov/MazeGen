@@ -4,8 +4,60 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
-use crate::event_log::{DebugEvent, EncodeEventPayload, EventLog};
+use crate::event_log::{CheckpointLog, DebugEvent, EncodeEventPayload, EventLog};
 use super::{PresetState, try_add_bidirectional_edge, can_connect};
+
+/// Number of mutating events between intermediate snapshot checkpoints (GitHub issue #128) — a
+/// tunable constant, not user-facing config, per the issue's pilot scope. Picked empirically:
+/// frequent enough that a replay consumer never has to walk more than this many mutating events
+/// from the nearest checkpoint, sparse enough that the checkpoint table itself stays small.
+const CHECKPOINT_INTERVAL: u32 = 500;
+
+/// Accumulates checkpoint state alongside `generate`'s event emission — kept separate from
+/// `EventLog`/`CheckpointLog` themselves (see `Specs/event_log.md`'s #128 section) since neither
+/// of those types knows what a "snapshot" is; that's this algorithm's concern.
+///
+/// Tracks the same reconstructable state `applyRecursiveBacktracker` (`maze-web/src/debug/eventTape.ts`)
+/// builds from `EdgeAdded` events — an edge list, not the full graph — so a snapshot is a drop-in
+/// stand-in for "replay from scratch up to this node index". Deliberately excludes preset edges
+/// (already in `graph` before `generate` runs, never emitted as `EdgeAdded`), matching what a full
+/// replay from an empty `edges: []` would reconstruct.
+struct CheckpointTracker<'a> {
+    log: &'a mut CheckpointLog,
+    edges: Vec<(NodeId, NodeId)>,
+    since_last_checkpoint: u32,
+}
+
+impl<'a> CheckpointTracker<'a> {
+    fn new(log: &'a mut CheckpointLog) -> Self {
+        Self { log, edges: Vec::new(), since_last_checkpoint: 0 }
+    }
+
+    /// Call after every mutating event emit. `edge_delta`, when present, is folded into the
+    /// tracked edge list (both directions, mirroring `EdgeAdded`'s `bidirectional` flag handling
+    /// in the TS replay engine). `node_index` is the arena index `emit` returned for this event —
+    /// the checkpoint (if the interval is reached) is tagged with that index, not with whatever
+    /// the arena's length happens to be later.
+    fn record(&mut self, node_index: u32, edge_delta: Option<(NodeId, NodeId, bool)>) {
+        if let Some((from, to, bidirectional)) = edge_delta {
+            self.edges.push((from, to));
+            if bidirectional {
+                self.edges.push((to, from));
+            }
+        }
+        self.since_last_checkpoint += 1;
+        if self.since_last_checkpoint >= CHECKPOINT_INTERVAL {
+            self.since_last_checkpoint = 0;
+            let mut bytes = Vec::with_capacity(4 + self.edges.len() * 16);
+            bytes.extend_from_slice(&(self.edges.len() as u32).to_le_bytes());
+            for (from, to) in &self.edges {
+                bytes.extend_from_slice(&from.to_le_bytes());
+                bytes.extend_from_slice(&to.to_le_bytes());
+            }
+            self.log.push(node_index, &bytes);
+        }
+    }
+}
 
 /// Stable wire tags for [`RecursiveBacktrackerEvent`] (GitHub issue #124's binary encoding) —
 /// manually assigned, never derived from Rust enum variant order/discriminant, so the wire
@@ -114,9 +166,18 @@ pub fn generate<T: Tessellation>(
     preset_state: &PresetState,
     mut on_step: Option<&mut super::StepCallback<'_>>,
     mut event_log: Option<&mut EventLog<RecursiveBacktrackerEvent>>,
+    checkpoint_log: Option<&mut CheckpointLog>,
 ) {
+    debug_assert!(
+        checkpoint_log.is_none() || event_log.is_some(),
+        "recursive_backtracker::generate: checkpoint_log requires event_log — a checkpoint is tagged with an \
+         arena node index from event_log's emit(), so checkpointing without an event tree has nothing to \
+         attach a snapshot to (see CheckpointTracker::record's node_index parameter)"
+    );
+
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut rng = MazeRng::seed_from_u64(seed);
+    let mut checkpoints = checkpoint_log.map(CheckpointTracker::new);
 
     let preset_connected = &preset_state.preset_connected;
     visited.insert(start);
@@ -138,19 +199,31 @@ pub fn generate<T: Tessellation>(
         if unvisited.is_empty() {
             if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::DeadEnd); }
             stack.pop();
-            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexPopped(current)); }
+            if let Some(g) = step_guard.as_mut() {
+                let idx = g.emit(RecursiveBacktrackerEvent::VertexPopped(current));
+                if let Some(t) = checkpoints.as_mut() { t.record(idx, None); }
+            }
         } else {
             let chosen = unvisited[rng.random_range(0..unvisited.len())];
             if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::CandidateChosen(chosen)); }
             // Preset nodes already have their edge in the graph — skip adding it again.
             if !preset_connected.contains(&chosen) {
                 try_add_bidirectional_edge(graph, current, chosen, preset_state);
-                if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen, bidirectional: true }); }
+                if let Some(g) = step_guard.as_mut() {
+                    let idx = g.emit(RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen, bidirectional: true });
+                    if let Some(t) = checkpoints.as_mut() { t.record(idx, Some((current, chosen, true))); }
+                }
             }
             visited.insert(chosen);
-            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexVisited(chosen)); }
+            if let Some(g) = step_guard.as_mut() {
+                let idx = g.emit(RecursiveBacktrackerEvent::VertexVisited(chosen));
+                if let Some(t) = checkpoints.as_mut() { t.record(idx, None); }
+            }
             stack.push(chosen);
-            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexPushed(chosen)); }
+            if let Some(g) = step_guard.as_mut() {
+                let idx = g.emit(RecursiveBacktrackerEvent::VertexPushed(chosen));
+                if let Some(t) = checkpoints.as_mut() { t.record(idx, None); }
+            }
             if let Some(ref mut cb) = on_step { cb(graph, current, &stack); }
         }
     }

@@ -20,6 +20,8 @@ function fakeGenerateResult(snapshot: unknown) {
     snapshot: () => snapshot,
     debugTapeNodeTable: () => undefined,
     debugTapePayload: () => undefined,
+    debugSnapshotTable: () => undefined,
+    debugSnapshotPayload: () => undefined,
     free: () => {},
   };
 }
@@ -134,6 +136,8 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => nodeTableBytes,
       debugTapePayload: () => payloadBytes,
+      debugSnapshotTable: () => undefined,
+      debugSnapshotPayload: () => undefined,
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
@@ -141,6 +145,48 @@ describe("generateMaze / validateSnapshot", () => {
     // Must be independent copies, not the same views handed back by WASM.
     expect(result.debugTape?.nodeTable).not.toBe(nodeTableBytes);
     expect(result.debugTape?.payload).not.toBe(payloadBytes);
+  });
+
+  it("copies checkpoint buffers out of WASM memory when present (GitHub issue #128)", () => {
+    const nodeTableBytes = new Uint8Array([1, 2, 3]);
+    const payloadBytes = new Uint8Array([4, 5, 6]);
+    const snapshotTableBytes = new Uint8Array([7, 8]);
+    const snapshotPayloadBytes = new Uint8Array([9, 10, 11]);
+    mockGenerate.mockReturnValue({
+      snapshot: () => validSnapshot,
+      debugTapeNodeTable: () => nodeTableBytes,
+      debugTapePayload: () => payloadBytes,
+      debugSnapshotTable: () => snapshotTableBytes,
+      debugSnapshotPayload: () => snapshotPayloadBytes,
+      free: () => {},
+    });
+    const result = generateMaze(1, defaultConfig);
+    expect(result.debugTape).toEqual({
+      nodeTable: nodeTableBytes,
+      payload: payloadBytes,
+      snapshotTable: snapshotTableBytes,
+      snapshotPayload: snapshotPayloadBytes,
+    });
+    expect(result.debugTape?.snapshotTable).not.toBe(snapshotTableBytes);
+    expect(result.debugTape?.snapshotPayload).not.toBe(snapshotPayloadBytes);
+  });
+
+  it("omits checkpoint fields entirely when no checkpoints were recorded", () => {
+    const nodeTableBytes = new Uint8Array([1, 2, 3]);
+    const payloadBytes = new Uint8Array([4, 5, 6]);
+    mockGenerate.mockReturnValue({
+      snapshot: () => validSnapshot,
+      debugTapeNodeTable: () => nodeTableBytes,
+      debugTapePayload: () => payloadBytes,
+      debugSnapshotTable: () => undefined,
+      debugSnapshotPayload: () => undefined,
+      free: () => {},
+    });
+    const result = generateMaze(1, defaultConfig);
+    expect(result.debugTape?.snapshotTable).toBeUndefined();
+    expect(result.debugTape?.snapshotPayload).toBeUndefined();
+    expect(result.debugTape).not.toHaveProperty("snapshotTable");
+    expect(result.debugTape).not.toHaveProperty("snapshotPayload");
   });
 });
 

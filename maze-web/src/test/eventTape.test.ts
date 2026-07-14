@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   parseTape, nodeAt, nodeView, mutatingRbEvents, applyRecursiveBacktracker,
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent,
-  TAG_SCOPE, NO_NODE, RB_TAG,
-  type ParsedTape,
+  parseCheckpoints, checkpointAt,
+  resolveCheckpointFroms, nearestCheckpointFromAtOrBefore, resolveDebugArenaMetadata,
+  TAG_SCOPE, NO_NODE, RB_TAG, CHECKPOINT_RECORD_SIZE,
+  type ParsedTape, type ParsedCheckpoints,
 } from "../debug/eventTape";
 
 // --- Hand-built fixture encoder, mirroring `DebugTape::encode()` (maze-core/src/event_log/mod.rs)
@@ -235,6 +237,24 @@ describe("applyRecursiveBacktracker — resume via `from`", () => {
     expect(() => applyRecursiveBacktracker(tape, NaN)).toThrow();
     expect(() => applyRecursiveBacktracker(tape, Infinity)).toThrow();
   });
+
+  it("from.step === targetStep returns from as-is without scanning (regression: used to crash)", () => {
+    // A checkpoint landing exactly on the requested step needs zero new events — the bounded
+    // scan below would ask mutatingRbEventsWithIndex for 0 events and then index into an empty
+    // array (`newEvents[-1].nodeIndex`), throwing. This is exactly what
+    // nearestCheckpointFromAtOrBefore can produce in practice (GitHub issue #128 wiring).
+    const tape = buildThreeEdgeTape();
+    const from = { edges: [{ from: 1n, to: 2n }], step: 0, nodeIndex: 1 };
+    const result = applyRecursiveBacktracker(tape, 0, from);
+    expect(result).toEqual({ edges: [{ from: 1n, to: 2n }], step: 0, nodeIndex: 1 });
+  });
+
+  it("from.step === targetStep returns a new edges array, not the same reference as from.edges", () => {
+    const tape = buildThreeEdgeTape();
+    const from = { edges: [{ from: 1n, to: 2n }], step: 0, nodeIndex: 1 };
+    const result = applyRecursiveBacktracker(tape, 0, from);
+    expect(result.edges).not.toBe(from.edges);
+  });
 });
 
 describe("decodeRecursiveBacktrackerEvent — trace-only variants", () => {
@@ -316,5 +336,175 @@ describe("nodeAt", () => {
     expect(root.parent).toBeNull();
     expect(root.nextSibling).toBeNull();
     expect(root.firstChild).toBe(1);
+  });
+});
+
+// --- Checkpoint buffer (GitHub issue #128) ---
+// Hand-built fixture mirroring `CheckpointLog::encode()` (maze-core/src/event_log/checkpoint.rs)
+// and the edges-payload encoding written by `CheckpointTracker::record`
+// (maze-core/src/generation/recursive_backtracker.rs).
+
+interface FixtureCheckpoint {
+  nodeIndex: number;
+  edges: Array<[bigint, bigint]>;
+}
+
+function edgesPayload(edges: Array<[bigint, bigint]>): Uint8Array {
+  const chunks: Uint8Array[] = [u32le(edges.length)];
+  for (const [from, to] of edges) {
+    chunks.push(u64le(from), u64le(to));
+  }
+  return concatBytes(chunks);
+}
+
+function buildCheckpointFixture(checkpoints: FixtureCheckpoint[]): ParsedCheckpoints {
+  const tableChunks: Uint8Array[] = [];
+  const payloadChunks: Uint8Array[] = [];
+  let payloadOffset = 0;
+  for (const cp of checkpoints) {
+    const bytes = edgesPayload(cp.edges);
+    tableChunks.push(u32le(cp.nodeIndex), u32le(payloadOffset), u32le(bytes.byteLength));
+    payloadChunks.push(bytes);
+    payloadOffset += bytes.byteLength;
+  }
+  return parseCheckpoints(concatBytes(tableChunks), concatBytes(payloadChunks));
+}
+
+describe("parseCheckpoints / checkpointAt", () => {
+  it("round-trips a single checkpoint's node index and edges", () => {
+    const tape = buildCheckpointFixture([{ nodeIndex: 42, edges: [[1n, 2n], [2n, 1n]] }]);
+    expect(tape.checkpointCount).toBe(1);
+    expect(tape.table.byteLength).toBe(CHECKPOINT_RECORD_SIZE);
+    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 42, edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }] });
+  });
+
+  it("round-trips multiple checkpoints with distinct payload slices", () => {
+    const tape = buildCheckpointFixture([
+      { nodeIndex: 10, edges: [[1n, 2n]] },
+      { nodeIndex: 520, edges: [[1n, 2n], [3n, 4n], [4n, 3n]] },
+    ]);
+    expect(tape.checkpointCount).toBe(2);
+    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 10, edges: [{ from: 1n, to: 2n }] });
+    expect(checkpointAt(tape, 1)).toEqual({
+      nodeIndex: 520,
+      edges: [{ from: 1n, to: 2n }, { from: 3n, to: 4n }, { from: 4n, to: 3n }],
+    });
+  });
+
+  it("round-trips a checkpoint with zero edges", () => {
+    const tape = buildCheckpointFixture([{ nodeIndex: 5, edges: [] }]);
+    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 5, edges: [] });
+  });
+
+  it("an empty buffer has zero checkpoints", () => {
+    const tape = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
+    expect(tape.checkpointCount).toBe(0);
+  });
+});
+
+
+describe("resolveCheckpointFroms / nearestCheckpointFromAtOrBefore", () => {
+  // buildTwoStepTape()'s mutating events, in step order: EdgeAdded (node 2, step 0),
+  // VertexVisited (node 3, step 1), VertexPushed (node 4, step 2), VertexPopped (node 7, step 3).
+
+  it("resolves an empty checkpoint table to an empty array", () => {
+    const tape = buildTwoStepTape();
+    const checkpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
+    expect(resolveCheckpointFroms(tape, checkpoints)).toEqual([]);
+  });
+
+  it("translates a checkpoint's arena nodeIndex into its mutating-event step", () => {
+    const tape = buildTwoStepTape();
+    // Checkpoint recorded at arena node 4 (the VertexPushed event) — step 2.
+    const checkpoints = buildCheckpointFixture([{ nodeIndex: 4, edges: [[1n, 2n], [2n, 1n]] }]);
+    const froms = resolveCheckpointFroms(tape, checkpoints);
+    expect(froms).toEqual([{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], step: 2, nodeIndex: 4 }]);
+  });
+
+  it("resolves multiple checkpoints in ascending step order", () => {
+    const tape = buildTwoStepTape();
+    const checkpoints = buildCheckpointFixture([
+      { nodeIndex: 2, edges: [[1n, 2n], [2n, 1n]] }, // EdgeAdded, step 0
+      { nodeIndex: 7, edges: [[1n, 2n], [2n, 1n]] }, // VertexPopped, step 3
+    ]);
+    const froms = resolveCheckpointFroms(tape, checkpoints);
+    expect(froms.map((f) => f.step)).toEqual([0, 3]);
+    expect(froms.map((f) => f.nodeIndex)).toEqual([2, 7]);
+  });
+
+  it("a resolved checkpoint plugged into applyRecursiveBacktracker as `from` matches a full replay", () => {
+    const tape = buildTwoStepTape();
+    const checkpoints = buildCheckpointFixture([{ nodeIndex: 4, edges: [[1n, 2n], [2n, 1n]] }]);
+    const [from] = resolveCheckpointFroms(tape, checkpoints);
+
+    const viaCheckpoint = applyRecursiveBacktracker(tape, 3, from);
+    const fromScratch = applyRecursiveBacktracker(tape, 3);
+    expect(viaCheckpoint.edges).toEqual(fromScratch.edges);
+  });
+
+  it("nearestCheckpointFromAtOrBefore finds the greatest step <= target, or null", () => {
+    const tape = buildTwoStepTape();
+    const checkpoints = buildCheckpointFixture([
+      { nodeIndex: 2, edges: [[1n, 2n], [2n, 1n]] }, // step 0
+      { nodeIndex: 7, edges: [[1n, 2n], [2n, 1n]] }, // step 3
+    ]);
+    const froms = resolveCheckpointFroms(tape, checkpoints);
+
+    expect(nearestCheckpointFromAtOrBefore(froms, 0)?.step).toBe(0);
+    expect(nearestCheckpointFromAtOrBefore(froms, 2)?.step).toBe(0);
+    expect(nearestCheckpointFromAtOrBefore(froms, 3)?.step).toBe(3);
+    expect(nearestCheckpointFromAtOrBefore(froms, 100)?.step).toBe(3);
+  });
+
+  it("nearestCheckpointFromAtOrBefore returns null when no checkpoint precedes the target step", () => {
+    const froms = resolveCheckpointFroms(buildTwoStepTape(), buildCheckpointFixture([{ nodeIndex: 4, edges: [] }]));
+    expect(nearestCheckpointFromAtOrBefore(froms, 1)).toBeNull();
+  });
+
+  it("nearestCheckpointFromAtOrBefore returns null on an empty array", () => {
+    expect(nearestCheckpointFromAtOrBefore([], 5)).toBeNull();
+  });
+});
+
+describe("resolveDebugArenaMetadata", () => {
+  // buildTwoStepTape()'s mutating events, in step order: EdgeAdded (node 2, step 0),
+  // VertexVisited (node 3, step 1), VertexPushed (node 4, step 2), VertexPopped (node 7, step 3).
+
+  it("totalSteps matches mutatingRbEvents(tape).length when there are no checkpoints", () => {
+    const tape = buildTwoStepTape();
+    const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
+    const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
+    expect(totalSteps).toBe(mutatingRbEvents(tape).length);
+    expect(checkpointFroms).toEqual([]);
+  });
+
+  it("produces the same checkpointFroms as resolveCheckpointFroms for the same inputs", () => {
+    const tape = buildTwoStepTape();
+    const checkpoints = buildCheckpointFixture([
+      { nodeIndex: 2, edges: [[1n, 2n], [2n, 1n]] },
+      { nodeIndex: 7, edges: [[1n, 2n], [2n, 1n]] },
+    ]);
+    const combined = resolveDebugArenaMetadata(tape, checkpoints);
+    const separate = resolveCheckpointFroms(tape, checkpoints);
+    expect(combined.checkpointFroms).toEqual(separate);
+    expect(combined.totalSteps).toBe(mutatingRbEvents(tape).length);
+  });
+
+  it("totalSteps is 0 and checkpointFroms is empty for a tape with no mutating events", () => {
+    const tape = buildFixture([
+      { parent: null, firstChild: null, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    ]);
+    const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
+    const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
+    expect(totalSteps).toBe(0);
+    expect(checkpointFroms).toEqual([]);
+  });
+
+  it("still resolves checkpointFroms correctly even when a checkpoint sits at the very last mutating event", () => {
+    const tape = buildTwoStepTape();
+    const checkpoints = buildCheckpointFixture([{ nodeIndex: 7, edges: [[1n, 2n]] }]); // last mutating event (VertexPopped)
+    const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, checkpoints);
+    expect(totalSteps).toBe(4);
+    expect(checkpointFroms).toEqual([{ edges: [{ from: 1n, to: 2n }], step: 3, nodeIndex: 7 }]);
   });
 });

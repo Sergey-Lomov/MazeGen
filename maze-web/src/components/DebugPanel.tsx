@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import { selectDebugMazeView } from "../store/debugSelectors";
@@ -23,7 +23,12 @@ export function DebugPanel() {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const total = debugArena?.totalSteps ?? 0;
-  const currentEdges = debugArena ? selectDebugMazeView(debugArena, debugStep)?.edges.length ?? 0 : 0;
+  // Memoized so a re-render triggered by unrelated store/local state (playing, delayDraft, width,
+  // ...) doesn't re-run the replay engine — only an actual debugArena/debugStep change should.
+  const currentEdges = useMemo(
+    () => (debugArena ? selectDebugMazeView(debugArena, debugStep)?.edges.length ?? 0 : 0),
+    [debugArena, debugStep]
+  );
 
   useEffect(() => {
     function handleMouseMove(e: MouseEvent) {

@@ -233,4 +233,83 @@ An out-of-range `targetStep` is detected by the bounded scan coming up short (fe
 - Store integration (`mazeStore.ts`, `generateConfigBuilder.ts` wiring)
 - Right-panel debug UI
 - Cleanup of the old `debug_steps`/`GenerationStepDto` path
-- Intermediate snapshots / checkpointing (core-side)
+- Intermediate snapshots / checkpointing (core-side) — added in #128, see below
+
+## Intermediate Snapshot Checkpointing (#128)
+
+Lets a replay consumer reconstruct state at a late arena node index without replaying every mutating event from the tape's start. Computed once, during generation, in the same pass that builds the event tree — not a separate replay pass afterward.
+
+### `CheckpointLog` — a separate module, not a field on `EventLog`/`DebugTape`
+
+Module: `maze-core/src/event_log/checkpoint.rs` (`pub mod checkpoint` under `event_log`, re-exported from `event_log::mod`). Deliberately independent of `EventLog<E>`/`DebugTape<E>`/`Node<E>` — those types have no notion of what a "snapshot" contains (that's algorithm-specific: for Recursive Backtracker, an edge list), so folding checkpoint storage into them would make `event_log` responsible for a concern it doesn't own. It lives in a file under `event_log/` purely because it mirrors `EncodedTape`'s POD-buffer transport mechanics (same WASM zero-copy story) — not because of a type dependency; nothing in `checkpoint.rs` references `Node<E>` or indexes into the arena.
+
+```rust
+pub struct CheckpointLog { /* ... */ }
+pub struct EncodedCheckpoints { pub table: Vec<u8>, pub payload: Vec<u8> }
+pub const CHECKPOINT_RECORD_SIZE: usize = 12; // 4 (node_index) + 4 (offset) + 4 (len)
+```
+
+- `CheckpointLog::push(&mut self, node_index: u32, bytes: &[u8])` — records one opaque snapshot payload tagged with the arena node index of the mutating event it reflects state up to and including. `node_index` is explicit, supplied by the caller — not inferred from any internal cursor, so there's no hidden coupling to `EventLog`'s cursor state.
+- **Invariant**: `push` must be called with a strictly increasing `node_index` across calls (holds by construction for a well-behaved caller emitting checkpoints in generation order). `CheckpointLog::encode()` never sorts — a caller violating the invariant hits a `debug_assert!` rather than silently producing a checkpoint table whose binary-search precondition doesn't hold.
+- `CheckpointLog::encode(&self) -> EncodedCheckpoints` — flat, fixed-stride table (`CHECKPOINT_RECORD_SIZE`-byte records: `node_index: u32, offset: u32, len: u32`, all little-endian) plus a single payload byte arena, mirroring `EncodedTape`'s two-buffer shape.
+
+### `EventLog::emit` returns the inserted arena index
+
+`EventLog::emit`/`ScopeGuard::emit` changed from returning `()` to returning `u32` — the arena index the event was inserted at. This is an opaque handle (not a way to index into arena data from outside — no `tape.nodes[i]` access is introduced), so it doesn't violate #124's encapsulation constraint. It exists so a caller like Recursive Backtracker can tag a checkpoint with the exact node index of the mutating event that triggered it, rather than reconstructing that index by parallel bookkeeping (fragile — easy to desync from the arena's actual growth on a future refactor).
+
+### Recursive Backtracker wiring
+
+`recursive_backtracker::generate` takes an additional `checkpoint_log: Option<&mut CheckpointLog>` parameter (same `Option<&mut T>` zero-cost-opt-out pattern as `on_step`/`event_log`). A private `CheckpointTracker` (defined in `recursive_backtracker.rs`, not exported) holds the running state:
+
+- `edges: Vec<(NodeId, NodeId)>` — accumulated from every `EdgeAdded` emit (both directions when `bidirectional`), **excluding preset edges**. Preset edges are already in `graph` before `generate` runs (added by `build_preset_state`) and are never emitted as `EdgeAdded` — and the existing `applyRecursiveBacktracker` (web replay engine, #125) already doesn't reconstruct them when replaying from scratch (`edges: []` plus `EdgeAdded`-only accumulation). A snapshot must equal what a from-scratch replay to the same node index would produce, or resuming from a snapshot would silently diverge from a full replay — so the snapshot format deliberately matches this existing (pre-#128) reconstructable-state definition rather than "improving" it to include preset edges.
+- `since_last_checkpoint: u32` counter, incremented **only** on the four mutating variants (`EdgeAdded`, `VertexVisited`, `VertexPopped`, `VertexPushed` — the same split `DebugEvent::is_mutating` already encodes), not on trace events.
+- Every `CHECKPOINT_INTERVAL = 500` mutating events (a module-level constant in `recursive_backtracker.rs`, not user-facing config — picked empirically per the issue's pilot scope: frequent enough that a replay consumer never walks more than this many events from the nearest checkpoint, sparse enough that the table stays small), the tracker encodes the current `edges` list and calls `checkpoint_log.push(node_index, bytes)`, where `node_index` is the value `emit` returned for the mutating event that crossed the threshold.
+- Encoding: `count: u32 LE` followed by that many `(from: u64 LE, to: u64 LE)` pairs — the same length-prefixed shape as `CandidatesComputed`'s wire format. No `EncodeEventPayload`-style trait for this — Recursive Backtracker is the only source, so the encoding is inlined in the tracker rather than introducing a second encoding abstraction.
+- Trade-off: each checkpoint encodes the **entire** accumulated edge list, not a diff from the previous checkpoint — O(edges) bytes per checkpoint. Accepted deliberately: checkpoints are infrequent (every 500 mutating events) and the format needs to be self-sufficient per the "nearest snapshot, then apply forward" replay model this is built for. A delta encoding is a possible future optimization, out of scope here.
+
+`generate_maze_with_events` (`maze-core/src/generation/mod.rs`) now returns a named struct, `EventedGenerationResult { steps, tape, checkpoints }`, instead of a growing tuple — the function is public API `maze-wasm` calls into, so a third positional tuple element would have hurt readability at both call sites. `checkpoints: Option<CheckpointLog>` is `Some` exactly when `tape` is (both come from the same Recursive Backtracker run); `None` for every other algorithm.
+
+### WASM boundary
+
+`GenerateResult` (`maze-wasm/src/result.rs`) gained a second, independent buffer pair: `snapshot_table: Option<Vec<u8>>` / `snapshot_payload: Option<Vec<u8>>`, attached via a chainable `with_checkpoints(self, table, payload) -> Self` builder method (composes with either `with_debug_tape`/`without_debug_tape`) rather than folding checkpoint parameters into the existing constructors — keeps the two transfer concerns (event tree vs. checkpoints) independently constructible. Exposed as `.debugSnapshotTable()` / `.debugSnapshotPayload()` — `Option<js_sys::Uint8Array>`, the same zero-copy `js_sys::Uint8Array::view` pattern and next-WASM-call invalidation caveat as `.debugTapeNodeTable()`/`.debugTapePayload()` (see #124's section above).
+
+`maze-wasm/src/runner.rs`'s `run_initial_generation` encodes `checkpoints.encode()` alongside `tape.encode()` (same post-timing-window placement as the tape, so it doesn't inflate `initial_build_ms`) and returns it as a fourth tuple element — this helper stays a plain tuple (unlike `EventedGenerationResult`) since it's a small internal function, not public API.
+
+### Web-side decoding (`maze-web/src/debug/eventTape.ts`)
+
+A third buffer pair, parsed independently of the node table/payload:
+
+```ts
+export const CHECKPOINT_RECORD_SIZE = 12;
+export interface ParsedCheckpoints { table, payload, tableView, checkpointCount }
+export function parseCheckpoints(table: Uint8Array, payload: Uint8Array): ParsedCheckpoints
+export interface Checkpoint { nodeIndex: number; edges: Edge[] }
+export function checkpointAt(tape: ParsedCheckpoints, index: number): Checkpoint
+```
+
+`checkpointAt` decodes one fixed-stride record plus its `edges` payload (same `u32` length-prefix + `(u64, u64)` pairs shape as the Rust encoder). No node-index-keyed lookup is exposed — `applyRecursiveBacktracker` needs a step-keyed lookup instead (see below), and nothing else in the codebase consumes checkpoints by raw `nodeIndex`.
+
+`mazeService.ts`'s `generateMaze()` copies `debugSnapshotTable()`/`debugSnapshotPayload()` into the returned `DebugTape`'s optional `snapshotTable`/`snapshotPayload` fields — but only when both are present; no empty-`Uint8Array` placeholders are created when the core recorded no checkpoints (e.g. a run shorter than `CHECKPOINT_INTERVAL`).
+
+### Wiring into `applyRecursiveBacktracker` (store layer)
+
+`applyRecursiveBacktracker`'s `targetStep`/`ApplyFrom.step` are indices into the flat mutating-event sequence, not arena node indices — so a checkpoint (keyed by `nodeIndex`) can't be handed to it as `from` directly. More functions in `eventTape.ts` bridge this:
+
+```ts
+export function resolveCheckpointFroms(tape: ParsedTape, checkpoints: ParsedCheckpoints): ApplyFrom[]
+export function nearestCheckpointFromAtOrBefore(checkpointFroms: ApplyFrom[], targetStep: number): ApplyFrom | null
+export interface DebugArenaMetadata { totalSteps: number; checkpointFroms: ApplyFrom[] }
+export function resolveDebugArenaMetadata(tape: ParsedTape, checkpoints: ParsedCheckpoints): DebugArenaMetadata
+```
+
+- `resolveCheckpointFroms` translates every checkpoint's `nodeIndex` into its `step` via one forward scan over the tape, producing ready-to-use `ApplyFrom` values sorted by ascending `step`. Stops scanning once every checkpoint is resolved.
+- `nearestCheckpointFromAtOrBefore` binary-searches that (small — one entry per `CHECKPOINT_INTERVAL` mutating events) array by `step`, the same key `targetStep`/`from` use.
+- `resolveDebugArenaMetadata` combines `resolveCheckpointFroms`'s scan with computing `totalSteps` (previously `mutatingRbEvents(tape).length`, a separate full-tape decode) into a single forward pass — `generateConfigBuilder.ts` needs both values together, and a large run's node table used to get decoded twice to produce them. Semantically equivalent to calling both separately.
+
+`DebugArenaHandle` (`maze-web/src/store/storeTypes.ts`) carries the resolved `checkpointFroms: ApplyFrom[]` (empty when the run produced no checkpoints). `generateConfigBuilder.ts` builds `totalSteps`/`checkpointFroms` together via `resolveDebugArenaMetadata`, passing an empty `ParsedCheckpoints` when `debugTape.snapshotTable`/`snapshotPayload` aren't both present. `selectDebugMazeView` (`maze-web/src/store/debugSelectors.ts`) looks up the nearest checkpoint at or before `debugStep` and passes it as `from` to `applyRecursiveBacktracker` — bounding replay cost to `CHECKPOINT_INTERVAL` mutating events from the checkpoint rather than to `debugStep` itself, while still deriving the view fresh on every call (no cross-render step-result caching, unchanged from #125/#126).
+
+### Out of Scope (#128)
+
+- Tuning `CHECKPOINT_INTERVAL` beyond picking a reasonable initial default
+- Delta/diff encoding between successive checkpoints (see the trade-off note above)
+- Right-panel UI changes beyond the existing debug slider (no new controls added)

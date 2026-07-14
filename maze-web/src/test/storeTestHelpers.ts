@@ -50,6 +50,30 @@ export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uin
   return { nodeTable, payload };
 }
 
+function u32le(v: number): Uint8Array {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, v, true);
+  return bytes;
+}
+
+/** Encodes intermediate snapshot checkpoints (GitHub issue #128) into the raw
+ *  `{ snapshotTable, snapshotPayload }` buffer pair `generateMaze()` returns as
+ *  `debugTape.snapshotTable`/`snapshotPayload` — mirrors `CheckpointLog::encode()`'s wire format
+ *  (see `Specs/event_log.md`). `checkpoints` must be given in ascending `nodeIndex` order, same
+ *  invariant `CheckpointLog::push` enforces on the Rust side. */
+export function encodeCheckpoints(checkpoints: Array<{ nodeIndex: number; edges: [bigint, bigint][] }>): { snapshotTable: Uint8Array; snapshotPayload: Uint8Array } {
+  const payloadChunks: Uint8Array[] = [];
+  const tableChunks: Uint8Array[] = [];
+  let payloadOffset = 0;
+  for (const { nodeIndex, edges } of checkpoints) {
+    const bytes = concatBytes([u32le(edges.length), ...edges.flatMap(([from, to]) => [u64le(from), u64le(to)])]);
+    tableChunks.push(u32le(nodeIndex), u32le(payloadOffset), u32le(bytes.byteLength));
+    payloadChunks.push(bytes);
+    payloadOffset += bytes.byteLength;
+  }
+  return { snapshotTable: concatBytes(tableChunks), snapshotPayload: concatBytes(payloadChunks) };
+}
+
 export const mockSnapshot = {
   nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }],
   edges: [{ from: 0, to: 1, kind: "basic" as const }],

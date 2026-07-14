@@ -36,10 +36,18 @@ function isIssueDto(v: unknown): v is IssueDto {
  *  out of WASM linear memory at read time. The WASM-side buffers are zero-copy views that get
  *  invalidated by the next call into the WASM module (see `GenerateResult` doc comments in
  *  `maze-wasm/src/result.rs`), so this is the point where that constraint is discharged — every
- *  consumer downstream of `generateMaze` gets a plain owned `Uint8Array`, safe to hold onto. */
+ *  consumer downstream of `generateMaze` gets a plain owned `Uint8Array`, safe to hold onto.
+ *
+ *  `snapshotTable`/`snapshotPayload` (GitHub issue #128) carry intermediate snapshot checkpoints
+ *  — present exactly when the core recorded at least the checkpoint infrastructure for this run
+ *  (i.e. whenever `nodeTable`/`payload` are, since both come from the same Recursive Backtracker
+ *  run); `undefined` otherwise. Independent buffers, not folded into `nodeTable`/`payload`, per
+ *  `maze-core/src/event_log/checkpoint.rs`'s `CheckpointLog` living apart from the event arena. */
 export interface DebugTape {
   nodeTable: Uint8Array;
   payload: Uint8Array;
+  snapshotTable?: Uint8Array;
+  snapshotPayload?: Uint8Array;
 }
 
 export interface GenerateMazeResult {
@@ -91,8 +99,18 @@ export function generateMaze(seed: number, config: GenerateConfig): GenerateMaze
     // `maze-wasm/src/result.rs`), so this is the only safe place to read them.
     const nodeTable = result.debugTapeNodeTable();
     const payload = result.debugTapePayload();
+    // Checkpoint buffers (GitHub issue #128) — copied only when present; no empty-array
+    // placeholders are created when the core recorded no checkpoints.
+    const snapshotTable = result.debugSnapshotTable();
+    const snapshotPayload = result.debugSnapshotPayload();
     const debugTape: DebugTape | undefined = nodeTable && payload
-      ? { nodeTable: nodeTable.slice(), payload: payload.slice() }
+      ? {
+          nodeTable: nodeTable.slice(),
+          payload: payload.slice(),
+          ...(snapshotTable && snapshotPayload
+            ? { snapshotTable: snapshotTable.slice(), snapshotPayload: snapshotPayload.slice() }
+            : {}),
+        }
       : undefined;
 
     return { snapshot, debugTape };

@@ -3,12 +3,12 @@ import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { fieldConfigToWasm, buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
-import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape } from "./storeTestHelpers";
+import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape, encodeCheckpoints } from "./storeTestHelpers";
 import { parseTape } from "../debug/eventTape";
 import type { DebugArenaHandle } from "../store/storeTypes";
 
 function emptyDebugArena(): DebugArenaHandle {
-  return { tape: parseTape(new Uint8Array(0), new Uint8Array(0)), nodes: [], totalSteps: 0 };
+  return { tape: parseTape(new Uint8Array(0), new Uint8Array(0)), nodes: [], totalSteps: 0, checkpointFroms: [] };
 }
 
 vi.mock("../wasm/mazeService", () => ({
@@ -1364,6 +1364,22 @@ describe("mazeStore generation misc actions", () => {
     expect(s.debugArena).not.toBeNull();
     expect(s.debugArena?.totalSteps).toBe(3);
     expect(s.debugStep).toBe(2);
+  });
+
+  it("generate() with debugMode on and checkpoint buffers present resolves them into debugArena.checkpointFroms (GitHub issue #128)", () => {
+    // Node-table layout mirrors encodeEdgeAddedTape: node 0 = EdgeAdded(1,2), node 1 = EdgeAdded(2,3),
+    // node 2 = EdgeAdded(3,4) — a checkpoint at node 1 (step 1) reflecting the first two edges.
+    const debugTape = {
+      ...encodeEdgeAddedTape([[1n, 2n], [2n, 3n], [3n, 4n]]),
+      ...encodeCheckpoints([{ nodeIndex: 1, edges: [[1n, 2n], [2n, 1n], [2n, 3n], [3n, 2n]] }]),
+    };
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
+    useMazeStore.getState().generate();
+    const s = useMazeStore.getState();
+    expect(s.debugArena?.checkpointFroms).toEqual([
+      { edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }, { from: 2n, to: 3n }, { from: 3n, to: 2n }], step: 1, nodeIndex: 1 },
+    ]);
   });
 
   it("generate() with debugMode on but a tape with zero mutating events leaves debugArena null", () => {

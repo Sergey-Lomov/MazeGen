@@ -63,7 +63,7 @@ fn dispatch<T: Tessellation>(
         GenerationAlgorithm::CustomEdgeBased(params) =>
             edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, on_step),
         GenerationAlgorithm::RecursiveBacktracker =>
-            recursive_backtracker::generate(graph, field, seed, start, preset_state, on_step, None),
+            recursive_backtracker::generate(graph, field, seed, start, preset_state, on_step, None, None),
         GenerationAlgorithm::WilsonAlgorithm =>
             wilson::generate(graph, field, seed, start, preset_state, on_step),
         GenerationAlgorithm::KruskalAlgorithm =>
@@ -99,6 +99,18 @@ pub fn generate_maze_steps<T: Tessellation>(
     steps
 }
 
+/// Result of [`generate_maze_with_events`] — a named struct rather than a growing tuple, since
+/// this function is part of the public API `maze-wasm` calls into (unlike the small
+/// `run_initial_generation` helper in `maze-wasm/src/runner.rs`, where an internal tuple stays
+/// readable).
+pub struct EventedGenerationResult {
+    pub steps: Vec<GenerationStep>,
+    pub tape: Option<crate::event_log::DebugTape<RecursiveBacktrackerEvent>>,
+    /// Intermediate snapshot checkpoints (GitHub issue #128) — `Some` exactly when `tape` is
+    /// `Some` (both come from the same Recursive Backtracker run, or neither does).
+    pub checkpoints: Option<crate::event_log::CheckpointLog>,
+}
+
 /// Runs generation with narration-level event-tree logging (GitHub issue #124). Bypasses
 /// [`dispatch`] deliberately: `dispatch` is shared across all five algorithms and must not be
 /// tied to one concrete `EventLog<E>` type — only Recursive Backtracker is instrumented so far
@@ -109,7 +121,8 @@ pub fn generate_maze_steps<T: Tessellation>(
 /// event tree — `debug`/`debug_events` are independent flags (see `GenerateConfig`) and callers
 /// may enable both at once during the migration off the old snapshot debug tool.
 ///
-/// Returns `None` for any algorithm other than Recursive Backtracker (not instrumented yet).
+/// `tape`/`checkpoints` are `None` for any algorithm other than Recursive Backtracker (not
+/// instrumented yet).
 pub fn generate_maze_with_events<T: Tessellation>(
     graph: &mut Graph,
     field: &Field<T>,
@@ -118,7 +131,7 @@ pub fn generate_maze_with_events<T: Tessellation>(
     config: GenerationConfig,
     preset_state: &PresetState,
     collect_steps: bool,
-) -> (Vec<GenerationStep>, Option<crate::event_log::DebugTape<RecursiveBacktrackerEvent>>) {
+) -> EventedGenerationResult {
     let mut steps: Vec<GenerationStep> = Vec::new();
     let mut on_step = |g: &Graph, src: NodeId, active: &[NodeId]| {
         let edges = g.edges().map(|e| GenerationEdge { from: e.from, to: e.to, kind: e.kind.clone() }).collect();
@@ -126,16 +139,17 @@ pub fn generate_maze_with_events<T: Tessellation>(
     };
     let on_step_opt: Option<&mut StepCallback<'_>> = if collect_steps { Some(&mut on_step) } else { None };
 
-    let tape = if matches!(config.algorithm, GenerationAlgorithm::RecursiveBacktracker) {
+    let (tape, checkpoints) = if matches!(config.algorithm, GenerationAlgorithm::RecursiveBacktracker) {
         let mut log = crate::event_log::EventLog::new();
-        recursive_backtracker::generate(graph, field, seed, start, preset_state, on_step_opt, Some(&mut log));
-        Some(log.finish())
+        let mut checkpoint_log = crate::event_log::CheckpointLog::new();
+        recursive_backtracker::generate(graph, field, seed, start, preset_state, on_step_opt, Some(&mut log), Some(&mut checkpoint_log));
+        (Some(log.finish()), Some(checkpoint_log))
     } else {
         dispatch(graph, field, seed, start, config, preset_state, on_step_opt);
-        None
+        (None, None)
     };
 
-    (steps, tape)
+    EventedGenerationResult { steps, tape, checkpoints }
 }
 
 #[cfg(test)]

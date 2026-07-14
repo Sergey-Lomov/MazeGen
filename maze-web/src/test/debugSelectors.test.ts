@@ -71,7 +71,7 @@ const nodes: NodeDto[] = [
 ];
 
 function arenaWithEdges(edges: [bigint, bigint][]): DebugArenaHandle {
-  return { tape: buildTapeWithEdges(edges), nodes, totalSteps: edges.length };
+  return { tape: buildTapeWithEdges(edges), nodes, totalSteps: edges.length, checkpointFroms: [] };
 }
 
 describe("selectDebugMazeView", () => {
@@ -114,5 +114,18 @@ describe("selectDebugMazeView", () => {
     const view = selectDebugMazeView(arena, 0);
     expect(view?.edges[0]).toEqual({ from: 1, to: 2, kind: "basic" });
     expect(typeof view?.edges[0].from).toBe("number");
+  });
+
+  it("resumes from a checkpoint (GitHub issue #128) and reconstructs the same edges as a full replay", () => {
+    const edgePairs: [bigint, bigint][] = [[1n, 2n], [2n, 3n], [3n, 4n]];
+    const tape = buildTapeWithEdges(edgePairs);
+    // A checkpoint at arena node 0 (step 0) reflecting state after the first EdgeAdded.
+    const checkpointFroms = [{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], step: 0, nodeIndex: 0 }];
+    const arenaWithCheckpoint: DebugArenaHandle = { tape, nodes, totalSteps: edgePairs.length, checkpointFroms };
+    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, nodes, totalSteps: edgePairs.length, checkpointFroms: [] };
+
+    const withCheckpoint = selectDebugMazeView(arenaWithCheckpoint, 2);
+    const withoutCheckpoint = selectDebugMazeView(arenaWithoutCheckpoint, 2);
+    expect(withCheckpoint).toEqual(withoutCheckpoint);
   });
 });

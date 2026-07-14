@@ -28,7 +28,7 @@ fn recursive_backtracker_is_deterministic() {
 fn recursive_backtracker_event_log_mutating_events_match_graph_edges() {
     let (mut graph, field, start) = build(4, 4);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 11, start, &empty_preset(), None, Some(&mut log));
+    generate_recursive_backtracker(&mut graph, &field, 11, start, &empty_preset(), None, Some(&mut log), None);
     let tape = log.finish();
 
     let edges_from_events: Vec<(_, _)> = tape
@@ -58,7 +58,7 @@ fn recursive_backtracker_event_log_mutating_events_match_graph_edges() {
 fn recursive_backtracker_event_tree_nests_events_under_step_scopes() {
     let (mut graph, field, start) = build(3, 3);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 3, start, &empty_preset(), None, Some(&mut log));
+    generate_recursive_backtracker(&mut graph, &field, 3, start, &empty_preset(), None, Some(&mut log), None);
     let tape = log.finish();
 
     let mut saw_step_with_events = false;
@@ -81,15 +81,27 @@ fn recursive_backtracker_event_tree_nests_events_under_step_scopes() {
 fn recursive_backtracker_event_log_none_is_zero_overhead_and_still_generates() {
     let (mut graph, field, start) = build(4, 4);
     let node_count = graph.nodes().count();
-    generate_recursive_backtracker(&mut graph, &field, 5, start, &empty_preset(), None, None);
+    generate_recursive_backtracker(&mut graph, &field, 5, start, &empty_preset(), None, None, None);
     assert_perfect_maze(&graph, node_count);
+}
+
+#[test]
+#[should_panic(expected = "checkpoint_log requires event_log")]
+fn recursive_backtracker_checkpoint_log_without_event_log_panics() {
+    // A checkpoint is tagged with an arena node index from event_log's emit() — checkpointing
+    // without an event tree has nothing to attach a snapshot to (see GitHub issue #128's
+    // CheckpointTracker::record). Passing checkpoint_log: Some with event_log: None is a caller
+    // bug that must fail loudly, not silently produce an empty checkpoint log.
+    let (mut graph, field, start) = build(3, 3);
+    let mut checkpoint_log = maze_core::event_log::CheckpointLog::new();
+    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), None, None, Some(&mut checkpoint_log));
 }
 
 #[test]
 fn recursive_backtracker_dead_end_emits_pop_without_edge() {
     let (mut graph, field, start) = build(2, 2);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), None, Some(&mut log));
+    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), None, Some(&mut log), None);
     let tape = log.finish();
 
     let has_dead_end = tape.iter().any(|e| matches!(e, RecursiveBacktrackerEvent::DeadEnd));
@@ -106,7 +118,7 @@ fn recursive_backtracker_single_step_emits_exact_event_sequence() {
     let (mut graph, field, start) = build(2, 1);
     let other = field.neighbors(start)[0];
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 0, start, &empty_preset(), None, Some(&mut log));
+    generate_recursive_backtracker(&mut graph, &field, 0, start, &empty_preset(), None, Some(&mut log), None);
     let tape = log.finish();
 
     let root = tape.root();
@@ -139,7 +151,7 @@ fn recursive_backtracker_single_step_emits_exact_event_sequence() {
 fn recursive_backtracker_event_kinds_agree_with_is_mutating() {
     let (mut graph, field, start) = build(3, 3);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 2, start, &empty_preset(), None, Some(&mut log));
+    generate_recursive_backtracker(&mut graph, &field, 2, start, &empty_preset(), None, Some(&mut log), None);
     let tape = log.finish();
 
     for event in tape.iter() {
@@ -162,7 +174,7 @@ fn recursive_backtracker_event_type_ids_are_unique_and_nonzero() {
     // against a copy-paste duplicate when a new variant is added to the registry.
     let (mut graph, field, start) = build(4, 4);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 9, start, &empty_preset(), None, Some(&mut log));
+    generate_recursive_backtracker(&mut graph, &field, 9, start, &empty_preset(), None, Some(&mut log), None);
     let tape = log.finish();
 
     let mut seen_by_variant = std::collections::HashMap::new();
@@ -188,7 +200,7 @@ fn recursive_backtracker_event_type_ids_are_unique_and_nonzero() {
 fn recursive_backtracker_encode_round_trips_tree_shape() {
     let (mut graph, field, start) = build(4, 4);
     let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
-    generate_recursive_backtracker(&mut graph, &field, 6, start, &empty_preset(), None, Some(&mut log));
+    generate_recursive_backtracker(&mut graph, &field, 6, start, &empty_preset(), None, Some(&mut log), None);
     let tape = log.finish();
     let encoded = tape.encode();
 
@@ -211,23 +223,124 @@ fn recursive_backtracker_encode_round_trips_tree_shape() {
 #[test]
 fn generate_maze_with_events_returns_none_for_non_recursive_backtracker() {
     let (mut graph, field, start) = build(3, 3);
-    let (steps, tape) = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
+    let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
         algorithm: GenerationAlgorithm::WilsonAlgorithm,
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset(), false);
-    assert!(tape.is_none(), "only Recursive Backtracker is instrumented so far");
-    assert!(steps.is_empty());
+    assert!(result.tape.is_none(), "only Recursive Backtracker is instrumented so far");
+    assert!(result.checkpoints.is_none(), "only Recursive Backtracker is instrumented so far");
+    assert!(result.steps.is_empty());
 }
 
 #[test]
 fn generate_maze_with_events_collects_steps_when_requested() {
     let (mut graph, field, start) = build(3, 3);
-    let (steps, tape) = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
+    let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
         algorithm: GenerationAlgorithm::RecursiveBacktracker,
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset(), true);
-    assert!(tape.is_some(), "Recursive Backtracker must produce a tape");
-    assert!(!steps.is_empty(), "collect_steps=true must populate GenerationStep trace alongside the event tree");
+    assert!(result.tape.is_some(), "Recursive Backtracker must produce a tape");
+    assert!(result.checkpoints.is_some(), "Recursive Backtracker must produce a checkpoint log");
+    assert!(!result.steps.is_empty(), "collect_steps=true must populate GenerationStep trace alongside the event tree");
+}
+
+// --- Intermediate snapshot checkpointing (GitHub issue #128) ---
+
+const EDGE_ADDED_WIRE_TAG: u16 = 5; // mirrors recursive_backtracker.rs's wire_tags::EDGE_ADDED
+
+/// Replays `EdgeAdded` events from the start of the *encoded* tape's node table up to and
+/// including arena index `up_to_node_index`, expanding each bidirectional edge into both
+/// directions — mirrors what `applyRecursiveBacktracker` (`maze-web/src/debug/eventTape.ts`)
+/// reconstructs, and what a checkpoint at that node index is supposed to equal. Walks the
+/// encoded node table by index (like the TS replay engine's flat scan) rather than `DebugTape`'s
+/// `iter()`, since `iter()` only exposes a scope-filtered sequence, not one indexable by the same
+/// arena index `emit()`/checkpoints refer to.
+fn replay_edges_up_to(encoded: &maze_core::event_log::EncodedTape, up_to_node_index: u32) -> Vec<(u64, u64)> {
+    use maze_core::event_log::NODE_RECORD_SIZE;
+
+    let mut edges = Vec::new();
+    let node_count = encoded.node_table.len() / NODE_RECORD_SIZE;
+    for i in 0..=(up_to_node_index as usize).min(node_count.saturating_sub(1)) {
+        let base = i * NODE_RECORD_SIZE;
+        let bytes = &encoded.node_table[base..base + NODE_RECORD_SIZE];
+        let tag = u16::from_le_bytes(bytes[12..14].try_into().unwrap());
+        if tag != EDGE_ADDED_WIRE_TAG {
+            continue;
+        }
+        let payload_offset = u32::from_le_bytes(bytes[14..18].try_into().unwrap()) as usize;
+        let payload_len = u32::from_le_bytes(bytes[18..22].try_into().unwrap()) as usize;
+        let payload = &encoded.payload[payload_offset..payload_offset + payload_len];
+        let from = u64::from_le_bytes(payload[0..8].try_into().unwrap());
+        let to = u64::from_le_bytes(payload[8..16].try_into().unwrap());
+        let bidirectional = payload[16] != 0;
+        edges.push((from, to));
+        if bidirectional {
+            edges.push((to, from));
+        }
+    }
+    edges
+}
+
+fn decode_checkpoint_edges(payload: &[u8], offset: u32, len: u32) -> Vec<(u64, u64)> {
+    let bytes = &payload[offset as usize..(offset + len) as usize];
+    let count = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+    let mut edges = Vec::with_capacity(count as usize);
+    for i in 0..count as usize {
+        let base = 4 + i * 16;
+        let from = u64::from_le_bytes(bytes[base..base + 8].try_into().unwrap());
+        let to = u64::from_le_bytes(bytes[base + 8..base + 16].try_into().unwrap());
+        edges.push((from, to));
+    }
+    edges
+}
+
+/// A 20x20 field's Recursive Backtracker run comfortably exceeds `CHECKPOINT_INTERVAL` (500)
+/// mutating events (a 15x15 run alone already produces ~900), so this produces more than one
+/// real checkpoint — verified empirically, not assumed from a cell-count formula.
+#[test]
+fn recursive_backtracker_checkpoints_match_replay_from_scratch() {
+    let (mut graph, field, start) = build(20, 20);
+    let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
+    let mut checkpoint_log = maze_core::event_log::CheckpointLog::new();
+    generate_recursive_backtracker(&mut graph, &field, 42, start, &empty_preset(), None, Some(&mut log), Some(&mut checkpoint_log));
+    let tape = log.finish();
+    let encoded_tape = tape.encode();
+    let encoded_checkpoints = checkpoint_log.encode();
+
+    assert!(
+        !encoded_checkpoints.table.is_empty(),
+        "a 20x20 run must exceed CHECKPOINT_INTERVAL mutating events and record at least one checkpoint"
+    );
+    let checkpoint_count = encoded_checkpoints.table.len() / maze_core::event_log::CHECKPOINT_RECORD_SIZE;
+    assert!(checkpoint_count >= 1);
+
+    for i in 0..checkpoint_count {
+        let base = i * maze_core::event_log::CHECKPOINT_RECORD_SIZE;
+        let bytes = &encoded_checkpoints.table[base..base + maze_core::event_log::CHECKPOINT_RECORD_SIZE];
+        let node_index = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        let offset = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+        let len = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
+
+        let mut checkpoint_edges = decode_checkpoint_edges(&encoded_checkpoints.payload, offset, len);
+        let mut replayed_edges = replay_edges_up_to(&encoded_tape, node_index);
+        checkpoint_edges.sort();
+        replayed_edges.sort();
+        assert_eq!(
+            checkpoint_edges, replayed_edges,
+            "checkpoint #{i} at node_index {node_index} must equal a from-scratch replay to that point"
+        );
+    }
+}
+
+#[test]
+fn recursive_backtracker_short_run_records_no_checkpoints() {
+    // A 3x3 run produces far fewer than CHECKPOINT_INTERVAL (500) mutating events.
+    let (mut graph, field, start) = build(3, 3);
+    let mut log: EventLog<RecursiveBacktrackerEvent> = EventLog::new();
+    let mut checkpoint_log = maze_core::event_log::CheckpointLog::new();
+    generate_recursive_backtracker(&mut graph, &field, 1, start, &empty_preset(), None, Some(&mut log), Some(&mut checkpoint_log));
+    let encoded_checkpoints = checkpoint_log.encode();
+    assert!(encoded_checkpoints.table.is_empty(), "a 3x3 run must not reach CHECKPOINT_INTERVAL mutating events");
 }

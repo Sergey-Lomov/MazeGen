@@ -308,6 +308,11 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
     if (anchor.tag === TAG_SCOPE || !isMutatingRbEvent(decodeRecursiveBacktrackerEvent(anchor.tag, tape.payload.subarray(anchor.payloadOffset, anchor.payloadOffset + anchor.payloadLen)))) {
       throw new Error(`applyRecursiveBacktracker: from.nodeIndex ${from.nodeIndex} does not point at a mutating event`);
     }
+    // `from` already *is* the answer when it lands exactly on targetStep — the scan below would
+    // ask for 0 new events and index into an empty array. No new events to decode either way.
+    if (from.step === targetStep) {
+      return { edges: [...from.edges], step: targetStep, nodeIndex: from.nodeIndex };
+    }
   }
 
   const scanStart = from ? from.nodeIndex + 1 : 0;
@@ -329,4 +334,166 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
   }
 
   return { edges, step: targetStep, nodeIndex: newEvents[newEvents.length - 1].nodeIndex };
+}
+
+// --- Intermediate snapshot checkpoints (GitHub issue #128) ---
+//
+// A separate flat buffer pair (table + payload), produced by `CheckpointLog::encode()`
+// (`maze-core/src/event_log/checkpoint.rs`) — deliberately independent of the node table/payload
+// above, mirroring that Rust type's independence from `EventLog`/`DebugTape`. This module only
+// parses the buffer and exposes the step-keyed lookup (`nearestCheckpointFromAtOrBefore`, since
+// checkpoints are stored keyed by arena `nodeIndex` but `applyRecursiveBacktracker` needs `step`
+// — see `resolveCheckpointFroms` below) — the actual wiring into `applyRecursiveBacktracker`/
+// `ApplyFrom` lives in `store/debugSelectors.ts`'s `selectDebugMazeView`, not in this module.
+
+/** Byte size of one encoded checkpoint record — mirrors `CHECKPOINT_RECORD_SIZE` in
+ *  `maze-core/src/event_log/checkpoint.rs`. */
+export const CHECKPOINT_RECORD_SIZE = 12;
+
+export interface ParsedCheckpoints {
+  table: Uint8Array;
+  payload: Uint8Array;
+  tableView: DataView;
+  checkpointCount: number;
+}
+
+export function parseCheckpoints(table: Uint8Array, payload: Uint8Array): ParsedCheckpoints {
+  return {
+    table,
+    payload,
+    tableView: new DataView(table.buffer, table.byteOffset, table.byteLength),
+    checkpointCount: table.byteLength / CHECKPOINT_RECORD_SIZE,
+  };
+}
+
+export interface Checkpoint {
+  nodeIndex: number;
+  edges: Edge[];
+}
+
+/** Decodes one checkpoint record's `edges` payload: a `u32` LE length prefix followed by that
+ *  many `(from: u64, to: u64)` pairs — mirrors the encoding `CheckpointTracker::record` writes in
+ *  `maze-core/src/generation/recursive_backtracker.rs`. */
+function decodeCheckpointEdges(payload: Uint8Array, offset: number, len: number): Edge[] {
+  const bytes = payload.subarray(offset, offset + len);
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = dv.getUint32(0, true);
+  const edges: Edge[] = [];
+  for (let i = 0; i < count; i++) {
+    const base = 4 + i * 16;
+    edges.push({ from: dv.getBigUint64(base, true), to: dv.getBigUint64(base + 8, true) });
+  }
+  return edges;
+}
+
+/** Reads and decodes one fixed-stride checkpoint record by index. */
+export function checkpointAt(tape: ParsedCheckpoints, index: number): Checkpoint {
+  const base = index * CHECKPOINT_RECORD_SIZE;
+  const dv = tape.tableView;
+  const nodeIndex = dv.getUint32(base + 0, true);
+  const offset = dv.getUint32(base + 4, true);
+  const len = dv.getUint32(base + 8, true);
+  return { nodeIndex, edges: decodeCheckpointEdges(tape.payload, offset, len) };
+}
+
+// --- Checkpoint-accelerated apply ---
+//
+// `applyRecursiveBacktracker`'s `targetStep`/`ApplyFrom.step` are indices into the flat
+// mutating-event sequence (`mutatingRbEvents`), not arena node indices — so a checkpoint (keyed
+// by arena `nodeIndex`) can't be handed to `applyRecursiveBacktracker` as `from` until its
+// `nodeIndex` is translated into the matching `step`. `resolveCheckpointFroms` does that
+// translation via a single forward scan over the tape, producing ready-to-use `ApplyFrom` values
+// sorted by ascending `step` (same order as ascending `nodeIndex`, since arena index and
+// mutating-event order grow together) — `nearestCheckpointFromAtOrBefore` then binary-searches
+// that small array directly by `step`, with no further tape scanning. `generateConfigBuilder.ts`
+// itself doesn't call `resolveCheckpointFroms` directly — it uses `resolveDebugArenaMetadata`
+// (below), which folds this same translation into the scan that also computes `totalSteps`.
+
+/** Resolves every checkpoint in `checkpoints` into an `ApplyFrom` ready to pass into
+ *  `applyRecursiveBacktracker` — computing each checkpoint's `step` (its position in the flat
+ *  mutating-event sequence) via one forward scan over `tape`. Call once when a tape's debug arena
+ *  is built (see `generateConfigBuilder.ts`), not on every scrub — the result is small (one entry
+ *  per `CHECKPOINT_INTERVAL` mutating events) and reused for the arena's whole lifetime.
+ *
+ *  Stops scanning early once every checkpoint has been resolved — cheaper than
+ *  `resolveDebugArenaMetadata` below when the caller doesn't also need `totalSteps` (e.g. tests),
+ *  but `generateConfigBuilder.ts` should prefer `resolveDebugArenaMetadata` since it needs both. */
+export function resolveCheckpointFroms(tape: ParsedTape, checkpoints: ParsedCheckpoints): ApplyFrom[] {
+  const result: ApplyFrom[] = [];
+  if (checkpoints.checkpointCount === 0) return result;
+
+  let nextCheckpoint = 0;
+  let step = 0;
+  for (let i = 0; i < tape.nodeCount && nextCheckpoint < checkpoints.checkpointCount; i++) {
+    const record = nodeAt(tape, i);
+    if (record.tag === TAG_SCOPE) continue;
+    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
+    const event = decodeRecursiveBacktrackerEvent(record.tag, bytes);
+    if (!isMutatingRbEvent(event)) continue;
+
+    while (nextCheckpoint < checkpoints.checkpointCount) {
+      const checkpoint = checkpointAt(checkpoints, nextCheckpoint);
+      if (checkpoint.nodeIndex !== i) break;
+      result.push({ edges: checkpoint.edges, step, nodeIndex: i });
+      nextCheckpoint++;
+    }
+    step++;
+  }
+  return result;
+}
+
+export interface DebugArenaMetadata {
+  totalSteps: number;
+  checkpointFroms: ApplyFrom[];
+}
+
+/** Combines what used to be two independent full-tape forward scans — `mutatingRbEvents(tape).length`
+ *  (to compute `totalSteps`) and `resolveCheckpointFroms` (to compute `checkpointFroms`) — into one
+ *  pass, each of which decodes every node-table record exactly once. Building a debug arena for a
+ *  large run (tens of thousands of mutating events) used to pay this decode cost twice; this pays
+ *  it once. Semantically identical to calling `mutatingRbEvents(tape).length` and
+ *  `resolveCheckpointFroms(tape, checkpoints)` separately (when `checkpoints.checkpointCount === 0`,
+ *  behaves exactly like counting alone). The intended, and only, caller is
+ *  `generateConfigBuilder.ts`'s debug-arena construction, which always needs both values together. */
+export function resolveDebugArenaMetadata(tape: ParsedTape, checkpoints: ParsedCheckpoints): DebugArenaMetadata {
+  const checkpointFroms: ApplyFrom[] = [];
+  let nextCheckpoint = 0;
+  let step = 0;
+
+  for (let i = 0; i < tape.nodeCount; i++) {
+    const record = nodeAt(tape, i);
+    if (record.tag === TAG_SCOPE) continue;
+    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
+    const event = decodeRecursiveBacktrackerEvent(record.tag, bytes);
+    if (!isMutatingRbEvent(event)) continue;
+
+    while (nextCheckpoint < checkpoints.checkpointCount) {
+      const checkpoint = checkpointAt(checkpoints, nextCheckpoint);
+      if (checkpoint.nodeIndex !== i) break;
+      checkpointFroms.push({ edges: checkpoint.edges, step, nodeIndex: i });
+      nextCheckpoint++;
+    }
+    step++;
+  }
+  return { totalSteps: step, checkpointFroms };
+}
+
+/** Binary-searches `checkpointFroms` (as produced by `resolveCheckpointFroms`, sorted by
+ *  ascending `step`) for the entry with the greatest `step <= targetStep`, or `null` if none
+ *  precedes it. Step-keyed, not arena-node-indexed — matches what `applyRecursiveBacktracker`
+ *  callers need, since `from`/`targetStep` are indices into the flat mutating-event sequence. */
+export function nearestCheckpointFromAtOrBefore(checkpointFroms: ApplyFrom[], targetStep: number): ApplyFrom | null {
+  let lo = 0;
+  let hi = checkpointFroms.length - 1;
+  let result: ApplyFrom | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    if (checkpointFroms[mid].step <= targetStep) {
+      result = checkpointFroms[mid];
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return result;
 }

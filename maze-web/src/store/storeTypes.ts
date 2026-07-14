@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
-import type { ParsedTape } from "../debug/eventTape";
+import type { ParsedTape, ApplyFrom } from "../debug/eventTape";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 
@@ -309,6 +309,12 @@ export interface DebugArenaHandle {
    *  generation time), not a per-step cache; lets the UI know the last valid `debugStep` without
    *  a bounded-scan trick on every render. */
   totalSteps: number;
+  /** Intermediate snapshot checkpoints (GitHub issue #128), resolved once at generation time via
+   *  `resolveCheckpointFroms` into `ApplyFrom`-ready values sorted by ascending `step` — lets
+   *  `selectDebugMazeView` resume `applyRecursiveBacktracker` from the nearest checkpoint instead
+   *  of always replaying from scratch. Empty when the run produced no checkpoints (e.g. shorter
+   *  than `CHECKPOINT_INTERVAL`) or the core didn't record any (non-Recursive-Backtracker runs). */
+  checkpointFroms: ApplyFrom[];
 }
 
 export interface GenerationState {
