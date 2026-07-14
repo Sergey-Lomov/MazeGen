@@ -234,6 +234,16 @@ An out-of-range `targetStep` is detected by the bounded scan coming up short (fe
 - Right-panel debug UI
 - Intermediate snapshots / checkpointing (core-side) — added in #128, see below
 
+## Store Wiring (#126)
+
+Module: `maze-web/src/store/`. Replaces the old `debugSnapshot: GenerationStepsSnapshot | null` field (full per-step snapshot array) with `debugArena: DebugArenaHandle | null` (raw arena handle + `debugStep`, see `store.md`'s Debug section) — the store now persists only the raw tape and a step number; reconstructed maze state at that step is never stored, only derived on demand via `selectDebugMazeView` (see #125/#128/#139 above).
+
+`showDebugFrontier` (the old debug-frontier highlight toggle, tied to `MazeTileRenderer`'s `activeNodes`/`current_src` fields) is dropped, not ported forward — the new replay engine has no live producer for "frontier" state (which nodes are currently reachable-but-unvisited mid-DFS), and reimplementing it against the arena/replay model was explicitly out of scope for this issue. `MazeTileRenderer.ts` itself was later deleted (dead code, zero call sites, found during #132's review) since nothing else depended on it either. Frontier highlighting was superseded by the interactive node/edge ref highlighting built in #130 (see below), which highlights on hover rather than showing a persistent frontier set.
+
+`generateConfigBuilder.ts`'s config-building logic (what triggers a debug-mode `generate` call) carried over unchanged in shape — it still decides `debug`/`debug_events` flags per `GenerateConfig` (see #124's WASM wiring above) — but now builds a `DebugArenaHandle` from the WASM response instead of a `GenerationStepsSnapshot`.
+
+`GenerationDebugBar` (the pre-#130 debug UI) kept working unmodified against the new store shape, per this issue's scope — it was replaced by `DebugPanel`/`DebugEventTree` in #130, not by this issue.
+
 ## Intermediate Snapshot Checkpointing (#128)
 
 Lets a replay consumer reconstruct state at a late arena node index without replaying every mutating event from the tape's start. Computed once, during generation, in the same pass that builds the event tree — not a separate replay pass afterward.
