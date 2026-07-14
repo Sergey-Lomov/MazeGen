@@ -198,28 +198,27 @@ impl<'a, E> ScopeGuard<'a, E> {
         self.log.emit_inner(event)
     }
 
-    /// Opens a nested scope under this one, consuming this guard. Only one guard can be
-    /// alive at a time by construction (the borrow checker enforces it): opening a nested
-    /// scope "moves into" the child guard, and the parent scope is only usable again once
-    /// every descendant guard has been dropped.
-    pub fn enter(self, name: impl Into<Cow<'static, str>>) -> ScopeGuard<'a, E> {
-        // `self` implements `Drop`, so its `log` field can't be moved out normally.
-        // Wrapping in `ManuallyDrop` suppresses `self`'s destructor (which would otherwise
-        // reset `cursor` back to *this* guard's parent right after the nested `enter` below
-        // moves it to the new child — clobbering the correct cursor). The single `unsafe`
-        // block reads `log` out exactly once; `this` is never touched again afterwards, so
-        // there is no double-drop and no access through an already-moved-from field.
-        let this = std::mem::ManuallyDrop::new(self);
-        let log: &'a mut EventLog<E> = unsafe { std::ptr::read(&this.log) };
-        log.enter(name)
+    /// Opens a nested scope under this one, borrowing this guard rather than consuming it —
+    /// only one guard can be alive at a time by construction (the borrow checker enforces
+    /// it): the child guard holds `&mut` on this one, so this guard is unusable until the
+    /// child is dropped. Once the child drops, this guard is directly usable again — this is
+    /// what lets a caller emit into the parent scope between/after a sequence of sibling
+    /// child scopes (see issue #162).
+    ///
+    /// Caveat: since [`ScopeGuard`] has a non-trivial [`Drop`], NLL does not shorten the
+    /// child's borrow to its last use — it lives until the child is actually dropped. A child
+    /// opened inline in a loop body (not in its own nested block) is still borrowed at the
+    /// following statement, so emitting into the parent right after opening a child without
+    /// an explicit enclosing block fails to borrow-check; wrap the child's `enter`/`emit` in
+    /// its own block so it drops before the parent is used again.
+    pub fn enter(&mut self, name: impl Into<Cow<'static, str>>) -> ScopeGuard<'_, E> {
+        self.log.enter(name)
     }
 
     /// Nested-scope counterpart to [`EventLog::enter_numbered`] — see its docs for the naming
-    /// scheme. Consumes this guard the same way [`ScopeGuard::enter`] does.
-    pub fn enter_numbered(self, base_name: &str) -> ScopeGuard<'a, E> {
-        let this = std::mem::ManuallyDrop::new(self);
-        let log: &'a mut EventLog<E> = unsafe { std::ptr::read(&this.log) };
-        log.enter_numbered(base_name)
+    /// scheme and [`ScopeGuard::enter`]'s docs for the borrowing/`Drop` caveat.
+    pub fn enter_numbered(&mut self, base_name: &str) -> ScopeGuard<'_, E> {
+        self.log.enter_numbered(base_name)
     }
 }
 
@@ -683,9 +682,9 @@ mod tests {
     fn iter_skips_scopes_at_any_depth_when_no_events_are_emitted() {
         let mut log: EventLog<TestEvent> = EventLog::new();
         {
-            let g = log.enter("a");
+            let mut g = log.enter("a");
             {
-                let g2 = g.enter("b");
+                let mut g2 = g.enter("b");
                 let _g3 = g2.enter("c");
             }
         }
@@ -734,7 +733,7 @@ mod tests {
             top_step.emit(TestEvent::Mutating(1));
         }
         {
-            let outer = log.enter_numbered("outer");
+            let mut outer = log.enter_numbered("outer");
             let mut nested_step = outer.enter_numbered("step");
             nested_step.emit(TestEvent::Mutating(2));
         }
@@ -750,6 +749,52 @@ mod tests {
             matches!(nested_step.payload(), NodePayload::Scope("step 1")),
             "\"step\" nested under \"outer\" is a different parent cursor than root, so it numbers independently of the top-level \"step 1\""
         );
+    }
+
+    // --- resuming a parent ScopeGuard after a nested scope closes (GitHub issue #162) ---
+
+    #[test]
+    fn parent_guard_reusable_between_and_after_sibling_child_scopes() {
+        // Mirrors Wilson's "walk" > "step 1", "step 2", ... shape (issue #145): a parent scope
+        // stays open across several sibling child scopes, with emits into the parent both
+        // between and after them, all through the same `parent` guard.
+        let mut log: EventLog<TestEvent> = EventLog::new();
+        {
+            let mut parent = log.enter("walk");
+            parent.emit(TestEvent::Trace(0)); // before the first child
+            for i in 1..=3 {
+                {
+                    let mut child = parent.enter_numbered("step");
+                    child.emit(TestEvent::Mutating(i));
+                } // child dropped here, releasing the borrow on `parent`
+                parent.emit(TestEvent::Trace(i + 100)); // between/after each child
+            }
+        }
+
+        let tape = log.finish();
+        let walk = tape.root().children().next().unwrap();
+        assert!(matches!(walk.payload(), NodePayload::Scope("walk")));
+
+        let walk_children: Vec<_> = walk.children().collect();
+        assert_eq!(walk_children.len(), 7, "1 leading event + 3 * (child scope + trailing event)");
+
+        assert!(matches!(walk_children[0].payload(), NodePayload::Event(TestEvent::Trace(0))));
+        for i in 1..=3u32 {
+            let base = ((i - 1) * 2 + 1) as usize;
+            let step_scope = walk_children[base];
+            let expected_name = format!("step {i}");
+            assert!(matches!(step_scope.payload(), NodePayload::Scope(name) if name == expected_name));
+            let step_children: Vec<_> = step_scope.children().collect();
+            assert_eq!(step_children.len(), 1);
+            assert!(matches!(step_children[0].payload(), NodePayload::Event(TestEvent::Mutating(v)) if *v == i));
+
+            // The trailing per-iteration event lands as `walk`'s direct child, not `step i`'s —
+            // proof that `parent.emit` after the child drops reaches the right scope.
+            assert!(matches!(
+                walk_children[base + 1].payload(),
+                NodePayload::Event(TestEvent::Trace(v)) if *v == i + 100
+            ));
+        }
     }
 
     // --- encode() (GitHub issue #124) ---
