@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG,
-  mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex, mutatingWilsonEventsWithIndex,
-  applyRecursiveBacktracker, applyKruskal, applyWilson,
-  decodeRecursiveBacktrackerEvent, decodeKruskalEvent, decodeWilsonEvent,
-  isMutatingRbEvent, isMutatingKruskalEvent, isMutatingWilsonEvent,
-  mutatingRbEvents, mutatingKruskalEvents, mutatingWilsonEvents,
+  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG,
+  mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex, mutatingWilsonEventsWithIndex, mutatingEdgeBasedEventsWithIndex,
+  applyRecursiveBacktracker, applyKruskal, applyWilson, applyEdgeBased,
+  decodeRecursiveBacktrackerEvent, decodeKruskalEvent, decodeWilsonEvent, decodeEdgeBasedEvent,
+  isMutatingRbEvent, isMutatingKruskalEvent, isMutatingWilsonEvent, isMutatingEdgeBasedEvent,
+  mutatingRbEvents, mutatingKruskalEvents, mutatingWilsonEvents, mutatingEdgeBasedEvents,
   type ParsedTape,
 } from "../debug/eventTape";
 import { adapterFor } from "../debug/algorithmRegistry";
@@ -199,10 +199,61 @@ describe("adapterFor(\"wilson\")", () => {
   });
 });
 
+function edgeAdapterEdgeAddedPayload(src: bigint, dst: bigint, teleport = false, bidirectional = true): Uint8Array {
+  const bytes = new Uint8Array(18);
+  bytes.set(u64le(src), 0);
+  bytes.set(u64le(dst), 8);
+  bytes[16] = teleport ? 1 : 0;
+  bytes[17] = bidirectional ? 1 : 0;
+  return bytes;
+}
+
+function edgeBasedSrcExhaustedPayload(src: bigint): Uint8Array {
+  return u64le(src);
+}
+
+function buildEdgeBasedTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: EDGE_BASED_TAG.EDGE_ADDED, payloadBytes: edgeAdapterEdgeAddedPayload(1n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_TAG.SRC_EXHAUSTED, payloadBytes: edgeBasedSrcExhaustedPayload(1n) },
+  ]);
+}
+
+describe("adapterFor(\"edge_based\")", () => {
+  const tape = buildEdgeBasedTape();
+  const adapter = adapterFor("edge_based");
+
+  it("mutatingNodeIndices matches mutatingEdgeBasedEventsWithIndex", () => {
+    expect(adapter.mutatingNodeIndices(tape)).toEqual(mutatingEdgeBasedEventsWithIndex(tape).map((e) => e.nodeIndex));
+  });
+
+  it("apply matches applyEdgeBased", () => {
+    expect(adapter.apply(tape, 0)).toEqual(applyEdgeBased(tape, 0));
+  });
+
+  it("resolveMetadata's totalSteps matches mutatingEdgeBasedEvents(tape).length and checkpointFroms is empty", () => {
+    expect(adapter.resolveMetadata(tape, null).totalSteps).toBe(mutatingEdgeBasedEvents(tape).length);
+    expect(adapter.resolveMetadata(tape, null).checkpointFroms).toEqual([]);
+  });
+
+  it("decodeEvent/isMutatingEvent match the direct functions", () => {
+    const decoded = adapter.decodeEvent(EDGE_BASED_TAG.EDGE_ADDED, edgeAdapterEdgeAddedPayload(1n, 3n));
+    expect(decoded).toEqual(decodeEdgeBasedEvent(EDGE_BASED_TAG.EDGE_ADDED, edgeAdapterEdgeAddedPayload(1n, 3n)));
+    expect(adapter.isMutatingEvent(decoded)).toBe(isMutatingEdgeBasedEvent(decoded));
+  });
+
+  it("scopeLabel formats a numbered step scope", () => {
+    expect(adapter.scopeLabel("step 1")).not.toBe("");
+  });
+});
+
 describe("adapterFor — one adapter instance per kind, stable identity", () => {
   it("returns the same adapter instance across repeated calls for each kind", () => {
     expect(adapterFor("recursive_backtracker")).toBe(adapterFor("recursive_backtracker"));
     expect(adapterFor("kruskal")).toBe(adapterFor("kruskal"));
     expect(adapterFor("wilson")).toBe(adapterFor("wilson"));
+    expect(adapterFor("edge_based")).toBe(adapterFor("edge_based"));
   });
 });

@@ -170,10 +170,10 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
     let lastStep = 0;
     if (debugMode && debugTape) {
       const tape = parseTape(debugTape.nodeTable, debugTape.payload);
-      // Kruskal (GitHub issue #146) and Wilson (#145) produce no checkpoints (#128 is RB-only) —
-      // their adapters' resolveMetadata ignores the checkpoints argument and always returns an
-      // empty checkpointFroms; only Recursive Backtracker's does the combined scan+checkpoint-
-      // resolution pass — see algorithmRegistry.ts.
+      // Kruskal (GitHub issue #146), Wilson (#145) and CustomEdgeBased (#144) produce no
+      // checkpoints (#128 is RB-only) — their adapters' resolveMetadata ignores the checkpoints
+      // argument and always returns an empty checkpointFroms; only Recursive Backtracker's does
+      // the combined scan+checkpoint-resolution pass — see algorithmRegistry.ts.
       const checkpoints = debugTape.snapshotTable && debugTape.snapshotPayload
         ? parseCheckpoints(debugTape.snapshotTable, debugTape.snapshotPayload)
         : null;
@@ -182,6 +182,8 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
         ? adapterFor("kruskal").resolveMetadata(tape, checkpoints)
         : eventKind === "wilson"
         ? adapterFor("wilson").resolveMetadata(tape, checkpoints)
+        : eventKind === "edge_based"
+        ? adapterFor("edge_based").resolveMetadata(tape, checkpoints)
         : adapterFor("recursive_backtracker").resolveMetadata(tape, checkpoints);
       if (totalSteps > 0) {
         // debugValueNames (GitHub issue #131) comes from the WASM response's static declaration

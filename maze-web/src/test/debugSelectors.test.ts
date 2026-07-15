@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, RB_TAG, WILSON_TAG, KRUSKAL_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
+import { parseTape, RB_TAG, WILSON_TAG, KRUSKAL_TAG, EDGE_BASED_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugArenaHandle } from "../store/storeTypes";
 import type { NodeDto } from "../wasm/types";
@@ -145,6 +145,44 @@ function buildWilsonArenaTape(): ParsedTape {
   return parseTape(nodeTable, payload);
 }
 
+// CustomEdgeBased fixture (GitHub issue #144), one flat "step 1" scope:
+//   root (0)
+//     -> "step 1" scope (1)
+//          -> EdgeAdded(1,2) (2)
+//          -> NodeActivated(2, parent=1) (3)
+//          -> SrcExhausted(1) (4)
+function buildEdgeBasedArenaTape(): ParsedTape {
+  const nodeTable = new Uint8Array(5 * 22);
+  const edgeAddedPayload = concatBytes([u64le(1n), u64le(2n), new Uint8Array([0]), new Uint8Array([0])]);
+  const nodeActivatedPayload = concatBytes([u64le(2n), new Uint8Array([1]), u64le(1n), new Uint8Array([0, 0, 0, 0])]);
+  const srcExhaustedPayload = u64le(1n);
+  const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
+    { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("root") },
+    { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("step 1") },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: EDGE_BASED_TAG.EDGE_ADDED, bytes: edgeAddedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 4, tag: EDGE_BASED_TAG.NODE_ACTIVATED, bytes: nodeActivatedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: EDGE_BASED_TAG.SRC_EXHAUSTED, bytes: srcExhaustedPayload },
+  ];
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const r of records) {
+    offsets.push(cursor);
+    cursor += r.bytes.byteLength;
+  }
+  const payload = concatBytes(records.map((r) => r.bytes));
+  const dv = new DataView(nodeTable.buffer);
+  records.forEach((r, i) => {
+    const base = i * 22;
+    dv.setUint32(base + 0, r.parent, true);
+    dv.setUint32(base + 4, r.firstChild, true);
+    dv.setUint32(base + 8, r.nextSibling, true);
+    dv.setUint16(base + 12, r.tag, true);
+    dv.setUint32(base + 14, offsets[i], true);
+    dv.setUint32(base + 18, r.bytes.byteLength, true);
+  });
+  return parseTape(nodeTable, payload);
+}
+
 describe("selectDebugMazeView", () => {
   it("returns null when there is no debug arena", () => {
     expect(selectDebugMazeView(null, 0)).toBeNull();
@@ -249,6 +287,25 @@ describe("selectDebugMazeView", () => {
     expect(view?.debugVertices.get("walk_start")).toBe(1);
     expect(view?.debugVertices.get("walk_head")).toBe(2);
     expect(view?.dsuGroups).toBeNull();
+  });
+
+  // --- CustomEdgeBased dispatch (GitHub issue #144) ---
+
+  it("dispatches edge_based arenas to applyEdgeBased, populating edges and active/visited debugValues, with no dsuGroups/debugMaps/debugVertices", () => {
+    const tape = buildEdgeBasedArenaTape();
+    const arena: DebugArenaHandle = {
+      tape, algorithmKind: "edge_based", nodes, totalSteps: 3, checkpointFroms: [],
+      debugValueNames: [{ name: "active", kind: "region" }, { name: "visited", kind: "region" }],
+    };
+
+    // targetStep 2 = EdgeAdded(1,2), NodeActivated(2, parent=1), SrcExhausted(1) all applied.
+    const view = selectDebugMazeView(arena, 2);
+    expect(view?.edges).toEqual([{ from: 1, to: 2, kind: "basic" }]);
+    expect(view?.debugValues.get("active")).toEqual([2]);
+    expect(view?.debugValues.get("visited")).toEqual([1]);
+    expect(view?.dsuGroups).toBeNull();
+    expect(view?.debugMaps.size).toBe(0);
+    expect(view?.debugVertices.size).toBe(0);
   });
 
   // --- Kruskal dispatch (GitHub issue #146) ---

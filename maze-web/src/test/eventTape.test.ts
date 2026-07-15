@@ -6,7 +6,8 @@ import {
   resolveCheckpointFroms, nearestCheckpointFromAtOrBefore, resolveDebugArenaMetadata,
   decodeKruskalEvent, isMutatingKruskalEvent, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEvents, applyWilson,
-  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, CHECKPOINT_RECORD_SIZE,
+  decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEvents, applyEdgeBased,
+  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, CHECKPOINT_RECORD_SIZE,
   type ParsedTape, type ParsedCheckpoints,
 } from "../debug/eventTape";
 
@@ -828,5 +829,268 @@ describe("mutatingWilsonEvents / applyWilson", () => {
   it("throws when targetStep is out of range", () => {
     const tape = buildWilsonTape();
     expect(() => applyWilson(tape, 8)).toThrow(/out of range/);
+  });
+});
+
+// --- CustomEdgeBased (GitHub issue #144) ---
+
+function f64le(v: number): Uint8Array {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setFloat64(0, v, true);
+  return bytes;
+}
+
+function boolByte(v: boolean): Uint8Array {
+  return new Uint8Array([v ? 1 : 0]);
+}
+
+function nodeIdListPayload(ids: bigint[]): Uint8Array {
+  return concatBytes([u32le(ids.length), ...ids.map(u64le)]);
+}
+
+function f64ListPayload(values: number[]): Uint8Array {
+  return concatBytes([u32le(values.length), ...values.map(f64le)]);
+}
+
+function optionalNodeIdPayload(id: bigint | null): Uint8Array {
+  return id === null
+    ? concatBytes([new Uint8Array([0]), u64le(0n)])
+    : concatBytes([new Uint8Array([1]), u64le(id)]);
+}
+
+function candidatePoolBuiltPayload(src: bigint, geometric: boolean, candidates: bigint[]): Uint8Array {
+  return concatBytes([u64le(src), boolByte(geometric), nodeIdListPayload(candidates)]);
+}
+
+// Small deterministic tree — one "step 1" scope with a full corridor-skipped, non-teleport,
+// non-cyclic connection, mirroring the smallest exact-sequence shape from the Rust-side
+// `edge_based_single_step_emits_exact_event_sequence` test (a 1x2 field's first step):
+//   root (0)
+//     -> "step 1" scope (1)
+//          -> CorridorRollSkipped (2)
+//          -> SrcChosenByDepthFirst(src=1) (3)
+//          -> TeleportRolled(src=1, fired=false) (4)
+//          -> CyclicRolled(src=1, fired=false) (5)
+//          -> CandidatePoolBuilt(src=1, [2]) (6)
+//          -> DstWeightsComputed([2]) (7)
+//          -> DstChosen(2) (8)
+//          -> EdgeAdded(1,2) (9)
+//          -> NodeActivated(2, parent=1) (10)
+//          -> SrcExhausted(1) (11)
+function buildEdgeBasedTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: EDGE_BASED_TAG.CORRIDOR_ROLL_SKIPPED, payloadBytes: new Uint8Array(0) },
+    {
+      parent: 1, firstChild: null, nextSibling: 4, tag: EDGE_BASED_TAG.SRC_CHOSEN_BY_DEPTH_FIRST,
+      payloadBytes: concatBytes([u64le(1n), u32le(1), u32le(0), f64le(0.9)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 5, tag: EDGE_BASED_TAG.TELEPORT_ROLLED,
+      payloadBytes: concatBytes([u64le(1n), f64le(0.8), f64le(0.0), boolByte(false)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 6, tag: EDGE_BASED_TAG.CYCLIC_ROLLED,
+      payloadBytes: concatBytes([u64le(1n), f64le(0.7), f64le(0.0), boolByte(false)]),
+    },
+    { parent: 1, firstChild: null, nextSibling: 7, tag: EDGE_BASED_TAG.CANDIDATE_POOL_BUILT, payloadBytes: candidatePoolBuiltPayload(1n, true, [2n]) },
+    {
+      parent: 1, firstChild: null, nextSibling: 8, tag: EDGE_BASED_TAG.DST_WEIGHTS_COMPUTED,
+      payloadBytes: concatBytes([nodeIdListPayload([2n]), f64ListPayload([1.0]), f64le(0.0), f64le(0.0), boolByte(true)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 9, tag: EDGE_BASED_TAG.DST_CHOSEN,
+      payloadBytes: concatBytes([u64le(2n), f64le(0.5), f64le(1.0)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 10, tag: EDGE_BASED_TAG.EDGE_ADDED,
+      payloadBytes: concatBytes([u64le(1n), u64le(2n), boolByte(false), boolByte(true)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 11, tag: EDGE_BASED_TAG.NODE_ACTIVATED,
+      payloadBytes: concatBytes([u64le(2n), optionalNodeIdPayload(1n), u32le(1)]),
+    },
+    { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_TAG.SRC_EXHAUSTED, payloadBytes: u64le(1n) },
+  ]);
+}
+
+describe("decodeEdgeBasedEvent", () => {
+  it("decodes CorridorRollSkipped (0 bytes)", () => {
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CORRIDOR_ROLL_SKIPPED, new Uint8Array(0))).toEqual({ kind: "CorridorRollSkipped" });
+  });
+
+  it("decodes CorridorRolled (25 bytes)", () => {
+    const payload = concatBytes([u64le(7n), f64le(0.2), f64le(0.3), boolByte(true)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CORRIDOR_ROLLED, payload)).toEqual({
+      kind: "CorridorRolled", prev: 7n, roll: 0.2, corridorLength: 0.3, continued: true,
+    });
+  });
+
+  it("decodes CorridorDeadNoUnseen (8 bytes)", () => {
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CORRIDOR_DEAD_NO_UNSEEN, u64le(4n))).toEqual({ kind: "CorridorDeadNoUnseen", prev: 4n });
+  });
+
+  it("decodes SrcChosenByDepthFirst (24 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u32le(3), u32le(1), f64le(0.5)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.SRC_CHOSEN_BY_DEPTH_FIRST, payload)).toEqual({
+      kind: "SrcChosenByDepthFirst", src: 1n, activeLen: 3, position: 1, depthFirst: 0.5,
+    });
+  });
+
+  it("decodes TeleportRolled (25 bytes)", () => {
+    const payload = concatBytes([u64le(1n), f64le(0.05), f64le(0.1), boolByte(true)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.TELEPORT_ROLLED, payload)).toEqual({
+      kind: "TeleportRolled", src: 1n, roll: 0.05, teleportChance: 0.1, fired: true,
+    });
+  });
+
+  it("decodes TeleportAlreadyRolled (8 bytes)", () => {
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.TELEPORT_ALREADY_ROLLED, u64le(1n))).toEqual({ kind: "TeleportAlreadyRolled", src: 1n });
+  });
+
+  it("decodes CyclicRolled (25 bytes)", () => {
+    const payload = concatBytes([u64le(1n), f64le(0.5), f64le(0.15), boolByte(false)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_ROLLED, payload)).toEqual({
+      kind: "CyclicRolled", src: 1n, roll: 0.5, cyclicity: 0.15, fired: false,
+    });
+  });
+
+  it("decodes CandidatePoolBuilt (variable length)", () => {
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CANDIDATE_POOL_BUILT, candidatePoolBuiltPayload(1n, true, [2n, 3n]))).toEqual({
+      kind: "CandidatePoolBuilt", src: 1n, geometric: true, candidates: [2n, 3n],
+    });
+  });
+
+  it("decodes SrcExhaustedEmptyPool (8 bytes)", () => {
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.SRC_EXHAUSTED_EMPTY_POOL, u64le(1n))).toEqual({ kind: "SrcExhaustedEmptyPool", src: 1n });
+  });
+
+  it("decodes CyclicCandidatesComputed (variable length)", () => {
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_CANDIDATES_COMPUTED, candidatePoolBuiltPayload(1n, false, [4n]))).toEqual({
+      kind: "CyclicCandidatesComputed", src: 1n, geometric: false, candidates: [4n],
+    });
+  });
+
+  it("decodes CyclicEdgeAdded (18 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(4n), boolByte(true), boolByte(false)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_EDGE_ADDED, payload)).toEqual({ kind: "CyclicEdgeAdded", src: 1n, dst: 4n, teleport: true, bidirectional: false });
+  });
+
+  it("decodes CyclicEdgeRejected (17 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(4n), boolByte(false)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_EDGE_REJECTED, payload)).toEqual({ kind: "CyclicEdgeRejected", src: 1n, dst: 4n, teleport: false });
+  });
+
+  it("decodes DstWeightsComputed (variable length)", () => {
+    const payload = concatBytes([nodeIdListPayload([2n, 3n]), f64ListPayload([1.5, 2.5]), f64le(0.4), f64le(0.1), boolByte(true)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.DST_WEIGHTS_COMPUTED, payload)).toEqual({
+      kind: "DstWeightsComputed", candidates: [2n, 3n], weights: [1.5, 2.5], branching: 0.4, directionality: 0.1, directionalityEligible: true,
+    });
+  });
+
+  it("decodes DstChosen (24 bytes)", () => {
+    const payload = concatBytes([u64le(2n), f64le(0.63), f64le(3.0)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.DST_CHOSEN, payload)).toEqual({ kind: "DstChosen", dst: 2n, roll: 0.63, totalWeight: 3.0 });
+  });
+
+  it("decodes EdgeAdded (18 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n), boolByte(false), boolByte(true)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.EDGE_ADDED, payload)).toEqual({ kind: "EdgeAdded", src: 1n, dst: 2n, teleport: false, bidirectional: true });
+  });
+
+  it("decodes EdgeRejected (17 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n), boolByte(true)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.EDGE_REJECTED, payload)).toEqual({ kind: "EdgeRejected", src: 1n, dst: 2n, teleport: true });
+  });
+
+  it("decodes PresetSkipped (16 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.PRESET_SKIPPED, payload)).toEqual({ kind: "PresetSkipped", src: 1n, dst: 2n });
+  });
+
+  it("decodes NodeActivated with parent=Some (21 bytes)", () => {
+    const payload = concatBytes([u64le(2n), optionalNodeIdPayload(1n), u32le(3)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.NODE_ACTIVATED, payload)).toEqual({ kind: "NodeActivated", node: 2n, parent: 1n, treeDepth: 3 });
+  });
+
+  it("decodes NodeActivated with parent=None (21 bytes)", () => {
+    const payload = concatBytes([u64le(1n), optionalNodeIdPayload(null), u32le(0)]);
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.NODE_ACTIVATED, payload)).toEqual({ kind: "NodeActivated", node: 1n, parent: null, treeDepth: 0 });
+  });
+
+  it("decodes SrcExhausted (8 bytes)", () => {
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.SRC_EXHAUSTED, u64le(1n))).toEqual({ kind: "SrcExhausted", src: 1n });
+  });
+
+  it("throws on an unknown wire tag", () => {
+    expect(() => decodeEdgeBasedEvent(99, new Uint8Array(0))).toThrow(/unknown wire tag/);
+  });
+
+  it("throws on a payload_len mismatch", () => {
+    expect(() => decodeEdgeBasedEvent(EDGE_BASED_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
+  });
+});
+
+describe("isMutatingEdgeBasedEvent", () => {
+  it("SrcExhaustedEmptyPool/CyclicEdgeAdded/CyclicEdgeRejected/EdgeAdded/EdgeRejected/NodeActivated/SrcExhausted are mutating; every trace-only variant is not", () => {
+    expect(isMutatingEdgeBasedEvent({ kind: "SrcExhaustedEmptyPool", src: 1n })).toBe(true);
+    expect(isMutatingEdgeBasedEvent({ kind: "CyclicEdgeAdded", src: 1n, dst: 2n, teleport: false, bidirectional: true })).toBe(true);
+    expect(isMutatingEdgeBasedEvent({ kind: "CyclicEdgeRejected", src: 1n, dst: 2n, teleport: false })).toBe(true);
+    expect(isMutatingEdgeBasedEvent({ kind: "EdgeAdded", src: 1n, dst: 2n, teleport: false, bidirectional: true })).toBe(true);
+    expect(isMutatingEdgeBasedEvent({ kind: "EdgeRejected", src: 1n, dst: 2n, teleport: false })).toBe(true);
+    expect(isMutatingEdgeBasedEvent({ kind: "NodeActivated", node: 1n, parent: null, treeDepth: 0 })).toBe(true);
+    expect(isMutatingEdgeBasedEvent({ kind: "SrcExhausted", src: 1n })).toBe(true);
+
+    expect(isMutatingEdgeBasedEvent({ kind: "CorridorRollSkipped" })).toBe(false);
+    expect(isMutatingEdgeBasedEvent({ kind: "TeleportAlreadyRolled", src: 1n })).toBe(false);
+    expect(isMutatingEdgeBasedEvent({ kind: "PresetSkipped", src: 1n, dst: 2n })).toBe(false);
+  });
+});
+
+describe("mutatingEdgeBasedEvents / applyEdgeBased", () => {
+  it("skips scope nodes and trace-only events, keeping mutating ones in emission order", () => {
+    const tape = buildEdgeBasedTape();
+    const events = mutatingEdgeBasedEvents(tape);
+    expect(events).toEqual([
+      { kind: "EdgeAdded", src: 1n, dst: 2n, teleport: false, bidirectional: true },
+      { kind: "NodeActivated", node: 2n, parent: 1n, treeDepth: 1 },
+      { kind: "SrcExhausted", src: 1n },
+    ]);
+  });
+
+  it("reconstructs edges and active/visited debug values up to targetStep, replaying from the start every call", () => {
+    const tape = buildEdgeBasedTape();
+
+    const step0 = applyEdgeBased(tape, 0); // EdgeAdded(1,2), bidirectional, basic (not teleport)
+    expect(step0.edges).toEqual([{ from: 1n, to: 2n, kind: "basic" }, { from: 2n, to: 1n, kind: "basic" }]);
+    expect(step0.debugValues.get("active")).toBeUndefined();
+    expect(step0.step).toBe(0);
+
+    const step1 = applyEdgeBased(tape, 1); // + NodeActivated(2, parent=1)
+    expect(step1.debugValues.get("active")).toEqual([2n]);
+    expect(step1.debugValues.get("visited")).toBeUndefined();
+
+    const step2 = applyEdgeBased(tape, 2); // + SrcExhausted(1): active loses 1 (never had it), visited gains 1
+    expect(step2.debugValues.get("active")).toEqual([2n]);
+    expect(step2.debugValues.get("visited")).toEqual([1n]);
+    expect(step2.step).toBe(2);
+  });
+
+  it("throws when targetStep is out of range", () => {
+    const tape = buildEdgeBasedTape();
+    expect(() => applyEdgeBased(tape, 3)).toThrow(/out of range/);
+  });
+
+  it("tags reconstructed edges with kind: teleport when EdgeAdded.teleport is true (regression for GitHub issue #144's teleport-rendering bug)", () => {
+    // root (0) -> "step 1" scope (1) -> EdgeAdded(1,5,teleport=true,bidirectional=false) (2)
+    const teleportEdgeAddedPayload = concatBytes([u64le(1n), u64le(5n), boolByte(true), boolByte(false)]);
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+      { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_TAG.EDGE_ADDED, payloadBytes: teleportEdgeAddedPayload },
+    ]);
+    const result = applyEdgeBased(tape, 0);
+    expect(result.edges).toEqual([{ from: 1n, to: 5n, kind: "teleport" }]);
   });
 });

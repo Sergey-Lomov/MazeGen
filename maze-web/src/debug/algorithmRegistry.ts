@@ -14,11 +14,12 @@
 
 import {
   type ParsedTape, type ParsedCheckpoints, type ApplyFrom,
-  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent,
-  type ApplyResult, type KruskalApplyResult, type WilsonApplyResult,
+  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent,
+  type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult,
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
   decodeKruskalEvent, isMutatingKruskalEvent, mutatingKruskalEventsWithIndex, mutatingKruskalEvents, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEventsWithIndex, mutatingWilsonEvents, applyWilson,
+  decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEventsWithIndex, mutatingEdgeBasedEvents, applyEdgeBased,
   resolveDebugArenaMetadata, parseCheckpoints, type DebugArenaMetadata,
 } from "./eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
@@ -61,6 +62,9 @@ export interface KruskalAdapter extends BaseAlgorithmAdapter<KruskalEvent> {
 }
 export interface WilsonAdapter extends BaseAlgorithmAdapter<WilsonEvent> {
   apply(tape: ParsedTape, targetStep: number): WilsonApplyResult;
+}
+export interface EdgeBasedAdapter extends BaseAlgorithmAdapter<EdgeBasedEvent> {
+  apply(tape: ParsedTape, targetStep: number): EdgeBasedApplyResult;
 }
 
 const STEP_SCOPE_RE = /^(?:step|edge|walk) (\d+)$/;
@@ -172,13 +176,114 @@ const WILSON_ADAPTER: WilsonAdapter = {
   apply: applyWilson,
 };
 
+/** Formats a roll/param `f64` for narration display, rounded to 2 decimal places for
+ *  readability — the exact value is still available in the underlying wire data for any
+ *  consumer that needs it (per explicit user decision, narration itself only needs 2 digits). */
+function fmt(value: number): string {
+  return value.toFixed(2);
+}
+
+/** `CustomEdgeBased`'s counterpart to `narrationTokensForRb`/`narrationTokensForKruskal`/
+ *  `narrationTokensForWilson` (GitHub issue #144). Every "step N" scope is flat (no nested
+ *  sub-scopes, unlike Wilson's search/commit) — mirrors Kruskal's shape, just with many more
+ *  decision-level trace events per step, per the issue's granularity requirement. Roll/param
+ *  values are rendered via `fmt` (2 decimals) directly in the narration text, per explicit user
+ *  request (e.g. "Corridor chance 0.30, roll 0.20 (< 0.30) → continuing corridor from"). */
+function narrationTokensForEdgeBased(event: EdgeBasedEvent): Token[] {
+  switch (event.kind) {
+    case "CorridorRollSkipped":
+      return [{ kind: "text", text: m["debug.tree.corridor_roll_skipped"]() }];
+    case "CorridorRolled":
+      return event.continued
+        ? [{ kind: "text", text: m["debug.tree.corridor_rolled_continue"]({ param: fmt(event.corridorLength), roll: fmt(event.roll) }) + " " }, { kind: "node", id: event.prev }]
+        : [{ kind: "text", text: m["debug.tree.corridor_rolled_stop"]({ param: fmt(event.corridorLength), roll: fmt(event.roll) }) }];
+    case "CorridorDeadNoUnseen":
+      return [{ kind: "text", text: m["debug.tree.corridor_dead_no_unseen"]() + " " }, { kind: "node", id: event.prev }];
+    case "SrcChosenByDepthFirst":
+      return [
+        { kind: "text", text: m["debug.tree.src_chosen_by_depth_first"]({ param: fmt(event.depthFirst), position: event.position, total: event.activeLen }) + " " },
+        { kind: "node", id: event.src },
+      ];
+    case "TeleportRolled":
+      return [{
+        kind: "text",
+        text: event.fired
+          ? m["debug.tree.teleport_rolled_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) })
+          : m["debug.tree.teleport_rolled_not_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) }),
+      }];
+    case "TeleportAlreadyRolled":
+      return [{ kind: "text", text: m["debug.tree.teleport_already_rolled"]() }];
+    case "CyclicRolled":
+      return [{
+        kind: "text",
+        text: event.fired
+          ? m["debug.tree.cyclic_rolled_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) })
+          : m["debug.tree.cyclic_rolled_not_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) }),
+      }];
+    case "CandidatePoolBuilt":
+      return [{
+        kind: "text",
+        text: event.geometric
+          ? m["debug.tree.candidate_pool_built_geometric"]({ count: event.candidates.length })
+          : m["debug.tree.candidate_pool_built_teleport"]({ count: event.candidates.length }),
+      }];
+    case "SrcExhaustedEmptyPool":
+      return [{ kind: "text", text: m["debug.tree.src_exhausted_empty_pool"]() }];
+    case "CyclicCandidatesComputed":
+      return [{
+        kind: "text",
+        text: event.geometric
+          ? m["debug.tree.cyclic_candidates_computed_geometric"]({ count: event.candidates.length })
+          : m["debug.tree.cyclic_candidates_computed_teleport"]({ count: event.candidates.length }),
+      }];
+    case "CyclicEdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.cyclic_edge_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
+    case "CyclicEdgeRejected":
+      return [{ kind: "text", text: m["debug.tree.cyclic_edge_rejected"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: false }];
+    case "DstWeightsComputed":
+      return [{
+        kind: "text",
+        text: m["debug.tree.dst_weights_computed"]({
+          param: fmt(event.branching),
+          param2: fmt(event.directionality),
+          eligible: event.directionalityEligible ? m["debug.tree.directionality_eligible"]() : m["debug.tree.directionality_not_eligible"](),
+          count: event.candidates.length,
+        }),
+      }];
+    case "DstChosen":
+      return [{ kind: "text", text: m["debug.tree.dst_chosen"]({ roll: fmt(event.roll), total: fmt(event.totalWeight) }) + " " }, { kind: "node", id: event.dst }];
+    case "EdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
+    case "EdgeRejected":
+      return [{ kind: "text", text: m["debug.tree.edge_rejected_edge_based"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: false }];
+    case "PresetSkipped":
+      return [{ kind: "text", text: m["debug.tree.preset_skipped"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: false }];
+    case "NodeActivated":
+      return [{ kind: "text", text: m["debug.tree.node_activated"]() + " " }, { kind: "node", id: event.node }];
+    case "SrcExhausted":
+      return [{ kind: "text", text: m["debug.tree.src_exhausted"]() + " " }, { kind: "node", id: event.src }];
+  }
+}
+
+const EDGE_BASED_ADAPTER: EdgeBasedAdapter = {
+  mutatingNodeIndices: (tape) => mutatingEdgeBasedEventsWithIndex(tape).map((e) => e.nodeIndex),
+  resolveMetadata: (tape) => ({ totalSteps: mutatingEdgeBasedEvents(tape).length, checkpointFroms: [] }),
+  decodeEvent: decodeEdgeBasedEvent,
+  isMutatingEvent: isMutatingEdgeBasedEvent,
+  narrationTokensFor: narrationTokensForEdgeBased,
+  scopeLabel: (name) => m["debug.tree.step_scope_edge_based"]({ index: numberedScopeIndex(name) }),
+  apply: applyEdgeBased,
+};
+
 export function adapterFor(kind: "recursive_backtracker"): RbAdapter;
 export function adapterFor(kind: "kruskal"): KruskalAdapter;
 export function adapterFor(kind: "wilson"): WilsonAdapter;
-export function adapterFor(kind: EventedEventKind): RbAdapter | KruskalAdapter | WilsonAdapter {
+export function adapterFor(kind: "edge_based"): EdgeBasedAdapter;
+export function adapterFor(kind: EventedEventKind): RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedAdapter {
   switch (kind) {
     case "recursive_backtracker": return RB_ADAPTER;
     case "kruskal": return KRUSKAL_ADAPTER;
     case "wilson": return WILSON_ADAPTER;
+    case "edge_based": return EDGE_BASED_ADAPTER;
   }
 }

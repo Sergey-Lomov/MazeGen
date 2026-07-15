@@ -14,6 +14,7 @@ pub use preset_state::{PresetState, build_preset_state};
 pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names};
 pub use kruskal::{generate as generate_kruskal, KruskalEvent};
 pub use wilson::{generate as generate_wilson, WilsonEvent, debug_value_names as wilson_debug_value_names};
+pub use edge_based::{generate as generate_edge_based, EdgeBasedEvent, debug_value_names as edge_based_debug_value_names};
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, NodeLockKind, LockedNode,
@@ -60,7 +61,7 @@ fn dispatch<T: Tessellation>(
         GenerationAlgorithm::CustomVertexBased(params) =>
             vertex_based::generate(graph, field, seed, start, &params, &config.elements, preset_state),
         GenerationAlgorithm::CustomEdgeBased(params) =>
-            edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state),
+            edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, None),
         GenerationAlgorithm::RecursiveBacktracker =>
             recursive_backtracker::generate(graph, field, seed, start, preset_state, None, None),
         GenerationAlgorithm::WilsonAlgorithm =>
@@ -156,6 +157,16 @@ pub fn generate_maze_with_events<T: Tessellation>(
                 Some(crate::event_log::EventedEventKind::Wilson),
                 None,
                 wilson::debug_value_names(),
+            )
+        }
+        GenerationAlgorithm::CustomEdgeBased(params) => {
+            let mut log = crate::event_log::EventLog::new();
+            edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, Some(&mut log));
+            (
+                Some(log.finish().encode()),
+                Some(crate::event_log::EventedEventKind::EdgeBased),
+                None,
+                edge_based::debug_value_names(),
             )
         }
         _ => {

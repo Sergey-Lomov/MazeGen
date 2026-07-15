@@ -7,6 +7,7 @@ import {
   displayStepForRow, type TreeRow,
 } from "../debug/debugTreeSelectors";
 import { adapterFor, type Token, type BaseAlgorithmAdapter } from "../debug/algorithmRegistry";
+import type { EventedEventKind } from "../wasm/mazeService";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { ui, typography, muted } from "../styles/theme";
 
@@ -74,9 +75,10 @@ function rowTokensFor<E>(adapter: BaseAlgorithmAdapter<E>, row: TreeRow): { toke
 /** Dispatches to the current algorithm's adapter (GitHub issue #163) — the only place this
  *  component still branches on `algorithmKind`, and only to pick which concrete adapter to run
  *  `rowTokensFor` with. */
-function rowTokens(row: TreeRow, algorithmKind: "recursive_backtracker" | "kruskal" | "wilson"): { tokens: Token[]; mutating: boolean } {
+function rowTokens(row: TreeRow, algorithmKind: EventedEventKind): { tokens: Token[]; mutating: boolean } {
   if (algorithmKind === "kruskal") return rowTokensFor(adapterFor("kruskal"), row);
   if (algorithmKind === "wilson") return rowTokensFor(adapterFor("wilson"), row);
+  if (algorithmKind === "edge_based") return rowTokensFor(adapterFor("edge_based"), row);
   return rowTokensFor(adapterFor("recursive_backtracker"), row);
 }
 

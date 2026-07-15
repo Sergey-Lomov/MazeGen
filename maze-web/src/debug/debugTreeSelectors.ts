@@ -43,6 +43,8 @@ export function buildStepIndex(tape: ParsedTape, algorithmKind: EventedEventKind
     ? adapterFor("kruskal").mutatingNodeIndices(tape)
     : algorithmKind === "wilson"
     ? adapterFor("wilson").mutatingNodeIndices(tape)
+    : algorithmKind === "edge_based"
+    ? adapterFor("edge_based").mutatingNodeIndices(tape)
     : adapterFor("recursive_backtracker").mutatingNodeIndices(tape);
   const mutatingNodeIndexSet = new Map<number, number>();
   mutatingNodeIndices.forEach((nodeIndex, step) => mutatingNodeIndexSet.set(nodeIndex, step));

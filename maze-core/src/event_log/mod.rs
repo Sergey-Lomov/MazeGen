@@ -111,6 +111,7 @@ pub enum EventedEventKind {
     RecursiveBacktracker,
     Kruskal,
     Wilson,
+    EdgeBased,
 }
 
 /// Implemented by a concrete event enum to declare how its mutating variants affect named,

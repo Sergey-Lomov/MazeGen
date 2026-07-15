@@ -20,6 +20,7 @@ const DEBUG_VALUE_LABELS: Record<string, () => string> = {
   current_walk: () => m["debug.value.current_walk"](),
   walk_start: () => m["debug.value.walk_start"](),
   walk_head: () => m["debug.value.walk_head"](),
+  active: () => m["debug.value.active"](),
 };
 
 function debugValueLabel(name: string): string {
