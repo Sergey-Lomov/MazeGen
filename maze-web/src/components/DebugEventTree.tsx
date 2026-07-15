@@ -6,14 +6,9 @@ import {
   buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
   displayStepForRow, type TreeRow,
 } from "../debug/debugTreeSelectors";
-import {
-  decodeRecursiveBacktrackerEvent, isMutatingRbEvent, type RecursiveBacktrackerEvent,
-  decodeKruskalEvent, isMutatingKruskalEvent, kruskalMergedRoot, type KruskalEvent,
-  decodeWilsonEvent, isMutatingWilsonEvent, type WilsonEvent,
-} from "../debug/eventTape";
+import { adapterFor, type Token, type BaseAlgorithmAdapter } from "../debug/algorithmRegistry";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { ui, typography, muted } from "../styles/theme";
-import * as m from "~/paraglide/messages";
 
 const ROW_MIN_HEIGHT = 26;
 const INDENT_PX = 16;
@@ -34,17 +29,6 @@ const ROW_VERTICAL_PADDING_PX = ROW_MIN_HEIGHT - 16;
 // re-measured via `measureElement` once mounted (see below), so this only needs to avoid being
 // grossly too small, not be exact.
 const BUBBLE_CHAR_OVERHEAD = 4;
-
-/** One piece of a tokenized narration line — plain text, or an interactive node/edge/cycle/region
- *  reference rendered as a `DebugRefBubble` (GitHub issue #130). `kind` values mirror
- *  `HoveredDebugRef.kind` in `storeTypes.ts` on purpose — a bubble's hover payload is its own
- *  token verbatim, no field renaming between the two unions. */
-type Token =
-  | { kind: "text"; text: string }
-  | { kind: "node"; id: bigint }
-  | { kind: "edge"; from: bigint; to: bigint; bidirectional: boolean }
-  | { kind: "cycle"; edges: [bigint, bigint][] }
-  | { kind: "region"; nodes: bigint[] };
 
 /** Estimates a row's rendered height from its wrapped text line count, before it's ever mounted. */
 function estimateRowHeight(tokens: Token[], depth: number, containerWidth: number): number {
@@ -75,117 +59,25 @@ function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: numb
   }
 }
 
-function narrationTokensFor(event: RecursiveBacktrackerEvent): Token[] {
-  switch (event.kind) {
-    case "VertexSelected": return [{ kind: "text", text: m["debug.tree.vertex_selected"]() + " " }, { kind: "node", id: event.id }];
-    case "CandidatesComputed": return [{ kind: "text", text: m["debug.tree.candidates_computed"]({ count: event.ids.length }) }];
-    case "DeadEnd": return [{ kind: "text", text: m["debug.tree.dead_end"]() }];
-    case "CandidateChosen": return [{ kind: "text", text: m["debug.tree.candidate_chosen"]() + " " }, { kind: "node", id: event.id }];
-    case "EdgeAdded":
-      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.bidirectional }];
-    case "VertexVisited": return [{ kind: "text", text: m["debug.tree.vertex_visited"]() + " " }, { kind: "node", id: event.id }];
-    case "VertexPopped": return [{ kind: "text", text: m["debug.tree.vertex_popped"]() + " " }, { kind: "node", id: event.id }];
-    case "VertexPushed": return [{ kind: "text", text: m["debug.tree.vertex_pushed"]() + " " }, { kind: "node", id: event.id }];
-  }
-}
-
-/** Kruskal's counterpart to `narrationTokensFor` (GitHub issue #146). Per explicit user feedback,
- *  narration must make the edge/root relationship explicit, and state the comparison's outcome
- *  in words rather than leaving the reader to infer it from which event follows:
- *  1. `EdgeSelected` — "Edge selected: A <-> B"
- *  2. `RootsCompared` — "Root of A = X, root of B = Y. Roots equal/different." — `from`/`to` ride
- *     along in the same payload as the roots (not inferred from the preceding sibling event), and
- *     the same-root/different-root outcome is spelled out inline rather than left implicit in
- *     whether an `EdgeAdded` or `EdgeRejected` follows.
- *  3. `EdgeRejected` — "Edge rejected" (the *reason* — same root — was already stated by
- *     `RootsCompared` immediately above; this event doesn't repeat it)
- *  4. `EdgeAdded` — "Edge added: A <-> B" (unchanged)
- *  5. `SetsMerged` — "Sets X and Y merged. New root: Z", `Z` computed via `kruskalMergedRoot`
- *     (mirrors core's `Dsu::union_by_min` — the wire payload doesn't carry the new root itself,
- *     see that function's doc comment). */
-function kruskalNarrationTokensFor(event: KruskalEvent): Token[] {
-  switch (event.kind) {
-    case "EdgesShuffled": return [{ kind: "text", text: m["debug.tree.edges_shuffled"]({ count: event.edges.length }) }];
-    case "EdgeSelected":
-      return [{ kind: "text", text: m["debug.tree.edge_selected"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
-    case "RootsCompared": {
-      const rootsEqual = event.rootOfFrom === event.rootOfTo;
-      return [
-        { kind: "text", text: m["debug.tree.root_of"]() + " " }, { kind: "node", id: event.from },
-        { kind: "text", text: " = " }, { kind: "node", id: event.rootOfFrom },
-        { kind: "text", text: ", " + m["debug.tree.root_of"]() + " " }, { kind: "node", id: event.to },
-        { kind: "text", text: " = " }, { kind: "node", id: event.rootOfTo },
-        { kind: "text", text: ". " + (rootsEqual ? m["debug.tree.roots_equal"]() : m["debug.tree.roots_different"]()) },
-      ];
-    }
-    case "EdgeRejected":
-      return [{ kind: "text", text: m["debug.tree.edge_rejected"]() }];
-    case "EdgeAdded":
-      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.bidirectional }];
-    case "SetsMerged": {
-      const newRoot = kruskalMergedRoot(event.rootA, event.rootB);
-      return [
-        { kind: "text", text: m["debug.tree.sets_merged"]() + " " }, { kind: "node", id: event.rootA },
-        { kind: "text", text: " / " }, { kind: "node", id: event.rootB },
-        { kind: "text", text: ". " + m["debug.tree.new_root"]() + " " }, { kind: "node", id: newRoot },
-      ];
-    }
-    case "PresetUnionsApplied":
-      return [{ kind: "text", text: m["debug.tree.preset_unions_applied"]({ count: event.pairs.length }) }];
-  }
-}
-
-/** Wilson's counterpart to `narrationTokensFor`/`kruskalNarrationTokensFor` (GitHub issue #145).
- *  `"walk N"` scopes contain exactly two fixed, non-numbered nested scopes — `"search"` (the
- *  loop-erased random walk: every `StepTaken`/`LoopErased`/`WalkDeadEnd`, flat, no per-step scope)
- *  and `"commit"` (every `EdgeAdded`/`NodeVisited` pair from committing the found path) — a walk is
- *  two named phases, not a numbered sequence, so these use `EventLog::enter`, not
- *  `enter_numbered` (GitHub issue #145's follow-up). */
-function wilsonNarrationTokensFor(event: WilsonEvent): Token[] {
-  switch (event.kind) {
-    case "StartVisited": return [{ kind: "text", text: m["debug.tree.start_visited"]() + " " }, { kind: "node", id: event.id }];
-    case "WalkStartPicked": return [{ kind: "text", text: m["debug.tree.walk_start_picked"]() + " " }, { kind: "node", id: event.id }];
-    case "StepTaken":
-      return [{ kind: "text", text: m["debug.tree.step_taken"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
-    case "LoopErased": return [{ kind: "text", text: m["debug.tree.loop_erased"]() + " " }, { kind: "node", id: event.node }];
-    case "WalkDeadEnd": return [{ kind: "text", text: m["debug.tree.walk_dead_end"]() }];
-    case "EdgeAdded":
-      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.bidirectional }];
-    case "NodeVisited": return [{ kind: "text", text: m["debug.tree.vertex_visited"]() + " " }, { kind: "node", id: event.id }];
-  }
-}
-
-function rowTokens(row: TreeRow, algorithmKind: "recursive_backtracker" | "kruskal" | "wilson"): { tokens: Token[]; mutating: boolean } {
+/** Runs one adapter's full scope-label / decode+narrate pipeline for a row. Generic over the
+ *  adapter so the decoded event's type flows from `decodeEvent` straight into
+ *  `narrationTokensFor`/`isMutatingEvent` on the *same* concrete adapter — no `unknown` laundering
+ *  at the decode/narrate boundary (GitHub issue #163's review). */
+function rowTokensFor<E>(adapter: BaseAlgorithmAdapter<E>, row: TreeRow): { tokens: Token[]; mutating: boolean } {
   if (row.payload.kind === "scope") {
-    // Wilson's "search"/"commit" are fixed, non-numbered scope names (GitHub issue #145's
-    // follow-up) — checked before the numbered-scope regex below, which wouldn't match them.
-    if (algorithmKind === "wilson" && row.payload.name === "search") {
-      return { tokens: [{ kind: "text", text: m["debug.tree.search_scope"]() }], mutating: false };
-    }
-    if (algorithmKind === "wilson" && row.payload.name === "commit") {
-      return { tokens: [{ kind: "text", text: m["debug.tree.commit_scope"]() }], mutating: false };
-    }
-    // Scope names are auto-numbered by `EventLog::enter_numbered` (core, issue #133) as
-    // "step 1"/"edge 1"/"walk 1", ... — pull the trailing index back out for the localized label.
-    const match = /^(?:step|edge|walk) (\d+)$/.exec(row.payload.name);
-    const index = match ? Number(match[1]) : 0;
-    const label = algorithmKind === "kruskal"
-      ? m["debug.tree.edge_scope"]({ index })
-      : algorithmKind === "wilson" && row.payload.name.startsWith("walk")
-      ? m["debug.tree.walk_scope"]({ index })
-      : m["debug.tree.step_scope"]({ index });
-    return { tokens: [{ kind: "text", text: label }], mutating: false };
+    return { tokens: [{ kind: "text", text: adapter.scopeLabel(row.payload.name) }], mutating: false };
   }
-  if (algorithmKind === "kruskal") {
-    const event = decodeKruskalEvent(row.payload.tag, row.payload.bytes);
-    return { tokens: kruskalNarrationTokensFor(event), mutating: isMutatingKruskalEvent(event) };
-  }
-  if (algorithmKind === "wilson") {
-    const event = decodeWilsonEvent(row.payload.tag, row.payload.bytes);
-    return { tokens: wilsonNarrationTokensFor(event), mutating: isMutatingWilsonEvent(event) };
-  }
-  const event = decodeRecursiveBacktrackerEvent(row.payload.tag, row.payload.bytes);
-  return { tokens: narrationTokensFor(event), mutating: isMutatingRbEvent(event) };
+  const event = adapter.decodeEvent(row.payload.tag, row.payload.bytes);
+  return { tokens: adapter.narrationTokensFor(event), mutating: adapter.isMutatingEvent(event) };
+}
+
+/** Dispatches to the current algorithm's adapter (GitHub issue #163) — the only place this
+ *  component still branches on `algorithmKind`, and only to pick which concrete adapter to run
+ *  `rowTokensFor` with. */
+function rowTokens(row: TreeRow, algorithmKind: "recursive_backtracker" | "kruskal" | "wilson"): { tokens: Token[]; mutating: boolean } {
+  if (algorithmKind === "kruskal") return rowTokensFor(adapterFor("kruskal"), row);
+  if (algorithmKind === "wilson") return rowTokensFor(adapterFor("wilson"), row);
+  return rowTokensFor(adapterFor("recursive_backtracker"), row);
 }
 
 export function DebugEventTree() {

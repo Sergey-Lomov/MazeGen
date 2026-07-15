@@ -8,7 +8,8 @@ import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
-import { parseTape, parseCheckpoints, resolveDebugArenaMetadata, mutatingKruskalEvents, mutatingWilsonEvents } from "../../debug/eventTape";
+import { parseTape, parseCheckpoints } from "../../debug/eventTape";
+import { adapterFor } from "../../debug/algorithmRegistry";
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -170,27 +171,18 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
     if (debugMode && debugTape) {
       const tape = parseTape(debugTape.nodeTable, debugTape.payload);
       // Kruskal (GitHub issue #146) and Wilson (#145) produce no checkpoints (#128 is RB-only) —
-      // totalSteps comes from a plain mutating-event count instead of resolveDebugArenaMetadata's
-      // combined scan+checkpoint-resolution pass, and checkpointFroms is always empty.
-      let totalSteps: number;
-      let checkpointFroms: ReturnType<typeof resolveDebugArenaMetadata>["checkpointFroms"];
-      if (debugTape.eventKind === "kruskal") {
-        totalSteps = mutatingKruskalEvents(tape).length;
-        checkpointFroms = [];
-      } else if (debugTape.eventKind === "wilson") {
-        totalSteps = mutatingWilsonEvents(tape).length;
-        checkpointFroms = [];
-      } else {
-        // One combined forward scan for totalSteps + checkpoints (GitHub issue #128) instead of
-        // two independent full-tape scans — see resolveDebugArenaMetadata's doc comment.
-        // checkpointFroms are ApplyFrom-ready values selectDebugMazeView can pass straight into
-        // applyRecursiveBacktracker as `from`.
-        const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
-        const checkpoints = debugTape.snapshotTable && debugTape.snapshotPayload
-          ? parseCheckpoints(debugTape.snapshotTable, debugTape.snapshotPayload)
-          : emptyCheckpoints;
-        ({ totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, checkpoints));
-      }
+      // their adapters' resolveMetadata ignores the checkpoints argument and always returns an
+      // empty checkpointFroms; only Recursive Backtracker's does the combined scan+checkpoint-
+      // resolution pass — see algorithmRegistry.ts.
+      const checkpoints = debugTape.snapshotTable && debugTape.snapshotPayload
+        ? parseCheckpoints(debugTape.snapshotTable, debugTape.snapshotPayload)
+        : null;
+      const eventKind = debugTape.eventKind;
+      const { totalSteps, checkpointFroms } = eventKind === "kruskal"
+        ? adapterFor("kruskal").resolveMetadata(tape, checkpoints)
+        : eventKind === "wilson"
+        ? adapterFor("wilson").resolveMetadata(tape, checkpoints)
+        : adapterFor("recursive_backtracker").resolveMetadata(tape, checkpoints);
       if (totalSteps > 0) {
         // debugValueNames (GitHub issue #131) comes from the WASM response's static declaration
         // (GenerateResult::debug_value_names()), not from scanning the tape — see

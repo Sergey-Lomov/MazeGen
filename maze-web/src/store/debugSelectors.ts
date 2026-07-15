@@ -1,6 +1,7 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { DebugArenaHandle } from "./storeTypes";
-import { applyRecursiveBacktracker, applyKruskal, applyWilson, nearestCheckpointFromAtOrBefore } from "../debug/eventTape";
+import { nearestCheckpointFromAtOrBefore } from "../debug/eventTape";
+import { adapterFor } from "../debug/algorithmRegistry";
 
 export interface DebugMazeView {
   nodes: NodeDto[];
@@ -66,20 +67,20 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
   let debugMaps: Map<string, Map<bigint, bigint>> = new Map();
   let debugVertices: Map<string, bigint | null> = new Map();
   if (arena.algorithmKind === "kruskal") {
-    const result = applyKruskal(arena.tape, debugStep);
+    const result = adapterFor("kruskal").apply(arena.tape, debugStep);
     edges = result.edges;
     debugValues = new Map();
     dsuGroups = new Map();
     for (const [id, root] of result.dsuGroups) dsuGroups.set(Number(id), Number(root));
   } else if (arena.algorithmKind === "wilson") {
-    const result = applyWilson(arena.tape, debugStep);
+    const result = adapterFor("wilson").apply(arena.tape, debugStep);
     edges = result.edges;
     debugValues = result.debugValues;
     debugMaps = result.debugMaps;
     debugVertices = result.debugVertices;
   } else {
     const from = nearestCheckpointFromAtOrBefore(arena.checkpointFroms, debugStep) ?? undefined;
-    ({ edges, debugValues } = applyRecursiveBacktracker(arena.tape, debugStep, from));
+    ({ edges, debugValues } = adapterFor("recursive_backtracker").apply(arena.tape, debugStep, from));
   }
   const numberKeyedDebugValues = new Map<string, number[]>();
   for (const [name, ids] of debugValues) {
