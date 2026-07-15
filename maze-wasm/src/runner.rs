@@ -70,13 +70,14 @@ fn run_initial_generation<T: Tessellation>(
 }
 
 /// Which [`maze_core::event_log::EventedEventKind`]s the web replay engine (`maze-web/src/debug/
-/// eventTape.ts`) can decode today — Recursive Backtracker's and Kruskal's wire tags (GitHub
-/// issue #146). Extend this when a new event kind gets a web decoder.
+/// eventTape.ts`) can decode today — Recursive Backtracker's, Kruskal's (GitHub issue #146) and
+/// Wilson's (#145) wire tags. Extend this when a new event kind gets a web decoder.
 fn is_web_decodable(kind: Option<maze_core::event_log::EventedEventKind>) -> bool {
     matches!(
         kind,
         Some(maze_core::event_log::EventedEventKind::RecursiveBacktracker)
             | Some(maze_core::event_log::EventedEventKind::Kruskal)
+            | Some(maze_core::event_log::EventedEventKind::Wilson)
     )
 }
 
@@ -93,6 +94,11 @@ mod is_web_decodable_tests {
     #[test]
     fn kruskal_is_web_decodable() {
         assert!(is_web_decodable(Some(EventedEventKind::Kruskal)));
+    }
+
+    #[test]
+    fn wilson_is_web_decodable() {
+        assert!(is_web_decodable(Some(EventedEventKind::Wilson)));
     }
 
     #[test]
@@ -169,15 +175,16 @@ mod run_initial_generation_tests {
     }
 
     #[test]
-    fn debug_events_true_with_non_recursive_backtracker_yields_no_tape() {
-        // generate_maze_with_events only instruments RecursiveBacktracker (see #123's scope) —
-        // debug_events must not panic on other algorithms, just produce no tape.
+    fn debug_events_true_with_non_instrumented_algorithm_yields_no_tape() {
+        // generate_maze_with_events only instruments RecursiveBacktracker, Kruskal and Wilson
+        // (see #123/#146/#145's scopes) — debug_events must not panic on other algorithms, just
+        // produce no tape.
         let (mut graph, field, preset_state) = field_and_state();
         let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let config = GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, ..GenerationConfig::default() };
+        let config = GenerationConfig { algorithm: GenerationAlgorithm::CustomVertexBased(maze_core::generation::GenerationParams::default()), ..GenerationConfig::default() };
         let (debug_tape, debug_checkpoints, debug_value_names, _, _) = run_initial_generation(&mut graph, &field, 3, start, config, &preset_state, false, true);
-        assert!(debug_tape.is_none(), "only Recursive Backtracker is instrumented so far");
-        assert!(debug_checkpoints.is_none(), "only Recursive Backtracker is instrumented so far");
+        assert!(debug_tape.is_none(), "only Recursive Backtracker, Kruskal and Wilson are instrumented so far");
+        assert!(debug_checkpoints.is_none(), "only Recursive Backtracker, Kruskal and Wilson are instrumented so far");
         assert!(debug_value_names.is_empty(), "only Recursive Backtracker declares debug values so far");
     }
 
@@ -195,6 +202,32 @@ mod run_initial_generation_tests {
         assert!(debug_checkpoints.is_none(), "Kruskal does not produce checkpoints");
         assert!(debug_value_names.is_empty(), "Kruskal does not declare debug values");
         assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::Kruskal));
+    }
+
+    #[test]
+    fn debug_events_true_with_wilson_yields_a_tape_and_debug_values_but_no_checkpoints() {
+        // Wilson is instrumented in generate_maze_with_events (GitHub issue #145) and its event
+        // kind is web-decodable — its arm produces no checkpoints (out of scope for #145,
+        // mirroring Kruskal's #146/#161 precedent), but does declare the "visited" and
+        // "current_walk" debug values.
+        let (mut graph, field, preset_state) = field_and_state();
+        let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let config = GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, ..GenerationConfig::default() };
+        let (debug_tape, debug_checkpoints, debug_value_names, event_kind, _) = run_initial_generation(&mut graph, &field, 5, start, config, &preset_state, false, true);
+        let tape = debug_tape.expect("Wilson's event kind is web-decodable");
+        assert!(!tape.node_table.is_empty(), "a 3x3 Wilson run must emit at least one event");
+        assert!(debug_checkpoints.is_none(), "Wilson does not produce checkpoints");
+        assert_eq!(
+            debug_value_names,
+            vec![
+                ("visited".to_string(), maze_core::event_log::DebugValueKind::Region),
+                ("current_walk".to_string(), maze_core::event_log::DebugValueKind::Map),
+                ("walk_start".to_string(), maze_core::event_log::DebugValueKind::Vertex),
+                ("walk_head".to_string(), maze_core::event_log::DebugValueKind::Vertex),
+            ],
+            "Wilson declares the visited, current_walk, walk_start, and walk_head debug values"
+        );
+        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::Wilson));
     }
 
     #[test]
@@ -265,6 +298,33 @@ mod build_generate_result_tests {
             Some(maze_core::event_log::EventedEventKind::Kruskal),
         );
         assert_eq!(result.event_kind_bytes(), Some("kruskal"));
+    }
+
+    #[test]
+    fn wilson_tape_carries_wilson_event_kind_and_map_vertex_kind_debug_values() {
+        // Guards build_generate_result's forwarding of Wilson's event_kind and Map/Vertex-kind
+        // debug values specifically (GitHub issue #145's follow-up) — the other tests in this
+        // module only ever exercise RecursiveBacktracker/Kruskal fixtures.
+        let tape = EncodedTape { node_table: vec![1, 2, 3], payload: vec![4, 5] };
+        let result = build_generate_result(
+            JsValue::UNDEFINED, Some(tape), None,
+            vec![
+                ("visited".to_string(), maze_core::event_log::DebugValueKind::Region),
+                ("current_walk".to_string(), maze_core::event_log::DebugValueKind::Map),
+                ("walk_start".to_string(), maze_core::event_log::DebugValueKind::Vertex),
+                ("walk_head".to_string(), maze_core::event_log::DebugValueKind::Vertex),
+            ],
+            Some(maze_core::event_log::EventedEventKind::Wilson),
+        );
+        assert_eq!(result.event_kind_bytes(), Some("wilson"));
+        assert_eq!(
+            result.debug_value_names_bytes(),
+            &["visited".to_string(), "current_walk".to_string(), "walk_start".to_string(), "walk_head".to_string()]
+        );
+        assert_eq!(
+            result.debug_value_kinds_bytes(),
+            &["region".to_string(), "map".to_string(), "vertex".to_string(), "vertex".to_string()]
+        );
     }
 
     #[test]

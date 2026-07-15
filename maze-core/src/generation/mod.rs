@@ -13,7 +13,7 @@ mod mutation_commands;
 pub use preset_state::{PresetState, build_preset_state};
 pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names};
 pub use kruskal::{generate as generate_kruskal, KruskalEvent};
-pub use wilson::{generate as generate_wilson, WilsonEvent};
+pub use wilson::{generate as generate_wilson, WilsonEvent, debug_value_names as wilson_debug_value_names};
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, NodeLockKind, LockedNode,
@@ -155,7 +155,7 @@ pub fn generate_maze_with_events<T: Tessellation>(
                 Some(log.finish().encode()),
                 Some(crate::event_log::EventedEventKind::Wilson),
                 None,
-                &[] as &[(&str, crate::event_log::DebugValueKind)],
+                wilson::debug_value_names(),
             )
         }
         _ => {

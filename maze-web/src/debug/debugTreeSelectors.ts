@@ -6,15 +6,18 @@
 import type { NodeDto } from "../wasm/types";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { ParsedTape, NodePayload } from "./eventTape";
-import { nodeAt, nodeView, mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex } from "./eventTape";
+import { nodeAt, nodeView, mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex, mutatingWilsonEventsWithIndex } from "./eventTape";
 
 /** Dispatches to the right algorithm's flat mutating-event scan by `algorithmKind` (GitHub issue
- *  #146) — the only place `buildStepIndex` needs to know which concrete event enum `tape` holds.
- *  Both scans return the same `{ nodeIndex }`-shaped entries regardless of algorithm, which is
- *  all `buildStepIndex` itself needs. */
+ *  #146, extended by #145) — the only place `buildStepIndex` needs to know which concrete event
+ *  enum `tape` holds. All three scans return the same `{ nodeIndex }`-shaped entries regardless of
+ *  algorithm, which is all `buildStepIndex` itself needs. */
 function mutatingEventNodeIndices(tape: ParsedTape, algorithmKind: EventedEventKind): number[] {
   if (algorithmKind === "kruskal") {
     return mutatingKruskalEventsWithIndex(tape).map((e) => e.nodeIndex);
+  }
+  if (algorithmKind === "wilson") {
+    return mutatingWilsonEventsWithIndex(tape).map((e) => e.nodeIndex);
   }
   return mutatingRbEventsWithIndex(tape).map((e) => e.nodeIndex);
 }

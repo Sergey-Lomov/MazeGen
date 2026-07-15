@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DebugEventTree } from "../components/DebugEventTree";
 import { useMazeStore } from "../store/mazeStore";
-import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, WILSON_TAG, type ParsedTape } from "../debug/eventTape";
 import type { NodeDto } from "../wasm/types";
 import * as m from "~/paraglide/messages";
 
@@ -47,6 +47,10 @@ function vertexPayload(id: bigint): Uint8Array {
   return u64le(id);
 }
 
+function stepTakenPayload(from: bigint, to: bigint): Uint8Array {
+  return concatBytes([u64le(from), u64le(to)]);
+}
+
 function buildFixture(nodes: FixtureNode[]): ParsedTape {
   const payloadChunks: Uint8Array[] = [];
   const offsets: number[] = [];
@@ -85,6 +89,40 @@ function buildTwoStepTape(): ParsedTape {
     { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
     { parent: 5, firstChild: null, nextSibling: 7, tag: RB_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
     { parent: 5, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
+  ]);
+}
+
+// root (0) -> "walk 1" scope (1) -> WalkStartPicked(1) (2)
+//                                -> "search" scope (3) -> StepTaken(1,2) (4)
+//                                -> "commit" scope (5) -> EdgeAdded(1,2) (6) -> NodeVisited(1) (7)
+// Mirrors wilson.rs's `generate`'s new two-phase shape (GitHub issue #145's follow-up) — a walk
+// scope's only nested scopes are exactly "search" then "commit", not one "step M" scope per step.
+function buildOneWalkWilsonTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
+    { parent: 1, firstChild: 4, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("search") },
+    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
+    { parent: 1, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("commit") },
+    { parent: 5, firstChild: null, nextSibling: 7, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 5, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(1n) },
+  ]);
+}
+
+// root (0) -> "walk 1" scope (1) -> WalkStartPicked(1) (2)
+//                                -> "search" scope (3) -> StepTaken(1,2) (4) -> LoopErased(2) (5) -> WalkDeadEnd (6)
+// Covers wilsonNarrationTokensFor's LoopErased/WalkDeadEnd branches, which buildOneWalkWilsonTape
+// doesn't exercise (its walk connects straight into "commit" without a loop or a dead end).
+function buildLoopErasedDeadEndWilsonTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
+    { parent: 1, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("search") },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
+    { parent: 3, firstChild: null, nextSibling: 6, tag: WILSON_TAG.LOOP_ERASED, payloadBytes: vertexPayload(2n) },
+    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_TAG.WALK_DEAD_END, payloadBytes: new Uint8Array(0) },
   ]);
 }
 
@@ -225,5 +263,49 @@ describe("DebugEventTree", () => {
     const stepScopeRow = screen.getByText(m["debug.tree.step_scope"]({ index: 1 }));
     expect(() => fireEvent.click(stepScopeRow)).toThrow(/node id 99 not found/);
     consoleError.mockRestore();
+  });
+});
+
+describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
+  beforeEach(() => {
+    useMazeStore.setState({
+      debugArena: { tape: buildOneWalkWilsonTape(), algorithmKind: "wilson", nodes, totalSteps: 3, checkpointFroms: [], debugValueNames: [] },
+      debugStep: 0,
+    });
+  });
+
+  it("labels a walk's two nested scopes as \"Route search\"/\"Route commit\", not numbered step scopes", () => {
+    render(<DebugEventTree />);
+
+    const walkRow = screen.getByText(m["debug.tree.walk_scope"]({ index: 1 }));
+    fireEvent.click(walkRow);
+
+    expect(screen.getByText(m["debug.tree.search_scope"]())).toBeInTheDocument();
+    expect(screen.getByText(m["debug.tree.commit_scope"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["debug.tree.step_scope"]({ index: 1 }))).not.toBeInTheDocument();
+  });
+
+  it("\"search\" contains StepTaken, \"commit\" contains EdgeAdded/NodeVisited", () => {
+    render(<DebugEventTree />);
+    fireEvent.click(screen.getByText(m["debug.tree.walk_scope"]({ index: 1 })));
+    fireEvent.click(screen.getByText(m["debug.tree.search_scope"]()));
+    fireEvent.click(screen.getByText(m["debug.tree.commit_scope"]()));
+
+    expect(screen.getByText(/Step taken/)).toBeInTheDocument();
+    expect(screen.getByText(/Edge added/)).toBeInTheDocument();
+    expect(screen.getByText(/Tile marked visited/)).toBeInTheDocument();
+  });
+
+  it("renders LoopErased/WalkDeadEnd narration — untouched by buildOneWalkWilsonTape's straight-line walk", () => {
+    useMazeStore.setState({
+      debugArena: { tape: buildLoopErasedDeadEndWilsonTape(), algorithmKind: "wilson", nodes, totalSteps: 3, checkpointFroms: [], debugValueNames: [] },
+      debugStep: 0,
+    });
+    render(<DebugEventTree />);
+    fireEvent.click(screen.getByText(m["debug.tree.walk_scope"]({ index: 1 })));
+    fireEvent.click(screen.getByText(m["debug.tree.search_scope"]()));
+
+    expect(screen.getByText(/Loop erased/)).toBeInTheDocument();
+    expect(screen.getByText(m["debug.tree.walk_dead_end"]())).toBeInTheDocument();
   });
 });

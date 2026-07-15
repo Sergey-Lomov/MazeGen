@@ -7,6 +7,8 @@ fn kind_wire_str(kind: maze_core::event_log::DebugValueKind) -> &'static str {
     match kind {
         maze_core::event_log::DebugValueKind::Region => "region",
         maze_core::event_log::DebugValueKind::Sequence => "sequence",
+        maze_core::event_log::DebugValueKind::Map => "map",
+        maze_core::event_log::DebugValueKind::Vertex => "vertex",
     }
 }
 
@@ -207,16 +209,18 @@ impl GenerateResult {
         self.debug_value_names.clone()
     }
 
-    /// Parallel to [`Self::debug_value_names`] — each entry is `"region"` or `"sequence"`, same
-    /// index as its name, see `kind_wire_str`.
+    /// Parallel to [`Self::debug_value_names`] — each entry is `"region"`, `"sequence"`, `"map"`,
+    /// or `"vertex"` (GitHub issue #145's follow-up added the latter two), same index as its name,
+    /// see `kind_wire_str`.
     #[wasm_bindgen(js_name = debugValueKinds)]
     pub fn debug_value_kinds(&self) -> Vec<String> {
         self.debug_value_kinds.clone()
     }
 
-    /// Which concrete event enum `debugTapeNodeTable`/`debugTapePayload` were encoded from
-    /// (GitHub issue #146) — `"recursive_backtracker"` or `"kruskal"`, or `undefined` if
-    /// `debug_events` wasn't enabled. Tells the web replay engine which decoder to dispatch to.
+    /// Which concrete event enum `debugTapeNodeTable`/`debugTapePayload` were encoded from —
+    /// `"recursive_backtracker"`, `"kruskal"` (GitHub issue #146), or `"wilson"` (#145) — or
+    /// `undefined` if `debug_events` wasn't enabled. Tells the web replay engine which decoder to
+    /// dispatch to.
     #[wasm_bindgen(js_name = eventKind)]
     pub fn event_kind(&self) -> Option<String> {
         self.event_kind.clone()
@@ -313,6 +317,32 @@ mod tests {
     }
 
     #[test]
+    fn with_debug_tape_carries_a_map_kind_debug_value() {
+        // Guards kind_wire_str's Map arm specifically (GitHub issue #145's follow-up) — mirrors
+        // with_debug_tape_carries_a_region_kind_debug_value's rationale for Region.
+        let result = GenerateResult::with_debug_tape(
+            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
+            vec![("current_walk".to_string(), maze_core::event_log::DebugValueKind::Map)],
+            maze_core::event_log::EventedEventKind::Wilson,
+        );
+        assert_eq!(result.debug_value_names_bytes(), &["current_walk".to_string()]);
+        assert_eq!(result.debug_value_kinds_bytes(), &["map".to_string()]);
+    }
+
+    #[test]
+    fn with_debug_tape_carries_a_vertex_kind_debug_value() {
+        // Guards kind_wire_str's Vertex arm specifically (GitHub issue #145's follow-up) — mirrors
+        // with_debug_tape_carries_a_map_kind_debug_value's rationale for Map.
+        let result = GenerateResult::with_debug_tape(
+            JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5],
+            vec![("walk_head".to_string(), maze_core::event_log::DebugValueKind::Vertex)],
+            maze_core::event_log::EventedEventKind::Wilson,
+        );
+        assert_eq!(result.debug_value_names_bytes(), &["walk_head".to_string()]);
+        assert_eq!(result.debug_value_kinds_bytes(), &["vertex".to_string()]);
+    }
+
+    #[test]
     fn without_debug_tape_has_no_event_kind() {
         let result = GenerateResult::without_debug_tape(JsValue::UNDEFINED);
         assert!(result.event_kind_bytes().is_none());
@@ -328,5 +358,11 @@ mod tests {
     fn with_debug_tape_carries_kruskal_event_kind() {
         let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), maze_core::event_log::EventedEventKind::Kruskal);
         assert_eq!(result.event_kind_bytes(), Some("kruskal"));
+    }
+
+    #[test]
+    fn with_debug_tape_carries_wilson_event_kind() {
+        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), maze_core::event_log::EventedEventKind::Wilson);
+        assert_eq!(result.event_kind_bytes(), Some("wilson"));
     }
 }

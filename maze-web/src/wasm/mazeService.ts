@@ -50,7 +50,8 @@ export interface DebugTape {
   snapshotTable?: Uint8Array;
   snapshotPayload?: Uint8Array;
   /** Which concrete event enum `nodeTable`/`payload` were encoded from (GitHub issue #146) —
-   *  `"recursive_backtracker"` or `"kruskal"`, sourced from `GenerateResult::eventKind()`. Tells
+   *  `"recursive_backtracker"`, `"kruskal"`, or `"wilson"` (GitHub issue #145), sourced from
+   *  `GenerateResult::eventKind()`. Tells
    *  downstream consumers (`generateConfigBuilder.ts`, `debugSelectors.ts`, `DebugEventTree.tsx`)
    *  which decoder/apply/narration function to dispatch to — see `DebugArenaHandle.algorithmKind`
    *  in `storeTypes.ts`. */
@@ -67,10 +68,10 @@ export interface DebugTape {
 
 /** Mirrors `event_kind_wire_str` in `maze-wasm/src/result.rs` — which concrete event enum a
  *  tape's bytes were encoded from. */
-export type EventedEventKind = "recursive_backtracker" | "kruskal";
+export type EventedEventKind = "recursive_backtracker" | "kruskal" | "wilson";
 
 function toEventedEventKind(raw: string): EventedEventKind {
-  if (raw !== "recursive_backtracker" && raw !== "kruskal") {
+  if (raw !== "recursive_backtracker" && raw !== "kruskal" && raw !== "wilson") {
     throw new Error(`unknown event kind "${raw}"`);
   }
   return raw;
@@ -92,7 +93,7 @@ function zipDebugValueNames(names: string[], kinds: string[]): DebugValueDescrip
   }
   return names.map((name, i) => {
     const kind = kinds[i];
-    if (kind !== "region" && kind !== "sequence") {
+    if (kind !== "region" && kind !== "sequence" && kind !== "map" && kind !== "vertex") {
       throw new Error(`unknown debug value kind "${kind}" for "${name}"`);
     }
     return { name, kind: kind as DebugValueKind };

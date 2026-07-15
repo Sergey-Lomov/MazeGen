@@ -8,7 +8,7 @@ import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
-import { parseTape, parseCheckpoints, resolveDebugArenaMetadata, mutatingKruskalEvents } from "../../debug/eventTape";
+import { parseTape, parseCheckpoints, resolveDebugArenaMetadata, mutatingKruskalEvents, mutatingWilsonEvents } from "../../debug/eventTape";
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -169,13 +169,16 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
     let lastStep = 0;
     if (debugMode && debugTape) {
       const tape = parseTape(debugTape.nodeTable, debugTape.payload);
-      // Kruskal (GitHub issue #146) produces no checkpoints (#128 is RB-only) — totalSteps comes
-      // from a plain mutating-event count instead of resolveDebugArenaMetadata's combined
-      // scan+checkpoint-resolution pass, and checkpointFroms is always empty.
+      // Kruskal (GitHub issue #146) and Wilson (#145) produce no checkpoints (#128 is RB-only) —
+      // totalSteps comes from a plain mutating-event count instead of resolveDebugArenaMetadata's
+      // combined scan+checkpoint-resolution pass, and checkpointFroms is always empty.
       let totalSteps: number;
       let checkpointFroms: ReturnType<typeof resolveDebugArenaMetadata>["checkpointFroms"];
       if (debugTape.eventKind === "kruskal") {
         totalSteps = mutatingKruskalEvents(tape).length;
+        checkpointFroms = [];
+      } else if (debugTape.eventKind === "wilson") {
+        totalSteps = mutatingWilsonEvents(tape).length;
         checkpointFroms = [];
       } else {
         // One combined forward scan for totalSteps + checkpoints (GitHub issue #128) instead of

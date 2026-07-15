@@ -4,6 +4,8 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { DebugValueKind } from "../debug/eventTape";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { SequenceHighlightRenderer } from "./renderers/SequenceHighlightRenderer";
+import { MapHighlightRenderer } from "./renderers/MapHighlightRenderer";
+import { VertexHighlightRenderer } from "./renderers/VertexHighlightRenderer";
 
 const HIGHLIGHT_WIDTH = 3;
 const HIGHLIGHT_ALPHA = 0.9;
@@ -12,8 +14,17 @@ export interface DebugValueHighlightData {
   nodes: NodeDto[];
   /** Reconstructed debug-value id lists at the current debug step (GitHub issue #131), keyed by
    *  name — e.g. `debugValues.get("recursion_stack")`. Order matters for `Sequence`-kind values
-   *  (see `kindFor`); `Region`-kind values ignore order. */
+   *  (see `kindFor`); `Region`-kind values ignore order. Not used for `Map`-kind names — those
+   *  read from `debugMaps` instead. */
   debugValues: Map<string, number[]>;
+  /** Reconstructed map debug-value state at the current debug step (GitHub issue #145's
+   *  follow-up), keyed by name — e.g. `debugMaps.get("current_walk")`. Only consulted for names
+   *  whose `kindFor` resolves to `"map"`. */
+  debugMaps: Map<string, Map<number, number>>;
+  /** Reconstructed vertex debug-value state at the current debug step (GitHub issue #145's
+   *  follow-up), keyed by name — e.g. `debugVertices.get("walk_head")`. Only consulted for names
+   *  whose `kindFor` resolves to `"vertex"`. */
+  debugVertices: Map<string, number | null>;
   /** Names currently toggled on in the debug panel — several may be active at once. */
   toggles: Set<string>;
   /** Resolves a toggled name's semantic kind (`DebugValueKind`) — from `debugArena.debugValueNames`,
@@ -32,13 +43,15 @@ export interface DebugValueHighlightData {
 
 type RendererEntry =
   | { kind: "region"; container: Container; renderer: RegionHighlightRenderer }
-  | { kind: "sequence"; container: Container; renderer: SequenceHighlightRenderer };
+  | { kind: "sequence"; container: Container; renderer: SequenceHighlightRenderer }
+  | { kind: "map"; container: Container; renderer: MapHighlightRenderer }
+  | { kind: "vertex"; container: Container; renderer: VertexHighlightRenderer };
 
 /** Persistent (not hover-only, unlike `DebugRefHighlightOverlay` from #130) canvas highlighting
  *  for toggled debug-value node sets (GitHub issue #131) — owned by `GenerationRenderer`, per the
  *  feature-renderer ownership rule (`maze-web/CLAUDE.md`).
  *
- *  Each debug value renders through one of two low-level renderers, picked by `kindFor`:
+ *  Each debug value renders through one of three low-level renderers, picked by `kindFor`:
  *  - `Region` (e.g. `"visited"`) — `RegionHighlightRenderer`, one one-element "region" per id
  *    (`regionGroups: ids.map(id => [id])`), fill only (`skipPerimeter: true`) — a region debug
  *    value is an unordered set of unrelated members, not a contiguous area, so a per-cell
@@ -48,6 +61,12 @@ type RendererEntry =
  *  - `Sequence` (e.g. `"recursion_stack"`) — `SequenceHighlightRenderer`, an open chain of arrows
  *    between consecutive ids in the list's order, reusing the graph/nav-graph edge visual
  *    (`BaseGraphRenderer.drawEdge`) — the ordering is the whole point of a sequence value.
+ *  - `Map` (e.g. Wilson's `"current_walk"`, GitHub issue #145's follow-up) — `MapHighlightRenderer`,
+ *    one independent directed arrow per key -> value pair (not a chain — pairs don't connect to
+ *    each other, unlike `Sequence`).
+ *  - `Vertex` (e.g. Wilson's `"walk_start"`/`"walk_head"`, GitHub issue #145's follow-up) —
+ *    `VertexHighlightRenderer`, one enlarged filled circle at the slot's current occupant — a
+ *    single reassignable node id, not a set or a chain.
  *
  *  Holds one renderer instance (and one child `Container`) *per debug-value name*, not one shared
  *  instance/call for every active toggle merged together — per explicit product direction:
@@ -75,16 +94,29 @@ export class DebugValueHighlightOverlay {
     if (!entry) {
       const layerContainer = new Container();
       this.container.addChild(layerContainer);
-      entry = kind === "sequence"
-        ? { kind: "sequence", container: layerContainer, renderer: new SequenceHighlightRenderer(layerContainer) }
-        : { kind: "region", container: layerContainer, renderer: new RegionHighlightRenderer(layerContainer) };
+      // `switch` (not a ternary chain) so TS's exhaustiveness check catches a future 5th
+      // `DebugValueKind` at compile time instead of it silently falling into the `region` branch.
+      switch (kind) {
+        case "sequence":
+          entry = { kind: "sequence", container: layerContainer, renderer: new SequenceHighlightRenderer(layerContainer) };
+          break;
+        case "map":
+          entry = { kind: "map", container: layerContainer, renderer: new MapHighlightRenderer(layerContainer) };
+          break;
+        case "vertex":
+          entry = { kind: "vertex", container: layerContainer, renderer: new VertexHighlightRenderer(layerContainer) };
+          break;
+        case "region":
+          entry = { kind: "region", container: layerContainer, renderer: new RegionHighlightRenderer(layerContainer) };
+          break;
+      }
       this.renderersByName.set(name, entry);
     }
     return entry;
   }
 
   render(data: DebugValueHighlightData): void {
-    const { nodes, debugValues, toggles, kindFor, colorFor, cfg } = data;
+    const { nodes, debugValues, debugMaps, debugVertices, toggles, kindFor, colorFor, cfg } = data;
 
     for (const [name, entry] of this.renderersByName) {
       if (!toggles.has(name)) entry.renderer.clear();
@@ -93,16 +125,52 @@ export class DebugValueHighlightOverlay {
     if (nodes.length === 0) return;
 
     for (const name of toggles) {
-      const ids = debugValues.get(name) ?? [];
       const kind = kindFor(name);
       const entry = this.rendererFor(name, kind);
       const color = colorFor(name);
-      if (entry.kind === "sequence") {
-        entry.renderer.render({ nodes, sequence: ids, color, cfg });
-      } else {
-        const regionGroups = ids.map((id) => [id]);
-        entry.renderer.render({ nodes, regionGroups, color, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
+      // `switch` on `entry.kind` (not `if`/`else if`/`else`) so TS's exhaustiveness check catches
+      // a future 5th `RendererEntry` kind at compile time instead of it silently falling into the
+      // `region` branch.
+      switch (entry.kind) {
+        case "sequence": {
+          const ids = debugValues.get(name) ?? [];
+          entry.renderer.render({ nodes, sequence: ids, color, cfg });
+          break;
+        }
+        case "map": {
+          const entries = debugMaps.get(name) ?? new Map();
+          entry.renderer.render({ nodes, entries, color, cfg });
+          break;
+        }
+        case "vertex": {
+          const id = debugVertices.get(name) ?? null;
+          entry.renderer.render({ nodes, id, color, cfg });
+          break;
+        }
+        case "region": {
+          const ids = debugValues.get(name) ?? [];
+          const regionGroups = ids.map((id) => [id]);
+          entry.renderer.render({ nodes, regionGroups, color, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg, skipPerimeter: true });
+          break;
+        }
       }
+    }
+
+    // `Vertex` layers (e.g. Wilson's `"walk_start"`/`"walk_head"`) always draw on top of `Map`
+    // layers (e.g. `"current_walk"`) regardless of toggle order — a walk's endpoint markers would
+    // otherwise be hidden under the pair-arrow layer whenever that name happened to be toggled on
+    // later. Only re-appends a vertex layer's container when it isn't already last — `render()`
+    // runs on every debug-step tick during scrubbing/autoplay, and `Container.addChild` always
+    // does a real splice + dirties Pixi's render group even when the child is already in place, so
+    // skipping the no-op case matters on a path that already runs at UI-interaction frequency.
+    const lastChild = this.container.children[this.container.children.length - 1];
+    let topContainer = lastChild;
+    for (const entry of this.renderersByName.values()) {
+      if (entry.kind !== "vertex") continue;
+      if (entry.container !== topContainer) {
+        this.container.addChild(entry.container);
+      }
+      topContainer = entry.container;
     }
   }
 

@@ -198,6 +198,24 @@ describe("generateMaze / validateSnapshot", () => {
     expect(result.debugTape?.eventKind).toBe("kruskal");
   });
 
+  it("copies a Wilson debug tape and tags it with eventKind (GitHub issue #145)", () => {
+    const nodeTableBytes = new Uint8Array([1, 2, 3]);
+    const payloadBytes = new Uint8Array([4, 5, 6]);
+    mockGenerate.mockReturnValue({
+      snapshot: () => validSnapshot,
+      debugTapeNodeTable: () => nodeTableBytes,
+      debugTapePayload: () => payloadBytes,
+      debugSnapshotTable: () => undefined,
+      debugSnapshotPayload: () => undefined,
+      eventKind: () => "wilson",
+      debugValueNames: () => [],
+      debugValueKinds: () => [],
+      free: () => {},
+    });
+    const result = generateMaze(1, defaultConfig);
+    expect(result.debugTape?.eventKind).toBe("wilson");
+  });
+
   it("throws when a debug tape is present but eventKind is missing", () => {
     mockGenerate.mockReturnValue({
       snapshot: () => validSnapshot,

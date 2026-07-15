@@ -226,6 +226,8 @@ export class GenerationRenderer {
       this.debugValueHighlight.render({
         nodes: view.nodes,
         debugValues: debugMazeView?.debugValues ?? new Map(),
+        debugMaps: debugMazeView?.debugMaps ?? new Map(),
+        debugVertices: debugMazeView?.debugVertices ?? new Map(),
         toggles: state.debugValueToggles,
         kindFor: (name) => kindByName.get(name) ?? "region",
         colorFor: (name) => colorByName.get(name) ?? canvas.debug.refHighlight,

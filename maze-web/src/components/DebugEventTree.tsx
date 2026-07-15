@@ -9,6 +9,7 @@ import {
 import {
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent, type RecursiveBacktrackerEvent,
   decodeKruskalEvent, isMutatingKruskalEvent, kruskalMergedRoot, type KruskalEvent,
+  decodeWilsonEvent, isMutatingWilsonEvent, type WilsonEvent,
 } from "../debug/eventTape";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { ui, typography, muted } from "../styles/theme";
@@ -134,18 +135,54 @@ function kruskalNarrationTokensFor(event: KruskalEvent): Token[] {
   }
 }
 
-function rowTokens(row: TreeRow, algorithmKind: "recursive_backtracker" | "kruskal"): { tokens: Token[]; mutating: boolean } {
+/** Wilson's counterpart to `narrationTokensFor`/`kruskalNarrationTokensFor` (GitHub issue #145).
+ *  `"walk N"` scopes contain exactly two fixed, non-numbered nested scopes — `"search"` (the
+ *  loop-erased random walk: every `StepTaken`/`LoopErased`/`WalkDeadEnd`, flat, no per-step scope)
+ *  and `"commit"` (every `EdgeAdded`/`NodeVisited` pair from committing the found path) — a walk is
+ *  two named phases, not a numbered sequence, so these use `EventLog::enter`, not
+ *  `enter_numbered` (GitHub issue #145's follow-up). */
+function wilsonNarrationTokensFor(event: WilsonEvent): Token[] {
+  switch (event.kind) {
+    case "StartVisited": return [{ kind: "text", text: m["debug.tree.start_visited"]() + " " }, { kind: "node", id: event.id }];
+    case "WalkStartPicked": return [{ kind: "text", text: m["debug.tree.walk_start_picked"]() + " " }, { kind: "node", id: event.id }];
+    case "StepTaken":
+      return [{ kind: "text", text: m["debug.tree.step_taken"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "LoopErased": return [{ kind: "text", text: m["debug.tree.loop_erased"]() + " " }, { kind: "node", id: event.node }];
+    case "WalkDeadEnd": return [{ kind: "text", text: m["debug.tree.walk_dead_end"]() }];
+    case "EdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.bidirectional }];
+    case "NodeVisited": return [{ kind: "text", text: m["debug.tree.vertex_visited"]() + " " }, { kind: "node", id: event.id }];
+  }
+}
+
+function rowTokens(row: TreeRow, algorithmKind: "recursive_backtracker" | "kruskal" | "wilson"): { tokens: Token[]; mutating: boolean } {
   if (row.payload.kind === "scope") {
+    // Wilson's "search"/"commit" are fixed, non-numbered scope names (GitHub issue #145's
+    // follow-up) — checked before the numbered-scope regex below, which wouldn't match them.
+    if (algorithmKind === "wilson" && row.payload.name === "search") {
+      return { tokens: [{ kind: "text", text: m["debug.tree.search_scope"]() }], mutating: false };
+    }
+    if (algorithmKind === "wilson" && row.payload.name === "commit") {
+      return { tokens: [{ kind: "text", text: m["debug.tree.commit_scope"]() }], mutating: false };
+    }
     // Scope names are auto-numbered by `EventLog::enter_numbered` (core, issue #133) as
-    // "step 1"/"edge 1", ... — pull the trailing index back out for the localized label.
-    const match = /^(?:step|edge) (\d+)$/.exec(row.payload.name);
+    // "step 1"/"edge 1"/"walk 1", ... — pull the trailing index back out for the localized label.
+    const match = /^(?:step|edge|walk) (\d+)$/.exec(row.payload.name);
     const index = match ? Number(match[1]) : 0;
-    const label = algorithmKind === "kruskal" ? m["debug.tree.edge_scope"]({ index }) : m["debug.tree.step_scope"]({ index });
+    const label = algorithmKind === "kruskal"
+      ? m["debug.tree.edge_scope"]({ index })
+      : algorithmKind === "wilson" && row.payload.name.startsWith("walk")
+      ? m["debug.tree.walk_scope"]({ index })
+      : m["debug.tree.step_scope"]({ index });
     return { tokens: [{ kind: "text", text: label }], mutating: false };
   }
   if (algorithmKind === "kruskal") {
     const event = decodeKruskalEvent(row.payload.tag, row.payload.bytes);
     return { tokens: kruskalNarrationTokensFor(event), mutating: isMutatingKruskalEvent(event) };
+  }
+  if (algorithmKind === "wilson") {
+    const event = decodeWilsonEvent(row.payload.tag, row.payload.bytes);
+    return { tokens: wilsonNarrationTokensFor(event), mutating: isMutatingWilsonEvent(event) };
   }
   const event = decodeRecursiveBacktrackerEvent(row.payload.tag, row.payload.bytes);
   return { tokens: narrationTokensFor(event), mutating: isMutatingRbEvent(event) };

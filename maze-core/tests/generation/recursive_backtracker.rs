@@ -1,4 +1,4 @@
-use maze_core::generation::{generate_maze, generate_maze_with_events, generate_recursive_backtracker, recursive_backtracker_debug_value_names, GenerationAlgorithm, GenerationConfig, RecursiveBacktrackerEvent};
+use maze_core::generation::{generate_maze, generate_maze_with_events, generate_recursive_backtracker, recursive_backtracker_debug_value_names, GenerationAlgorithm, GenerationConfig, GenerationParams, RecursiveBacktrackerEvent};
 use maze_core::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog, EventedEventKind, NodePayload, NO_NODE, TAG_SCOPE};
 use super::helpers::*;
 
@@ -221,15 +221,15 @@ fn recursive_backtracker_encode_round_trips_tree_shape() {
 }
 
 #[test]
-fn generate_maze_with_events_returns_none_for_non_recursive_backtracker() {
+fn generate_maze_with_events_returns_none_for_non_instrumented_algorithms() {
     let (mut graph, field, start) = build(3, 3);
     let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
-        algorithm: GenerationAlgorithm::WilsonAlgorithm,
+        algorithm: GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    assert!(result.tape.is_none(), "only Recursive Backtracker and Kruskal are instrumented so far");
-    assert!(result.event_kind.is_none(), "only Recursive Backtracker and Kruskal are instrumented so far");
+    assert!(result.tape.is_none(), "only Recursive Backtracker, Kruskal and Wilson are instrumented so far");
+    assert!(result.event_kind.is_none(), "only Recursive Backtracker, Kruskal and Wilson are instrumented so far");
     assert!(result.checkpoints.is_none(), "only Recursive Backtracker is instrumented so far");
 }
 
@@ -275,14 +275,39 @@ fn generate_maze_with_events_collects_tape_for_kruskal() {
 }
 
 #[test]
-fn generate_maze_with_events_debug_value_names_empty_for_non_recursive_backtracker() {
+fn generate_maze_with_events_debug_value_names_empty_for_non_instrumented_algorithm() {
+    let (mut graph, field, start) = build(3, 3);
+    let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
+        algorithm: GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
+        elements: no_one_way_elements(),
+        ..GenerationConfig::default()
+    }, &empty_preset());
+    assert!(result.debug_value_names.is_empty(), "a non-instrumented algorithm declares no debug values");
+}
+
+#[test]
+fn generate_maze_with_events_collects_tape_and_visited_debug_value_for_wilson() {
     let (mut graph, field, start) = build(3, 3);
     let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
         algorithm: GenerationAlgorithm::WilsonAlgorithm,
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    assert!(result.debug_value_names.is_empty(), "only Recursive Backtracker declares debug values so far");
+    let tape = result.tape.expect("Wilson must produce a tape");
+    assert_eq!(result.event_kind, Some(EventedEventKind::Wilson));
+    assert!(result.checkpoints.is_none(), "Wilson checkpointing isn't wired up yet");
+    assert_eq!(
+        result.debug_value_names,
+        &[
+            ("visited", DebugValueKind::Region),
+            ("current_walk", DebugValueKind::Map),
+            ("walk_start", DebugValueKind::Vertex),
+            ("walk_head", DebugValueKind::Vertex),
+        ],
+        "Wilson declares the visited, current_walk, walk_start, and walk_head debug values"
+    );
+
+    assert_eq!(tape.node_table.len() % maze_core::event_log::NODE_RECORD_SIZE, 0, "node table must be a whole number of NodeRecords");
 }
 
 // --- Generic debug values (GitHub issue #131) ---

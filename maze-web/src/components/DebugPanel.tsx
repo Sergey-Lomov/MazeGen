@@ -17,6 +17,9 @@ const MIN_PANEL_WIDTH = 320;
 const DEBUG_VALUE_LABELS: Record<string, () => string> = {
   recursion_stack: () => m["debug.value.recursion_stack"](),
   visited: () => m["debug.value.visited"](),
+  current_walk: () => m["debug.value.current_walk"](),
+  walk_start: () => m["debug.value.walk_start"](),
+  walk_head: () => m["debug.value.walk_head"](),
 };
 
 function debugValueLabel(name: string): string {

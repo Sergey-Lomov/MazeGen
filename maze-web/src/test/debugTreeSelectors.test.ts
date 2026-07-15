@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, type ParsedTape } from "../debug/eventTape";
 import {
   buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, resolveHighlightTarget,
   buildNodeCoordIndex,
@@ -112,6 +112,41 @@ function buildTwoEdgeKruskalTape(): ParsedTape {
     { parent: 5, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
   ]);
 }
+
+// Wilson fixture, mirroring eventTape.test.ts's buildWilsonTape shape (two-level "walk N" >
+// "step M" nesting):
+//   root (0)
+//     -> "walk 1" scope (1)
+//          -> WalkStartPicked(5) (2)
+//          -> "step 1" scope (3) -> StepTaken(5,3) (4)
+//          -> EdgeAdded(5,3) (5) -> NodeVisited(5) (6)
+// 4 mutating events (WalkStartPicked, StepTaken, EdgeAdded, NodeVisited) nested two scope-levels
+// deep — exercises buildStepIndex's "wilson" branch (GitHub issue #145) and confirms it isn't
+// thrown off by the extra nesting level Kruskal/RB don't have.
+function buildOneWalkWilsonTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(5n) },
+    { parent: 1, firstChild: 4, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: concatBytes([u64le(5n), u64le(3n)]) },
+    { parent: 1, firstChild: null, nextSibling: 6, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(5n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(5n) },
+  ]);
+}
+
+describe("buildStepIndex — wilson dispatch (GitHub issue #145)", () => {
+  it("dispatches to the Wilson mutating-event scan, distinct from the recursive_backtracker/kruskal ones", () => {
+    const tape = buildOneWalkWilsonTape();
+    const { stepToNodeIndex, nearestStepByNodeIndex } = buildStepIndex(tape, "wilson");
+
+    // 4 mutating events in emission order: WalkStartPicked(2), StepTaken(4), EdgeAdded(5),
+    // NodeVisited(6) — WalkStartPicked/StepTaken are mutating too (they change the walk's `next`
+    // map — see WilsonEvent::is_mutating's doc comment), only WalkDeadEnd would be trace-only.
+    expect(stepToNodeIndex).toEqual([2, 4, 5, 6]);
+    expect(nearestStepByNodeIndex).toEqual([0, 0, 0, 0, 1, 2, 3]);
+  });
+});
 
 describe("buildStepIndex — kruskal dispatch (GitHub issue #146)", () => {
   it("dispatches to the Kruskal mutating-event scan, distinct from the recursive_backtracker one", () => {

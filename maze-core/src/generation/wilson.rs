@@ -4,7 +4,7 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
-use crate::event_log::{DebugEvent, EncodeEventPayload, EventLog};
+use crate::event_log::{DebugEvent, DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta, DebugVertexOp, EncodeEventPayload, EventLog};
 use super::{PresetState, try_add_bidirectional_edge, can_connect};
 
 /// Stable wire tags for [`WilsonEvent`] (see `Specs/event_log.md`'s #124 binary encoding) —
@@ -17,6 +17,7 @@ mod wire_tags {
     pub const WALK_DEAD_END: u16 = 4;
     pub const EDGE_ADDED: u16 = 5;
     pub const NODE_VISITED: u16 = 6;
+    pub const START_VISITED: u16 = 7;
 }
 
 /// Narration-level events for Wilson's algorithm (see GitHub issue #145). Wilson's decision shape
@@ -25,38 +26,138 @@ mod wire_tags {
 /// mirrors both levels, unlike Kruskal's single-level per-edge decision.
 #[derive(Debug, Clone, PartialEq)]
 pub enum WilsonEvent {
+    /// The maze's start node is seeded into `visited` before the first walk even picks a
+    /// `walk_start` — the algorithm's actual first operation, emitted once at the root scope (not
+    /// nested under any `"walk N"` scope, since no walk is running yet). Preset-connected nodes are
+    /// *not* covered by this event: they're seeded the same way presets are seeded everywhere else
+    /// in this codebase (a silent zero-state snapshot, not narrated events) — only the start node's
+    /// seeding is a distinct, narratable algorithm step.
+    StartVisited(NodeId),
     /// The unvisited node a new loop-erased random walk starts from, chosen uniformly at random
-    /// from the current unvisited set. Emitted first in every `"walk N"` scope, before any `"step
-    /// M"` sub-scope, so a narration reader knows the walk's origin without inferring it from the
-    /// first `StepTaken`'s `from`.
+    /// from the current unvisited set. Emitted first in every `"walk N"` scope, directly under it
+    /// (not nested in `"search"`/`"commit"`), so a narration reader knows the walk's origin before
+    /// either sub-phase starts.
     WalkStartPicked(NodeId),
     /// One step of the walk: the RNG chose `to` as the next cell from `from`'s connectable
-    /// neighbors. Emitted first in every `"step M"` scope.
+    /// neighbors. Emitted under the walk's `"search"` sub-scope — every step-related event
+    /// (`StepTaken`/`LoopErased`/`WalkDeadEnd`) lives there flat, not one `"step M"` sub-scope per
+    /// step: a step is usually a single event, so a scope per step added tree depth without adding
+    /// information (GitHub issue #145's follow-up).
     StepTaken { from: NodeId, to: NodeId },
     /// The walk stepped onto a node it had already visited earlier in this same walk (before
     /// reaching a node already part of the maze) — the loop between the earlier visit and now is
     /// erased by overwriting `next[node]` with the new outgoing step. Carries no fields beyond
-    /// `node`: the preceding `StepTaken` in the same `"step M"` scope already states which node
-    /// was re-entered (`StepTaken.to`), so duplicating `from`/`to` here would be redundant.
+    /// `node`: the preceding `StepTaken` (same `"search"` sub-scope) already states which node was
+    /// re-entered (`StepTaken.to`), so duplicating `from`/`to` here would be redundant.
     LoopErased { node: NodeId },
     /// The walk's current node has no connectable neighbors — the walk stops here without
-    /// reaching an already-visited node. The last `"step M"` scope in a `"walk N"` scope ends with
-    /// this instead of a further `StepTaken`. The commit phase below still runs against whatever
-    /// partial path was recorded before the dead end.
+    /// reaching an already-visited node. The last event in the walk's `"search"` sub-scope, in
+    /// place of a further `StepTaken`. The `"commit"` sub-scope still runs against whatever partial
+    /// path was recorded before the dead end.
     WalkDeadEnd,
     /// An edge was added between `from` and `to` while committing the loop-erased path into the
-    /// maze. `bidirectional` records whether the passage opened in both directions (Wilson always
-    /// adds both when `try_add_bidirectional_edge` succeeds) — carried explicitly so replay
-    /// consumers don't have to assume it.
+    /// maze. Emitted under the walk's `"commit"` sub-scope. `bidirectional` records whether the
+    /// passage opened in both directions (Wilson always adds both when
+    /// `try_add_bidirectional_edge` succeeds) — carried explicitly so replay consumers don't have
+    /// to assume it.
     EdgeAdded { from: NodeId, to: NodeId, bidirectional: bool },
-    /// A node was marked as part of the maze while committing the loop-erased path.
+    /// A node was marked as part of the maze while committing the loop-erased path. Emitted under
+    /// the walk's `"commit"` sub-scope.
     NodeVisited(NodeId),
 }
 
 impl DebugEvent for WilsonEvent {
+    /// `WalkStartPicked`/`StepTaken`/`LoopErased` are mutating alongside `EdgeAdded`/`NodeVisited`
+    /// — not because they change the graph (they don't), but because they change the walk's `next`
+    /// map, the reconstructable state `"current_walk"` (see [`DebugMapDelta`] impl below) needs to
+    /// redraw the in-progress walk. `WalkDeadEnd` carries no `next` change of its own — the walk
+    /// simply stops with whatever `next` state the preceding steps already left behind.
     fn is_mutating(&self) -> bool {
-        matches!(self, WilsonEvent::EdgeAdded { .. } | WilsonEvent::NodeVisited(_))
+        matches!(
+            self,
+            WilsonEvent::StartVisited(_)
+                | WilsonEvent::WalkStartPicked(_)
+                | WilsonEvent::StepTaken { .. }
+                | WilsonEvent::LoopErased { .. }
+                | WilsonEvent::EdgeAdded { .. }
+                | WilsonEvent::NodeVisited(_)
+        )
     }
+}
+
+pub const VISITED: &str = "visited";
+pub const CURRENT_WALK: &str = "current_walk";
+pub const WALK_START: &str = "walk_start";
+pub const WALK_HEAD: &str = "walk_head";
+
+/// `visited` — a plain `Region` set, insert-only, mirroring the algorithm's own
+/// `visited: HashSet<NodeId>` exactly (a node is never un-visited once committed).
+impl DebugValueDelta<NodeId> for WilsonEvent {
+    fn debug_value_deltas(&self) -> Vec<(&'static str, DebugValueOp, NodeId)> {
+        match self {
+            WilsonEvent::StartVisited(id) | WilsonEvent::NodeVisited(id) => vec![(VISITED, DebugValueOp::Insert, *id)],
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// `current_walk` — the walk's `next` map (GitHub issue #145's follow-up), a `DebugValueKind::Map`
+/// value: `StepTaken { from, to }` sets `next[from] = to`, overwriting any prior value for `from`
+/// exactly the way `HashMap::insert` does (this is why `current_walk` can't be a plain
+/// `DebugValueDelta` — `Insert`/`Remove` only ever touch one id, never overwrite a key's value).
+/// `WalkStartPicked` clears the map — a new walk starts with an empty `next`, so the previous
+/// walk's (already-committed-or-abandoned) track doesn't linger into the new one's replay.
+/// `LoopErased` needs no delta of its own: it's emitted immediately after the `StepTaken` that
+/// already performed the overwrite, purely to narrate that this particular overwrite erased a
+/// loop — the map state is already correct by the time `LoopErased` is emitted.
+impl DebugMapDelta<NodeId> for WilsonEvent {
+    fn debug_map_deltas(&self) -> Vec<(&'static str, DebugMapOp<NodeId>)> {
+        match self {
+            WilsonEvent::WalkStartPicked(_) => vec![(CURRENT_WALK, DebugMapOp::Clear)],
+            WilsonEvent::StepTaken { from, to } => vec![(CURRENT_WALK, DebugMapOp::Set(*from, *to))],
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// `walk_start`/`walk_head` (GitHub issue #145's follow-up) — `DebugValueKind::Vertex` values.
+/// Replaced these with a dedicated `Vertex` kind instead of reading the endpoints off
+/// `current_walk`'s `Map` on the web side: `current_walk` preserves insertion order for its keys
+/// (a `HashMap::insert`-style overwrite of an existing key doesn't move it), so "last key" isn't
+/// reliably "most recently stepped-from" once a walk revisits a node via loop erasure — a
+/// structurally unsound heuristic. These two are reported directly by the events that actually
+/// change them instead.
+///
+/// `walk_start` — the current walk's origin: `Set` once per walk at `WalkStartPicked`, holding
+/// steady for the rest of that walk (no `Clear` needed between walks — the next `WalkStartPicked`
+/// simply overwrites it).
+///
+/// `walk_head` — the walk's current position: `Set` to the origin at `WalkStartPicked` (before any
+/// step, the head *is* the start), then to `to` at every `StepTaken` as the walk advances.
+impl DebugVertexDelta<NodeId> for WilsonEvent {
+    fn debug_vertex_deltas(&self) -> Vec<(&'static str, DebugVertexOp<NodeId>)> {
+        match self {
+            WilsonEvent::WalkStartPicked(node) => vec![
+                (WALK_START, DebugVertexOp::Set(*node)),
+                (WALK_HEAD, DebugVertexOp::Set(*node)),
+            ],
+            WilsonEvent::StepTaken { to, .. } => vec![(WALK_HEAD, DebugVertexOp::Set(*to))],
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// Static declaration of Wilson's debug values (GitHub issue #131, extended by #145's follow-up
+/// for `current_walk`/`walk_start`/`walk_head`) — mirrors `recursive_backtracker::debug_value_names()`.
+/// A static property of the algorithm, not derived from what a particular run happened to emit
+/// (see that function's doc comment for why).
+pub fn debug_value_names() -> &'static [(&'static str, DebugValueKind)] {
+    &[
+        (VISITED, DebugValueKind::Region),
+        (CURRENT_WALK, DebugValueKind::Map),
+        (WALK_START, DebugValueKind::Vertex),
+        (WALK_HEAD, DebugValueKind::Vertex),
+    ]
 }
 
 /// Binary encoding for the WASM boundary (GitHub issue #124's format). `NodeId` is `u64` — every
@@ -65,6 +166,7 @@ impl DebugEvent for WilsonEvent {
 impl EncodeEventPayload for WilsonEvent {
     fn type_id(&self) -> u16 {
         match self {
+            WilsonEvent::StartVisited(_) => wire_tags::START_VISITED,
             WilsonEvent::WalkStartPicked(_) => wire_tags::WALK_START_PICKED,
             WilsonEvent::StepTaken { .. } => wire_tags::STEP_TAKEN,
             WilsonEvent::LoopErased { .. } => wire_tags::LOOP_ERASED,
@@ -76,6 +178,9 @@ impl EncodeEventPayload for WilsonEvent {
 
     fn encode_payload(&self, out: &mut Vec<u8>) {
         match self {
+            WilsonEvent::StartVisited(node) => {
+                out.extend_from_slice(&node.to_le_bytes());
+            }
             WilsonEvent::WalkStartPicked(node) => {
                 out.extend_from_slice(&node.to_le_bytes());
             }
@@ -111,10 +216,17 @@ pub fn generate<T: Tessellation>(
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut rng = MazeRng::seed_from_u64(seed);
 
+    // Preset-connected nodes are a zero-state snapshot, not a narrated algorithm step — silent,
+    // like everywhere else in this codebase.
     for &pc in &preset_state.preset_connected {
         visited.insert(pc);
     }
+    // Seeding `start` into `visited` *is* the algorithm's actual first operation — narrated at
+    // root, before any `"walk N"` scope (no walk has picked a `walk_start` yet).
     visited.insert(start);
+    if let Some(log) = event_log.as_deref_mut() {
+        log.emit(WilsonEvent::StartVisited(start));
+    }
 
     let mut unvisited: Vec<NodeId> = all_nodes.iter().copied().filter(|&n| !visited.contains(&n)).collect();
 
@@ -132,46 +244,62 @@ pub fn generate<T: Tessellation>(
         // next[node] = the node we stepped to from node during the walk.
         let mut next: HashMap<NodeId, NodeId> = HashMap::new();
         let mut current = walk_start;
-        loop {
-            let neighbors: Vec<NodeId> = field.neighbors(current)
-                .into_iter()
-                .filter(|&n| can_connect(current, n, preset_state))
-                .collect();
+        {
+            // Scoped block: the "search" child guard must drop before `walk_scope` is used again
+            // below (the commit phase) — `ScopeGuard` has a non-trivial `Drop`, so NLL won't
+            // shorten its borrow to its last use.
+            let mut search_scope = walk_scope.as_mut().map(|g| g.enter("search"));
+            loop {
+                let neighbors: Vec<NodeId> = field.neighbors(current)
+                    .into_iter()
+                    .filter(|&n| can_connect(current, n, preset_state))
+                    .collect();
 
-            if neighbors.is_empty() {
-                if let Some(g) = walk_scope.as_mut() {
-                    g.emit(WilsonEvent::WalkDeadEnd);
-                }
-                break;
+                let dead_end = if neighbors.is_empty() {
+                    if let Some(g) = search_scope.as_mut() {
+                        g.emit(WilsonEvent::WalkDeadEnd);
+                    }
+                    true
+                } else {
+                    let chosen = neighbors[rng.random_range(0..neighbors.len())];
+                    if let Some(g) = search_scope.as_mut() {
+                        g.emit(WilsonEvent::StepTaken { from: current, to: chosen });
+                    }
+                    let erased_loop = next.contains_key(&chosen);
+                    next.insert(current, chosen);
+                    if erased_loop {
+                        if let Some(g) = search_scope.as_mut() {
+                            g.emit(WilsonEvent::LoopErased { node: chosen });
+                        }
+                    }
+                    if visited.contains(&chosen) {
+                        true
+                    } else {
+                        current = chosen;
+                        false
+                    }
+                };
+                if dead_end { break; }
             }
-            let chosen = neighbors[rng.random_range(0..neighbors.len())];
-            if let Some(g) = walk_scope.as_mut() {
-                g.emit(WilsonEvent::StepTaken { from: current, to: chosen });
-            }
-            let erased_loop = next.contains_key(&chosen);
-            next.insert(current, chosen);
-            if erased_loop {
-                if let Some(g) = walk_scope.as_mut() {
-                    g.emit(WilsonEvent::LoopErased { node: chosen });
-                }
-            }
-            if visited.contains(&chosen) {
-                break;
-            }
-            current = chosen;
         }
 
         // Commit the loop-erased path: walk from walk_start following next[] until visited.
-        let mut node = walk_start;
-        while !visited.contains(&node) {
-            let Some(&dst) = next.get(&node) else { break; };
-            try_add_bidirectional_edge(graph, node, dst, preset_state);
-            visited.insert(node);
-            if let Some(g) = walk_scope.as_mut() {
-                g.emit(WilsonEvent::EdgeAdded { from: node, to: dst, bidirectional: true });
-                g.emit(WilsonEvent::NodeVisited(node));
+        // Only opens the "commit" scope when there's actually a path to commit — a walk that
+        // dead-ends on its very first step (no `next` entry recorded for `walk_start`) would
+        // otherwise leave an empty, non-expandable "commit" scope in the tree.
+        if !visited.contains(&walk_start) && next.contains_key(&walk_start) {
+            let mut commit_scope = walk_scope.as_mut().map(|g| g.enter("commit"));
+            let mut node = walk_start;
+            while !visited.contains(&node) {
+                let Some(&dst) = next.get(&node) else { break; };
+                try_add_bidirectional_edge(graph, node, dst, preset_state);
+                visited.insert(node);
+                if let Some(g) = commit_scope.as_mut() {
+                    g.emit(WilsonEvent::EdgeAdded { from: node, to: dst, bidirectional: true });
+                    g.emit(WilsonEvent::NodeVisited(node));
+                }
+                node = dst;
             }
-            node = dst;
         }
 
         unvisited.retain(|n| !visited.contains(n));

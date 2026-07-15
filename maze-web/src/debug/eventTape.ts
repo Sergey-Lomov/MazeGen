@@ -43,6 +43,18 @@ export const KRUSKAL_TAG = {
   EDGE_SELECTED: 7,
 } as const;
 
+/** Wilson event wire tags — mirrors `wire_tags` in `maze-core/src/generation/wilson.rs`
+ *  (GitHub issue #145). Independent numbering from `RB_TAG`/`KRUSKAL_TAG`, same as those two. */
+export const WILSON_TAG = {
+  WALK_START_PICKED: 1,
+  STEP_TAKEN: 2,
+  LOOP_ERASED: 3,
+  WALK_DEAD_END: 4,
+  EDGE_ADDED: 5,
+  NODE_VISITED: 6,
+  START_VISITED: 7,
+} as const;
+
 // --- Flat + tree node record access ---
 
 export interface ParsedTape {
@@ -455,6 +467,98 @@ export function applyKruskal(tape: ParsedTape, targetStep: number): KruskalApply
   return { edges, dsuGroups: dsu.groups(), step: targetStep, nodeIndex: events[targetStep].nodeIndex };
 }
 
+// --- Wilson event decoding (GitHub issue #145) ---
+
+export type WilsonEvent =
+  | { kind: "StartVisited"; id: bigint }
+  | { kind: "WalkStartPicked"; id: bigint }
+  | { kind: "StepTaken"; from: bigint; to: bigint }
+  | { kind: "LoopErased"; node: bigint }
+  | { kind: "WalkDeadEnd" }
+  | { kind: "EdgeAdded"; from: bigint; to: bigint; bidirectional: boolean }
+  | { kind: "NodeVisited"; id: bigint };
+
+/** Decodes one Wilson event's binary payload. Contract: only called with `tag >= 1` (a real
+ *  Wilson wire tag) — callers filter out `TAG_SCOPE` before invoking this. Throws on an
+ *  unrecognized tag or a `payload_len` that doesn't match the wire format — mirrors
+ *  `decodeRecursiveBacktrackerEvent`/`decodeKruskalEvent`'s error-on-mismatch contract (a
+ *  malformed tape means a core/web build mismatch, which must surface immediately). */
+export function decodeWilsonEvent(tag: number, bytes: Uint8Array): WilsonEvent {
+  switch (tag) {
+    case WILSON_TAG.START_VISITED:
+      expectLen(tag, bytes, 8);
+      return { kind: "StartVisited", id: readNodeId(bytes, 0) };
+    case WILSON_TAG.WALK_START_PICKED:
+      expectLen(tag, bytes, 8);
+      return { kind: "WalkStartPicked", id: readNodeId(bytes, 0) };
+    case WILSON_TAG.STEP_TAKEN:
+      expectLen(tag, bytes, 16);
+      return { kind: "StepTaken", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case WILSON_TAG.LOOP_ERASED:
+      expectLen(tag, bytes, 8);
+      return { kind: "LoopErased", node: readNodeId(bytes, 0) };
+    case WILSON_TAG.WALK_DEAD_END:
+      expectLen(tag, bytes, 0);
+      return { kind: "WalkDeadEnd" };
+    case WILSON_TAG.EDGE_ADDED:
+      expectLen(tag, bytes, 17);
+      return { kind: "EdgeAdded", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
+    case WILSON_TAG.NODE_VISITED:
+      expectLen(tag, bytes, 8);
+      return { kind: "NodeVisited", id: readNodeId(bytes, 0) };
+    default:
+      throw new Error(`WilsonEvent: unknown wire tag ${tag}`);
+  }
+}
+
+/** Mirrors `DebugEvent::is_mutating`'s split for `WilsonEvent` in
+ *  `maze-core/src/generation/wilson.rs` — `WalkStartPicked`/`StepTaken`/`LoopErased` are mutating
+ *  alongside `EdgeAdded`/`NodeVisited` because they change the walk's `next` map (the state
+ *  `applyWilson`'s `"current_walk"` map debug value reconstructs below), not because they touch
+ *  the graph. */
+export function isMutatingWilsonEvent(event: WilsonEvent): boolean {
+  return (
+    event.kind === "StartVisited" ||
+    event.kind === "WalkStartPicked" ||
+    event.kind === "StepTaken" ||
+    event.kind === "LoopErased" ||
+    event.kind === "EdgeAdded" ||
+    event.kind === "NodeVisited"
+  );
+}
+
+export interface MutatingWilsonEventAt {
+  event: WilsonEvent;
+  /** Arena node-table index this event was decoded from — mirrors `MutatingRbEventAt.nodeIndex`. */
+  nodeIndex: number;
+}
+
+/** Flat layer for Wilson: forward scan over the node table, skipping scope nodes, decoding
+ *  events, filtering to mutating ones only — mirrors `mutatingKruskalEventsWithIndex`. Wilson
+ *  produces no checkpoints (GitHub issue #128 is RB-only), same as Kruskal, so this keeps the
+ *  same `startIndex`/`limit` shape purely for consistency, not because `applyWilson` resumes. */
+export function mutatingWilsonEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingWilsonEventAt[] {
+  const result: MutatingWilsonEventAt[] = [];
+  for (let i = startIndex; i < tape.nodeCount; i++) {
+    if (limit !== undefined && result.length >= limit) break;
+    const record = nodeAt(tape, i);
+    if (record.tag === TAG_SCOPE) continue;
+    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
+    const event = decodeWilsonEvent(record.tag, bytes);
+    if (isMutatingWilsonEvent(event)) result.push({ event, nodeIndex: i });
+  }
+  return result;
+}
+
+/** Convenience wrapper over `mutatingWilsonEventsWithIndex` for callers that only need the
+ *  decoded events, not their arena indices — mirrors `mutatingKruskalEvents`. */
+export function mutatingWilsonEvents(tape: ParsedTape, limit?: number, startIndex = 0): WilsonEvent[] {
+  return mutatingWilsonEventsWithIndex(tape, limit, startIndex).map((e) => e.event);
+}
+
+// `applyWilson` lives further down, after the Debug values section — it needs `VISITED` and
+// `DebugValues`, declared there.
+
 // --- Debug values (GitHub issue #131) ---
 
 /** A named, session-specific set of node ids an algorithm evolves over the run (e.g. Recursive
@@ -468,13 +572,23 @@ export const RECURSION_STACK = "recursion_stack";
 export const VISITED = "visited";
 
 /** Semantic shape of a debug value's id collection — mirrors `DebugValueKind` in
- *  `maze-core/src/event_log/mod.rs`. Affects rendering, not how deltas are reported (both kinds
- *  still use `insert`/`remove` on a single id):
+ *  `maze-core/src/event_log/mod.rs`. Affects rendering:
  *  - `"region"` — unordered set, no relationship between members (e.g. `"visited"`), rendered as
- *    independent per-node highlights.
+ *    independent per-node highlights. Reported via `insert`/`remove` on a single id.
  *  - `"sequence"` — ordered list where adjacent members are connected (e.g. `"recursion_stack"`,
- *    the DFS stack in push order), rendered as a chain of arrows between consecutive ids. */
-export type DebugValueKind = "region" | "sequence";
+ *    the DFS stack in push order), rendered as a chain of arrows between consecutive ids.
+ *    Reported the same way as `"region"` (`insert`/`remove` on a single id) — only the rendering
+ *    differs.
+ *  - `"map"` — key-to-value pairs with overwrite-by-key semantics (e.g. Wilson's
+ *    `"current_walk"`, GitHub issue #145's follow-up), rendered as an independent arrow from each
+ *    key to its value. Reported via `set`/`clear` (see `DebugMapOp`), not `insert`/`remove` —
+ *    `insert`/`remove` on a single id can't express "setting a key that already has a value
+ *    replaces it".
+ *  - `"vertex"` — a single, reassignable node id, not a `"region"` with one member (e.g. Wilson's
+ *    `"walk_start"`/`"walk_head"`, GitHub issue #145's follow-up) — the slot is *replaced*
+ *    wholesale rather than accumulating insert/remove entries. Reported via `set`/`clear` (see
+ *    `DebugVertexOp`), same shape as `"map"` minus the value half of the pair. */
+export type DebugValueKind = "region" | "sequence" | "map" | "vertex";
 
 /** One debug value the instrumented algorithm declares — name plus its rendering kind. Mirrors
  *  the wire pair `GenerateResult::debugValueNames()`/`debugValueKinds()` return (parallel
@@ -879,4 +993,149 @@ export function nearestCheckpointFromAtOrBefore(checkpointFroms: ApplyFrom[], ta
     }
   }
   return result;
+}
+
+// --- Wilson apply (GitHub issue #145) ---
+//
+// Lives here, after `DebugValues`/`VISITED` (Debug values section) and `Edge` (Apply section)
+// are declared, since `applyWilson` needs both.
+
+/** Mirrors `WilsonEvent`'s `DebugValueDelta` impl (`"visited"`-only) in
+ *  `maze-core/src/generation/wilson.rs`. */
+function wilsonDebugValueDeltasFor(event: WilsonEvent): [string, DebugValueOp, bigint][] {
+  return event.kind === "StartVisited" || event.kind === "NodeVisited" ? [[VISITED, "insert", event.id]] : [];
+}
+
+/** Set/clear operation on a named map debug value — mirrors `DebugMapOp` in
+ *  `maze-core/src/event_log/mod.rs` (GitHub issue #145's follow-up). `"clear"` carries no
+ *  key/value (mirrors the Rust enum's unit `Clear` variant not needing placeholder ids). */
+export type DebugMapOp =
+  | { op: "set"; key: bigint; value: bigint }
+  | { op: "clear" };
+
+export const CURRENT_WALK = "current_walk";
+
+/** Mirrors `WilsonEvent`'s `DebugMapDelta` impl (`"current_walk"`) in
+ *  `maze-core/src/generation/wilson.rs`: `StepTaken` sets `next[from] = to` (overwriting any
+ *  prior value for `from`, exactly like `HashMap::insert`); `WalkStartPicked` clears the map so a
+ *  new walk starts with an empty track; `LoopErased` needs no delta of its own (the preceding
+ *  `StepTaken` already performed the overwrite). */
+function wilsonDebugMapDeltasFor(event: WilsonEvent): [string, DebugMapOp][] {
+  if (event.kind === "WalkStartPicked") return [[CURRENT_WALK, { op: "clear" }]];
+  if (event.kind === "StepTaken") return [[CURRENT_WALK, { op: "set", key: event.from, value: event.to }]];
+  return [];
+}
+
+/** Named map debug-value state (GitHub issue #145's follow-up), keyed by name — e.g.
+ *  `debugMaps.get("current_walk")`. Mirrors `DebugValues`' role for `Insert`/`Remove`-based debug
+ *  values, but for `Set`/`Clear`-based ones. Never mutated in place; a fresh `Map` is built
+ *  whenever a delta is folded in, mirroring `debugValues`'/`edges`' own copy-on-write discipline. */
+export type DebugMaps = Map<string, Map<bigint, bigint>>;
+
+/** Set/clear operation on a named vertex debug value — mirrors `DebugVertexOp` in
+ *  `maze-core/src/event_log/mod.rs` (GitHub issue #145's follow-up). `"clear"` carries no id
+ *  (mirrors the Rust enum's unit `Clear` variant). */
+export type DebugVertexOp =
+  | { op: "set"; id: bigint }
+  | { op: "clear" };
+
+export const WALK_START = "walk_start";
+export const WALK_HEAD = "walk_head";
+
+/** Mirrors `WilsonEvent`'s `DebugVertexDelta` impl (`"walk_start"`/`"walk_head"`) in
+ *  `maze-core/src/generation/wilson.rs`: `WalkStartPicked` sets both slots to the walk's origin
+ *  (the head starts out equal to the start, before any step); each `StepTaken` then moves only
+ *  `walk_head` to `to`. Deliberately *not* derived from `current_walk`'s `Map` state (e.g. "last
+ *  key in insertion order") — a `HashMap::insert`-style overwrite of an existing key (which loop
+ *  erasure causes) doesn't move that key's position, so "last key" can silently stop tracking the
+ *  walk's actual current position once a walk revisits a node. */
+function wilsonDebugVertexDeltasFor(event: WilsonEvent): [string, DebugVertexOp][] {
+  if (event.kind === "WalkStartPicked") {
+    return [[WALK_START, { op: "set", id: event.id }], [WALK_HEAD, { op: "set", id: event.id }]];
+  }
+  if (event.kind === "StepTaken") return [[WALK_HEAD, { op: "set", id: event.to }]];
+  return [];
+}
+
+/** Named vertex debug-value state (GitHub issue #145's follow-up), keyed by name — e.g.
+ *  `debugVertices.get("walk_head")`. Each entry is at most one id (or absent, if never set /
+ *  cleared) — mirrors `DebugMaps`' role but for a single reassignable slot instead of a map. */
+export type DebugVertices = Map<string, bigint | null>;
+
+export interface WilsonApplyResult {
+  edges: Edge[];
+  /** `"visited"` only (GitHub issue #131) — mirrors `debugValues` on `ApplyResult`/`applyRecursiveBacktracker`. */
+  debugValues: DebugValues;
+  /** `"current_walk"` only (GitHub issue #145's follow-up) — the walk's `next` map (`from` node ->
+   *  `to` node) at `step`, reset empty at every `WalkStartPicked`. See `wilsonDebugMapDeltasFor`'s
+   *  doc comment for the exact replay rule. */
+  debugMaps: DebugMaps;
+  /** `"walk_start"`/`"walk_head"` (GitHub issue #145's follow-up) — see `wilsonDebugVertexDeltasFor`'s
+   *  doc comment for the exact replay rule. */
+  debugVertices: DebugVertices;
+  step: number;
+  nodeIndex: number;
+}
+
+/** Replays Wilson events up to and including `targetStep` (the index, within the flat
+ *  mutating-event sequence from `mutatingWilsonEvents`, of the last event to apply) — Wilson's
+ *  counterpart to `applyKruskal`: no checkpoints (GitHub issue #128 is RB-only), so every call
+ *  replays from the tape's start, same as `applyKruskal`. Unlike `applyKruskal`, Wilson declares
+ *  one `Insert`/`Remove`-based debug value (`"visited"`), one `Set`/`Clear`-based map
+ *  (`"current_walk"`), and two `Set`/`Clear`-based vertices (`"walk_start"`/`"walk_head"`).
+ *
+ *  A bidirectional `EdgeAdded` contributes both `{from, to}` and `{to, from}` to `edges` — mirrors
+ *  `applyRecursiveBacktracker`/`applyKruskal`'s handling of the same field. */
+export function applyWilson(tape: ParsedTape, targetStep: number): WilsonApplyResult {
+  validateStepShape("targetStep", targetStep);
+
+  const events = mutatingWilsonEventsWithIndex(tape, targetStep + 1);
+  if (events.length <= targetStep) {
+    throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
+  }
+
+  const edges: Edge[] = [];
+  const debugValues: DebugValues = new Map();
+  const presence = new Set<bigint>();
+  const debugMaps: DebugMaps = new Map();
+  const debugVertices: DebugVertices = new Map();
+
+  for (const { event } of events) {
+    if (event.kind === "EdgeAdded") {
+      edges.push({ from: event.from, to: event.to });
+      if (event.bidirectional) {
+        edges.push({ from: event.to, to: event.from });
+      }
+    }
+    for (const [name, op, id] of wilsonDebugValueDeltasFor(event)) {
+      let ids = debugValues.get(name);
+      if (!ids) {
+        ids = [];
+        debugValues.set(name, ids);
+      }
+      if (op === "insert") {
+        if (!presence.has(id)) { presence.add(id); ids.push(id); }
+      } else if (presence.delete(id)) {
+        const at = ids.indexOf(id);
+        if (at !== -1) ids.splice(at, 1);
+      }
+    }
+    for (const [name, mapOp] of wilsonDebugMapDeltasFor(event)) {
+      if (mapOp.op === "clear") {
+        debugMaps.set(name, new Map());
+      } else {
+        let map = debugMaps.get(name);
+        if (!map) {
+          map = new Map();
+          debugMaps.set(name, map);
+        }
+        map.set(mapOp.key, mapOp.value);
+      }
+    }
+    for (const [name, vertexOp] of wilsonDebugVertexDeltasFor(event)) {
+      debugVertices.set(name, vertexOp.op === "clear" ? null : vertexOp.id);
+    }
+  }
+
+  return { edges, debugValues, debugMaps, debugVertices, step: targetStep, nodeIndex: events[targetStep].nodeIndex };
 }

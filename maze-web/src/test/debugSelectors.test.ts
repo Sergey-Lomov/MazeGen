@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, RB_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
+import { parseTape, RB_TAG, WILSON_TAG, KRUSKAL_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugArenaHandle } from "../store/storeTypes";
 import type { NodeDto } from "../wasm/types";
@@ -70,8 +70,79 @@ const nodes: NodeDto[] = [
   { id: 4, x: 3, y: 0 },
 ];
 
+/** Flat, no nested scopes (mirrors buildTapeWithEdges — Kruskal's applyKruskal only uses the flat
+ *  layer): one EdgeAdded(1,2) then one SetsMerged(1,2), directly under root. Covers
+ *  selectDebugMazeView's "kruskal" branch, which had zero coverage — the only Kruskal fixture
+ *  elsewhere in this repo lives in eventTape.test.ts/debugTreeSelectors.test.ts, neither of which
+ *  exercises this selector. */
+function buildKruskalArenaTape(): ParsedTape {
+  const records: { nextSibling: number | null; tag: number; bytes: Uint8Array }[] = [
+    { nextSibling: 1, tag: KRUSKAL_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
+    { nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, bytes: concatBytes([u64le(1n), u64le(2n)]) },
+  ];
+  const payloadChunks = records.map((r) => r.bytes);
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const chunk of payloadChunks) {
+    offsets.push(cursor);
+    cursor += chunk.byteLength;
+  }
+  const payload = concatBytes(payloadChunks);
+  const nodeTable = new Uint8Array(records.length * 22);
+  const dv = new DataView(nodeTable.buffer);
+  records.forEach((r, i) => {
+    const base = i * 22;
+    dv.setUint32(base + 0, NO_NODE, true);
+    dv.setUint32(base + 4, NO_NODE, true);
+    dv.setUint32(base + 8, r.nextSibling ?? NO_NODE, true);
+    dv.setUint16(base + 12, r.tag, true);
+    dv.setUint32(base + 14, offsets[i], true);
+    dv.setUint32(base + 18, r.bytes.byteLength, true);
+  });
+  return parseTape(nodeTable, payload);
+}
+
 function arenaWithEdges(edges: [bigint, bigint][]): DebugArenaHandle {
   return { tape: buildTapeWithEdges(edges), algorithmKind: "recursive_backtracker", nodes, totalSteps: edges.length, checkpointFroms: [], debugValueNames: [] };
+}
+
+// Wilson fixture, mirroring eventTape.test.ts's buildWilsonTape shape:
+//   root (0)
+//     -> "walk 1" scope (1)
+//          -> WalkStartPicked(1) (2)
+//          -> "step 1" scope (3) -> StepTaken(1,2) (4)
+//          -> EdgeAdded(1,2) (5) -> NodeVisited(1) (6)
+function buildWilsonArenaTape(): ParsedTape {
+  const nodeTable = new Uint8Array(7 * 22);
+  const payloadChunks: Uint8Array[] = [];
+  const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
+    { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("root") },
+    { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("walk 1") },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, bytes: u64le(1n) },
+    { parent: 1, firstChild: 4, nextSibling: 5, tag: 0, bytes: new TextEncoder().encode("step 1") },
+    { parent: 3, firstChild: NO_NODE, nextSibling: NO_NODE, tag: WILSON_TAG.STEP_TAKEN, bytes: concatBytes([u64le(1n), u64le(2n)]) },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 6, tag: WILSON_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: WILSON_TAG.NODE_VISITED, bytes: u64le(1n) },
+  ];
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const r of records) {
+    offsets.push(cursor);
+    payloadChunks.push(r.bytes);
+    cursor += r.bytes.byteLength;
+  }
+  const payload = concatBytes(payloadChunks);
+  const dv = new DataView(nodeTable.buffer);
+  records.forEach((r, i) => {
+    const base = i * 22;
+    dv.setUint32(base + 0, r.parent, true);
+    dv.setUint32(base + 4, r.firstChild, true);
+    dv.setUint32(base + 8, r.nextSibling, true);
+    dv.setUint16(base + 12, r.tag, true);
+    dv.setUint32(base + 14, offsets[i], true);
+    dv.setUint32(base + 18, r.bytes.byteLength, true);
+  });
+  return parseTape(nodeTable, payload);
 }
 
 describe("selectDebugMazeView", () => {
@@ -92,6 +163,8 @@ describe("selectDebugMazeView", () => {
       ],
       debugValues: new Map(),
       dsuGroups: null,
+      debugMaps: new Map(),
+      debugVertices: new Map(),
     });
   });
 
@@ -154,5 +227,47 @@ describe("selectDebugMazeView", () => {
     const viewB = selectDebugMazeView(arenaB, 0);
     expect(viewB).not.toBe(viewA);
     expect(viewB).toEqual(viewA);
+  });
+
+  // --- Wilson dispatch (GitHub issue #145) ---
+
+  it("dispatches Wilson arenas to applyWilson, populating debugValues and debugMaps", () => {
+    const tape = buildWilsonArenaTape();
+    const arena: DebugArenaHandle = {
+      tape, algorithmKind: "wilson", nodes, totalSteps: 4, checkpointFroms: [],
+      debugValueNames: [{ name: "visited", kind: "region" }, { name: "current_walk", kind: "map" }],
+    };
+
+    // targetStep 3 = WalkStartPicked, StepTaken, EdgeAdded, NodeVisited all applied.
+    const view = selectDebugMazeView(arena, 3);
+    expect(view?.edges).toEqual([
+      { from: 1, to: 2, kind: "basic" },
+      { from: 2, to: 1, kind: "basic" },
+    ]);
+    expect(view?.debugValues.get("visited")).toEqual([1]);
+    expect(view?.debugMaps.get("current_walk")).toEqual(new Map([[1, 2]]));
+    expect(view?.debugVertices.get("walk_start")).toBe(1);
+    expect(view?.debugVertices.get("walk_head")).toBe(2);
+    expect(view?.dsuGroups).toBeNull();
+  });
+
+  // --- Kruskal dispatch (GitHub issue #146) ---
+
+  it("dispatches Kruskal arenas to applyKruskal, populating edges and dsuGroups", () => {
+    const tape = buildKruskalArenaTape();
+    const arena: DebugArenaHandle = {
+      tape, algorithmKind: "kruskal", nodes, totalSteps: 2, checkpointFroms: [], debugValueNames: [],
+    };
+
+    // targetStep 1 = EdgeAdded(1,2), SetsMerged(1,2) both applied.
+    const view = selectDebugMazeView(arena, 1);
+    expect(view?.edges).toEqual([
+      { from: 1, to: 2, kind: "basic" },
+      { from: 2, to: 1, kind: "basic" },
+    ]);
+    expect(view?.dsuGroups).toEqual(new Map([[1, 1], [2, 1]]));
+    expect(view?.debugValues.size).toBe(0);
+    expect(view?.debugMaps.size).toBe(0);
+    expect(view?.debugVertices.size).toBe(0);
   });
 });

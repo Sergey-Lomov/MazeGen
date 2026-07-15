@@ -598,20 +598,28 @@ information (which vertex is on top, what the backtrack path looks like). Collap
 undifferentiated node set loses that distinction and renders them identically, which is misleading
 for a stack.
 
-`DebugValueKind` (`maze-core/src/event_log/mod.rs`) makes the distinction explicit:
+`DebugValueKind` (`maze-core/src/event_log/mod.rs`) makes the distinction explicit — as of #145's
+follow-up (see the Wilson section below) it has two further variants, `Map` and `Vertex`, each with
+its own delta trait (`DebugMapDelta`/`DebugVertexDelta`) since neither fits `Insert`/`Remove` on a
+single id:
 
 ```rust
 pub enum DebugValueKind {
     Region,   // unordered set, independent members — e.g. "visited"
     Sequence, // ordered list, adjacent members connected — e.g. "recursion_stack"
+    Map,      // key -> value pairs, overwrite-by-key — e.g. Wilson's "current_walk"
+    Vertex,   // single reassignable slot — e.g. Wilson's "walk_start"/"walk_head"
 }
 ```
 
-It only affects *rendering*; `debug_value_deltas()` still reports plain `Insert`/`Remove` on a
-single id regardless of kind. `recursive_backtracker::debug_value_names()` returns
-`&[(&str, DebugValueKind)]` pairs instead of bare names — `("recursion_stack", Sequence)`,
-`("visited", Region)` — so the kind is part of the same static declaration the name itself comes
-from, not a separate lookup that could drift out of sync.
+`Region`/`Sequence` only affect *rendering*; `debug_value_deltas()` still reports plain
+`Insert`/`Remove` on a single id regardless of which of the two it is.
+`recursive_backtracker::debug_value_names()` returns `&[(&str, DebugValueKind)]` pairs instead of
+bare names — `("recursion_stack", Sequence)`, `("visited", Region)` — so the kind is part of the
+same static declaration the name itself comes from, not a separate lookup that could drift out of
+sync. `Map`/`Vertex` follow the same "kind travels with the name in one static declaration" rule,
+but are reported through their own traits, not `debug_value_deltas()` — see the Wilson section
+below.
 
 Because order now carries meaning, the storage backing debug-value sets changed from an unordered
 collection to an order-preserving one on both sides:
@@ -966,7 +974,151 @@ of relying on manual browser testing to catch it again.
 
 - Kruskal checkpointing (#128-style) or debug value declarations (#131-style) — see #161's section
   above
-- Instrumenting Wilson or custom algorithms
+- Instrumenting custom algorithms
 - A generalized replacement for `DebugValueDelta` that could express dynamic/unnamed group
   structures like Kruskal's DSU groups through the same mechanism RB's named values use — DSU-groups
   replay is a parallel, Kruskal-specific path instead (see above)
+
+## Wilson Instrumentation (#145)
+
+Module: `maze-core/src/generation/wilson.rs`. Third `EventLog` instrumentation, after Recursive
+Backtracker (#123) and Kruskal (#146) — ships end-to-end (core events, web decoder/apply/narration,
+canvas visualization) in the same issue, per #146's precedent.
+
+Wilson's decision shape is a two-level loop — an outer "pick an unvisited node and loop-erased
+random-walk from it" iteration, and an inner per-step random walk that can erase its own loops (by
+overwriting an already-recorded step) before committing the found path into the maze — so the event
+set mirrors both levels, unlike Kruskal's single-level per-edge decision:
+
+```rust
+pub enum WilsonEvent {
+    StartVisited(NodeId),
+    WalkStartPicked(NodeId),
+    StepTaken { from: NodeId, to: NodeId },
+    LoopErased { node: NodeId },
+    WalkDeadEnd,
+    EdgeAdded { from: NodeId, to: NodeId, bidirectional: bool },
+    NodeVisited(NodeId),
+}
+```
+
+- **Mutating**: `StartVisited`, `WalkStartPicked`, `StepTaken`, `LoopErased`, `EdgeAdded`,
+  `NodeVisited`. The first three don't touch the graph, but they change the walk's `next` map — the
+  reconstructable state the `"current_walk"` debug value (see below) needs to redraw the
+  in-progress walk — so they're mutating for that reason, not because they mutate the graph.
+- **Trace-only**: `WalkDeadEnd` — it carries no `next` change of its own; the walk simply stops with
+  whatever `next` state the preceding steps already left behind.
+
+### Tree shape: `StartVisited`, then `"walk N"` scopes each split into `"search"`/`"commit"`
+
+Before the main loop, `StartVisited(start)` is emitted once directly under the root scope — the
+maze's start node being seeded into `visited` is the algorithm's actual first operation, and it
+happens before any walk has even picked a `walk_start`, so there's no walk scope to nest it under.
+Preset-connected nodes are *not* covered by this event: they're seeded into `visited` the same way
+presets are seeded everywhere else in this codebase (a silent zero-state snapshot, not a narrated
+event) — only the start node's own seeding is a distinct, narratable step.
+
+Each subsequent loop iteration opens one `"walk N"` scope (`EventLog::enter_numbered("walk")`),
+containing, in emission order:
+1. `WalkStartPicked` — the unvisited node this walk starts from, chosen uniformly at random.
+   Emitted directly under `"walk N"`, before either sub-phase, so a narration reader knows the
+   walk's origin up front.
+2. A `"search"` sub-scope (`EventLog::enter("search")`, not numbered — exactly one per walk) —
+   every step-related event (`StepTaken`, optionally `LoopErased`, and finally `WalkDeadEnd` if the
+   walk dead-ends) lives here flat, not one `"step M"` sub-scope per step. An earlier version of
+   this instrumentation used a numbered `"step M"` scope per step, mirroring RB's `"step N"`
+   shape — reworked because a step is usually a single event, so a scope per step added tree depth
+   in the web narration UI without adding information.
+3. A `"commit"` sub-scope (`EventLog::enter("commit")`), **only opened when there's actually a path
+   to commit** (i.e. `next` has an entry for `walk_start` — the walk took at least one step before
+   possibly dead-ending) — containing an `EdgeAdded` + `NodeVisited` pair for each node committed
+   from `walk_start` up to (not including) the already-visited node the loop-erased path reaches.
+   Skipped entirely (not opened as an empty scope) when the walk dead-ends on its very first step,
+   so a walk that never got anywhere doesn't leave a stray, non-expandable "commit" row in the
+   narration tree.
+
+Both `"search"`/`"commit"` contain only events, never further nested scopes.
+
+**Threading**: `wilson::generate(..., event_log: Option<&mut EventLog<WilsonEvent>>)` — the same
+`Option<&mut T>` zero-cost-opt-out pattern as RB/Kruskal. `generate_maze_with_events`
+(`maze-core/src/generation/mod.rs`) has a `WilsonAlgorithm` arm building a real `EventLog`, calling
+`wilson::generate`, and tagging the result `EventedEventKind::Wilson` (see #161 above) —
+`checkpoints` is always `None` for this arm (Wilson checkpointing isn't wired up, same as Kruskal).
+
+### Wire encoding
+
+Wire tags (`wilson.rs`'s `wire_tags` module): `WALK_START_PICKED=1`, `STEP_TAKEN=2`,
+`LOOP_ERASED=3`, `WALK_DEAD_END=4`, `EDGE_ADDED=5`, `NODE_VISITED=6`, `START_VISITED=7` —
+manually assigned per #124's convention, `0`/`TAG_SCOPE` reserved. `NodeId` (`u64`) is 8
+little-endian bytes; `StepTaken`/`EdgeAdded` (minus its 1-byte `bidirectional` flag) are two
+back-to-back `NodeId`s; `WalkDeadEnd` carries no payload (0 bytes).
+
+### Debug values: `"visited"` (`Region`), `"current_walk"` (`Map`), `"walk_start"`/`"walk_head"` (`Vertex`)
+
+`wilson::debug_value_names() -> &'static [(&'static str, DebugValueKind)]` returns
+`&[("visited", Region), ("current_walk", Map), ("walk_start", Vertex), ("walk_head", Vertex)]` —
+the same static-declaration pattern as `recursive_backtracker::debug_value_names()` (see #131
+above).
+
+- **`"visited"`** (`Region`) — a plain insert-only set, mirroring the algorithm's own
+  `visited: HashSet<NodeId>` exactly (a node is never un-visited once committed). Reported via the
+  existing `DebugValueDelta` trait: `StartVisited`/`NodeVisited` → `Insert`.
+- **`"current_walk"`** (`Map`) — the in-progress walk's `next` map. `StepTaken { from, to }` sets
+  `next[from] = to`, **overwriting** any prior value for `from` exactly the way `HashMap::insert`
+  does — this is why it can't be a plain `DebugValueDelta`: `Insert`/`Remove` only ever touch one
+  id, never overwrite a key's value, which is exactly what loop erasure needs (re-stepping through
+  an already-recorded node replaces that node's outgoing step). `WalkStartPicked` clears the map, so
+  a new walk doesn't inherit the previous (committed-or-abandoned) walk's track. Reported via a new
+  trait, `DebugMapDelta<Id>`, and a new op enum, `DebugMapOp<Id> { Set(Id, Id), Clear }` (generic
+  over `Id` so `Clear` doesn't need placeholder ids) — both in `maze-core/src/event_log/mod.rs`,
+  alongside `DebugValueDelta`/`DebugValueOp`.
+- **`"walk_start"`/`"walk_head"`** (`Vertex`) — the walk's origin and current position,
+  respectively. `WalkStartPicked(node)` sets *both* to `node` (before any step, the head *is* the
+  start); each subsequent `StepTaken { to, .. }` moves only `walk_head` to `to`. Reported via
+  another new trait, `DebugVertexDelta<Id>`, and op enum, `DebugVertexOp<Id> { Set(Id), Clear }` —
+  structurally `DebugMapOp` minus the second id, since a `Vertex` slot never carries a "value", only
+  an occupant. Deliberately *not* derived by reading the endpoints off `current_walk`'s `Map` state
+  on the web side (e.g. "the last key in insertion order is the walk's head") — a
+  `HashMap::insert`-style overwrite of an *existing* key doesn't move that key's position in
+  iteration order, so "last key" silently stops tracking the walk's actual current position once a
+  walk revisits a node via loop erasure. That heuristic was tried and rejected during development
+  specifically because it broke on this exact case. `walk_start`/`walk_head` are reported directly
+  by the events that actually change them instead, sidestepping the whole question of map-iteration
+  order. Neither slot ever `Clear`s — a new `WalkStartPicked` simply overwrites both, and there's no
+  meaningful "no walk in progress" moment mid-run worth rendering as empty.
+
+### Web side
+
+`maze-web/src/debug/eventTape.ts` mirrors the above: `WILSON_TAG` wire-tag constants,
+`decodeWilsonEvent`/`isMutatingWilsonEvent`, `mutatingWilsonEventsWithIndex`/`mutatingWilsonEvents`
+(flat-layer scan, mirroring Kruskal's — no checkpoint resume, every call replays from the tape's
+start), and `applyWilson(tape, targetStep) -> { edges, debugValues, debugMaps, debugVertices, step,
+nodeIndex }`. `DebugValueKind` gained `"map"`/`"vertex"` string values (the WASM-boundary wire
+strings, via `kind_wire_str` in `maze-wasm/src/result.rs`); `DebugMapOp`/`DebugVertexOp` TS types and
+`wilsonDebugMapDeltasFor`/`wilsonDebugVertexDeltasFor` mirror the Rust trait impls exactly.
+`DebugMazeView` (`maze-web/src/store/debugSelectors.ts`) gained `debugMaps: Map<string, Map<number,
+number>>` and `debugVertices: Map<string, number | null>` fields alongside the existing
+`debugValues`, populated only on the Wilson dispatch branch (empty for RB/Kruskal).
+
+**Narration** (`DebugEventTree.tsx`): `"walk N"` scopes render as "Walk N" (mirroring RB/Kruskal's
+numbered-scope labels); `"search"`/`"commit"` are fixed, non-numbered scope names, rendered as
+"Route search"/"Route commit" — checked before the numbered-scope regex (which wouldn't match a
+name with no trailing index) in `rowTokens`'s scope-label branch.
+
+**Canvas**: `MapHighlightRenderer` (`maze-web/src/pixi/renderers/`) draws a `Map`-kind value as one
+independent directed arrow per key -> value pair, plus a filled circle at every id that appears as
+a key or a value — not a chain (unlike `Sequence`'s `SequenceHighlightRenderer`), since pairs don't
+connect to each other. `VertexHighlightRenderer` draws a `Vertex`-kind value as one enlarged filled
+circle at the slot's current occupant, or nothing when the slot is `null`. `DebugValueHighlightOverlay`
+holds one renderer instance per debug-value name (same per-name-not-shared discipline as
+`Region`/`Sequence`), picking the renderer class via `kindFor`; `Vertex`-kind layers are always
+raised above `Map`-kind layers after each render pass (`walk_start`/`walk_head`'s markers must read
+on top of `current_walk`'s arrows, regardless of toggle order) via `Container.addChild` re-appending
+each vertex layer's container to the top of the child list.
+
+### Out of Scope (#145)
+
+- Wilson checkpointing (#128-style intermediate snapshots)
+- A generalized replacement for `DebugMapDelta`/`DebugVertexDelta` that could express both shapes
+  through one trait — kept as two separate traits deliberately (see "Debug values" above)
+- Instrumenting custom algorithms, or QC/repair narration-level logging

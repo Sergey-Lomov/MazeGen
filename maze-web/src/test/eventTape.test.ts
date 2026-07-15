@@ -5,7 +5,8 @@ import {
   parseCheckpoints, checkpointAt,
   resolveCheckpointFroms, nearestCheckpointFromAtOrBefore, resolveDebugArenaMetadata,
   decodeKruskalEvent, isMutatingKruskalEvent, applyKruskal, kruskalMergedRoot,
-  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, CHECKPOINT_RECORD_SIZE,
+  decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEvents, applyWilson,
+  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, CHECKPOINT_RECORD_SIZE,
   type ParsedTape, type ParsedCheckpoints,
 } from "../debug/eventTape";
 
@@ -682,5 +683,150 @@ describe("applyKruskal", () => {
     const result = applyKruskal(tape, 1);
     expect(result.dsuGroups.get(1n)).toBe(1n);
     expect(result.dsuGroups.get(2n)).toBe(1n);
+  });
+});
+
+// --- Wilson (GitHub issue #145) ---
+
+function stepTakenPayload(from: bigint, to: bigint): Uint8Array {
+  return concatBytes([u64le(from), u64le(to)]);
+}
+
+// Tree shape used by several tests below — Wilson's two-level scope nesting ("walk N" containing
+// "step M" sub-scopes, per Specs/event_log.md):
+//   root (0)
+//     -> "walk 1" scope (1)
+//          -> WalkStartPicked(5) (2)
+//          -> "step 1" scope (3) -> StepTaken(5,3) (4) -> LoopErased(3) (5)
+//          -> "step 2" scope (6) -> StepTaken(3,1) (7)
+//          -> EdgeAdded(5,3) (8) -> NodeVisited(5) (9) -> EdgeAdded(3,1) (10) -> NodeVisited(3) (11)
+function buildWilsonTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(5n) },
+    { parent: 1, firstChild: 4, nextSibling: 6, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(5n, 3n) },
+    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_TAG.LOOP_ERASED, payloadBytes: vertexPayload(3n) },
+    { parent: 1, firstChild: 7, nextSibling: 8, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
+    { parent: 6, firstChild: null, nextSibling: null, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(3n, 1n) },
+    { parent: 1, firstChild: null, nextSibling: 9, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(5n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: 10, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(5n) },
+    { parent: 1, firstChild: null, nextSibling: 11, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 1n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(3n) },
+  ]);
+}
+
+describe("decodeWilsonEvent", () => {
+  it("decodes StartVisited (8 bytes)", () => {
+    expect(decodeWilsonEvent(WILSON_TAG.START_VISITED, vertexPayload(5n))).toEqual({
+      kind: "StartVisited", id: 5n,
+    });
+  });
+
+  it("decodes WalkStartPicked (8 bytes)", () => {
+    expect(decodeWilsonEvent(WILSON_TAG.WALK_START_PICKED, vertexPayload(5n))).toEqual({
+      kind: "WalkStartPicked", id: 5n,
+    });
+  });
+
+  it("decodes StepTaken (16 bytes)", () => {
+    expect(decodeWilsonEvent(WILSON_TAG.STEP_TAKEN, stepTakenPayload(5n, 3n))).toEqual({
+      kind: "StepTaken", from: 5n, to: 3n,
+    });
+  });
+
+  it("decodes LoopErased (8 bytes)", () => {
+    expect(decodeWilsonEvent(WILSON_TAG.LOOP_ERASED, vertexPayload(3n))).toEqual({
+      kind: "LoopErased", node: 3n,
+    });
+  });
+
+  it("decodes WalkDeadEnd (0 bytes)", () => {
+    expect(decodeWilsonEvent(WILSON_TAG.WALK_DEAD_END, new Uint8Array(0))).toEqual({
+      kind: "WalkDeadEnd",
+    });
+  });
+
+  it("decodes EdgeAdded (17 bytes)", () => {
+    expect(decodeWilsonEvent(WILSON_TAG.EDGE_ADDED, edgeAddedPayload(5n, 3n))).toEqual({
+      kind: "EdgeAdded", from: 5n, to: 3n, bidirectional: true,
+    });
+  });
+
+  it("decodes NodeVisited (8 bytes)", () => {
+    expect(decodeWilsonEvent(WILSON_TAG.NODE_VISITED, vertexPayload(5n))).toEqual({
+      kind: "NodeVisited", id: 5n,
+    });
+  });
+
+  it("throws on an unknown wire tag", () => {
+    expect(() => decodeWilsonEvent(99, new Uint8Array(0))).toThrow(/unknown wire tag/);
+  });
+
+  it("throws on a payload_len mismatch", () => {
+    expect(() => decodeWilsonEvent(WILSON_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
+  });
+});
+
+describe("isMutatingWilsonEvent", () => {
+  it("StartVisited/WalkStartPicked/StepTaken/LoopErased/EdgeAdded/NodeVisited are mutating; only WalkDeadEnd is trace-only", () => {
+    // WalkStartPicked/StepTaken/LoopErased are mutating despite not touching the graph — they
+    // change the walk's `next` map, the state `applyWilson`'s `"current_walk"` map debug value
+    // reconstructs (mirrors `WilsonEvent::is_mutating`'s doc comment in maze-core/src/generation/wilson.rs).
+    expect(isMutatingWilsonEvent({ kind: "StartVisited", id: 1n })).toBe(true);
+    expect(isMutatingWilsonEvent({ kind: "WalkStartPicked", id: 1n })).toBe(true);
+    expect(isMutatingWilsonEvent({ kind: "StepTaken", from: 1n, to: 2n })).toBe(true);
+    expect(isMutatingWilsonEvent({ kind: "LoopErased", node: 1n })).toBe(true);
+    expect(isMutatingWilsonEvent({ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true })).toBe(true);
+    expect(isMutatingWilsonEvent({ kind: "NodeVisited", id: 1n })).toBe(true);
+    expect(isMutatingWilsonEvent({ kind: "WalkDeadEnd" })).toBe(false);
+  });
+});
+
+describe("mutatingWilsonEvents / applyWilson", () => {
+  it("skips scope nodes and WalkDeadEnd, keeping everything else in emission order", () => {
+    const tape = buildWilsonTape();
+    const events = mutatingWilsonEvents(tape);
+    expect(events).toEqual([
+      { kind: "WalkStartPicked", id: 5n },
+      { kind: "StepTaken", from: 5n, to: 3n },
+      { kind: "LoopErased", node: 3n },
+      { kind: "StepTaken", from: 3n, to: 1n },
+      { kind: "EdgeAdded", from: 5n, to: 3n, bidirectional: true },
+      { kind: "NodeVisited", id: 5n },
+      { kind: "EdgeAdded", from: 3n, to: 1n, bidirectional: true },
+      { kind: "NodeVisited", id: 3n },
+    ]);
+  });
+
+  it("reconstructs edges (both directions) and the current_walk map debug value up to targetStep, replaying from the start every call", () => {
+    const tape = buildWilsonTape();
+
+    const step1 = applyWilson(tape, 1); // WalkStartPicked(5), StepTaken(5,3) -> next: {5:3}
+    expect(step1.edges).toEqual([]);
+    expect(step1.debugMaps.get("current_walk")).toEqual(new Map([[5n, 3n]]));
+    expect(step1.step).toBe(1);
+    expect(step1.nodeIndex).toBe(4);
+
+    const step4 = applyWilson(tape, 4); // + LoopErased, StepTaken(3,1), EdgeAdded(5,3)
+    expect(step4.edges).toEqual([{ from: 5n, to: 3n }, { from: 3n, to: 5n }]);
+    expect(step4.debugMaps.get("current_walk")).toEqual(new Map([[5n, 3n], [3n, 1n]]));
+    expect(step4.step).toBe(4);
+    expect(step4.nodeIndex).toBe(8);
+  });
+
+  it("reconstructs the visited debug value from NodeVisited events only", () => {
+    const tape = buildWilsonTape();
+    const step5 = applyWilson(tape, 5); // + NodeVisited(5)
+    expect(step5.debugValues.get("visited")).toEqual([5n]);
+
+    const step7 = applyWilson(tape, 7); // + EdgeAdded(3,1), NodeVisited(3)
+    expect(step7.debugValues.get("visited")).toEqual([5n, 3n]);
+  });
+
+  it("throws when targetStep is out of range", () => {
+    const tape = buildWilsonTape();
+    expect(() => applyWilson(tape, 8)).toThrow(/out of range/);
   });
 });
