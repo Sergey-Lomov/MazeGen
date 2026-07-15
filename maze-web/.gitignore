@@ -2,3 +2,5 @@ node_modules/
 dist/
 pkg/
 tsconfig.tsbuildinfo
+dev-out.log
+dev-err.log

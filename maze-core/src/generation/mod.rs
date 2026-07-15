@@ -15,6 +15,7 @@ pub use recursive_backtracker::{generate as generate_recursive_backtracker, Recu
 pub use kruskal::{generate as generate_kruskal, KruskalEvent};
 pub use wilson::{generate as generate_wilson, WilsonEvent, debug_value_names as wilson_debug_value_names};
 pub use edge_based::{generate as generate_edge_based, EdgeBasedEvent, debug_value_names as edge_based_debug_value_names};
+pub use vertex_based::{generate as generate_vertex_based, VertexBasedEvent, debug_value_names as vertex_based_debug_value_names};
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, NodeLockKind, LockedNode,
@@ -59,7 +60,7 @@ fn dispatch<T: Tessellation>(
 ) {
     match config.algorithm {
         GenerationAlgorithm::CustomVertexBased(params) =>
-            vertex_based::generate(graph, field, seed, start, &params, &config.elements, preset_state),
+            vertex_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, None),
         GenerationAlgorithm::CustomEdgeBased(params) =>
             edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, None),
         GenerationAlgorithm::RecursiveBacktracker =>
@@ -169,9 +170,15 @@ pub fn generate_maze_with_events<T: Tessellation>(
                 edge_based::debug_value_names(),
             )
         }
-        _ => {
-            dispatch(graph, field, seed, start, config, preset_state);
-            (None, None, None, &[] as &[(&str, crate::event_log::DebugValueKind)])
+        GenerationAlgorithm::CustomVertexBased(params) => {
+            let mut log = crate::event_log::EventLog::new();
+            vertex_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, Some(&mut log));
+            (
+                Some(log.finish().encode()),
+                Some(crate::event_log::EventedEventKind::VertexBased),
+                None,
+                vertex_based::debug_value_names(),
+            )
         }
     };
 

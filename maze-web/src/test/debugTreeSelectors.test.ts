@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, type ParsedTape } from "../debug/eventTape";
 import {
   buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, resolveHighlightTarget,
   buildNodeCoordIndex,
@@ -174,6 +174,39 @@ describe("buildStepIndex — edge_based dispatch (GitHub issue #144)", () => {
   it("dispatches to the CustomEdgeBased mutating-event scan, skipping the trace-only CorridorRollSkipped", () => {
     const tape = buildOneStepEdgeBasedTape();
     const { stepToNodeIndex, nearestStepByNodeIndex } = buildStepIndex(tape, "edge_based");
+
+    expect(stepToNodeIndex).toEqual([3, 4]);
+    expect(nearestStepByNodeIndex).toEqual([0, 0, 0, 0, 1]);
+  });
+});
+
+// CustomVertexBased fixture (GitHub issue #143) — one flat "step 1" scope, mirroring EdgeBased's
+// flat shape but with a trace event (TeleportRolled) preceding the two mutating ones:
+//   root (0)
+//     -> "step 1" scope (1)
+//          -> TeleportRolled (2, trace-only)
+//          -> EdgeAdded(1,3) (3)
+//          -> NodeVisited(3, parent=1) (4)
+function vertexBasedEdgeAddedPayload(src: bigint, dst: bigint, bidirectional = true): Uint8Array {
+  return concatBytes([u64le(src), u64le(dst), new Uint8Array([bidirectional ? 1 : 0])]);
+}
+
+function buildOneStepVertexBasedTape(): ParsedTape {
+  const teleportRolledPayload = concatBytes([u64le(1n), new Uint8Array(8), new Uint8Array(8), new Uint8Array([0])]);
+  const nodeVisitedPayload = concatBytes([u64le(3n), u64le(1n)]);
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_TAG.TELEPORT_ROLLED, payloadBytes: teleportRolledPayload },
+    { parent: 1, firstChild: null, nextSibling: 4, tag: VERTEX_BASED_TAG.EDGE_ADDED, payloadBytes: vertexBasedEdgeAddedPayload(1n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.NODE_VISITED, payloadBytes: nodeVisitedPayload },
+  ]);
+}
+
+describe("buildStepIndex — vertex_based dispatch (GitHub issue #143)", () => {
+  it("dispatches to the CustomVertexBased mutating-event scan, skipping the trace-only TeleportRolled", () => {
+    const tape = buildOneStepVertexBasedTape();
+    const { stepToNodeIndex, nearestStepByNodeIndex } = buildStepIndex(tape, "vertex_based");
 
     expect(stepToNodeIndex).toEqual([3, 4]);
     expect(nearestStepByNodeIndex).toEqual([0, 0, 0, 0, 1]);

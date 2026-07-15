@@ -11,8 +11,10 @@ export interface DebugMazeView {
    *  unlike the `bigint` ids the replay engine itself works in). `number[]`, not a `Set` — order
    *  matters for `DebugValueKind.Sequence` values, which `DebugValueHighlightOverlay` renders as
    *  an arrow chain in this order. Always empty for Kruskal (GitHub issue #131 is RB-only, plus
-   *  Wilson's own `"visited"` value and `CustomEdgeBased`'s own `"active"`/`"visited"` — see
-   *  `wilson::debug_value_names()`/`edge_based::debug_value_names()`, GitHub issue #144). */
+   *  Wilson's own `"visited"` value, `CustomEdgeBased`'s own `"active"`/`"visited"`, and
+   *  `CustomVertexBased`'s own `"visited"`/`"frontier"`/`"reserve"` — see
+   *  `wilson::debug_value_names()`/`edge_based::debug_value_names()`/
+   *  `vertex_based::debug_value_names()`, GitHub issues #144/#143). */
   debugValues: Map<string, number[]>;
   /** Kruskal's union-find groups (GitHub issue #146's DSU-groups extension) reconstructed at this
    *  step, keyed by node id (`number`, already joined against `NodeDto.id`) mapped to its current
@@ -81,6 +83,10 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
     debugVertices = result.debugVertices;
   } else if (arena.algorithmKind === "edge_based") {
     const result = adapterFor("edge_based").apply(arena.tape, debugStep);
+    edges = result.edges;
+    debugValues = result.debugValues;
+  } else if (arena.algorithmKind === "vertex_based") {
+    const result = adapterFor("vertex_based").apply(arena.tape, debugStep);
     edges = result.edges;
     debugValues = result.debugValues;
   } else {

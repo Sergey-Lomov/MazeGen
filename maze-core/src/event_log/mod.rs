@@ -112,6 +112,7 @@ pub enum EventedEventKind {
     Kruskal,
     Wilson,
     EdgeBased,
+    VertexBased,
 }
 
 /// Implemented by a concrete event enum to declare how its mutating variants affect named,

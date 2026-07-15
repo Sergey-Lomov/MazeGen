@@ -221,16 +221,19 @@ fn recursive_backtracker_encode_round_trips_tree_shape() {
 }
 
 #[test]
-fn generate_maze_with_events_returns_none_for_non_instrumented_algorithms() {
+fn generate_maze_with_events_checkpoints_and_debug_values_stay_empty_for_kruskal() {
+    // Every generation algorithm is now instrumented (RB, Kruskal, Wilson, EdgeBased,
+    // VertexBased) — Kruskal is the one remaining case where `checkpoints`/`debug_value_names`
+    // don't follow `tape`'s `Some`-ness (see `Specs/event_log.md`'s #161 section).
     let (mut graph, field, start) = build(3, 3);
     let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
-        algorithm: GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
+        algorithm: GenerationAlgorithm::KruskalAlgorithm,
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    assert!(result.tape.is_none(), "only Recursive Backtracker, Kruskal and Wilson are instrumented so far");
-    assert!(result.event_kind.is_none(), "only Recursive Backtracker, Kruskal and Wilson are instrumented so far");
-    assert!(result.checkpoints.is_none(), "only Recursive Backtracker is instrumented so far");
+    assert!(result.tape.is_some(), "Kruskal must produce a tape");
+    assert!(result.checkpoints.is_none(), "Kruskal checkpointing isn't wired up yet");
+    assert!(result.debug_value_names.is_empty(), "Kruskal declares no debug values yet");
 }
 
 #[test]
@@ -272,17 +275,6 @@ fn generate_maze_with_events_collects_tape_for_kruskal() {
         tag != TAG_SCOPE
     });
     assert!(has_event_node, "a 3x3 Kruskal run must emit at least one non-scope event node");
-}
-
-#[test]
-fn generate_maze_with_events_debug_value_names_empty_for_non_instrumented_algorithm() {
-    let (mut graph, field, start) = build(3, 3);
-    let result = generate_maze_with_events(&mut graph, &field, 1, start, GenerationConfig {
-        algorithm: GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
-        elements: no_one_way_elements(),
-        ..GenerationConfig::default()
-    }, &empty_preset());
-    assert!(result.debug_value_names.is_empty(), "a non-instrumented algorithm declares no debug values");
 }
 
 #[test]

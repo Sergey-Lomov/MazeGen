@@ -80,6 +80,37 @@ export const EDGE_BASED_TAG = {
   SRC_EXHAUSTED: 19,
 } as const;
 
+/** `CustomVertexBased` event wire tags — mirrors `wire_tags` in
+ *  `maze-core/src/generation/vertex_based.rs` (GitHub issue #143). Independent numbering from
+ *  `RB_TAG`/`KRUSKAL_TAG`/`WILSON_TAG`/`EDGE_BASED_TAG`, same as those four. */
+export const VERTEX_BASED_TAG = {
+  TELEPORT_BRIDGE_ROLLED: 1,
+  TELEPORT_BRIDGE_ADDED: 2,
+  RESERVE_CANDIDATE_REJECTED: 3,
+  RESERVE_CANDIDATE_CHOSEN: 4,
+  RESERVE_EXHAUSTED: 5,
+  BRIDGE_ADDED: 6,
+  SRC_CHOSEN_FROM_FRONTIER: 7,
+  TELEPORT_ROLLED: 8,
+  CYCLIC_ROLLED: 9,
+  CYCLIC_CANDIDATES_COMPUTED: 10,
+  CYCLIC_EDGE_ADDED: 11,
+  CORRIDOR_ROLLED: 12,
+  CANDIDATE_CHOSEN: 13,
+  JUNCTION_SLOT_ROLLED: 14,
+  JUNCTION_CANDIDATES_CHOSEN: 15,
+  EDGE_ADDED: 16,
+  PRESET_NEIGHBOR_VISITED: 17,
+  TELEPORT_CONNECT_ADDED: 18,
+  NODE_VISITED: 19,
+  NODE_QUEUED_TO_RESERVE: 20,
+  START_VISITED: 21,
+  JUNCTION_ROLL_SETUP: 22,
+  SINGLE_CANDIDATE_SKIPS_DIRECTIONALITY: 23,
+  NO_PARENT_SKIPS_DIRECTIONALITY: 24,
+  DIRECTIONALITY_ROLLED: 25,
+} as const;
+
 // --- Flat + tree node record access ---
 
 export interface ParsedTape {
@@ -1463,6 +1494,302 @@ export function applyEdgeBased(tape: ParsedTape, targetStep: number): EdgeBasedA
         if (at !== -1) ids.splice(at, 1);
       }
     }
+  }
+
+  return { edges, debugValues, step: targetStep, nodeIndex: events[targetStep].nodeIndex };
+}
+
+// --- CustomVertexBased event decoding (GitHub issue #143) ---
+
+export type VertexBasedEvent =
+  | { kind: "TeleportBridgeRolled"; roll: number; teleportChance: number; fired: boolean }
+  | { kind: "TeleportBridgeAdded"; src: bigint; dst: bigint; bidirectional: boolean }
+  | { kind: "ReserveCandidateRejected"; node: bigint; alreadyVisited: boolean }
+  | { kind: "ReserveCandidateChosen"; node: bigint }
+  | { kind: "ReserveExhausted" }
+  | { kind: "BridgeAdded"; src: bigint; dst: bigint; bidirectional: boolean }
+  | { kind: "SrcChosenFromFrontier"; src: bigint; frontierLen: number; position: number; depthFirst: number }
+  | { kind: "TeleportRolled"; src: bigint; roll: number; teleportChance: number; fired: boolean }
+  | { kind: "CyclicRolled"; src: bigint; roll: number; cyclicity: number; fired: boolean }
+  | { kind: "CyclicCandidatesComputed"; src: bigint; geometric: boolean; candidates: bigint[] }
+  | { kind: "CyclicEdgeAdded"; src: bigint; dst: bigint; teleport: boolean; bidirectional: boolean }
+  | { kind: "CorridorRolled"; roll: number; corridorChance: number; isCorridor: boolean }
+  | { kind: "CandidateChosen"; src: bigint; dst: bigint; usedDirectionality: boolean }
+  | { kind: "JunctionRollSetup"; max: number }
+  | { kind: "JunctionSlotRolled"; slot: number; roll: number; branching: number; taken: boolean }
+  | { kind: "JunctionCandidatesChosen"; src: bigint; candidates: bigint[] }
+  | { kind: "EdgeAdded"; src: bigint; dst: bigint; bidirectional: boolean }
+  | { kind: "PresetNeighborVisited"; src: bigint; dst: bigint }
+  | { kind: "TeleportConnectAdded"; src: bigint; dst: bigint; bidirectional: boolean }
+  | { kind: "NodeVisited"; node: bigint; parent: bigint }
+  | { kind: "NodeQueuedToReserve"; node: bigint }
+  | { kind: "StartVisited"; node: bigint }
+  | { kind: "SingleCandidateSkipsDirectionality"; node: bigint }
+  | { kind: "NoParentSkipsDirectionality"; node: bigint }
+  | { kind: "DirectionalityRolled"; roll: number; directionality: number; fired: boolean; straightFound: boolean };
+
+/** Decodes one `CustomVertexBased` event's binary payload. Contract: only called with `tag >= 1`
+ *  — callers filter out `TAG_SCOPE` first. Throws on an unrecognized tag or a `payload_len`
+ *  mismatch for fixed-size variants — same error-on-mismatch contract as
+ *  `decodeRecursiveBacktrackerEvent`/`decodeKruskalEvent`/`decodeWilsonEvent`/`decodeEdgeBasedEvent`. */
+export function decodeVertexBasedEvent(tag: number, bytes: Uint8Array): VertexBasedEvent {
+  switch (tag) {
+    case VERTEX_BASED_TAG.TELEPORT_BRIDGE_ROLLED:
+      expectLen(tag, bytes, 17);
+      return { kind: "TeleportBridgeRolled", roll: readF64(bytes, 0), teleportChance: readF64(bytes, 8), fired: bytes[16] !== 0 };
+    case VERTEX_BASED_TAG.TELEPORT_BRIDGE_ADDED:
+      expectLen(tag, bytes, 17);
+      return { kind: "TeleportBridgeAdded", src: readNodeId(bytes, 0), dst: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
+    case VERTEX_BASED_TAG.RESERVE_CANDIDATE_REJECTED:
+      expectLen(tag, bytes, 9);
+      return { kind: "ReserveCandidateRejected", node: readNodeId(bytes, 0), alreadyVisited: bytes[8] !== 0 };
+    case VERTEX_BASED_TAG.RESERVE_CANDIDATE_CHOSEN:
+      expectLen(tag, bytes, 8);
+      return { kind: "ReserveCandidateChosen", node: readNodeId(bytes, 0) };
+    case VERTEX_BASED_TAG.RESERVE_EXHAUSTED:
+      expectLen(tag, bytes, 0);
+      return { kind: "ReserveExhausted" };
+    case VERTEX_BASED_TAG.BRIDGE_ADDED:
+      expectLen(tag, bytes, 17);
+      return { kind: "BridgeAdded", src: readNodeId(bytes, 0), dst: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
+    case VERTEX_BASED_TAG.SRC_CHOSEN_FROM_FRONTIER:
+      expectLen(tag, bytes, 24);
+      return {
+        kind: "SrcChosenFromFrontier",
+        src: readNodeId(bytes, 0),
+        frontierLen: readU32(bytes, 8),
+        position: readU32(bytes, 12),
+        depthFirst: readF64(bytes, 16),
+      };
+    case VERTEX_BASED_TAG.TELEPORT_ROLLED:
+      expectLen(tag, bytes, 25);
+      return {
+        kind: "TeleportRolled",
+        src: readNodeId(bytes, 0),
+        roll: readF64(bytes, 8),
+        teleportChance: readF64(bytes, 16),
+        fired: bytes[24] !== 0,
+      };
+    case VERTEX_BASED_TAG.CYCLIC_ROLLED:
+      expectLen(tag, bytes, 25);
+      return {
+        kind: "CyclicRolled",
+        src: readNodeId(bytes, 0),
+        roll: readF64(bytes, 8),
+        cyclicity: readF64(bytes, 16),
+        fired: bytes[24] !== 0,
+      };
+    case VERTEX_BASED_TAG.CYCLIC_CANDIDATES_COMPUTED: {
+      const src = readNodeId(bytes, 0);
+      const geometric = bytes[8] !== 0;
+      const { ids: candidates } = readNodeIdList(bytes, 9);
+      return { kind: "CyclicCandidatesComputed", src, geometric, candidates };
+    }
+    case VERTEX_BASED_TAG.CYCLIC_EDGE_ADDED:
+      expectLen(tag, bytes, 18);
+      return {
+        kind: "CyclicEdgeAdded", src: readNodeId(bytes, 0), dst: readNodeId(bytes, 8),
+        teleport: bytes[16] !== 0, bidirectional: bytes[17] !== 0,
+      };
+    case VERTEX_BASED_TAG.CORRIDOR_ROLLED:
+      expectLen(tag, bytes, 17);
+      return { kind: "CorridorRolled", roll: readF64(bytes, 0), corridorChance: readF64(bytes, 8), isCorridor: bytes[16] !== 0 };
+    case VERTEX_BASED_TAG.CANDIDATE_CHOSEN:
+      expectLen(tag, bytes, 17);
+      return {
+        kind: "CandidateChosen", src: readNodeId(bytes, 0), dst: readNodeId(bytes, 8), usedDirectionality: bytes[16] !== 0,
+      };
+    case VERTEX_BASED_TAG.JUNCTION_ROLL_SETUP:
+      expectLen(tag, bytes, 4);
+      return { kind: "JunctionRollSetup", max: readU32(bytes, 0) };
+    case VERTEX_BASED_TAG.JUNCTION_SLOT_ROLLED:
+      expectLen(tag, bytes, 21);
+      return {
+        kind: "JunctionSlotRolled", slot: readU32(bytes, 0), roll: readF64(bytes, 4), branching: readF64(bytes, 12), taken: bytes[20] !== 0,
+      };
+    case VERTEX_BASED_TAG.JUNCTION_CANDIDATES_CHOSEN: {
+      const src = readNodeId(bytes, 0);
+      const { ids: candidates } = readNodeIdList(bytes, 8);
+      return { kind: "JunctionCandidatesChosen", src, candidates };
+    }
+    case VERTEX_BASED_TAG.EDGE_ADDED:
+      expectLen(tag, bytes, 17);
+      return { kind: "EdgeAdded", src: readNodeId(bytes, 0), dst: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
+    case VERTEX_BASED_TAG.PRESET_NEIGHBOR_VISITED:
+      expectLen(tag, bytes, 16);
+      return { kind: "PresetNeighborVisited", src: readNodeId(bytes, 0), dst: readNodeId(bytes, 8) };
+    case VERTEX_BASED_TAG.TELEPORT_CONNECT_ADDED:
+      expectLen(tag, bytes, 17);
+      return { kind: "TeleportConnectAdded", src: readNodeId(bytes, 0), dst: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
+    case VERTEX_BASED_TAG.NODE_VISITED:
+      expectLen(tag, bytes, 16);
+      return { kind: "NodeVisited", node: readNodeId(bytes, 0), parent: readNodeId(bytes, 8) };
+    case VERTEX_BASED_TAG.NODE_QUEUED_TO_RESERVE:
+      expectLen(tag, bytes, 8);
+      return { kind: "NodeQueuedToReserve", node: readNodeId(bytes, 0) };
+    case VERTEX_BASED_TAG.START_VISITED:
+      expectLen(tag, bytes, 8);
+      return { kind: "StartVisited", node: readNodeId(bytes, 0) };
+    case VERTEX_BASED_TAG.SINGLE_CANDIDATE_SKIPS_DIRECTIONALITY:
+      expectLen(tag, bytes, 8);
+      return { kind: "SingleCandidateSkipsDirectionality", node: readNodeId(bytes, 0) };
+    case VERTEX_BASED_TAG.NO_PARENT_SKIPS_DIRECTIONALITY:
+      expectLen(tag, bytes, 8);
+      return { kind: "NoParentSkipsDirectionality", node: readNodeId(bytes, 0) };
+    case VERTEX_BASED_TAG.DIRECTIONALITY_ROLLED:
+      expectLen(tag, bytes, 18);
+      return {
+        kind: "DirectionalityRolled",
+        roll: readF64(bytes, 0),
+        directionality: readF64(bytes, 8),
+        fired: bytes[16] !== 0,
+        straightFound: bytes[17] !== 0,
+      };
+    default:
+      throw new Error(`VertexBasedEvent: unknown wire tag ${tag}`);
+  }
+}
+
+/** Mirrors `DebugEvent::is_mutating`'s split for `VertexBasedEvent` in
+ *  `maze-core/src/generation/vertex_based.rs`. */
+export function isMutatingVertexBasedEvent(event: VertexBasedEvent): boolean {
+  return (
+    event.kind === "TeleportBridgeAdded" ||
+    event.kind === "BridgeAdded" ||
+    event.kind === "CyclicEdgeAdded" ||
+    event.kind === "EdgeAdded" ||
+    event.kind === "PresetNeighborVisited" ||
+    event.kind === "TeleportConnectAdded" ||
+    event.kind === "NodeVisited" ||
+    event.kind === "NodeQueuedToReserve" ||
+    event.kind === "ReserveCandidateChosen" ||
+    event.kind === "StartVisited" ||
+    event.kind === "SrcChosenFromFrontier"
+  );
+}
+
+export interface MutatingVertexBasedEventAt {
+  event: VertexBasedEvent;
+  nodeIndex: number;
+}
+
+/** Flat layer for `CustomVertexBased`: forward scan over the node table, skipping scope nodes,
+ *  decoding events, filtering to mutating ones only — mirrors `mutatingEdgeBasedEventsWithIndex`.
+ *  No checkpoints (GitHub issue #128 is RB-only), same `startIndex`/`limit` shape for consistency. */
+export function mutatingVertexBasedEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingVertexBasedEventAt[] {
+  const result: MutatingVertexBasedEventAt[] = [];
+  for (let i = startIndex; i < tape.nodeCount; i++) {
+    if (limit !== undefined && result.length >= limit) break;
+    const record = nodeAt(tape, i);
+    if (record.tag === TAG_SCOPE) continue;
+    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
+    const event = decodeVertexBasedEvent(record.tag, bytes);
+    if (isMutatingVertexBasedEvent(event)) result.push({ event, nodeIndex: i });
+  }
+  return result;
+}
+
+/** Convenience wrapper over `mutatingVertexBasedEventsWithIndex` for callers that only need the
+ *  decoded events, not their arena indices. */
+export function mutatingVertexBasedEvents(tape: ParsedTape, limit?: number, startIndex = 0): VertexBasedEvent[] {
+  return mutatingVertexBasedEventsWithIndex(tape, limit, startIndex).map((e) => e.event);
+}
+
+export const FRONTIER = "frontier";
+export const RESERVE = "reserve";
+
+/** Mirrors `VertexBasedEvent`'s `DebugValueDelta` impl (`"visited"`/`"frontier"`/`"reserve"`) in
+ *  `maze-core/src/generation/vertex_based.rs`: `NodeVisited` inserts into `"visited"`/`"frontier"`
+ *  and removes from `"reserve"` (a no-op remove when the node was never actually queued);
+ *  `ReserveCandidateChosen` removes from `"reserve"`; `ReserveCandidateRejected` with
+ *  `alreadyVisited: false` (the requeue branch) and `NodeQueuedToReserve` both insert into
+ *  `"reserve"`; `SrcChosenFromFrontier` removes from `"frontier"` (the node just popped for
+ *  processing). */
+function vertexBasedDebugValueDeltasFor(event: VertexBasedEvent): [string, DebugValueOp, bigint][] {
+  switch (event.kind) {
+    case "NodeVisited":
+      return [[VISITED, "insert", event.node], [FRONTIER, "insert", event.node], [RESERVE, "remove", event.node]];
+    case "ReserveCandidateChosen":
+      return [[RESERVE, "remove", event.node]];
+    case "ReserveCandidateRejected":
+      return event.alreadyVisited ? [] : [[RESERVE, "insert", event.node]];
+    case "NodeQueuedToReserve":
+      return [[RESERVE, "insert", event.node]];
+    case "StartVisited":
+      return [[VISITED, "insert", event.node], [FRONTIER, "insert", event.node]];
+    case "SrcChosenFromFrontier":
+      return [[FRONTIER, "remove", event.src]];
+    default:
+      return [];
+  }
+}
+
+export interface VertexBasedApplyResult {
+  edges: Edge[];
+  /** `"visited"`, `"frontier"`, and `"reserve"` (all Region — none of the three form a connected
+   *  traversal chain, so unlike RB's `Sequence`-kind `"recursion_stack"` they render as
+   *  independent per-node highlights) — mirrors `debugValues` on
+   *  `ApplyResult`/`applyRecursiveBacktracker`/`EdgeBasedApplyResult`. */
+  debugValues: DebugValues;
+  step: number;
+  nodeIndex: number;
+}
+
+/** Replays `CustomVertexBased` events up to and including `targetStep` — counterpart to
+ *  `applyEdgeBased`/`applyKruskal`/`applyWilson`: no checkpoints, every call replays from the
+ *  tape's start. Every edge-add variant (`TeleportBridgeAdded`/`BridgeAdded`/`CyclicEdgeAdded`/
+ *  `EdgeAdded`/`TeleportConnectAdded`) carries an explicit `bidirectional` flag — mirrors RB/
+ *  Kruskal/Wilson/EdgeBased's own handling: a bidirectional edge contributes both `{from, to}` and
+ *  `{to, from}` to `edges`, a one-way edge only the forward pair. `PresetNeighborVisited` and the
+ *  step-count-worthy-but-edgeless mutating variants (`ReserveCandidateChosen`,
+ *  `NodeQueuedToReserve`) contribute no `edges` entry of their own. */
+export function applyVertexBased(tape: ParsedTape, targetStep: number): VertexBasedApplyResult {
+  validateStepShape("targetStep", targetStep);
+
+  const events = mutatingVertexBasedEventsWithIndex(tape, targetStep + 1);
+  if (events.length <= targetStep) {
+    throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
+  }
+
+  const edges: Edge[] = [];
+  // Built as Set<bigint> per name, not Array, while replaying — "visited"/"frontier"/"reserve"
+  // are Region-kind (order carries no meaning, see VertexBasedEvent's DebugValueDelta doc comment
+  // in vertex_based.rs), so a Set gives O(1) insert/remove instead of the O(n) indexOf+splice a
+  // growing/shrinking array would cost per delta. SrcChosenFromFrontier fires a frontier removal
+  // on every single step, so this path runs at O(steps) removes per full replay (this function
+  // always replays from index 0, no checkpoints) — an O(n) removal here would make replay O(n^2).
+  // Converted to the `bigint[]` the DebugValues type/UI expects only once, after the loop.
+  const sets = new Map<string, Set<bigint>>();
+
+  for (const { event } of events) {
+    if (
+      event.kind === "TeleportBridgeAdded" || event.kind === "BridgeAdded" ||
+      event.kind === "CyclicEdgeAdded" || event.kind === "EdgeAdded" || event.kind === "TeleportConnectAdded"
+    ) {
+      const kind = (event.kind === "TeleportBridgeAdded" || event.kind === "TeleportConnectAdded" ||
+        (event.kind === "CyclicEdgeAdded" && event.teleport)) ? "teleport" : "basic";
+      edges.push({ from: event.src, to: event.dst, kind });
+      if (event.bidirectional) {
+        edges.push({ from: event.dst, to: event.src, kind });
+      }
+    }
+    for (const [name, op, id] of vertexBasedDebugValueDeltasFor(event)) {
+      let set = sets.get(name);
+      if (!set) {
+        set = new Set();
+        sets.set(name, set);
+      }
+      if (op === "insert") {
+        set.add(id);
+      } else {
+        set.delete(id);
+      }
+    }
+  }
+
+  const debugValues: DebugValues = new Map();
+  for (const [name, set] of sets) {
+    debugValues.set(name, [...set]);
   }
 
   return { edges, debugValues, step: targetStep, nodeIndex: events[targetStep].nodeIndex };

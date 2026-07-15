@@ -83,6 +83,7 @@ fn is_web_decodable(kind: Option<maze_core::event_log::EventedEventKind>) -> boo
             | Some(maze_core::event_log::EventedEventKind::Kruskal)
             | Some(maze_core::event_log::EventedEventKind::Wilson)
             | Some(maze_core::event_log::EventedEventKind::EdgeBased)
+            | Some(maze_core::event_log::EventedEventKind::VertexBased)
     )
 }
 
@@ -109,6 +110,11 @@ mod is_web_decodable_tests {
     #[test]
     fn edge_based_is_web_decodable() {
         assert!(is_web_decodable(Some(EventedEventKind::EdgeBased)));
+    }
+
+    #[test]
+    fn vertex_based_is_web_decodable() {
+        assert!(is_web_decodable(Some(EventedEventKind::VertexBased)));
     }
 
     #[test]
@@ -185,17 +191,29 @@ mod run_initial_generation_tests {
     }
 
     #[test]
-    fn debug_events_true_with_non_instrumented_algorithm_yields_no_tape() {
-        // generate_maze_with_events only instruments RecursiveBacktracker, Kruskal, Wilson and
-        // CustomEdgeBased (see #123/#146/#145/#144's scopes) — debug_events must not panic on
-        // other algorithms, just produce no tape.
+    fn debug_events_true_with_custom_vertex_based_yields_a_tape_and_debug_values_but_no_checkpoints() {
+        // CustomVertexBased is instrumented in generate_maze_with_events (GitHub issue #143) and
+        // its event kind is web-decodable — its arm produces no checkpoints (out of scope for
+        // #143, mirroring Kruskal's #146/#161, Wilson's #145, and CustomEdgeBased's #144
+        // precedent), but does declare the "visited", "frontier", and "reserve" debug values (all
+        // Region-kind).
         let (mut graph, field, preset_state) = field_and_state();
         let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::CustomVertexBased(maze_core::generation::GenerationParams::default()), ..GenerationConfig::default() };
-        let (debug_tape, debug_checkpoints, debug_value_names, _, _) = run_initial_generation(&mut graph, &field, 3, start, config, &preset_state, false, true);
-        assert!(debug_tape.is_none(), "only Recursive Backtracker, Kruskal, Wilson and CustomEdgeBased are instrumented so far");
-        assert!(debug_checkpoints.is_none(), "only Recursive Backtracker, Kruskal, Wilson and CustomEdgeBased are instrumented so far");
-        assert!(debug_value_names.is_empty(), "only Recursive Backtracker, Wilson and CustomEdgeBased declare debug values so far");
+        let (debug_tape, debug_checkpoints, debug_value_names, event_kind, _) = run_initial_generation(&mut graph, &field, 3, start, config, &preset_state, false, true);
+        let tape = debug_tape.expect("CustomVertexBased's event kind is web-decodable");
+        assert!(!tape.node_table.is_empty(), "a 3x3 CustomVertexBased run must emit at least one event");
+        assert!(debug_checkpoints.is_none(), "CustomVertexBased does not produce checkpoints");
+        assert_eq!(
+            debug_value_names,
+            vec![
+                ("visited".to_string(), maze_core::event_log::DebugValueKind::Region),
+                ("frontier".to_string(), maze_core::event_log::DebugValueKind::Region),
+                ("reserve".to_string(), maze_core::event_log::DebugValueKind::Region),
+            ],
+            "CustomVertexBased declares the visited, frontier, and reserve debug values"
+        );
+        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::VertexBased));
     }
 
     #[test]

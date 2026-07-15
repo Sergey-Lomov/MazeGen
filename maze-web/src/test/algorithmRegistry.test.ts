@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG,
-  mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex, mutatingWilsonEventsWithIndex, mutatingEdgeBasedEventsWithIndex,
-  applyRecursiveBacktracker, applyKruskal, applyWilson, applyEdgeBased,
-  decodeRecursiveBacktrackerEvent, decodeKruskalEvent, decodeWilsonEvent, decodeEdgeBasedEvent,
-  isMutatingRbEvent, isMutatingKruskalEvent, isMutatingWilsonEvent, isMutatingEdgeBasedEvent,
-  mutatingRbEvents, mutatingKruskalEvents, mutatingWilsonEvents, mutatingEdgeBasedEvents,
+  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG,
+  mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex, mutatingWilsonEventsWithIndex, mutatingEdgeBasedEventsWithIndex, mutatingVertexBasedEventsWithIndex,
+  applyRecursiveBacktracker, applyKruskal, applyWilson, applyEdgeBased, applyVertexBased,
+  decodeRecursiveBacktrackerEvent, decodeKruskalEvent, decodeWilsonEvent, decodeEdgeBasedEvent, decodeVertexBasedEvent,
+  isMutatingRbEvent, isMutatingKruskalEvent, isMutatingWilsonEvent, isMutatingEdgeBasedEvent, isMutatingVertexBasedEvent,
+  mutatingRbEvents, mutatingKruskalEvents, mutatingWilsonEvents, mutatingEdgeBasedEvents, mutatingVertexBasedEvents,
   type ParsedTape,
 } from "../debug/eventTape";
 import { adapterFor } from "../debug/algorithmRegistry";
@@ -136,8 +136,8 @@ describe("adapterFor(\"recursive_backtracker\")", () => {
   });
 
   it("scopeLabel formats a numbered step scope", () => {
-    expect(adapter.scopeLabel("step 1")).toBe(adapter.scopeLabel("step 1"));
-    expect(adapter.scopeLabel("step 1")).not.toBe("");
+    expect(adapter.scopeLabel("step 1", [])).toBe(adapter.scopeLabel("step 1", []));
+    expect(adapter.scopeLabel("step 1", [])).not.toBe("");
   });
 });
 
@@ -165,7 +165,7 @@ describe("adapterFor(\"kruskal\")", () => {
   });
 
   it("scopeLabel formats a numbered edge scope", () => {
-    expect(adapter.scopeLabel("edge 1")).not.toBe("");
+    expect(adapter.scopeLabel("edge 1", [])).not.toBe("");
   });
 });
 
@@ -193,9 +193,9 @@ describe("adapterFor(\"wilson\")", () => {
   });
 
   it("scopeLabel formats Wilson's fixed search/commit scope names distinctly from numbered walk scopes", () => {
-    expect(adapter.scopeLabel("search")).not.toBe(adapter.scopeLabel("walk 1"));
-    expect(adapter.scopeLabel("commit")).not.toBe(adapter.scopeLabel("walk 1"));
-    expect(adapter.scopeLabel("search")).not.toBe(adapter.scopeLabel("commit"));
+    expect(adapter.scopeLabel("search", [])).not.toBe(adapter.scopeLabel("walk 1", []));
+    expect(adapter.scopeLabel("commit", [])).not.toBe(adapter.scopeLabel("walk 1", []));
+    expect(adapter.scopeLabel("search", [])).not.toBe(adapter.scopeLabel("commit", []));
   });
 });
 
@@ -245,7 +245,60 @@ describe("adapterFor(\"edge_based\")", () => {
   });
 
   it("scopeLabel formats a numbered step scope", () => {
-    expect(adapter.scopeLabel("step 1")).not.toBe("");
+    expect(adapter.scopeLabel("step 1", [])).not.toBe("");
+  });
+});
+
+function vertexBasedEdgeAddedPayload(src: bigint, dst: bigint, bidirectional = true): Uint8Array {
+  const bytes = new Uint8Array(17);
+  bytes.set(u64le(src), 0);
+  bytes.set(u64le(dst), 8);
+  bytes[16] = bidirectional ? 1 : 0;
+  return bytes;
+}
+
+function vertexBasedNodeVisitedPayload(node: bigint, parent: bigint): Uint8Array {
+  const bytes = new Uint8Array(16);
+  bytes.set(u64le(node), 0);
+  bytes.set(u64le(parent), 8);
+  return bytes;
+}
+
+function buildVertexBasedTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_TAG.EDGE_ADDED, payloadBytes: vertexBasedEdgeAddedPayload(1n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.NODE_VISITED, payloadBytes: vertexBasedNodeVisitedPayload(3n, 1n) },
+  ]);
+}
+
+describe("adapterFor(\"vertex_based\")", () => {
+  const tape = buildVertexBasedTape();
+  const adapter = adapterFor("vertex_based");
+
+  it("mutatingNodeIndices matches mutatingVertexBasedEventsWithIndex", () => {
+    expect(adapter.mutatingNodeIndices(tape)).toEqual(mutatingVertexBasedEventsWithIndex(tape).map((e) => e.nodeIndex));
+  });
+
+  it("apply matches applyVertexBased", () => {
+    expect(adapter.apply(tape, 0)).toEqual(applyVertexBased(tape, 0));
+  });
+
+  it("resolveMetadata's totalSteps matches mutatingVertexBasedEvents(tape).length and checkpointFroms is empty", () => {
+    expect(adapter.resolveMetadata(tape, null).totalSteps).toBe(mutatingVertexBasedEvents(tape).length);
+    expect(adapter.resolveMetadata(tape, null).checkpointFroms).toEqual([]);
+  });
+
+  it("decodeEvent/isMutatingEvent match the direct functions", () => {
+    const decoded = adapter.decodeEvent(VERTEX_BASED_TAG.EDGE_ADDED, vertexBasedEdgeAddedPayload(1n, 3n));
+    expect(decoded).toEqual(decodeVertexBasedEvent(VERTEX_BASED_TAG.EDGE_ADDED, vertexBasedEdgeAddedPayload(1n, 3n)));
+    expect(adapter.isMutatingEvent(decoded)).toBe(isMutatingVertexBasedEvent(decoded));
+  });
+
+  it("scopeLabel formats a numbered step scope distinctly from the fixed reserve_search scope", () => {
+    expect(adapter.scopeLabel("step 1", [])).not.toBe("");
+    expect(adapter.scopeLabel("reserve_search", [])).not.toBe(adapter.scopeLabel("step 1", []));
   });
 });
 
@@ -255,5 +308,6 @@ describe("adapterFor — one adapter instance per kind, stable identity", () => 
     expect(adapterFor("kruskal")).toBe(adapterFor("kruskal"));
     expect(adapterFor("wilson")).toBe(adapterFor("wilson"));
     expect(adapterFor("edge_based")).toBe(adapterFor("edge_based"));
+    expect(adapterFor("vertex_based")).toBe(adapterFor("vertex_based"));
   });
 });

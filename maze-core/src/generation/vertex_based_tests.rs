@@ -95,7 +95,7 @@ fn choose_from_frontier_result_always_in_bounds() {
 fn junction_count_branching_zero_always_two() {
     let params = GenerationParams { branching: 0.0, ..default_params() };
     for seed in 0..50 {
-        assert_eq!(junction_count(10, &params, &mut rng(seed)), 2);
+        assert_eq!(junction_count(10, &params, &mut rng(seed), None), 2);
     }
 }
 
@@ -104,7 +104,7 @@ fn junction_count_branching_one_always_max() {
     let params = GenerationParams { branching: 1.0, ..default_params() };
     for max in 2..=6 {
         for seed in 0..20 {
-            assert_eq!(junction_count(max, &params, &mut rng(seed)), max);
+            assert_eq!(junction_count(max, &params, &mut rng(seed), None), max);
         }
     }
 }
@@ -114,7 +114,7 @@ fn junction_count_max_two_always_two_regardless_of_branching() {
     for branching in [0.0, 0.5, 1.0] {
         let params = GenerationParams { branching, ..default_params() };
         for seed in 0..20 {
-            assert_eq!(junction_count(2, &params, &mut rng(seed)), 2);
+            assert_eq!(junction_count(2, &params, &mut rng(seed), None), 2);
         }
     }
 }
@@ -124,7 +124,7 @@ fn junction_count_result_in_range() {
     let params = GenerationParams { branching: 0.5, ..default_params() };
     for max in 2..=8 {
         for seed in 0..50 {
-            let count = junction_count(max, &params, &mut rng(seed));
+            let count = junction_count(max, &params, &mut rng(seed), None);
             assert!(count >= 2 && count <= max, "count={count} not in [2,{max}]");
         }
     }
@@ -137,7 +137,7 @@ fn vertex_based_visits_all_nodes() {
     let (field, mut graph) = make_field_and_graph(5, 5);
     let node_count = graph.nodes().count();
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), &empty_presets());
+    generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
     assert_eq!(graph.edges().count(), 2 * (node_count - 1));
 }
 
@@ -146,8 +146,8 @@ fn vertex_based_is_deterministic() {
     let (field, mut g1) = make_field_and_graph(4, 4);
     let (_, mut g2) = make_field_and_graph(4, 4);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut g1, &field, 7, start, &default_params(), &default_elements(), &empty_presets());
-    generate(&mut g2, &field, 7, start, &default_params(), &default_elements(), &empty_presets());
+    generate(&mut g1, &field, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
+    generate(&mut g2, &field, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
     let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
     let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
     e1.sort();
@@ -181,7 +181,7 @@ fn teleport_chance_zero_matches_baseline_exactly() {
     for seed in [1, 7, 42, 1234, 9999] {
         let (field, mut graph) = make_field_and_graph(6, 6);
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        generate(&mut graph, &field, seed, start, &default_params(), &no_teleport_elements(), &empty_presets());
+        generate(&mut graph, &field, seed, start, &default_params(), &no_teleport_elements(), &empty_presets(), None);
         assert!(teleport_edges(&graph).is_empty(), "seed {seed}: teleport_chance=0.0 must add no teleport edges");
     }
 }
@@ -190,7 +190,7 @@ fn teleport_chance_zero_matches_baseline_exactly() {
 fn teleport_chance_one_adds_teleport_edges() {
     let (field, mut graph) = make_field_and_graph(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert!(!teleport_edges(&graph).is_empty(), "teleport_chance=1.0 should add at least one teleport edge on a 6x6 field");
 }
 
@@ -200,7 +200,7 @@ fn teleport_edges_can_connect_non_geometric_neighbors() {
     // geometric neighbors — otherwise the "regardless of adjacency" property isn't exercised.
     let (field, mut graph) = make_field_and_graph(8, 8);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 7, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 7, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let has_non_adjacent_teleport = teleport_edges(&graph).iter()
         .any(|&(from, to)| !field.neighbors(from).contains(&to));
     assert!(has_non_adjacent_teleport, "expected at least one teleport edge between non-adjacent nodes");
@@ -210,7 +210,7 @@ fn teleport_edges_can_connect_non_geometric_neighbors() {
 fn teleport_one_way_chance_zero_all_teleports_are_two_way() {
     let (field, mut graph) = make_field_and_graph(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let edges = teleport_edges(&graph);
     assert!(!edges.is_empty(), "expected teleport edges to assert two-way-ness over");
     for &(from, to) in &edges {
@@ -223,7 +223,7 @@ fn teleport_one_way_chance_zero_all_teleports_are_two_way() {
 fn teleport_one_way_chance_one_all_teleports_are_one_way() {
     let (field, mut graph) = make_field_and_graph(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets(), None);
     let edges = teleport_edges(&graph);
     assert!(!edges.is_empty(), "expected teleport edges to assert one-way-ness over");
     for &(from, to) in &edges {
@@ -237,7 +237,7 @@ fn teleport_full_chance_still_visits_all_nodes_and_stays_connected() {
     let (field, mut graph) = make_field_and_graph(6, 6);
     let node_count = graph.nodes().count();
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert_eq!(graph.nodes().count(), node_count);
     for node in graph.nodes() {
         let has_edge = graph.edges().any(|e| e.from == node.id || e.to == node.id);
@@ -251,8 +251,8 @@ fn teleport_is_deterministic_for_fixed_seed() {
     let (field, mut g1) = make_field_and_graph(6, 6);
     let (_, mut g2) = make_field_and_graph(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut g1, &field, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
-    generate(&mut g2, &field, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut g1, &field, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate(&mut g2, &field, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
     let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
     e1.sort_by_key(|(f, t, _)| (*f, *t));
@@ -268,7 +268,7 @@ fn teleport_single_node_field_never_panics() {
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 1, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 1, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert!(teleport_edges(&graph).is_empty(), "single-node field has no partner for a teleport");
 }
 
@@ -288,7 +288,7 @@ fn teleport_fragmented_field_frontier_empty_branch_stays_connected() {
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
     let node_count = graph.nodes().count();
 
-    generate(&mut graph, &field, 3, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 3, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // With teleport_chance=1.0, the isolated point must be reachable via a teleport bridge
     // through the frontier-empty branch (it can never be a `free_regular` geometric
@@ -308,7 +308,7 @@ fn teleport_respects_locked_out_source() {
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(a);
 
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state);
+    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
 
     assert!(graph.edges().all(|e| e.from != a), "locked_out node {a} must never be an edge source (teleport or otherwise)");
 }
@@ -321,7 +321,7 @@ fn teleport_respects_locked_in_destination() {
     let mut preset_state = PresetState::empty();
     preset_state.locked_in.insert(b);
 
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state);
+    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
 
     assert!(graph.edges().all(|e| e.to != b), "locked_in node {b} must never be an edge destination (teleport or otherwise)");
 }
@@ -336,7 +336,7 @@ fn teleport_respects_blocked_pair() {
     preset_state.blocked.insert((a, b));
     preset_state.blocked.insert((b, a));
 
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state);
+    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
 
     assert!(graph.edge_between(a, b).is_none(), "fully blocked pair ({a},{b}) must never get an edge, teleport or otherwise");
 }
@@ -363,7 +363,7 @@ fn teleport_junction_reduces_geometric_count_by_one_when_teleport_added() {
     let (field, mut graph) = make_field_and_graph(5, 5);
     // Center node of a 5x5 field has 4 free geometric neighbors when starting there.
     let start = field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap();
-    generate(&mut graph, &field, 11, start, &params, &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 11, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // src's out-degree (counting both directions of any bidirectional edge as present)
     // must include all 4 geometric neighbors plus exactly one teleport partner.
@@ -396,7 +396,7 @@ fn teleport_corridor_adds_exactly_one_geometric_and_one_teleport() {
     };
     let (field, mut graph) = make_field_and_graph(5, 5);
     let start = field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap();
-    generate(&mut graph, &field, 13, start, &params, &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 13, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     let src_edges: Vec<_> = graph.edges().filter(|e| e.from == start || e.to == start).collect();
     let has_geometric = src_edges.iter().any(|e| e.kind == EdgeKind::Basic);
@@ -419,7 +419,7 @@ fn teleport_cyclic_roll_widens_pool_to_any_visited_node() {
     };
     let (field, mut graph) = make_field_and_graph(8, 8);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // At least one Teleport-kind edge should exist that isn't a geometric neighbor pair —
     // this covers both the cyclic-teleport path and the corridor/junction-teleport path,
@@ -434,7 +434,7 @@ fn teleport_never_creates_self_loop() {
     for seed in 0..30 {
         let (field, mut graph) = make_field_and_graph(4, 4);
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        generate(&mut graph, &field, seed, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+        generate(&mut graph, &field, seed, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
         assert!(graph.edges().all(|e| e.from != e.to), "seed {seed}: no edge (teleport or otherwise) may be a self-loop");
     }
 }
@@ -461,7 +461,7 @@ fn snapshot(graph: &Graph) -> Vec<(NodeId, NodeId, &'static str)> {
 fn golden_baseline_params_seed_42() {
     let (field, mut graph) = make_field_and_graph(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), &empty_presets());
+    generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
     assert_eq!(snapshot(&graph), vec![
         (0, 1, "B"), (0, 6, "B"), (1, 0, "B"), (2, 3, "B"), (2, 8, "B"), (3, 2, "B"), (3, 4, "B"),
         (4, 3, "B"), (4, 5, "B"), (5, 4, "B"), (5, 11, "B"), (6, 0, "B"), (6, 7, "B"), (7, 6, "B"),
@@ -482,7 +482,7 @@ fn golden_baseline_params_seed_42() {
 fn golden_full_two_way_teleport_seed_42() {
     let (field, mut graph) = make_field_and_graph(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert_eq!(snapshot(&graph), vec![
         (0, 1, "B"), (0, 6, "T"), (1, 0, "B"), (2, 20, "T"), (3, 9, "B"), (4, 31, "T"), (5, 24, "T"),
         (6, 0, "T"), (6, 9, "T"), (6, 12, "B"), (7, 28, "T"), (8, 26, "T"), (9, 3, "B"), (9, 6, "T"),
@@ -503,7 +503,7 @@ fn golden_full_two_way_teleport_seed_42() {
 fn golden_full_one_way_teleport_seed_42() {
     let (field, mut graph) = make_field_and_graph(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets(), None);
     assert_eq!(snapshot(&graph), vec![
         (0, 1, "B"), (1, 0, "B"), (2, 3, "B"), (3, 2, "B"), (3, 4, "B"), (4, 3, "B"), (4, 11, "T"),
         (4, 13, "T"), (5, 11, "B"), (5, 20, "T"), (6, 0, "T"), (6, 9, "T"), (6, 12, "B"), (7, 13, "B"),
@@ -521,7 +521,7 @@ fn golden_high_cyclicity_seed_21() {
     let params = GenerationParams { depth_first: 0.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 1.0 };
     let (field, mut graph) = make_field_and_graph(8, 8);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets());
+    generate(&mut graph, &field, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
     assert_eq!(snapshot(&graph), vec![
         (0, 1, "T"), (0, 8, "B"), (0, 13, "T"), (0, 16, "T"), (0, 30, "T"), (0, 42, "T"), (0, 43, "T"),
         (0, 55, "T"), (0, 58, "T"), (1, 0, "T"), (1, 2, "B"), (1, 3, "T"), (1, 9, "B"), (1, 35, "T"),
@@ -572,7 +572,7 @@ fn golden_all_one_way_seed_7() {
     let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 };
     let (field, mut graph) = make_field_and_graph(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 7, start, &default_params(), &elements, &empty_presets());
+    generate(&mut graph, &field, 7, start, &default_params(), &elements, &empty_presets(), None);
     assert_eq!(snapshot(&graph), vec![
         (0, 1, "B"), (0, 6, "B"), (1, 2, "B"), (3, 4, "B"), (3, 9, "B"), (4, 10, "B"), (7, 1, "B"),
         (8, 2, "B"), (8, 9, "B"), (9, 15, "B"), (11, 5, "B"), (12, 13, "B"), (13, 19, "B"), (15, 14, "B"),
@@ -590,7 +590,7 @@ fn golden_with_preset_locks_seed_42() {
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap());
     preset_state.locked_in.insert(field.node_at(crate::space::SquarePoint { x: 4, y: 4 }).unwrap());
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state);
+    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
     assert_eq!(snapshot(&graph), vec![
         (0, 1, "B"), (0, 4, "T"), (1, 0, "B"), (2, 7, "B"), (3, 8, "B"), (3, 19, "T"), (3, 20, "T"),
         (4, 0, "T"), (4, 7, "T"), (4, 9, "B"), (5, 6, "B"), (5, 17, "T"), (6, 5, "B"), (6, 11, "B"),

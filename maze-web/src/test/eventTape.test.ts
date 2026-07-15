@@ -7,7 +7,8 @@ import {
   decodeKruskalEvent, isMutatingKruskalEvent, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEvents, applyWilson,
   decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEvents, applyEdgeBased,
-  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, CHECKPOINT_RECORD_SIZE,
+  decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEvents, applyVertexBased,
+  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, CHECKPOINT_RECORD_SIZE,
   type ParsedTape, type ParsedCheckpoints,
 } from "../debug/eventTape";
 
@@ -1091,6 +1092,302 @@ describe("mutatingEdgeBasedEvents / applyEdgeBased", () => {
       { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_TAG.EDGE_ADDED, payloadBytes: teleportEdgeAddedPayload },
     ]);
     const result = applyEdgeBased(tape, 0);
+    expect(result.edges).toEqual([{ from: 1n, to: 5n, kind: "teleport" }]);
+  });
+});
+
+// --- CustomVertexBased (GitHub issue #143) ---
+
+function optionalReasonByte(v: boolean): Uint8Array {
+  return boolByte(v);
+}
+
+// Small deterministic tree — one "step 1" scope, mirroring the smallest exact-sequence shape from
+// the Rust-side `vertex_based_single_step_emits_exact_event_sequence` test (a 1x2 field's first
+// step — corridor_chance = 1.0, teleport/cyclic disabled):
+//   root (0)
+//     -> "step 1" scope (1)
+//          -> SrcChosenFromFrontier(src=1) (2)
+//          -> TeleportRolled(src=1, fired=false) (3)
+//          -> CyclicRolled(src=1, fired=false) (4)
+//          -> CorridorRolled(isCorridor=true) (5)
+//          -> CandidateChosen(1,2) (6)
+//          -> EdgeAdded(1,2) (7)
+//          -> NodeVisited(2, parent=1) (8)
+function buildVertexBasedTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    {
+      parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_TAG.SRC_CHOSEN_FROM_FRONTIER,
+      payloadBytes: concatBytes([u64le(1n), u32le(1), u32le(0), f64le(0.0)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 4, tag: VERTEX_BASED_TAG.TELEPORT_ROLLED,
+      payloadBytes: concatBytes([u64le(1n), f64le(0.8), f64le(0.0), boolByte(false)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 5, tag: VERTEX_BASED_TAG.CYCLIC_ROLLED,
+      payloadBytes: concatBytes([u64le(1n), f64le(0.7), f64le(0.0), boolByte(false)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 6, tag: VERTEX_BASED_TAG.CORRIDOR_ROLLED,
+      payloadBytes: concatBytes([f64le(0.1), f64le(1.0), boolByte(true)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 7, tag: VERTEX_BASED_TAG.CANDIDATE_CHOSEN,
+      payloadBytes: concatBytes([u64le(1n), u64le(2n), boolByte(false)]),
+    },
+    {
+      parent: 1, firstChild: null, nextSibling: 8, tag: VERTEX_BASED_TAG.EDGE_ADDED,
+      payloadBytes: concatBytes([u64le(1n), u64le(2n), boolByte(true)]),
+    },
+    { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.NODE_VISITED, payloadBytes: concatBytes([u64le(2n), u64le(1n)]) },
+  ]);
+}
+
+describe("decodeVertexBasedEvent", () => {
+  it("decodes TeleportBridgeRolled (17 bytes)", () => {
+    const payload = concatBytes([f64le(0.05), f64le(0.1), boolByte(true)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.TELEPORT_BRIDGE_ROLLED, payload)).toEqual({
+      kind: "TeleportBridgeRolled", roll: 0.05, teleportChance: 0.1, fired: true,
+    });
+  });
+
+  it("decodes TeleportBridgeAdded (17 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n), boolByte(true)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.TELEPORT_BRIDGE_ADDED, payload)).toEqual({
+      kind: "TeleportBridgeAdded", src: 1n, dst: 2n, bidirectional: true,
+    });
+  });
+
+  it("decodes ReserveCandidateRejected (9 bytes)", () => {
+    const payload = concatBytes([u64le(3n), optionalReasonByte(true)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.RESERVE_CANDIDATE_REJECTED, payload)).toEqual({
+      kind: "ReserveCandidateRejected", node: 3n, alreadyVisited: true,
+    });
+  });
+
+  it("decodes ReserveCandidateChosen (8 bytes)", () => {
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.RESERVE_CANDIDATE_CHOSEN, u64le(3n))).toEqual({ kind: "ReserveCandidateChosen", node: 3n });
+  });
+
+  it("decodes ReserveExhausted (0 bytes)", () => {
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.RESERVE_EXHAUSTED, new Uint8Array(0))).toEqual({ kind: "ReserveExhausted" });
+  });
+
+  it("decodes BridgeAdded (17 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n), boolByte(false)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.BRIDGE_ADDED, payload)).toEqual({ kind: "BridgeAdded", src: 1n, dst: 2n, bidirectional: false });
+  });
+
+  it("decodes SrcChosenFromFrontier (24 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u32le(3), u32le(1), f64le(0.5)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.SRC_CHOSEN_FROM_FRONTIER, payload)).toEqual({
+      kind: "SrcChosenFromFrontier", src: 1n, frontierLen: 3, position: 1, depthFirst: 0.5,
+    });
+  });
+
+  it("decodes TeleportRolled (25 bytes)", () => {
+    const payload = concatBytes([u64le(1n), f64le(0.05), f64le(0.1), boolByte(true)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.TELEPORT_ROLLED, payload)).toEqual({
+      kind: "TeleportRolled", src: 1n, roll: 0.05, teleportChance: 0.1, fired: true,
+    });
+  });
+
+  it("decodes CyclicRolled (25 bytes)", () => {
+    const payload = concatBytes([u64le(1n), f64le(0.5), f64le(0.15), boolByte(false)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CYCLIC_ROLLED, payload)).toEqual({
+      kind: "CyclicRolled", src: 1n, roll: 0.5, cyclicity: 0.15, fired: false,
+    });
+  });
+
+  it("decodes CyclicCandidatesComputed (variable length)", () => {
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CYCLIC_CANDIDATES_COMPUTED, candidatePoolBuiltPayload(1n, false, [4n]))).toEqual({
+      kind: "CyclicCandidatesComputed", src: 1n, geometric: false, candidates: [4n],
+    });
+  });
+
+  it("decodes CyclicEdgeAdded (18 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(4n), boolByte(true), boolByte(false)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CYCLIC_EDGE_ADDED, payload)).toEqual({
+      kind: "CyclicEdgeAdded", src: 1n, dst: 4n, teleport: true, bidirectional: false,
+    });
+  });
+
+  it("decodes CorridorRolled (17 bytes)", () => {
+    const payload = concatBytes([f64le(0.2), f64le(0.3), boolByte(true)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CORRIDOR_ROLLED, payload)).toEqual({
+      kind: "CorridorRolled", roll: 0.2, corridorChance: 0.3, isCorridor: true,
+    });
+  });
+
+  it("decodes CandidateChosen (17 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n), boolByte(true)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CANDIDATE_CHOSEN, payload)).toEqual({
+      kind: "CandidateChosen", src: 1n, dst: 2n, usedDirectionality: true,
+    });
+  });
+
+  it("decodes JunctionSlotRolled (21 bytes)", () => {
+    const payload = concatBytes([u32le(2), f64le(0.3), f64le(0.5), boolByte(true)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.JUNCTION_SLOT_ROLLED, payload)).toEqual({
+      kind: "JunctionSlotRolled", slot: 2, roll: 0.3, branching: 0.5, taken: true,
+    });
+  });
+
+  it("decodes StartVisited (8 bytes)", () => {
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.START_VISITED, u64le(1n))).toEqual({ kind: "StartVisited", node: 1n });
+  });
+
+  it("decodes SingleCandidateSkipsDirectionality (8 bytes)", () => {
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.SINGLE_CANDIDATE_SKIPS_DIRECTIONALITY, u64le(7n))).toEqual({
+      kind: "SingleCandidateSkipsDirectionality", node: 7n,
+    });
+  });
+
+  it("decodes NoParentSkipsDirectionality (8 bytes)", () => {
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.NO_PARENT_SKIPS_DIRECTIONALITY, u64le(4n))).toEqual({
+      kind: "NoParentSkipsDirectionality", node: 4n,
+    });
+  });
+
+  it("decodes DirectionalityRolled (18 bytes)", () => {
+    const payload = concatBytes([f64le(0.1), f64le(0.4), boolByte(true), boolByte(false)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.DIRECTIONALITY_ROLLED, payload)).toEqual({
+      kind: "DirectionalityRolled", roll: 0.1, directionality: 0.4, fired: true, straightFound: false,
+    });
+  });
+
+  it("decodes JunctionCandidatesChosen (variable length)", () => {
+    const payload = concatBytes([u64le(1n), nodeIdListPayload([2n, 3n])]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.JUNCTION_CANDIDATES_CHOSEN, payload)).toEqual({
+      kind: "JunctionCandidatesChosen", src: 1n, candidates: [2n, 3n],
+    });
+  });
+
+  it("decodes EdgeAdded (17 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n), boolByte(true)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.EDGE_ADDED, payload)).toEqual({ kind: "EdgeAdded", src: 1n, dst: 2n, bidirectional: true });
+  });
+
+  it("decodes PresetNeighborVisited (16 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.PRESET_NEIGHBOR_VISITED, payload)).toEqual({ kind: "PresetNeighborVisited", src: 1n, dst: 2n });
+  });
+
+  it("decodes TeleportConnectAdded (17 bytes)", () => {
+    const payload = concatBytes([u64le(1n), u64le(2n), boolByte(false)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.TELEPORT_CONNECT_ADDED, payload)).toEqual({ kind: "TeleportConnectAdded", src: 1n, dst: 2n, bidirectional: false });
+  });
+
+  it("decodes NodeVisited (16 bytes)", () => {
+    const payload = concatBytes([u64le(2n), u64le(1n)]);
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.NODE_VISITED, payload)).toEqual({ kind: "NodeVisited", node: 2n, parent: 1n });
+  });
+
+  it("decodes NodeQueuedToReserve (8 bytes)", () => {
+    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.NODE_QUEUED_TO_RESERVE, u64le(5n))).toEqual({ kind: "NodeQueuedToReserve", node: 5n });
+  });
+
+  it("throws on an unknown wire tag", () => {
+    expect(() => decodeVertexBasedEvent(99, new Uint8Array(0))).toThrow(/unknown wire tag/);
+  });
+
+  it("throws on a payload_len mismatch", () => {
+    expect(() => decodeVertexBasedEvent(VERTEX_BASED_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
+  });
+});
+
+describe("isMutatingVertexBasedEvent", () => {
+  it("TeleportBridgeAdded/BridgeAdded/CyclicEdgeAdded/EdgeAdded/PresetNeighborVisited/TeleportConnectAdded/NodeVisited/NodeQueuedToReserve/ReserveCandidateChosen are mutating; every trace-only variant is not", () => {
+    expect(isMutatingVertexBasedEvent({ kind: "TeleportBridgeAdded", src: 1n, dst: 2n, bidirectional: true })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "BridgeAdded", src: 1n, dst: 2n, bidirectional: true })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "CyclicEdgeAdded", src: 1n, dst: 2n, teleport: false, bidirectional: true })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "EdgeAdded", src: 1n, dst: 2n, bidirectional: true })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "PresetNeighborVisited", src: 1n, dst: 2n })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "TeleportConnectAdded", src: 1n, dst: 2n, bidirectional: true })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "NodeVisited", node: 2n, parent: 1n })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "NodeQueuedToReserve", node: 2n })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "ReserveCandidateChosen", node: 2n })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "StartVisited", node: 1n })).toBe(true);
+    expect(isMutatingVertexBasedEvent({ kind: "SrcChosenFromFrontier", src: 1n, frontierLen: 1, position: 0, depthFirst: 0.5 })).toBe(true);
+
+    expect(isMutatingVertexBasedEvent({ kind: "ReserveExhausted" })).toBe(false);
+    expect(isMutatingVertexBasedEvent({ kind: "TeleportRolled", src: 1n, roll: 0.1, teleportChance: 0.2, fired: false })).toBe(false);
+    expect(isMutatingVertexBasedEvent({ kind: "ReserveCandidateRejected", node: 1n, alreadyVisited: false })).toBe(false);
+    expect(isMutatingVertexBasedEvent({ kind: "JunctionSlotRolled", slot: 1, roll: 0.1, branching: 0.5, taken: false })).toBe(false);
+    expect(isMutatingVertexBasedEvent({ kind: "SingleCandidateSkipsDirectionality", node: 1n })).toBe(false);
+    expect(isMutatingVertexBasedEvent({ kind: "NoParentSkipsDirectionality", node: 1n })).toBe(false);
+    expect(isMutatingVertexBasedEvent({ kind: "DirectionalityRolled", roll: 0.1, directionality: 0.4, fired: true, straightFound: false })).toBe(false);
+  });
+});
+
+describe("mutatingVertexBasedEvents / applyVertexBased", () => {
+  it("skips scope nodes and trace-only events, keeping mutating ones in emission order", () => {
+    const tape = buildVertexBasedTape();
+    const events = mutatingVertexBasedEvents(tape);
+    expect(events).toEqual([
+      { kind: "SrcChosenFromFrontier", src: 1n, frontierLen: 1, position: 0, depthFirst: 0.0 },
+      { kind: "EdgeAdded", src: 1n, dst: 2n, bidirectional: true },
+      { kind: "NodeVisited", node: 2n, parent: 1n },
+    ]);
+  });
+
+  it("reconstructs edges and visited/frontier/reserve debug values up to targetStep, replaying from the start every call", () => {
+    const tape = buildVertexBasedTape();
+
+    // Step 0: SrcChosenFromFrontier(src=1) — no edges yet, but "frontier" gets a map entry
+    // (empty array) since the Remove delta fires even though 1 was never inserted first (a
+    // no-op remove on the replay side, mirroring the Rust reserve-remove convention).
+    const step0 = applyVertexBased(tape, 0);
+    expect(step0.edges).toEqual([]);
+    expect(step0.debugValues.get("frontier")).toEqual([]);
+    expect(step0.step).toBe(0);
+
+    const step1 = applyVertexBased(tape, 1); // + EdgeAdded(1,2), bidirectional, basic
+    expect(step1.edges).toEqual([{ from: 1n, to: 2n, kind: "basic" }, { from: 2n, to: 1n, kind: "basic" }]);
+    expect(step1.debugValues.get("visited")).toBeUndefined();
+    expect(step1.step).toBe(1);
+
+    const step2 = applyVertexBased(tape, 2); // + NodeVisited(2, parent=1)
+    expect(step2.debugValues.get("visited")).toEqual([2n]);
+    expect(step2.debugValues.get("frontier")).toEqual([2n]);
+    // "reserve" gets a map entry (empty array) even though only a Remove delta ever touched it —
+    // NodeVisited unconditionally reports a "reserve" Remove delta (see
+    // vertexBasedDebugValueDeltasFor's doc comment), and the apply loop creates the per-name
+    // array on first occurrence of a name regardless of op.
+    expect(step2.debugValues.get("reserve")).toEqual([]);
+    expect(step2.step).toBe(2);
+  });
+
+  it("throws when targetStep is out of range", () => {
+    const tape = buildVertexBasedTape();
+    expect(() => applyVertexBased(tape, 3)).toThrow(/out of range/);
+  });
+
+  it("removes a node from reserve on NodeVisited even without a preceding ReserveCandidateChosen (the connected/free_preset/teleport-connect paths)", () => {
+    // root (0) -> "step 1" scope (1) -> NodeQueuedToReserve(3) (2) -> NodeVisited(3, parent=1) (3)
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+      { parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_TAG.NODE_QUEUED_TO_RESERVE, payloadBytes: u64le(3n) },
+      { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.NODE_VISITED, payloadBytes: concatBytes([u64le(3n), u64le(1n)]) },
+    ]);
+    const result = applyVertexBased(tape, 1);
+    expect(result.debugValues.get("reserve")).toEqual([]);
+    expect(result.debugValues.get("visited")).toEqual([3n]);
+  });
+
+  it("tags reconstructed edges with kind: teleport for TeleportBridgeAdded/TeleportConnectAdded, and for a teleport-pool CyclicEdgeAdded", () => {
+    // root (0) -> "step 1" scope (1) -> TeleportBridgeAdded(1,5,bidirectional=false) (2)
+    const teleportBridgePayload = concatBytes([u64le(1n), u64le(5n), boolByte(false)]);
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+      { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.TELEPORT_BRIDGE_ADDED, payloadBytes: teleportBridgePayload },
+    ]);
+    const result = applyVertexBased(tape, 0);
     expect(result.edges).toEqual([{ from: 1n, to: 5n, kind: "teleport" }]);
   });
 });

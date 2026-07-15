@@ -6,6 +6,7 @@ import {
   buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
   displayStepForRow, type TreeRow,
 } from "../debug/debugTreeSelectors";
+import { nodeView, type ParsedTape } from "../debug/eventTape";
 import { adapterFor, type Token, type BaseAlgorithmAdapter } from "../debug/algorithmRegistry";
 import type { EventedEventKind } from "../wasm/mazeService";
 import { DebugRefBubble } from "./DebugRefBubble";
@@ -64,9 +65,10 @@ function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: numb
  *  adapter so the decoded event's type flows from `decodeEvent` straight into
  *  `narrationTokensFor`/`isMutatingEvent` on the *same* concrete adapter — no `unknown` laundering
  *  at the decode/narrate boundary (GitHub issue #163's review). */
-function rowTokensFor<E>(adapter: BaseAlgorithmAdapter<E>, row: TreeRow): { tokens: Token[]; mutating: boolean } {
+function rowTokensFor<E>(adapter: BaseAlgorithmAdapter<E>, tape: ParsedTape, row: TreeRow): { tokens: Token[]; mutating: boolean } {
   if (row.payload.kind === "scope") {
-    return { tokens: [{ kind: "text", text: adapter.scopeLabel(row.payload.name) }], mutating: false };
+    const children = nodeView(tape, row.nodeIndex).children();
+    return { tokens: [{ kind: "text", text: adapter.scopeLabel(row.payload.name, children) }], mutating: false };
   }
   const event = adapter.decodeEvent(row.payload.tag, row.payload.bytes);
   return { tokens: adapter.narrationTokensFor(event), mutating: adapter.isMutatingEvent(event) };
@@ -75,11 +77,12 @@ function rowTokensFor<E>(adapter: BaseAlgorithmAdapter<E>, row: TreeRow): { toke
 /** Dispatches to the current algorithm's adapter (GitHub issue #163) — the only place this
  *  component still branches on `algorithmKind`, and only to pick which concrete adapter to run
  *  `rowTokensFor` with. */
-function rowTokens(row: TreeRow, algorithmKind: EventedEventKind): { tokens: Token[]; mutating: boolean } {
-  if (algorithmKind === "kruskal") return rowTokensFor(adapterFor("kruskal"), row);
-  if (algorithmKind === "wilson") return rowTokensFor(adapterFor("wilson"), row);
-  if (algorithmKind === "edge_based") return rowTokensFor(adapterFor("edge_based"), row);
-  return rowTokensFor(adapterFor("recursive_backtracker"), row);
+function rowTokens(tape: ParsedTape, row: TreeRow, algorithmKind: EventedEventKind): { tokens: Token[]; mutating: boolean } {
+  if (algorithmKind === "kruskal") return rowTokensFor(adapterFor("kruskal"), tape, row);
+  if (algorithmKind === "wilson") return rowTokensFor(adapterFor("wilson"), tape, row);
+  if (algorithmKind === "edge_based") return rowTokensFor(adapterFor("edge_based"), tape, row);
+  if (algorithmKind === "vertex_based") return rowTokensFor(adapterFor("vertex_based"), tape, row);
+  return rowTokensFor(adapterFor("recursive_backtracker"), tape, row);
 }
 
 export function DebugEventTree() {
@@ -104,7 +107,7 @@ export function DebugEventTree() {
       return { rows: [] as TreeRow[], labels: [] as { tokens: Token[]; mutating: boolean }[], rowIndexByNodeIndex: new Map<number, number>() };
     }
     const rows = flattenVisibleRows(tape, expanded);
-    const labels = rows.map((row) => rowTokens(row, algorithmKind));
+    const labels = rows.map((row) => rowTokens(tape, row, algorithmKind));
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
     return { rows, labels, rowIndexByNodeIndex };
   }, [tape, expanded, algorithmKind]);

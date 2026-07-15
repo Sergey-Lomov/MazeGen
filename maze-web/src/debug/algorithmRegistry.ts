@@ -13,13 +13,14 @@
  *  entry point into those functions from outside this module and `eventTape.ts` itself. */
 
 import {
-  type ParsedTape, type ParsedCheckpoints, type ApplyFrom,
-  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent,
-  type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult,
+  type ParsedTape, type ParsedCheckpoints, type ApplyFrom, type NodeView,
+  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent,
+  type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult,
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
   decodeKruskalEvent, isMutatingKruskalEvent, mutatingKruskalEventsWithIndex, mutatingKruskalEvents, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEventsWithIndex, mutatingWilsonEvents, applyWilson,
   decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEventsWithIndex, mutatingEdgeBasedEvents, applyEdgeBased,
+  decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEventsWithIndex, mutatingVertexBasedEvents, applyVertexBased, VERTEX_BASED_TAG,
   resolveDebugArenaMetadata, parseCheckpoints, type DebugArenaMetadata,
 } from "./eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
@@ -48,8 +49,12 @@ export interface BaseAlgorithmAdapter<E> {
   /** DebugEventTree.tsx: narration tokens for one decoded event. */
   narrationTokensFor(event: E): Token[];
   /** DebugEventTree.tsx: label for a scope row (e.g. "step N"/"edge N"/"walk N", or Wilson's
-   *  fixed "search"/"commit" names) — the raw arena scope name in, the localized label out. */
-  scopeLabel(scopeName: string): string;
+   *  fixed "search"/"commit" names) — the raw arena scope name in, the localized label out.
+   *  `children` is this scope's own direct children only (never the whole tape) — lets a label
+   *  read a summary value out of its own contents (e.g. VertexBased's "junction_count" scope
+   *  reading the final tally off its last `JunctionSlotRolled` child, GitHub issue #143's
+   *  follow-up) without any adapter needing arena-wide access. */
+  scopeLabel(scopeName: string, children: NodeView[]): string;
 }
 
 /** RB is the only algorithm with checkpoint-based resume (GitHub issue #128 stays RB-only) — its
@@ -65,6 +70,9 @@ export interface WilsonAdapter extends BaseAlgorithmAdapter<WilsonEvent> {
 }
 export interface EdgeBasedAdapter extends BaseAlgorithmAdapter<EdgeBasedEvent> {
   apply(tape: ParsedTape, targetStep: number): EdgeBasedApplyResult;
+}
+export interface VertexBasedAdapter extends BaseAlgorithmAdapter<VertexBasedEvent> {
+  apply(tape: ParsedTape, targetStep: number): VertexBasedApplyResult;
 }
 
 const STEP_SCOPE_RE = /^(?:step|edge|walk) (\d+)$/;
@@ -94,7 +102,7 @@ const RB_ADAPTER: RbAdapter = {
   decodeEvent: decodeRecursiveBacktrackerEvent,
   isMutatingEvent: isMutatingRbEvent,
   narrationTokensFor: narrationTokensForRb,
-  scopeLabel: (name) => m["debug.tree.step_scope"]({ index: numberedScopeIndex(name) }),
+  scopeLabel: (name, _children) => m["debug.tree.step_scope"]({ index: numberedScopeIndex(name) }),
   apply: applyRecursiveBacktracker,
 };
 
@@ -139,7 +147,7 @@ const KRUSKAL_ADAPTER: KruskalAdapter = {
   decodeEvent: decodeKruskalEvent,
   isMutatingEvent: isMutatingKruskalEvent,
   narrationTokensFor: narrationTokensForKruskal,
-  scopeLabel: (name) => m["debug.tree.edge_scope"]({ index: numberedScopeIndex(name) }),
+  scopeLabel: (name, _children) => m["debug.tree.edge_scope"]({ index: numberedScopeIndex(name) }),
   apply: applyKruskal,
 };
 
@@ -168,7 +176,7 @@ const WILSON_ADAPTER: WilsonAdapter = {
   narrationTokensFor: narrationTokensForWilson,
   // Wilson's "search"/"commit" are fixed, non-numbered scope names (GitHub issue #145's
   // follow-up) — checked before the numbered-scope regex, which wouldn't match them.
-  scopeLabel: (name) => {
+  scopeLabel: (name, _children) => {
     if (name === "search") return m["debug.tree.search_scope"]();
     if (name === "commit") return m["debug.tree.commit_scope"]();
     return m["debug.tree.walk_scope"]({ index: numberedScopeIndex(name) });
@@ -271,19 +279,159 @@ const EDGE_BASED_ADAPTER: EdgeBasedAdapter = {
   decodeEvent: decodeEdgeBasedEvent,
   isMutatingEvent: isMutatingEdgeBasedEvent,
   narrationTokensFor: narrationTokensForEdgeBased,
-  scopeLabel: (name) => m["debug.tree.step_scope_edge_based"]({ index: numberedScopeIndex(name) }),
+  scopeLabel: (name, _children) => m["debug.tree.step_scope_edge_based"]({ index: numberedScopeIndex(name) }),
   apply: applyEdgeBased,
+};
+
+/** `CustomVertexBased`'s counterpart to `narrationTokensForRb`/`.../Kruskal`/`.../Wilson`/
+ *  `.../EdgeBased` (GitHub issue #143). Every `"step N"` scope is flat, mirroring
+ *  Kruskal/EdgeBased's shape, except when the frontier empties out mid-run: then a fixed,
+ *  non-numbered `"reserve_search"` sub-scope opens (mirroring Wilson's fixed `"search"`/`"commit"`
+ *  names) to hold the reserve-candidate scan's possibly-several rejected/chosen events — handled
+ *  by `scopeLabel` below, not here. Roll/param values are rendered via `fmt` (2 decimals) directly
+ *  in the narration text, mirroring EdgeBased's own convention. */
+function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
+  switch (event.kind) {
+    case "TeleportBridgeRolled":
+      return [{
+        kind: "text",
+        text: event.fired
+          ? m["debug.tree.teleport_bridge_rolled_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) })
+          : m["debug.tree.teleport_bridge_rolled_not_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) }),
+      }];
+    case "TeleportBridgeAdded":
+      return [{ kind: "text", text: m["debug.tree.teleport_bridge_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
+    case "ReserveCandidateRejected":
+      return [{
+        kind: "text",
+        text: event.alreadyVisited ? m["debug.tree.reserve_candidate_rejected_visited"]() : m["debug.tree.reserve_candidate_rejected_unreachable"](),
+      }, { kind: "node", id: event.node }];
+    case "ReserveCandidateChosen":
+      return [{ kind: "text", text: m["debug.tree.reserve_candidate_chosen"]() + " " }, { kind: "node", id: event.node }];
+    case "ReserveExhausted":
+      return [{ kind: "text", text: m["debug.tree.reserve_exhausted"]() }];
+    case "BridgeAdded":
+      return [{ kind: "text", text: m["debug.tree.bridge_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
+    case "SrcChosenFromFrontier":
+      return [
+        // position is a 0-based array index on the wire (0 = oldest); +1 for a 1-based display,
+        // so "position N of total" reads naturally (e.g. the newest/highest-priority entry shows
+        // as "total of total", not "total-1 of total" looking like it wasn't the max).
+        { kind: "text", text: m["debug.tree.src_chosen_from_frontier"]({ param: fmt(event.depthFirst), position: event.position + 1, total: event.frontierLen }) + " " },
+        { kind: "node", id: event.src },
+      ];
+    case "TeleportRolled":
+      return [{
+        kind: "text",
+        text: event.fired
+          ? m["debug.tree.teleport_rolled_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) })
+          : m["debug.tree.teleport_rolled_not_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) }),
+      }];
+    case "CyclicRolled":
+      return [{
+        kind: "text",
+        text: event.fired
+          ? m["debug.tree.cyclic_rolled_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) })
+          : m["debug.tree.cyclic_rolled_not_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) }),
+      }];
+    case "CyclicCandidatesComputed":
+      return [{
+        kind: "text",
+        text: event.geometric
+          ? m["debug.tree.cyclic_candidates_computed_geometric"]({ count: event.candidates.length })
+          : m["debug.tree.cyclic_candidates_computed_teleport"]({ count: event.candidates.length }),
+      }];
+    case "CyclicEdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.cyclic_edge_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
+    case "CorridorRolled":
+      return [{
+        kind: "text",
+        text: event.isCorridor
+          ? m["debug.tree.corridor_rolled_vertex_based_corridor"]({ param: fmt(event.corridorChance), roll: fmt(event.roll) })
+          : m["debug.tree.corridor_rolled_vertex_based_junction"]({ param: fmt(event.corridorChance), roll: fmt(event.roll) }),
+      }];
+    case "SingleCandidateSkipsDirectionality":
+      return [{ kind: "text", text: m["debug.tree.single_candidate_skips_directionality"]() }];
+    case "NoParentSkipsDirectionality":
+      return [{ kind: "text", text: m["debug.tree.no_parent_skips_directionality"]() }];
+    case "DirectionalityRolled":
+      return [{
+        kind: "text",
+        text: !event.fired
+          ? m["debug.tree.directionality_rolled_not_fired"]({ param: fmt(event.directionality), roll: fmt(event.roll) })
+          : event.straightFound
+            ? m["debug.tree.directionality_rolled_fired_straight_found"]({ param: fmt(event.directionality), roll: fmt(event.roll) })
+            : m["debug.tree.directionality_rolled_fired_no_straight"]({ param: fmt(event.directionality), roll: fmt(event.roll) }),
+      }];
+    case "CandidateChosen":
+      return [{ kind: "text", text: m["debug.tree.candidate_chosen_vertex_based"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: false }];
+    case "JunctionRollSetup":
+      return [{ kind: "text", text: m["debug.tree.junction_roll_setup"]({ max: event.max, mandatory: 2, optional: event.max - 2 }) }];
+    case "JunctionSlotRolled":
+      return [{
+        kind: "text",
+        text: event.taken
+          ? m["debug.tree.junction_slot_rolled_taken"]({ param: fmt(event.branching), roll: fmt(event.roll) })
+          : m["debug.tree.junction_slot_rolled_not_taken"]({ param: fmt(event.branching), roll: fmt(event.roll) }),
+      }];
+    case "JunctionCandidatesChosen":
+      return [{ kind: "text", text: m["debug.tree.junction_candidates_chosen"]({ count: event.candidates.length }) + " " }, { kind: "region", nodes: event.candidates }];
+    case "EdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
+    case "PresetNeighborVisited":
+      return [{ kind: "text", text: m["debug.tree.preset_skipped"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: false }];
+    case "TeleportConnectAdded":
+      return [{ kind: "text", text: m["debug.tree.teleport_connect_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
+    case "NodeVisited":
+      return [{ kind: "text", text: m["debug.tree.node_added_to_visited_and_frontier"]() + " " }, { kind: "node", id: event.node }];
+    case "NodeQueuedToReserve":
+      return [{ kind: "text", text: m["debug.tree.node_queued_to_reserve"]() + " " }, { kind: "node", id: event.node }];
+    case "StartVisited":
+      return [{ kind: "text", text: m["debug.tree.start_added_to_visited_and_frontier"]() + " " }, { kind: "node", id: event.node }];
+  }
+}
+
+const VERTEX_BASED_ADAPTER: VertexBasedAdapter = {
+  mutatingNodeIndices: (tape) => mutatingVertexBasedEventsWithIndex(tape).map((e) => e.nodeIndex),
+  resolveMetadata: (tape) => ({ totalSteps: mutatingVertexBasedEvents(tape).length, checkpointFroms: [] }),
+  decodeEvent: decodeVertexBasedEvent,
+  isMutatingEvent: isMutatingVertexBasedEvent,
+  narrationTokensFor: narrationTokensForVertexBased,
+  // "reserve_search"/"junction_count" are fixed, non-numbered scope names (GitHub issue #143's
+  // follow-up, mirroring Wilson's "search"/"commit") — checked before the numbered-scope regex,
+  // which wouldn't match them. "junction_count"'s label additionally folds its own
+  // JunctionSlotRolled children into a final tally (2 mandatory + every taken:true roll) — the
+  // scope's own contents are the only source of truth for this number, so no separate summary
+  // event needs to carry it.
+  scopeLabel: (name, children) => {
+    if (name === "reserve_search") return m["debug.tree.reserve_search_scope"]();
+    if (name === "junction_count") {
+      let count = 2;
+      for (const child of children) {
+        const payload = child.payload();
+        if (payload.kind === "event" && payload.tag === VERTEX_BASED_TAG.JUNCTION_SLOT_ROLLED) {
+          const event = decodeVertexBasedEvent(payload.tag, payload.bytes);
+          if (event.kind === "JunctionSlotRolled" && event.taken) count += 1;
+        }
+      }
+      return m["debug.tree.junction_count_scope"]({ count });
+    }
+    return m["debug.tree.step_scope"]({ index: numberedScopeIndex(name) });
+  },
+  apply: applyVertexBased,
 };
 
 export function adapterFor(kind: "recursive_backtracker"): RbAdapter;
 export function adapterFor(kind: "kruskal"): KruskalAdapter;
 export function adapterFor(kind: "wilson"): WilsonAdapter;
 export function adapterFor(kind: "edge_based"): EdgeBasedAdapter;
-export function adapterFor(kind: EventedEventKind): RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedAdapter {
+export function adapterFor(kind: "vertex_based"): VertexBasedAdapter;
+export function adapterFor(kind: EventedEventKind): RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedAdapter | VertexBasedAdapter {
   switch (kind) {
     case "recursive_backtracker": return RB_ADAPTER;
     case "kruskal": return KRUSKAL_ADAPTER;
     case "wilson": return WILSON_ADAPTER;
     case "edge_based": return EDGE_BASED_ADAPTER;
+    case "vertex_based": return VERTEX_BASED_ADAPTER;
   }
 }

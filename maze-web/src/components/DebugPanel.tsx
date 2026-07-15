@@ -21,6 +21,8 @@ const DEBUG_VALUE_LABELS: Record<string, () => string> = {
   walk_start: () => m["debug.value.walk_start"](),
   walk_head: () => m["debug.value.walk_head"](),
   active: () => m["debug.value.active"](),
+  frontier: () => m["debug.value.frontier"](),
+  reserve: () => m["debug.value.reserve"](),
 };
 
 function debugValueLabel(name: string): string {
