@@ -251,3 +251,57 @@ fn try_add_edge_delegates_to_try_add_edge_kind_with_basic_and_one_way_chance() {
     assert_eq!(ea, eb);
 }
 
+// ─── qualify_debug_value_names (GitHub issue #169) ─────────────────────────
+
+use crate::event_log::DebugValueKind;
+
+#[test]
+fn qualify_debug_value_names_leaves_a_single_source_unqualified() {
+    // The only case exercised via generate_maze_with_events today (always exactly one source) —
+    // names must pass through verbatim, matching every existing test/UI expectation.
+    let sources = [("generation", vec![("visited", DebugValueKind::Region), ("recursion_stack", DebugValueKind::Sequence)])];
+    let result = qualify_debug_value_names(&sources);
+    assert_eq!(
+        result,
+        vec![("visited".to_string(), DebugValueKind::Region), ("recursion_stack".to_string(), DebugValueKind::Sequence)]
+    );
+}
+
+#[test]
+fn qualify_debug_value_names_leaves_a_single_empty_source_unqualified() {
+    let sources = [("generation", vec![])];
+    let result = qualify_debug_value_names(&sources);
+    assert!(result.is_empty());
+}
+
+#[test]
+fn qualify_debug_value_names_qualifies_every_name_with_its_scope_when_two_sources_present() {
+    // Not reachable from generate_maze_with_events yet (always one source today) — this is the
+    // path future #147 (a second, QC source) will exercise. "visited" is deliberately reused by
+    // both sources here, mirroring the real collision RB/Wilson/CustomEdgeBased/CustomVertexBased
+    // already have independently (see Specs/event_log.md) — qualification must disambiguate it.
+    let sources = [
+        ("generation", vec![("visited", DebugValueKind::Region), ("recursion_stack", DebugValueKind::Sequence)]),
+        ("quality_control", vec![("visited", DebugValueKind::Region)]),
+    ];
+    let result = qualify_debug_value_names(&sources);
+    assert_eq!(
+        result,
+        vec![
+            ("generation:visited".to_string(), DebugValueKind::Region),
+            ("generation:recursion_stack".to_string(), DebugValueKind::Sequence),
+            ("quality_control:visited".to_string(), DebugValueKind::Region),
+        ]
+    );
+}
+
+#[test]
+fn qualify_debug_value_names_with_two_sources_where_one_declares_nothing() {
+    let sources = [
+        ("generation", vec![("visited", DebugValueKind::Region)]),
+        ("quality_control", vec![]),
+    ];
+    let result = qualify_debug_value_names(&sources);
+    assert_eq!(result, vec![("generation:visited".to_string(), DebugValueKind::Region)]);
+}
+

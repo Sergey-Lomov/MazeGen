@@ -21,38 +21,72 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** Encodes a flat, un-nested list of top-level `EdgeAdded` nodes into the raw
- *  `{ nodeTable, payload }` buffer pair `generateMaze()` returns as `debugTape` — mirrors
- *  `DebugTape::encode()`'s wire format (see `Specs/event_log.md`), same shape as
- *  `eventTape.test.ts`'s fixtures, but returning raw buffers (not a parsed `ParsedTape`) since
- *  that's the shape `generateWithSeed` receives from `mazeService.generateMaze` before it calls
- *  `parseTape` itself. */
-export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array; eventKind: "recursive_backtracker"; debugValueNames: DebugValueDescriptor[] } {
+/** Node-table offset (GitHub issue #169) every real merged tape's actual content starts at:
+ *  node 0 is the merge's own root, node 1 is the single "generation" top-level source scope,
+ *  node 2 is the algorithm's own former root (the actual `EventLog::new()` root the algorithm
+ *  built, always named "root", relinked as node 1's child by `merge_tapes`) — every source's own
+ *  content starts at node 3. Fixtures built with `encodeEdgeAddedTape` mirror this exact
+ *  three-level shape (matching `DebugEventTree.test.tsx`'s own merged fixtures) so they match
+ *  what `mazeService.generateMaze()` actually returns post-merge, not the pre-#169 flat shape. */
+export const MERGED_TAPE_NODE_OFFSET = 3;
+
+/** Encodes a list of top-level `EdgeAdded` nodes into the raw `{ nodeTable, payload }` buffer
+ *  pair `generateMaze()` returns as `debugTape` — mirrors `DebugTape::encode()`'s wire format
+ *  (see `Specs/event_log.md`) as merged by `event_log::merge_tapes` (GitHub issue #169): node 0
+ *  is the merged root, node 1 is a "generation" scope, node 2 is the algorithm's own former root
+ *  (also named "root", per `merge_tapes`'s relinking — see `MERGED_TAPE_NODE_OFFSET`), wrapping
+ *  the edges, which start at node `MERGED_TAPE_NODE_OFFSET`. Returns raw buffers (not a parsed
+ *  `ParsedTape`) since that's the shape `generateWithSeed` receives from
+ *  `mazeService.generateMaze` before it calls `parseTape` itself. A checkpoint fixture
+ *  referencing one of these edges by node index must add `MERGED_TAPE_NODE_OFFSET` to the index
+ *  it would have used pre-#169. */
+export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array; sourceScopeNames: string[]; sourceEventKinds: ["recursive_backtracker"]; debugValueNames: DebugValueDescriptor[] } {
+  const textEncoder = new TextEncoder();
+  const rootBytes = textEncoder.encode("root");
+  const generationBytes = textEncoder.encode("generation");
+  const formerRootBytes = textEncoder.encode("root");
+
   // `bidirectional` always encoded `true` — mirrors RB's real behavior (GitHub issue #135).
-  const payloadChunks = edges.map(([from, to]) => concatBytes([u64le(from), u64le(to), new Uint8Array([1])]));
-  const offsets: number[] = [];
-  let cursor = 0;
-  for (const chunk of payloadChunks) {
-    offsets.push(cursor);
-    cursor += chunk.byteLength;
+  const edgePayloadChunks = edges.map(([from, to]) => concatBytes([u64le(from), u64le(to), new Uint8Array([1])]));
+  const payload = concatBytes([rootBytes, generationBytes, formerRootBytes, ...edgePayloadChunks]);
+  const edgeOffsets: number[] = [];
+  {
+    let cursor = rootBytes.byteLength + generationBytes.byteLength + formerRootBytes.byteLength;
+    for (const chunk of edgePayloadChunks) {
+      edgeOffsets.push(cursor);
+      cursor += chunk.byteLength;
+    }
   }
-  const payload = concatBytes(payloadChunks);
-  const nodeTable = new Uint8Array(edges.length * 22);
+
+  const nodeCount = MERGED_TAPE_NODE_OFFSET + edges.length;
+  const nodeTable = new Uint8Array(nodeCount * 22);
   const dv = new DataView(nodeTable.buffer);
+  const writeRecord = (index: number, parent: number, firstChild: number, nextSibling: number, tag: number, payloadOffset: number, payloadLen: number) => {
+    const base = index * 22;
+    dv.setUint32(base + 0, parent, true);
+    dv.setUint32(base + 4, firstChild, true);
+    dv.setUint32(base + 8, nextSibling, true);
+    dv.setUint16(base + 12, tag, true);
+    dv.setUint32(base + 14, payloadOffset, true);
+    dv.setUint32(base + 18, payloadLen, true);
+  };
+  // Node 0: merged root -> first_child is node 1 ("generation" scope).
+  writeRecord(0, NO_NODE, 1, NO_NODE, 0 /* TAG_SCOPE */, 0, rootBytes.byteLength);
+  // Node 1: "generation" scope -> first_child is node 2 (the former root).
+  writeRecord(1, 0, 2, NO_NODE, 0 /* TAG_SCOPE */, rootBytes.byteLength, generationBytes.byteLength);
+  // Node 2: former root -> first_child is node MERGED_TAPE_NODE_OFFSET (first edge), or NO_NODE
+  // when there are no edges at all.
+  writeRecord(2, 1, edges.length > 0 ? MERGED_TAPE_NODE_OFFSET : NO_NODE, NO_NODE, 0 /* TAG_SCOPE */, rootBytes.byteLength + generationBytes.byteLength, formerRootBytes.byteLength);
   edges.forEach((_, i) => {
-    const base = i * 22;
-    dv.setUint32(base + 0, NO_NODE, true); // parent
-    dv.setUint32(base + 4, NO_NODE, true); // firstChild
-    dv.setUint32(base + 8, i < edges.length - 1 ? i + 1 : NO_NODE, true); // nextSibling
-    dv.setUint16(base + 12, RB_TAG.EDGE_ADDED, true);
-    dv.setUint32(base + 14, offsets[i], true);
-    dv.setUint32(base + 18, payloadChunks[i].byteLength, true);
+    const index = MERGED_TAPE_NODE_OFFSET + i;
+    const nextSibling = i < edges.length - 1 ? index + 1 : NO_NODE;
+    writeRecord(index, 2, NO_NODE, nextSibling, RB_TAG.EDGE_ADDED, edgeOffsets[i], edgePayloadChunks[i].byteLength);
   });
   // debugValueNames (GitHub issue #131) is a plain array in the real WASM response, not derived
   // from these edges — fixtures using this helper aren't exercising RB's recursion_stack declaration,
   // so an empty default is correct here; a test that specifically needs a non-empty list should
   // override the field on the returned object.
-  return { nodeTable, payload, eventKind: "recursive_backtracker", debugValueNames: [] };
+  return { nodeTable, payload, sourceScopeNames: ["generation"], sourceEventKinds: ["recursive_backtracker"], debugValueNames: [] };
 }
 
 function u32le(v: number): Uint8Array {

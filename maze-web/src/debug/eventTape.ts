@@ -17,6 +17,15 @@ export const TAG_SCOPE = 0;
 export const NO_NODE = 0xffffffff;
 export const NODE_RECORD_SIZE = 22;
 
+/** Multi-source tag namespacing (GitHub issue #169) — mirrors `SOURCE_SHIFT`/`SOURCE_MASK`/
+ *  `LOCAL_TAG_MASK` in `maze-core/src/event_log/mod.rs`. Every merged tape's event tags are
+ *  `(source_index << SOURCE_SHIFT) | local_tag`; `TAG_SCOPE` (0) is never namespaced. `nodeAt`
+ *  (below) is the single place this unpacking happens — every decoder in this module keeps
+ *  reading `record.tag` as a plain local wire tag, unaware of merging. */
+export const SOURCE_SHIFT = 8;
+export const SOURCE_MASK = 0xff00;
+export const LOCAL_TAG_MASK = 0x00ff;
+
 /** RB event wire tags — mirrors `wire_tags` in `maze-core/src/generation/recursive_backtracker.rs`. */
 export const RB_TAG = {
   VERTEX_SELECTED: 1,
@@ -135,7 +144,16 @@ export interface NodeRecord {
   parent: number | null;
   firstChild: number | null;
   nextSibling: number | null;
+  /** Already unmasked to the source's own local wire tag (GitHub issue #169) — `TAG_SCOPE` for a
+   *  scope node, otherwise the value `EncodeEventPayload::type_id()` originally produced, with
+   *  any merge-added source-index prefix stripped. See `sourceIndex` for which source it's from. */
   tag: number;
+  /** Positional index (0, 1, 2, ...) of the top-level source scope this node's tag was
+   *  namespaced under during merging — meaningless outside this one parsed tape, never a stable
+   *  cross-tape identifier (GitHub issue #169). `0` for a scope node, same as any source-0 event
+   *  numerically (`0 << SOURCE_SHIFT === 0`) — callers needing to know a *scope* node's own
+   *  source should use `topLevelSourceScopes` (below) rather than reading this field off a scope. */
+  sourceIndex: number;
   payloadOffset: number;
   payloadLen: number;
 }
@@ -180,15 +198,23 @@ export function mutatingEventsWithIndex<E>(
 }
 
 /** Reads and decodes one fixed-stride node record by index — used by both the flat and tree
- *  layers described in this module's doc comment. */
+ *  layers described in this module's doc comment. Unpacks the merge's source-index tag prefix
+ *  (GitHub issue #169) here, once — `tag`/`sourceIndex` come back already split, so every
+ *  decoder elsewhere in this module reads a plain local wire tag exactly like before merging
+ *  existed, unaware `nodeAt` did any unpacking at all. `TAG_SCOPE` is never namespaced, so a
+ *  scope node's raw tag and unpacked tag are always both `0`. */
 export function nodeAt(tape: ParsedTape, index: number): NodeRecord {
   const base = index * NODE_RECORD_SIZE;
   const dv = tape.nodeTableView;
+  const rawTag = dv.getUint16(base + 12, true);
+  const tag = rawTag === TAG_SCOPE ? TAG_SCOPE : rawTag & LOCAL_TAG_MASK;
+  const sourceIndex = rawTag === TAG_SCOPE ? 0 : (rawTag & SOURCE_MASK) >> SOURCE_SHIFT;
   return {
     parent: sentinelToNull(dv.getUint32(base + 0, true)),
     firstChild: sentinelToNull(dv.getUint32(base + 4, true)),
     nextSibling: sentinelToNull(dv.getUint32(base + 8, true)),
-    tag: dv.getUint16(base + 12, true),
+    tag,
+    sourceIndex,
     payloadOffset: dv.getUint32(base + 14, true),
     payloadLen: dv.getUint32(base + 18, true),
   };
@@ -239,6 +265,34 @@ function nodeViewFromRecord(tape: ParsedTape, index: number, record: NodeRecord)
       return result;
     },
   };
+}
+
+/** One top-level source scope in a merged tape's tree (GitHub issue #169) — the label + the
+ *  arena index of that scope node itself (its own children are the source's original tree,
+ *  starting one level deeper than before merging existed). */
+export interface TopLevelSourceScope {
+  scopeName: string;
+  nodeIndex: number;
+}
+
+/** Walks the merged root's direct children (GitHub issue #169) — every tape produced since the
+ *  merge exists has exactly this shape: node 0 is the merged root, and each of its children is
+ *  one source's dedicated top-level scope, in the same order `sourceScopeNames`/
+ *  `sourceEventKinds` (`mazeService.ts`) list them. A navigation/inspection helper — this module
+ *  itself still dispatches to exactly one adapter today (see `algorithmRegistry.ts`'s doc
+ *  comment); aggregating narration/apply across more than one source scope at once is out of
+ *  scope until a real second source (#147) exists. */
+export function topLevelSourceScopes(tape: ParsedTape): TopLevelSourceScope[] {
+  const root = nodeAt(tape, 0);
+  const result: TopLevelSourceScope[] = [];
+  let next = root.firstChild;
+  while (next !== null) {
+    const record = nodeAt(tape, next);
+    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
+    result.push({ scopeName: textDecoder.decode(bytes), nodeIndex: next });
+    next = record.nextSibling;
+  }
+  return result;
 }
 
 // --- Recursive Backtracker event decoding ---

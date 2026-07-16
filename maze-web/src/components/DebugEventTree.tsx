@@ -6,7 +6,7 @@ import {
   buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
   displayStepForRow, type TreeRow,
 } from "../debug/debugTreeSelectors";
-import { nodeView, type ParsedTape } from "../debug/eventTape";
+import { nodeAt, nodeView, topLevelSourceScopes, type ParsedTape } from "../debug/eventTape";
 import { adapterFor, type Token, type BaseAlgorithmAdapter } from "../debug/algorithmRegistry";
 import type { EventedEventKind } from "../wasm/mazeService";
 import { DebugRefBubble } from "./DebugRefBubble";
@@ -98,6 +98,33 @@ export function DebugEventTree() {
 
   const tape = debugArena?.tape ?? null;
   const algorithmKind = debugArena?.algorithmKind ?? "recursive_backtracker";
+
+  // Every tape now has two extra levels of nesting (GitHub issue #169: merged root -> top-level
+  // source scope -> the algorithm's own former root, itself a scope node, only then -> "step
+  // N"/"edge N"/...). Auto-expanding both the top-level source scope and its one child (the
+  // former root) for a freshly-loaded tape keeps "step N"/"edge N"/... visible immediately,
+  // matching pre-#169 behavior instead of forcing two extra clicks just to see any content.
+  //
+  // Resets `expanded` to a fresh Set on every new tape (rather than adding on top of whatever was
+  // there before) — node indices are only meaningful within the tape that produced them, so
+  // carrying a previous tape's expanded-row indices into a new one is stale state, not a feature:
+  // a coincidentally-matching index in the new tape would silently inherit an expand/collapse
+  // decision the user never made on this run.
+  useLayoutEffect(() => {
+    if (!tape) return;
+    setExpanded(() => {
+      const next = new Set<number>();
+      for (const scope of topLevelSourceScopes(tape)) {
+        next.add(scope.nodeIndex);
+        const formerRoot = nodeAt(tape, scope.nodeIndex).firstChild;
+        if (formerRoot !== null) next.add(formerRoot);
+      }
+      return next;
+    });
+    // Only re-run when the tape identity itself changes (a fresh generate()) — expanding/
+    // collapsing individual rows afterward must not re-trigger this auto-expand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tape]);
   const stepIndex = useMemo(() => (tape ? buildStepIndex(tape, algorithmKind) : null), [tape, algorithmKind]);
   const coordIndex = useMemo(() => (debugArena ? buildNodeCoordIndex(debugArena.nodes) : null), [debugArena]);
   const coords = useMemo(() => (coordIndex ? (id: bigint) => coordIndex.get(id) : () => null), [coordIndex]);

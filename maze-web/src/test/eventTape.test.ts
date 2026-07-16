@@ -8,7 +8,9 @@ import {
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEvents, applyWilson,
   decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEvents, applyEdgeBased,
   decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEvents, applyVertexBased,
+  topLevelSourceScopes,
   TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, CHECKPOINT_RECORD_SIZE,
+  SOURCE_SHIFT, SOURCE_MASK, LOCAL_TAG_MASK,
   type ParsedTape, type ParsedCheckpoints,
 } from "../debug/eventTape";
 
@@ -1389,5 +1391,91 @@ describe("mutatingVertexBasedEvents / applyVertexBased", () => {
     ]);
     const result = applyVertexBased(tape, 0);
     expect(result.edges).toEqual([{ from: 1n, to: 5n, kind: "teleport" }]);
+  });
+});
+
+// --- Multi-source merge (GitHub issue #169): topLevelSourceScopes + tag namespace unpacking in
+// nodeAt. Every tape produced by `event_log::merge_tapes` (maze-core/src/event_log/mod.rs) has
+// this shape: node 0 is the merged root, its children are one top-level source scope per source
+// (in order), each wrapping that source's own former root. Tags on non-scope nodes carry a
+// source-index prefix in the high byte (`(sourceIndex << SOURCE_SHIFT) | localTag`); TAG_SCOPE is
+// never namespaced.
+
+/** Builds a two-source merged fixture: root (0) -> "generation" scope (1) -> former root (2)
+ *  -> EdgeAdded (3, source_index 0, RB tag) -> "quality_control" scope (4) -> former root (5)
+ *  -> EdgeAdded (6, source_index 1, Kruskal tag) — mirrors merge_tapes' real output shape,
+ *  including the namespace prefix merge_tapes bakes into non-scope tags. */
+function buildTwoSourceMergedTape(): ParsedTape {
+  const rbLocalTag = RB_TAG.EDGE_ADDED;
+  const kruskalLocalTag = KRUSKAL_TAG.EDGE_ADDED;
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: 4, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+    { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 2, firstChild: null, nextSibling: null, tag: (0 << SOURCE_SHIFT) | rbLocalTag, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 0, firstChild: 5, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("quality_control") },
+    { parent: 4, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 5, firstChild: null, nextSibling: null, tag: (1 << SOURCE_SHIFT) | kruskalLocalTag, payloadBytes: edgeAddedPayload(3n, 4n) },
+  ]);
+}
+
+describe("topLevelSourceScopes", () => {
+  it("walks the merged root's direct children in order", () => {
+    const tape = buildTwoSourceMergedTape();
+    expect(topLevelSourceScopes(tape)).toEqual([
+      { scopeName: "generation", nodeIndex: 1 },
+      { scopeName: "quality_control", nodeIndex: 4 },
+    ]);
+  });
+
+  it("walks whatever the root's direct children actually are — this module's own single-source RB fixture is intentionally flat (not merge-wrapped), so it has two", () => {
+    // buildTwoStepTape's root has two direct "step" scope children rather than one merge-added
+    // wrapper scope — topLevelSourceScopes doesn't know or care whether a tape went through
+    // merge_tapes; it's a pure "walk root's children" helper. The merge-wrapped shape is covered
+    // by buildTwoSourceMergedTape above.
+    const tape = buildTwoStepTape();
+    const scopes = topLevelSourceScopes(tape);
+    expect(scopes.map((s) => s.scopeName)).toEqual(["step", "step"]);
+  });
+});
+
+describe("nodeAt — multi-source tag namespace unpacking", () => {
+  it("unpacks source_index 0 to a zero source-mask nibble, tag numerically equal to the local tag", () => {
+    const tape = buildTwoSourceMergedTape();
+    const record = nodeAt(tape, 3); // the RB EdgeAdded node, source_index 0
+    expect(record.sourceIndex).toBe(0);
+    expect(record.tag).toBe(RB_TAG.EDGE_ADDED);
+  });
+
+  it("unpacks source_index 1 to a nonzero source-mask nibble, stripping the prefix from the local tag", () => {
+    const tape = buildTwoSourceMergedTape();
+    const record = nodeAt(tape, 6); // the Kruskal EdgeAdded node, source_index 1
+    expect(record.sourceIndex).toBe(1);
+    expect(record.tag).toBe(KRUSKAL_TAG.EDGE_ADDED);
+  });
+
+  it("never namespaces TAG_SCOPE nodes regardless of which source they belong to", () => {
+    const tape = buildTwoSourceMergedTape();
+    for (const index of [0, 1, 2, 4, 5]) {
+      const record = nodeAt(tape, index);
+      expect(record.tag).toBe(TAG_SCOPE);
+      expect(record.sourceIndex).toBe(0);
+    }
+  });
+
+  it("decoded event tags stay usable by the existing per-algorithm decoders even though two sources share the same local tag value", () => {
+    const tape = buildTwoSourceMergedTape();
+    const rbRecord = nodeAt(tape, 3);
+    const rbBytes = tape.payload.subarray(rbRecord.payloadOffset, rbRecord.payloadOffset + rbRecord.payloadLen);
+    expect(decodeRecursiveBacktrackerEvent(rbRecord.tag, rbBytes)).toEqual({ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true });
+
+    const kruskalRecord = nodeAt(tape, 6);
+    const kruskalBytes = tape.payload.subarray(kruskalRecord.payloadOffset, kruskalRecord.payloadOffset + kruskalRecord.payloadLen);
+    expect(decodeKruskalEvent(kruskalRecord.tag, kruskalBytes)).toEqual({ kind: "EdgeAdded", from: 3n, to: 4n, bidirectional: true });
+  });
+
+  it("SOURCE_MASK/LOCAL_TAG_MASK partition the full u16 tag space with no overlap", () => {
+    expect(SOURCE_MASK & LOCAL_TAG_MASK).toBe(0);
+    expect(SOURCE_MASK | LOCAL_TAG_MASK).toBe(0xffff);
   });
 });

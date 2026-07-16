@@ -305,10 +305,12 @@ export interface PresetConnectionsActions {
  *  static node list needed to join reconstructed `bigint` node ids against `NodeDto.id`. */
 export interface DebugArenaHandle {
   tape: ParsedTape;
-  /** Which concrete event enum `tape` was encoded from (GitHub issue #146) — selects which
-   *  decoder/apply/narration function every consumer of this arena (`debugSelectors.ts`,
-   *  `debugTreeSelectors.ts`, `DebugEventTree.tsx`) dispatches to. Sourced from the WASM
-   *  response's `DebugTape.eventKind` (`mazeService.ts`). */
+  /** Which concrete event enum `tape`'s (single, today) source scope was encoded from (GitHub
+   *  issue #146, generalized to multiple sources by #169) — selects which decoder/apply/narration
+   *  function every consumer of this arena (`debugSelectors.ts`, `debugTreeSelectors.ts`,
+   *  `DebugEventTree.tsx`) dispatches to. Sourced from the first (only) entry of the WASM
+   *  response's `DebugTape.sourceEventKinds` (`mazeService.ts`) — consuming more than one source
+   *  at once is out of scope until #147. */
   algorithmKind: EventedEventKind;
   nodes: NodeDto[];
   /** Total mutating-event count for this tape — a static property of the arena (computed once at

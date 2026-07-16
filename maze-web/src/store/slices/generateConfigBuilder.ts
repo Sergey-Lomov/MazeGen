@@ -178,7 +178,11 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       const checkpoints = debugTape.snapshotTable && debugTape.snapshotPayload
         ? parseCheckpoints(debugTape.snapshotTable, debugTape.snapshotPayload)
         : null;
-      const eventKind = debugTape.eventKind;
+      // Exactly one source is ever actually present today (GitHub issue #169's merge always
+      // wraps it in a dedicated top-level scope, but doesn't change how many real sources
+      // `run_generate` produces) — `algorithmKind` reads the first (only) entry. Consuming more
+      // than one source at once is out of scope until #147.
+      const eventKind = debugTape.sourceEventKinds[0];
       const { totalSteps, checkpointFroms } = eventKind === "kruskal"
         ? adapterFor("kruskal").resolveMetadata(tape, checkpoints)
         : eventKind === "wilson"
@@ -192,7 +196,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
         // debugValueNames (GitHub issue #131) comes from the WASM response's static declaration
         // (GenerateResult::debug_value_names()), not from scanning the tape — see
         // resolveDebugArenaMetadata's doc comment for why.
-        debugArena = { tape, algorithmKind: debugTape.eventKind, nodes: snapshot.nodes, totalSteps, checkpointFroms, debugValueNames: debugTape.debugValueNames };
+        debugArena = { tape, algorithmKind: eventKind, nodes: snapshot.nodes, totalSteps, checkpointFroms, debugValueNames: debugTape.debugValueNames };
         lastStep = totalSteps - 1;
       }
     }

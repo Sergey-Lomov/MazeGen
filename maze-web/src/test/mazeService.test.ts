@@ -139,13 +139,18 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "recursive_backtracker",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
-    expect(result.debugTape).toEqual({ nodeTable: nodeTableBytes, payload: payloadBytes, eventKind: "recursive_backtracker", debugValueNames: [] });
+    expect(result.debugTape).toEqual({
+      nodeTable: nodeTableBytes, payload: payloadBytes,
+      sourceScopeNames: ["generation"], sourceEventKinds: ["recursive_backtracker"],
+      debugValueNames: [],
+    });
     // Must be independent copies, not the same views handed back by WASM.
     expect(result.debugTape?.nodeTable).not.toBe(nodeTableBytes);
     expect(result.debugTape?.payload).not.toBe(payloadBytes);
@@ -162,7 +167,8 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => snapshotTableBytes,
       debugSnapshotPayload: () => snapshotPayloadBytes,
-      eventKind: () => "recursive_backtracker",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => ["recursion_stack"],
       debugValueKinds: () => ["sequence"],
       free: () => {},
@@ -173,7 +179,8 @@ describe("generateMaze / validateSnapshot", () => {
       payload: payloadBytes,
       snapshotTable: snapshotTableBytes,
       snapshotPayload: snapshotPayloadBytes,
-      eventKind: "recursive_backtracker",
+      sourceScopeNames: ["generation"],
+      sourceEventKinds: ["recursive_backtracker"],
       debugValueNames: [{ name: "recursion_stack", kind: "sequence" }],
     });
     expect(result.debugTape?.snapshotTable).not.toBe(snapshotTableBytes);
@@ -189,13 +196,14 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "kruskal",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["kruskal"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
-    expect(result.debugTape?.eventKind).toBe("kruskal");
+    expect(result.debugTape?.sourceEventKinds).toEqual(["kruskal"]);
   });
 
   it("copies a Wilson debug tape and tags it with eventKind (GitHub issue #145)", () => {
@@ -207,13 +215,14 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "wilson",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["wilson"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
-    expect(result.debugTape?.eventKind).toBe("wilson");
+    expect(result.debugTape?.sourceEventKinds).toEqual(["wilson"]);
   });
 
   it("copies a CustomEdgeBased debug tape and tags it with eventKind (GitHub issue #144)", () => {
@@ -225,13 +234,14 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "edge_based",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["edge_based"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
-    expect(result.debugTape?.eventKind).toBe("edge_based");
+    expect(result.debugTape?.sourceEventKinds).toEqual(["edge_based"]);
   });
 
   it("copies a CustomVertexBased debug tape and tags it with eventKind (GitHub issue #143)", () => {
@@ -243,28 +253,46 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "vertex_based",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["vertex_based"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
-    expect(result.debugTape?.eventKind).toBe("vertex_based");
+    expect(result.debugTape?.sourceEventKinds).toEqual(["vertex_based"]);
   });
 
-  it("throws when a debug tape is present but eventKind is missing", () => {
+  it("throws when a debug tape is present but sourceScopeNames/sourceEventKinds is empty", () => {
     mockGenerate.mockReturnValue({
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => undefined,
+      sourceScopeNames: () => [],
+      sourceEventKinds: () => [],
       debugValueNames: () => [],
       debugValueKinds: () => [],
       free: () => {},
     });
-    expect(() => generateMaze(1, defaultConfig)).toThrow(/eventKind is missing/);
+    expect(() => generateMaze(1, defaultConfig)).toThrow(/sourceScopeNames\/sourceEventKinds is empty/);
+  });
+
+  it("throws when sourceScopeNames and sourceEventKinds have different lengths", () => {
+    mockGenerate.mockReturnValue({
+      snapshot: () => validSnapshot,
+      debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
+      debugTapePayload: () => new Uint8Array([4, 5, 6]),
+      debugSnapshotTable: () => undefined,
+      debugSnapshotPayload: () => undefined,
+      sourceScopeNames: () => ["generation", "quality_control"],
+      sourceEventKinds: () => ["recursive_backtracker"],
+      debugValueNames: () => [],
+      debugValueKinds: () => [],
+      free: () => {},
+    });
+    expect(() => generateMaze(1, defaultConfig)).toThrow(/length mismatch/);
   });
 
   it("throws on an unrecognized eventKind", () => {
@@ -274,7 +302,8 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "not_a_real_kind",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["not_a_real_kind"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
       free: () => {},
@@ -289,7 +318,8 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "recursive_backtracker",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => ["recursion_stack", "visited"],
       debugValueKinds: () => ["sequence"],
       free: () => {},
@@ -304,7 +334,8 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "recursive_backtracker",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => ["recursion_stack"],
       debugValueKinds: () => ["not_a_real_kind"],
       free: () => {},
@@ -321,7 +352,8 @@ describe("generateMaze / validateSnapshot", () => {
       debugTapePayload: () => payloadBytes,
       debugSnapshotTable: () => undefined,
       debugSnapshotPayload: () => undefined,
-      eventKind: () => "recursive_backtracker",
+      sourceScopeNames: () => ["generation"],
+      sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
       free: () => {},

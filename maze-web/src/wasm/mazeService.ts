@@ -49,13 +49,18 @@ export interface DebugTape {
   payload: Uint8Array;
   snapshotTable?: Uint8Array;
   snapshotPayload?: Uint8Array;
-  /** Which concrete event enum `nodeTable`/`payload` were encoded from (GitHub issue #146) —
-   *  `"recursive_backtracker"`, `"kruskal"`, or `"wilson"` (GitHub issue #145), sourced from
-   *  `GenerateResult::eventKind()`. Tells
-   *  downstream consumers (`generateConfigBuilder.ts`, `debugSelectors.ts`, `DebugEventTree.tsx`)
-   *  which decoder/apply/narration function to dispatch to — see `DebugArenaHandle.algorithmKind`
-   *  in `storeTypes.ts`. */
-  eventKind: EventedEventKind;
+  /** Name of each top-level source scope in the merged tape's tree (GitHub issue #169), same
+   *  order as `sourceEventKinds`, sourced from `GenerateResult::sourceScopeNames()` — e.g.
+   *  `["generation"]` today. */
+  sourceScopeNames: string[];
+  /** Parallel to `sourceScopeNames` — which concrete event enum each source scope's subtree was
+   *  encoded from (GitHub issue #146, generalized by #169), sourced from
+   *  `GenerateResult::sourceEventKinds()`. Tells downstream consumers
+   *  (`generateConfigBuilder.ts`, `debugSelectors.ts`, `DebugEventTree.tsx`) which decoder/apply/
+   *  narration function to dispatch to — see `DebugArenaHandle.algorithmKind` in `storeTypes.ts`,
+   *  which today reads `sourceEventKinds[0]` since there is always exactly one source; consuming
+   *  more than one at once is out of scope until #147. */
+  sourceEventKinds: EventedEventKind[];
   /** Debug values (GitHub issue #131, e.g. `"recursion_stack"`) declared by the instrumented
    *  algorithm, each with its rendering `kind` — the static list from
    *  `GenerateResult::debugValueNames()`/`debugValueKinds()` (zipped together, see
@@ -145,9 +150,13 @@ export function generateMaze(seed: number, config: GenerateConfig): GenerateMaze
     const snapshotPayload = result.debugSnapshotPayload();
     let debugTape: DebugTape | undefined;
     if (nodeTable && payload) {
-      const rawEventKind = result.eventKind();
-      if (rawEventKind === undefined) {
-        throw new Error("generateMaze: debug tape present but eventKind is missing");
+      const sourceScopeNames = result.sourceScopeNames();
+      const rawSourceEventKinds = result.sourceEventKinds();
+      if (sourceScopeNames.length === 0 || rawSourceEventKinds.length === 0) {
+        throw new Error("generateMaze: debug tape present but sourceScopeNames/sourceEventKinds is empty");
+      }
+      if (sourceScopeNames.length !== rawSourceEventKinds.length) {
+        throw new Error(`generateMaze: sourceScopeNames/sourceEventKinds length mismatch: ${sourceScopeNames.length} vs ${rawSourceEventKinds.length}`);
       }
       debugTape = {
         nodeTable: nodeTable.slice(),
@@ -155,7 +164,8 @@ export function generateMaze(seed: number, config: GenerateConfig): GenerateMaze
         ...(snapshotTable && snapshotPayload
           ? { snapshotTable: snapshotTable.slice(), snapshotPayload: snapshotPayload.slice() }
           : {}),
-        eventKind: toEventedEventKind(rawEventKind),
+        sourceScopeNames,
+        sourceEventKinds: rawSourceEventKinds.map(toEventedEventKind),
         debugValueNames: zipDebugValueNames(result.debugValueNames(), result.debugValueKinds()),
       };
     }

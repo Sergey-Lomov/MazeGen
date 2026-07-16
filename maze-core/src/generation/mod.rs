@@ -88,38 +88,66 @@ pub fn generate_maze<T: Tessellation>(
 /// `run_initial_generation` helper in `maze-wasm/src/runner.rs`, where an internal tuple stays
 /// readable).
 ///
-/// `tape` is already erased to [`crate::event_log::EncodedTape`] (GitHub issue #161) — each
-/// instrumented algorithm builds its own concrete `EventLog<E>`/`DebugTape<E>` internally and
-/// encodes it before returning, so no single concrete event type has to be baked into this shared
-/// struct. `event_kind` is the only source of truth for which concrete event enum `tape` came
-/// from; any consumer that only understands some event kinds (e.g. the web replay engine, which
-/// only decodes Recursive Backtracker's wire tags so far) must filter on `event_kind` rather than
-/// re-deriving "is this decodable" from the generation algorithm.
+/// `tape` is always the output of [`crate::event_log::merge_tapes`] (GitHub issue #169) — even
+/// when there is exactly one instrumented source (every case today; QC/repair instrumentation,
+/// issue #147, will add a second), the tape is still wrapped in a merged root + one dedicated
+/// top-level source scope. There is no "skip merging for a single source" special case, so every
+/// consumer sees the same tree shape regardless of how many sources actually ran. Never absent —
+/// `generate_maze_with_events` is the only constructor and every algorithm arm produces a tape,
+/// so this is a plain [`crate::event_log::EncodedTape`], not an `Option`; a caller that needs to
+/// conditionally discard it (e.g. `maze-wasm/src/runner.rs`, when the web replay engine can't
+/// decode this event kind) wraps it in its own `Option` rather than this type carrying one it can
+/// never actually leave unset. `sources` records, per top-level scope (in the same order as the
+/// merged tree's top-level children), which concrete event enum that subtree was encoded from —
+/// the only source of truth a consumer (e.g. the web replay engine) needs to pick a decoder per
+/// source scope, instead of re-deriving "is this decodable" from the generation algorithm.
 pub struct EventedGenerationResult {
-    pub tape: Option<crate::event_log::EncodedTape>,
-    /// `Some` exactly when `tape` is `Some` — tags which concrete event enum `tape` was encoded
-    /// from.
-    pub event_kind: Option<crate::event_log::EventedEventKind>,
-    /// Intermediate snapshot checkpoints (GitHub issue #128) — `Some` exactly when `tape` is
-    /// `Some` (both come from the same run, or neither does). Not yet wired up for Kruskal.
-    pub checkpoints: Option<crate::event_log::CheckpointLog>,
-    /// Every debug-value name and its rendering kind (GitHub issue #131, e.g. `"recursion_stack"`)
-    /// the instrumented algorithm declares — the static list from
-    /// `recursive_backtracker::debug_value_names()`, not derived from what this particular run
-    /// happened to emit. Empty for any algorithm that doesn't declare debug values (not
-    /// instrumented for this yet, e.g. Kruskal).
-    pub debug_value_names: &'static [(&'static str, crate::event_log::DebugValueKind)],
+    pub tape: crate::event_log::EncodedTape,
+    /// One entry per top-level source scope present in `tape`, in the same order — never empty,
+    /// mirroring `tape`'s own "always present" guarantee. `merge_tapes` itself is domain-agnostic
+    /// and doesn't see `EventedEventKind` at all; this pairing is assembled here, the one place
+    /// that both knows which algorithm ran and calls `merge_tapes`.
+    pub sources: Vec<(&'static str, crate::event_log::EventedEventKind)>,
+    /// Intermediate snapshot checkpoints (GitHub issue #128), already folded into one combined
+    /// table by `merge_tapes` — `Some` exactly when at least one source produced any (today: only
+    /// Recursive Backtracker). `None` when no source produced checkpoints.
+    pub checkpoints: Option<crate::event_log::EncodedCheckpoints>,
+    /// Every debug-value name (already qualified with `"{scope_name}:"` when more than one source
+    /// is present — see [`qualify_debug_value_names`]) and its rendering kind (GitHub issue #131,
+    /// e.g. `"recursion_stack"`) the instrumented algorithm(s) declare — the static list(s) from
+    /// e.g. `recursive_backtracker::debug_value_names()`, not derived from what this particular
+    /// run happened to emit. Empty when no source declares any.
+    pub debug_value_names: Vec<(String, crate::event_log::DebugValueKind)>,
+}
+
+/// Qualifies debug-value names with their source's scope name when more than one source is
+/// present, so two sources independently declaring the same name (e.g. `"visited"` — already
+/// reused today by Recursive Backtracker, Wilson, CustomEdgeBased, and CustomVertexBased
+/// independently, see `Specs/event_log.md`) don't collide once merged. Left unqualified for
+/// exactly one source, matching today's names/tests/UI verbatim — qualification only becomes
+/// necessary, and only then changes the wire format, once a second source genuinely exists.
+fn qualify_debug_value_names(
+    sources: &[(&'static str, Vec<(&'static str, crate::event_log::DebugValueKind)>)],
+) -> Vec<(String, crate::event_log::DebugValueKind)> {
+    if sources.len() <= 1 {
+        return sources.iter().flat_map(|(_, names)| names.iter().map(|(name, kind)| (name.to_string(), *kind))).collect();
+    }
+    sources
+        .iter()
+        .flat_map(|(scope_name, names)| names.iter().map(move |(name, kind)| (format!("{scope_name}:{name}"), *kind)))
+        .collect()
 }
 
 /// Runs generation with narration-level event-tree logging (GitHub issue #124). Bypasses
 /// [`dispatch`] deliberately: `dispatch` is shared across all five algorithms and must not be
 /// tied to any concrete `EventLog<E>` type, so this matches on the algorithm directly instead of
-/// growing `dispatch`'s signature with a type every other branch would have to ignore. Recursive
-/// Backtracker (#123) and Kruskal (#146) are instrumented so far; each arm builds its own
-/// `EventLog<E>`, finishes it, and encodes it to a type-erased [`crate::event_log::EncodedTape`]
-/// before returning, tagged with [`crate::event_log::EventedEventKind`] (see GitHub issue #161).
-///
-/// `tape`/`event_kind`/`checkpoints` are `None` for any algorithm that isn't instrumented.
+/// growing `dispatch`'s signature with a type every other branch would have to ignore. All five
+/// generation algorithms are instrumented; each arm builds its own `EventLog<E>`, finishes it, and
+/// encodes it to a type-erased [`crate::event_log::EncodedTape`], tagged with
+/// [`crate::event_log::EventedEventKind`] (see GitHub issue #161) — this function is the single
+/// place that calls [`crate::event_log::merge_tapes`] (GitHub issue #169) to fold the (today:
+/// always exactly one) instrumented source into the merged tree `EventedGenerationResult.tape`
+/// always carries.
 pub fn generate_maze_with_events<T: Tessellation>(
     graph: &mut Graph,
     field: &Field<T>,
@@ -128,61 +156,58 @@ pub fn generate_maze_with_events<T: Tessellation>(
     config: GenerationConfig,
     preset_state: &PresetState,
 ) -> EventedGenerationResult {
-    let (tape, event_kind, checkpoints, debug_value_names) = match config.algorithm {
+    let (scope_name, event_kind, tape, checkpoints, debug_value_names): (
+        &'static str,
+        crate::event_log::EventedEventKind,
+        crate::event_log::EncodedTape,
+        Option<crate::event_log::EncodedCheckpoints>,
+        &'static [(&'static str, crate::event_log::DebugValueKind)],
+    ) = match config.algorithm {
         GenerationAlgorithm::RecursiveBacktracker => {
             let mut log = crate::event_log::EventLog::new();
             let mut checkpoint_log = crate::event_log::CheckpointLog::new();
             recursive_backtracker::generate(graph, field, seed, start, preset_state, Some(&mut log), Some(&mut checkpoint_log));
             (
-                Some(log.finish().encode()),
-                Some(crate::event_log::EventedEventKind::RecursiveBacktracker),
-                Some(checkpoint_log),
+                "generation",
+                crate::event_log::EventedEventKind::RecursiveBacktracker,
+                log.finish().encode(),
+                Some(checkpoint_log.encode()),
                 recursive_backtracker::debug_value_names(),
             )
         }
         GenerationAlgorithm::KruskalAlgorithm => {
             let mut log = crate::event_log::EventLog::new();
             kruskal::generate(graph, field, seed, preset_state, Some(&mut log));
-            (
-                Some(log.finish().encode()),
-                Some(crate::event_log::EventedEventKind::Kruskal),
-                None,
-                &[] as &[(&str, crate::event_log::DebugValueKind)],
-            )
+            ("generation", crate::event_log::EventedEventKind::Kruskal, log.finish().encode(), None, &[])
         }
         GenerationAlgorithm::WilsonAlgorithm => {
             let mut log = crate::event_log::EventLog::new();
             wilson::generate(graph, field, seed, start, preset_state, Some(&mut log));
-            (
-                Some(log.finish().encode()),
-                Some(crate::event_log::EventedEventKind::Wilson),
-                None,
-                wilson::debug_value_names(),
-            )
+            ("generation", crate::event_log::EventedEventKind::Wilson, log.finish().encode(), None, wilson::debug_value_names())
         }
         GenerationAlgorithm::CustomEdgeBased(params) => {
             let mut log = crate::event_log::EventLog::new();
             edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, Some(&mut log));
-            (
-                Some(log.finish().encode()),
-                Some(crate::event_log::EventedEventKind::EdgeBased),
-                None,
-                edge_based::debug_value_names(),
-            )
+            ("generation", crate::event_log::EventedEventKind::EdgeBased, log.finish().encode(), None, edge_based::debug_value_names())
         }
         GenerationAlgorithm::CustomVertexBased(params) => {
             let mut log = crate::event_log::EventLog::new();
             vertex_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, Some(&mut log));
-            (
-                Some(log.finish().encode()),
-                Some(crate::event_log::EventedEventKind::VertexBased),
-                None,
-                vertex_based::debug_value_names(),
-            )
+            ("generation", crate::event_log::EventedEventKind::VertexBased, log.finish().encode(), None, vertex_based::debug_value_names())
         }
     };
 
-    EventedGenerationResult { tape, event_kind, checkpoints, debug_value_names }
+    let (merged_tape, merged_checkpoints) = crate::event_log::merge_tapes(vec![
+        crate::event_log::TapeSource { scope_name, tape, checkpoints },
+    ]);
+    let debug_value_names = qualify_debug_value_names(&[(scope_name, debug_value_names.to_vec())]);
+
+    EventedGenerationResult {
+        tape: merged_tape,
+        sources: vec![(scope_name, event_kind)],
+        checkpoints: merged_checkpoints,
+        debug_value_names,
+    }
 }
 
 #[cfg(test)]

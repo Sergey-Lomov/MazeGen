@@ -77,52 +77,66 @@ function buildFixture(nodes: FixtureNode[]): ParsedTape {
   return parseTape(nodeTable, payload);
 }
 
-// root (0) -> "step 1" scope (1) -> EdgeAdded(1,2) (2) -> VertexVisited(2) (3) -> VertexPushed(2) (4)
-//          -> "step 2" scope (5) -> DeadEnd (6) -> VertexPopped(2) (7)
+// Every fixture is wrapped in the merge shape `event_log::merge_tapes` always produces (GitHub
+// issue #169): node 0 = merged root, node 1 = "generation" top-level source scope, node 2 =
+// the algorithm's own former root, one level deeper than pre-#169 fixtures had it. Real tags
+// aren't namespaced here (single source, source_index 0 -> tag unchanged, see merge_tapes' docs)
+// — only the extra two wrapper nodes need to exist for DebugEventTree's auto-expand-the-source-
+// scope behavior to land on the right node.
+
+// root (0) -> "generation" scope (1) -> former root (2) -> "step 1" scope (3)
+//   -> EdgeAdded(1,2) (4) -> VertexVisited(2) (5) -> VertexPushed(2) (6)
+//   -> "step 2" scope (7) -> DeadEnd (8) -> VertexPopped(2) (9)
 function buildTwoStepTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-    { parent: 0, firstChild: 2, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-    { parent: 1, firstChild: null, nextSibling: 4, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(2n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
-    { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
-    { parent: 5, firstChild: null, nextSibling: 7, tag: RB_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
-    { parent: 5, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+    { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 2, firstChild: 4, nextSibling: 7, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 3, firstChild: null, nextSibling: 6, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(2n) },
+    { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
+    { parent: 2, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
+    { parent: 7, firstChild: null, nextSibling: 9, tag: RB_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
+    { parent: 7, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
   ]);
 }
 
-// root (0) -> "walk 1" scope (1) -> WalkStartPicked(1) (2)
-//                                -> "search" scope (3) -> StepTaken(1,2) (4)
-//                                -> "commit" scope (5) -> EdgeAdded(1,2) (6) -> NodeVisited(1) (7)
+// root (0) -> "generation" scope (1) -> former root (2) -> "walk 1" scope (3) -> WalkStartPicked(1) (4)
+//                                                        -> "search" scope (5) -> StepTaken(1,2) (6)
+//                                                        -> "commit" scope (7) -> EdgeAdded(1,2) (8) -> NodeVisited(1) (9)
 // Mirrors wilson.rs's `generate`'s new two-phase shape (GitHub issue #145's follow-up) — a walk
 // scope's only nested scopes are exactly "search" then "commit", not one "step M" scope per step.
 function buildOneWalkWilsonTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
-    { parent: 1, firstChild: 4, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("search") },
-    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
-    { parent: 1, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("commit") },
-    { parent: 5, firstChild: null, nextSibling: 7, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-    { parent: 5, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(1n) },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+    { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
+    { parent: 3, firstChild: 6, nextSibling: 7, tag: TAG_SCOPE, payloadBytes: scopePayload("search") },
+    { parent: 5, firstChild: null, nextSibling: null, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
+    { parent: 3, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("commit") },
+    { parent: 7, firstChild: null, nextSibling: 9, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 7, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(1n) },
   ]);
 }
 
-// root (0) -> "walk 1" scope (1) -> WalkStartPicked(1) (2)
-//                                -> "search" scope (3) -> StepTaken(1,2) (4) -> LoopErased(2) (5) -> WalkDeadEnd (6)
+// root (0) -> "generation" scope (1) -> former root (2) -> "walk 1" scope (3) -> WalkStartPicked(1) (4)
+//                                                        -> "search" scope (5) -> StepTaken(1,2) (6) -> LoopErased(2) (7) -> WalkDeadEnd (8)
 // Covers wilsonNarrationTokensFor's LoopErased/WalkDeadEnd branches, which buildOneWalkWilsonTape
 // doesn't exercise (its walk connects straight into "commit" without a loop or a dead end).
 function buildLoopErasedDeadEndWilsonTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
-    { parent: 1, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("search") },
-    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
-    { parent: 3, firstChild: null, nextSibling: 6, tag: WILSON_TAG.LOOP_ERASED, payloadBytes: vertexPayload(2n) },
-    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_TAG.WALK_DEAD_END, payloadBytes: new Uint8Array(0) },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+    { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
+    { parent: 3, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("search") },
+    { parent: 5, firstChild: null, nextSibling: 7, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
+    { parent: 5, firstChild: null, nextSibling: 8, tag: WILSON_TAG.LOOP_ERASED, payloadBytes: vertexPayload(2n) },
+    { parent: 5, firstChild: null, nextSibling: null, tag: WILSON_TAG.WALK_DEAD_END, payloadBytes: new Uint8Array(0) },
   ]);
 }
 
@@ -177,24 +191,30 @@ describe("DebugEventTree", () => {
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
 
-    // Both top-level "step" scopes render a step-number column; the first one is "step 1"'s.
-    const [firstStepCol] = screen.getAllByTestId("step-col");
+    // The merged tree's auto-expanded "generation"/former-root wrapper rows (GitHub issue #169)
+    // each render their own step-col too — find "step 1"'s own column specifically.
+    const firstStepCol = screen.getByText(m["debug.tree.step_scope"]({ index: 1 })).closest("div")!.querySelector('[data-testid="step-col"]')!;
     fireEvent.click(firstStepCol);
 
-    // First "step 1" scope (nodeIndex 1) has no preceding mutating event -> clamps to step 0.
+    // First "step 1" scope (nodeIndex 3, per the merged fixture's layout) has no preceding
+    // mutating event -> clamps to step 0.
     expect(setDebugStep).toHaveBeenCalledWith(0);
   });
 
   it("jumps to the step shown in the column, not the nearest-preceding step for the scope node itself", () => {
-    // "step 2" (nodeIndex 5) sits right after VertexPushed (step 2, nodeIndex 4) in arena order,
-    // so the *nearest-preceding* step for node 5 itself would be 2. But the column displays "4"
-    // (1-based) for "step 2" — its first mutating descendant, VertexPopped, is step 3. Clicking
-    // must jump to 3, matching what's actually displayed, not the scope node's own nearest step.
+    // "step 2" (nodeIndex 7, per the merged fixture's layout) sits right after VertexPushed (step
+    // 2, nodeIndex 6) in arena order, so the *nearest-preceding* step for node 7 itself would be
+    // 2. But the column displays "4" (1-based) for "step 2" — its first mutating descendant,
+    // VertexPopped, is step 3. Clicking must jump to 3, matching what's actually displayed, not
+    // the scope node's own nearest step.
     const setDebugStep = vi.fn();
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
 
-    const [, secondStepCol] = screen.getAllByTestId("step-col");
+    // The merged tree's auto-expanded "generation"/former-root wrapper rows (GitHub issue #169)
+    // each render their own step-col too — find "step 2"'s own column specifically rather than
+    // assuming it's the second entry in document order.
+    const secondStepCol = screen.getByText(m["debug.tree.step_scope"]({ index: 2 })).closest("div")!.querySelector('[data-testid="step-col"]')!;
     expect(secondStepCol).toHaveTextContent("4");
     fireEvent.click(secondStepCol);
 
@@ -208,9 +228,13 @@ describe("DebugEventTree", () => {
     // descendant is VertexPopped at step 3 -> displayed as "4". DeadEnd itself is trace-only,
     // so its own row shows a dash despite "step 2" showing a number.
     render(<DebugEventTree />);
-    const stepCols = screen.getAllByTestId("step-col");
-    expect(stepCols[0]).toHaveTextContent("1");
-    expect(stepCols[1]).toHaveTextContent("4");
+    // The merged tree's auto-expanded "generation"/former-root wrapper rows (GitHub issue #169)
+    // each render their own step-col too — find "step 1"/"step 2"'s own columns specifically
+    // rather than assuming the first two entries in document order.
+    const stepOneCol = screen.getByText(m["debug.tree.step_scope"]({ index: 1 })).closest("div")!.querySelector('[data-testid="step-col"]');
+    const stepTwoCol = screen.getByText(m["debug.tree.step_scope"]({ index: 2 })).closest("div")!.querySelector('[data-testid="step-col"]');
+    expect(stepOneCol).toHaveTextContent("1");
+    expect(stepTwoCol).toHaveTextContent("4");
 
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 2 })));
     const deadEndRow = screen.getByText(m["debug.tree.dead_end"]()).closest("div")!;
@@ -252,8 +276,10 @@ describe("DebugEventTree", () => {
     // matches how DebugEventTree only calls rowLabel/narrationFor for currently-visible rows.
     const brokenTape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-      { parent: 1, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(99n) },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+      { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+      { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(99n) },
     ]);
     useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", nodes, totalSteps: 1, checkpointFroms: [], debugValueNames: [] }, debugStep: 0 });
 

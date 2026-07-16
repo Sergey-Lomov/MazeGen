@@ -21,9 +21,10 @@ use crate::result::GenerateResult;
 /// `build_maze`'s QC/repair pass. The event tree/checkpoints have nothing to record in this case,
 /// so `debug_events` is ignored here rather than erroring.
 ///
-/// Encoding (`DebugTape::encode()`/`CheckpointLog::encode()`) happens *after* the timing window
-/// closes — it's a WASM-boundary transfer cost, not part of the generation algorithm, and must
-/// not inflate `initial_build_ms` (GitHub issue #56's per-stage timing breakdown).
+/// Encoding (`DebugTape::encode()`/`CheckpointLog::encode()`/[`maze_core::event_log::merge_tapes`])
+/// happens inside `generate_maze_with_events` itself (GitHub issue #169) — this function no longer
+/// encodes/merges anything of its own; it only decides whether to call the plain or evented
+/// generation entry point and forwards whatever `EventedGenerationResult` already produced.
 fn run_initial_generation<T: Tessellation>(
     graph: &mut Graph,
     field: &Field<T>,
@@ -33,40 +34,40 @@ fn run_initial_generation<T: Tessellation>(
     preset_state: &maze_core::generation::PresetState,
     qc_experiment: bool,
     debug_events: bool,
-) -> (Option<maze_core::event_log::EncodedTape>, Option<maze_core::event_log::EncodedCheckpoints>, Vec<(String, maze_core::event_log::DebugValueKind)>, Option<maze_core::event_log::EventedEventKind>, f64) {
+) -> (Option<maze_core::event_log::EncodedTape>, Option<maze_core::event_log::EncodedCheckpoints>, Vec<(String, maze_core::event_log::DebugValueKind)>, Vec<(&'static str, maze_core::event_log::EventedEventKind)>, f64) {
     use maze_core::generation::pipeline::now_ms;
 
     let initial_build_start = now_ms();
-    let (tape, checkpoints, debug_value_names, event_kind): (
+    let (tape, checkpoints, debug_value_names, sources): (
         Option<maze_core::event_log::EncodedTape>,
-        Option<maze_core::event_log::CheckpointLog>,
+        Option<maze_core::event_log::EncodedCheckpoints>,
         Vec<(String, maze_core::event_log::DebugValueKind)>,
-        Option<maze_core::event_log::EventedEventKind>,
+        Vec<(&'static str, maze_core::event_log::EventedEventKind)>,
     ) = if qc_experiment {
-        (None, None, Vec::new(), None)
+        (None, None, Vec::new(), Vec::new())
     } else if debug_events {
         let result = generate_maze_with_events(graph, field, seed, start_id, gen_config, preset_state);
         // Only forward the tape/checkpoints/names past the WASM boundary when the web replay
-        // engine can actually decode this event kind (GitHub issue #161) — Recursive Backtracker
-        // and Kruskal (#146) so far. Gating on `event_kind` (a tag the tape itself carries) rather
-        // than re-matching on `gen_config.algorithm` means this check can't drift out of sync with
-        // which algorithms `generate_maze_with_events` instruments: extend `is_web_decodable`
-        // below once a new event kind gets a web decoder, and that's the only place this list
-        // needs to change.
-        if is_web_decodable(result.event_kind) {
-            let names = result.debug_value_names.iter().map(|(name, kind)| (name.to_string(), *kind)).collect();
-            (result.tape, result.checkpoints, names, result.event_kind)
+        // engine can actually decode every source's event kind (GitHub issue #161). Gating on
+        // `sources` (tags the tape itself carries) rather than re-matching on
+        // `gen_config.algorithm` means this check can't drift out of sync with which algorithms
+        // `generate_maze_with_events` instruments: extend `is_web_decodable` below once a new
+        // event kind gets a web decoder, and that's the only place this list needs to change.
+        // All-or-nothing today (there's always exactly one source) — partial forwarding when a
+        // mix of decodable/undecodable sources exists is out of scope until #147 makes that a
+        // real case.
+        if result.sources.iter().all(|(_, kind)| is_web_decodable(Some(*kind))) {
+            (Some(result.tape), result.checkpoints, result.debug_value_names, result.sources)
         } else {
-            (None, None, Vec::new(), None)
+            (None, None, Vec::new(), Vec::new())
         }
     } else {
         generate_maze(graph, field, seed, start_id, gen_config, preset_state);
-        (None, None, Vec::new(), None)
+        (None, None, Vec::new(), Vec::new())
     };
     let initial_build_ms = now_ms() - initial_build_start;
-    let debug_checkpoints = checkpoints.map(|c| c.encode());
 
-    (tape, debug_checkpoints, debug_value_names, event_kind, initial_build_ms)
+    (tape, checkpoints, debug_value_names, sources, initial_build_ms)
 }
 
 /// Which [`maze_core::event_log::EventedEventKind`]s the web replay engine (`maze-web/src/debug/
@@ -200,7 +201,7 @@ mod run_initial_generation_tests {
         let (mut graph, field, preset_state) = field_and_state();
         let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::CustomVertexBased(maze_core::generation::GenerationParams::default()), ..GenerationConfig::default() };
-        let (debug_tape, debug_checkpoints, debug_value_names, event_kind, _) = run_initial_generation(&mut graph, &field, 3, start, config, &preset_state, false, true);
+        let (debug_tape, debug_checkpoints, debug_value_names, sources, _) = run_initial_generation(&mut graph, &field, 3, start, config, &preset_state, false, true);
         let tape = debug_tape.expect("CustomVertexBased's event kind is web-decodable");
         assert!(!tape.node_table.is_empty(), "a 3x3 CustomVertexBased run must emit at least one event");
         assert!(debug_checkpoints.is_none(), "CustomVertexBased does not produce checkpoints");
@@ -213,7 +214,7 @@ mod run_initial_generation_tests {
             ],
             "CustomVertexBased declares the visited, frontier, and reserve debug values"
         );
-        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::VertexBased));
+        assert_eq!(sources, vec![("generation", maze_core::event_log::EventedEventKind::VertexBased)]);
     }
 
     #[test]
@@ -228,7 +229,7 @@ mod run_initial_generation_tests {
             algorithm: GenerationAlgorithm::CustomEdgeBased(maze_core::generation::EdgeBasedParams::default()),
             ..GenerationConfig::default()
         };
-        let (debug_tape, debug_checkpoints, debug_value_names, event_kind, _) = run_initial_generation(&mut graph, &field, 6, start, config, &preset_state, false, true);
+        let (debug_tape, debug_checkpoints, debug_value_names, sources, _) = run_initial_generation(&mut graph, &field, 6, start, config, &preset_state, false, true);
         let tape = debug_tape.expect("CustomEdgeBased's event kind is web-decodable");
         assert!(!tape.node_table.is_empty(), "a 3x3 CustomEdgeBased run must emit at least one event");
         assert!(debug_checkpoints.is_none(), "CustomEdgeBased does not produce checkpoints");
@@ -240,7 +241,7 @@ mod run_initial_generation_tests {
             ],
             "CustomEdgeBased declares the active and visited debug values"
         );
-        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::EdgeBased));
+        assert_eq!(sources, vec![("generation", maze_core::event_log::EventedEventKind::EdgeBased)]);
     }
 
     #[test]
@@ -251,12 +252,12 @@ mod run_initial_generation_tests {
         let (mut graph, field, preset_state) = field_and_state();
         let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::KruskalAlgorithm, ..GenerationConfig::default() };
-        let (debug_tape, debug_checkpoints, debug_value_names, event_kind, _) = run_initial_generation(&mut graph, &field, 4, start, config, &preset_state, false, true);
+        let (debug_tape, debug_checkpoints, debug_value_names, sources, _) = run_initial_generation(&mut graph, &field, 4, start, config, &preset_state, false, true);
         let tape = debug_tape.expect("Kruskal's event kind is web-decodable");
         assert!(!tape.node_table.is_empty(), "a 3x3 Kruskal run must emit at least one event");
         assert!(debug_checkpoints.is_none(), "Kruskal does not produce checkpoints");
         assert!(debug_value_names.is_empty(), "Kruskal does not declare debug values");
-        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::Kruskal));
+        assert_eq!(sources, vec![("generation", maze_core::event_log::EventedEventKind::Kruskal)]);
     }
 
     #[test]
@@ -268,7 +269,7 @@ mod run_initial_generation_tests {
         let (mut graph, field, preset_state) = field_and_state();
         let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, ..GenerationConfig::default() };
-        let (debug_tape, debug_checkpoints, debug_value_names, event_kind, _) = run_initial_generation(&mut graph, &field, 5, start, config, &preset_state, false, true);
+        let (debug_tape, debug_checkpoints, debug_value_names, sources, _) = run_initial_generation(&mut graph, &field, 5, start, config, &preset_state, false, true);
         let tape = debug_tape.expect("Wilson's event kind is web-decodable");
         assert!(!tape.node_table.is_empty(), "a 3x3 Wilson run must emit at least one event");
         assert!(debug_checkpoints.is_none(), "Wilson does not produce checkpoints");
@@ -282,17 +283,18 @@ mod run_initial_generation_tests {
             ],
             "Wilson declares the visited, current_walk, walk_start, and walk_head debug values"
         );
-        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::Wilson));
+        assert_eq!(sources, vec![("generation", maze_core::event_log::EventedEventKind::Wilson)]);
     }
 
     #[test]
     fn qc_experiment_ignores_debug_events_and_skips_generation() {
         let (mut graph, field, preset_state) = field_and_state();
         let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let (debug_tape, debug_checkpoints, debug_value_names, _, _) = run_initial_generation(&mut graph, &field, 5, start, rb_config(), &preset_state, true, true);
+        let (debug_tape, debug_checkpoints, debug_value_names, sources, _) = run_initial_generation(&mut graph, &field, 5, start, rb_config(), &preset_state, true, true);
         assert!(debug_tape.is_none(), "qc_experiment must skip the event tree entirely");
         assert!(debug_checkpoints.is_none(), "qc_experiment must skip checkpointing entirely");
         assert!(debug_value_names.is_empty(), "qc_experiment must skip debug value names entirely");
+        assert!(sources.is_empty(), "qc_experiment must skip sources entirely");
         assert_eq!(graph.edges().count(), 0, "qc_experiment must not run the generation algorithm at all");
     }
 
@@ -313,7 +315,7 @@ mod build_generate_result_tests {
 
     #[test]
     fn no_tape_no_checkpoints_yields_neither() {
-        let result = build_generate_result(JsValue::UNDEFINED, None, None, Vec::new(), None);
+        let result = build_generate_result(JsValue::UNDEFINED, None, None, Vec::new(), Vec::new());
         assert!(result.debug_tape_bytes().is_none());
         assert!(result.checkpoint_bytes().is_none());
     }
@@ -324,7 +326,7 @@ mod build_generate_result_tests {
         let result = build_generate_result(
             JsValue::UNDEFINED, Some(tape), None,
             vec![("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence)],
-            Some(maze_core::event_log::EventedEventKind::RecursiveBacktracker),
+            vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)],
         );
         assert!(result.debug_tape_bytes().is_some());
         assert!(result.checkpoint_bytes().is_none());
@@ -339,7 +341,7 @@ mod build_generate_result_tests {
         let result = build_generate_result(
             JsValue::UNDEFINED, Some(tape), Some(checkpoints),
             vec![("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence)],
-            Some(maze_core::event_log::EventedEventKind::RecursiveBacktracker),
+            vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)],
         );
         assert!(result.debug_tape_bytes().is_some());
         assert!(result.checkpoint_bytes().is_some());
@@ -350,14 +352,15 @@ mod build_generate_result_tests {
         let tape = EncodedTape { node_table: vec![1, 2, 3], payload: vec![4, 5] };
         let result = build_generate_result(
             JsValue::UNDEFINED, Some(tape), None, Vec::new(),
-            Some(maze_core::event_log::EventedEventKind::Kruskal),
+            vec![("generation", maze_core::event_log::EventedEventKind::Kruskal)],
         );
-        assert_eq!(result.event_kind_bytes(), Some("kruskal"));
+        assert_eq!(result.source_event_kinds_bytes(), &["kruskal".to_string()]);
+        assert_eq!(result.source_scope_names_bytes(), &["generation".to_string()]);
     }
 
     #[test]
     fn wilson_tape_carries_wilson_event_kind_and_map_vertex_kind_debug_values() {
-        // Guards build_generate_result's forwarding of Wilson's event_kind and Map/Vertex-kind
+        // Guards build_generate_result's forwarding of Wilson's event kind and Map/Vertex-kind
         // debug values specifically (GitHub issue #145's follow-up) — the other tests in this
         // module only ever exercise RecursiveBacktracker/Kruskal fixtures.
         let tape = EncodedTape { node_table: vec![1, 2, 3], payload: vec![4, 5] };
@@ -369,9 +372,9 @@ mod build_generate_result_tests {
                 ("walk_start".to_string(), maze_core::event_log::DebugValueKind::Vertex),
                 ("walk_head".to_string(), maze_core::event_log::DebugValueKind::Vertex),
             ],
-            Some(maze_core::event_log::EventedEventKind::Wilson),
+            vec![("generation", maze_core::event_log::EventedEventKind::Wilson)],
         );
-        assert_eq!(result.event_kind_bytes(), Some("wilson"));
+        assert_eq!(result.source_event_kinds_bytes(), &["wilson".to_string()]);
         assert_eq!(
             result.debug_value_names_bytes(),
             &["visited".to_string(), "current_walk".to_string(), "walk_start".to_string(), "walk_head".to_string()]
@@ -389,7 +392,7 @@ mod build_generate_result_tests {
         // same EventedGenerationResult, so they're Some/None together) — but this documents and
         // guards the invariant at the boundary between run_initial_generation and this function.
         let checkpoints = EncodedCheckpoints { table: vec![0u8; CHECKPOINT_RECORD_SIZE], payload: vec![6, 7] };
-        build_generate_result(JsValue::UNDEFINED, None, Some(checkpoints), Vec::new(), None);
+        build_generate_result(JsValue::UNDEFINED, None, Some(checkpoints), Vec::new(), Vec::new());
     }
 
     #[test]
@@ -401,18 +404,18 @@ mod build_generate_result_tests {
         build_generate_result(
             JsValue::UNDEFINED, None, None,
             vec![("recursion_stack".to_string(), maze_core::event_log::DebugValueKind::Sequence)],
-            None,
+            Vec::new(),
         );
     }
 
     #[test]
-    #[should_panic(expected = "debug_tape is Some but event_kind is None")]
-    fn tape_without_event_kind_panics() {
-        // Guards the invariant run_initial_generation always upholds (tape/event_kind produced
-        // together) — a future regression that drops event_kind while still forwarding a tape
-        // must fail loudly rather than silently mislabeling the tape's decoder on the web side.
+    #[should_panic(expected = "debug_tape is Some but sources is empty")]
+    fn tape_without_sources_panics() {
+        // Guards the invariant run_initial_generation always upholds (tape/sources produced
+        // together) — a future regression that drops sources while still forwarding a tape must
+        // fail loudly rather than silently mislabeling the tape's decoder on the web side.
         let tape = EncodedTape { node_table: vec![1, 2, 3], payload: vec![4, 5] };
-        build_generate_result(JsValue::UNDEFINED, Some(tape), None, Vec::new(), None);
+        build_generate_result(JsValue::UNDEFINED, Some(tape), None, Vec::new(), Vec::new());
     }
 }
 
@@ -439,7 +442,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         &gen_config.locked_nodes,
         |x, y| field.all_points().find(|&p| point_to_xy(p) == (x, y)).unwrap_or(start),
     );
-    let (debug_tape, debug_checkpoints, debug_value_names, event_kind, initial_build_ms) = run_initial_generation(
+    let (debug_tape, debug_checkpoints, debug_value_names, sources, initial_build_ms) = run_initial_generation(
         &mut graph, &field, seed, start_id, gen_config, &preset_state, config.qc_experiment, config.debug_events,
     );
 
@@ -465,7 +468,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     let snapshot_js = snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    Ok(build_generate_result(snapshot_js, debug_tape, debug_checkpoints, debug_value_names, event_kind))
+    Ok(build_generate_result(snapshot_js, debug_tape, debug_checkpoints, debug_value_names, sources))
 }
 
 /// Assembles the final `GenerateResult` from the encoded debug tape/checkpoint buffers — split
@@ -478,12 +481,16 @@ fn build_generate_result(
     debug_tape: Option<maze_core::event_log::EncodedTape>,
     debug_checkpoints: Option<maze_core::event_log::EncodedCheckpoints>,
     debug_value_names: Vec<(String, maze_core::event_log::DebugValueKind)>,
-    event_kind: Option<maze_core::event_log::EventedEventKind>,
+    sources: Vec<(&'static str, maze_core::event_log::EventedEventKind)>,
 ) -> GenerateResult {
     let result = match debug_tape {
         Some(tape) => {
-            let kind = event_kind.expect("build_generate_result: debug_tape is Some but event_kind is None — run_initial_generation must always produce them together");
-            GenerateResult::with_debug_tape(snapshot_js, tape.node_table, tape.payload, debug_value_names, kind)
+            assert!(
+                !sources.is_empty(),
+                "build_generate_result: debug_tape is Some but sources is empty — \
+                 run_initial_generation must always produce them together"
+            );
+            GenerateResult::with_debug_tape(snapshot_js, tape.node_table, tape.payload, debug_value_names, sources)
         }
         None => {
             assert!(
@@ -494,6 +501,7 @@ fn build_generate_result(
                  nowhere to carry them, so this would otherwise silently drop them instead of \
                  surfacing the broken invariant"
             );
+            assert!(sources.is_empty(), "build_generate_result: sources is non-empty but debug_tape is None");
             GenerateResult::without_debug_tape(snapshot_js)
         }
     };

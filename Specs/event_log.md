@@ -1122,3 +1122,158 @@ each vertex layer's container to the top of the child list.
 - A generalized replacement for `DebugMapDelta`/`DebugVertexDelta` that could express both shapes
   through one trait — kept as two separate traits deliberately (see "Debug values" above)
 - Instrumenting custom algorithms, or QC/repair narration-level logging
+
+## Unifying into One Multi-Source Tape (#169)
+
+Every prior section above describes a tape carrying exactly one instrumented source's events —
+`EventedGenerationResult`/`GenerateResult` were physically single-slot (one `EncodedTape`, one
+`EventedEventKind`). This breaks down once more than one thing needs instrumenting in the same
+`generate()` call — QC/repair instrumentation (issue #147) is a second, independent pass that runs
+after generation in every call, and per-repair-strategy instrumentation (planned as #147's
+follow-on) would add still more sources. This issue unifies the architecture so any number of
+sources land in one combined tree; it does not itself add any new instrumented source — QC/repair
+events remain #147's scope. The web replay/narration/decode stack now dispatches per top-level
+source scope rather than assuming the whole tape is one source.
+
+### `merge_tapes` — domain-agnostic tree combination
+
+`event_log::merge_tapes(sources: Vec<TapeSource>) -> (EncodedTape, Option<EncodedCheckpoints>)`
+(`maze-core/src/event_log/mod.rs`) combines several already-encoded, independently-produced tapes
+into one arena, operating purely on already-written `NodeRecord`s — it never re-decodes or
+re-encodes event payloads. `TapeSource { scope_name: &'static str, tape: EncodedTape, checkpoints:
+Option<EncodedCheckpoints> }` is the per-source input; `scope_name` becomes that source's dedicated
+top-level child scope's label under the merged root.
+
+Deliberately domain-agnostic: `merge_tapes` takes only a scope-name string per source, never
+`GenerationAlgorithm`/`EventedEventKind`-shaped knowledge. Mapping a merged source's scope name to
+whichever concrete decoder it needs is the caller's concern — today, `generate_maze_with_events`
+(`maze-core/src/generation/mod.rs`) is the single call site, and the only place that both knows
+which algorithm ran and calls `merge_tapes`.
+
+**Merge always runs, no single-source special case.** Even with exactly one instrumented source
+(every case today), the tape is still wrapped in a merged root + one dedicated top-level source
+scope — deliberate, not a placeholder: every consumer sees the same tree shape regardless of how
+many sources actually ran, so adding a second source later (#147) requires no branch anywhere that
+currently assumes "there's only ever one." Concretely, the tree shape is always: merged root (node
+0, `Scope("root")`) → one top-level child scope per source, named `scope_name`, in `sources`' order
+→ each wraps that source's own former root (the actual `EventLog::new()` root the algorithm built,
+itself always named `"root"`) as its own child → that former root's own children are the
+algorithm's real content (e.g. RB's `"step N"` scopes), unchanged in shape from every section above
+— just one level deeper than before this issue.
+
+### Tag namespacing: source-index prefix in the high byte
+
+Wire tags (`EncodeEventPayload::type_id()`, a `u16`) are unique only *within* one source's own
+event enum — `RecursiveBacktrackerEvent`'s tag 1 (`VertexSelected`) and `KruskalEvent`'s tag 1
+(`EdgesShuffled`) collide numerically. This was safe pre-#169 because each `EncodedTape` was
+decoded by exactly one decoder, selected via the (single) `EventedEventKind`. Combining sources
+into one arena needs per-event source disambiguation, without walking back up the tree to the
+nearest source scope for every node.
+
+`merge_tapes` prefixes every non-scope node's tag with its source's positional index, in the tag's
+high byte: `tag = (source_index: u8) << SOURCE_SHIFT | local_tag: u8`, where `SOURCE_SHIFT = 8`,
+`SOURCE_MASK = 0xFF00`, `LOCAL_TAG_MASK = 0x00FF` (all `pub const` in `event_log/mod.rs`, mirrored
+in `maze-web/src/debug/eventTape.ts`). `source_index` is `sources`' 0-based position *within one
+`merge_tapes` call* — never a stable cross-tape identifier; it does not correspond to
+`EventedEventKind`'s variant order and must not be cached/compared across different tapes.
+`TAG_SCOPE` (0) is never namespaced — scope nodes stay `0` regardless of which source they belong
+to, so "is this a scope" is still a single equality check against the untouched constant.
+
+For the first source (`source_index == 0`), `0 << SOURCE_SHIFT == 0`, so its tags are numerically
+unchanged from their original `local_tag` values — this is the shift math working correctly, not a
+skipped step; a decoder must always apply the mask/shift uniformly, never special-case "the first
+source doesn't need unpacking."
+
+All existing per-algorithm wire tags (RB, Kruskal, Wilson, CustomEdgeBased, CustomVertexBased) are
+completely unchanged by this issue — the largest is `VertexBasedEvent`'s `DIRECTIONALITY_ROLLED =
+25`, comfortably inside the low byte. No algorithm's `wire_tags` module needed touching.
+
+### Relinking and payload handling
+
+`merge_tapes`'s node-table pass, per source: shifts `parent`/`first_child`/`next_sibling` links by
+that source's node offset (root + one top-level scope per source come first, so offsets start
+after those); the former root's own `parent` (previously `NO_NODE`, since it was rootless) is
+rewritten to point at its new top-level scope node instead; `payload_offset` is shifted by that
+source's payload-arena offset. Payload bytes themselves are copied verbatim — concatenated in
+source order, then followed by the merge's own newly-interned scope names (`"root"`,
+`scope_name`s) — never reinterpreted or re-encoded.
+
+**Every node index a caller may have captured against a source's original, unmerged `EncodedTape`
+becomes meaningless after merging** — every index is renumbered. This includes any raw `node_index`
+inside an `EncodedCheckpoints::table` read before the merge call.
+
+### Checkpoint concatenation
+
+Checkpoints (issue #128) are folded the same way: `merge_tapes` concatenates every source's
+`EncodedCheckpoints` (if any) into one combined table, shifting each entry's `node_index` by that
+source's node offset — same shift as its node table. The result is `None` only when *no* source
+supplied checkpoints; if any source has some, the combined table includes exactly those entries
+(sources with `checkpoints: None` simply contribute nothing), still sorted by `node_index` since
+sources are processed in order and each source's own entries were already sorted by
+`CheckpointLog::push`'s invariant.
+
+### `EventedGenerationResult` and `qualify_debug_value_names`
+
+`EventedGenerationResult` (`maze-core/src/generation/mod.rs`) changed shape: `tape` is now a plain
+`EncodedTape`, not `Option<EncodedTape>` — `generate_maze_with_events` is the sole constructor and
+every algorithm arm produces a tape via `merge_tapes`, so there is no reachable "no tape" state to
+represent; a caller needing to conditionally discard it (e.g. `maze-wasm/src/runner.rs`, when the
+web replay engine can't decode this event kind) wraps it in its own `Option` rather than this type
+carrying one it can never actually leave unset. The single `event_kind: Option<EventedEventKind>`
+field is replaced by `sources: Vec<(&'static str, EventedEventKind)>` — one entry per top-level
+source scope, in the same order as the merged tree's top-level children (today: always exactly one,
+`("generation", ...)`).
+
+`debug_value_names` changed from `&'static [(&'static str, DebugValueKind)]` to `Vec<(String,
+DebugValueKind)>` — no longer a static slice, since names may now be dynamically qualified.
+`qualify_debug_value_names` (private, `generation/mod.rs`) prefixes every name with `"{scope_name}:"`
+when more than one source is present, disambiguating a name two sources might independently declare
+(`"visited"` is already reused by RB, Wilson, CustomEdgeBased, and CustomVertexBased independently —
+see their respective sections above). With exactly one source (every case today), names pass
+through unqualified, matching every pre-#169 name/test/UI expectation verbatim — qualification only
+changes the wire format once a second source genuinely exists (#147).
+
+### WASM boundary: `sources`/`source_scope_names`/`source_event_kinds`
+
+`GenerateResult` (`maze-wasm/src/result.rs`) replaces its single `event_kind: Option<String>` field
+with a parallel-array pair, same pattern `debug_value_names`/`debug_value_kinds` already use:
+`source_scope_names: Vec<String>` and `source_event_kinds: Vec<String>` (wire strings via the
+existing `event_kind_wire_str`), one entry per top-level source scope, both empty exactly when no
+debug tape was built. Exposed as `.sourceScopeNames()`/`.sourceEventKinds()` (replacing the old
+`.eventKind()`), plain `Vec<String>` returns — no zero-copy view, matching `debugValueNames`'s own
+marshaling. `maze-wasm/src/runner.rs`'s `is_web_decodable` gate now checks every source's kind
+(`result.sources.iter().all(...)`) — all-or-nothing today (there's always exactly one source);
+partial forwarding when a mix of decodable/undecodable sources exists is out of scope until #147
+makes that a real case.
+
+### Web side: `topLevelSourceScopes`, per-source tag unpacking, auto-expand
+
+`maze-web/src/debug/eventTape.ts`'s `nodeAt` — the single place every decoder in the module reads a
+`NodeRecord` from — now unpacks the merge's tag prefix once: `NodeRecord.tag` comes back as the
+already-unmasked local wire tag, and a new `NodeRecord.sourceIndex` field carries the unpacked
+source index (`0` for `TAG_SCOPE` nodes, matching the Rust side's "never namespaced" rule). Every
+existing per-algorithm decoder (`decodeRecursiveBacktrackerEvent`, etc.) is unaware merging exists
+at all — it keeps reading `record.tag` exactly as before.
+
+`topLevelSourceScopes(tape) -> TopLevelSourceScope[]` (`{ scopeName, nodeIndex }[]`) walks the
+merged root's direct children — a pure navigation/inspection helper, used by tests and as the entry
+point a future multi-source consumer (#147) would use to enumerate sources. `mazeService.ts`'s
+`DebugTape.sourceScopeNames`/`sourceEventKinds` mirror the WASM boundary's parallel arrays;
+`DebugArenaHandle.algorithmKind` (`storeTypes.ts`) reads the first (only) entry of
+`sourceEventKinds` — consuming more than one source's decoder/apply/narration at once is out of
+scope until #147.
+
+`DebugEventTree.tsx` auto-expands, on every fresh tape, both each top-level source scope and its
+one child (the former root) — matching pre-#169 behavior (where `"step N"`/`"edge N"`/... were
+visible immediately without an extra click) despite the tree now being two levels deeper. Resets
+the `expanded` set to a fresh one per tape rather than adding on top of the previous tape's
+expanded-row indices, which would otherwise be stale, coincidentally-matching state carried across
+unrelated runs.
+
+### Out of Scope (#169)
+
+- Adding any new instrumented source (QC/repair events remain #147's scope)
+- Aggregating narration/apply across more than one source scope at once in the web UI (deferred
+  until a real second source exists)
+- A generalized replacement for the per-repair-strategy instrumentation this issue's architecture
+  enables but does not itself build

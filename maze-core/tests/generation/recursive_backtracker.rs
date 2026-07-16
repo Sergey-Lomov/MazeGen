@@ -231,7 +231,6 @@ fn generate_maze_with_events_checkpoints_and_debug_values_stay_empty_for_kruskal
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    assert!(result.tape.is_some(), "Kruskal must produce a tape");
     assert!(result.checkpoints.is_none(), "Kruskal checkpointing isn't wired up yet");
     assert!(result.debug_value_names.is_empty(), "Kruskal declares no debug values yet");
 }
@@ -244,12 +243,11 @@ fn generate_maze_with_events_collects_tape_for_recursive_backtracker() {
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    assert!(result.tape.is_some(), "Recursive Backtracker must produce a tape");
-    assert_eq!(result.event_kind, Some(EventedEventKind::RecursiveBacktracker));
+    assert_eq!(result.sources, vec![("generation", EventedEventKind::RecursiveBacktracker)]);
     assert!(result.checkpoints.is_some(), "Recursive Backtracker must produce a checkpoint log");
     assert_eq!(
         result.debug_value_names,
-        &[("recursion_stack", DebugValueKind::Sequence), ("visited", DebugValueKind::Region)],
+        vec![("recursion_stack".to_string(), DebugValueKind::Sequence), ("visited".to_string(), DebugValueKind::Region)],
         "Recursive Backtracker declares the recursion_stack and visited debug values"
     );
 }
@@ -262,8 +260,8 @@ fn generate_maze_with_events_collects_tape_for_kruskal() {
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    let tape = result.tape.expect("Kruskal must produce a tape");
-    assert_eq!(result.event_kind, Some(EventedEventKind::Kruskal));
+    let tape = result.tape;
+    assert_eq!(result.sources, vec![("generation", EventedEventKind::Kruskal)]);
     assert!(result.checkpoints.is_none(), "Kruskal checkpointing isn't wired up yet");
     assert!(result.debug_value_names.is_empty(), "Kruskal doesn't declare debug values yet");
 
@@ -285,16 +283,16 @@ fn generate_maze_with_events_collects_tape_and_visited_debug_value_for_wilson() 
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    let tape = result.tape.expect("Wilson must produce a tape");
-    assert_eq!(result.event_kind, Some(EventedEventKind::Wilson));
+    let tape = result.tape;
+    assert_eq!(result.sources, vec![("generation", EventedEventKind::Wilson)]);
     assert!(result.checkpoints.is_none(), "Wilson checkpointing isn't wired up yet");
     assert_eq!(
         result.debug_value_names,
-        &[
-            ("visited", DebugValueKind::Region),
-            ("current_walk", DebugValueKind::Map),
-            ("walk_start", DebugValueKind::Vertex),
-            ("walk_head", DebugValueKind::Vertex),
+        vec![
+            ("visited".to_string(), DebugValueKind::Region),
+            ("current_walk".to_string(), DebugValueKind::Map),
+            ("walk_start".to_string(), DebugValueKind::Vertex),
+            ("walk_head".to_string(), DebugValueKind::Vertex),
         ],
         "Wilson declares the visited, current_walk, walk_start, and walk_head debug values"
     );
