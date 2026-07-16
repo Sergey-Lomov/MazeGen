@@ -144,6 +144,41 @@ function sentinelToNull(v: number): number | null {
   return v === NO_NODE ? null : v;
 }
 
+export interface MutatingEventAt<E> {
+  event: E;
+  /** Arena node-table index this event was decoded from — lets a caller resume a later scan
+   *  right after this node (e.g. `applyRecursiveBacktracker`'s bounded resume). */
+  nodeIndex: number;
+}
+
+/** Flat layer forward scan, generic over one algorithm's `decode`/`isMutating` pair: scans the
+ *  node table from `startIndex`, skips `TAG_SCOPE` nodes, decodes each event's payload, keeps
+ *  only mutating ones, stops once `limit` have been collected — the loop body every
+ *  `mutatingXEventsWithIndex` function in this module shares, extracted per GitHub issue #168.
+ *
+ *  `startIndex` (default 0) and `limit` bound the *node-table* scan: the scan starts at arena
+ *  index `startIndex` and stops as soon as `limit` mutating events have been collected since
+ *  then — a real run can produce tens of thousands of events, per `Specs/event_log.md`'s WASM
+ *  Boundary section, so avoiding both the already-known prefix and the unneeded tail matters. */
+export function mutatingEventsWithIndex<E>(
+  tape: ParsedTape,
+  decode: (tag: number, bytes: Uint8Array) => E,
+  isMutating: (event: E) => boolean,
+  limit?: number,
+  startIndex = 0,
+): MutatingEventAt<E>[] {
+  const result: MutatingEventAt<E>[] = [];
+  for (let i = startIndex; i < tape.nodeCount; i++) {
+    if (limit !== undefined && result.length >= limit) break;
+    const record = nodeAt(tape, i);
+    if (record.tag === TAG_SCOPE) continue;
+    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
+    const event = decode(record.tag, bytes);
+    if (isMutating(event)) result.push({ event, nodeIndex: i });
+  }
+  return result;
+}
+
 /** Reads and decodes one fixed-stride node record by index — used by both the flat and tree
  *  layers described in this module's doc comment. */
 export function nodeAt(tape: ParsedTape, index: number): NodeRecord {
@@ -385,16 +420,7 @@ export interface MutatingKruskalEventAt {
  *  bounded-resume use case yet, but keeps the same `startIndex`/`limit` shape for consistency and
  *  so `applyKruskal` can reuse the same "keep collecting until limit" loop structure. */
 export function mutatingKruskalEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingKruskalEventAt[] {
-  const result: MutatingKruskalEventAt[] = [];
-  for (let i = startIndex; i < tape.nodeCount; i++) {
-    if (limit !== undefined && result.length >= limit) break;
-    const record = nodeAt(tape, i);
-    if (record.tag === TAG_SCOPE) continue;
-    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
-    const event = decodeKruskalEvent(record.tag, bytes);
-    if (isMutatingKruskalEvent(event)) result.push({ event, nodeIndex: i });
-  }
-  return result;
+  return mutatingEventsWithIndex(tape, decodeKruskalEvent, isMutatingKruskalEvent, limit, startIndex);
 }
 
 /** Convenience wrapper over `mutatingKruskalEventsWithIndex` for callers that only need the
@@ -594,16 +620,7 @@ export interface MutatingWilsonEventAt {
  *  produces no checkpoints (GitHub issue #128 is RB-only), same as Kruskal, so this keeps the
  *  same `startIndex`/`limit` shape purely for consistency, not because `applyWilson` resumes. */
 export function mutatingWilsonEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingWilsonEventAt[] {
-  const result: MutatingWilsonEventAt[] = [];
-  for (let i = startIndex; i < tape.nodeCount; i++) {
-    if (limit !== undefined && result.length >= limit) break;
-    const record = nodeAt(tape, i);
-    if (record.tag === TAG_SCOPE) continue;
-    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
-    const event = decodeWilsonEvent(record.tag, bytes);
-    if (isMutatingWilsonEvent(event)) result.push({ event, nodeIndex: i });
-  }
-  return result;
+  return mutatingEventsWithIndex(tape, decodeWilsonEvent, isMutatingWilsonEvent, limit, startIndex);
 }
 
 /** Convenience wrapper over `mutatingWilsonEventsWithIndex` for callers that only need the
@@ -688,16 +705,7 @@ export interface MutatingRbEventAt {
  *  then — a real run can produce tens of thousands of events, per `Specs/event_log.md`'s WASM
  *  Boundary section, so avoiding both the already-known prefix and the unneeded tail matters. */
 export function mutatingRbEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingRbEventAt[] {
-  const result: MutatingRbEventAt[] = [];
-  for (let i = startIndex; i < tape.nodeCount; i++) {
-    if (limit !== undefined && result.length >= limit) break;
-    const record = nodeAt(tape, i);
-    if (record.tag === TAG_SCOPE) continue;
-    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
-    const event = decodeRecursiveBacktrackerEvent(record.tag, bytes);
-    if (isMutatingRbEvent(event)) result.push({ event, nodeIndex: i });
-  }
-  return result;
+  return mutatingEventsWithIndex(tape, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, limit, startIndex);
 }
 
 /** Convenience wrapper over `mutatingRbEventsWithIndex` for callers that only need the decoded
@@ -1397,16 +1405,7 @@ export interface MutatingEdgeBasedEventAt {
  *  decoding events, filtering to mutating ones only — mirrors `mutatingWilsonEventsWithIndex`. No
  *  checkpoints (GitHub issue #128 is RB-only), same `startIndex`/`limit` shape for consistency. */
 export function mutatingEdgeBasedEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingEdgeBasedEventAt[] {
-  const result: MutatingEdgeBasedEventAt[] = [];
-  for (let i = startIndex; i < tape.nodeCount; i++) {
-    if (limit !== undefined && result.length >= limit) break;
-    const record = nodeAt(tape, i);
-    if (record.tag === TAG_SCOPE) continue;
-    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
-    const event = decodeEdgeBasedEvent(record.tag, bytes);
-    if (isMutatingEdgeBasedEvent(event)) result.push({ event, nodeIndex: i });
-  }
-  return result;
+  return mutatingEventsWithIndex(tape, decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, limit, startIndex);
 }
 
 /** Convenience wrapper over `mutatingEdgeBasedEventsWithIndex` for callers that only need the
@@ -1677,16 +1676,7 @@ export interface MutatingVertexBasedEventAt {
  *  decoding events, filtering to mutating ones only — mirrors `mutatingEdgeBasedEventsWithIndex`.
  *  No checkpoints (GitHub issue #128 is RB-only), same `startIndex`/`limit` shape for consistency. */
 export function mutatingVertexBasedEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingVertexBasedEventAt[] {
-  const result: MutatingVertexBasedEventAt[] = [];
-  for (let i = startIndex; i < tape.nodeCount; i++) {
-    if (limit !== undefined && result.length >= limit) break;
-    const record = nodeAt(tape, i);
-    if (record.tag === TAG_SCOPE) continue;
-    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
-    const event = decodeVertexBasedEvent(record.tag, bytes);
-    if (isMutatingVertexBasedEvent(event)) result.push({ event, nodeIndex: i });
-  }
-  return result;
+  return mutatingEventsWithIndex(tape, decodeVertexBasedEvent, isMutatingVertexBasedEvent, limit, startIndex);
 }
 
 /** Convenience wrapper over `mutatingVertexBasedEventsWithIndex` for callers that only need the
