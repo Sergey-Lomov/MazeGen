@@ -214,7 +214,7 @@ Bounded on both ends: the node-table scan starts at `from.nodeIndex + 1` (or 0 w
 
 An out-of-range `targetStep` is detected by the bounded scan coming up short (fewer new mutating events found than needed to reach `targetStep`), not by comparing against a separately-computed total — computing the true total would require an unbounded scan, defeating the point. A `from` that doesn't actually come from a previous call on the same tape (mismatched `nodeIndex`/`step` pair, or a `nodeIndex` past the end of the node table) is guarded against explicitly: `from.nodeIndex` must be in range and must point at an actual mutating event, checked with one extra record read before the bounded scan starts — otherwise a bogus `from` would resume scanning from a meaningless position and silently produce a wrong result instead of failing loudly.
 
-`start`/`finish` are never part of the reconstructed state — Recursive Backtracker doesn't emit them; they're static config outside this engine's scope.
+`start`/`finish` are never part of Recursive Backtracker's own reconstructed state — RB doesn't emit them, they're static config outside this engine's scope. Since #147, `DebugMazeView` (`debugSelectors.ts`) does carry `start`/`finish`, but only ever populated by QC's own contribution (`StartSet`/`FinishSet` mutating events, see the `QcApplyResult` notes further down) — a generation-only tape (no QC source) still has both fields `null` throughout.
 
 `NodeId` (`u64` in core) is read as `bigint` (`DataView.getBigUint64`), never narrowed to `number` inside this module — full precision preserved. Converting to `number` to join against `NodeDto.id` is left to whatever future consumer (#126+) needs that join.
 
@@ -1391,7 +1391,7 @@ rename as one resolved from the live store on each render, so there is no correc
 the wire round-trip, only unnecessary wire/type surface. `BaseAlgorithmAdapter.scopeLabel`/
 `narrationTokensFor` both take an optional `titleLookup: ScopeTitleLookup` parameter — every
 non-QC adapter ignores it; `QC_ADAPTER` uses it to resolve `"stage <id>"`/`"rule <id>"` scope
-labels and `RuleChecked`/`RepairDispatched`'s narration text to the current title (quoted, via
+labels and `CheckRan`'s narration text to the current title (quoted, via
 `quoted()`, so it reads as a distinct name rather than running into the surrounding sentence with
 no separator), falling back to the raw id when the lookup doesn't recognize it (e.g. the rule was
 deleted after this tape was generated).

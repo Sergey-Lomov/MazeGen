@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseTape, nodeAt, topLevelSourceScopes, sourceScopeForNode,
+  parseTape, nodeAt, nodeView, topLevelSourceScopes, sourceScopeForNode,
   decodeQcEvent, isMutatingQcEvent, mutatingQcEvents, mutatingQcEventsWithIndex, applyQc,
   decodeRecursiveBacktrackerEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
   TAG_SCOPE, NO_NODE, RB_TAG, QC_TAG,
@@ -91,54 +91,45 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.ITERATION_STARTED, u32le(2))).toEqual({ kind: "IterationStarted", iteration: 2 });
   });
 
-  it("decodes RuleChecked with issue: null", () => {
-    const payload = concatBytes([strPayload("r1"), new Uint8Array([0])]);
-    expect(decodeQcEvent(QC_TAG.RULE_CHECKED, payload)).toEqual({ kind: "RuleChecked", ruleId: "r1", issue: null });
+  it("decodes CheckRan with issue: null", () => {
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([0])]);
+    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({ kind: "CheckRan", checkId: "c1", issue: null });
   });
 
-  it("decodes RuleChecked with issue present and IssuePayload::None", () => {
-    const payload = concatBytes([strPayload("r1"), new Uint8Array([1]), strPayload("missing_endpoints"), new Uint8Array([0])]);
-    expect(decodeQcEvent(QC_TAG.RULE_CHECKED, payload)).toEqual({
-      kind: "RuleChecked", ruleId: "r1", issue: { issueKind: "missing_endpoints", payload: { kind: "None" } },
+  it("decodes CheckRan with issue present and IssuePayload::None", () => {
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("missing_endpoints"), new Uint8Array([0])]);
+    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1", issue: { issueKind: "missing_endpoints", payload: { kind: "None" } },
     });
   });
 
-  it("decodes RuleChecked with IssuePayload::InvalidLoop", () => {
+  it("decodes CheckRan with IssuePayload::InvalidLoop", () => {
     // one entry: key "check1" -> one cycle -> one edge pair (1,2)
     const edgesMap = concatBytes([
       u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
     ]);
-    const payload = concatBytes([strPayload("r1"), new Uint8Array([1]), strPayload("invalid_loop"), new Uint8Array([1]), edgesMap]);
-    expect(decodeQcEvent(QC_TAG.RULE_CHECKED, payload)).toEqual({
-      kind: "RuleChecked", ruleId: "r1",
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_loop"), new Uint8Array([1]), edgesMap]);
+    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1",
       issue: { issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) } },
     });
   });
 
-  it("decodes RuleChecked with IssuePayload::RegionNeedsExpansion", () => {
+  it("decodes CheckRan with IssuePayload::RegionNeedsExpansion", () => {
     // one entry: key "check1" -> one region -> one node (5)
     const nodesMap = concatBytes([
       u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5),
     ]);
-    const payload = concatBytes([strPayload("r1"), new Uint8Array([1]), strPayload("region_needs_expansion"), new Uint8Array([2]), nodesMap]);
-    expect(decodeQcEvent(QC_TAG.RULE_CHECKED, payload)).toEqual({
-      kind: "RuleChecked", ruleId: "r1",
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("region_needs_expansion"), new Uint8Array([2]), nodesMap]);
+    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1",
       issue: { issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [[5n]]]]) } },
     });
   });
 
-  it("decodes RepairDispatched (Fixed)", () => {
-    const payload = concatBytes([strPayload("r1"), new Uint8Array([0]), u32le(2), u32le(2)]);
-    expect(decodeQcEvent(QC_TAG.REPAIR_DISPATCHED, payload)).toEqual({ kind: "RepairDispatched", ruleId: "r1", result: "Fixed", proposed: 2, applied: 2 });
-  });
-
-  it("decodes RepairDispatched (Failed)", () => {
-    const payload = concatBytes([strPayload("r1"), new Uint8Array([1]), u32le(3), u32le(0)]);
-    expect(decodeQcEvent(QC_TAG.REPAIR_DISPATCHED, payload)).toEqual({ kind: "RepairDispatched", ruleId: "r1", result: "Failed", proposed: 3, applied: 0 });
-  });
-
-  it("decodes IterationNoProgress (0 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.ITERATION_NO_PROGRESS, new Uint8Array(0))).toEqual({ kind: "IterationNoProgress" });
+  it("decodes IssuesMerged", () => {
+    const payload = strPayload("invalid_loop");
+    expect(decodeQcEvent(QC_TAG.ISSUES_MERGED, payload)).toEqual({ kind: "IssuesMerged", issueKind: "invalid_loop" });
   });
 
   it("decodes IterationLimitReached (MaxIterations)", () => {
@@ -197,6 +188,18 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.FINISH_SET_DECLINED, u64le(2n))).toEqual({ kind: "FinishSetDeclined", id: 2n });
   });
 
+  it("decodes every *Proposed variant identically to its mutating mirror except the kind", () => {
+    expect(decodeQcEvent(QC_TAG.DIRECTED_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedEdgeProposed", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeProposed", a: 1n, b: 2n });
+    expect(decodeQcEvent(QC_TAG.DIRECTED_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportProposed", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportProposed", a: 1n, b: 2n });
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_PROPOSED, u64le(7n))).toEqual({ kind: "EdgeRemoveProposed", id: 7n });
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_BETWEEN_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenProposed", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED, u64le(3n))).toEqual({ kind: "TeleportRemoveWithReverseProposed", id: 3n });
+    expect(decodeQcEvent(QC_TAG.START_SET_PROPOSED, u64le(1n))).toEqual({ kind: "StartSetProposed", id: 1n });
+    expect(decodeQcEvent(QC_TAG.FINISH_SET_PROPOSED, u64le(2n))).toEqual({ kind: "FinishSetProposed", id: 2n });
+  });
+
   it("throws on an unknown wire tag", () => {
     expect(() => decodeQcEvent(99, new Uint8Array(0))).toThrow(/unknown wire tag/);
   });
@@ -219,9 +222,8 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "FinishSet", id: 1n })).toBe(true);
 
     expect(isMutatingQcEvent({ kind: "IterationStarted", iteration: 0 })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "RuleChecked", ruleId: "r", issue: null })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "RepairDispatched", ruleId: "r", result: "Fixed", proposed: 0, applied: 0 })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "IterationNoProgress" })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "CheckRan", checkId: "c", issue: null })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "IssuesMerged", issueKind: "invalid_loop" })).toBe(false);
     expect(isMutatingQcEvent({ kind: "IterationLimitReached", limit: "MaxIterations" })).toBe(false);
     expect(isMutatingQcEvent({ kind: "DirectedEdgeDeclined", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "BidirectionalEdgeDeclined", a: 1n, b: 2n })).toBe(false);
@@ -232,6 +234,15 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseDeclined", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "StartSetDeclined", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "FinishSetDeclined", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "DirectedEdgeProposed", from: 1n, to: 2n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "BidirectionalEdgeProposed", a: 1n, b: 2n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "DirectedTeleportProposed", from: 1n, to: 2n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "BidirectionalTeleportProposed", a: 1n, b: 2n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "EdgeRemoveProposed", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "EdgeRemoveBetweenProposed", from: 1n, to: 2n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseProposed", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "StartSetProposed", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "FinishSetProposed", id: 1n })).toBe(false);
   });
 });
 
@@ -423,35 +434,54 @@ describe("QC_ADAPTER.scopeLabel — stage/rule title resolution (GitHub issue #1
   it("leaves an iteration scope's label untouched by titleLookup (no id to resolve)", () => {
     expect(adapterFor("quality_control").scopeLabel("iteration 2", [], titleLookup)).toBe("Iteration 2");
   });
+
+  it("shows a strategy scope's raw id as-is, ignoring titleLookup (no per-strategy title concept)", () => {
+    expect(adapterFor("quality_control").scopeLabel("strategy random_endpoints", [], titleLookup)).toBe("Strategy random_endpoints");
+  });
+
+  it("labels the fixed \"apply requests\" scope with no children as 0/0", () => {
+    expect(adapterFor("quality_control").scopeLabel("apply requests", [], titleLookup)).toBe("Apply requests (0/0)");
+  });
+
+  it("tallies the \"apply requests\" scope's own applied/total count off its direct children", () => {
+    // "apply requests" scope (0) -> StartSet(10) (1), DirectedEdgeDeclined(30,40) (2) -- 1 applied
+    // (mutating StartSet) out of 2 total (StartSet + the *Declined event).
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("apply requests") },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.START_SET, payloadBytes: u64le(10n) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.DIRECTED_EDGE_DECLINED, payloadBytes: concatBytes([u64le(30n), u64le(40n)]) },
+    ]);
+    const children = nodeView(tape, 0).children();
+    expect(adapterFor("quality_control").scopeLabel("apply requests", children, titleLookup)).toBe("Apply requests (1/2)");
+  });
 });
 
-describe("narrationTokensForQc — rule title resolution in narration text, not just scope labels (GitHub issue #147)", () => {
+describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleLookup (GitHub issue #147, no dedicated dispatch-result narration line)", () => {
   const titleLookup: ScopeTitleLookup = { stageTitle: () => undefined, ruleTitle: (id) => (id === "r1" ? "No dead ends" : undefined) };
 
-  it("resolves the rule title, quoted, in a RuleChecked (issue found) narration line", () => {
+  it("CheckRan narration shows the raw check id as-is, ignoring titleLookup (no per-check title concept)", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor(
-      { kind: "RuleChecked", ruleId: "r1", issue: { issueKind: "invalid_loop", payload: { kind: "None" } } },
+      { kind: "CheckRan", checkId: "check1", issue: { issueKind: "invalid_loop", payload: { kind: "None" } } },
       titleLookup,
     );
-    expect(tokens).toEqual([{ kind: "text", text: 'Rule "No dead ends": issue found (invalid_loop)' }]);
+    expect(tokens).toEqual([{ kind: "text", text: "Check check1: issue found (invalid_loop)" }]);
   });
 
-  it("resolves the rule title, quoted, in a RepairDispatched narration line", () => {
-    const tokens = adapterFor("quality_control").narrationTokensFor(
-      { kind: "RepairDispatched", ruleId: "r1", result: "Fixed", proposed: 2, applied: 2 },
-      titleLookup,
-    );
-    expect(tokens.map((t) => t.kind === "text" ? t.text : "")).toEqual([expect.stringContaining('"No dead ends"')]);
+  it("CheckRan with no issue narrates cleanly", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "CheckRan", checkId: "check1", issue: null });
+    expect(tokens).toEqual([{ kind: "text", text: "Check check1: no issue" }]);
   });
 
-  it("falls back to the raw rule id, quoted, when titleLookup doesn't recognize it", () => {
-    const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "RuleChecked", ruleId: "unknown", issue: null }, titleLookup);
-    expect(tokens).toEqual([{ kind: "text", text: 'Rule "unknown": no issue' }]);
+  it("IssuesMerged narrates the merged issue kind", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "IssuesMerged", issueKind: "invalid_loop" });
+    expect(tokens).toEqual([{ kind: "text", text: "Merged into issue (invalid_loop)" }]);
   });
 
-  it("falls back to the raw rule id, quoted, when titleLookup is absent", () => {
-    const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "RuleChecked", ruleId: "r1", issue: null });
-    expect(tokens).toEqual([{ kind: "text", text: 'Rule "r1": no issue' }]);
+  it("StartSetProposed/FinishSetProposed narrate what the strategy asked for, distinct from StartSet/FinishSet", () => {
+    const startTokens = adapterFor("quality_control").narrationTokensFor({ kind: "StartSetProposed", id: 3n });
+    expect(startTokens).toEqual([{ kind: "text", text: "Start proposed: " }, { kind: "node", id: 3n }]);
+    const finishTokens = adapterFor("quality_control").narrationTokensFor({ kind: "FinishSetProposed", id: 4n });
+    expect(finishTokens).toEqual([{ kind: "text", text: "Finish proposed: " }, { kind: "node", id: 4n }]);
   });
 });
 
@@ -496,5 +526,13 @@ describe("selectDebugMazeView — two-source (generation + QC) combine (GitHub i
       { from: 10, to: 20, kind: "basic" },
       { from: 20, to: 10, kind: "basic" },
     ]);
+  });
+
+  it("start/finish stay null before QC's range is reached, then reflect QC's own StartSet/FinishSet once it is", () => {
+    expect(selectDebugMazeView(buildArena(), 0)?.start).toBeNull();
+    expect(selectDebugMazeView(buildArena(), 0)?.finish).toBeNull();
+    const view = selectDebugMazeView(buildArena(), 4);
+    expect(view?.start).toBe(10);
+    expect(view?.finish).toBe(20);
   });
 });

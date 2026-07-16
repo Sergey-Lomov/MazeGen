@@ -1,6 +1,5 @@
 use crate::ids::{EdgeId, NodeId};
 use crate::event_log::{DebugEvent, EncodeEventPayload};
-use crate::repair::RepairResult;
 use super::issue::IssueKind;
 use super::issue_kinds::RepairLimitKind;
 use super::issue_payload::IssuePayload;
@@ -12,9 +11,9 @@ use super::issue_payload::IssuePayload;
 /// and must never be assigned here.
 mod wire_tags {
     pub const ITERATION_STARTED: u16 = 1;
-    pub const RULE_CHECKED: u16 = 2;
-    pub const REPAIR_DISPATCHED: u16 = 3;
+    pub const CHECK_RAN: u16 = 2;
     pub const ITERATION_LIMIT_REACHED: u16 = 5;
+    pub const ISSUES_MERGED: u16 = 24;
 
     pub const DIRECTED_EDGE_ADDED: u16 = 6;
     pub const BIDIRECTIONAL_EDGE_ADDED: u16 = 7;
@@ -35,26 +34,16 @@ mod wire_tags {
     pub const TELEPORT_REMOVE_WITH_REVERSE_DECLINED: u16 = 21;
     pub const START_SET_DECLINED: u16 = 22;
     pub const FINISH_SET_DECLINED: u16 = 23;
-}
 
-/// Simplified mirror of `RepairResult` (`repair::RepairResult`) for the wire — drops the `Fixed`
-/// variant's `score: Option<f64>` payload (narration doesn't need the route-score value itself,
-/// only whether repair succeeded or failed; the score is already visible elsewhere in the final
-/// report). Not `RepairResult` directly, since that type has no `Copy`/wire-encoding concerns of
-/// its own and mixing a narration-wire concern into it would be the wrong layering.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RepairResultKind {
-    Fixed,
-    Failed,
-}
-
-impl From<&RepairResult> for RepairResultKind {
-    fn from(result: &RepairResult) -> Self {
-        match result {
-            RepairResult::Fixed { .. } => RepairResultKind::Fixed,
-            RepairResult::Failed => RepairResultKind::Failed,
-        }
-    }
+    pub const DIRECTED_EDGE_PROPOSED: u16 = 25;
+    pub const BIDIRECTIONAL_EDGE_PROPOSED: u16 = 26;
+    pub const DIRECTED_TELEPORT_PROPOSED: u16 = 27;
+    pub const BIDIRECTIONAL_TELEPORT_PROPOSED: u16 = 28;
+    pub const EDGE_REMOVE_PROPOSED: u16 = 29;
+    pub const EDGE_REMOVE_BETWEEN_PROPOSED: u16 = 30;
+    pub const TELEPORT_REMOVE_WITH_REVERSE_PROPOSED: u16 = 31;
+    pub const START_SET_PROPOSED: u16 = 32;
+    pub const FINISH_SET_PROPOSED: u16 = 33;
 }
 
 /// Narration-level events for the quality-control/repair pipeline (GitHub issue #147) — see
@@ -72,21 +61,34 @@ impl From<&RepairResult> for RepairResultKind {
 pub enum QcEvent {
     /// One fixpoint pass of `Stage::run_repair`'s loop has started.
     IterationStarted(u32),
-    /// A rule's checks ran this iteration. `issue: None` — the rule found nothing.
-    /// `Some((kind, payload))` — the rule found an issue of `kind`; `payload` is `IssuePayload::None`
-    /// for the 10 of 12 concrete `Issue` types with no structural edge/node data (see
+    /// One check within a rule ran this iteration. `issue: None` — the check found nothing.
+    /// `Some((kind, payload))` — the check found an issue of `kind`; `payload` is `IssuePayload::None`
+    /// for the 9 of 11 concrete `Issue` types with no structural edge/node data (see
     /// `quality_control::issue_payload`). Carries the payload directly (not a separate event) —
     /// splitting "issue found" and "here's its payload" into two wire tags would make their
     /// pairing an implicit, easily-broken ordering contract instead of one atomic event.
-    RuleChecked { rule_id: String, issue: Option<(IssueKind, IssuePayload)> },
-    /// A rule's strategy was dispatched against its found issue. `proposed`/`applied` mirror
-    /// `rule::ApplyOutcome`'s own fields — copied directly into the event rather than left for a
-    /// narration consumer to recompute by counting this rule's own subsequent mutating/`*Declined`
-    /// events in this same `"rule <id>"` scope.
-    RepairDispatched { rule_id: String, result: RepairResultKind, proposed: u32, applied: u32 },
+    CheckRan { check_id: &'static str, issue: Option<(IssueKind, IssuePayload)> },
+    /// Two or more of a rule's checks each found an issue of the same `kind` this iteration, and
+    /// `IssueMerge::merge` folded them into one — emitted once per rule iteration, only when a
+    /// merge actually happened (a rule with a single contributing check never emits this).
+    IssuesMerged { kind: IssueKind },
     /// `Stage::run_repair`'s fixpoint loop stopped because the shared `RepairBudget` was
     /// exhausted (see `StageOutcome::LimitReached`).
     IterationLimitReached(RepairLimitKind),
+
+    // --- proposed: exact mirror of `repair::MutationCommand`'s 9 variants, emitted for every
+    // command a strategy's `apply()` returned, in the `"strategy <id>"` scope, before any of them
+    // is applied/revalidated — narrates what the strategy *asked for*, independent of whether
+    // `apply_commands` (in the separate `"apply requests"` scope right after) actually honors it. ---
+    DirectedEdgeProposed { from: NodeId, to: NodeId },
+    BidirectionalEdgeProposed { a: NodeId, b: NodeId },
+    DirectedTeleportProposed { from: NodeId, to: NodeId },
+    BidirectionalTeleportProposed { a: NodeId, b: NodeId },
+    EdgeRemoveProposed { id: EdgeId },
+    EdgeRemoveBetweenProposed { from: NodeId, to: NodeId },
+    TeleportRemoveWithReverseProposed { id: EdgeId },
+    StartSetProposed(NodeId),
+    FinishSetProposed(NodeId),
 
     // --- mutating: exact mirror of `repair::MutationCommand`'s 9 variants, emitted only for
     // commands `apply_commands` actually applied (its `ok == true` branch). ---
@@ -197,8 +199,8 @@ impl EncodeEventPayload for QcEvent {
     fn type_id(&self) -> u16 {
         match self {
             QcEvent::IterationStarted(_) => wire_tags::ITERATION_STARTED,
-            QcEvent::RuleChecked { .. } => wire_tags::RULE_CHECKED,
-            QcEvent::RepairDispatched { .. } => wire_tags::REPAIR_DISPATCHED,
+            QcEvent::CheckRan { .. } => wire_tags::CHECK_RAN,
+            QcEvent::IssuesMerged { .. } => wire_tags::ISSUES_MERGED,
             QcEvent::IterationLimitReached(_) => wire_tags::ITERATION_LIMIT_REACHED,
 
             QcEvent::DirectedEdgeAdded { .. } => wire_tags::DIRECTED_EDGE_ADDED,
@@ -220,14 +222,24 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::TeleportRemoveWithReverseDeclined { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_DECLINED,
             QcEvent::StartSetDeclined(_) => wire_tags::START_SET_DECLINED,
             QcEvent::FinishSetDeclined(_) => wire_tags::FINISH_SET_DECLINED,
+
+            QcEvent::DirectedEdgeProposed { .. } => wire_tags::DIRECTED_EDGE_PROPOSED,
+            QcEvent::BidirectionalEdgeProposed { .. } => wire_tags::BIDIRECTIONAL_EDGE_PROPOSED,
+            QcEvent::DirectedTeleportProposed { .. } => wire_tags::DIRECTED_TELEPORT_PROPOSED,
+            QcEvent::BidirectionalTeleportProposed { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_PROPOSED,
+            QcEvent::EdgeRemoveProposed { .. } => wire_tags::EDGE_REMOVE_PROPOSED,
+            QcEvent::EdgeRemoveBetweenProposed { .. } => wire_tags::EDGE_REMOVE_BETWEEN_PROPOSED,
+            QcEvent::TeleportRemoveWithReverseProposed { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_PROPOSED,
+            QcEvent::StartSetProposed(_) => wire_tags::START_SET_PROPOSED,
+            QcEvent::FinishSetProposed(_) => wire_tags::FINISH_SET_PROPOSED,
         }
     }
 
     fn encode_payload(&self, out: &mut Vec<u8>) {
         match self {
             QcEvent::IterationStarted(n) => out.extend_from_slice(&n.to_le_bytes()),
-            QcEvent::RuleChecked { rule_id, issue } => {
-                write_str(out, rule_id);
+            QcEvent::CheckRan { check_id, issue } => {
+                write_str(out, check_id);
                 match issue {
                     None => out.push(0),
                     Some((kind, payload)) => {
@@ -237,34 +249,29 @@ impl EncodeEventPayload for QcEvent {
                     }
                 }
             }
-            QcEvent::RepairDispatched { rule_id, result, proposed, applied } => {
-                write_str(out, rule_id);
-                out.push(match result { RepairResultKind::Fixed => 0, RepairResultKind::Failed => 1 });
-                out.extend_from_slice(&proposed.to_le_bytes());
-                out.extend_from_slice(&applied.to_le_bytes());
-            }
+            QcEvent::IssuesMerged { kind } => write_str(out, kind.as_str()),
             QcEvent::IterationLimitReached(kind) => out.push(match kind {
                 RepairLimitKind::MaxIterations => 0,
                 RepairLimitKind::TimeBudget => 1,
             }),
 
-            QcEvent::DirectedEdgeAdded { from, to } | QcEvent::DirectedEdgeDeclined { from, to }
-            | QcEvent::DirectedTeleportAdded { from, to } | QcEvent::DirectedTeleportDeclined { from, to }
-            | QcEvent::EdgeRemovedBetween { from, to } | QcEvent::EdgeRemoveBetweenDeclined { from, to } => {
+            QcEvent::DirectedEdgeAdded { from, to } | QcEvent::DirectedEdgeDeclined { from, to } | QcEvent::DirectedEdgeProposed { from, to }
+            | QcEvent::DirectedTeleportAdded { from, to } | QcEvent::DirectedTeleportDeclined { from, to } | QcEvent::DirectedTeleportProposed { from, to }
+            | QcEvent::EdgeRemovedBetween { from, to } | QcEvent::EdgeRemoveBetweenDeclined { from, to } | QcEvent::EdgeRemoveBetweenProposed { from, to } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
             }
-            QcEvent::BidirectionalEdgeAdded { a, b } | QcEvent::BidirectionalEdgeDeclined { a, b }
-            | QcEvent::BidirectionalTeleportAdded { a, b } | QcEvent::BidirectionalTeleportDeclined { a, b } => {
+            QcEvent::BidirectionalEdgeAdded { a, b } | QcEvent::BidirectionalEdgeDeclined { a, b } | QcEvent::BidirectionalEdgeProposed { a, b }
+            | QcEvent::BidirectionalTeleportAdded { a, b } | QcEvent::BidirectionalTeleportDeclined { a, b } | QcEvent::BidirectionalTeleportProposed { a, b } => {
                 write_node_id(out, *a);
                 write_node_id(out, *b);
             }
-            QcEvent::EdgeRemoved { id } | QcEvent::EdgeRemoveDeclined { id }
-            | QcEvent::TeleportRemovedWithReverse { id } | QcEvent::TeleportRemoveWithReverseDeclined { id } => {
+            QcEvent::EdgeRemoved { id } | QcEvent::EdgeRemoveDeclined { id } | QcEvent::EdgeRemoveProposed { id }
+            | QcEvent::TeleportRemovedWithReverse { id } | QcEvent::TeleportRemoveWithReverseDeclined { id } | QcEvent::TeleportRemoveWithReverseProposed { id } => {
                 write_edge_id(out, *id);
             }
-            QcEvent::StartSet(id) | QcEvent::StartSetDeclined(id)
-            | QcEvent::FinishSet(id) | QcEvent::FinishSetDeclined(id) => {
+            QcEvent::StartSet(id) | QcEvent::StartSetDeclined(id) | QcEvent::StartSetProposed(id)
+            | QcEvent::FinishSet(id) | QcEvent::FinishSetDeclined(id) | QcEvent::FinishSetProposed(id) => {
                 write_node_id(out, *id);
             }
         }
@@ -291,8 +298,8 @@ mod tests {
     #[test]
     fn trace_events_are_not_mutating() {
         assert!(!QcEvent::IterationStarted(0).is_mutating());
-        assert!(!QcEvent::RuleChecked { rule_id: "r".into(), issue: None }.is_mutating());
-        assert!(!QcEvent::RepairDispatched { rule_id: "r".into(), result: RepairResultKind::Fixed, proposed: 1, applied: 1 }.is_mutating());
+        assert!(!QcEvent::CheckRan { check_id: "c", issue: None }.is_mutating());
+        assert!(!QcEvent::IssuesMerged { kind: IssueKind::from_str("missing_endpoints").unwrap() }.is_mutating());
         assert!(!QcEvent::IterationLimitReached(RepairLimitKind::MaxIterations).is_mutating());
     }
 
@@ -310,12 +317,25 @@ mod tests {
     }
 
     #[test]
+    fn proposed_variants_are_not_mutating() {
+        assert!(!QcEvent::DirectedEdgeProposed { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::BidirectionalEdgeProposed { a: 1, b: 2 }.is_mutating());
+        assert!(!QcEvent::DirectedTeleportProposed { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::BidirectionalTeleportProposed { a: 1, b: 2 }.is_mutating());
+        assert!(!QcEvent::EdgeRemoveProposed { id: 1 }.is_mutating());
+        assert!(!QcEvent::EdgeRemoveBetweenProposed { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::TeleportRemoveWithReverseProposed { id: 1 }.is_mutating());
+        assert!(!QcEvent::StartSetProposed(1).is_mutating());
+        assert!(!QcEvent::FinishSetProposed(1).is_mutating());
+    }
+
+    #[test]
     fn every_variant_has_a_unique_nonzero_wire_tag() {
         use std::collections::HashSet;
         let events: Vec<QcEvent> = vec![
             QcEvent::IterationStarted(0),
-            QcEvent::RuleChecked { rule_id: "r".into(), issue: None },
-            QcEvent::RepairDispatched { rule_id: "r".into(), result: RepairResultKind::Fixed, proposed: 0, applied: 0 },
+            QcEvent::CheckRan { check_id: "c", issue: None },
+            QcEvent::IssuesMerged { kind: IssueKind::from_str("missing_endpoints").unwrap() },
             QcEvent::IterationLimitReached(RepairLimitKind::MaxIterations),
             QcEvent::DirectedEdgeAdded { from: 0, to: 0 },
             QcEvent::BidirectionalEdgeAdded { a: 0, b: 0 },
@@ -335,6 +355,15 @@ mod tests {
             QcEvent::TeleportRemoveWithReverseDeclined { id: 0 },
             QcEvent::StartSetDeclined(0),
             QcEvent::FinishSetDeclined(0),
+            QcEvent::DirectedEdgeProposed { from: 0, to: 0 },
+            QcEvent::BidirectionalEdgeProposed { a: 0, b: 0 },
+            QcEvent::DirectedTeleportProposed { from: 0, to: 0 },
+            QcEvent::BidirectionalTeleportProposed { a: 0, b: 0 },
+            QcEvent::EdgeRemoveProposed { id: 0 },
+            QcEvent::EdgeRemoveBetweenProposed { from: 0, to: 0 },
+            QcEvent::TeleportRemoveWithReverseProposed { id: 0 },
+            QcEvent::StartSetProposed(0),
+            QcEvent::FinishSetProposed(0),
         ];
         let mut tags = HashSet::new();
         for event in &events {
@@ -370,28 +399,28 @@ mod tests {
     }
 
     #[test]
-    fn rule_checked_with_no_issue_encodes_rule_id_then_a_zero_present_byte() {
-        let event = QcEvent::RuleChecked { rule_id: "r1".into(), issue: None };
+    fn check_ran_with_no_issue_encodes_check_id_then_a_zero_present_byte() {
+        let event = QcEvent::CheckRan { check_id: "c1", issue: None };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
 
         let mut offset = 0;
-        assert_eq!(read_str(&bytes, &mut offset), "r1");
+        assert_eq!(read_str(&bytes, &mut offset), "c1");
         assert_eq!(bytes[offset], 0);
         assert_eq!(bytes.len(), offset + 1);
     }
 
     #[test]
-    fn rule_checked_with_issue_payload_none_encodes_kind_then_a_zero_payload_variant_byte() {
-        let event = QcEvent::RuleChecked {
-            rule_id: "r1".into(),
+    fn check_ran_with_issue_payload_none_encodes_kind_then_a_zero_payload_variant_byte() {
+        let event = QcEvent::CheckRan {
+            check_id: "c1",
             issue: Some((IssueKind::from_str("missing_endpoints").unwrap(), IssuePayload::None)),
         };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
 
         let mut offset = 0;
-        assert_eq!(read_str(&bytes, &mut offset), "r1");
+        assert_eq!(read_str(&bytes, &mut offset), "c1");
         assert_eq!(bytes[offset], 1);
         offset += 1;
         assert_eq!(read_str(&bytes, &mut offset), "missing_endpoints");
@@ -400,18 +429,18 @@ mod tests {
     }
 
     #[test]
-    fn rule_checked_with_invalid_loop_payload_encodes_the_full_str_keyed_edge_pairs_map() {
+    fn check_ran_with_invalid_loop_payload_encodes_the_full_str_keyed_edge_pairs_map() {
         let mut edges = std::collections::HashMap::new();
         edges.insert("check1".to_string(), vec![vec![[1u32, 2u32]]]);
-        let event = QcEvent::RuleChecked {
-            rule_id: "r1".into(),
+        let event = QcEvent::CheckRan {
+            check_id: "c1",
             issue: Some((IssueKind::from_str("invalid_loop").unwrap(), IssuePayload::InvalidLoop { edges })),
         };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
 
         let mut offset = 0;
-        assert_eq!(read_str(&bytes, &mut offset), "r1");
+        assert_eq!(read_str(&bytes, &mut offset), "c1");
         assert_eq!(bytes[offset], 1); // issue present
         offset += 1;
         assert_eq!(read_str(&bytes, &mut offset), "invalid_loop");
@@ -427,18 +456,18 @@ mod tests {
     }
 
     #[test]
-    fn rule_checked_with_region_needs_expansion_payload_encodes_the_full_str_keyed_node_lists_map() {
+    fn check_ran_with_region_needs_expansion_payload_encodes_the_full_str_keyed_node_lists_map() {
         let mut nodes = std::collections::HashMap::new();
         nodes.insert("check1".to_string(), vec![vec![5u32]]);
-        let event = QcEvent::RuleChecked {
-            rule_id: "r1".into(),
+        let event = QcEvent::CheckRan {
+            check_id: "c1",
             issue: Some((IssueKind::from_str("region_needs_expansion").unwrap(), IssuePayload::RegionNeedsExpansion { nodes })),
         };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
 
         let mut offset = 0;
-        assert_eq!(read_str(&bytes, &mut offset), "r1");
+        assert_eq!(read_str(&bytes, &mut offset), "c1");
         assert_eq!(bytes[offset], 1); // issue present
         offset += 1;
         assert_eq!(read_str(&bytes, &mut offset), "region_needs_expansion");
@@ -449,6 +478,17 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 region
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // region has 1 node
         assert_eq!(read_u32le(&bytes, &mut offset), 5); // node id
+        assert_eq!(bytes.len(), offset);
+    }
+
+    #[test]
+    fn issues_merged_encodes_the_kind_string() {
+        let event = QcEvent::IssuesMerged { kind: IssueKind::from_str("invalid_loop").unwrap() };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+
+        let mut offset = 0;
+        assert_eq!(read_str(&bytes, &mut offset), "invalid_loop");
         assert_eq!(bytes.len(), offset);
     }
 }

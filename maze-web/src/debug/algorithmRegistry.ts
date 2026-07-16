@@ -57,9 +57,9 @@ export interface BaseAlgorithmAdapter<E> {
   decodeEvent(tag: number, bytes: Uint8Array): E;
   isMutatingEvent(event: E): boolean;
   /** DebugEventTree.tsx: narration tokens for one decoded event. `titleLookup` (GitHub issue
-   *  #147) — see `scopeLabel`'s doc comment below; every non-QC adapter ignores it, QC uses it to
-   *  resolve `RuleChecked`/`RepairDispatched`'s `ruleId` to its current title the same way
-   *  `scopeLabel` resolves a `"rule <id>"` scope's own label. */
+   *  #147) — see `scopeLabel`'s doc comment below; every adapter ignores it today, kept on the
+   *  shared signature for parity with `scopeLabel`'s own parameter (a future event type carrying
+   *  a rule/stage id in its own narration text would need it without a signature change). */
   narrationTokensFor(event: E, titleLookup?: ScopeTitleLookup): Token[];
   /** DebugEventTree.tsx: label for a scope row (e.g. "step N"/"edge N"/"walk N", or Wilson's
    *  fixed "search"/"commit" names) — the raw arena scope name in, the localized label out.
@@ -476,25 +476,22 @@ function quoted(title: string): string {
  *  `ruleId` is resolved through `titleLookup` to its current user-facing title first (same
  *  resolution `scopeLabel` applies to a `"rule <id>"` scope's own label — see that doc comment for
  *  why this is resolved live rather than sent across the wire), falling back to the raw id when
- *  `titleLookup` is absent or doesn't recognize it. */
-function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): Token[] {
-  const ruleTitle = (ruleId: string) => quoted(titleLookup?.ruleTitle(ruleId) ?? ruleId);
+ *  `titleLookup` is absent or doesn't recognize it. `checkId` is never resolved through
+ *  `titleLookup` — checks have no separate user-facing title concept the way rules/stages do, so
+ *  `CheckRan` narration shows the raw check type id as-is. There is no dedicated "dispatch result"
+ *  event/narration line — a rule's applied/proposed outcome is instead read off the `"apply
+ *  requests"` scope's own label (see `QC_ADAPTER.scopeLabel`'s doc comment), mirroring
+ *  `CustomVertexBased`'s `"junction_count"` scope label precedent. */
+function narrationTokensForQc(event: QcEvent, _titleLookup?: ScopeTitleLookup): Token[] {
   switch (event.kind) {
     case "IterationStarted":
       return [{ kind: "text", text: m["debug.tree.qc.iteration_started"]({ iteration: event.iteration + 1 }) }];
-    case "RuleChecked":
+    case "CheckRan":
       return event.issue
-        ? [{ kind: "text", text: m["debug.tree.qc.rule_checked_found"]({ ruleId: ruleTitle(event.ruleId), issueKind: event.issue.issueKind }) }]
-        : [{ kind: "text", text: m["debug.tree.qc.rule_checked_clean"]({ ruleId: ruleTitle(event.ruleId) }) }];
-    case "RepairDispatched":
-      return [{
-        kind: "text",
-        text: event.result === "Fixed"
-          ? m["debug.tree.qc.repair_dispatched_fixed"]({ ruleId: ruleTitle(event.ruleId), applied: event.applied, proposed: event.proposed })
-          : m["debug.tree.qc.repair_dispatched_failed"]({ ruleId: ruleTitle(event.ruleId), applied: event.applied, proposed: event.proposed }),
-      }];
-    case "IterationNoProgress":
-      return [{ kind: "text", text: m["debug.tree.qc.iteration_no_progress"]() }];
+        ? [{ kind: "text", text: m["debug.tree.qc.check_ran_found"]({ checkId: event.checkId, issueKind: event.issue.issueKind }) }]
+        : [{ kind: "text", text: m["debug.tree.qc.check_ran_clean"]({ checkId: event.checkId }) }];
+    case "IssuesMerged":
+      return [{ kind: "text", text: m["debug.tree.qc.issues_merged"]({ issueKind: event.issueKind }) }];
     case "IterationLimitReached":
       return [{
         kind: "text",
@@ -538,12 +535,31 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.start_set_declined"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSetDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.finish_set_declined"]() + " " }, { kind: "node", id: event.id }];
+    case "DirectedEdgeProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_edge_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalEdgeProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_edge_proposed"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "DirectedTeleportProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_teleport_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalTeleportProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_proposed"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "EdgeRemoveProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.edge_remove_proposed"]() + " " }, { kind: "node", id: event.id }];
+    case "EdgeRemoveBetweenProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.edge_remove_between_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "TeleportRemoveWithReverseProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.teleport_remove_with_reverse_proposed"]() + " " }, { kind: "node", id: event.id }];
+    case "StartSetProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.start_set_proposed"]() + " " }, { kind: "node", id: event.id }];
+    case "FinishSetProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.finish_set_proposed"]() + " " }, { kind: "node", id: event.id }];
   }
 }
 
 const QC_STAGE_SCOPE_RE = /^stage (.+)$/;
 const QC_ITERATION_SCOPE_RE = /^iteration (\d+)$/;
 const QC_RULE_SCOPE_RE = /^rule (.+)$/;
+const QC_STRATEGY_SCOPE_RE = /^strategy (.+)$/;
 
 const QC_ADAPTER: QcAdapter = {
   mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingQcEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
@@ -551,13 +567,32 @@ const QC_ADAPTER: QcAdapter = {
   decodeEvent: decodeQcEvent,
   isMutatingEvent: isMutatingQcEvent,
   narrationTokensFor: narrationTokensForQc,
-  // "stage <id>"/"iteration N"/"rule <id>" are the only three scope shapes QC produces (see
-  // maze-core/src/quality_control/stage.rs's run_repair/dispatch). Stage/rule ids are opaque
+  // "stage <id>"/"iteration N"/"rule <id>"/"strategy <id>"/"apply requests" are the only five
+  // scope shapes QC produces (see maze-core/src/quality_control/stage.rs's
+  // run_repair/check_and_dispatch and rule.rs's check_and_repair_typed). Stage/rule ids are opaque
   // (core has no concept of their user-facing title, only their id) — `titleLookup` resolves each
   // to its current title from the live store config; a missing lookup or an id no longer present
   // in it (e.g. deleted after this tape was generated) falls back to showing the raw id, same as
-  // before a title lookup existed.
-  scopeLabel: (name, _children, titleLookup) => {
+  // before a title lookup existed. A strategy's id has no separate user-facing title concept
+  // (mirrors `checkId` in `narrationTokensForQc`), so its scope label always shows the raw id.
+  // "apply requests" is a fixed, non-parameterized scope name (mirrors Wilson's "search"/"commit")
+  // — checked before the numbered/id-carrying regexes above, which wouldn't match it. Its own
+  // applied/total tally is read off its direct children (mutating events = applied, every event =
+  // proposed — a QC scope's only children are ever mutating/`*Declined` events, never nested
+  // scopes), mirroring `CustomVertexBased`'s `"junction_count"` scope label precedent — there is
+  // no dedicated `QcEvent` carrying this count directly.
+  scopeLabel: (name, children, titleLookup) => {
+    if (name === "apply requests") {
+      let applied = 0;
+      let total = 0;
+      for (const child of children) {
+        const payload = child.payload();
+        if (payload.kind !== "event") continue;
+        total += 1;
+        if (isMutatingQcEvent(decodeQcEvent(payload.tag, payload.bytes))) applied += 1;
+      }
+      return m["debug.tree.qc.apply_requests_scope"]({ applied, total });
+    }
     const stageMatch = QC_STAGE_SCOPE_RE.exec(name);
     if (stageMatch) {
       const stageId = stageMatch[1];
@@ -569,6 +604,10 @@ const QC_ADAPTER: QcAdapter = {
     if (ruleMatch) {
       const ruleId = ruleMatch[1];
       return m["debug.tree.qc.rule_scope"]({ ruleId: quoted(titleLookup?.ruleTitle(ruleId) ?? ruleId) });
+    }
+    const strategyMatch = QC_STRATEGY_SCOPE_RE.exec(name);
+    if (strategyMatch) {
+      return m["debug.tree.qc.strategy_scope"]({ strategyId: strategyMatch[1] });
     }
     return name;
   },

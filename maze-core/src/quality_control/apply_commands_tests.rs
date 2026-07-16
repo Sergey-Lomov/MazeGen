@@ -4,6 +4,8 @@ use crate::space::{SquareTessellation, Field, square_rect};
 use crate::graph::{Graph, EdgeKind};
 use crate::generation::PresetState;
 use crate::repair::MutationCommand;
+use crate::event_log::{EventLog, DebugEvent};
+use crate::quality_control::event::QcEvent;
 use super::*;
 
 fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
@@ -132,6 +134,89 @@ fn stale_command_in_a_batch_is_dropped_without_blocking_the_rest() {
     assert_eq!(outcome, ApplyOutcome { proposed: 3, applied: 2 }, "exactly the stale middle command must be dropped");
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
     assert!(maze.graph.edge_between(nodes[1], nodes[2]).is_none());
+}
+
+/// Direct unit coverage for `qc_event_for_command`'s full match, not just the 2 command kinds
+/// (`SetStart`/`SetFinish`/`AddBidirectionalEdge`) the real repair scenarios in
+/// `quality_control_event_log_test.rs` happen to exercise through a real `EventLog` — every
+/// integration test there passes `event_log: None` here, so this is the only place all 9
+/// `MutationCommand` variants are proven to emit their correct mutating `QcEvent` mirror.
+#[test]
+fn event_log_emits_the_correct_mutating_variant_for_every_command_kind() {
+    // Disjoint node pairs for every add/remove command, so none of them can collide with (and
+    // get revalidation-dropped by) another command in the same batch -- this test's only concern
+    // is that each command kind maps to its correct QcEvent variant, not revalidation itself
+    // (see `stale_command_in_a_batch_is_dropped_without_blocking_the_rest` for that).
+    let (mut maze, nodes) = maze_n(9);
+    let teleport_fwd = maze.graph.build_initial_edge(nodes[7], nodes[8], EdgeKind::Teleport);
+    maze.graph.build_initial_edge(nodes[8], nodes[7], EdgeKind::Teleport); // reverse leg for RemoveTeleportWithReverse
+    let removable_id = maze.graph.build_initial_edge(nodes[5], nodes[6], EdgeKind::Basic);
+    maze.graph.build_initial_edge(nodes[3], nodes[4], EdgeKind::Basic); // for RemoveEdgeBetween
+
+    let commands = vec![
+        MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] },
+        MutationCommand::AddBidirectionalEdge { a: nodes[1], b: nodes[2] },
+        MutationCommand::AddDirectedTeleport { from: nodes[2], to: nodes[0] },
+        MutationCommand::AddBidirectionalTeleport { a: nodes[0], b: nodes[3] },
+        MutationCommand::RemoveEdge { id: removable_id },
+        MutationCommand::RemoveEdgeBetween { from: nodes[3], to: nodes[4] },
+        MutationCommand::RemoveTeleportWithReverse { id: teleport_fwd },
+        MutationCommand::SetStart(nodes[0]),
+        MutationCommand::SetFinish(nodes[8]),
+    ];
+
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope));
+    drop(scope);
+    let tape = log.finish();
+
+    assert_eq!(outcome, ApplyOutcome { proposed: 9, applied: 9 }, "every command in this batch must apply cleanly");
+
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert_eq!(events.len(), 9, "one QcEvent per command, in order");
+    assert!(matches!(events[0], QcEvent::DirectedEdgeAdded { .. }));
+    assert!(matches!(events[1], QcEvent::BidirectionalEdgeAdded { .. }));
+    assert!(matches!(events[2], QcEvent::DirectedTeleportAdded { .. }));
+    assert!(matches!(events[3], QcEvent::BidirectionalTeleportAdded { .. }));
+    assert!(matches!(events[4], QcEvent::EdgeRemoved { .. }));
+    assert!(matches!(events[5], QcEvent::EdgeRemovedBetween { .. }));
+    assert!(matches!(events[6], QcEvent::TeleportRemovedWithReverse { .. }));
+    assert!(matches!(events[7], QcEvent::StartSet(_)));
+    assert!(matches!(events[8], QcEvent::FinishSet(_)));
+    for event in &events {
+        assert!(event.is_mutating(), "every emitted event here must be the mutating mirror, not *Declined: {event:?}");
+    }
+}
+
+/// Proves the `*Declined` narration branch actually fires when `apply_commands`' own
+/// revalidation rejects a command — every real repair scenario in
+/// `quality_control_event_log_test.rs` always succeeds (its strategy never proposes a stale
+/// command), so this branch was previously only exercised at the `QcEvent`-encoding level
+/// (`event.rs`'s own tests), never proven to actually fire from a real revalidation rejection.
+#[test]
+fn event_log_emits_declined_when_revalidation_rejects_a_command() {
+    let (mut maze, nodes) = maze_n(2);
+    let mut preset_state = PresetState::empty();
+    maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    preset_state.preset_edges.insert((nodes[0], nodes[1]));
+
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    let outcome = apply_commands(
+        &mut maze,
+        &preset_state,
+        vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }],
+        Some(&mut scope),
+    );
+    drop(scope);
+    let tape = log.finish();
+
+    assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 0 });
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert_eq!(events.len(), 1);
+    assert!(matches!(events[0], QcEvent::EdgeRemoveBetweenDeclined { .. }), "rejected command must emit its *Declined mirror: {:?}", events[0]);
+    assert!(!events[0].is_mutating(), "*Declined must never be classified as mutating");
 }
 
 #[test]

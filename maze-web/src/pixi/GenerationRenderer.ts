@@ -161,11 +161,8 @@ export class GenerationRenderer {
     return {
       nodes: debugMazeView ? debugMazeView.nodes : state.nodes,
       edges: debugMazeView ? debugMazeView.edges : state.edges,
-      // Debug replay doesn't reconstruct start/finish yet — RB doesn't emit events for them
-      // (see Specs/event_log.md), so they must stay hidden rather than showing the final
-      // post-generation values from the very first step.
-      start: state.debugMode ? null : state.start,
-      finish: state.debugMode ? null : state.finish,
+      start: debugMazeView ? debugMazeView.start : state.start,
+      finish: debugMazeView ? debugMazeView.finish : state.finish,
     };
   }
 

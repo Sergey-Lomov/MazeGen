@@ -238,6 +238,8 @@ describe("selectDebugMazeView", () => {
         { from: 2, to: 3, kind: "basic" },
         { from: 3, to: 2, kind: "basic" },
       ],
+      start: null,
+      finish: null,
       debugValues: new Map(),
       dsuGroups: null,
       debugMaps: new Map(),

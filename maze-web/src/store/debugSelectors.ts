@@ -6,6 +6,11 @@ import { adapterFor } from "../debug/algorithmRegistry";
 export interface DebugMazeView {
   nodes: NodeDto[];
   edges: EdgeDto[];
+  /** Start/finish node ids (already joined against `NodeDto.id`) reconstructed at this step, or
+   *  `null` if not yet set by this point in the replay. Only QC's contribution (GitHub issue #147)
+   *  ever sets these — see `qcContribution`'s own doc comment. */
+  start: number | null;
+  finish: number | null;
   /** Debug-value id lists (GitHub issue #131) reconstructed at this step, keyed by name — e.g.
    *  `debugValues.get("recursion_stack")`. Node ids as `number` (already joined against `NodeDto.id`,
    *  unlike the `bigint` ids the replay engine itself works in). `number[]`, not a `Set` — order
@@ -251,6 +256,8 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
   const view: DebugMazeView = {
     nodes: arena.nodes,
     edges: merged.edges.map((e) => ({ from: Number(e.from), to: Number(e.to), kind: e.kind ?? "basic" })),
+    start: merged.start === null ? null : Number(merged.start),
+    finish: merged.finish === null ? null : Number(merged.finish),
     debugValues: numberKeyedDebugValues,
     dsuGroups,
     debugMaps: numberKeyedDebugMaps,

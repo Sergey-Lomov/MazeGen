@@ -1882,10 +1882,9 @@ export function applyVertexBased(tape: ParsedTape, targetStep: number, startInde
  *  are independent of each other. */
 export const QC_TAG = {
   ITERATION_STARTED: 1,
-  RULE_CHECKED: 2,
-  REPAIR_DISPATCHED: 3,
-  ITERATION_NO_PROGRESS: 4,
+  CHECK_RAN: 2,
   ITERATION_LIMIT_REACHED: 5,
+  ISSUES_MERGED: 24,
 
   DIRECTED_EDGE_ADDED: 6,
   BIDIRECTIONAL_EDGE_ADDED: 7,
@@ -1906,27 +1905,36 @@ export const QC_TAG = {
   TELEPORT_REMOVE_WITH_REVERSE_DECLINED: 21,
   START_SET_DECLINED: 22,
   FINISH_SET_DECLINED: 23,
+
+  DIRECTED_EDGE_PROPOSED: 25,
+  BIDIRECTIONAL_EDGE_PROPOSED: 26,
+  DIRECTED_TELEPORT_PROPOSED: 27,
+  BIDIRECTIONAL_TELEPORT_PROPOSED: 28,
+  EDGE_REMOVE_PROPOSED: 29,
+  EDGE_REMOVE_BETWEEN_PROPOSED: 30,
+  TELEPORT_REMOVE_WITH_REVERSE_PROPOSED: 31,
+  START_SET_PROPOSED: 32,
+  FINISH_SET_PROPOSED: 33,
 } as const;
 
-export type RepairResultKind = "Fixed" | "Failed";
 export type RepairLimitKind = "MaxIterations" | "TimeBudget";
 
-/** Mirrors `IssuePayload` in `maze-core/src/quality_control/issue_payload.rs` — `None` for the 10
- *  of 12 `Issue` kinds with no structural edge/node payload (see that type's doc comment). */
+/** Mirrors `IssuePayload` in `maze-core/src/quality_control/issue_payload.rs` — `None` for the 9
+ *  of 11 `Issue` kinds with no structural edge/node payload (see that type's doc comment). */
 export type IssuePayload =
   | { kind: "None" }
   | { kind: "InvalidLoop"; edges: Map<string, [bigint, bigint][][]> }
   | { kind: "RegionNeedsExpansion"; nodes: Map<string, bigint[][]> };
 
 /** Mirrors `QcEvent` in `maze-core/src/quality_control/event.rs` — see that type's doc comment for
- *  the trace/mutating/declined split. `ruleId`/`issueKind` are the wire strings `IssueKind::as_str`/
- *  `Rule::id` produce, not enums — same "plain string over the wire" choice already made for
- *  `EventedEventKind`/`DebugValueKind` at the WASM boundary. */
+ *  the trace/mutating/declined split. `ruleId`/`checkId`/`issueKind` are the wire strings
+ *  `Rule::id`/`Check::check_type_id`/`IssueKind::as_str` produce, not enums — same "plain string
+ *  over the wire" choice already made for `EventedEventKind`/`DebugValueKind` at the WASM
+ *  boundary. */
 export type QcEvent =
   | { kind: "IterationStarted"; iteration: number }
-  | { kind: "RuleChecked"; ruleId: string; issue: { issueKind: string; payload: IssuePayload } | null }
-  | { kind: "RepairDispatched"; ruleId: string; result: RepairResultKind; proposed: number; applied: number }
-  | { kind: "IterationNoProgress" }
+  | { kind: "CheckRan"; checkId: string; issue: { issueKind: string; payload: IssuePayload } | null }
+  | { kind: "IssuesMerged"; issueKind: string }
   | { kind: "IterationLimitReached"; limit: RepairLimitKind }
   | { kind: "DirectedEdgeAdded"; from: bigint; to: bigint }
   | { kind: "BidirectionalEdgeAdded"; a: bigint; b: bigint }
@@ -1945,7 +1953,16 @@ export type QcEvent =
   | { kind: "EdgeRemoveBetweenDeclined"; from: bigint; to: bigint }
   | { kind: "TeleportRemoveWithReverseDeclined"; id: bigint }
   | { kind: "StartSetDeclined"; id: bigint }
-  | { kind: "FinishSetDeclined"; id: bigint };
+  | { kind: "FinishSetDeclined"; id: bigint }
+  | { kind: "DirectedEdgeProposed"; from: bigint; to: bigint }
+  | { kind: "BidirectionalEdgeProposed"; a: bigint; b: bigint }
+  | { kind: "DirectedTeleportProposed"; from: bigint; to: bigint }
+  | { kind: "BidirectionalTeleportProposed"; a: bigint; b: bigint }
+  | { kind: "EdgeRemoveProposed"; id: bigint }
+  | { kind: "EdgeRemoveBetweenProposed"; from: bigint; to: bigint }
+  | { kind: "TeleportRemoveWithReverseProposed"; id: bigint }
+  | { kind: "StartSetProposed"; id: bigint }
+  | { kind: "FinishSetProposed"; id: bigint };
 
 /** Reads a `u32`-length-prefixed UTF-8 string starting at `offset` — mirrors `write_str` in
  *  `maze-core/src/quality_control/event.rs`. Returns the decoded string and the byte offset
@@ -2028,12 +2045,6 @@ function readIssuePayload(bytes: Uint8Array, offset: number): { value: IssuePayl
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }
 
-function decodeRepairResultKind(byte: number): RepairResultKind {
-  if (byte === 0) return "Fixed";
-  if (byte === 1) return "Failed";
-  throw new Error(`QcEvent: unknown RepairResultKind byte ${byte}`);
-}
-
 function decodeRepairLimitKind(byte: number): RepairLimitKind {
   if (byte === 0) return "MaxIterations";
   if (byte === 1) return "TimeBudget";
@@ -2049,24 +2060,18 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
     case QC_TAG.ITERATION_STARTED:
       expectLen(tag, bytes, 4);
       return { kind: "IterationStarted", iteration: readU32(bytes, 0) };
-    case QC_TAG.RULE_CHECKED: {
-      const { value: ruleId, next } = readStr(bytes, 0);
+    case QC_TAG.CHECK_RAN: {
+      const { value: checkId, next } = readStr(bytes, 0);
       const present = bytes[next];
-      if (present === 0) return { kind: "RuleChecked", ruleId, issue: null };
+      if (present === 0) return { kind: "CheckRan", checkId, issue: null };
       const { value: issueKind, next: afterKind } = readStr(bytes, next + 1);
       const { value: payload } = readIssuePayload(bytes, afterKind);
-      return { kind: "RuleChecked", ruleId, issue: { issueKind, payload } };
+      return { kind: "CheckRan", checkId, issue: { issueKind, payload } };
     }
-    case QC_TAG.REPAIR_DISPATCHED: {
-      const { value: ruleId, next } = readStr(bytes, 0);
-      const result = decodeRepairResultKind(bytes[next]);
-      const proposed = readU32(bytes, next + 1);
-      const applied = readU32(bytes, next + 5);
-      return { kind: "RepairDispatched", ruleId, result, proposed, applied };
+    case QC_TAG.ISSUES_MERGED: {
+      const { value: issueKind } = readStr(bytes, 0);
+      return { kind: "IssuesMerged", issueKind };
     }
-    case QC_TAG.ITERATION_NO_PROGRESS:
-      expectLen(tag, bytes, 0);
-      return { kind: "IterationNoProgress" };
     case QC_TAG.ITERATION_LIMIT_REACHED:
       expectLen(tag, bytes, 1);
       return { kind: "IterationLimitReached", limit: decodeRepairLimitKind(bytes[0]) };
@@ -2125,6 +2130,34 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
     case QC_TAG.FINISH_SET_DECLINED:
       expectLen(tag, bytes, 8);
       return { kind: "FinishSetDeclined", id: readNodeId(bytes, 0) };
+
+    case QC_TAG.DIRECTED_EDGE_PROPOSED:
+      expectLen(tag, bytes, 16);
+      return { kind: "DirectedEdgeProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.BIDIRECTIONAL_EDGE_PROPOSED:
+      expectLen(tag, bytes, 16);
+      return { kind: "BidirectionalEdgeProposed", a: readNodeId(bytes, 0), b: readNodeId(bytes, 8) };
+    case QC_TAG.DIRECTED_TELEPORT_PROPOSED:
+      expectLen(tag, bytes, 16);
+      return { kind: "DirectedTeleportProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.BIDIRECTIONAL_TELEPORT_PROPOSED:
+      expectLen(tag, bytes, 16);
+      return { kind: "BidirectionalTeleportProposed", a: readNodeId(bytes, 0), b: readNodeId(bytes, 8) };
+    case QC_TAG.EDGE_REMOVE_PROPOSED:
+      expectLen(tag, bytes, 8);
+      return { kind: "EdgeRemoveProposed", id: readNodeId(bytes, 0) };
+    case QC_TAG.EDGE_REMOVE_BETWEEN_PROPOSED:
+      expectLen(tag, bytes, 16);
+      return { kind: "EdgeRemoveBetweenProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED:
+      expectLen(tag, bytes, 8);
+      return { kind: "TeleportRemoveWithReverseProposed", id: readNodeId(bytes, 0) };
+    case QC_TAG.START_SET_PROPOSED:
+      expectLen(tag, bytes, 8);
+      return { kind: "StartSetProposed", id: readNodeId(bytes, 0) };
+    case QC_TAG.FINISH_SET_PROPOSED:
+      expectLen(tag, bytes, 8);
+      return { kind: "FinishSetProposed", id: readNodeId(bytes, 0) };
     default:
       throw new Error(`QcEvent: unknown wire tag ${tag}`);
   }

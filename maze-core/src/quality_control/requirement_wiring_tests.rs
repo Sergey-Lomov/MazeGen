@@ -57,7 +57,7 @@ fn run_checks_typed_threads_the_strategys_resolved_requirement_into_repair_check
     let maze = empty_maze();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     let mut timing = HashMap::new();
-    rule.run_checks_typed(&maze, &mut rng, &mut timing, &|| 0.0);
+    rule.run_checks_typed(&maze, &mut rng, &mut timing, &|| 0.0, None);
 
     assert_eq!(received.borrow().as_slice(), &[InvalidLoopRequirement::empty()],
         "the strategy's resolved requirement must reach the check's repair_check call");
@@ -78,7 +78,7 @@ fn no_fix_rule_falls_back_to_full() {
     let maze = empty_maze();
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     let mut timing = HashMap::new();
-    rule.run_checks_typed(&maze, &mut rng, &mut timing, &|| 0.0);
+    rule.run_checks_typed(&maze, &mut rng, &mut timing, &|| 0.0, None);
 
     assert_eq!(received.borrow().as_slice(), &[InvalidLoopRequirement::all()],
         "a rule with no strategy (no_fix) must still pass all() to its checks");

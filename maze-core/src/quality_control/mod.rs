@@ -10,7 +10,7 @@ pub mod checks;
 
 pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_GROUP_PROXIMITY};
 pub use issue_payload::{IssuePayload, resolve_issue_payload};
-pub use event::{QcEvent, RepairResultKind};
+pub use event::QcEvent;
 pub use issue_kinds::{
     MissingEndpointsIssue, UnreachableFinishIssue, InvalidLoopIssue, InvalidLoopRequirement, MissingLoopsIssue,
     CycleAnalysisOverflowedIssue, RepairLimitReachedIssue, RepairLimitKind,

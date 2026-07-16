@@ -270,39 +270,32 @@ parameter, always the last, always `None` on the normal (non-debug) path. `build
 merged arena (see `Specs/event_log.md`'s "#147" notes on why `merge_tapes` moved out of
 `generate_maze_with_events` for this).
 
-**Known gap (GitHub issue #170 follow-up, not yet done): `RuleChecked`/`RepairDispatched` are
-currently never emitted.** The pre-#170 `Stage`-owned `collect_active`/`dispatch` split (each
-holding its own `event_log` scope reference) emitted both events — see the "Trace events" section
-below for the payload shape they're specified to carry and where they resolve it. #170's Rule/Stage
-merge moved the equivalent checking/dispatching work inside `Rule::check_and_repair_typed`, but the
-`.emit(QcEvent::RuleChecked { ... })`/`.emit(QcEvent::RepairDispatched { ... })` calls themselves
-were dropped rather than carried along — `check_and_dispatch` still opens a `"rule <id>"`
-`ScopeGuard` per rule and forwards it into `check_and_repair`, but nothing inside that call chain
-emits into it right now. `quality_control_event_log_test.rs`'s
-`exact_sequence_on_smallest_deterministic_repair_scenario` and
-`rule_checked_payload_is_resolved_before_this_rules_own_dispatch_in_the_same_iteration` are left
-red as the tracking signal for this gap. Restoring these emits belongs inside
-`Rule::check_and_repair_typed` (the only place that still knows both the per-rule `Issue`
-value and the `RepairResult`/`ApplyOutcome` pair without re-deriving them) — the sections below
-describe the target shape, not necessarily code that runs today.
-
 **Only the repair loop is instrumented — `run_check_only` (the check-only path
 `build_analytics_snapshot` uses) is not.** There is no narrative of iterations/dispatch there,
 only a flat report pass, so no `EventLog` parameter was added to it.
 
-**Scope shape** — three kinds, nested `"stage <id>"` → `"iteration N"` → `"rule <id>"`:
+**Scope shape** — nested `"stage <id>"` → `"iteration N"` → `"rule <id>"`, with two further
+scopes nested inside `"rule <id>"` only when that rule's strategy was actually dispatched:
 - `run_repair_stages` opens one `"stage {stage.id}"` scope per `Stage` (named by the stage's own
   opaque `id`, not its user-facing `name` — see below).
 - `Stage::run_repair` opens one `"iteration N"` scope (`enter_numbered("iteration")`, mirrors RB's
   `"step N"`) per fixpoint pass, emitting `IterationStarted(n)` on entry and
   `IterationLimitReached(kind)` on the corresponding exit path (no event for a clean
   `StageOutcome::Done` — convergence is visible as "no further iterations").
-- `Stage::check_and_dispatch` opens one `"rule {rule.id}"` scope per rule (see the "Known gap"
-  note above: currently opened for every non-`failed` rule regardless of outcome, not only ones
-  that reach a strategy dispatch — the pre-#170 code opened it only for dispatched rules, with a
-  no-issue/no-strategy rule instead getting a `RuleChecked` trace event directly in the iteration
-  scope and no rule scope of its own; this distinction needs re-establishing when the emits above
-  are restored).
+- `Rule::check_and_repair_typed` opens one `"rule {rule.id}"` scope per rule, always (whether or
+  not any check found anything) — `run_checks_typed` emits one `CheckRan` per check directly into
+  it, then `IssuesMerged` once if more than one check contributed to the same merged issue. If a
+  check found an issue and this rule has a registered strategy, two more scopes open as *siblings*
+  inside `"rule <id>"`, in order:
+  - `"strategy {strategy_id}"`, holding one `*Proposed` event per `MutationCommand` the strategy's
+    `apply()` returned — narrating what was *asked for*, before any of it is revalidated.
+  - `"apply requests"` (only when the strategy proposed at least one command), holding the
+    mutating/`*Declined` event `apply_commands` emits for each of those same commands as it
+    revalidates and applies them. This scope's own label is resolved from its children's
+    mutating-vs-`*Declined` counts (`"Apply requests (applied/total)"`) rather than a dedicated
+    summary event — mirrors `CustomVertexBased`'s `"junction_count"` scope label precedent
+    (`Specs/event_log.md`'s Contract C section) — there is no `QcEvent` carrying `proposed`/
+    `applied` directly.
 
 Every scope is opened and dropped **within its own block** inside the loop body that creates it —
 a `ScopeGuard` kept alive across a loop iteration boundary would keep the parent guard borrowed and
@@ -319,34 +312,40 @@ core send the title across the wire — a title round-tripped through the wire w
 stale after a later rename as one resolved from the live store, so there is no correctness argument
 for sending it, only unnecessary wire/type surface.
 
-**Trace events** (`Stage`-level, not tied to any one mutation):
-- `IterationStarted(u32)` — one fixpoint pass began.
-- `RuleChecked { rule_id, issue: Option<(IssueKind, IssuePayload)> }` — one rule's checks ran this
-  iteration. `issue: None` when the rule found nothing (emitted for every non-failed rule, not just
-  ones later dispatched — narration must show "rule X found nothing" too). `IssuePayload` is
-  resolved via `resolve_issue_payload` (`quality_control::issue_payload`, shared with
-  `maze-wasm/src/analytics.rs`'s JSON `IssuePayloadDto` — same source of truth, no second
-  independently-maintained downcast/resolve copy) — must be resolved immediately after
-  `run_checks_typed` returns and before this same rule's own strategy dispatch might mutate the
-  maze (payload reads `maze.graph`/`scc` as they stand right now; resolving it any later could
-  describe a graph state the issue was no longer found against). Pre-#170, `scc` was resolved
-  lazily and shared across every rule in one `collect_active` pass (all rules' checks ran before
-  any rule's dispatch mutated the maze, so one `ConnectedComponents` clone served the whole
-  iteration); since #170 merged checking and dispatching into one per-rule call
-  (`check_and_repair_typed`), a rule's own dispatch can mutate the maze before the *next* rule's
-  checks run, so this cross-rule sharing no longer applies as directly — restoring the emit needs
-  its own resolution strategy, not a straight port of the pre-#170 `scc` cache.
-- `RepairDispatched { rule_id, result: RepairResultKind, proposed, applied }` — a rule's strategy
-  was dispatched. `proposed`/`applied` mirror `rule::ApplyOutcome`'s own fields, copied directly
-  into the event (not left for a narration consumer to recompute by counting this rule's own
-  subsequent mutating/`*Declined` events in its scope). `RepairResultKind` is a simplified,
-  `Copy`/wire-friendly mirror of `repair::RepairResult` — drops the `Fixed` variant's
-  `score: Option<f64>` (narration doesn't need the route-score value, only fixed-vs-failed).
+**Trace events**:
+- `IterationStarted(u32)` — one fixpoint pass began (`Stage`-level).
+- `CheckRan { check_id, issue: Option<(IssueKind, IssuePayload)> }` — one check within a rule ran
+  this iteration (`Rule`-level, emitted by `run_checks_typed`). `check_id` is the check's own
+  `check_type_id()`, not the rule's id. `issue: None` when this check found nothing this call —
+  emitted for every check regardless of outcome, so narration can show "check X found nothing"
+  too. `IssuePayload` is resolved via `resolve_issue_payload` (`quality_control::issue_payload`,
+  shared with `maze-wasm/src/analytics.rs`'s JSON `IssuePayloadDto` — same source of truth, no
+  second independently-maintained downcast/resolve copy) against an `scc` built once per
+  `run_checks_typed` call (lazily, only when `event_log.is_some()`), resolved for each check
+  immediately as that check runs — before this rule's own strategy dispatch (if any) might mutate
+  the maze afterward.
+- `IssuesMerged { kind: IssueKind }` — two or more of this rule's checks each found an issue of the
+  same `kind` this iteration, and `IssueMerge::merge` folded them into one. Emitted once per rule
+  iteration, only when a merge actually happened — a rule with a single contributing check never
+  emits this.
 - `IterationLimitReached(RepairLimitKind)` — the shared `RepairBudget` was exhausted. The only way
   a stage's fixpoint loop stops without converging — GitHub issue #170 removed the previous
   no-progress guard (both the `(rule_id, Issue)` value-equality check and the "commands dropped"
   streak) as unreliable and easily defeated; `RepairLimits` (see `repair.md`) is now the sole
   termination guarantee, enforced once at construction rather than re-checked every iteration.
+
+There is no dedicated "rule dispatch result" event — a rule's applied/proposed repair outcome is
+narrated by resolving the `"apply requests"` scope's own label from its children's mutating-vs-
+`*Declined` counts (see the "Scope shape" note above), not a summary event carrying
+`RepairResult`/`ApplyOutcome` fields directly.
+
+**Proposed events — an exact 1:1 mirror of `repair::MutationCommand`'s 9 variants**
+(`DirectedEdgeProposed`, `BidirectionalEdgeProposed`, `DirectedTeleportProposed`,
+`BidirectionalTeleportProposed`, `EdgeRemoveProposed`, `EdgeRemoveBetweenProposed`,
+`TeleportRemoveWithReverseProposed`, `StartSetProposed`, `FinishSetProposed`) — emitted into the
+`"strategy <id>"` scope for every command a strategy's `apply()` returned, before any of them has
+been revalidated or applied by `apply_commands`. Narrates what was *asked for*, independent of
+whether the separate `"apply requests"` scope right after actually honors it.
 
 **Mutating events — an exact 1:1 mirror of `repair::MutationCommand`'s 9 variants**
 (`DirectedEdgeAdded`, `BidirectionalEdgeAdded`, `DirectedTeleportAdded`,

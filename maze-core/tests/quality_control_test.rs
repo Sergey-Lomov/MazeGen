@@ -25,7 +25,7 @@ fn run_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge + IssueRe
     let rule = Rule::new("r".to_string(), checks, None, HashMap::new(), vec![]);
     let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
     let mut timing = HashMap::new();
-    rule.run_checks_typed(maze, &mut rng, &mut timing, &now_ms_stub).into_iter().collect::<Vec<_>>()
+    rule.run_checks_typed(maze, &mut rng, &mut timing, &now_ms_stub, None).into_iter().collect::<Vec<_>>()
 }
 
 fn report_checks<T: maze_core::space::Tessellation, I: Issue + IssueMerge + IssueRequirement>(

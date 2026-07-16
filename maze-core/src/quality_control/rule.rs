@@ -99,6 +99,24 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool) -> QcEvent {
     }
 }
 
+/// Builds the `QcEvent::*Proposed` variant mirroring `cmd`, narrating what a strategy's `apply()`
+/// asked for before `apply_commands` has revalidated/applied any of it — see
+/// `check_and_repair_typed`'s doc comment for where this is emitted (the `"strategy <id>"` scope,
+/// ahead of the separate `"apply requests"` scope `apply_commands` itself emits into).
+fn qc_event_proposed_for_command(cmd: &MutationCommand) -> QcEvent {
+    match cmd {
+        MutationCommand::AddDirectedEdge { from, to } => QcEvent::DirectedEdgeProposed { from: *from, to: *to },
+        MutationCommand::AddBidirectionalEdge { a, b } => QcEvent::BidirectionalEdgeProposed { a: *a, b: *b },
+        MutationCommand::AddDirectedTeleport { from, to } => QcEvent::DirectedTeleportProposed { from: *from, to: *to },
+        MutationCommand::AddBidirectionalTeleport { a, b } => QcEvent::BidirectionalTeleportProposed { a: *a, b: *b },
+        MutationCommand::RemoveEdge { id } => QcEvent::EdgeRemoveProposed { id: *id },
+        MutationCommand::RemoveEdgeBetween { from, to } => QcEvent::EdgeRemoveBetweenProposed { from: *from, to: *to },
+        MutationCommand::RemoveTeleportWithReverse { id } => QcEvent::TeleportRemoveWithReverseProposed { id: *id },
+        MutationCommand::SetStart(node) => QcEvent::StartSetProposed(*node),
+        MutationCommand::SetFinish(node) => QcEvent::FinishSetProposed(*node),
+    }
+}
+
 /// One rule's strategy assignment — checks + strategy + resolved params/requirement, held
 /// together so `Rule` can dispatch repair by itself. `None` on `Rule::strategy` (not this type)
 /// means "no_fix". `params`/`requirement` are resolved once in `Rule::new` (not `param_overrides`
@@ -169,12 +187,20 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
     /// ("gives rule-level issue merging a natural home"). Returns `None` if no check in this rule
     /// found anything this call. `pub` so tests can exercise per-rule check-merge behavior
     /// directly, without needing a real repair dispatch.
+    ///
+    /// `event_log` (GitHub issue #147) emits one `QcEvent::CheckRan` per check, each carrying that
+    /// check's own raw (pre-merge) issue if any — resolved against the same `maze`/graph the check
+    /// itself just ran against, via `resolve_issue_payload` (this crate's shared payload resolver;
+    /// see `issue_payload.rs`). When two or more checks in this rule each contribute a raw issue,
+    /// one `QcEvent::IssuesMerged` is emitted after the per-check events, once merging has actually
+    /// combined them — a rule with only one contributing check never emits it.
     pub fn run_checks_typed(
         &self,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
         timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: &dyn Fn() -> f64,
+        mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
     ) -> Option<I> {
         // Resolved once per call (not per check) from the bound strategy's cached requirement —
         // no_fix (no strategy) falls back to the default (all()), same as an unmigrated check
@@ -182,18 +208,36 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         let requirement = self.strategy.as_ref()
             .map(|s| s.requirement)
             .unwrap_or_default();
+        // Built once, only when narration is actually on — `resolve_issue_payload` is the only
+        // consumer, and most issue kinds don't even need it (see its own doc comment).
+        let scc = event_log.is_some().then(|| crate::graph::scc::build_scc(&maze.graph));
+
         let mut merged: Option<I> = None;
+        let mut contributing_checks = 0u32;
         for (_, check) in &self.checks {
             let issues = timed(timing, check.check_type_id(), now_ms, || {
                 let mut v = Vec::new();
                 check.repair_check(maze, &mut v, rng, requirement);
                 v
             });
-            for issue in issues {
+            let check_issue = issues.into_iter().reduce(|mut acc, issue| { acc.merge(issue); acc });
+            if let Some(log) = event_log.as_mut() {
+                let payload = check_issue.as_ref().map(|issue| {
+                    (I::KIND, super::issue_payload::resolve_issue_payload(issue, &maze.graph, scc.as_ref().unwrap()))
+                });
+                log.emit(QcEvent::CheckRan { check_id: check.check_type_id(), issue: payload });
+            }
+            if let Some(issue) = check_issue {
+                contributing_checks += 1;
                 match &mut merged {
                     None => merged = Some(issue),
                     Some(existing) => existing.merge(issue),
                 }
+            }
+        }
+        if contributing_checks > 1 {
+            if let Some(log) = event_log.as_mut() {
+                log.emit(QcEvent::IssuesMerged { kind: I::KIND });
             }
         }
         merged
@@ -214,6 +258,22 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
     /// `repair_ms` accumulate this call's own elapsed time into the caller's stage-level totals
     /// (`GenerationTiming.qc_total_ms`/`repair_total_ms`) — split the same way: `qc_ms` covers
     /// `run_checks_typed`, `repair_ms` covers `apply`+`apply_commands`.
+    ///
+    /// `event_log` (GitHub issue #147): the dispatched strategy gets its own nested `"strategy
+    /// <id>"` scope, holding one `QcEvent::*Proposed` per command the strategy's `apply()`
+    /// returned — narrating what was *asked for*, before any of it has been revalidated or
+    /// applied (a strategy never mutates `Maze` itself, see `RepairStrategy::apply`'s doc comment
+    /// — it only proposes `MutationCommand`s). When `commands` is non-empty, a second, separate
+    /// `"apply requests"` scope follows (a sibling of `"strategy <id>"`, not nested inside it),
+    /// holding the mutating/`*Declined` events `apply_commands` emits for this same batch. No
+    /// `"apply requests"` scope is opened when `commands` is empty (a strategy that proposed
+    /// nothing has nothing to apply). Its own applied/proposed outcome is narrated by resolving
+    /// the scope's *label* from its children's mutating-vs-`*Declined` counts (mirrors
+    /// `CustomVertexBased`'s `"junction_count"` scope label — see `algorithmRegistry.ts`'s
+    /// `scopeLabel`) rather than a dedicated summary event — there is no `QcEvent` carrying
+    /// `proposed`/`applied` directly. What a strategy itself narrates *inside* its own `"strategy
+    /// <id>"` scope beyond the `*Proposed` line (e.g. per-strategy decision events) is each
+    /// strategy's own concern, added issue-by-issue in later tickets.
     pub fn check_and_repair_typed(
         &self,
         maze: &mut Maze<T>,
@@ -224,10 +284,10 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         qc_ms: &mut f64,
         repair_ms: &mut f64,
         now_ms: &dyn Fn() -> f64,
-        event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+        mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
     ) -> RuleIterationOutcome {
         let qc_start = now_ms();
-        let issue = self.run_checks_typed(maze, rng, per_check, now_ms);
+        let issue = self.run_checks_typed(maze, rng, per_check, now_ms, event_log.as_deref_mut());
         *qc_ms += now_ms() - qc_start;
         let Some(issue) = issue else { return RuleIterationOutcome::NoIssue };
         let Some(rule_strategy) = self.strategy.as_ref() else { return RuleIterationOutcome::NoStrategy };
@@ -236,7 +296,22 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         let (result, commands) = timed(per_strategy, rule_strategy.strategy.strategy_id(), now_ms, || {
             rule_strategy.strategy.apply(&issue, maze, rng, &rule_strategy.params, preset_state, &rule_strategy.nested)
         });
-        let outcome = apply_commands(maze, preset_state, commands, event_log);
+
+        {
+            let mut strategy_scope = event_log.as_mut().map(|log| log.enter(format!("strategy {}", rule_strategy.strategy.strategy_id())));
+            if let Some(scope) = strategy_scope.as_mut() {
+                for cmd in &commands {
+                    scope.emit(qc_event_proposed_for_command(cmd));
+                }
+            }
+        }
+
+        let outcome = if commands.is_empty() {
+            apply_commands(maze, preset_state, commands, None)
+        } else {
+            let mut apply_scope = event_log.as_mut().map(|log| log.enter("apply requests"));
+            apply_commands(maze, preset_state, commands, apply_scope.as_mut())
+        };
         *repair_ms += now_ms() - repair_start;
         RuleIterationOutcome::Repaired(result, outcome)
     }
