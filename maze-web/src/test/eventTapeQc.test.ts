@@ -96,40 +96,65 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({ kind: "CheckRan", checkId: "c1", issue: null });
   });
 
-  it("decodes CheckRan with issue present and IssuePayload::None", () => {
-    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("missing_endpoints"), new Uint8Array([0])]);
+  it("decodes CheckRan with issue present and IssuePayload::None and an empty details map", () => {
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("missing_endpoints"), new Uint8Array([0]), u32le(0)]);
     expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
-      kind: "CheckRan", checkId: "c1", issue: { issueKind: "missing_endpoints", payload: { kind: "None" } },
+      kind: "CheckRan", checkId: "c1", issue: { issueKind: "missing_endpoints", payload: { kind: "None" }, details: new Map() },
     });
   });
 
-  it("decodes CheckRan with IssuePayload::InvalidLoop", () => {
+  it("decodes CheckRan with IssuePayload::InvalidLoop and this check's own details", () => {
     // one entry: key "check1" -> one cycle -> one edge pair (1,2)
     const edgesMap = concatBytes([
       u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
     ]);
-    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_loop"), new Uint8Array([1]), edgesMap]);
+    // details: 1 entry -> "threshold" = "10"
+    const detailsMap = concatBytes([u32le(1), strPayload("threshold"), strPayload("10")]);
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_loop"), new Uint8Array([1]), edgesMap, detailsMap]);
     expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
-      issue: { issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) } },
+      issue: {
+        issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) },
+        details: new Map([["threshold", "10"]]),
+      },
     });
   });
 
-  it("decodes CheckRan with IssuePayload::RegionNeedsExpansion", () => {
+  it("decodes CheckRan with IssuePayload::RegionNeedsExpansion and an empty details map", () => {
     // one entry: key "check1" -> one region -> one node (5)
     const nodesMap = concatBytes([
       u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5),
     ]);
-    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("region_needs_expansion"), new Uint8Array([2]), nodesMap]);
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("region_needs_expansion"), new Uint8Array([2]), nodesMap, u32le(0)]);
     expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
-      issue: { issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [[5n]]]]) } },
+      issue: {
+        issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [[5n]]]]) },
+        details: new Map(),
+      },
     });
   });
 
-  it("decodes IssuesMerged", () => {
-    const payload = strPayload("invalid_loop");
-    expect(decodeQcEvent(QC_TAG.ISSUES_MERGED, payload)).toEqual({ kind: "IssuesMerged", issueKind: "invalid_loop" });
+  it("decodes IssuesMerged with IssuePayload::None and an empty details map", () => {
+    const payload = concatBytes([strPayload("invalid_loop"), new Uint8Array([0]), u32le(0)]);
+    expect(decodeQcEvent(QC_TAG.ISSUES_MERGED, payload)).toEqual({
+      kind: "IssuesMerged", issueKind: "invalid_loop", payload: { kind: "None" }, details: new Map(),
+    });
+  });
+
+  it("decodes IssuesMerged with IssuePayload::InvalidLoop and a details map keyed by contributing check instance id", () => {
+    // one entry: key "check1" -> one cycle -> one edge pair (1,2)
+    const edgesMap = concatBytes([
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
+    ]);
+    // details: 1 contributing check ("check1") -> {"threshold": "10"}
+    const detailsMap = concatBytes([u32le(1), strPayload("check1"), u32le(1), strPayload("threshold"), strPayload("10")]);
+    const payload = concatBytes([strPayload("invalid_loop"), new Uint8Array([1]), edgesMap, detailsMap]);
+    expect(decodeQcEvent(QC_TAG.ISSUES_MERGED, payload)).toEqual({
+      kind: "IssuesMerged", issueKind: "invalid_loop",
+      payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) },
+      details: new Map([["check1", new Map([["threshold", "10"]])]]),
+    });
   });
 
   it("decodes IterationLimitReached (MaxIterations)", () => {
@@ -156,16 +181,16 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportAdded", a: 1n, b: 2n });
   });
 
-  it("decodes EdgeRemoved (8 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVED, u64le(7n))).toEqual({ kind: "EdgeRemoved", id: 7n });
+  it("decodes EdgeRemoved (16 bytes — from/to, GitHub issue #171's follow-up fix)", () => {
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoved", from: 7n, to: 8n });
   });
 
   it("decodes EdgeRemovedBetween (16 bytes)", () => {
     expect(decodeQcEvent(QC_TAG.EDGE_REMOVED_BETWEEN, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemovedBetween", from: 1n, to: 2n });
   });
 
-  it("decodes TeleportRemovedWithReverse (8 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, u64le(3n))).toEqual({ kind: "TeleportRemovedWithReverse", id: 3n });
+  it("decodes TeleportRemovedWithReverse (16 bytes — from/to, GitHub issue #171's follow-up fix)", () => {
+    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, concatBytes([u64le(3n), u64le(4n)]))).toEqual({ kind: "TeleportRemovedWithReverse", from: 3n, to: 4n });
   });
 
   it("decodes StartSet (8 bytes)", () => {
@@ -181,9 +206,9 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_EDGE_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeDeclined", a: 1n, b: 2n });
     expect(decodeQcEvent(QC_TAG.DIRECTED_TELEPORT_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportDeclined", from: 1n, to: 2n });
     expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportDeclined", a: 1n, b: 2n });
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_DECLINED, u64le(7n))).toEqual({ kind: "EdgeRemoveDeclined", id: 7n });
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_DECLINED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoveDeclined", from: 7n, to: 8n });
     expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_BETWEEN_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenDeclined", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED, u64le(3n))).toEqual({ kind: "TeleportRemoveWithReverseDeclined", id: 3n });
+    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED, concatBytes([u64le(3n), u64le(4n)]))).toEqual({ kind: "TeleportRemoveWithReverseDeclined", from: 3n, to: 4n });
     expect(decodeQcEvent(QC_TAG.START_SET_DECLINED, u64le(1n))).toEqual({ kind: "StartSetDeclined", id: 1n });
     expect(decodeQcEvent(QC_TAG.FINISH_SET_DECLINED, u64le(2n))).toEqual({ kind: "FinishSetDeclined", id: 2n });
   });
@@ -193,9 +218,9 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeProposed", a: 1n, b: 2n });
     expect(decodeQcEvent(QC_TAG.DIRECTED_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportProposed", from: 1n, to: 2n });
     expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportProposed", a: 1n, b: 2n });
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_PROPOSED, u64le(7n))).toEqual({ kind: "EdgeRemoveProposed", id: 7n });
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_PROPOSED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoveProposed", from: 7n, to: 8n });
     expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_BETWEEN_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenProposed", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED, u64le(3n))).toEqual({ kind: "TeleportRemoveWithReverseProposed", id: 3n });
+    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED, concatBytes([u64le(3n), u64le(4n)]))).toEqual({ kind: "TeleportRemoveWithReverseProposed", from: 3n, to: 4n });
     expect(decodeQcEvent(QC_TAG.START_SET_PROPOSED, u64le(1n))).toEqual({ kind: "StartSetProposed", id: 1n });
     expect(decodeQcEvent(QC_TAG.FINISH_SET_PROPOSED, u64le(2n))).toEqual({ kind: "FinishSetProposed", id: 2n });
   });
@@ -215,32 +240,32 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "BidirectionalEdgeAdded", a: 1n, b: 2n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "DirectedTeleportAdded", from: 1n, to: 2n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "BidirectionalTeleportAdded", a: 1n, b: 2n })).toBe(true);
-    expect(isMutatingQcEvent({ kind: "EdgeRemoved", id: 1n })).toBe(true);
+    expect(isMutatingQcEvent({ kind: "EdgeRemoved", from: 1n, to: 2n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "EdgeRemovedBetween", from: 1n, to: 2n })).toBe(true);
-    expect(isMutatingQcEvent({ kind: "TeleportRemovedWithReverse", id: 1n })).toBe(true);
+    expect(isMutatingQcEvent({ kind: "TeleportRemovedWithReverse", from: 1n, to: 2n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "StartSet", id: 1n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "FinishSet", id: 1n })).toBe(true);
 
     expect(isMutatingQcEvent({ kind: "IterationStarted", iteration: 0 })).toBe(false);
     expect(isMutatingQcEvent({ kind: "CheckRan", checkId: "c", issue: null })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "IssuesMerged", issueKind: "invalid_loop" })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "IssuesMerged", issueKind: "invalid_loop", payload: { kind: "None" }, details: new Map() })).toBe(false);
     expect(isMutatingQcEvent({ kind: "IterationLimitReached", limit: "MaxIterations" })).toBe(false);
     expect(isMutatingQcEvent({ kind: "DirectedEdgeDeclined", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "BidirectionalEdgeDeclined", a: 1n, b: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "DirectedTeleportDeclined", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "BidirectionalTeleportDeclined", a: 1n, b: 2n })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "EdgeRemoveDeclined", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "EdgeRemoveDeclined", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "EdgeRemoveBetweenDeclined", from: 1n, to: 2n })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseDeclined", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseDeclined", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "StartSetDeclined", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "FinishSetDeclined", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "DirectedEdgeProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "BidirectionalEdgeProposed", a: 1n, b: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "DirectedTeleportProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "BidirectionalTeleportProposed", a: 1n, b: 2n })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "EdgeRemoveProposed", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "EdgeRemoveProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "EdgeRemoveBetweenProposed", from: 1n, to: 2n })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseProposed", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "StartSetProposed", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "FinishSetProposed", id: 1n })).toBe(false);
   });
@@ -303,6 +328,21 @@ describe("mutatingQcEvents / applyQc", () => {
     expect(result.edges).toEqual([{ from: 10n, to: 20n, kind: "basic" }, { from: 20n, to: 10n, kind: "basic" }]);
     expect(result.removedEdges).toEqual([{ from: 1n, to: 2n }]);
     expect(result.step).toBe(3);
+  });
+
+  it("EdgeRemoved/TeleportRemovedWithReverse (resolved from,to — GitHub issue #171's follow-up fix) fold into the same keyed accumulator as EdgeRemovedBetween", () => {
+    // root (0) -> BidirectionalEdgeAdded(1,2) (1) -> BidirectionalTeleportAdded(3,4) (2)
+    //          -> EdgeRemoved(1,2) (3) -> TeleportRemovedWithReverse(3,4) (4)
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 0, firstChild: null, nextSibling: 3, tag: QC_TAG.BIDIRECTIONAL_TELEPORT_ADDED, payloadBytes: concatBytes([u64le(3n), u64le(4n)]) },
+      { parent: 0, firstChild: null, nextSibling: 4, tag: QC_TAG.EDGE_REMOVED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(3n), u64le(4n)]) },
+    ]);
+    const result = applyQc(tape, 3, 0);
+    expect(result.edges).toEqual([{ from: 2n, to: 1n, kind: "basic" }, { from: 4n, to: 3n, kind: "teleport" }]);
+    expect(result.removedEdges).toEqual([]);
   });
 
   it("a *Declined event advances the step count but contributes nothing to edges/removedEdges/start/finish", () => {
@@ -413,6 +453,7 @@ describe("QC_ADAPTER.scopeLabel — stage/rule title resolution (GitHub issue #1
   const titleLookup: ScopeTitleLookup = {
     stageTitle: (id) => (id === "s1" ? "Waypoints" : undefined),
     ruleTitle: (id) => (id === "r1" ? "No dead ends" : undefined),
+    checkTypeId: () => undefined,
   };
 
   it("resolves a stage scope's title through titleLookup, quoted", () => {
@@ -435,8 +476,12 @@ describe("QC_ADAPTER.scopeLabel — stage/rule title resolution (GitHub issue #1
     expect(adapterFor("quality_control").scopeLabel("iteration 2", [], titleLookup)).toBe("Iteration 2");
   });
 
-  it("shows a strategy scope's raw id as-is, ignoring titleLookup (no per-strategy title concept)", () => {
-    expect(adapterFor("quality_control").scopeLabel("strategy random_endpoints", [], titleLookup)).toBe("Strategy random_endpoints");
+  it("resolves a strategy scope's id to its registry display label, quoted, ignoring titleLookup (fixed, not per-instance, title)", () => {
+    expect(adapterFor("quality_control").scopeLabel("strategy random_endpoints", [], titleLookup)).toBe('Strategy "Random endpoints"');
+  });
+
+  it("falls back to the raw strategy id, quoted, when the registry doesn't recognize it", () => {
+    expect(adapterFor("quality_control").scopeLabel("strategy unknown_strategy", [], titleLookup)).toBe('Strategy "unknown_strategy"');
   });
 
   it("labels the fixed \"apply requests\" scope with no children as 0/0", () => {
@@ -456,25 +501,125 @@ describe("QC_ADAPTER.scopeLabel — stage/rule title resolution (GitHub issue #1
   });
 });
 
-describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleLookup (GitHub issue #147, no dedicated dispatch-result narration line)", () => {
-  const titleLookup: ScopeTitleLookup = { stageTitle: () => undefined, ruleTitle: (id) => (id === "r1" ? "No dead ends" : undefined) };
+describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleLookup for stage/rule titles (GitHub issue #147, no dedicated dispatch-result narration line); checkId resolution is GitHub issue #171", () => {
+  // "r1:check1" resolves to the "missing_endpoints" check type via checkTypeId (GitHub issue
+  // #171) — checkId on the wire is now a check *instance* id, not a type id.
+  const titleLookup: ScopeTitleLookup = {
+    stageTitle: () => undefined,
+    ruleTitle: (id) => (id === "r1" ? "No dead ends" : undefined),
+    checkTypeId: (id) => (id === "r1:check1" ? "missing_endpoints" : undefined),
+  };
 
-  it("CheckRan narration shows the raw check id as-is, ignoring titleLookup (no per-check title concept)", () => {
+  it("CheckRan narration resolves checkId (an instance id) to its check type's registry display label via titleLookup.checkTypeId, and an issue bubble with no highlight target/reasons for IssuePayload::None with empty details", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor(
-      { kind: "CheckRan", checkId: "check1", issue: { issueKind: "invalid_loop", payload: { kind: "None" } } },
+      { kind: "CheckRan", checkId: "r1:check1", issue: { issueKind: "invalid_loop", payload: { kind: "None" }, details: new Map() } },
       titleLookup,
     );
-    expect(tokens).toEqual([{ kind: "text", text: "Check check1: issue found (invalid_loop)" }]);
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "Start and finish present": issue found ' },
+      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop validation"] },
+    ]);
+  });
+
+  it("CheckRan falls back to the raw instance id when titleLookup doesn't recognize it (absent, or checkTypeId returns undefined)", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1", issue: { issueKind: "invalid_loop", payload: { kind: "None" }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop validation"] },
+    ]);
   });
 
   it("CheckRan with no issue narrates cleanly", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "CheckRan", checkId: "check1", issue: null });
-    expect(tokens).toEqual([{ kind: "text", text: "Check check1: no issue" }]);
+    expect(tokens).toEqual([{ kind: "text", text: 'Check "check1": no issue' }]);
   });
 
-  it("IssuesMerged narrates the merged issue kind", () => {
-    const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "IssuesMerged", issueKind: "invalid_loop" });
-    expect(tokens).toEqual([{ kind: "text", text: "Merged into issue (invalid_loop)" }]);
+  it("CheckRan with an InvalidLoop payload carries a cycle highlight target, flattened across every contributing check", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_loop", target: { kind: "cycle", edges: [[1n, 2n]] }, reasons: ["Loop validation"] },
+    ]);
+  });
+
+  it("CheckRan with a RegionNeedsExpansion payload carries a region highlight target, flattened across every contributing check", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [[5n, 6n]]]]) }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "region_needs_expansion", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Region validation"] },
+    ]);
+  });
+
+  it("an InvalidLoop payload with no actual edges (empty map) resolves to a null highlight target, not an empty-array target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map() }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop validation"] },
+    ]);
+  });
+
+  it("a RegionNeedsExpansion payload with no actual nodes (empty map) resolves to a null highlight target, not an empty-array target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map() }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "region_needs_expansion", target: null, reasons: ["Region validation"] },
+    ]);
+  });
+
+  it("CheckRan's reason resolves through DETAIL_LABELS when checkTypeId + details are both available (GitHub issue #171)", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor(
+      {
+        kind: "CheckRan", checkId: "r1:check1",
+        issue: { issueKind: "invalid_loop", payload: { kind: "None" }, details: new Map([["threshold", "10"]]) },
+      },
+      { stageTitle: () => undefined, ruleTitle: () => undefined, checkTypeId: (id) => (id === "r1:check1" ? "min_loop_length" : undefined) },
+    );
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "Minimum loop length": issue found ' },
+      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop shorter than 10 tiles"] },
+    ]);
+  });
+
+  it("IssuesMerged narrates an issue bubble with one reason per contributing check, deduplicated", () => {
+    const details = new Map([
+      ["r1:check1", new Map([["threshold", "10"]])],
+      ["r1:check2", new Map([["threshold", "10"]])],
+    ]);
+    const tokens = adapterFor("quality_control").narrationTokensFor(
+      { kind: "IssuesMerged", issueKind: "invalid_loop", payload: { kind: "None" }, details },
+      {
+        stageTitle: () => undefined, ruleTitle: () => undefined,
+        checkTypeId: (id) => (id === "r1:check1" || id === "r1:check2" ? "min_loop_length" : undefined),
+      },
+    );
+    expect(tokens).toEqual([
+      { kind: "text", text: "Merged into issue " },
+      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop shorter than 10 tiles"] },
+    ]);
+  });
+
+  it("IssuesMerged falls back to the generic issue label as the reason when titleLookup is absent", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "IssuesMerged", issueKind: "invalid_loop", payload: { kind: "None" }, details: new Map([["check1", new Map()]]),
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: "Merged into issue " },
+      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop validation"] },
+    ]);
   });
 
   it("StartSetProposed/FinishSetProposed narrate what the strategy asked for, distinct from StartSet/FinishSet", () => {

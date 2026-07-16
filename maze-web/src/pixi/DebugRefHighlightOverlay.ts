@@ -95,6 +95,25 @@ export class DebugRefHighlightOverlay {
         this.regionRenderer.render({ nodes, regionGroups: [[Number(ref.id)]], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         break;
       }
+      case "issue": {
+        // No structural target (most issue kinds — see `IssuePayload::None`): nothing to
+        // highlight, same as the no-`ref` branch above.
+        if (!ref.target) {
+          this.edgeRenderer.render({ highlights: [] });
+          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+          break;
+        }
+        if (ref.target.kind === "cycle") {
+          const highlights = this.edgeHighlightsFor(ref.target.edges, posOf);
+          this.edgeRenderer.render({ highlights });
+          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+        } else {
+          this.edgeRenderer.render({ highlights: [] });
+          const regionNodeIds = ref.target.nodes.map((id) => Number(id));
+          this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+        }
+        break;
+      }
     }
   }
 

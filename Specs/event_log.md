@@ -429,10 +429,81 @@ debug fields.
 
 ### Out of Scope (#130)
 
-- QC/repair narration events (future epic scope, per #121 and #130 itself)
+- QC/repair narration events (future epic scope, per #121 and #130 itself — landed by #171, see below)
 - Reusing `DebugRefHighlightOverlay`/`RegionHighlightRenderer` for other features beyond this and
   Analytics' existing issue highlighting
 - Instrumenting Wilson, Kruskal, or custom algorithms with node/edge refs
+
+### Issue bubbles in QC narration (#171)
+
+`QcEvent::CheckRan`'s "issue found" line and `IssuesMerged` now render an interactive bubble
+instead of a plain-text issue-kind string — reusing this same `DebugRefBubble`/`hoveredDebugRef`/
+`DebugRefHighlightOverlay` machinery (not Analytics' `IssueBubble`/`hoveredIssueLoopEdges` /
+`setHoveredIssueRegionGroups`, which only render while the Analytics panel is open — the debug
+panel needs the hover highlight independent of that).
+
+`Token`/`HoveredDebugRef` both gain a fourth-and-final variant:
+
+```ts
+| {
+    kind: "issue"; issueKind: string;
+    target: { kind: "cycle"; edges: [bigint, bigint][] } | { kind: "region"; nodes: bigint[] } | null;
+    reasons: string[];
+  }
+```
+
+`issueKind` is the raw wire string (same as everywhere else in this module — never translated);
+`target` is `null` for the 9 of 11 issue kinds with no structural payload (`IssuePayload::None`),
+otherwise the flattened structural data from `CheckRan`'s per-check `IssuePayload` or
+`IssuesMerged`'s merged-issue payload (`quality_control.md`'s "Trace events" section) — flattened
+across every contributing check via `algorithmRegistry.ts`'s `issueHighlightTarget`, since a single
+debug-tree bubble narrates one issue per event, unlike Analytics' `IssuesBlock`, which renders one
+bubble per contributing check and so highlights each check's own cycles/regions independently.
+
+`reasons` is one already-resolved display string per contributing check — built by
+`algorithmRegistry.ts`'s `issueReasons`/`issueReasonFor` from `resolveIssueSourceLabel`
+(`components/issueRegistry.ts`, the same per-check detail formatter Analytics' `IssueBubble` calls)
+against that check's *type* id (resolved from its wire *instance* id — `CheckRan.check_id`/
+`IssuesMerged.details`' keys — via `ScopeTitleLookup.checkTypeId`, a new lookup mirroring
+`stageTitle`/`ruleTitle`, sourced from the live store's `rules[].checks[]` the same way
+`IssueDto.source_check_types` is built for the analytics snapshot) and that check's own `details`
+map (`CheckRan.issue.details` / `IssuesMerged.details[checkId]`, both carried on the wire — see
+`quality_control.md`'s "Trace events" section). Resolved once per event, in `algorithmRegistry.ts`,
+not deferred to the render layer — `DebugRefBubble` only ever renders already-resolved strings, no
+`titleLookup` access of its own. Deduplicated (`issueReasons`) so two checks of the same type with
+identical params/details don't repeat the same reason twice.
+
+`bubbleLabel` resolves an `issue` token's own visible label from `resolveIssue(issueKind).label`
+(`components/issueRegistry.ts`, the same registry `IssuesBlock`'s `IssueBubble` reads) instead of
+formatting an id/coordinate — there is no id to format; this stays the generic issue-kind label
+even for a merged issue with several distinct `reasons` (only the modal, not the inline label,
+shows the per-check breakdown). `DebugRefBubble` opens a modal listing `reasons` on click — a
+single line when there's exactly one, or a "Possible reasons:" (`debug.tree.qc.issue_reasons_header`)
+header plus a list when there's more than one (only `IssuesMerged` with 2+ contributing checks
+produces more than one) — clickable whenever `reasons.length > 0`; every other target kind stays
+hover-only (`onClick` only calls `stopPropagation()`). Hovering an `issue` token with a `null`
+`target` is a no-op (nothing to highlight) rather than clearing-and-resetting a highlight that was
+never set.
+
+`DebugRefHighlightOverlay` dispatches `ref.kind === "issue"` to the same `EdgeHighlightRenderer`/
+`RegionHighlightRenderer` sub-renderers a standalone `cycle`/`region` ref uses, keyed off
+`ref.target.kind` (or clears both when `target` is `null`) — no new rendering primitive.
+
+**Follow-up fix, found while building this feature: `EdgeId` was narrated as a `NodeId`.**
+`EdgeRemoveProposed`/`EdgeRemoved`/`EdgeRemoveDeclined`/`TeleportRemoveWithReverseProposed`/
+`TeleportRemovedWithReverse`/`TeleportRemoveWithReverseDeclined` used to carry `MutationCommand`'s
+own opaque `EdgeId` and narrate it as a `{kind: "node", id}` token — `bubbleLabel` then looked that
+id up against `debugArena.nodes` (a `NodeId`-space list), crashing whenever the `EdgeId` exceeded
+the maze's own node count (pre-existing bug, unrelated to the issue bubbles above; surfaced and
+fixed in the same pass). Fixed by resolving `EdgeId → (from: NodeId, to: NodeId)` on the Rust side
+— in `apply_commands`, off the still-intact graph immediately before the edge is removed (`None`
+once removed), and in the strategy-scope `*Proposed` path, off the untouched graph before any
+mutation — and changing these 6 `QcEvent` variants' wire shape from `{id: EdgeId}` to `{from, to}`
+accordingly (see `quality_control.md`'s "Trace events" section). The web-side narration for all 6
+now emits a `{kind: "edge", from, to, bidirectional: false}` token instead of `{kind: "node", id}`.
+A resolution failure (stale id) means the event is skipped entirely, never a fabricated `(0, 0)`
+pair — node id `0` is a real, valid id, so a fabricated pair would be indistinguishable from a
+genuine edge.
 
 ## Generic Debug Values (#131)
 

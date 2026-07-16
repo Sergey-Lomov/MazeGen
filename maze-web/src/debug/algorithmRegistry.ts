@@ -14,7 +14,7 @@
 
 import {
   type ParsedTape, type ParsedCheckpoints, type ApplyFrom, type NodeView,
-  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent, type QcEvent,
+  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent, type QcEvent, type IssuePayload,
   type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult, type QcApplyResult,
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
   decodeKruskalEvent, isMutatingKruskalEvent, mutatingKruskalEventsWithIndex, applyKruskal, kruskalMergedRoot,
@@ -25,6 +25,8 @@ import {
   resolveDebugArenaMetadata, parseCheckpoints, type DebugArenaMetadata, type TopLevelSourceScope,
 } from "./eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
+import { resolveCheckLabel, resolveStrategyLabel } from "../components/features/qualityI18n";
+import { resolveIssueSourceLabel } from "../components/issueRegistry";
 import * as m from "~/paraglide/messages";
 
 /** One piece of a tokenized narration line — mirrors the `Token` union in `DebugEventTree.tsx`
@@ -35,7 +37,62 @@ export type Token =
   | { kind: "node"; id: bigint }
   | { kind: "edge"; from: bigint; to: bigint; bidirectional: boolean }
   | { kind: "cycle"; edges: [bigint, bigint][] }
+  | { kind: "region"; nodes: bigint[] }
+  | { kind: "issue"; issueKind: string; target: IssueHighlightTarget | null; reasons: string[] };
+
+/** Structural highlight data an `issue` token carries, when the underlying `IssuePayload` (see
+ *  `eventTape.ts`) resolved to one — `null` for the majority of issue kinds with no structural
+ *  edge/node data (mirrors `IssuePayload::None`). Reuses the same shape `cycle`/`region` tokens
+ *  already carry rather than inventing a third representation. */
+export type IssueHighlightTarget =
+  | { kind: "cycle"; edges: [bigint, bigint][] }
   | { kind: "region"; nodes: bigint[] };
+
+/** Flattens an `IssuePayload` (per-source-check-keyed) into one combined highlight target — used
+ *  for the debug tree's own issue bubble, which (unlike Analytics' `IssueBubble`) has no per-check
+ *  bubble breakdown to key into: `CheckRan`/`IssuesMerged` narrate one issue per event, so every
+ *  contributing check's own cycles/regions are shown together. */
+function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | null {
+  switch (payload.kind) {
+    case "None":
+      return null;
+    case "InvalidLoop": {
+      const edges = [...payload.edges.values()].flat(2);
+      return edges.length > 0 ? { kind: "cycle", edges } : null;
+    }
+    case "RegionNeedsExpansion": {
+      const nodes = [...payload.nodes.values()].flat(2);
+      return nodes.length > 0 ? { kind: "region", nodes } : null;
+    }
+  }
+}
+
+/** Resolves one contributing check's own "reason" text for an `issue` token's modal (GitHub issue
+ *  #171) — `resolveIssueSourceLabel` (`issueRegistry.ts`, the same function `IssueBubble` calls)
+ *  keyed by the check's *type* id (resolved from its instance id via `titleLookup.checkTypeId`,
+ *  same as `checkLabelFor`), falling back to the issue kind's generic label when the instance
+ *  can't be resolved (e.g. the check was removed after this tape was generated) — there's no
+ *  type id to pick a `DETAIL_LABELS` formatter with in that case. */
+function issueReasonFor(issueKind: string, checkId: string, details: Map<string, string>, titleLookup?: ScopeTitleLookup): string {
+  const typeId = titleLookup?.checkTypeId(checkId);
+  if (typeId === undefined) return resolveIssueSourceLabel(issueKind, checkId, undefined);
+  return resolveIssueSourceLabel(issueKind, typeId, Object.fromEntries(details));
+}
+
+/** Builds an `issue` token's `reasons` list from one or more `(checkId, details)` contributions —
+ *  `CheckRan` always passes exactly one (this event narrates a single check), `IssuesMerged` one
+ *  per contributing check (GitHub issue #171, mirrors `IssuesBlock` rendering one bubble per
+ *  `source_checks` entry for a merged `IssueDto`). Deduplicates identical resolved strings — two
+ *  checks of the same type with the same params/details would otherwise repeat the same reason
+ *  twice for no informational gain. */
+function issueReasons(
+  issueKind: string,
+  contributions: { checkId: string; details: Map<string, string> }[],
+  titleLookup?: ScopeTitleLookup,
+): string[] {
+  const resolved = contributions.map(({ checkId, details }) => issueReasonFor(issueKind, checkId, details, titleLookup));
+  return [...new Set(resolved)];
+}
 
 /** Shape shared by every algorithm's adapter. Parameterized by the concrete event type `E`
  *  (`RecursiveBacktrackerEvent`/`KruskalEvent`/`WilsonEvent`) so `decodeEvent`/`isMutatingEvent`/
@@ -82,10 +139,19 @@ export interface BaseAlgorithmAdapter<E> {
  *  from the live store config (`MazeStore.stages`/`rules`) — see `QC_ADAPTER.scopeLabel`'s doc
  *  comment for why this is resolved live rather than sent across the wire. `undefined` (id not
  *  found — e.g. the rule/stage was deleted after this tape was generated) falls back to the raw
- *  id, same as before a title lookup existed. */
+ *  id, same as before a title lookup existed.
+ *
+ *  `checkTypeId` (GitHub issue #171) resolves `QcEvent.CheckRan.checkId` (a check *instance* id,
+ *  the composite `"{rule_id}:{local_id}"` routing key — see that field's doc comment in
+ *  `event.rs`) to its check *type* id (`CheckInstance.typeId`) via the same live store config,
+ *  mirroring `IssueDto.source_check_types`' role for the analytics panel — `resolveCheckLabel`
+ *  needs a type id, not an instance id, to find a display label. `undefined` (instance not found
+ *  — e.g. the check was removed after this tape was generated) falls back to showing the raw
+ *  instance id. */
 export interface ScopeTitleLookup {
   stageTitle(stageId: string): string | undefined;
   ruleTitle(ruleId: string): string | undefined;
+  checkTypeId(instanceId: string): string | undefined;
 }
 
 /** RB is the only algorithm with checkpoint-based resume (GitHub issue #128 stays RB-only) — its
@@ -470,28 +536,61 @@ function quoted(title: string): string {
   return `"${title}"`;
 }
 
+/** Resolves a check instance id's display label via `titleLookup.checkTypeId` (GitHub issue
+ *  #171) then `resolveCheckLabel` — falls back to the raw instance id when `titleLookup` is
+ *  absent or the instance isn't found in the live store config (same fallback shape every other
+ *  `titleLookup`-driven resolution in this module uses). Returns the label unquoted — callers wrap
+ *  it in `quoted()` themselves, same as every other `rule`/`stage`/`strategy` resolver in this
+ *  module, so quoting stays a call-site decision rather than baked into the resolver. */
+function checkLabelFor(checkId: string, titleLookup?: ScopeTitleLookup): string {
+  const typeId = titleLookup?.checkTypeId(checkId);
+  return typeId !== undefined ? resolveCheckLabel(typeId, checkId) : checkId;
+}
+
 /** QC's counterpart to `narrationTokensForRb`/etc. (GitHub issue #147). `issueKind` is a plain
- *  wire string (not localized) — a stable core identifier; narration surrounds it with localized
- *  text but doesn't translate it, mirroring how node/edge ids never get translated either.
- *  `ruleId` is resolved through `titleLookup` to its current user-facing title first (same
- *  resolution `scopeLabel` applies to a `"rule <id>"` scope's own label — see that doc comment for
- *  why this is resolved live rather than sent across the wire), falling back to the raw id when
- *  `titleLookup` is absent or doesn't recognize it. `checkId` is never resolved through
- *  `titleLookup` — checks have no separate user-facing title concept the way rules/stages do, so
- *  `CheckRan` narration shows the raw check type id as-is. There is no dedicated "dispatch result"
- *  event/narration line — a rule's applied/proposed outcome is instead read off the `"apply
- *  requests"` scope's own label (see `QC_ADAPTER.scopeLabel`'s doc comment), mirroring
- *  `CustomVertexBased`'s `"junction_count"` scope label precedent. */
-function narrationTokensForQc(event: QcEvent, _titleLookup?: ScopeTitleLookup): Token[] {
+ *  wire string (not localized) — a stable core identifier; the `issue` token narrates it via
+ *  `resolveIssue` (see `issueHighlightTarget`'s call site) rather than showing it raw, mirroring
+ *  how `checkId` below is resolved rather than shown as its wire string. `ruleId` is resolved
+ *  through `titleLookup` to its current user-facing title first (same resolution `scopeLabel`
+ *  applies to a `"rule <id>"` scope's own label — see that doc comment for why this is resolved
+ *  live rather than sent across the wire), falling back to the raw id when `titleLookup` is absent
+ *  or doesn't recognize it. `checkId` is a check *instance* id (GitHub issue #171, matches
+ *  `IssueDto.source_checks`' own keys) — resolved to its type id via `titleLookup.checkTypeId`
+ *  then to a display label via `resolveCheckLabel` (`checkLabelFor`, above), mirroring how
+ *  `IssuesBlock` resolves the same instance id through `IssueDto.source_check_types`. There is no
+ *  dedicated "dispatch result" event/narration line — a rule's applied/proposed outcome is instead
+ *  read off the `"apply requests"` scope's own label (see `QC_ADAPTER.scopeLabel`'s doc comment),
+ *  mirroring `CustomVertexBased`'s `"junction_count"` scope label precedent. */
+function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): Token[] {
   switch (event.kind) {
     case "IterationStarted":
       return [{ kind: "text", text: m["debug.tree.qc.iteration_started"]({ iteration: event.iteration + 1 }) }];
-    case "CheckRan":
+    case "CheckRan": {
+      const checkLabel = quoted(checkLabelFor(event.checkId, titleLookup));
       return event.issue
-        ? [{ kind: "text", text: m["debug.tree.qc.check_ran_found"]({ checkId: event.checkId, issueKind: event.issue.issueKind }) }]
-        : [{ kind: "text", text: m["debug.tree.qc.check_ran_clean"]({ checkId: event.checkId }) }];
+        ? [
+            { kind: "text", text: m["debug.tree.qc.check_ran_found"]({ checkId: checkLabel }) + " " },
+            {
+              kind: "issue", issueKind: event.issue.issueKind,
+              target: issueHighlightTarget(event.issue.payload),
+              reasons: issueReasons(event.issue.issueKind, [{ checkId: event.checkId, details: event.issue.details }], titleLookup),
+            },
+          ]
+        : [{ kind: "text", text: m["debug.tree.qc.check_ran_clean"]({ checkId: checkLabel }) }];
+    }
     case "IssuesMerged":
-      return [{ kind: "text", text: m["debug.tree.qc.issues_merged"]({ issueKind: event.issueKind }) }];
+      return [
+        { kind: "text", text: m["debug.tree.qc.issues_merged"]() + " " },
+        {
+          kind: "issue", issueKind: event.issueKind,
+          target: issueHighlightTarget(event.payload),
+          reasons: issueReasons(
+            event.issueKind,
+            [...event.details].map(([checkId, details]) => ({ checkId, details })),
+            titleLookup,
+          ),
+        },
+      ];
     case "IterationLimitReached":
       return [{
         kind: "text",
@@ -508,11 +607,11 @@ function narrationTokensForQc(event: QcEvent, _titleLookup?: ScopeTitleLookup): 
     case "BidirectionalTeleportAdded":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_added"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoved":
-      return [{ kind: "text", text: m["debug.tree.qc.edge_removed"]() + " " }, { kind: "node", id: event.id }];
+      return [{ kind: "text", text: m["debug.tree.qc.edge_removed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemovedBetween":
       return [{ kind: "text", text: m["debug.tree.qc.edge_removed_between"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "TeleportRemovedWithReverse":
-      return [{ kind: "text", text: m["debug.tree.qc.teleport_removed_with_reverse"]() + " " }, { kind: "node", id: event.id }];
+      return [{ kind: "text", text: m["debug.tree.qc.teleport_removed_with_reverse"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "StartSet":
       return [{ kind: "text", text: m["debug.tree.qc.start_set"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSet":
@@ -526,11 +625,11 @@ function narrationTokensForQc(event: QcEvent, _titleLookup?: ScopeTitleLookup): 
     case "BidirectionalTeleportDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_declined"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoveDeclined":
-      return [{ kind: "text", text: m["debug.tree.qc.edge_remove_declined"]() + " " }, { kind: "node", id: event.id }];
+      return [{ kind: "text", text: m["debug.tree.qc.edge_remove_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemoveBetweenDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.edge_remove_between_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "TeleportRemoveWithReverseDeclined":
-      return [{ kind: "text", text: m["debug.tree.qc.teleport_remove_with_reverse_declined"]() + " " }, { kind: "node", id: event.id }];
+      return [{ kind: "text", text: m["debug.tree.qc.teleport_remove_with_reverse_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "StartSetDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.start_set_declined"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSetDeclined":
@@ -544,11 +643,11 @@ function narrationTokensForQc(event: QcEvent, _titleLookup?: ScopeTitleLookup): 
     case "BidirectionalTeleportProposed":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_proposed"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoveProposed":
-      return [{ kind: "text", text: m["debug.tree.qc.edge_remove_proposed"]() + " " }, { kind: "node", id: event.id }];
+      return [{ kind: "text", text: m["debug.tree.qc.edge_remove_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemoveBetweenProposed":
       return [{ kind: "text", text: m["debug.tree.qc.edge_remove_between_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "TeleportRemoveWithReverseProposed":
-      return [{ kind: "text", text: m["debug.tree.qc.teleport_remove_with_reverse_proposed"]() + " " }, { kind: "node", id: event.id }];
+      return [{ kind: "text", text: m["debug.tree.qc.teleport_remove_with_reverse_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "StartSetProposed":
       return [{ kind: "text", text: m["debug.tree.qc.start_set_proposed"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSetProposed":
@@ -573,8 +672,10 @@ const QC_ADAPTER: QcAdapter = {
   // (core has no concept of their user-facing title, only their id) — `titleLookup` resolves each
   // to its current title from the live store config; a missing lookup or an id no longer present
   // in it (e.g. deleted after this tape was generated) falls back to showing the raw id, same as
-  // before a title lookup existed. A strategy's id has no separate user-facing title concept
-  // (mirrors `checkId` in `narrationTokensForQc`), so its scope label always shows the raw id.
+  // before a title lookup existed. A strategy's id, unlike a stage/rule's, has a fixed display
+  // name (not a per-instance user-editable one) — resolved via `resolveStrategyLabel`
+  // (`qualityI18n.ts`, the same registry `FeaturesPanel`'s strategy picker reads), quoted the same
+  // way a stage/rule title is, falling back to the raw id when the registry doesn't recognize it.
   // "apply requests" is a fixed, non-parameterized scope name (mirrors Wilson's "search"/"commit")
   // — checked before the numbered/id-carrying regexes above, which wouldn't match it. Its own
   // applied/total tally is read off its direct children (mutating events = applied, every event =
@@ -607,7 +708,8 @@ const QC_ADAPTER: QcAdapter = {
     }
     const strategyMatch = QC_STRATEGY_SCOPE_RE.exec(name);
     if (strategyMatch) {
-      return m["debug.tree.qc.strategy_scope"]({ strategyId: strategyMatch[1] });
+      const strategyId = strategyMatch[1];
+      return m["debug.tree.qc.strategy_scope"]({ strategyId: quoted(resolveStrategyLabel(strategyId)) });
     }
     return name;
   },

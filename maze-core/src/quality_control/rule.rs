@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
+use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::repair::{RepairStrategy, RepairResult, NestedStrategyConfig, MutationCommand, params::{build_params, StrategyParams}};
@@ -42,6 +43,16 @@ pub fn apply_commands<T: Tessellation>(
     let proposed = commands.len();
     let mut applied = 0;
     for cmd in commands {
+        // `RemoveEdge`/`RemoveTeleportWithReverse` carry only an opaque `EdgeId` — meaningless to
+        // web-side debug narration on its own (GitHub issue #171's follow-up fix: `bubbleLabel`
+        // used to mis-render it as a `NodeId`, crashing once the id exceeded the maze's own node
+        // count). Resolved to `(from, to)` here, *before* the edge is actually removed below —
+        // `graph.edge(id)` returns `None` once removed, so this must happen ahead of the `match`.
+        let edge_endpoints = match &cmd {
+            MutationCommand::RemoveEdge { id } | MutationCommand::RemoveTeleportWithReverse { id } =>
+                maze.graph.edge(*id).map(|e| (e.from, e.to)),
+            _ => None,
+        };
         let ok = match cmd {
             MutationCommand::AddDirectedEdge { from, to } =>
                 crate::generation::try_add_directed_edge(&mut maze.graph, from, to, preset_state),
@@ -68,7 +79,9 @@ pub fn apply_commands<T: Tessellation>(
         };
         if ok { applied += 1; }
         if let Some(log) = event_log.as_mut() {
-            log.emit(qc_event_for_command(&cmd, ok));
+            if let Some(event) = qc_event_for_command(&cmd, ok, edge_endpoints) {
+                log.emit(event);
+            }
         }
     }
     ApplyOutcome { proposed, applied }
@@ -76,8 +89,14 @@ pub fn apply_commands<T: Tessellation>(
 
 /// Builds the `QcEvent` mirroring `cmd` — the mutating variant when `applied`, the matching
 /// `*Declined` trace variant (same fields) otherwise. See `apply_commands`'s doc comment.
-fn qc_event_for_command(cmd: &MutationCommand, applied: bool) -> QcEvent {
-    match (cmd, applied) {
+/// `edge_endpoints` is `Some((from, to))` for `RemoveEdge`/`RemoveTeleportWithReverse` (resolved
+/// by the caller before the edge was removed — GitHub issue #171's follow-up fix), `None` for
+/// every other command (ignored). Returns `None` (nothing to emit) for those two specifically when
+/// `edge_endpoints` is `None` — the id was already gone by the time it was resolved — rather than
+/// fabricating a `(0, 0)` self-loop via `unwrap_or_default`: node id `0` is a real, valid id in this
+/// codebase, so a fabricated pair would be indistinguishable from a genuine edge.
+fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Option<(NodeId, NodeId)>) -> Option<QcEvent> {
+    Some(match (cmd, applied) {
         (MutationCommand::AddDirectedEdge { from, to }, true) => QcEvent::DirectedEdgeAdded { from: *from, to: *to },
         (MutationCommand::AddDirectedEdge { from, to }, false) => QcEvent::DirectedEdgeDeclined { from: *from, to: *to },
         (MutationCommand::AddBidirectionalEdge { a, b }, true) => QcEvent::BidirectionalEdgeAdded { a: *a, b: *b },
@@ -86,35 +105,48 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool) -> QcEvent {
         (MutationCommand::AddDirectedTeleport { from, to }, false) => QcEvent::DirectedTeleportDeclined { from: *from, to: *to },
         (MutationCommand::AddBidirectionalTeleport { a, b }, true) => QcEvent::BidirectionalTeleportAdded { a: *a, b: *b },
         (MutationCommand::AddBidirectionalTeleport { a, b }, false) => QcEvent::BidirectionalTeleportDeclined { a: *a, b: *b },
-        (MutationCommand::RemoveEdge { id }, true) => QcEvent::EdgeRemoved { id: *id },
-        (MutationCommand::RemoveEdge { id }, false) => QcEvent::EdgeRemoveDeclined { id: *id },
+        (MutationCommand::RemoveEdge { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoved { from, to } }
+        (MutationCommand::RemoveEdge { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoveDeclined { from, to } }
         (MutationCommand::RemoveEdgeBetween { from, to }, true) => QcEvent::EdgeRemovedBetween { from: *from, to: *to },
         (MutationCommand::RemoveEdgeBetween { from, to }, false) => QcEvent::EdgeRemoveBetweenDeclined { from: *from, to: *to },
-        (MutationCommand::RemoveTeleportWithReverse { id }, true) => QcEvent::TeleportRemovedWithReverse { id: *id },
-        (MutationCommand::RemoveTeleportWithReverse { id }, false) => QcEvent::TeleportRemoveWithReverseDeclined { id: *id },
+        (MutationCommand::RemoveTeleportWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemovedWithReverse { from, to } }
+        (MutationCommand::RemoveTeleportWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemoveWithReverseDeclined { from, to } }
         (MutationCommand::SetStart(node), true) => QcEvent::StartSet(*node),
         (MutationCommand::SetStart(node), false) => QcEvent::StartSetDeclined(*node),
         (MutationCommand::SetFinish(node), true) => QcEvent::FinishSet(*node),
         (MutationCommand::SetFinish(node), false) => QcEvent::FinishSetDeclined(*node),
-    }
+    })
 }
 
 /// Builds the `QcEvent::*Proposed` variant mirroring `cmd`, narrating what a strategy's `apply()`
 /// asked for before `apply_commands` has revalidated/applied any of it — see
 /// `check_and_repair_typed`'s doc comment for where this is emitted (the `"strategy <id>"` scope,
-/// ahead of the separate `"apply requests"` scope `apply_commands` itself emits into).
-fn qc_event_proposed_for_command(cmd: &MutationCommand) -> QcEvent {
-    match cmd {
+/// ahead of the separate `"apply requests"` scope `apply_commands` itself emits into). `maze` is
+/// only used to resolve `RemoveEdge`/`RemoveTeleportWithReverse`'s `EdgeId` to `(from, to)` (GitHub
+/// issue #171's follow-up fix) — the graph is still fully intact here (nothing has been mutated
+/// yet), so `graph.edge(id)` is always a hit unless the strategy proposed a stale id. Returns `None`
+/// (nothing to emit) in that stale-id case rather than fabricating a `(0, 0)` self-loop via
+/// `unwrap_or_default` — node id `0` is a real, valid id, so a fabricated pair would be
+/// indistinguishable from a genuine edge; `apply_commands`'s own revalidation declines the stale
+/// command anyway, so skipping the proposal narration here loses nothing meaningful.
+fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &Maze<T>) -> Option<QcEvent> {
+    Some(match cmd {
         MutationCommand::AddDirectedEdge { from, to } => QcEvent::DirectedEdgeProposed { from: *from, to: *to },
         MutationCommand::AddBidirectionalEdge { a, b } => QcEvent::BidirectionalEdgeProposed { a: *a, b: *b },
         MutationCommand::AddDirectedTeleport { from, to } => QcEvent::DirectedTeleportProposed { from: *from, to: *to },
         MutationCommand::AddBidirectionalTeleport { a, b } => QcEvent::BidirectionalTeleportProposed { a: *a, b: *b },
-        MutationCommand::RemoveEdge { id } => QcEvent::EdgeRemoveProposed { id: *id },
+        MutationCommand::RemoveEdge { id } => {
+            let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
+            QcEvent::EdgeRemoveProposed { from, to }
+        }
         MutationCommand::RemoveEdgeBetween { from, to } => QcEvent::EdgeRemoveBetweenProposed { from: *from, to: *to },
-        MutationCommand::RemoveTeleportWithReverse { id } => QcEvent::TeleportRemoveWithReverseProposed { id: *id },
+        MutationCommand::RemoveTeleportWithReverse { id } => {
+            let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
+            QcEvent::TeleportRemoveWithReverseProposed { from, to }
+        }
         MutationCommand::SetStart(node) => QcEvent::StartSetProposed(*node),
         MutationCommand::SetFinish(node) => QcEvent::FinishSetProposed(*node),
-    }
+    })
 }
 
 /// One rule's strategy assignment — checks + strategy + resolved params/requirement, held
@@ -214,7 +246,15 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
 
         let mut merged: Option<I> = None;
         let mut contributing_checks = 0u32;
-        for (_, check) in &self.checks {
+        for (local_id, check) in &self.checks {
+            // The composite routing key `Issue::details()`/`source_checks()` are keyed by (see
+            // `issue.rs`'s doc comment on `new_from_check`) — mirrors `composite_check_id` in
+            // `maze-runner/src/runner/check_factory.rs`, which built this same string once, at
+            // construction time, to seed each `Check`'s own `instance_id` field; `self.checks`
+            // only carries the plain `local_id` half of that (see `rule_factory.rs`'s
+            // `build_rule_for!`), so it must be re-derived here rather than read off the tuple
+            // directly — `maze-core` has no dependency on `maze-runner` to call the same helper.
+            let instance_id = format!("{}:{}", self.id, local_id);
             let issues = timed(timing, check.check_type_id(), now_ms, || {
                 let mut v = Vec::new();
                 check.repair_check(maze, &mut v, rng, requirement);
@@ -223,9 +263,11 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
             let check_issue = issues.into_iter().reduce(|mut acc, issue| { acc.merge(issue); acc });
             if let Some(log) = event_log.as_mut() {
                 let payload = check_issue.as_ref().map(|issue| {
-                    (I::KIND, super::issue_payload::resolve_issue_payload(issue, &maze.graph, scc.as_ref().unwrap()))
+                    let payload = super::issue_payload::resolve_issue_payload(issue, &maze.graph, scc.as_ref().unwrap());
+                    let details = issue.details().get(instance_id.as_str()).cloned().unwrap_or_default();
+                    (I::KIND, payload, details)
                 });
-                log.emit(QcEvent::CheckRan { check_id: check.check_type_id(), issue: payload });
+                log.emit(QcEvent::CheckRan { check_id: instance_id, issue: payload });
             }
             if let Some(issue) = check_issue {
                 contributing_checks += 1;
@@ -237,7 +279,11 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         }
         if contributing_checks > 1 {
             if let Some(log) = event_log.as_mut() {
-                log.emit(QcEvent::IssuesMerged { kind: I::KIND });
+                let payload = merged.as_ref()
+                    .map(|issue| super::issue_payload::resolve_issue_payload(issue, &maze.graph, scc.as_ref().unwrap()))
+                    .unwrap_or_default();
+                let details = merged.as_ref().map(|issue| issue.details().clone()).unwrap_or_default();
+                log.emit(QcEvent::IssuesMerged { kind: I::KIND, payload, details });
             }
         }
         merged
@@ -301,7 +347,9 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
             let mut strategy_scope = event_log.as_mut().map(|log| log.enter(format!("strategy {}", rule_strategy.strategy.strategy_id())));
             if let Some(scope) = strategy_scope.as_mut() {
                 for cmd in &commands {
-                    scope.emit(qc_event_proposed_for_command(cmd));
+                    if let Some(event) = qc_event_proposed_for_command(cmd, maze) {
+                        scope.emit(event);
+                    }
                 }
             }
         }

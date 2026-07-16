@@ -314,20 +314,35 @@ for sending it, only unnecessary wire/type surface.
 
 **Trace events**:
 - `IterationStarted(u32)` — one fixpoint pass began (`Stage`-level).
-- `CheckRan { check_id, issue: Option<(IssueKind, IssuePayload)> }` — one check within a rule ran
-  this iteration (`Rule`-level, emitted by `run_checks_typed`). `check_id` is the check's own
-  `check_type_id()`, not the rule's id. `issue: None` when this check found nothing this call —
-  emitted for every check regardless of outcome, so narration can show "check X found nothing"
-  too. `IssuePayload` is resolved via `resolve_issue_payload` (`quality_control::issue_payload`,
-  shared with `maze-wasm/src/analytics.rs`'s JSON `IssuePayloadDto` — same source of truth, no
-  second independently-maintained downcast/resolve copy) against an `scc` built once per
-  `run_checks_typed` call (lazily, only when `event_log.is_some()`), resolved for each check
-  immediately as that check runs — before this rule's own strategy dispatch (if any) might mutate
-  the maze afterward.
-- `IssuesMerged { kind: IssueKind }` — two or more of this rule's checks each found an issue of the
-  same `kind` this iteration, and `IssueMerge::merge` folded them into one. Emitted once per rule
-  iteration, only when a merge actually happened — a rule with a single contributing check never
-  emits this.
+- `CheckRan { check_id, issue: Option<(IssueKind, IssuePayload, HashMap<&'static str, String>)> }` —
+  one check within a rule ran this iteration (`Rule`-level, emitted by `run_checks_typed`).
+  `check_id` (GitHub issue #171) is the check's own *instance* id — the composite
+  `"{rule_id}:{local_id}"` routing key `IssueMeta::source_checks`/`details` are keyed by (see
+  `issue.rs`'s doc comment on `new_from_check`), not its `check_type_id()` — matches
+  `IssueDto.source_checks`/`details`' own keys, so web-side narration resolves this check's display
+  label/detail the same way `IssuesBlock`'s `IssueBubble` does (via the live rule/check config,
+  `CheckInstance.typeId`), not a second independent lookup. `issue: None` when this check found
+  nothing this call — emitted for every check regardless of outcome, so narration can show "check X
+  found nothing" too. `IssuePayload` is resolved via `resolve_issue_payload`
+  (`quality_control::issue_payload`, shared with `maze-wasm/src/analytics.rs`'s JSON
+  `IssuePayloadDto` — same source of truth, no second independently-maintained downcast/resolve
+  copy) against an `scc` built once per `run_checks_typed` call (lazily, only when
+  `event_log.is_some()`), resolved for each check immediately as that check runs — before this
+  rule's own strategy dispatch (if any) might mutate the maze afterward. The third tuple element
+  (GitHub issue #171) is this one check's own raw display details (`Issue::details().get(check_id)`
+  — same values `IssueDto.details` carries for the analytics panel), empty for the majority of
+  issue kinds that record no detail.
+- `IssuesMerged { kind: IssueKind, payload: IssuePayload, details: HashMap<String, HashMap<&'static str, String>> }` —
+  two or more of this rule's checks each found an issue of the same `kind` this iteration, and
+  `IssueMerge::merge` folded them into one. Emitted once per rule iteration, only when a merge
+  actually happened — a rule with a single contributing check never emits this. `payload` (GitHub
+  issue #171) is the *merged* issue's own structural data, resolved the same way `CheckRan`'s
+  per-check payload is (`resolve_issue_payload` against the same `scc`) — lets narration highlight
+  the final combined set of flagged cycles/regions, not only a single contributing check's own.
+  `details` (GitHub issue #171) is the merged issue's full `Issue::details()` map, keyed by every
+  contributing check's own instance id — narration shows one "reason" per contributing check when
+  there's more than one, mirroring how `IssuesBlock` renders one bubble per `source_checks` entry
+  for a merged `IssueDto`.
 - `IterationLimitReached(RepairLimitKind)` — the shared `RepairBudget` was exhausted. The only way
   a stage's fixpoint loop stops without converging — GitHub issue #170 removed the previous
   no-progress guard (both the `(rule_id, Issue)` value-equality check and the "commands dropped"
@@ -339,15 +354,21 @@ narrated by resolving the `"apply requests"` scope's own label from its children
 `*Declined` counts (see the "Scope shape" note above), not a summary event carrying
 `RepairResult`/`ApplyOutcome` fields directly.
 
-**Proposed events — an exact 1:1 mirror of `repair::MutationCommand`'s 9 variants**
+**Proposed events — one variant per `repair::MutationCommand` variant (9 total)**
 (`DirectedEdgeProposed`, `BidirectionalEdgeProposed`, `DirectedTeleportProposed`,
 `BidirectionalTeleportProposed`, `EdgeRemoveProposed`, `EdgeRemoveBetweenProposed`,
 `TeleportRemoveWithReverseProposed`, `StartSetProposed`, `FinishSetProposed`) — emitted into the
 `"strategy <id>"` scope for every command a strategy's `apply()` returned, before any of them has
 been revalidated or applied by `apply_commands`. Narrates what was *asked for*, independent of
-whether the separate `"apply requests"` scope right after actually honors it.
+whether the separate `"apply requests"` scope right after actually honors it. Not a field-for-field
+mirror for all 9: `RemoveEdge`/`RemoveTeleportWithReverse` carry only an opaque `EdgeId`, meaningless
+to web-side narration on its own — `EdgeRemoveProposed`/`TeleportRemoveWithReverseProposed` instead
+carry the resolved `(from: NodeId, to: NodeId)` pair, read off the still-intact graph before
+anything is mutated (GitHub issue #171's follow-up fix). If resolution fails (stale id), no event
+is emitted for that command rather than fabricating a `(0, 0)` pair — node id `0` is a real, valid
+id, so a fabricated pair would be indistinguishable from a genuine edge.
 
-**Mutating events — an exact 1:1 mirror of `repair::MutationCommand`'s 9 variants**
+**Mutating events — one variant per `repair::MutationCommand` variant (9 total)**
 (`DirectedEdgeAdded`, `BidirectionalEdgeAdded`, `DirectedTeleportAdded`,
 `BidirectionalTeleportAdded`, `EdgeRemoved`, `EdgeRemovedBetween`, `TeleportRemovedWithReverse`,
 `StartSet`, `FinishSet`) — emitted by `apply_commands` (`quality_control/rule.rs`) for exactly the
@@ -357,7 +378,12 @@ these nine). Each also has a same-fields, trace-only `*Declined` counterpart
 variant per command kind rather than a single payload-less `CommandDeclined`, so narration/tests
 can say exactly which command failed revalidation, not just that some command did. A `*Declined`
 variant encodes to the exact same bytes as its mutating mirror except for the wire tag — see
-`quality_control/event.rs`'s own test. `apply_commands` emits every event itself, inline in its
+`quality_control/event.rs`'s own test. Same `EdgeId → (from, to)` resolution as the Proposed events
+above applies here too: `EdgeRemoved`/`EdgeRemoveDeclined`/`TeleportRemovedWithReverse`/
+`TeleportRemoveWithReverseDeclined` carry the edge's endpoints, resolved from the graph immediately
+before removal (`apply_commands` snapshots them ahead of its own mutating `match`, since
+`graph.edge(id)` returns `None` once the edge is gone); a resolution failure again means no event
+is emitted, never a fabricated `(0, 0)` pair. `apply_commands` emits every event itself, inline in its
 existing per-command loop (not returned to the caller for logging elsewhere) — it is the only place
 that knows both the command's real fields (already at hand from the `match`) and its actual
 revalidation outcome; a caller re-deriving that from `ApplyOutcome`'s aggregate counts couldn't

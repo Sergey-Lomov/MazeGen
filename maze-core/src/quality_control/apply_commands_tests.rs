@@ -219,6 +219,44 @@ fn event_log_emits_declined_when_revalidation_rejects_a_command() {
     assert!(!events[0].is_mutating(), "*Declined must never be classified as mutating");
 }
 
+/// GitHub issue #171 review finding: `qc_event_for_command` used to fabricate a `(0, 0)`
+/// self-loop via `unwrap_or_default()` whenever `RemoveEdge`/`RemoveTeleportWithReverse`'s
+/// `EdgeId` couldn't be resolved to `(from, to)` — indistinguishable from a genuine edge since
+/// node id 0 is real and valid. A stale `EdgeId` (never built into the graph) both fails
+/// resolution (`edge_endpoints` is `None`) and fails revalidation (`try_remove_edge_by_id`
+/// returns `false` for an unknown id), so `apply_commands` must emit no event at all for it —
+/// not a fabricated `EdgeRemoveDeclined { from: 0, to: 0 }`.
+#[test]
+fn stale_edge_id_that_never_existed_emits_no_event_instead_of_fabricating_from_to() {
+    let (mut maze, _) = maze_n(2);
+    let never_built_id = 9999;
+
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    let outcome = apply_commands(
+        &mut maze,
+        &PresetState::empty(),
+        vec![MutationCommand::RemoveEdge { id: never_built_id }],
+        Some(&mut scope),
+    );
+    drop(scope);
+    let tape = log.finish();
+
+    assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 0 }, "revalidation must still reject the stale id");
+    assert_eq!(tape.iter().count(), 0, "no event may be emitted when EdgeId resolution fails -- never a fabricated (0, 0) pair");
+}
+
+/// Same fabrication-bug coverage as `stale_edge_id_that_never_existed_emits_no_event_instead_of_fabricating_from_to`,
+/// but for the strategy-scope `*Proposed` narration path (`qc_event_proposed_for_command`),
+/// called before `apply_commands`' own revalidation ever runs.
+#[test]
+fn proposed_narration_for_a_stale_edge_id_emits_nothing() {
+    let (maze, _) = maze_n(2);
+    let never_built_id = 9999;
+    let cmd = MutationCommand::RemoveEdge { id: never_built_id };
+    assert!(qc_event_proposed_for_command(&cmd, &maze).is_none(), "unresolved EdgeId must yield no proposed event, never a fabricated (0, 0) pair");
+}
+
 #[test]
 fn empty_batch_is_a_no_op() {
     let (mut maze, _) = maze_n(2);

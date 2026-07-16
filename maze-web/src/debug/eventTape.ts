@@ -1933,34 +1933,34 @@ export type IssuePayload =
  *  boundary. */
 export type QcEvent =
   | { kind: "IterationStarted"; iteration: number }
-  | { kind: "CheckRan"; checkId: string; issue: { issueKind: string; payload: IssuePayload } | null }
-  | { kind: "IssuesMerged"; issueKind: string }
+  | { kind: "CheckRan"; checkId: string; issue: { issueKind: string; payload: IssuePayload; details: Map<string, string> } | null }
+  | { kind: "IssuesMerged"; issueKind: string; payload: IssuePayload; details: Map<string, Map<string, string>> }
   | { kind: "IterationLimitReached"; limit: RepairLimitKind }
   | { kind: "DirectedEdgeAdded"; from: bigint; to: bigint }
   | { kind: "BidirectionalEdgeAdded"; a: bigint; b: bigint }
   | { kind: "DirectedTeleportAdded"; from: bigint; to: bigint }
   | { kind: "BidirectionalTeleportAdded"; a: bigint; b: bigint }
-  | { kind: "EdgeRemoved"; id: bigint }
+  | { kind: "EdgeRemoved"; from: bigint; to: bigint }
   | { kind: "EdgeRemovedBetween"; from: bigint; to: bigint }
-  | { kind: "TeleportRemovedWithReverse"; id: bigint }
+  | { kind: "TeleportRemovedWithReverse"; from: bigint; to: bigint }
   | { kind: "StartSet"; id: bigint }
   | { kind: "FinishSet"; id: bigint }
   | { kind: "DirectedEdgeDeclined"; from: bigint; to: bigint }
   | { kind: "BidirectionalEdgeDeclined"; a: bigint; b: bigint }
   | { kind: "DirectedTeleportDeclined"; from: bigint; to: bigint }
   | { kind: "BidirectionalTeleportDeclined"; a: bigint; b: bigint }
-  | { kind: "EdgeRemoveDeclined"; id: bigint }
+  | { kind: "EdgeRemoveDeclined"; from: bigint; to: bigint }
   | { kind: "EdgeRemoveBetweenDeclined"; from: bigint; to: bigint }
-  | { kind: "TeleportRemoveWithReverseDeclined"; id: bigint }
+  | { kind: "TeleportRemoveWithReverseDeclined"; from: bigint; to: bigint }
   | { kind: "StartSetDeclined"; id: bigint }
   | { kind: "FinishSetDeclined"; id: bigint }
   | { kind: "DirectedEdgeProposed"; from: bigint; to: bigint }
   | { kind: "BidirectionalEdgeProposed"; a: bigint; b: bigint }
   | { kind: "DirectedTeleportProposed"; from: bigint; to: bigint }
   | { kind: "BidirectionalTeleportProposed"; a: bigint; b: bigint }
-  | { kind: "EdgeRemoveProposed"; id: bigint }
+  | { kind: "EdgeRemoveProposed"; from: bigint; to: bigint }
   | { kind: "EdgeRemoveBetweenProposed"; from: bigint; to: bigint }
-  | { kind: "TeleportRemoveWithReverseProposed"; id: bigint }
+  | { kind: "TeleportRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "StartSetProposed"; id: bigint }
   | { kind: "FinishSetProposed"; id: bigint };
 
@@ -2030,6 +2030,36 @@ function readStrKeyedNodeLists(bytes: Uint8Array, offset: number): { value: Map<
   return { value, next: pos };
 }
 
+/** Reads one check's own raw display details (GitHub issue #171) — mirrors `write_details`
+ *  (`HashMap<&'static str, String>`, e.g. `{"threshold" -> "10"}`). */
+function readDetails(bytes: Uint8Array, offset: number): { value: Map<string, string>; next: number } {
+  const value = new Map<string, string>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    const { value: val, next: afterVal } = readStr(bytes, afterKey);
+    value.set(key, val);
+    pos = afterVal;
+  }
+  return { value, next: pos };
+}
+
+/** Reads a merged issue's full details map, keyed by contributing check instance id (GitHub issue
+ *  #171) — mirrors `write_details_map`. */
+function readDetailsMap(bytes: Uint8Array, offset: number): { value: Map<string, Map<string, string>>; next: number } {
+  const value = new Map<string, Map<string, string>>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: checkId, next: afterKey } = readStr(bytes, pos);
+    const { value: details, next: afterDetails } = readDetails(bytes, afterKey);
+    value.set(checkId, details);
+    pos = afterDetails;
+  }
+  return { value, next: pos };
+}
+
 /** Reads an `IssuePayload` starting at `offset` — mirrors `write_issue_payload`. */
 function readIssuePayload(bytes: Uint8Array, offset: number): { value: IssuePayload; next: number } {
   const tag = bytes[offset];
@@ -2065,12 +2095,15 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       const present = bytes[next];
       if (present === 0) return { kind: "CheckRan", checkId, issue: null };
       const { value: issueKind, next: afterKind } = readStr(bytes, next + 1);
-      const { value: payload } = readIssuePayload(bytes, afterKind);
-      return { kind: "CheckRan", checkId, issue: { issueKind, payload } };
+      const { value: payload, next: afterPayload } = readIssuePayload(bytes, afterKind);
+      const { value: details } = readDetails(bytes, afterPayload);
+      return { kind: "CheckRan", checkId, issue: { issueKind, payload, details } };
     }
     case QC_TAG.ISSUES_MERGED: {
-      const { value: issueKind } = readStr(bytes, 0);
-      return { kind: "IssuesMerged", issueKind };
+      const { value: issueKind, next } = readStr(bytes, 0);
+      const { value: payload, next: afterPayload } = readIssuePayload(bytes, next);
+      const { value: details } = readDetailsMap(bytes, afterPayload);
+      return { kind: "IssuesMerged", issueKind, payload, details };
     }
     case QC_TAG.ITERATION_LIMIT_REACHED:
       expectLen(tag, bytes, 1);
@@ -2101,11 +2134,11 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       expectLen(tag, bytes, 16);
       return { kind: "BidirectionalTeleportDeclined", a: readNodeId(bytes, 0), b: readNodeId(bytes, 8) };
     case QC_TAG.EDGE_REMOVED:
-      expectLen(tag, bytes, 8);
-      return { kind: "EdgeRemoved", id: readNodeId(bytes, 0) };
+      expectLen(tag, bytes, 16);
+      return { kind: "EdgeRemoved", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.EDGE_REMOVE_DECLINED:
-      expectLen(tag, bytes, 8);
-      return { kind: "EdgeRemoveDeclined", id: readNodeId(bytes, 0) };
+      expectLen(tag, bytes, 16);
+      return { kind: "EdgeRemoveDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.EDGE_REMOVED_BETWEEN:
       expectLen(tag, bytes, 16);
       return { kind: "EdgeRemovedBetween", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
@@ -2113,11 +2146,11 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       expectLen(tag, bytes, 16);
       return { kind: "EdgeRemoveBetweenDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.TELEPORT_REMOVED_WITH_REVERSE:
-      expectLen(tag, bytes, 8);
-      return { kind: "TeleportRemovedWithReverse", id: readNodeId(bytes, 0) };
+      expectLen(tag, bytes, 16);
+      return { kind: "TeleportRemovedWithReverse", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED:
-      expectLen(tag, bytes, 8);
-      return { kind: "TeleportRemoveWithReverseDeclined", id: readNodeId(bytes, 0) };
+      expectLen(tag, bytes, 16);
+      return { kind: "TeleportRemoveWithReverseDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.START_SET:
       expectLen(tag, bytes, 8);
       return { kind: "StartSet", id: readNodeId(bytes, 0) };
@@ -2144,14 +2177,14 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       expectLen(tag, bytes, 16);
       return { kind: "BidirectionalTeleportProposed", a: readNodeId(bytes, 0), b: readNodeId(bytes, 8) };
     case QC_TAG.EDGE_REMOVE_PROPOSED:
-      expectLen(tag, bytes, 8);
-      return { kind: "EdgeRemoveProposed", id: readNodeId(bytes, 0) };
+      expectLen(tag, bytes, 16);
+      return { kind: "EdgeRemoveProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.EDGE_REMOVE_BETWEEN_PROPOSED:
       expectLen(tag, bytes, 16);
       return { kind: "EdgeRemoveBetweenProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED:
-      expectLen(tag, bytes, 8);
-      return { kind: "TeleportRemoveWithReverseProposed", id: readNodeId(bytes, 0) };
+      expectLen(tag, bytes, 16);
+      return { kind: "TeleportRemoveWithReverseProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.START_SET_PROPOSED:
       expectLen(tag, bytes, 8);
       return { kind: "StartSetProposed", id: readNodeId(bytes, 0) };
@@ -2234,12 +2267,10 @@ export interface QcApplyResult {
  *  reported — `removedEdges` therefore only ever needs to reach into an *earlier* source's
  *  contribution (e.g. generation's own edge list), never cancel this same call's own `edges`.
  *
- *  `EdgeRemoved`/`TeleportRemovedWithReverse` carry only the removed edge's `EdgeId`, not its
- *  endpoints (mirrors the Rust wire format — `apply_commands` doesn't have the endpoints handy at
- *  removal time either, only the id) — these two variants can't participate in the keyed
- *  accumulator at all and are silently skipped; `mergeDebugMazeView` falls back to matching by
- *  graph structure for those two cases (see that function's own doc comment). `EdgeRemovedBetween`
- *  does carry both endpoints and participates fully. */
+ *  `EdgeRemoved`/`TeleportRemovedWithReverse` carry the removed edge's `(from, to)` (GitHub issue
+ *  #171's follow-up fix — resolved on the Rust side from the graph immediately before removal,
+ *  since the wire's own `EdgeId` alone is meaningless off-graph) and participate in the keyed
+ *  accumulator exactly like `EdgeRemovedBetween`. */
 export function applyQc(tape: ParsedTape, targetStep: number, startNodeIndex = 0): QcApplyResult {
   validateStepShape("targetStep", targetStep);
 
@@ -2287,11 +2318,9 @@ export function applyQc(tape: ParsedTape, targetStep: number, startNodeIndex = 0
         add(event.b, event.a, "teleport");
         break;
       case "EdgeRemovedBetween":
-        remove(event.from, event.to);
-        break;
       case "EdgeRemoved":
       case "TeleportRemovedWithReverse":
-        // No endpoints on the wire for these two — see this function's doc comment.
+        remove(event.from, event.to);
         break;
       case "StartSet":
         start = event.id;

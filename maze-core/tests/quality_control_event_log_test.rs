@@ -14,8 +14,31 @@ use maze_core::quality_control::{
     QualityControlEngine, Stage, Rule, RuleTrait, MissingEndpointsIssue, QcEvent,
 };
 use maze_core::quality_control::checks::MissingEndpointsCheck;
+use maze_core::quality_control::check::Check;
 use maze_core::repair::RandomEndpointsStrategy;
 use maze_core::event_log::{EventLog, DebugEvent, NodePayload};
+
+/// Like `MissingEndpointsCheck`, but attaches a `"reason"` detail — `MissingEndpointsCheck` itself
+/// never calls `with_detail` (nothing to say beyond "missing"), so this is the smallest way to get
+/// a real, non-empty `IssueMeta::details()` entry flowing through a real multi-check merge (see
+/// `issues_merged_details_carries_each_contributing_checks_own_detail_values` below).
+struct MissingEndpointsCheckWithDetail {
+    instance_id: String,
+    reason: &'static str,
+}
+
+impl<T: maze_core::space::Tessellation> Check<T, MissingEndpointsIssue> for MissingEndpointsCheckWithDetail {
+    fn check_type_id(&self) -> &'static str { "missing_endpoints" }
+
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
+        if maze.meta.start.is_none() || maze.meta.finish.is_none() {
+            issues.push(
+                MissingEndpointsIssue::new_from_check(&self.instance_id)
+                    .with_detail(&self.instance_id, "reason", self.reason.to_string()),
+            );
+        }
+    }
+}
 
 fn now_ms_stub() -> f64 { 0.0 }
 
@@ -102,7 +125,7 @@ fn exact_sequence_on_smallest_deterministic_repair_scenario() {
     let NodePayload::Event(QcEvent::CheckRan { check_id, issue }) = rule_scope_children[0].payload() else {
         panic!("expected CheckRan")
     };
-    assert_eq!(*check_id, "missing_endpoints");
+    assert_eq!(*check_id, "g1:check1", "check_id is the check's composite instance id (GitHub issue #171), not its type id");
     assert!(issue.is_some(), "the check must have found the missing-endpoints issue");
 
     let NodePayload::Scope(strategy_scope_name) = rule_scope_children[1].payload() else { panic!("expected a scope") };
@@ -133,7 +156,7 @@ fn exact_sequence_on_smallest_deterministic_repair_scenario() {
     let NodePayload::Event(QcEvent::CheckRan { check_id, issue }) = rule2_scope_children[0].payload() else {
         panic!("expected CheckRan")
     };
-    assert_eq!(*check_id, "missing_endpoints");
+    assert_eq!(*check_id, "g1:check1", "check_id is the check's composite instance id (GitHub issue #171), not its type id");
     assert!(issue.is_none(), "the maze is already fixed by iteration 2 -- no issue left to find");
 }
 
@@ -246,6 +269,49 @@ fn issues_merged_is_emitted_when_two_checks_in_the_same_rule_both_contribute() {
 
     let check_ran_count = tape.iter().filter(|e| matches!(e, QcEvent::CheckRan { .. })).count();
     assert_eq!(check_ran_count, 4, "2 checks x 2 iterations (1 that finds+fixes, 1 that converges)");
+}
+
+#[test]
+fn issues_merged_details_carries_each_contributing_checks_own_detail_values() {
+    // Same two-checks-in-one-rule shape as
+    // issues_merged_is_emitted_when_two_checks_in_the_same_rule_both_contribute, but each check
+    // attaches its own "reason" detail — proves run_checks_typed's merged-issue path
+    // (`merged.as_ref().map(|issue| issue.details().clone())`) actually carries real per-check
+    // detail values into QcEvent::IssuesMerged, not just that the event fires (GitHub issue #171
+    // review finding: this was previously untested at the rule/engine level).
+    let (mut maze, _) = connected_chain_missing_endpoints();
+    let rule: Rule<SquareTessellation, MissingEndpointsIssue> = Rule::new(
+        "g1".to_string(),
+        vec![
+            ("check1".to_string(), Box::new(MissingEndpointsCheckWithDetail { instance_id: "g1:check1".to_string(), reason: "no start" })),
+            ("check2".to_string(), Box::new(MissingEndpointsCheckWithDetail { instance_id: "g1:check2".to_string(), reason: "no finish" })),
+        ],
+        Some(Box::new(RandomEndpointsStrategy)),
+        HashMap::new(),
+        vec![],
+    );
+    let boxed: Box<dyn RuleTrait<SquareTessellation>> = Box::new(rule);
+    let engine = QualityControlEngine::new(vec![Stage::new("stage1".to_string(), "Stage 1".to_string(), vec![boxed])]);
+
+    let mut log = EventLog::new();
+    let mut rng = MazeRng::seed_from_u64(42);
+    engine.run_full(&mut maze, &mut rng, &PresetState::empty(), RepairLimits::default(), now_ms_stub, Some(&mut log));
+    let tape = log.finish();
+
+    let merged: Vec<&QcEvent> = tape.iter().filter(|e| matches!(e, QcEvent::IssuesMerged { .. })).collect();
+    assert_eq!(merged.len(), 1);
+    let QcEvent::IssuesMerged { details, .. } = merged[0] else { panic!("filtered to IssuesMerged above") };
+
+    assert_eq!(
+        details.get("g1:check1").and_then(|kv| kv.get("reason")),
+        Some(&"no start".to_string()),
+        "check1's own detail must survive the merge, keyed by its own instance id",
+    );
+    assert_eq!(
+        details.get("g1:check2").and_then(|kv| kv.get("reason")),
+        Some(&"no finish".to_string()),
+        "check2's own detail must survive the merge too, not be overwritten by check1's",
+    );
 }
 
 #[test]

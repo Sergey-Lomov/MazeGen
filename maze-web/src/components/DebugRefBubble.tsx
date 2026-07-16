@@ -1,26 +1,65 @@
-import { ui, typography, radius } from "../styles/theme";
+import { useState } from "react";
+import { ui, typography, radius, muted } from "../styles/theme";
 import { useMazeStore } from "../store/mazeStore";
+import { Modal } from "./Modal";
+import * as m from "~/paraglide/messages";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import type React from "react";
 
 /** Inline interactive reference bubble inside the debug event tree narration (GitHub issue
- *  #130) — hover highlights the referenced node/edge on the maze canvas via
- *  `DebugRefHighlightOverlay` (owned by `GenerationRenderer`). Unlike `IssueBubble`, this is
- *  hover-only: no click/modal, so `onClick` isn't wired at all — only `stopPropagation` matters,
- *  to keep a click on the bubble from bubbling up into the row's own `onClick`
- *  (toggleExpanded/step-jump — see `DebugEventTree.tsx`). */
+ *  #130) — hover highlights the referenced node/edge/cycle/region on the maze canvas via
+ *  `DebugRefHighlightOverlay` (owned by `GenerationRenderer`), independently of whether the
+ *  Analytics panel is open (unlike Analytics' own `IssueBubble`/`hoveredIssueLoopEdges`, which
+ *  only render while `analyticsOpen`). Every target kind except `issue` (GitHub issue #171) stays
+ *  hover-only — no click/modal — so `onClick` only ever calls `stopPropagation`, to keep a click
+ *  on the bubble from bubbling up into the row's own `onClick` (toggleExpanded/step-jump — see
+ *  `DebugEventTree.tsx`). An `issue` target additionally opens a modal listing `reasons` — one
+ *  already-resolved display string per contributing check (`algorithmRegistry.ts`'s
+ *  `issueReasons`, built from `resolveIssueSourceLabel` — the same per-check detail formatter
+ *  Analytics' `IssueBubble` uses), rendered as a single line when there's exactly one, or a
+ *  "Possible reasons:" list when a merged issue carries more than one. */
 export function DebugRefBubble({ target, label }: { target: HoveredDebugRef; label: string }) {
+  const [open, setOpen] = useState(false);
   const setHoveredDebugRef = useMazeStore((s) => s.setHoveredDebugRef);
 
+  const reasons = target.kind === "issue" ? target.reasons : [];
+  const clickable = reasons.length > 0;
+  // `target.target` (an `issue` token's structural highlight data) can be `null` — most issue
+  // kinds carry no cycle/region payload (`IssuePayload::None`). Hovering then has nothing to
+  // highlight, so it's skipped entirely rather than clearing-and-resetting a highlight that was
+  // never set.
+  const hoverable = target.kind !== "issue" || target.target !== null;
+
   return (
-    <span
-      style={styles.bubble}
-      onMouseEnter={() => setHoveredDebugRef(target)}
-      onMouseLeave={() => setHoveredDebugRef(null)}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {label}
-    </span>
+    <>
+      <span
+        style={styles.bubble}
+        onMouseEnter={hoverable ? () => setHoveredDebugRef(target) : undefined}
+        onMouseLeave={hoverable ? () => setHoveredDebugRef(null) : undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (clickable) setOpen(true);
+        }}
+      >
+        {label}
+      </span>
+      {clickable && open && (
+        <Modal title={label} onClose={() => setOpen(false)}>
+          {reasons.length === 1 ? (
+            <p style={styles.description}>{reasons[0]}</p>
+          ) : (
+            <>
+              <p style={styles.description}>{m["debug.tree.qc.issue_reasons_header"]()}</p>
+              <ul style={styles.reasonsList}>
+                {reasons.map((reason, i) => (
+                  <li key={i} style={styles.description}>{reason}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -46,5 +85,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: ui.debug.refHighlight.text,
     cursor: "default",
     whiteSpace: "nowrap",
+  },
+  description: {
+    margin: 0,
+    ...muted(typography.body),
+    lineHeight: 1.5,
+  },
+  reasonsList: {
+    margin: "4px 0 0",
+    paddingLeft: 20,
   },
 };

@@ -10,6 +10,7 @@ import { nodeAt, nodeView, topLevelSourceScopes, type ParsedTape } from "../debu
 import { adapterForNode, type Token, type BaseAlgorithmAdapter, type ScopeTitleLookup } from "../debug/algorithmRegistry";
 import type { EventedEventKind } from "../wasm/mazeService";
 import { DebugRefBubble } from "./DebugRefBubble";
+import { resolveIssue } from "./issueRegistry";
 import { ui, typography, muted } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -45,7 +46,10 @@ function estimateRowHeight(tokens: Token[], depth: number, containerWidth: numbe
 }
 
 /** Bubble label — coordinates only, per user decision (narration text around it stays wordless,
- *  e.g. "Edge added", not "Edge added: 3:18 → 3:19"). Format is `x:y`, no parens/comma. */
+ *  e.g. "Edge added", not "Edge added: 3:18 → 3:19"). Format is `x:y`, no parens/comma. `issue`
+ *  tokens are the one exception: there's no id to format, so the label is the issue kind's own
+ *  resolved display name (`resolveIssue`, the same registry `IssuesBlock`'s `IssueBubble` reads),
+ *  not a coordinate. */
 function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: number } | null): string {
   const fmt = (id: bigint) => {
     if (!coords) return `${id}`;
@@ -59,6 +63,7 @@ function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: numb
     case "edge": return `${fmt(token.from)} ${token.bidirectional ? "<->" : "->"} ${fmt(token.to)}`;
     case "cycle": return token.edges.map(([f, t]) => `${fmt(f)}–${fmt(t)}`).join(", ");
     case "region": return token.nodes.map(fmt).join(", ");
+    case "issue": return resolveIssue(token.issueKind).label;
   }
 }
 
@@ -127,7 +132,17 @@ export function DebugEventTree() {
   const titleLookup: ScopeTitleLookup = useMemo(() => {
     const stageTitles = new Map(stages.map((s) => [s.id, s.name]));
     const ruleTitles = new Map(rules.map((r) => [r.id, r.name]));
-    return { stageTitle: (id) => stageTitles.get(id), ruleTitle: (id) => ruleTitles.get(id) };
+    // Composite `"{ruleId}:{localId}"` -> typeId (GitHub issue #171) — matches the wire's own
+    // check-instance routing key (`maze-wasm/src/runner.rs`'s `build_qc_and_repair_with_types`),
+    // same as `IssueDto.source_check_types` resolves for the analytics panel.
+    const checkTypeIds = new Map<string, string>(
+      rules.flatMap((r) => (r.checks ?? []).map((c) => [`${r.id}:${c.localId}`, c.typeId] as [string, string])),
+    );
+    return {
+      stageTitle: (id) => stageTitles.get(id),
+      ruleTitle: (id) => ruleTitles.get(id),
+      checkTypeId: (instanceId) => checkTypeIds.get(instanceId),
+    };
   }, [stages, rules]);
 
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());

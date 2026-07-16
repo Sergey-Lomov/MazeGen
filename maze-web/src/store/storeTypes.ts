@@ -352,12 +352,21 @@ export interface DebugArenaHandle {
 /** A node/edge/cycle/region reference hovered in the debug event tree narration (GitHub issue
  *  #130) — mirrors the `Token` union built from `RecursiveBacktrackerEvent` payloads in
  *  `DebugEventTree.tsx`. `cycle`/`region` don't occur during the Recursive Backtracker pilot but
- *  are modeled now so future QC/repair narration doesn't need a shape change. */
+ *  are modeled now so future QC/repair narration doesn't need a shape change. `issue` (GitHub
+ *  issue #171) mirrors `Token`'s own `issue` variant one-to-one — its `target`, when non-null, is
+ *  rendered exactly like a standalone `cycle`/`region` ref (see `DebugRefHighlightOverlay`);
+ *  `reasons` (one already-resolved display string per contributing check) is only read by
+ *  `DebugRefBubble`'s own click-to-modal handling, never by the hover-highlight overlay. */
 export type HoveredDebugRef =
   | { kind: "node"; id: bigint }
   | { kind: "edge"; from: bigint; to: bigint; bidirectional: boolean }
   | { kind: "cycle"; edges: [bigint, bigint][] }
-  | { kind: "region"; nodes: bigint[] };
+  | { kind: "region"; nodes: bigint[] }
+  | {
+      kind: "issue"; issueKind: string;
+      target: { kind: "cycle"; edges: [bigint, bigint][] } | { kind: "region"; nodes: bigint[] } | null;
+      reasons: string[];
+    };
 
 export interface GenerationState {
   nodes: NodeDto[];

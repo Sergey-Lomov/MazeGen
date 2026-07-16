@@ -1,4 +1,4 @@
-use crate::ids::{EdgeId, NodeId};
+use crate::ids::NodeId;
 use crate::event_log::{DebugEvent, EncodeEventPayload};
 use super::issue::IssueKind;
 use super::issue_kinds::RepairLimitKind;
@@ -61,17 +61,33 @@ mod wire_tags {
 pub enum QcEvent {
     /// One fixpoint pass of `Stage::run_repair`'s loop has started.
     IterationStarted(u32),
-    /// One check within a rule ran this iteration. `issue: None` — the check found nothing.
-    /// `Some((kind, payload))` — the check found an issue of `kind`; `payload` is `IssuePayload::None`
-    /// for the 9 of 11 concrete `Issue` types with no structural edge/node data (see
-    /// `quality_control::issue_payload`). Carries the payload directly (not a separate event) —
-    /// splitting "issue found" and "here's its payload" into two wire tags would make their
-    /// pairing an implicit, easily-broken ordering contract instead of one atomic event.
-    CheckRan { check_id: &'static str, issue: Option<(IssueKind, IssuePayload)> },
+    /// One check within a rule ran this iteration. `check_id` is the check's own *instance* id
+    /// (the composite `"{rule_id}:{local_id}"` routing key `IssueMeta::source_checks`/`details`
+    /// are keyed by — see `issue.rs`'s doc comment on `new_from_check`), not its type id — matches
+    /// `IssueDto.source_checks`/`details`' own keys, so web-side narration can resolve this
+    /// check's display label the same way `IssuesBlock` does (via the live rule/check config,
+    /// `CheckInstance.typeId`). `issue: None` — the check found nothing. `Some((kind, payload,
+    /// details))` — the check found an issue of `kind`; `payload` is `IssuePayload::None` for the
+    /// 9 of 11 concrete `Issue` types with no structural edge/node data (see
+    /// `quality_control::issue_payload`); `details` is this one check's own raw display values
+    /// (`Issue::details().get(check_id)`, GitHub issue #171 — same values `IssueDto.details`
+    /// carries for the analytics panel's `IssueBubble`, e.g. `min_loop_length`'s `"threshold"`),
+    /// empty for the majority of issue kinds that record no detail. Carries the payload/details
+    /// directly (not a separate event) — splitting "issue found" from "here's its data" into
+    /// separate wire tags would make their pairing an implicit, easily-broken ordering contract
+    /// instead of one atomic event.
+    CheckRan { check_id: String, issue: Option<(IssueKind, IssuePayload, std::collections::HashMap<&'static str, String>)> },
     /// Two or more of a rule's checks each found an issue of the same `kind` this iteration, and
     /// `IssueMerge::merge` folded them into one — emitted once per rule iteration, only when a
     /// merge actually happened (a rule with a single contributing check never emits this).
-    IssuesMerged { kind: IssueKind },
+    /// `payload` is the *merged* issue's own structural data (resolved the same way `CheckRan`'s
+    /// per-check payload is, via `resolve_issue_payload`) — lets narration highlight the final,
+    /// combined set of flagged cycles/regions rather than only ever showing per-check ones.
+    /// `details` (GitHub issue #171) is the merged issue's full `Issue::details()` map, keyed by
+    /// every contributing check's own instance id — narration shows one "reason" per contributing
+    /// check when there's more than one, mirroring how `IssuesBlock` renders one bubble per
+    /// `source_checks` entry for a merged `IssueDto`.
+    IssuesMerged { kind: IssueKind, payload: IssuePayload, details: std::collections::HashMap<String, std::collections::HashMap<&'static str, String>> },
     /// `Stage::run_repair`'s fixpoint loop stopped because the shared `RepairBudget` was
     /// exhausted (see `StageOutcome::LimitReached`).
     IterationLimitReached(RepairLimitKind),
@@ -84,9 +100,17 @@ pub enum QcEvent {
     BidirectionalEdgeProposed { a: NodeId, b: NodeId },
     DirectedTeleportProposed { from: NodeId, to: NodeId },
     BidirectionalTeleportProposed { a: NodeId, b: NodeId },
-    EdgeRemoveProposed { id: EdgeId },
+    /// `from`/`to` (not `EdgeId`, GitHub issue #171's follow-up fix) — resolved from the graph
+    /// (still intact at proposal time, before `apply_commands` runs) via `edge_endpoints`, the
+    /// same way `EdgeRemoved`/`EdgeRemoveDeclined` resolve theirs. An `EdgeId` is meaningless to
+    /// web-side narration (no coordinate to render — `bubbleLabel` mis-rendered it as a `NodeId`
+    /// before this fix, crashing once the id exceeded the maze's own node count).
+    EdgeRemoveProposed { from: NodeId, to: NodeId },
     EdgeRemoveBetweenProposed { from: NodeId, to: NodeId },
-    TeleportRemoveWithReverseProposed { id: EdgeId },
+    /// `from`/`to` of the *primary* `id` only (GitHub issue #171's follow-up fix, mirrors
+    /// `EdgeRemoveProposed`) — the paired reverse-direction teleport (if any) isn't narrated
+    /// separately, same as before this fix.
+    TeleportRemoveWithReverseProposed { from: NodeId, to: NodeId },
     StartSetProposed(NodeId),
     FinishSetProposed(NodeId),
 
@@ -96,9 +120,15 @@ pub enum QcEvent {
     BidirectionalEdgeAdded { a: NodeId, b: NodeId },
     DirectedTeleportAdded { from: NodeId, to: NodeId },
     BidirectionalTeleportAdded { a: NodeId, b: NodeId },
-    EdgeRemoved { id: EdgeId },
+    /// `from`/`to` (not `EdgeId`, GitHub issue #171's follow-up fix) — resolved from the graph via
+    /// `edge_endpoints` immediately before the edge is actually removed (`apply_commands`'s own
+    /// `try_remove_edge_by_id` call site), since the id alone is meaningless to web-side
+    /// narration. See `EdgeRemoveProposed`'s doc comment for the crash this fixes.
+    EdgeRemoved { from: NodeId, to: NodeId },
     EdgeRemovedBetween { from: NodeId, to: NodeId },
-    TeleportRemovedWithReverse { id: EdgeId },
+    /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
+    /// comment.
+    TeleportRemovedWithReverse { from: NodeId, to: NodeId },
     StartSet(NodeId),
     FinishSet(NodeId),
 
@@ -108,9 +138,14 @@ pub enum QcEvent {
     BidirectionalEdgeDeclined { a: NodeId, b: NodeId },
     DirectedTeleportDeclined { from: NodeId, to: NodeId },
     BidirectionalTeleportDeclined { a: NodeId, b: NodeId },
-    EdgeRemoveDeclined { id: EdgeId },
+    /// `from`/`to` — mirrors `EdgeRemoved`'s doc comment; resolved before revalidation, since a
+    /// declined command means the edge was never actually removed but the id is still
+    /// meaningless to web-side narration on its own.
+    EdgeRemoveDeclined { from: NodeId, to: NodeId },
     EdgeRemoveBetweenDeclined { from: NodeId, to: NodeId },
-    TeleportRemoveWithReverseDeclined { id: EdgeId },
+    /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
+    /// comment.
+    TeleportRemoveWithReverseDeclined { from: NodeId, to: NodeId },
     StartSetDeclined(NodeId),
     FinishSetDeclined(NodeId),
 }
@@ -138,13 +173,6 @@ impl DebugEvent for QcEvent {
 
 fn write_node_id(out: &mut Vec<u8>, id: NodeId) {
     out.extend_from_slice(&id.to_le_bytes());
-}
-
-/// `EdgeId` is `usize` (platform-dependent width) — always widened to `u64` before writing, same
-/// as every `NodeId` write, so the wire format doesn't depend on whether this was built for a
-/// 32-bit (wasm32) or 64-bit (native `cargo test`) target.
-fn write_edge_id(out: &mut Vec<u8>, id: EdgeId) {
-    out.extend_from_slice(&(id as u64).to_le_bytes());
 }
 
 fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
@@ -178,6 +206,26 @@ fn write_str_keyed_edge_pairs(out: &mut Vec<u8>, map: &std::collections::HashMap
                 out.extend_from_slice(&to.to_le_bytes());
             }
         }
+    }
+}
+
+/// Encodes one check's own raw display details (GitHub issue #171) — `Issue::details()`'s
+/// per-check value, e.g. `{"threshold" -> "10"}`.
+fn write_details(out: &mut Vec<u8>, details: &std::collections::HashMap<&'static str, String>) {
+    out.extend_from_slice(&(details.len() as u32).to_le_bytes());
+    for (key, value) in details {
+        write_str(out, key);
+        write_str(out, value);
+    }
+}
+
+/// Encodes a merged issue's full details map, keyed by contributing check instance id (GitHub
+/// issue #171) — mirrors `Issue::details()`'s own shape one level up.
+fn write_details_map(out: &mut Vec<u8>, map: &std::collections::HashMap<String, std::collections::HashMap<&'static str, String>>) {
+    out.extend_from_slice(&(map.len() as u32).to_le_bytes());
+    for (check_id, details) in map {
+        write_str(out, check_id);
+        write_details(out, details);
     }
 }
 
@@ -242,14 +290,19 @@ impl EncodeEventPayload for QcEvent {
                 write_str(out, check_id);
                 match issue {
                     None => out.push(0),
-                    Some((kind, payload)) => {
+                    Some((kind, payload, details)) => {
                         out.push(1);
                         write_str(out, kind.as_str());
                         write_issue_payload(out, payload);
+                        write_details(out, details);
                     }
                 }
             }
-            QcEvent::IssuesMerged { kind } => write_str(out, kind.as_str()),
+            QcEvent::IssuesMerged { kind, payload, details } => {
+                write_str(out, kind.as_str());
+                write_issue_payload(out, payload);
+                write_details_map(out, details);
+            }
             QcEvent::IterationLimitReached(kind) => out.push(match kind {
                 RepairLimitKind::MaxIterations => 0,
                 RepairLimitKind::TimeBudget => 1,
@@ -257,7 +310,9 @@ impl EncodeEventPayload for QcEvent {
 
             QcEvent::DirectedEdgeAdded { from, to } | QcEvent::DirectedEdgeDeclined { from, to } | QcEvent::DirectedEdgeProposed { from, to }
             | QcEvent::DirectedTeleportAdded { from, to } | QcEvent::DirectedTeleportDeclined { from, to } | QcEvent::DirectedTeleportProposed { from, to }
-            | QcEvent::EdgeRemovedBetween { from, to } | QcEvent::EdgeRemoveBetweenDeclined { from, to } | QcEvent::EdgeRemoveBetweenProposed { from, to } => {
+            | QcEvent::EdgeRemovedBetween { from, to } | QcEvent::EdgeRemoveBetweenDeclined { from, to } | QcEvent::EdgeRemoveBetweenProposed { from, to }
+            | QcEvent::EdgeRemoved { from, to } | QcEvent::EdgeRemoveDeclined { from, to } | QcEvent::EdgeRemoveProposed { from, to }
+            | QcEvent::TeleportRemovedWithReverse { from, to } | QcEvent::TeleportRemoveWithReverseDeclined { from, to } | QcEvent::TeleportRemoveWithReverseProposed { from, to } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
             }
@@ -265,10 +320,6 @@ impl EncodeEventPayload for QcEvent {
             | QcEvent::BidirectionalTeleportAdded { a, b } | QcEvent::BidirectionalTeleportDeclined { a, b } | QcEvent::BidirectionalTeleportProposed { a, b } => {
                 write_node_id(out, *a);
                 write_node_id(out, *b);
-            }
-            QcEvent::EdgeRemoved { id } | QcEvent::EdgeRemoveDeclined { id } | QcEvent::EdgeRemoveProposed { id }
-            | QcEvent::TeleportRemovedWithReverse { id } | QcEvent::TeleportRemoveWithReverseDeclined { id } | QcEvent::TeleportRemoveWithReverseProposed { id } => {
-                write_edge_id(out, *id);
             }
             QcEvent::StartSet(id) | QcEvent::StartSetDeclined(id) | QcEvent::StartSetProposed(id)
             | QcEvent::FinishSet(id) | QcEvent::FinishSetDeclined(id) | QcEvent::FinishSetProposed(id) => {
@@ -281,6 +332,7 @@ impl EncodeEventPayload for QcEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn mutating_split_matches_mutation_mirror_variants() {
@@ -288,9 +340,9 @@ mod tests {
         assert!(QcEvent::BidirectionalEdgeAdded { a: 1, b: 2 }.is_mutating());
         assert!(QcEvent::DirectedTeleportAdded { from: 1, to: 2 }.is_mutating());
         assert!(QcEvent::BidirectionalTeleportAdded { a: 1, b: 2 }.is_mutating());
-        assert!(QcEvent::EdgeRemoved { id: 1 }.is_mutating());
+        assert!(QcEvent::EdgeRemoved { from: 1, to: 2 }.is_mutating());
         assert!(QcEvent::EdgeRemovedBetween { from: 1, to: 2 }.is_mutating());
-        assert!(QcEvent::TeleportRemovedWithReverse { id: 1 }.is_mutating());
+        assert!(QcEvent::TeleportRemovedWithReverse { from: 1, to: 2 }.is_mutating());
         assert!(QcEvent::StartSet(1).is_mutating());
         assert!(QcEvent::FinishSet(1).is_mutating());
     }
@@ -298,8 +350,10 @@ mod tests {
     #[test]
     fn trace_events_are_not_mutating() {
         assert!(!QcEvent::IterationStarted(0).is_mutating());
-        assert!(!QcEvent::CheckRan { check_id: "c", issue: None }.is_mutating());
-        assert!(!QcEvent::IssuesMerged { kind: IssueKind::from_str("missing_endpoints").unwrap() }.is_mutating());
+        assert!(!QcEvent::CheckRan { check_id: "c".to_string(), issue: None }.is_mutating());
+        assert!(!QcEvent::IssuesMerged {
+            kind: IssueKind::from_str("missing_endpoints").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
+        }.is_mutating());
         assert!(!QcEvent::IterationLimitReached(RepairLimitKind::MaxIterations).is_mutating());
     }
 
@@ -309,9 +363,9 @@ mod tests {
         assert!(!QcEvent::BidirectionalEdgeDeclined { a: 1, b: 2 }.is_mutating());
         assert!(!QcEvent::DirectedTeleportDeclined { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::BidirectionalTeleportDeclined { a: 1, b: 2 }.is_mutating());
-        assert!(!QcEvent::EdgeRemoveDeclined { id: 1 }.is_mutating());
+        assert!(!QcEvent::EdgeRemoveDeclined { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::EdgeRemoveBetweenDeclined { from: 1, to: 2 }.is_mutating());
-        assert!(!QcEvent::TeleportRemoveWithReverseDeclined { id: 1 }.is_mutating());
+        assert!(!QcEvent::TeleportRemoveWithReverseDeclined { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::StartSetDeclined(1).is_mutating());
         assert!(!QcEvent::FinishSetDeclined(1).is_mutating());
     }
@@ -322,9 +376,9 @@ mod tests {
         assert!(!QcEvent::BidirectionalEdgeProposed { a: 1, b: 2 }.is_mutating());
         assert!(!QcEvent::DirectedTeleportProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::BidirectionalTeleportProposed { a: 1, b: 2 }.is_mutating());
-        assert!(!QcEvent::EdgeRemoveProposed { id: 1 }.is_mutating());
+        assert!(!QcEvent::EdgeRemoveProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::EdgeRemoveBetweenProposed { from: 1, to: 2 }.is_mutating());
-        assert!(!QcEvent::TeleportRemoveWithReverseProposed { id: 1 }.is_mutating());
+        assert!(!QcEvent::TeleportRemoveWithReverseProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::StartSetProposed(1).is_mutating());
         assert!(!QcEvent::FinishSetProposed(1).is_mutating());
     }
@@ -334,34 +388,36 @@ mod tests {
         use std::collections::HashSet;
         let events: Vec<QcEvent> = vec![
             QcEvent::IterationStarted(0),
-            QcEvent::CheckRan { check_id: "c", issue: None },
-            QcEvent::IssuesMerged { kind: IssueKind::from_str("missing_endpoints").unwrap() },
+            QcEvent::CheckRan { check_id: "c".to_string(), issue: None },
+            QcEvent::IssuesMerged {
+                kind: IssueKind::from_str("missing_endpoints").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
+            },
             QcEvent::IterationLimitReached(RepairLimitKind::MaxIterations),
             QcEvent::DirectedEdgeAdded { from: 0, to: 0 },
             QcEvent::BidirectionalEdgeAdded { a: 0, b: 0 },
             QcEvent::DirectedTeleportAdded { from: 0, to: 0 },
             QcEvent::BidirectionalTeleportAdded { a: 0, b: 0 },
-            QcEvent::EdgeRemoved { id: 0 },
+            QcEvent::EdgeRemoved { from: 0, to: 0 },
             QcEvent::EdgeRemovedBetween { from: 0, to: 0 },
-            QcEvent::TeleportRemovedWithReverse { id: 0 },
+            QcEvent::TeleportRemovedWithReverse { from: 0, to: 0 },
             QcEvent::StartSet(0),
             QcEvent::FinishSet(0),
             QcEvent::DirectedEdgeDeclined { from: 0, to: 0 },
             QcEvent::BidirectionalEdgeDeclined { a: 0, b: 0 },
             QcEvent::DirectedTeleportDeclined { from: 0, to: 0 },
             QcEvent::BidirectionalTeleportDeclined { a: 0, b: 0 },
-            QcEvent::EdgeRemoveDeclined { id: 0 },
+            QcEvent::EdgeRemoveDeclined { from: 0, to: 0 },
             QcEvent::EdgeRemoveBetweenDeclined { from: 0, to: 0 },
-            QcEvent::TeleportRemoveWithReverseDeclined { id: 0 },
+            QcEvent::TeleportRemoveWithReverseDeclined { from: 0, to: 0 },
             QcEvent::StartSetDeclined(0),
             QcEvent::FinishSetDeclined(0),
             QcEvent::DirectedEdgeProposed { from: 0, to: 0 },
             QcEvent::BidirectionalEdgeProposed { a: 0, b: 0 },
             QcEvent::DirectedTeleportProposed { from: 0, to: 0 },
             QcEvent::BidirectionalTeleportProposed { a: 0, b: 0 },
-            QcEvent::EdgeRemoveProposed { id: 0 },
+            QcEvent::EdgeRemoveProposed { from: 0, to: 0 },
             QcEvent::EdgeRemoveBetweenProposed { from: 0, to: 0 },
-            QcEvent::TeleportRemoveWithReverseProposed { id: 0 },
+            QcEvent::TeleportRemoveWithReverseProposed { from: 0, to: 0 },
             QcEvent::StartSetProposed(0),
             QcEvent::FinishSetProposed(0),
         ];
@@ -400,7 +456,7 @@ mod tests {
 
     #[test]
     fn check_ran_with_no_issue_encodes_check_id_then_a_zero_present_byte() {
-        let event = QcEvent::CheckRan { check_id: "c1", issue: None };
+        let event = QcEvent::CheckRan { check_id: "c1".to_string(), issue: None };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
 
@@ -411,10 +467,10 @@ mod tests {
     }
 
     #[test]
-    fn check_ran_with_issue_payload_none_encodes_kind_then_a_zero_payload_variant_byte() {
+    fn check_ran_with_issue_payload_none_encodes_kind_then_a_zero_payload_variant_byte_then_an_empty_details_map() {
         let event = QcEvent::CheckRan {
-            check_id: "c1",
-            issue: Some((IssueKind::from_str("missing_endpoints").unwrap(), IssuePayload::None)),
+            check_id: "c1".to_string(),
+            issue: Some((IssueKind::from_str("missing_endpoints").unwrap(), IssuePayload::None, HashMap::new())),
         };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
@@ -425,7 +481,33 @@ mod tests {
         offset += 1;
         assert_eq!(read_str(&bytes, &mut offset), "missing_endpoints");
         assert_eq!(bytes[offset], 0);
-        assert_eq!(bytes.len(), offset + 1);
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
+        assert_eq!(bytes.len(), offset);
+    }
+
+    #[test]
+    fn check_ran_encodes_this_checks_own_details() {
+        let mut details = HashMap::new();
+        details.insert("threshold", "10".to_string());
+        let event = QcEvent::CheckRan {
+            check_id: "c1".to_string(),
+            issue: Some((IssueKind::from_str("invalid_loop").unwrap(), IssuePayload::None, details)),
+        };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+
+        let mut offset = 0;
+        assert_eq!(read_str(&bytes, &mut offset), "c1");
+        assert_eq!(bytes[offset], 1);
+        offset += 1;
+        assert_eq!(read_str(&bytes, &mut offset), "invalid_loop");
+        assert_eq!(bytes[offset], 0);
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // details: 1 entry
+        assert_eq!(read_str(&bytes, &mut offset), "threshold");
+        assert_eq!(read_str(&bytes, &mut offset), "10");
+        assert_eq!(bytes.len(), offset);
     }
 
     #[test]
@@ -433,8 +515,8 @@ mod tests {
         let mut edges = std::collections::HashMap::new();
         edges.insert("check1".to_string(), vec![vec![[1u32, 2u32]]]);
         let event = QcEvent::CheckRan {
-            check_id: "c1",
-            issue: Some((IssueKind::from_str("invalid_loop").unwrap(), IssuePayload::InvalidLoop { edges })),
+            check_id: "c1".to_string(),
+            issue: Some((IssueKind::from_str("invalid_loop").unwrap(), IssuePayload::InvalidLoop { edges }, HashMap::new())),
         };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
@@ -452,6 +534,7 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // cycle has 1 edge pair
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // from
         assert_eq!(read_u32le(&bytes, &mut offset), 2); // to
+        assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
         assert_eq!(bytes.len(), offset);
     }
 
@@ -460,8 +543,8 @@ mod tests {
         let mut nodes = std::collections::HashMap::new();
         nodes.insert("check1".to_string(), vec![vec![5u32]]);
         let event = QcEvent::CheckRan {
-            check_id: "c1",
-            issue: Some((IssueKind::from_str("region_needs_expansion").unwrap(), IssuePayload::RegionNeedsExpansion { nodes })),
+            check_id: "c1".to_string(),
+            issue: Some((IssueKind::from_str("region_needs_expansion").unwrap(), IssuePayload::RegionNeedsExpansion { nodes }, HashMap::new())),
         };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
@@ -478,17 +561,57 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 region
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // region has 1 node
         assert_eq!(read_u32le(&bytes, &mut offset), 5); // node id
+        assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
         assert_eq!(bytes.len(), offset);
     }
 
     #[test]
-    fn issues_merged_encodes_the_kind_string() {
-        let event = QcEvent::IssuesMerged { kind: IssueKind::from_str("invalid_loop").unwrap() };
+    fn issues_merged_encodes_the_kind_string_then_a_zero_payload_variant_byte_then_an_empty_details_map() {
+        let event = QcEvent::IssuesMerged {
+            kind: IssueKind::from_str("invalid_loop").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
+        };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
 
         let mut offset = 0;
         assert_eq!(read_str(&bytes, &mut offset), "invalid_loop");
+        assert_eq!(bytes[offset], 0);
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
+        assert_eq!(bytes.len(), offset);
+    }
+
+    #[test]
+    fn issues_merged_encodes_the_merged_invalid_loop_payload_and_details() {
+        let mut edges = std::collections::HashMap::new();
+        edges.insert("check1".to_string(), vec![vec![[1u32, 2u32]]]);
+        let mut check1_details = HashMap::new();
+        check1_details.insert("threshold", "10".to_string());
+        let mut details = HashMap::new();
+        details.insert("r1:check1".to_string(), check1_details);
+        let event = QcEvent::IssuesMerged {
+            kind: IssueKind::from_str("invalid_loop").unwrap(),
+            payload: IssuePayload::InvalidLoop { edges },
+            details,
+        };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+
+        let mut offset = 0;
+        assert_eq!(read_str(&bytes, &mut offset), "invalid_loop");
+        assert_eq!(bytes[offset], 1); // IssuePayload::InvalidLoop variant tag
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // map: 1 entry
+        assert_eq!(read_str(&bytes, &mut offset), "check1");
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 cycle
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // cycle has 1 edge pair
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // from
+        assert_eq!(read_u32le(&bytes, &mut offset), 2); // to
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // details map: 1 contributing check
+        assert_eq!(read_str(&bytes, &mut offset), "r1:check1");
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 detail entry
+        assert_eq!(read_str(&bytes, &mut offset), "threshold");
+        assert_eq!(read_str(&bytes, &mut offset), "10");
         assert_eq!(bytes.len(), offset);
     }
 }
