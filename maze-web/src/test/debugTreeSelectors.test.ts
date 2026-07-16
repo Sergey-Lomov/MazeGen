@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, type ParsedTape } from "../debug/eventTape";
 import {
   buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, resolveHighlightTarget,
-  buildNodeCoordIndex,
+  buildNodeCoordIndex, displayStepForRow,
 } from "../debug/debugTreeSelectors";
 import type { NodeDto } from "../wasm/types";
 
@@ -364,6 +364,26 @@ describe("resolveHighlightTarget", () => {
     const emptyMap = new Map<number, number>();
 
     expect(() => resolveHighlightTarget(tape, stepIndex, 0, emptyMap)).toThrow(/no visible ancestor/);
+  });
+});
+
+describe("displayStepForRow (GitHub issue #166)", () => {
+  it("shows the nearest preceding mutating step for a trace-only leaf, not a dash", () => {
+    const tape = buildOneStepEdgeBasedTape();
+    const stepIndex = buildStepIndex(tape, [{ kind: "edge_based", nodeIndex: 0 }]);
+    const rows = flattenVisibleRows(tape, new Set([1]));
+
+    // node 2 = CorridorRollSkipped, trace-only, precedes both mutating events -> nearest step 0
+    const traceRow = rows.find((r) => r.nodeIndex === 2)!;
+    expect(displayStepForRow(tape, stepIndex, traceRow)).toBe(0);
+
+    // node 3 = EdgeAdded itself, mutating -> its own step 0
+    const mutatingRow = rows.find((r) => r.nodeIndex === 3)!;
+    expect(displayStepForRow(tape, stepIndex, mutatingRow)).toBe(0);
+
+    // node 4 = NodeActivated, mutating -> its own step 1
+    const secondMutatingRow = rows.find((r) => r.nodeIndex === 4)!;
+    expect(displayStepForRow(tape, stepIndex, secondMutatingRow)).toBe(1);
   });
 });
 

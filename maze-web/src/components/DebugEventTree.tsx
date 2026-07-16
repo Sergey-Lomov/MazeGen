@@ -150,6 +150,14 @@ export function DebugEventTree() {
   // Set right before a step-col click sets debugStep — tells the auto-scroll effect below to
   // skip scrolling, since the user is already looking at that row and a jump would be jarring.
   const skipNextScrollRef = useRef(false);
+  // The row the user actually clicked (GitHub issue #166) — decoupled from `debugStep`-driven
+  // highlighting. A trace-only row's click jumps `debugStep` to its *nearest preceding* mutating
+  // step, but the row that should stay highlighted is the one clicked, not that mutating step's
+  // own row. `null` means "no override" — fall back to the step-based target. Cleared whenever
+  // `debugStep` changes for any reason other than this row-click itself (playback controls,
+  // scrubber, a fresh generate()) via `lastClickedStepRef` below.
+  const [clickedNodeIndex, setClickedNodeIndex] = useState<number | null>(null);
+  const lastClickedStepRef = useRef<number | null>(null);
 
   const tape = debugArena?.tape ?? null;
   const sourceEventKinds = useMemo(() => debugArena?.sources.map((s) => s.kind) ?? ["recursive_backtracker" as const], [debugArena]);
@@ -206,10 +214,15 @@ export function DebugEventTree() {
     return { rows, labels, rowIndexByNodeIndex };
   }, [tape, expanded, sourceEventKinds, topLevelScopeKinds, transparentNodeIndices, titleLookup]);
 
-  const highlightedNodeIndex = useMemo(() => {
+  const stepBasedHighlight = useMemo(() => {
     if (!tape || !stepIndex) return null;
     return resolveHighlightTarget(tape, stepIndex, debugStep, rowIndexByNodeIndex);
   }, [tape, stepIndex, debugStep, rowIndexByNodeIndex]);
+  // A row click's own node wins over the step-based target (see `clickedNodeIndex`'s doc comment)
+  // as long as it's still visible under the current expand/collapse state — otherwise falls back
+  // to the step-based target the same way a stale `debugStep` target would.
+  const highlightedNodeIndex =
+    clickedNodeIndex !== null && rowIndexByNodeIndex.has(clickedNodeIndex) ? clickedNodeIndex : stepBasedHighlight;
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -233,6 +246,11 @@ export function DebugEventTree() {
   });
 
   useLayoutEffect(() => {
+    // `debugStep` changed for a reason other than a row click in this tree (playback controls,
+    // scrubber, a fresh generate()) — the click-selected row no longer applies.
+    if (lastClickedStepRef.current !== debugStep) setClickedNodeIndex(null);
+    lastClickedStepRef.current = null;
+
     if (skipNextScrollRef.current) {
       skipNextScrollRef.current = false;
       return;
@@ -258,9 +276,19 @@ export function DebugEventTree() {
     });
   }
 
-  function handleStepClick(step: number, e: React.MouseEvent) {
+  function handleStepClick(step: number, nodeIndex: number, e: React.MouseEvent) {
     e.stopPropagation();
-    skipNextScrollRef.current = true;
+    // Only arm the scroll-skip/clicked-step bookkeeping when this click actually changes
+    // `debugStep` — the effect below is keyed on `[debugStep]`, so if `step` already equals the
+    // current value, `setDebugStep` is a no-op and that effect never re-runs to consume (reset)
+    // these refs. Leaving them set in that case would leak `skipNextScrollRef.current = true` into
+    // the next *genuine* debugStep change (Play/Prev/Next/scrubber), silently skipping its
+    // auto-scroll once (GitHub issue #166 review).
+    if (step !== debugStep) {
+      skipNextScrollRef.current = true;
+      lastClickedStepRef.current = step;
+    }
+    setClickedNodeIndex(nodeIndex);
     setDebugStep(step);
   }
 
@@ -284,12 +312,15 @@ export function DebugEventTree() {
                 transform: `translateY(${virtualRow.start}px)`,
                 background: highlighted ? ui.bg.panelAlt : undefined,
               }}
-              onClick={() => row.hasChildren && toggleExpanded(row.nodeIndex)}
+              onClick={(e) => {
+                if (row.hasChildren) toggleExpanded(row.nodeIndex);
+                else if (displayStep !== null) handleStepClick(displayStep, row.nodeIndex, e);
+              }}
             >
               <span
                 data-testid="step-col"
                 style={styles.stepCol}
-                onClick={(e) => displayStep !== null && handleStepClick(displayStep, e)}
+                onClick={(e) => displayStep !== null && handleStepClick(displayStep, row.nodeIndex, e)}
               >
                 {displayStep !== null ? displayStep + 1 : "—"}
               </span>

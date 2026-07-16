@@ -227,12 +227,13 @@ describe("DebugEventTree", () => {
     expect(setDebugStep).toHaveBeenCalledWith(3);
   });
 
-  it("scope shows the first mutating descendant's step; a trace-only leaf shows a dash", () => {
+  it("scope shows the first mutating descendant's step; a trace-only leaf shows the nearest preceding mutating step (GitHub issue #166)", () => {
     // "step 1" -> EdgeAdded (mutating, step 0), VertexVisited (mutating, step 1), VertexPushed
     // (mutating, step 2): first mutating descendant is EdgeAdded at step 0 -> displayed as "1".
     // "step 2" -> DeadEnd (trace-only), VertexPopped (mutating, step 3): first mutating
-    // descendant is VertexPopped at step 3 -> displayed as "4". DeadEnd itself is trace-only,
-    // so its own row shows a dash despite "step 2" showing a number.
+    // descendant is VertexPopped at step 3 -> displayed as "4". DeadEnd itself is trace-only, so
+    // its own row shows the nearest preceding mutating step — VertexPushed, step 2 -> "3", not a
+    // dash — despite "step 2" showing a different number ("4").
     render(<DebugEventTree />);
     // The merged tree's auto-expanded "generation"/former-root wrapper rows (GitHub issue #169)
     // each render their own step-col too — find "step 1"/"step 2"'s own columns specifically
@@ -244,7 +245,39 @@ describe("DebugEventTree", () => {
 
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 2 })));
     const deadEndRow = screen.getByText(m["debug.tree.dead_end"]()).closest("div")!;
-    expect(deadEndRow.querySelector('[data-testid="step-col"]')).toHaveTextContent("—");
+    expect(deadEndRow.querySelector('[data-testid="step-col"]')).toHaveTextContent("3");
+  });
+
+  it("clicking a childless row's body (not just the step column) jumps to its displayed step (GitHub issue #166)", () => {
+    const setDebugStep = vi.fn();
+    useMazeStore.setState({ setDebugStep });
+    render(<DebugEventTree />);
+
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 2 })));
+    // DeadEnd is trace-only and has no children — clicking its row body (not the step-col) must
+    // still jump, to the same nearest-preceding-mutating step ("3", 1-based) the column shows.
+    fireEvent.click(screen.getByText(m["debug.tree.dead_end"]()));
+
+    expect(setDebugStep).toHaveBeenCalledWith(2);
+  });
+
+  it("clicking a trace-only row highlights that row itself, not the mutating row whose step it jumped to (GitHub issue #166)", () => {
+    // Real store (no setDebugStep mock) — debugStep must actually change so the tree's own
+    // highlight-by-debugStep fallback would kick in if the click override didn't win.
+    render(<DebugEventTree />);
+
+    // Expand "step 1" too, so VertexPushed's own row is present to assert against.
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 2 })));
+    // DeadEnd (trace-only) jumps to nearest-preceding mutating step 2 (VertexPushed's own step) —
+    // without the click-node override, `resolveHighlightTarget` would highlight VertexPushed's
+    // row instead of the row actually clicked.
+    fireEvent.click(screen.getByText(m["debug.tree.dead_end"]()));
+
+    const deadEndRow = screen.getByText(m["debug.tree.dead_end"]()).closest("div")!;
+    const vertexPushedRow = screen.getByText(m["debug.tree.vertex_pushed"]()).closest("div")!;
+    expect(deadEndRow.style.background).not.toBe("");
+    expect(vertexPushedRow.style.background).toBe("");
   });
 
   it("hovering a node/edge ref bubble sets hoveredDebugRef; leaving clears it", () => {

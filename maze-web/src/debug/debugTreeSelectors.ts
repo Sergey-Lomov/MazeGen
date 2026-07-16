@@ -117,16 +117,17 @@ function firstStepInSubtree(tape: ParsedTape, stepIndex: StepIndex, nodeIndex: n
 }
 
 /** The step-column label for a row (left-hand step-number column): a mutating leaf event shows
- *  its own `debugStep`; a trace-only leaf shows `null` (rendered as a dash); a scope shows the
- *  step of the first mutating event anywhere in its subtree (in document/arena-index order), or
- *  `null` if it contains none. */
+ *  its own `debugStep`; a trace-only leaf shows the nearest preceding mutating step (GitHub issue
+ *  #166 — the step already executed at the time this trace event was emitted), never `null`; a
+ *  scope shows the step of the first mutating event anywhere in its subtree (in document/arena-
+ *  index order), or `null` if it contains none. */
 export function displayStepForRow(
   tape: ParsedTape,
   stepIndex: StepIndex,
   row: Pick<TreeRow, "nodeIndex" | "payload">,
 ): number | null {
   if (row.payload.kind !== "scope") {
-    return stepIndex.mutatingNodeIndexToStep.get(row.nodeIndex) ?? null;
+    return stepIndex.mutatingNodeIndexToStep.get(row.nodeIndex) ?? stepIndex.nearestStepByNodeIndex[row.nodeIndex];
   }
   return firstStepInSubtree(tape, stepIndex, row.nodeIndex);
 }
