@@ -305,17 +305,32 @@ export interface PresetConnectionsActions {
  *  static node list needed to join reconstructed `bigint` node ids against `NodeDto.id`. */
 export interface DebugArenaHandle {
   tape: ParsedTape;
-  /** Which concrete event enum `tape`'s (single, today) source scope was encoded from (GitHub
-   *  issue #146, generalized to multiple sources by #169) — selects which decoder/apply/narration
-   *  function every consumer of this arena (`debugSelectors.ts`, `debugTreeSelectors.ts`,
-   *  `DebugEventTree.tsx`) dispatches to. Sourced from the first (only) entry of the WASM
-   *  response's `DebugTape.sourceEventKinds` (`mazeService.ts`) — consuming more than one source
-   *  at once is out of scope until #147. */
+  /** Which concrete event enum `tape`'s *first* top-level source scope was encoded from — always
+   *  the generation source (GitHub issue #147: QC, when present, is always merged as a later
+   *  source than generation — Contract A, `Specs/event_log.md`'s #147 section). Kept only for the
+   *  handful of call sites that are inherently generation-specific (e.g. `GenerationRenderer.ts`'s
+   *  Kruskal DSU-groups toggle, `DebugPanel.tsx`'s Kruskal-only UI) — anything that needs to
+   *  dispatch per-node across a possibly-multi-source tape must use `sources`/`adapterForNode`
+   *  instead, never this field. */
   algorithmKind: EventedEventKind;
+  /** One entry per top-level source scope in `tape`, in the same order as `topLevelSourceScopes`
+   *  (GitHub issue #147/#169) — `algorithmKind` above is just `sources[0].kind`, kept as a
+   *  separate field for the generation-specific call sites described in that field's doc comment.
+   *  `startStep`/`endStep` are 0-based, half-open `[startStep, endStep)` ranges into the same
+   *  global `debugStep` numbering `debugStep`/`totalSteps` already use (Contract A) — e.g. with a
+   *  200-step generation source followed by a 12-step QC source, `sources` is
+   *  `[{ startStep: 0, endStep: 200, ... }, { startStep: 200, endStep: 212, ... }]`. */
+  sources: {
+    scopeName: string;
+    kind: EventedEventKind;
+    nodeIndex: number;
+    startStep: number;
+    endStep: number;
+  }[];
   nodes: NodeDto[];
-  /** Total mutating-event count for this tape — a static property of the arena (computed once at
-   *  generation time), not a per-step cache; lets the UI know the last valid `debugStep` without
-   *  a bounded-scan trick on every render. */
+  /** Total mutating-event count across every source in `tape` — a static property of the arena
+   *  (computed once at generation time), not a per-step cache; lets the UI know the last valid
+   *  `debugStep` without a bounded-scan trick on every render. */
   totalSteps: number;
   /** Intermediate snapshot checkpoints (GitHub issue #128), resolved once at generation time via
    *  `resolveCheckpointFroms` into `ApplyFrom`-ready values sorted by ascending `step` — lets

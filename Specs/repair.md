@@ -155,10 +155,13 @@ pub struct ApplyOutcome { pub proposed: usize, pub applied: usize }
 
 pub fn apply_commands<T: Tessellation>(
     maze: &mut Maze<T>, preset_state: &PresetState, commands: Vec<MutationCommand>,
+    event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
 ) -> ApplyOutcome;
 ```
 
 Each command is applied via the real `try_*` helper (the single source of truth for "can this be applied right now," structural + preset state both), in `Vec` order. A command that no longer holds by commit time (its structural precondition changed since the strategy read its snapshot, e.g. a preceding command in the same batch already removed the edge it also targeted) is silently dropped — not an error, does not change the strategy's own returned `RepairResult`, and does not block the rest of the batch from applying. This revalidate-and-drop mechanism is what structurally replaces #98/#99's one-issue-per-item split: a batched issue's stale sub-command is simply skipped instead of corrupting state or requiring the whole batch be rejected.
+
+`event_log` (GitHub issue #147, `Specs/quality_control.md`'s "Narration-level debug instrumentation" section) — when `Some`, `apply_commands` emits one `QcEvent` per command, inline in the same per-command loop that applies it: the mutating mirror variant when the command actually applied, the matching `*Declined` trace variant (same fields) when revalidation dropped it. `None` on every non-debug call — zero-cost opt-out, same pattern as every other instrumented pass in this codebase.
 
 **Contract for partially-applied batches**: a strategy must treat any subset of its own commands landing (the rest silently dropped) as an acceptable outcome — it has no way to detect partial application after the fact (`apply_commands` runs after `apply()` already returned) and must not rely on all-or-nothing application across multiple commands. If two mutations must both apply or neither, they must be one `MutationCommand`, not two (see `AddBidirectionalEdge` above) — not something the strategy checks after the fact.
 
@@ -365,7 +368,7 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
     pub fn dispatch_repair_typed(
         &self, issue: &I, maze: &mut Maze<T>, rng: &mut dyn RngCore,
         preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: &dyn Fn() -> f64,
+        now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
     ) -> Option<(RepairResult, ApplyOutcome)>;
 }
 
@@ -380,7 +383,7 @@ pub trait RuleTrait<T: Tessellation> {
     fn has_strategy(&self) -> bool;
     fn run_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<Box<dyn Issue>>;
     fn report_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Vec<Box<dyn Issue>>;
-    fn dispatch_repair(&self, issue: &dyn Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<(RepairResult, ApplyOutcome)>;
+    fn dispatch_repair(&self, issue: &dyn Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>) -> Option<(RepairResult, ApplyOutcome)>;
 }
 ```
 
@@ -434,6 +437,7 @@ impl<T: Tessellation> Stage<T> {
         budget: &mut RepairBudget,
         timing: &mut TimingSink,
         now_ms: impl Fn() -> f64,
+        event_log: Option<&mut ScopeGuard<QcEvent>>,
     ) -> StageOutcome;
 
     /// One report pass over every rule in this stage (`RuleTrait::report_checks` semantics).
@@ -456,6 +460,11 @@ Inside `run_repair`, no-progress state (the previous-iteration fingerprint) and 
 stage boundary the way the pre-#106 pipeline had to reset its fingerprint manually. A rule id
 never crosses a stage boundary (a rule is configured into exactly one stage), so `failed` never
 needs to be shared beyond the stage that owns it either.
+
+`event_log` (GitHub issue #147) — see `Specs/quality_control.md`'s "Narration-level debug
+instrumentation" section for the full scope shape (`"stage <id>"` → `"iteration N"` → `"rule
+<id>"`) and event catalog this threads through `run_repair`/`collect_active`/`dispatch` down to
+`apply_commands`. `None` on every non-debug call.
 
 ```rust
 /// The single orchestrator for the whole check+repair process, or check-only when no repair is
@@ -815,6 +824,7 @@ pub fn build_maze<T: Tessellation>(
     limits: RepairLimits,
     preset_start: Option<NodeId>,
     preset_finish: Option<NodeId>,
+    event_log: Option<&mut EventLog<QcEvent>>,
 ) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming)
 ```
 
@@ -827,15 +837,21 @@ pub fn build_maze<T: Tessellation>(
     field: Field<T>, graph: Graph, seed: u64, qc_engine: QualityControlEngine<T>,
     preset_state: &PresetState, limits: RepairLimits,
     preset_start: Option<NodeId>, preset_finish: Option<NodeId>,
+    event_log: Option<&mut EventLog<QcEvent>>,
 ) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming) {
     let mut maze = Maze::new(field, graph);
     maze.meta.start = preset_start;
     maze.meta.finish = preset_finish;
     let mut rng = MazeRng::seed_from_u64(seed);
-    let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms);
+    let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms, event_log);
     (maze, issues, timing)
 }
 ```
+
+`event_log` (GitHub issue #147) — forwarded straight into `qc_engine.run_full`. `None` on every
+non-debug call; see `Specs/quality_control.md`'s "Narration-level debug instrumentation" section
+for the full scope/event shape this threads through `run_full`/`run_repair_stages`/
+`Stage::run_repair` down to `apply_commands`.
 
 The second return value is the list of unresolved issues after all repair iterations. An empty vec means all issues were resolved. Callers decide how to handle unresolved issues — the pipeline always returns a maze regardless.
 
@@ -886,7 +902,7 @@ pub struct GenerationTiming {
     pub per_strategy: HashMap<&'static str, TimingEntry>,
 }
 
-pub fn build_maze<T: Tessellation>(...) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming)
+pub fn build_maze<T: Tessellation>(..., event_log: Option<&mut EventLog<QcEvent>>) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming)
 ```
 
 - `initial_build_ms` is left at `0.0` by `build_maze` itself — it only runs the QC/repair fixpoint loop, not the initial `generate_maze` call. `maze-wasm::run_generate` is the only caller that also runs that stage; it times it with the same `now_ms()` clock and fills `timing.initial_build_ms` in after `build_maze` returns.

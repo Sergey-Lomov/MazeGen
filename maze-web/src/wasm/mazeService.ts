@@ -57,9 +57,9 @@ export interface DebugTape {
    *  encoded from (GitHub issue #146, generalized by #169), sourced from
    *  `GenerateResult::sourceEventKinds()`. Tells downstream consumers
    *  (`generateConfigBuilder.ts`, `debugSelectors.ts`, `DebugEventTree.tsx`) which decoder/apply/
-   *  narration function to dispatch to — see `DebugArenaHandle.algorithmKind` in `storeTypes.ts`,
-   *  which today reads `sourceEventKinds[0]` since there is always exactly one source; consuming
-   *  more than one at once is out of scope until #147. */
+   *  narration function to dispatch to — see `DebugArenaHandle.sources` in `storeTypes.ts` (GitHub
+   *  issue #147: a merged tape may now carry more than one top-level source, e.g. `"generation"`
+   *  + `"quality_control"`). */
   sourceEventKinds: EventedEventKind[];
   /** Debug values (GitHub issue #131, e.g. `"recursion_stack"`) declared by the instrumented
    *  algorithm, each with its rendering `kind` — the static list from
@@ -73,10 +73,13 @@ export interface DebugTape {
 
 /** Mirrors `event_kind_wire_str` in `maze-wasm/src/result.rs` — which concrete event enum a
  *  tape's bytes were encoded from. */
-export type EventedEventKind = "recursive_backtracker" | "kruskal" | "wilson" | "edge_based" | "vertex_based";
+export type EventedEventKind = "recursive_backtracker" | "kruskal" | "wilson" | "edge_based" | "vertex_based" | "quality_control";
 
 function toEventedEventKind(raw: string): EventedEventKind {
-  if (raw !== "recursive_backtracker" && raw !== "kruskal" && raw !== "wilson" && raw !== "edge_based" && raw !== "vertex_based") {
+  if (
+    raw !== "recursive_backtracker" && raw !== "kruskal" && raw !== "wilson" &&
+    raw !== "edge_based" && raw !== "vertex_based" && raw !== "quality_control"
+  ) {
     throw new Error(`unknown event kind "${raw}"`);
   }
   return raw;

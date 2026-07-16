@@ -18,7 +18,7 @@ fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
 #[test]
 fn add_directed_edge_applies_and_counts() {
     let (mut maze, nodes) = maze_n(2);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] }]);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] }], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
 }
@@ -26,7 +26,7 @@ fn add_directed_edge_applies_and_counts() {
 #[test]
 fn add_bidirectional_edge_applies_both_directions() {
     let (mut maze, nodes) = maze_n(2);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddBidirectionalEdge { a: nodes[0], b: nodes[1] }]);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddBidirectionalEdge { a: nodes[0], b: nodes[1] }], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
     assert!(maze.graph.edge_between(nodes[1], nodes[0]).is_some());
@@ -35,7 +35,7 @@ fn add_bidirectional_edge_applies_both_directions() {
 #[test]
 fn add_directed_teleport_applies() {
     let (mut maze, nodes) = maze_n(2);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddDirectedTeleport { from: nodes[0], to: nodes[1] }]);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddDirectedTeleport { from: nodes[0], to: nodes[1] }], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     let edge = maze.graph.edge_between(nodes[0], nodes[1]).and_then(|id| maze.graph.edge(id));
     assert_eq!(edge.map(|e| e.kind.clone()), Some(EdgeKind::Teleport));
@@ -44,7 +44,7 @@ fn add_directed_teleport_applies() {
 #[test]
 fn add_bidirectional_teleport_applies_both_directions() {
     let (mut maze, nodes) = maze_n(2);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddBidirectionalTeleport { a: nodes[0], b: nodes[1] }]);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddBidirectionalTeleport { a: nodes[0], b: nodes[1] }], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count() == 2);
 }
@@ -53,7 +53,7 @@ fn add_bidirectional_teleport_applies_both_directions() {
 fn remove_edge_by_id_applies() {
     let (mut maze, nodes) = maze_n(2);
     let id = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdge { id }]);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdge { id }], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge(id).is_none());
 }
@@ -62,7 +62,7 @@ fn remove_edge_by_id_applies() {
 fn remove_edge_between_applies() {
     let (mut maze, nodes) = maze_n(2);
     maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }]);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
 }
@@ -72,7 +72,7 @@ fn remove_teleport_with_reverse_removes_both_directions() {
     let (mut maze, nodes) = maze_n(2);
     let fwd = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let bwd = maze.graph.build_initial_edge(nodes[1], nodes[0], EdgeKind::Teleport);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveTeleportWithReverse { id: fwd }]);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveTeleportWithReverse { id: fwd }], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge(fwd).is_none());
     assert!(maze.graph.edge(bwd).is_none());
@@ -84,13 +84,13 @@ fn set_start_and_finish_apply_and_are_idempotent() {
     let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![
         MutationCommand::SetStart(nodes[0]),
         MutationCommand::SetFinish(nodes[1]),
-    ]);
+    ], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 2, applied: 2 });
     assert_eq!(maze.meta.start, Some(nodes[0]));
     assert_eq!(maze.meta.finish, Some(nodes[1]));
 
     // Idempotent: a second SetStart with a different node must not overwrite an already-set one.
-    let outcome2 = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::SetStart(nodes[1])]);
+    let outcome2 = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::SetStart(nodes[1])], None);
     assert_eq!(outcome2, ApplyOutcome { proposed: 1, applied: 1 }, "SetStart always reports applied, even when it's a no-op due to idempotency");
     assert_eq!(maze.meta.start, Some(nodes[0]), "already-set start must not be overwritten");
 }
@@ -102,7 +102,7 @@ fn preset_protected_edge_removal_is_dropped_silently() {
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((nodes[0], nodes[1]));
 
-    let outcome = apply_commands(&mut maze, &preset_state, vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }]);
+    let outcome = apply_commands(&mut maze, &preset_state, vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 0 }, "preset-protected removal must be silently dropped, not panic or error");
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some(), "protected edge must survive");
 }
@@ -128,7 +128,7 @@ fn stale_command_in_a_batch_is_dropped_without_blocking_the_rest() {
         MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }, // stale: already gone
         MutationCommand::RemoveEdgeBetween { from: nodes[1], to: nodes[2] },
     ];
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 3, applied: 2 }, "exactly the stale middle command must be dropped");
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
     assert!(maze.graph.edge_between(nodes[1], nodes[2]).is_none());
@@ -138,7 +138,7 @@ fn stale_command_in_a_batch_is_dropped_without_blocking_the_rest() {
 fn empty_batch_is_a_no_op() {
     let (mut maze, _) = maze_n(2);
     let edges_before = maze.graph.edges().count();
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![]);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![], None);
     assert_eq!(outcome, ApplyOutcome { proposed: 0, applied: 0 });
     assert_eq!(maze.graph.edges().count(), edges_before);
 }
@@ -181,7 +181,7 @@ fn dispatch_repair_typed_applies_every_returned_command_to_the_real_maze() {
     let issue = crate::quality_control::MissingEndpointsIssue::default();
     let mut rng = MazeRng::seed_from_u64(0);
     let mut timing = HashMap::new();
-    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0);
+    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0, None);
 
     let Some((repair_result, outcome)) = result else { panic!("rule has a strategy, must return Some") };
     assert!(matches!(repair_result, RepairResult::Fixed { score: None }));

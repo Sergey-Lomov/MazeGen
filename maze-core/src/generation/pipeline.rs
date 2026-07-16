@@ -3,7 +3,8 @@ use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::{Graph, Maze};
 use crate::space::{Field, Tessellation};
-use crate::quality_control::{Issue, QualityControlEngine};
+use crate::event_log::EventLog;
+use crate::quality_control::{Issue, QualityControlEngine, QcEvent};
 use super::PresetState;
 
 pub const MAX_REPAIR_ITERATIONS: usize = 100;
@@ -83,11 +84,12 @@ pub fn build_maze<T: Tessellation>(
     limits: RepairLimits,
     preset_start: Option<crate::ids::NodeId>,
     preset_finish: Option<crate::ids::NodeId>,
+    event_log: Option<&mut EventLog<QcEvent>>,
 ) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming) {
     let mut maze = Maze::new(field, graph);
     maze.meta.start = preset_start;
     maze.meta.finish = preset_finish;
     let mut rng = MazeRng::seed_from_u64(seed);
-    let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms);
+    let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms, event_log);
     (maze, issues, timing)
 }

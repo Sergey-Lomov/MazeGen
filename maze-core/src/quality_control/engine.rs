@@ -4,7 +4,9 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::generation::pipeline::{RepairLimits, GenerationTiming, TimingEntry};
+use crate::event_log::EventLog;
 use crate::quality_control::issue_kinds::{RepairLimitKind, RepairLimitReachedIssue, QcNoProgressIssue};
+use super::event::QcEvent;
 use super::issue::Issue;
 use super::stage::{Stage, StageOutcome, TimingSink};
 
@@ -82,9 +84,10 @@ impl<T: Tessellation> QualityControlEngine<T> {
         preset_state: &PresetState,
         limits: RepairLimits,
         now_ms: impl Fn() -> f64,
+        mut event_log: Option<&mut EventLog<QcEvent>>,
     ) -> (Vec<Box<dyn Issue>>, GenerationTiming) {
         let mut timing = GenerationTiming::default();
-        let budget = self.run_repair_stages(maze, rng, preset_state, limits, &mut timing, &now_ms);
+        let budget = self.run_repair_stages(maze, rng, preset_state, limits, &mut timing, &now_ms, event_log.as_deref_mut());
 
         let mut remaining = self.collect_final_report(maze, rng, &mut timing.per_check, &now_ms);
         if let Some(limit) = budget.limit_reached {
@@ -121,6 +124,7 @@ impl<T: Tessellation> QualityControlEngine<T> {
         limits: RepairLimits,
         timing: &mut GenerationTiming,
         now_ms: &impl Fn() -> f64,
+        mut event_log: Option<&mut EventLog<QcEvent>>,
     ) -> RepairBudget {
         let mut budget = RepairBudget::new(limits, now_ms);
         let mut per_check: HashMap<&'static str, (f64, u32)> = HashMap::new();
@@ -134,7 +138,10 @@ impl<T: Tessellation> QualityControlEngine<T> {
                 qc_total_ms: &mut qc_total_ms,
                 repair_total_ms: &mut repair_total_ms,
             };
-            let outcome = stage.run_repair(maze, rng, preset_state, &mut budget, &mut sink, now_ms);
+            let outcome = {
+                let mut stage_scope = event_log.as_deref_mut().map(|log| log.enter(format!("stage {}", stage.id)));
+                stage.run_repair(maze, rng, preset_state, &mut budget, &mut sink, now_ms, stage_scope.as_mut())
+            };
             match outcome {
                 StageOutcome::Done => continue,
                 StageOutcome::LimitReached(kind) => { budget.limit_reached = Some(kind); break; }

@@ -257,6 +257,105 @@ algorithm, and the "Dedup interaction" note above for the per-type merge rules t
 `Rule`'s checks always run in the order they were configured, same as the pre-#106 flat engine's
 insertion order.
 
+### Narration-level debug instrumentation (`QcEvent`)
+
+See GitHub issue #147. Mirrors the narration-level `EventLog` instrumentation already built for
+every generation algorithm (`Specs/event_log.md`) — a debug-events run threads an optional
+`EventLog<QcEvent>`/`ScopeGuard<QcEvent>` through the whole repair fixpoint call chain
+(`QualityControlEngine::run_full` → `run_repair_stages` → `Stage::run_repair` → `collect_active`/
+`dispatch` → `Rule::dispatch_repair_typed` → `apply_commands`, `quality_control/rule.rs`), the same
+zero-cost `Option<&mut T>` opt-out pattern every other instrumented pass already uses — every
+signature in this chain grows one extra parameter, always the last, always `None` on the normal
+(non-debug) path. `build_maze` (`generation/pipeline.rs`) forwards its own `event_log` parameter
+straight into `run_full` — `maze-wasm/src/runner.rs::run_generate` is the only caller that builds a
+real `EventLog::new()` (when `config.debug_events` is set) and is also the single place that calls
+`crate::event_log::merge_tapes` to fold this QC tape together with generation's own tape into one
+merged arena (see `Specs/event_log.md`'s "#147" notes on why `merge_tapes` moved out of
+`generate_maze_with_events` for this).
+
+**Only the repair loop is instrumented — `run_check_only` (the check-only path
+`build_analytics_snapshot` uses) is not.** There is no narrative of iterations/dispatch there,
+only a flat report pass, so no `EventLog` parameter was added to it.
+
+**Scope shape** — three kinds, nested `"stage <id>"` → `"iteration N"` → `"rule <id>"`:
+- `run_repair_stages` opens one `"stage {stage.id}"` scope per `Stage` (named by the stage's own
+  opaque `id`, not its user-facing `name` — see below).
+- `Stage::run_repair` opens one `"iteration N"` scope (`enter_numbered("iteration")`, mirrors RB's
+  `"step N"`) per fixpoint pass, emitting `IterationStarted(n)` on entry and
+  `IterationNoProgress`/`IterationLimitReached(kind)` on the corresponding exit path (no event for
+  a clean `StageOutcome::Done` — convergence is visible as "no further iterations").
+- `Stage::dispatch` opens one `"rule {rule.id}"` scope per dispatched rule, only for rules that
+  actually reach `dispatch_repair` (a rule with no issue this iteration, or no strategy, gets a
+  `RuleChecked` trace event directly in the iteration scope but no rule scope of its own).
+
+Every scope is opened and dropped **within its own block** inside the loop body that creates it —
+a `ScopeGuard` kept alive across a loop iteration boundary would keep the parent guard borrowed and
+the borrow checker would refuse to let it `emit` on the next pass (same caveat
+`Specs/event_log.md`'s `ScopeGuard::enter` doc describes for Wilson's `"walk N"` scope).
+
+**Scope ids are opaque wire strings, not display titles.** `"stage <id>"`/`"rule <id>"` embed each
+`Stage`/`Rule`'s own config `id` (a client-generated string, e.g. `rule_<uuid>`) — core has no
+concept of a rule's user-facing `name` at all (`QcRuleConfig` on the wire carries only `id`;
+`StageConfig` carries both `id` and `name`, but only `id` is ever embedded in a scope name). The
+web replay UI resolves a scope's id to its current display title itself, live from the running
+store's config (`maze-web/src/debug/algorithmRegistry.ts`'s `ScopeTitleLookup`) rather than having
+core send the title across the wire — a title round-tripped through the wire would be exactly as
+stale after a later rename as one resolved from the live store, so there is no correctness argument
+for sending it, only unnecessary wire/type surface.
+
+**Trace events** (`Stage`-level, not tied to any one mutation):
+- `IterationStarted(u32)` — one fixpoint pass began.
+- `RuleChecked { rule_id, issue: Option<(IssueKind, IssuePayload)> }` — one rule's checks ran this
+  iteration. `issue: None` when the rule found nothing (emitted for every non-failed rule, not just
+  ones later dispatched — narration must show "rule X found nothing" too). `IssuePayload` is
+  resolved via `resolve_issue_payload` (`quality_control::issue_payload`, shared with
+  `maze-wasm/src/analytics.rs`'s JSON `IssuePayloadDto` — same source of truth, no second
+  independently-maintained downcast/resolve copy) — **resolved immediately after `run_checks`
+  returns, before any mutation this same QC pass might make later via `dispatch`** (payload reads
+  `maze.graph`/`scc` as they stand right now; resolving it any later could describe a graph state
+  the issue was no longer found against). `scc` itself is resolved lazily, at most once per
+  `collect_active` call (not once per rule) — `maze.graph` doesn't change within `collect_active`'s
+  own loop (only `dispatch`, called afterward, mutates), so every rule needing `scc` this iteration
+  shares one `ConnectedComponents` clone instead of each re-triggering `MazeAnalysis::scc`'s own
+  cache-hit clone; a rule with no issue, or an issue kind with no structural `scc` dependency (only
+  `RegionNeedsExpansionIssue` reads it — see `resolve_issue_payload`'s doc comment), never forces
+  this computation at all.
+- `RepairDispatched { rule_id, result: RepairResultKind, proposed, applied }` — a rule's strategy
+  was dispatched. `proposed`/`applied` mirror `rule::ApplyOutcome`'s own fields, copied directly
+  into the event (not left for a narration consumer to recompute by counting this rule's own
+  subsequent mutating/`*Declined` events in its scope). `RepairResultKind` is a simplified,
+  `Copy`/wire-friendly mirror of `repair::RepairResult` — drops the `Fixed` variant's
+  `score: Option<f64>` (narration doesn't need the route-score value, only fixed-vs-failed).
+- `IterationNoProgress` — the fixpoint loop stopped because the same active issue set repeated
+  across two iterations (`Stage::check_progress`) or the "commands dropped" streak guard tripped
+  (see `repair.md`'s no-progress guard section) — GitHub issue #170 tracks removing this guard.
+- `IterationLimitReached(RepairLimitKind)` — the shared `RepairBudget` was exhausted.
+
+**Mutating events — an exact 1:1 mirror of `repair::MutationCommand`'s 9 variants**
+(`DirectedEdgeAdded`, `BidirectionalEdgeAdded`, `DirectedTeleportAdded`,
+`BidirectionalTeleportAdded`, `EdgeRemoved`, `EdgeRemovedBetween`, `TeleportRemovedWithReverse`,
+`StartSet`, `FinishSet`) — emitted by `apply_commands` (`quality_control/rule.rs`) for exactly the
+commands its own revalidation actually applied (`is_mutating()` is `true` for these nine and only
+these nine). Each also has a same-fields, trace-only `*Declined` counterpart
+(`DirectedEdgeDeclined`, etc.) emitted when revalidation rejects a proposed command — one dedicated
+variant per command kind rather than a single payload-less `CommandDeclined`, so narration/tests
+can say exactly which command failed revalidation, not just that some command did. A `*Declined`
+variant encodes to the exact same bytes as its mutating mirror except for the wire tag — see
+`quality_control/event.rs`'s own test. `apply_commands` emits every event itself, inline in its
+existing per-command loop (not returned to the caller for logging elsewhere) — it is the only place
+that knows both the command's real fields (already at hand from the `match`) and its actual
+revalidation outcome; a caller re-deriving that from `ApplyOutcome`'s aggregate counts couldn't
+tell *which* command in a multi-command batch was declined.
+
+**No `DebugValueDelta`/`DebugMapDelta`/`DebugVertexDelta` impls** — QC has no natural analogue to a
+generation algorithm's "debug value" (RB's `recursion_stack`, Wilson's `current_walk`, etc.);
+deliberately out of scope, not a gap.
+
+**Wire tags** are assigned in `quality_control/event.rs`'s own `wire_tags` module, ordinary local
+tags in `1..=23` (well under the 255 a single source's local tag byte allows) — namespaced by
+source index only when `merge_tapes` folds this tape together with generation's, same mechanism
+every merged source already uses (`Specs/event_log.md`'s "#169" section).
+
 ## Built-in Checks
 
 ### MissingEndpointsCheck

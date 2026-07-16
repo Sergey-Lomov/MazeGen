@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DebugEventTree } from "../components/DebugEventTree";
 import { useMazeStore } from "../store/mazeStore";
-import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, WILSON_TAG, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, WILSON_TAG, QC_TAG, type ParsedTape } from "../debug/eventTape";
 import type { NodeDto } from "../wasm/types";
 import * as m from "~/paraglide/messages";
 
@@ -49,6 +49,12 @@ function vertexPayload(id: bigint): Uint8Array {
 
 function stepTakenPayload(from: bigint, to: bigint): Uint8Array {
   return concatBytes([u64le(from), u64le(to)]);
+}
+
+function u32le(v: number): Uint8Array {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, v, true);
+  return bytes;
 }
 
 function buildFixture(nodes: FixtureNode[]): ParsedTape {
@@ -162,7 +168,7 @@ afterEach(() => {
 describe("DebugEventTree", () => {
   beforeEach(() => {
     useMazeStore.setState({
-      debugArena: { tape: buildTwoStepTape(), algorithmKind: "recursive_backtracker", nodes, totalSteps: 4, checkpointFroms: [], debugValueNames: [] },
+      debugArena: { tape: buildTwoStepTape(), algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 4 }], nodes, totalSteps: 4, checkpointFroms: [], debugValueNames: [] },
       debugStep: 0,
     });
   });
@@ -281,7 +287,7 @@ describe("DebugEventTree", () => {
       { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
       { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(99n) },
     ]);
-    useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", nodes, totalSteps: 1, checkpointFroms: [], debugValueNames: [] }, debugStep: 0 });
+    useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1 }], nodes, totalSteps: 1, checkpointFroms: [], debugValueNames: [] }, debugStep: 0 });
 
     // Suppress React's expected error-boundary console noise for this deliberate-throw case.
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -295,7 +301,7 @@ describe("DebugEventTree", () => {
 describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
   beforeEach(() => {
     useMazeStore.setState({
-      debugArena: { tape: buildOneWalkWilsonTape(), algorithmKind: "wilson", nodes, totalSteps: 3, checkpointFroms: [], debugValueNames: [] },
+      debugArena: { tape: buildOneWalkWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3 }], nodes, totalSteps: 3, checkpointFroms: [], debugValueNames: [] },
       debugStep: 0,
     });
   });
@@ -324,7 +330,7 @@ describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
 
   it("renders LoopErased/WalkDeadEnd narration — untouched by buildOneWalkWilsonTape's straight-line walk", () => {
     useMazeStore.setState({
-      debugArena: { tape: buildLoopErasedDeadEndWilsonTape(), algorithmKind: "wilson", nodes, totalSteps: 3, checkpointFroms: [], debugValueNames: [] },
+      debugArena: { tape: buildLoopErasedDeadEndWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3 }], nodes, totalSteps: 3, checkpointFroms: [], debugValueNames: [] },
       debugStep: 0,
     });
     render(<DebugEventTree />);
@@ -333,5 +339,80 @@ describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
 
     expect(screen.getByText(/Loop erased/)).toBeInTheDocument();
     expect(screen.getByText(m["debug.tree.walk_dead_end"]())).toBeInTheDocument();
+  });
+});
+
+// root (0) -> "generation" scope (1) -> RB former root (2) -> "step 1" scope (3) -> EdgeAdded(1,2) (4)
+//          -> "quality_control" scope (5) -> QC former root (6)
+//               -> "stage s1" scope (7) -> "iteration 1" scope (8)
+//                    -> IterationStarted(0) (9)
+//                    -> "rule r1" scope (10) -> BidirectionalEdgeAdded(1,2) (11)
+// Mirrors the real generation+QC merge shape `run_generate`/`merge_tapes` produce (GitHub issue
+// #147) — covers all three tree-rendering regressions from that issue's bug batch at once: double
+// nesting under a spurious extra "step 0" wrapper, wrong top-level step numbering, and raw
+// `quality_control`/scope-name text instead of localized "Quality Control"/quoted stage-rule titles.
+function buildGenerationPlusQcTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+    { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("quality_control") },
+    { parent: 5, firstChild: 7, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 6, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("stage s1") },
+    { parent: 7, firstChild: 9, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("iteration 1") },
+    { parent: 8, firstChild: null, nextSibling: 10, tag: QC_TAG.ITERATION_STARTED, payloadBytes: u32le(0) },
+    { parent: 8, firstChild: 11, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("rule r1") },
+    { parent: 10, firstChild: null, nextSibling: null, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+  ]);
+}
+
+describe("DebugEventTree with a two-source (generation + QC) tape (GitHub issue #147)", () => {
+  beforeEach(() => {
+    useMazeStore.setState({
+      debugArena: {
+        tape: buildGenerationPlusQcTape(),
+        algorithmKind: "recursive_backtracker",
+        sources: [
+          { scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1 },
+          { scopeName: "quality_control", kind: "quality_control", nodeIndex: 5, startStep: 1, endStep: 2 },
+        ],
+        nodes,
+        totalSteps: 2,
+        checkpointFroms: [],
+        debugValueNames: [],
+      },
+      debugStep: 0,
+      stages: [{ id: "s1", name: "Waypoints" }] as never,
+      rules: [{ id: "r1", name: "No dead ends" }] as never,
+    });
+  });
+
+  it("shows exactly two top-level rows, localized, with no spurious extra nesting", () => {
+    render(<DebugEventTree />);
+    expect(screen.getByText(m["debug.tree.source_scope.generation"]())).toBeInTheDocument();
+    expect(screen.getByText(m["debug.tree.source_scope.quality_control"]())).toBeInTheDocument();
+    // The generation source's own "step 1" scope must be a direct child of the "Generation" row,
+    // not wrapped in a spurious extra step row — "Generation" is already auto-expanded on mount
+    // (GitHub issue #169), so "step 1" is visible without any click, directly under it.
+    expect(screen.getByText(m["debug.tree.step_scope"]({ index: 1 }))).toBeInTheDocument();
+  });
+
+  it("the QC top-level row's step is its first mutating descendant's global step, not a dash", () => {
+    render(<DebugEventTree />);
+    const qcRow = screen.getByText(m["debug.tree.source_scope.quality_control"]()).closest("div")!;
+    // QC's own first mutating event (BidirectionalEdgeAdded) is global step 1 (0-based) -> "2" (1-based).
+    expect(qcRow.querySelector('[data-testid="step-col"]')).toHaveTextContent("2");
+  });
+
+  it("resolves stage/rule scope labels through the live store's stages/rules, quoted", () => {
+    render(<DebugEventTree />);
+    // Top-level source scopes ("Generation"/"Quality Control") are auto-expanded on mount, so
+    // "stage s1"'s row is already visible without clicking "Quality Control" first.
+    expect(screen.getByText('Stage "Waypoints"')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Stage "Waypoints"'));
+    fireEvent.click(screen.getByText(m["debug.tree.qc.iteration_scope"]({ iteration: 1 })));
+    expect(screen.getByText('Rule "No dead ends"')).toBeInTheDocument();
   });
 });

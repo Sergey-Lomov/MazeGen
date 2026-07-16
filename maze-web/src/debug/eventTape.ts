@@ -177,16 +177,27 @@ export interface MutatingEventAt<E> {
  *  `startIndex` (default 0) and `limit` bound the *node-table* scan: the scan starts at arena
  *  index `startIndex` and stops as soon as `limit` mutating events have been collected since
  *  then — a real run can produce tens of thousands of events, per `Specs/event_log.md`'s WASM
- *  Boundary section, so avoiding both the already-known prefix and the unneeded tail matters. */
+ *  Boundary section, so avoiding both the already-known prefix and the unneeded tail matters.
+ *
+ *  `endIndex` (GitHub issue #147, exclusive, defaults to `tape.nodeCount`) additionally caps the
+ *  scan at a fixed arena index regardless of how many mutating events have been found — needed
+ *  when scanning one source's own range in a multi-source merged tape without already knowing
+ *  that source's own mutating-event count: `limit` alone can't express "stop at this source's
+ *  boundary, whatever else lies past it", since a caller may not yet know how many mutating
+ *  events that source itself contains (that's exactly what this scan is computing). Without this,
+ *  an unbounded scan of one source runs straight into the next source's own node range and
+ *  mis-decodes its bytes as if they belonged to this decoder's own tag set (e.g. a QC
+ *  `IterationStarted` tag numerically colliding with an RB `VertexSelected` tag). */
 export function mutatingEventsWithIndex<E>(
   tape: ParsedTape,
   decode: (tag: number, bytes: Uint8Array) => E,
   isMutating: (event: E) => boolean,
   limit?: number,
   startIndex = 0,
+  endIndex = tape.nodeCount,
 ): MutatingEventAt<E>[] {
   const result: MutatingEventAt<E>[] = [];
-  for (let i = startIndex; i < tape.nodeCount; i++) {
+  for (let i = startIndex; i < endIndex; i++) {
     if (limit !== undefined && result.length >= limit) break;
     const record = nodeAt(tape, i);
     if (record.tag === TAG_SCOPE) continue;
@@ -282,6 +293,26 @@ export interface TopLevelSourceScope {
  *  itself still dispatches to exactly one adapter today (see `algorithmRegistry.ts`'s doc
  *  comment); aggregating narration/apply across more than one source scope at once is out of
  *  scope until a real second source (#147) exists. */
+/** Resolves a top-level source's own content-scan start index (GitHub issue #147). A real merged
+ *  tape's `TopLevelSourceScope.nodeIndex` points at the scope *wrapper* node itself (a `TAG_SCOPE`
+ *  node whose payload is just the scope's name) — every wrapper is laid out contiguously right
+ *  after the merged root, *before* any source's actual content (`merge_tapes`, `maze-core/src/
+ *  event_log/mod.rs`), so the wrapper's own `firstChild` is where that source's real events begin,
+ *  a different (and for every source after the first, much later) arena index. Passing
+ *  `nodeIndex` itself as a flat-scan bound previously let one source's decoder run over a
+ *  different source's bytes (e.g. QC's scan started right after QC's own wrapper node, landing
+ *  inside generation's content instead).
+ *
+ *  Some hand-built test fixtures use a legacy flat (pre-#169, unwrapped) tape shape where
+ *  `nodeIndex` already points directly at the first real event, not a scope wrapper — this
+ *  function stays a no-op for those (`tag !== TAG_SCOPE`), so both shapes work through the same
+ *  call sites. */
+export function sourceContentStart(tape: ParsedTape, nodeIndex: number): number {
+  const record = nodeAt(tape, nodeIndex);
+  if (record.tag !== TAG_SCOPE) return nodeIndex;
+  return record.firstChild ?? tape.nodeCount;
+}
+
 export function topLevelSourceScopes(tape: ParsedTape): TopLevelSourceScope[] {
   const root = nodeAt(tape, 0);
   const result: TopLevelSourceScope[] = [];
@@ -473,14 +504,14 @@ export interface MutatingKruskalEventAt {
  *  produces no checkpoints (GitHub issue #146's scope), so unlike its RB counterpart this has no
  *  bounded-resume use case yet, but keeps the same `startIndex`/`limit` shape for consistency and
  *  so `applyKruskal` can reuse the same "keep collecting until limit" loop structure. */
-export function mutatingKruskalEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingKruskalEventAt[] {
-  return mutatingEventsWithIndex(tape, decodeKruskalEvent, isMutatingKruskalEvent, limit, startIndex);
+export function mutatingKruskalEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): MutatingKruskalEventAt[] {
+  return mutatingEventsWithIndex(tape, decodeKruskalEvent, isMutatingKruskalEvent, limit, startIndex, endIndex);
 }
 
 /** Convenience wrapper over `mutatingKruskalEventsWithIndex` for callers that only need the
  *  decoded events, not their arena indices — mirrors `mutatingRbEvents`. */
-export function mutatingKruskalEvents(tape: ParsedTape, limit?: number, startIndex = 0): KruskalEvent[] {
-  return mutatingKruskalEventsWithIndex(tape, limit, startIndex).map((e) => e.event);
+export function mutatingKruskalEvents(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): KruskalEvent[] {
+  return mutatingKruskalEventsWithIndex(tape, limit, startIndex, endIndex).map((e) => e.event);
 }
 
 /** Minimal union-find over `bigint` ids (path compression + union by min), used only to
@@ -575,10 +606,10 @@ export interface KruskalApplyResult {
  *  `PresetUnionsApplied`'s pairs (if any — see `findPresetUnions`), then folds in every `SetsMerged`
  *  up to `targetStep` via `KruskalDsu.union(rootA, rootB)`, mirroring the core's own
  *  `union_by_min` — so a replayed root always equals what the core actually computed. */
-export function applyKruskal(tape: ParsedTape, targetStep: number): KruskalApplyResult {
+export function applyKruskal(tape: ParsedTape, targetStep: number, startIndex = 0, endIndex?: number): KruskalApplyResult {
   validateStepShape("targetStep", targetStep);
 
-  const events = mutatingKruskalEventsWithIndex(tape, targetStep + 1);
+  const events = mutatingKruskalEventsWithIndex(tape, targetStep + 1, startIndex, endIndex);
   if (events.length <= targetStep) {
     throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
   }
@@ -673,14 +704,14 @@ export interface MutatingWilsonEventAt {
  *  events, filtering to mutating ones only — mirrors `mutatingKruskalEventsWithIndex`. Wilson
  *  produces no checkpoints (GitHub issue #128 is RB-only), same as Kruskal, so this keeps the
  *  same `startIndex`/`limit` shape purely for consistency, not because `applyWilson` resumes. */
-export function mutatingWilsonEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingWilsonEventAt[] {
-  return mutatingEventsWithIndex(tape, decodeWilsonEvent, isMutatingWilsonEvent, limit, startIndex);
+export function mutatingWilsonEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): MutatingWilsonEventAt[] {
+  return mutatingEventsWithIndex(tape, decodeWilsonEvent, isMutatingWilsonEvent, limit, startIndex, endIndex);
 }
 
 /** Convenience wrapper over `mutatingWilsonEventsWithIndex` for callers that only need the
  *  decoded events, not their arena indices — mirrors `mutatingKruskalEvents`. */
-export function mutatingWilsonEvents(tape: ParsedTape, limit?: number, startIndex = 0): WilsonEvent[] {
-  return mutatingWilsonEventsWithIndex(tape, limit, startIndex).map((e) => e.event);
+export function mutatingWilsonEvents(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): WilsonEvent[] {
+  return mutatingWilsonEventsWithIndex(tape, limit, startIndex, endIndex).map((e) => e.event);
 }
 
 // `applyWilson` lives further down, after the Debug values section — it needs `VISITED` and
@@ -758,15 +789,15 @@ export interface MutatingRbEventAt {
  *  index `startIndex` and stops as soon as `limit` mutating events have been collected since
  *  then — a real run can produce tens of thousands of events, per `Specs/event_log.md`'s WASM
  *  Boundary section, so avoiding both the already-known prefix and the unneeded tail matters. */
-export function mutatingRbEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingRbEventAt[] {
-  return mutatingEventsWithIndex(tape, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, limit, startIndex);
+export function mutatingRbEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): MutatingRbEventAt[] {
+  return mutatingEventsWithIndex(tape, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, limit, startIndex, endIndex);
 }
 
 /** Convenience wrapper over `mutatingRbEventsWithIndex` for callers that only need the decoded
  *  events, not their arena indices — e.g. tests asserting the plain event sequence. The returned
  *  array's index is the `step` used by `applyRecursiveBacktracker`/`targetStep`. */
-export function mutatingRbEvents(tape: ParsedTape, limit?: number, startIndex = 0): RecursiveBacktrackerEvent[] {
-  return mutatingRbEventsWithIndex(tape, limit, startIndex).map((e) => e.event);
+export function mutatingRbEvents(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): RecursiveBacktrackerEvent[] {
+  return mutatingRbEventsWithIndex(tape, limit, startIndex, endIndex).map((e) => e.event);
 }
 
 // --- Apply ---
@@ -846,7 +877,7 @@ function validateStepShape(name: string, step: number): void {
  *  A bidirectional `EdgeAdded` (GitHub issue #135) contributes both `{from, to}` and `{to, from}`
  *  to `edges` — RB always opens passages in both directions, and the event now carries that fact
  *  explicitly rather than this module assuming it. */
-export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, from?: ApplyFrom): ApplyResult {
+export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, from?: ApplyFrom, endIndex?: number): ApplyResult {
   validateStepShape("targetStep", targetStep);
   if (from) {
     validateStepShape("from.step", from.step);
@@ -874,7 +905,7 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
 
   const scanStart = from ? from.nodeIndex + 1 : 0;
   const needed = targetStep - (from?.step ?? -1);
-  const newEvents = mutatingRbEventsWithIndex(tape, needed, scanStart);
+  const newEvents = mutatingRbEventsWithIndex(tape, needed, scanStart, endIndex);
   if (newEvents.length < needed) {
     const total = (from?.step ?? -1) + 1 + newEvents.length;
     throw new Error(`targetStep ${targetStep} out of range [0, ${total})`);
@@ -1077,12 +1108,17 @@ export interface DebugArenaMetadata {
  *  declaration), not from scanning which deltas this particular run happened to emit. A trivial
  *  run that never triggers a delta would otherwise silently omit a name the algorithm still
  *  declares — see `Specs/event_log.md`'s Generic Debug Values section. */
-export function resolveDebugArenaMetadata(tape: ParsedTape, checkpoints: ParsedCheckpoints): DebugArenaMetadata {
+export function resolveDebugArenaMetadata(
+  tape: ParsedTape,
+  checkpoints: ParsedCheckpoints,
+  startIndex = 0,
+  endIndex = tape.nodeCount,
+): DebugArenaMetadata {
   const checkpointFroms: ApplyFrom[] = [];
   let nextCheckpoint = 0;
   let step = 0;
 
-  for (let i = 0; i < tape.nodeCount; i++) {
+  for (let i = startIndex; i < endIndex; i++) {
     const record = nodeAt(tape, i);
     if (record.tag === TAG_SCOPE) continue;
     const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
@@ -1211,10 +1247,10 @@ export interface WilsonApplyResult {
  *
  *  A bidirectional `EdgeAdded` contributes both `{from, to}` and `{to, from}` to `edges` — mirrors
  *  `applyRecursiveBacktracker`/`applyKruskal`'s handling of the same field. */
-export function applyWilson(tape: ParsedTape, targetStep: number): WilsonApplyResult {
+export function applyWilson(tape: ParsedTape, targetStep: number, startIndex = 0, endIndex?: number): WilsonApplyResult {
   validateStepShape("targetStep", targetStep);
 
-  const events = mutatingWilsonEventsWithIndex(tape, targetStep + 1);
+  const events = mutatingWilsonEventsWithIndex(tape, targetStep + 1, startIndex, endIndex);
   if (events.length <= targetStep) {
     throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
   }
@@ -1458,14 +1494,14 @@ export interface MutatingEdgeBasedEventAt {
 /** Flat layer for `CustomEdgeBased`: forward scan over the node table, skipping scope nodes,
  *  decoding events, filtering to mutating ones only — mirrors `mutatingWilsonEventsWithIndex`. No
  *  checkpoints (GitHub issue #128 is RB-only), same `startIndex`/`limit` shape for consistency. */
-export function mutatingEdgeBasedEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingEdgeBasedEventAt[] {
-  return mutatingEventsWithIndex(tape, decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, limit, startIndex);
+export function mutatingEdgeBasedEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): MutatingEdgeBasedEventAt[] {
+  return mutatingEventsWithIndex(tape, decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, limit, startIndex, endIndex);
 }
 
 /** Convenience wrapper over `mutatingEdgeBasedEventsWithIndex` for callers that only need the
  *  decoded events, not their arena indices. */
-export function mutatingEdgeBasedEvents(tape: ParsedTape, limit?: number, startIndex = 0): EdgeBasedEvent[] {
-  return mutatingEdgeBasedEventsWithIndex(tape, limit, startIndex).map((e) => e.event);
+export function mutatingEdgeBasedEvents(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): EdgeBasedEvent[] {
+  return mutatingEdgeBasedEventsWithIndex(tape, limit, startIndex, endIndex).map((e) => e.event);
 }
 
 export const ACTIVE = "active";
@@ -1505,10 +1541,10 @@ export interface EdgeBasedApplyResult {
  *  one-way coin flip isn't otherwise knowable from the event's other fields) — mirrors RB/
  *  Kruskal/Wilson's own `EdgeAdded.bidirectional` handling: a bidirectional edge contributes both
  *  `{from, to}` and `{to, from}` to `edges`, a one-way edge only the forward pair. */
-export function applyEdgeBased(tape: ParsedTape, targetStep: number): EdgeBasedApplyResult {
+export function applyEdgeBased(tape: ParsedTape, targetStep: number, startIndex = 0, endIndex?: number): EdgeBasedApplyResult {
   validateStepShape("targetStep", targetStep);
 
-  const events = mutatingEdgeBasedEventsWithIndex(tape, targetStep + 1);
+  const events = mutatingEdgeBasedEventsWithIndex(tape, targetStep + 1, startIndex, endIndex);
   if (events.length <= targetStep) {
     throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
   }
@@ -1729,14 +1765,14 @@ export interface MutatingVertexBasedEventAt {
 /** Flat layer for `CustomVertexBased`: forward scan over the node table, skipping scope nodes,
  *  decoding events, filtering to mutating ones only — mirrors `mutatingEdgeBasedEventsWithIndex`.
  *  No checkpoints (GitHub issue #128 is RB-only), same `startIndex`/`limit` shape for consistency. */
-export function mutatingVertexBasedEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0): MutatingVertexBasedEventAt[] {
-  return mutatingEventsWithIndex(tape, decodeVertexBasedEvent, isMutatingVertexBasedEvent, limit, startIndex);
+export function mutatingVertexBasedEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): MutatingVertexBasedEventAt[] {
+  return mutatingEventsWithIndex(tape, decodeVertexBasedEvent, isMutatingVertexBasedEvent, limit, startIndex, endIndex);
 }
 
 /** Convenience wrapper over `mutatingVertexBasedEventsWithIndex` for callers that only need the
  *  decoded events, not their arena indices. */
-export function mutatingVertexBasedEvents(tape: ParsedTape, limit?: number, startIndex = 0): VertexBasedEvent[] {
-  return mutatingVertexBasedEventsWithIndex(tape, limit, startIndex).map((e) => e.event);
+export function mutatingVertexBasedEvents(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): VertexBasedEvent[] {
+  return mutatingVertexBasedEventsWithIndex(tape, limit, startIndex, endIndex).map((e) => e.event);
 }
 
 export const FRONTIER = "frontier";
@@ -1787,10 +1823,10 @@ export interface VertexBasedApplyResult {
  *  `{to, from}` to `edges`, a one-way edge only the forward pair. `PresetNeighborVisited` and the
  *  step-count-worthy-but-edgeless mutating variants (`ReserveCandidateChosen`,
  *  `NodeQueuedToReserve`) contribute no `edges` entry of their own. */
-export function applyVertexBased(tape: ParsedTape, targetStep: number): VertexBasedApplyResult {
+export function applyVertexBased(tape: ParsedTape, targetStep: number, startIndex = 0, endIndex?: number): VertexBasedApplyResult {
   validateStepShape("targetStep", targetStep);
 
-  const events = mutatingVertexBasedEventsWithIndex(tape, targetStep + 1);
+  const events = mutatingVertexBasedEventsWithIndex(tape, targetStep + 1, startIndex, endIndex);
   if (events.length <= targetStep) {
     throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
   }
@@ -1837,4 +1873,432 @@ export function applyVertexBased(tape: ParsedTape, targetStep: number): VertexBa
   }
 
   return { edges, debugValues, step: targetStep, nodeIndex: events[targetStep].nodeIndex };
+}
+
+// --- Quality-control/repair event decoding (GitHub issue #147) ---
+
+/** QC event wire tags — mirrors `wire_tags` in `maze-core/src/quality_control/event.rs`.
+ *  Independent numbering from every generation algorithm's own `*_TAG` above, same as those five
+ *  are independent of each other. */
+export const QC_TAG = {
+  ITERATION_STARTED: 1,
+  RULE_CHECKED: 2,
+  REPAIR_DISPATCHED: 3,
+  ITERATION_NO_PROGRESS: 4,
+  ITERATION_LIMIT_REACHED: 5,
+
+  DIRECTED_EDGE_ADDED: 6,
+  BIDIRECTIONAL_EDGE_ADDED: 7,
+  DIRECTED_TELEPORT_ADDED: 8,
+  BIDIRECTIONAL_TELEPORT_ADDED: 9,
+  EDGE_REMOVED: 10,
+  EDGE_REMOVED_BETWEEN: 11,
+  TELEPORT_REMOVED_WITH_REVERSE: 12,
+  START_SET: 13,
+  FINISH_SET: 14,
+
+  DIRECTED_EDGE_DECLINED: 15,
+  BIDIRECTIONAL_EDGE_DECLINED: 16,
+  DIRECTED_TELEPORT_DECLINED: 17,
+  BIDIRECTIONAL_TELEPORT_DECLINED: 18,
+  EDGE_REMOVE_DECLINED: 19,
+  EDGE_REMOVE_BETWEEN_DECLINED: 20,
+  TELEPORT_REMOVE_WITH_REVERSE_DECLINED: 21,
+  START_SET_DECLINED: 22,
+  FINISH_SET_DECLINED: 23,
+} as const;
+
+export type RepairResultKind = "Fixed" | "Failed";
+export type RepairLimitKind = "MaxIterations" | "TimeBudget";
+
+/** Mirrors `IssuePayload` in `maze-core/src/quality_control/issue_payload.rs` — `None` for the 10
+ *  of 12 `Issue` kinds with no structural edge/node payload (see that type's doc comment). */
+export type IssuePayload =
+  | { kind: "None" }
+  | { kind: "InvalidLoop"; edges: Map<string, [bigint, bigint][][]> }
+  | { kind: "RegionNeedsExpansion"; nodes: Map<string, bigint[][]> };
+
+/** Mirrors `QcEvent` in `maze-core/src/quality_control/event.rs` — see that type's doc comment for
+ *  the trace/mutating/declined split. `ruleId`/`issueKind` are the wire strings `IssueKind::as_str`/
+ *  `Rule::id` produce, not enums — same "plain string over the wire" choice already made for
+ *  `EventedEventKind`/`DebugValueKind` at the WASM boundary. */
+export type QcEvent =
+  | { kind: "IterationStarted"; iteration: number }
+  | { kind: "RuleChecked"; ruleId: string; issue: { issueKind: string; payload: IssuePayload } | null }
+  | { kind: "RepairDispatched"; ruleId: string; result: RepairResultKind; proposed: number; applied: number }
+  | { kind: "IterationNoProgress" }
+  | { kind: "IterationLimitReached"; limit: RepairLimitKind }
+  | { kind: "DirectedEdgeAdded"; from: bigint; to: bigint }
+  | { kind: "BidirectionalEdgeAdded"; a: bigint; b: bigint }
+  | { kind: "DirectedTeleportAdded"; from: bigint; to: bigint }
+  | { kind: "BidirectionalTeleportAdded"; a: bigint; b: bigint }
+  | { kind: "EdgeRemoved"; id: bigint }
+  | { kind: "EdgeRemovedBetween"; from: bigint; to: bigint }
+  | { kind: "TeleportRemovedWithReverse"; id: bigint }
+  | { kind: "StartSet"; id: bigint }
+  | { kind: "FinishSet"; id: bigint }
+  | { kind: "DirectedEdgeDeclined"; from: bigint; to: bigint }
+  | { kind: "BidirectionalEdgeDeclined"; a: bigint; b: bigint }
+  | { kind: "DirectedTeleportDeclined"; from: bigint; to: bigint }
+  | { kind: "BidirectionalTeleportDeclined"; a: bigint; b: bigint }
+  | { kind: "EdgeRemoveDeclined"; id: bigint }
+  | { kind: "EdgeRemoveBetweenDeclined"; from: bigint; to: bigint }
+  | { kind: "TeleportRemoveWithReverseDeclined"; id: bigint }
+  | { kind: "StartSetDeclined"; id: bigint }
+  | { kind: "FinishSetDeclined"; id: bigint };
+
+/** Reads a `u32`-length-prefixed UTF-8 string starting at `offset` — mirrors `write_str` in
+ *  `maze-core/src/quality_control/event.rs`. Returns the decoded string and the byte offset
+ *  immediately past it, mirroring `readNodeIdList`/`readF64List`'s `{ value, next }` shape. */
+function readStr(bytes: Uint8Array, offset: number): { value: string; next: number } {
+  const len = readU32(bytes, offset);
+  const start = offset + 4;
+  const value = textDecoder.decode(bytes.subarray(start, start + len));
+  return { value, next: start + len };
+}
+
+/** Reads the `HashMap<String, Vec<Vec<[u32; 2]>>>` wire shape `write_str_keyed_edge_pairs`
+ *  produces (`IssuePayload::InvalidLoop`'s `edges`). */
+function readStrKeyedEdgePairs(bytes: Uint8Array, offset: number): { value: Map<string, [bigint, bigint][][]>; next: number } {
+  const value = new Map<string, [bigint, bigint][][]>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    const cycleCount = readU32(bytes, pos);
+    pos += 4;
+    const cycles: [bigint, bigint][][] = [];
+    for (let c = 0; c < cycleCount; c++) {
+      const pairCount = readU32(bytes, pos);
+      pos += 4;
+      const pairs: [bigint, bigint][] = [];
+      for (let p = 0; p < pairCount; p++) {
+        const from = BigInt(readU32(bytes, pos));
+        const to = BigInt(readU32(bytes, pos + 4));
+        pairs.push([from, to]);
+        pos += 8;
+      }
+      cycles.push(pairs);
+    }
+    value.set(key, cycles);
+  }
+  return { value, next: pos };
+}
+
+/** Reads the `HashMap<String, Vec<Vec<u32>>>` wire shape `write_str_keyed_node_lists` produces
+ *  (`IssuePayload::RegionNeedsExpansion`'s `nodes`). */
+function readStrKeyedNodeLists(bytes: Uint8Array, offset: number): { value: Map<string, bigint[][]>; next: number } {
+  const value = new Map<string, bigint[][]>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    const regionCount = readU32(bytes, pos);
+    pos += 4;
+    const regions: bigint[][] = [];
+    for (let r = 0; r < regionCount; r++) {
+      const nodeCount = readU32(bytes, pos);
+      pos += 4;
+      const nodes: bigint[] = [];
+      for (let n = 0; n < nodeCount; n++) {
+        nodes.push(BigInt(readU32(bytes, pos)));
+        pos += 4;
+      }
+      regions.push(nodes);
+    }
+    value.set(key, regions);
+  }
+  return { value, next: pos };
+}
+
+/** Reads an `IssuePayload` starting at `offset` — mirrors `write_issue_payload`. */
+function readIssuePayload(bytes: Uint8Array, offset: number): { value: IssuePayload; next: number } {
+  const tag = bytes[offset];
+  if (tag === 0) return { value: { kind: "None" }, next: offset + 1 };
+  if (tag === 1) {
+    const { value: edges, next } = readStrKeyedEdgePairs(bytes, offset + 1);
+    return { value: { kind: "InvalidLoop", edges }, next };
+  }
+  if (tag === 2) {
+    const { value: nodes, next } = readStrKeyedNodeLists(bytes, offset + 1);
+    return { value: { kind: "RegionNeedsExpansion", nodes }, next };
+  }
+  throw new Error(`IssuePayload: unknown tag ${tag}`);
+}
+
+function decodeRepairResultKind(byte: number): RepairResultKind {
+  if (byte === 0) return "Fixed";
+  if (byte === 1) return "Failed";
+  throw new Error(`QcEvent: unknown RepairResultKind byte ${byte}`);
+}
+
+function decodeRepairLimitKind(byte: number): RepairLimitKind {
+  if (byte === 0) return "MaxIterations";
+  if (byte === 1) return "TimeBudget";
+  throw new Error(`QcEvent: unknown RepairLimitKind byte ${byte}`);
+}
+
+/** Decodes one QC event's binary payload. Contract: only called with `tag >= 1` — callers filter
+ *  out `TAG_SCOPE` first. Throws on an unrecognized tag, same error-on-mismatch contract as every
+ *  other decoder in this module. `*Declined` variants (tags 15-23) decode byte-for-byte like their
+ *  mutating mirror (tags 6-14). */
+export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
+  switch (tag) {
+    case QC_TAG.ITERATION_STARTED:
+      expectLen(tag, bytes, 4);
+      return { kind: "IterationStarted", iteration: readU32(bytes, 0) };
+    case QC_TAG.RULE_CHECKED: {
+      const { value: ruleId, next } = readStr(bytes, 0);
+      const present = bytes[next];
+      if (present === 0) return { kind: "RuleChecked", ruleId, issue: null };
+      const { value: issueKind, next: afterKind } = readStr(bytes, next + 1);
+      const { value: payload } = readIssuePayload(bytes, afterKind);
+      return { kind: "RuleChecked", ruleId, issue: { issueKind, payload } };
+    }
+    case QC_TAG.REPAIR_DISPATCHED: {
+      const { value: ruleId, next } = readStr(bytes, 0);
+      const result = decodeRepairResultKind(bytes[next]);
+      const proposed = readU32(bytes, next + 1);
+      const applied = readU32(bytes, next + 5);
+      return { kind: "RepairDispatched", ruleId, result, proposed, applied };
+    }
+    case QC_TAG.ITERATION_NO_PROGRESS:
+      expectLen(tag, bytes, 0);
+      return { kind: "IterationNoProgress" };
+    case QC_TAG.ITERATION_LIMIT_REACHED:
+      expectLen(tag, bytes, 1);
+      return { kind: "IterationLimitReached", limit: decodeRepairLimitKind(bytes[0]) };
+
+    case QC_TAG.DIRECTED_EDGE_ADDED:
+      expectLen(tag, bytes, 16);
+      return { kind: "DirectedEdgeAdded", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.DIRECTED_EDGE_DECLINED:
+      expectLen(tag, bytes, 16);
+      return { kind: "DirectedEdgeDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.BIDIRECTIONAL_EDGE_ADDED:
+      expectLen(tag, bytes, 16);
+      return { kind: "BidirectionalEdgeAdded", a: readNodeId(bytes, 0), b: readNodeId(bytes, 8) };
+    case QC_TAG.BIDIRECTIONAL_EDGE_DECLINED:
+      expectLen(tag, bytes, 16);
+      return { kind: "BidirectionalEdgeDeclined", a: readNodeId(bytes, 0), b: readNodeId(bytes, 8) };
+    case QC_TAG.DIRECTED_TELEPORT_ADDED:
+      expectLen(tag, bytes, 16);
+      return { kind: "DirectedTeleportAdded", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.DIRECTED_TELEPORT_DECLINED:
+      expectLen(tag, bytes, 16);
+      return { kind: "DirectedTeleportDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.BIDIRECTIONAL_TELEPORT_ADDED:
+      expectLen(tag, bytes, 16);
+      return { kind: "BidirectionalTeleportAdded", a: readNodeId(bytes, 0), b: readNodeId(bytes, 8) };
+    case QC_TAG.BIDIRECTIONAL_TELEPORT_DECLINED:
+      expectLen(tag, bytes, 16);
+      return { kind: "BidirectionalTeleportDeclined", a: readNodeId(bytes, 0), b: readNodeId(bytes, 8) };
+    case QC_TAG.EDGE_REMOVED:
+      expectLen(tag, bytes, 8);
+      return { kind: "EdgeRemoved", id: readNodeId(bytes, 0) };
+    case QC_TAG.EDGE_REMOVE_DECLINED:
+      expectLen(tag, bytes, 8);
+      return { kind: "EdgeRemoveDeclined", id: readNodeId(bytes, 0) };
+    case QC_TAG.EDGE_REMOVED_BETWEEN:
+      expectLen(tag, bytes, 16);
+      return { kind: "EdgeRemovedBetween", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.EDGE_REMOVE_BETWEEN_DECLINED:
+      expectLen(tag, bytes, 16);
+      return { kind: "EdgeRemoveBetweenDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.TELEPORT_REMOVED_WITH_REVERSE:
+      expectLen(tag, bytes, 8);
+      return { kind: "TeleportRemovedWithReverse", id: readNodeId(bytes, 0) };
+    case QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED:
+      expectLen(tag, bytes, 8);
+      return { kind: "TeleportRemoveWithReverseDeclined", id: readNodeId(bytes, 0) };
+    case QC_TAG.START_SET:
+      expectLen(tag, bytes, 8);
+      return { kind: "StartSet", id: readNodeId(bytes, 0) };
+    case QC_TAG.START_SET_DECLINED:
+      expectLen(tag, bytes, 8);
+      return { kind: "StartSetDeclined", id: readNodeId(bytes, 0) };
+    case QC_TAG.FINISH_SET:
+      expectLen(tag, bytes, 8);
+      return { kind: "FinishSet", id: readNodeId(bytes, 0) };
+    case QC_TAG.FINISH_SET_DECLINED:
+      expectLen(tag, bytes, 8);
+      return { kind: "FinishSetDeclined", id: readNodeId(bytes, 0) };
+    default:
+      throw new Error(`QcEvent: unknown wire tag ${tag}`);
+  }
+}
+
+/** Mirrors `DebugEvent::is_mutating`'s split for `QcEvent` in
+ *  `maze-core/src/quality_control/event.rs` — `true` for exactly the 9 mutation-mirror variants;
+ *  every `*Declined` variant and every trace variant is `false`. */
+export function isMutatingQcEvent(event: QcEvent): boolean {
+  return (
+    event.kind === "DirectedEdgeAdded" ||
+    event.kind === "BidirectionalEdgeAdded" ||
+    event.kind === "DirectedTeleportAdded" ||
+    event.kind === "BidirectionalTeleportAdded" ||
+    event.kind === "EdgeRemoved" ||
+    event.kind === "EdgeRemovedBetween" ||
+    event.kind === "TeleportRemovedWithReverse" ||
+    event.kind === "StartSet" ||
+    event.kind === "FinishSet"
+  );
+}
+
+export interface MutatingQcEventAt {
+  event: QcEvent;
+  nodeIndex: number;
+}
+
+/** Flat layer for QC: forward scan over the node table, skipping scope nodes, decoding events,
+ *  filtering to mutating ones only — mirrors `mutatingEdgeBasedEventsWithIndex`. No checkpoints
+ *  (GitHub issue #128 is RB-only; QC's own tape is expected far shorter than a full generation
+ *  tape — see the plan's "out of scope" section), same `startIndex`/`limit` shape for consistency
+ *  with every other `mutatingXEventsWithIndex`. */
+export function mutatingQcEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): MutatingQcEventAt[] {
+  return mutatingEventsWithIndex(tape, decodeQcEvent, isMutatingQcEvent, limit, startIndex, endIndex);
+}
+
+/** Convenience wrapper over `mutatingQcEventsWithIndex` for callers that only need the decoded
+ *  events, not their arena indices. */
+export function mutatingQcEvents(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): QcEvent[] {
+  return mutatingQcEventsWithIndex(tape, limit, startIndex, endIndex).map((e) => e.event);
+}
+
+export interface QcApplyResult {
+  /** `edges`/`removedEdges` — QC's own contribution, expressed as an add/remove patch rather than
+   *  a full edge list (unlike every generation adapter's `ApplyResult.edges`, which is a
+   *  ground-truth full list built from scratch each replay). QC operates on an *existing* graph a
+   *  generation source already built, so `mergeDebugMazeView` (`debugSelectors.ts`) needs to know
+   *  which edges QC added on top of generation's own list and which it removed from it — a plain
+   *  `edges` list alone can't express "remove this edge", only "these edges exist". */
+  edges: Edge[];
+  removedEdges: { from: bigint; to: bigint }[];
+  start: bigint | null;
+  finish: bigint | null;
+  step: number;
+  nodeIndex: number;
+}
+
+/** Replays QC's own mutating events, starting the underlying node-table scan at `startNodeIndex`
+ *  (the QC top-level source scope's own arena index — see `topLevelSourceScopes`/
+ *  `sourceScopeForNode` below) rather than index 0: QC is always merged as a source *after*
+ *  generation (Contract A, `Specs/event_log.md`'s #147 section), so its own mutating events never
+ *  start at the beginning of the merged tape. `targetStep` is relative to QC's own mutating-event
+ *  stream (0-based, independent of however many generation steps preceded it) — the caller
+ *  (`selectDebugMazeView`) is responsible for subtracting generation's own step count first.
+ *
+ *  Processes events **in order**, folding each add/remove into a running `Edge` accumulator keyed
+ *  by `from:to` (not two independent append-only lists) — QC's own repair loop can plausibly add
+ *  an edge in one iteration and remove that same edge in a later one within the same
+ *  `[0, targetStep]` window (e.g. one strategy adds a shortcut, a later check flags it invalid,
+ *  another strategy removes it); folding in order means a later remove correctly cancels an
+ *  earlier add from *this same contribution*, and a later re-add correctly overrides an earlier
+ *  remove, before this result is ever handed to `mergeDebugMazeView`. Only the *net* additions and
+ *  removals relative to `[0, targetStep]`'s starting point (nothing from this source yet) are
+ *  reported — `removedEdges` therefore only ever needs to reach into an *earlier* source's
+ *  contribution (e.g. generation's own edge list), never cancel this same call's own `edges`.
+ *
+ *  `EdgeRemoved`/`TeleportRemovedWithReverse` carry only the removed edge's `EdgeId`, not its
+ *  endpoints (mirrors the Rust wire format — `apply_commands` doesn't have the endpoints handy at
+ *  removal time either, only the id) — these two variants can't participate in the keyed
+ *  accumulator at all and are silently skipped; `mergeDebugMazeView` falls back to matching by
+ *  graph structure for those two cases (see that function's own doc comment). `EdgeRemovedBetween`
+ *  does carry both endpoints and participates fully. */
+export function applyQc(tape: ParsedTape, targetStep: number, startNodeIndex = 0): QcApplyResult {
+  validateStepShape("targetStep", targetStep);
+
+  const events = mutatingQcEventsWithIndex(tape, targetStep + 1, startNodeIndex);
+  if (events.length <= targetStep) {
+    throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
+  }
+
+  // Keyed by `from:to`, in event order — `net.set(key, edge)` on add, `net.delete(key)` on
+  // remove, so a later event always overrides an earlier one for the same pair, regardless of
+  // whether it's add-then-remove or remove-then-(re-)add.
+  const net = new Map<string, Edge>();
+  const removedFromEarlierSources = new Set<string>();
+  let start: bigint | null = null;
+  let finish: bigint | null = null;
+
+  const add = (from: bigint, to: bigint, kind: "basic" | "teleport") => {
+    const key = `${from}:${to}`;
+    net.set(key, { from, to, kind });
+    removedFromEarlierSources.delete(key);
+  };
+  const remove = (from: bigint, to: bigint) => {
+    const key = `${from}:${to}`;
+    if (net.has(key)) {
+      net.delete(key);
+    } else {
+      removedFromEarlierSources.add(key);
+    }
+  };
+
+  for (const { event } of events) {
+    switch (event.kind) {
+      case "DirectedEdgeAdded":
+        add(event.from, event.to, "basic");
+        break;
+      case "BidirectionalEdgeAdded":
+        add(event.a, event.b, "basic");
+        add(event.b, event.a, "basic");
+        break;
+      case "DirectedTeleportAdded":
+        add(event.from, event.to, "teleport");
+        break;
+      case "BidirectionalTeleportAdded":
+        add(event.a, event.b, "teleport");
+        add(event.b, event.a, "teleport");
+        break;
+      case "EdgeRemovedBetween":
+        remove(event.from, event.to);
+        break;
+      case "EdgeRemoved":
+      case "TeleportRemovedWithReverse":
+        // No endpoints on the wire for these two — see this function's doc comment.
+        break;
+      case "StartSet":
+        start = event.id;
+        break;
+      case "FinishSet":
+        finish = event.id;
+        break;
+      default:
+        break;
+    }
+  }
+
+  const edges = [...net.values()];
+  const removedEdges = [...removedFromEarlierSources].map((key) => {
+    const [from, to] = key.split(":");
+    return { from: BigInt(from), to: BigInt(to) };
+  });
+
+  return { edges, removedEdges, start, finish, step: targetStep, nodeIndex: events[targetStep].nodeIndex };
+}
+
+/** Given any arena node index, walks `.parent` up to the nearest top-level source scope and
+ *  returns it — the single place this walk happens (Contract B, `Specs/event_log.md`'s #147
+ *  section): `debugTreeSelectors.ts`/`DebugEventTree.tsx` call this instead of walking
+ *  `record.parent` themselves, so "which source does this node belong to" has exactly one
+ *  implementation. Throws if `nodeIndex` is the merged root itself (index 0) or otherwise has no
+ *  top-level-scope ancestor — every real node produced by `merge_tapes` has one by construction. */
+export function sourceScopeForNode(tape: ParsedTape, nodeIndex: number): TopLevelSourceScope {
+  if (nodeIndex === 0) {
+    throw new Error("sourceScopeForNode: node 0 is the merged root itself, not a member of any source scope");
+  }
+  let current = nodeAt(tape, nodeIndex);
+  let currentIndex = nodeIndex;
+  while (current.parent !== null && current.parent !== 0) {
+    currentIndex = current.parent;
+    current = nodeAt(tape, currentIndex);
+  }
+  if (current.parent !== 0) {
+    throw new Error(`sourceScopeForNode: node ${nodeIndex} has no top-level-scope ancestor under the merged root`);
+  }
+  const bytes = tape.payload.subarray(current.payloadOffset, current.payloadOffset + current.payloadLen);
+  return { scopeName: textDecoder.decode(bytes), nodeIndex: currentIndex };
 }

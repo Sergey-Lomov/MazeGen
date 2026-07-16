@@ -4,7 +4,9 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::repair::{RepairStrategy, RepairResult, NestedStrategyConfig, MutationCommand, params::{build_params, StrategyParams}};
+use crate::event_log::ScopeGuard;
 use super::check::Check;
+use super::event::QcEvent;
 use super::issue::{Issue, IssueRequirement, IssueMerge, IssueKind};
 
 /// How many of a strategy's proposed `MutationCommand`s actually applied — see GitHub issue #118,
@@ -25,10 +27,18 @@ pub struct ApplyOutcome {
 ///
 /// `pub` (not `pub(crate)`) so integration tests (`maze-core/tests/*.rs`, a separate crate) can
 /// exercise the same apply-then-commit sequencing `Rule::dispatch_repair_typed` uses internally.
+///
+/// `event_log` (GitHub issue #147) emits one `QcEvent` per command, in the same order commands are
+/// applied — the mutating mirror variant when `ok == true`, the matching `*Declined` trace variant
+/// (same fields) when `ok == false`. Emitted here, not by the caller, because this function is the
+/// only place that knows both the command's real fields (already at hand from the `match`) and its
+/// actual revalidation outcome — a caller re-deriving that from `ApplyOutcome`'s aggregate counts
+/// couldn't tell *which* command in the batch was declined.
 pub fn apply_commands<T: Tessellation>(
     maze: &mut Maze<T>,
     preset_state: &PresetState,
     commands: Vec<MutationCommand>,
+    mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
 ) -> ApplyOutcome {
     let proposed = commands.len();
     let mut applied = 0;
@@ -58,8 +68,36 @@ pub fn apply_commands<T: Tessellation>(
             }
         };
         if ok { applied += 1; }
+        if let Some(log) = event_log.as_mut() {
+            log.emit(qc_event_for_command(&cmd, ok));
+        }
     }
     ApplyOutcome { proposed, applied }
+}
+
+/// Builds the `QcEvent` mirroring `cmd` — the mutating variant when `applied`, the matching
+/// `*Declined` trace variant (same fields) otherwise. See `apply_commands`'s doc comment.
+fn qc_event_for_command(cmd: &MutationCommand, applied: bool) -> QcEvent {
+    match (cmd, applied) {
+        (MutationCommand::AddDirectedEdge { from, to }, true) => QcEvent::DirectedEdgeAdded { from: *from, to: *to },
+        (MutationCommand::AddDirectedEdge { from, to }, false) => QcEvent::DirectedEdgeDeclined { from: *from, to: *to },
+        (MutationCommand::AddBidirectionalEdge { a, b }, true) => QcEvent::BidirectionalEdgeAdded { a: *a, b: *b },
+        (MutationCommand::AddBidirectionalEdge { a, b }, false) => QcEvent::BidirectionalEdgeDeclined { a: *a, b: *b },
+        (MutationCommand::AddDirectedTeleport { from, to }, true) => QcEvent::DirectedTeleportAdded { from: *from, to: *to },
+        (MutationCommand::AddDirectedTeleport { from, to }, false) => QcEvent::DirectedTeleportDeclined { from: *from, to: *to },
+        (MutationCommand::AddBidirectionalTeleport { a, b }, true) => QcEvent::BidirectionalTeleportAdded { a: *a, b: *b },
+        (MutationCommand::AddBidirectionalTeleport { a, b }, false) => QcEvent::BidirectionalTeleportDeclined { a: *a, b: *b },
+        (MutationCommand::RemoveEdge { id }, true) => QcEvent::EdgeRemoved { id: *id },
+        (MutationCommand::RemoveEdge { id }, false) => QcEvent::EdgeRemoveDeclined { id: *id },
+        (MutationCommand::RemoveEdgeBetween { from, to }, true) => QcEvent::EdgeRemovedBetween { from: *from, to: *to },
+        (MutationCommand::RemoveEdgeBetween { from, to }, false) => QcEvent::EdgeRemoveBetweenDeclined { from: *from, to: *to },
+        (MutationCommand::RemoveTeleportWithReverse { id }, true) => QcEvent::TeleportRemovedWithReverse { id: *id },
+        (MutationCommand::RemoveTeleportWithReverse { id }, false) => QcEvent::TeleportRemoveWithReverseDeclined { id: *id },
+        (MutationCommand::SetStart(node), true) => QcEvent::StartSet(*node),
+        (MutationCommand::SetStart(node), false) => QcEvent::StartSetDeclined(*node),
+        (MutationCommand::SetFinish(node), true) => QcEvent::FinishSet(*node),
+        (MutationCommand::SetFinish(node), false) => QcEvent::FinishSetDeclined(*node),
+    }
 }
 
 /// One rule's strategy assignment — checks + strategy + resolved params/requirement, held
@@ -177,12 +215,13 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         preset_state: &PresetState,
         timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: &dyn Fn() -> f64,
+        event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
     ) -> Option<(RepairResult, ApplyOutcome)> {
         let rule_strategy = self.strategy.as_ref()?;
         let (result, commands) = timed(timing, rule_strategy.strategy.strategy_id(), now_ms, || {
             rule_strategy.strategy.apply(issue, maze, rng, &rule_strategy.params, preset_state, &rule_strategy.nested)
         });
-        let outcome = apply_commands(maze, preset_state, commands);
+        let outcome = apply_commands(maze, preset_state, commands, event_log);
         Some((result, outcome))
     }
 }
@@ -214,7 +253,7 @@ pub trait RuleTrait<T: Tessellation> {
     fn dispatch_repair(
         &self, issue: &dyn Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore,
         preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: &dyn Fn() -> f64,
+        now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
     ) -> Option<(RepairResult, ApplyOutcome)>;
 }
 
@@ -250,11 +289,11 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge + 'static> RuleTrait<T> f
     fn dispatch_repair(
         &self, issue: &dyn Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore,
         preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>,
-        now_ms: &dyn Fn() -> f64,
+        now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
     ) -> Option<(RepairResult, ApplyOutcome)> {
         let typed: &I = issue.as_any().downcast_ref::<I>()
             .expect("RuleTrait::dispatch_repair: issue must originate from this same Rule's own run_checks — see this trait method's doc comment");
-        self.dispatch_repair_typed(typed, maze, rng, preset_state, timing, now_ms)
+        self.dispatch_repair_typed(typed, maze, rng, preset_state, timing, now_ms, event_log)
     }
 }
 

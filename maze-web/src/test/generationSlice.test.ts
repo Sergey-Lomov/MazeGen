@@ -8,7 +8,11 @@ import { parseTape } from "../debug/eventTape";
 import type { DebugArenaHandle } from "../store/storeTypes";
 
 function emptyDebugArena(): DebugArenaHandle {
-  return { tape: parseTape(new Uint8Array(0), new Uint8Array(0)), algorithmKind: "recursive_backtracker", nodes: [], totalSteps: 0, checkpointFroms: [], debugValueNames: [] };
+  return {
+    tape: parseTape(new Uint8Array(0), new Uint8Array(0)), algorithmKind: "recursive_backtracker",
+    sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: 0 }],
+    nodes: [], totalSteps: 0, checkpointFroms: [], debugValueNames: [],
+  };
 }
 
 vi.mock("../wasm/mazeService", () => ({

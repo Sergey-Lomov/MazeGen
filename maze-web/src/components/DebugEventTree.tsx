@@ -7,10 +7,11 @@ import {
   displayStepForRow, type TreeRow,
 } from "../debug/debugTreeSelectors";
 import { nodeAt, nodeView, topLevelSourceScopes, type ParsedTape } from "../debug/eventTape";
-import { adapterFor, type Token, type BaseAlgorithmAdapter } from "../debug/algorithmRegistry";
+import { adapterForNode, type Token, type BaseAlgorithmAdapter, type ScopeTitleLookup } from "../debug/algorithmRegistry";
 import type { EventedEventKind } from "../wasm/mazeService";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { ui, typography, muted } from "../styles/theme";
+import * as m from "~/paraglide/messages";
 
 const ROW_MIN_HEIGHT = 26;
 const INDENT_PX = 16;
@@ -65,30 +66,69 @@ function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: numb
  *  adapter so the decoded event's type flows from `decodeEvent` straight into
  *  `narrationTokensFor`/`isMutatingEvent` on the *same* concrete adapter — no `unknown` laundering
  *  at the decode/narrate boundary (GitHub issue #163's review). */
-function rowTokensFor<E>(adapter: BaseAlgorithmAdapter<E>, tape: ParsedTape, row: TreeRow): { tokens: Token[]; mutating: boolean } {
+function rowTokensFor<E>(adapter: BaseAlgorithmAdapter<E>, tape: ParsedTape, row: TreeRow, titleLookup: ScopeTitleLookup): { tokens: Token[]; mutating: boolean } {
   if (row.payload.kind === "scope") {
     const children = nodeView(tape, row.nodeIndex).children();
-    return { tokens: [{ kind: "text", text: adapter.scopeLabel(row.payload.name, children) }], mutating: false };
+    return { tokens: [{ kind: "text", text: adapter.scopeLabel(row.payload.name, children, titleLookup) }], mutating: false };
   }
   const event = adapter.decodeEvent(row.payload.tag, row.payload.bytes);
-  return { tokens: adapter.narrationTokensFor(event), mutating: adapter.isMutatingEvent(event) };
+  return { tokens: adapter.narrationTokensFor(event, titleLookup), mutating: adapter.isMutatingEvent(event) };
 }
 
-/** Dispatches to the current algorithm's adapter (GitHub issue #163) — the only place this
- *  component still branches on `algorithmKind`, and only to pick which concrete adapter to run
- *  `rowTokensFor` with. */
-function rowTokens(tape: ParsedTape, row: TreeRow, algorithmKind: EventedEventKind): { tokens: Token[]; mutating: boolean } {
-  if (algorithmKind === "kruskal") return rowTokensFor(adapterFor("kruskal"), tape, row);
-  if (algorithmKind === "wilson") return rowTokensFor(adapterFor("wilson"), tape, row);
-  if (algorithmKind === "edge_based") return rowTokensFor(adapterFor("edge_based"), tape, row);
-  if (algorithmKind === "vertex_based") return rowTokensFor(adapterFor("vertex_based"), tape, row);
-  return rowTokensFor(adapterFor("recursive_backtracker"), tape, row);
+/** Dispatches to the right row's own source adapter (GitHub issue #147, generalizing #163's single-
+ *  algorithm dispatch to a possibly-multi-source tape) — resolves per row via `adapterForNode`
+ *  (Contract B, `Specs/event_log.md`'s #147 section) rather than one algorithm kind for the whole
+ *  tree, since a merged tape's rows may now belong to different top-level sources (generation vs.
+ *  QC). `adapterForNode` returns `AnyAdapter`, a union over six concrete adapter types — TS can't
+ *  instantiate `rowTokensFor<E>`'s single type parameter from a union value directly (it would have
+ *  to pick one `E` for every possible member at once, which is unsound in general). The cast to
+ *  `BaseAlgorithmAdapter<unknown>` here is safe in this specific case because `rowTokensFor` never
+ *  constructs an `E` itself — it only decodes a payload into `E` via `adapter.decodeEvent` and
+ *  immediately feeds that same value back into `adapter.narrationTokensFor`/`isMutatingEvent` on the
+ *  *same* adapter instance, so whichever concrete `E` the runtime adapter actually uses stays
+ *  internally consistent regardless of what the static type parameter says. */
+const SOURCE_SCOPE_LABEL: Record<EventedEventKind, () => string> = {
+  recursive_backtracker: () => m["debug.tree.source_scope.generation"](),
+  kruskal: () => m["debug.tree.source_scope.generation"](),
+  wilson: () => m["debug.tree.source_scope.generation"](),
+  edge_based: () => m["debug.tree.source_scope.generation"](),
+  vertex_based: () => m["debug.tree.source_scope.generation"](),
+  quality_control: () => m["debug.tree.source_scope.quality_control"](),
+};
+
+function rowTokens(
+  tape: ParsedTape,
+  row: TreeRow,
+  sourceEventKinds: readonly EventedEventKind[],
+  topLevelScopeKinds: ReadonlyMap<number, EventedEventKind>,
+  titleLookup: ScopeTitleLookup,
+): { tokens: Token[]; mutating: boolean } {
+  // A top-level source scope's label names *which source* this subtree came from ("Generation"/
+  // "Quality Control"), not a step within it — no per-algorithm adapter's own `scopeLabel` was
+  // ever designed to name this node (it only ever saw "step N"/"edge N"/... scope names before
+  // GitHub issue #147 made a second, non-generation top-level source exist), so this is resolved
+  // directly from `topLevelScopeKinds` instead of falling through to `adapter.scopeLabel`.
+  const topLevelKind = topLevelScopeKinds.get(row.nodeIndex);
+  if (topLevelKind !== undefined) {
+    return { tokens: [{ kind: "text", text: SOURCE_SCOPE_LABEL[topLevelKind]() }], mutating: false };
+  }
+  const adapter = adapterForNode(tape, row.nodeIndex, sourceEventKinds) as BaseAlgorithmAdapter<unknown>;
+  return rowTokensFor(adapter, tape, row, titleLookup);
 }
 
 export function DebugEventTree() {
   const debugArena = useMazeStore((s) => s.debugArena);
   const debugStep = useMazeStore((s) => s.debugStep);
   const setDebugStep = useMazeStore((s) => s.setDebugStep);
+  const stages = useMazeStore((s) => s.stages);
+  const rules = useMazeStore((s) => s.rules);
+  // Resolved live from the current store config, not from the tape (core has no concept of a
+  // rule/stage's display title, only its opaque `id` — see `ScopeTitleLookup`'s doc comment).
+  const titleLookup: ScopeTitleLookup = useMemo(() => {
+    const stageTitles = new Map(stages.map((s) => [s.id, s.name]));
+    const ruleTitles = new Map(rules.map((r) => [r.id, r.name]));
+    return { stageTitle: (id) => stageTitles.get(id), ruleTitle: (id) => ruleTitles.get(id) };
+  }, [stages, rules]);
 
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -97,13 +137,33 @@ export function DebugEventTree() {
   const skipNextScrollRef = useRef(false);
 
   const tape = debugArena?.tape ?? null;
-  const algorithmKind = debugArena?.algorithmKind ?? "recursive_backtracker";
+  const sourceEventKinds = useMemo(() => debugArena?.sources.map((s) => s.kind) ?? ["recursive_backtracker" as const], [debugArena]);
+  const topLevelScopeKinds = useMemo(
+    () => new Map(debugArena?.sources.map((s) => [s.nodeIndex, s.kind] as const) ?? []),
+    [debugArena],
+  );
+  const stepIndexSources = useMemo(
+    () => debugArena?.sources.map((s) => ({ kind: s.kind, nodeIndex: s.nodeIndex })),
+    [debugArena],
+  );
+  // Each top-level source scope's own former-root merge artifact (GitHub issue #169's wrapping,
+  // #147's regression fix) — see `flattenVisibleRows`'s doc comment for why these must never get
+  // their own row.
+  const transparentNodeIndices = useMemo(() => {
+    if (!tape) return new Set<number>();
+    const result = new Set<number>();
+    for (const scope of topLevelSourceScopes(tape)) {
+      const formerRoot = nodeAt(tape, scope.nodeIndex).firstChild;
+      if (formerRoot !== null) result.add(formerRoot);
+    }
+    return result;
+  }, [tape]);
 
-  // Every tape now has two extra levels of nesting (GitHub issue #169: merged root -> top-level
-  // source scope -> the algorithm's own former root, itself a scope node, only then -> "step
-  // N"/"edge N"/...). Auto-expanding both the top-level source scope and its one child (the
-  // former root) for a freshly-loaded tape keeps "step N"/"edge N"/... visible immediately,
-  // matching pre-#169 behavior instead of forcing two extra clicks just to see any content.
+  // Auto-expanding each top-level source scope for a freshly-loaded tape keeps "step N"/"edge
+  // N"/... visible immediately instead of forcing a click just to see any content. Each source's
+  // own former-root merge artifact (GitHub issue #169's wrapping, GitHub issue #147's regression
+  // fix) never gets its own row (see `flattenVisibleRows`'s doc comment), so it needs no entry
+  // here — expanding the top-level scope alone already reveals its real children.
   //
   // Resets `expanded` to a fresh Set on every new tape (rather than adding on top of whatever was
   // there before) — node indices are only meaningful within the tape that produced them, so
@@ -112,20 +172,12 @@ export function DebugEventTree() {
   // decision the user never made on this run.
   useLayoutEffect(() => {
     if (!tape) return;
-    setExpanded(() => {
-      const next = new Set<number>();
-      for (const scope of topLevelSourceScopes(tape)) {
-        next.add(scope.nodeIndex);
-        const formerRoot = nodeAt(tape, scope.nodeIndex).firstChild;
-        if (formerRoot !== null) next.add(formerRoot);
-      }
-      return next;
-    });
+    setExpanded(() => new Set(topLevelSourceScopes(tape).map((scope) => scope.nodeIndex)));
     // Only re-run when the tape identity itself changes (a fresh generate()) — expanding/
     // collapsing individual rows afterward must not re-trigger this auto-expand.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tape]);
-  const stepIndex = useMemo(() => (tape ? buildStepIndex(tape, algorithmKind) : null), [tape, algorithmKind]);
+  const stepIndex = useMemo(() => (tape ? buildStepIndex(tape, stepIndexSources) : null), [tape, stepIndexSources]);
   const coordIndex = useMemo(() => (debugArena ? buildNodeCoordIndex(debugArena.nodes) : null), [debugArena]);
   const coords = useMemo(() => (coordIndex ? (id: bigint) => coordIndex.get(id) : () => null), [coordIndex]);
 
@@ -133,11 +185,11 @@ export function DebugEventTree() {
     if (!tape) {
       return { rows: [] as TreeRow[], labels: [] as { tokens: Token[]; mutating: boolean }[], rowIndexByNodeIndex: new Map<number, number>() };
     }
-    const rows = flattenVisibleRows(tape, expanded);
-    const labels = rows.map((row) => rowTokens(tape, row, algorithmKind));
+    const rows = flattenVisibleRows(tape, expanded, transparentNodeIndices);
+    const labels = rows.map((row) => rowTokens(tape, row, sourceEventKinds, topLevelScopeKinds, titleLookup));
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
     return { rows, labels, rowIndexByNodeIndex };
-  }, [tape, expanded, algorithmKind]);
+  }, [tape, expanded, sourceEventKinds, topLevelScopeKinds, transparentNodeIndices, titleLookup]);
 
   const highlightedNodeIndex = useMemo(() => {
     if (!tape || !stepIndex) return null;

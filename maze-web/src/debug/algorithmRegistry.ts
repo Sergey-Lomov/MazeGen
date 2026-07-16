@@ -14,14 +14,15 @@
 
 import {
   type ParsedTape, type ParsedCheckpoints, type ApplyFrom, type NodeView,
-  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent,
-  type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult,
+  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent, type QcEvent,
+  type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult, type QcApplyResult,
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
-  decodeKruskalEvent, isMutatingKruskalEvent, mutatingKruskalEventsWithIndex, mutatingKruskalEvents, applyKruskal, kruskalMergedRoot,
-  decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEventsWithIndex, mutatingWilsonEvents, applyWilson,
-  decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEventsWithIndex, mutatingEdgeBasedEvents, applyEdgeBased,
-  decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEventsWithIndex, mutatingVertexBasedEvents, applyVertexBased, VERTEX_BASED_TAG,
-  resolveDebugArenaMetadata, parseCheckpoints, type DebugArenaMetadata,
+  decodeKruskalEvent, isMutatingKruskalEvent, mutatingKruskalEventsWithIndex, applyKruskal, kruskalMergedRoot,
+  decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEventsWithIndex, applyWilson,
+  decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEventsWithIndex, applyEdgeBased,
+  decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEventsWithIndex, applyVertexBased, VERTEX_BASED_TAG,
+  decodeQcEvent, isMutatingQcEvent, mutatingQcEventsWithIndex, applyQc, sourceScopeForNode, topLevelSourceScopes,
+  resolveDebugArenaMetadata, parseCheckpoints, type DebugArenaMetadata, type TopLevelSourceScope,
 } from "./eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
 import * as m from "~/paraglide/messages";
@@ -40,39 +41,77 @@ export type Token =
  *  (`RecursiveBacktrackerEvent`/`KruskalEvent`/`WilsonEvent`) so `decodeEvent`/`isMutatingEvent`/
  *  `narrationTokensFor` stay fully typed at every call site — no `unknown`/`any` laundering. */
 export interface BaseAlgorithmAdapter<E> {
-  /** debugTreeSelectors.ts: flat-layer mutating-event node indices, for `buildStepIndex`. */
-  mutatingNodeIndices(tape: ParsedTape): number[];
-  /** generateConfigBuilder.ts: totalSteps + checkpointFroms for a freshly-parsed tape. */
-  resolveMetadata(tape: ParsedTape, checkpoints: ParsedCheckpoints | null): DebugArenaMetadata;
+  /** debugTreeSelectors.ts: flat-layer mutating-event node indices, for `buildStepIndex`.
+   *  `startIndex`/`endIndex` (GitHub issue #147, default the whole tape) bound the underlying
+   *  node-table scan to `[startIndex, endIndex)` — needed when this adapter's source isn't the
+   *  tape's only top-level scope, so its own scan neither re-walks an earlier source's bytes nor
+   *  runs into a later source's bytes using this adapter's own tag set (a real, previously-hit bug:
+   *  scanning generation unbounded past its own range decoded QC's `IterationStarted` tag as RB's
+   *  numerically-colliding `VertexSelected` tag). */
+  mutatingNodeIndices(tape: ParsedTape, startIndex?: number, endIndex?: number): number[];
+  /** generateConfigBuilder.ts: totalSteps + checkpointFroms for a freshly-parsed tape.
+   *  `startIndex`/`endIndex` (GitHub issue #147, default the whole tape) bound the scan to this
+   *  source's own range — same rationale as `mutatingNodeIndices`' own doc comment: an unbounded
+   *  scan of one source runs into a later source's bytes and mis-decodes them. */
+  resolveMetadata(tape: ParsedTape, checkpoints: ParsedCheckpoints | null, startIndex?: number, endIndex?: number): DebugArenaMetadata;
   decodeEvent(tag: number, bytes: Uint8Array): E;
   isMutatingEvent(event: E): boolean;
-  /** DebugEventTree.tsx: narration tokens for one decoded event. */
-  narrationTokensFor(event: E): Token[];
+  /** DebugEventTree.tsx: narration tokens for one decoded event. `titleLookup` (GitHub issue
+   *  #147) — see `scopeLabel`'s doc comment below; every non-QC adapter ignores it, QC uses it to
+   *  resolve `RuleChecked`/`RepairDispatched`'s `ruleId` to its current title the same way
+   *  `scopeLabel` resolves a `"rule <id>"` scope's own label. */
+  narrationTokensFor(event: E, titleLookup?: ScopeTitleLookup): Token[];
   /** DebugEventTree.tsx: label for a scope row (e.g. "step N"/"edge N"/"walk N", or Wilson's
    *  fixed "search"/"commit" names) — the raw arena scope name in, the localized label out.
    *  `children` is this scope's own direct children only (never the whole tape) — lets a label
    *  read a summary value out of its own contents (e.g. VertexBased's "junction_count" scope
    *  reading the final tally off its last `JunctionSlotRolled` child, GitHub issue #143's
-   *  follow-up) without any adapter needing arena-wide access. */
-  scopeLabel(scopeName: string, children: NodeView[]): string;
+   *  follow-up) without any adapter needing arena-wide access. `titleLookup` (GitHub issue #147)
+   *  resolves a QC stage/rule id to its current user-facing title from the live store config —
+   *  `undefined` for every non-QC adapter's own call sites, which ignore the parameter entirely;
+   *  wire scope names stay the opaque, stable `id` (core has no concept of a rule's display name,
+   *  only its `id` — see `maze-core/src/quality_control/`), so this is resolved fresh from the
+   *  current config each render rather than round-tripped through the wire, matching the fact that
+   *  a renamed/deleted rule after generation already can't retroactively update anything baked
+   *  into the tape either way. */
+  scopeLabel(scopeName: string, children: NodeView[], titleLookup?: ScopeTitleLookup): string;
+}
+
+/** Resolves a QC stage/rule `id` (as embedded verbatim in `"stage <id>"`/`"rule <id>"` scope
+ *  names, `maze-core/src/quality_control/engine.rs`/`stage.rs`) to its current user-facing title
+ *  from the live store config (`MazeStore.stages`/`rules`) — see `QC_ADAPTER.scopeLabel`'s doc
+ *  comment for why this is resolved live rather than sent across the wire. `undefined` (id not
+ *  found — e.g. the rule/stage was deleted after this tape was generated) falls back to the raw
+ *  id, same as before a title lookup existed. */
+export interface ScopeTitleLookup {
+  stageTitle(stageId: string): string | undefined;
+  ruleTitle(ruleId: string): string | undefined;
 }
 
 /** RB is the only algorithm with checkpoint-based resume (GitHub issue #128 stays RB-only) — its
  *  `apply` takes an optional `from` no other adapter has. */
 export interface RbAdapter extends BaseAlgorithmAdapter<RecursiveBacktrackerEvent> {
-  apply(tape: ParsedTape, targetStep: number, from?: ApplyFrom): ApplyResult;
+  apply(tape: ParsedTape, targetStep: number, from?: ApplyFrom, endIndex?: number): ApplyResult;
 }
 export interface KruskalAdapter extends BaseAlgorithmAdapter<KruskalEvent> {
-  apply(tape: ParsedTape, targetStep: number): KruskalApplyResult;
+  apply(tape: ParsedTape, targetStep: number, startIndex?: number, endIndex?: number): KruskalApplyResult;
 }
 export interface WilsonAdapter extends BaseAlgorithmAdapter<WilsonEvent> {
-  apply(tape: ParsedTape, targetStep: number): WilsonApplyResult;
+  apply(tape: ParsedTape, targetStep: number, startIndex?: number, endIndex?: number): WilsonApplyResult;
 }
 export interface EdgeBasedAdapter extends BaseAlgorithmAdapter<EdgeBasedEvent> {
-  apply(tape: ParsedTape, targetStep: number): EdgeBasedApplyResult;
+  apply(tape: ParsedTape, targetStep: number, startIndex?: number, endIndex?: number): EdgeBasedApplyResult;
 }
 export interface VertexBasedAdapter extends BaseAlgorithmAdapter<VertexBasedEvent> {
-  apply(tape: ParsedTape, targetStep: number): VertexBasedApplyResult;
+  apply(tape: ParsedTape, targetStep: number, startIndex?: number, endIndex?: number): VertexBasedApplyResult;
+}
+/** QC's `apply` takes a required `startNodeIndex` (GitHub issue #147) — unlike every generation
+ *  adapter, which always replays from the tape's start (index 0) since generation is always the
+ *  first-and-only source before #147, QC is always merged as a *later* source (Contract A,
+ *  `Specs/event_log.md`'s #147 section): its own mutating events never start at arena index 0, so
+ *  its `apply` needs to know where its own top-level source scope begins. */
+export interface QcAdapter extends BaseAlgorithmAdapter<QcEvent> {
+  apply(tape: ParsedTape, targetStep: number, startNodeIndex: number): QcApplyResult;
 }
 
 const STEP_SCOPE_RE = /^(?:step|edge|walk) (\d+)$/;
@@ -97,8 +136,8 @@ function narrationTokensForRb(event: RecursiveBacktrackerEvent): Token[] {
 }
 
 const RB_ADAPTER: RbAdapter = {
-  mutatingNodeIndices: (tape) => mutatingRbEventsWithIndex(tape).map((e) => e.nodeIndex),
-  resolveMetadata: (tape, checkpoints) => resolveDebugArenaMetadata(tape, checkpoints ?? parseCheckpoints(new Uint8Array(0), new Uint8Array(0))),
+  mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingRbEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
+  resolveMetadata: (tape, checkpoints, startIndex = 0, endIndex) => resolveDebugArenaMetadata(tape, checkpoints ?? parseCheckpoints(new Uint8Array(0), new Uint8Array(0)), startIndex, endIndex),
   decodeEvent: decodeRecursiveBacktrackerEvent,
   isMutatingEvent: isMutatingRbEvent,
   narrationTokensFor: narrationTokensForRb,
@@ -142,8 +181,8 @@ function narrationTokensForKruskal(event: KruskalEvent): Token[] {
 }
 
 const KRUSKAL_ADAPTER: KruskalAdapter = {
-  mutatingNodeIndices: (tape) => mutatingKruskalEventsWithIndex(tape).map((e) => e.nodeIndex),
-  resolveMetadata: (tape) => ({ totalSteps: mutatingKruskalEvents(tape).length, checkpointFroms: [] }),
+  mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingKruskalEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
+  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingKruskalEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
   decodeEvent: decodeKruskalEvent,
   isMutatingEvent: isMutatingKruskalEvent,
   narrationTokensFor: narrationTokensForKruskal,
@@ -169,8 +208,8 @@ function narrationTokensForWilson(event: WilsonEvent): Token[] {
 }
 
 const WILSON_ADAPTER: WilsonAdapter = {
-  mutatingNodeIndices: (tape) => mutatingWilsonEventsWithIndex(tape).map((e) => e.nodeIndex),
-  resolveMetadata: (tape) => ({ totalSteps: mutatingWilsonEvents(tape).length, checkpointFroms: [] }),
+  mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingWilsonEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
+  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingWilsonEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
   decodeEvent: decodeWilsonEvent,
   isMutatingEvent: isMutatingWilsonEvent,
   narrationTokensFor: narrationTokensForWilson,
@@ -274,8 +313,8 @@ function narrationTokensForEdgeBased(event: EdgeBasedEvent): Token[] {
 }
 
 const EDGE_BASED_ADAPTER: EdgeBasedAdapter = {
-  mutatingNodeIndices: (tape) => mutatingEdgeBasedEventsWithIndex(tape).map((e) => e.nodeIndex),
-  resolveMetadata: (tape) => ({ totalSteps: mutatingEdgeBasedEvents(tape).length, checkpointFroms: [] }),
+  mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingEdgeBasedEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
+  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingEdgeBasedEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
   decodeEvent: decodeEdgeBasedEvent,
   isMutatingEvent: isMutatingEdgeBasedEvent,
   narrationTokensFor: narrationTokensForEdgeBased,
@@ -392,8 +431,8 @@ function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
 }
 
 const VERTEX_BASED_ADAPTER: VertexBasedAdapter = {
-  mutatingNodeIndices: (tape) => mutatingVertexBasedEventsWithIndex(tape).map((e) => e.nodeIndex),
-  resolveMetadata: (tape) => ({ totalSteps: mutatingVertexBasedEvents(tape).length, checkpointFroms: [] }),
+  mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingVertexBasedEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
+  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingVertexBasedEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
   decodeEvent: decodeVertexBasedEvent,
   isMutatingEvent: isMutatingVertexBasedEvent,
   narrationTokensFor: narrationTokensForVertexBased,
@@ -421,17 +460,179 @@ const VERTEX_BASED_ADAPTER: VertexBasedAdapter = {
   apply: applyVertexBased,
 };
 
-export function adapterFor(kind: "recursive_backtracker"): RbAdapter;
-export function adapterFor(kind: "kruskal"): KruskalAdapter;
-export function adapterFor(kind: "wilson"): WilsonAdapter;
-export function adapterFor(kind: "edge_based"): EdgeBasedAdapter;
-export function adapterFor(kind: "vertex_based"): VertexBasedAdapter;
-export function adapterFor(kind: EventedEventKind): RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedAdapter | VertexBasedAdapter {
+/** Wraps a resolved rule/stage title (or the raw id, when `titleLookup` is absent or doesn't
+ *  recognize it — see `ScopeTitleLookup`'s doc comment) in `"…"` quotes, so it reads as a distinct
+ *  name rather than running into the surrounding narration text with no separator (e.g. "Rule
+ *  Waypoints: issue found" reads as "Rule Waypoints" being one phrase; "Rule "Waypoints": issue
+ *  found" doesn't). Applied uniformly everywhere a title is interpolated — scope labels and
+ *  narration text alike — so quoting is never a per-template decision. */
+function quoted(title: string): string {
+  return `"${title}"`;
+}
+
+/** QC's counterpart to `narrationTokensForRb`/etc. (GitHub issue #147). `issueKind` is a plain
+ *  wire string (not localized) — a stable core identifier; narration surrounds it with localized
+ *  text but doesn't translate it, mirroring how node/edge ids never get translated either.
+ *  `ruleId` is resolved through `titleLookup` to its current user-facing title first (same
+ *  resolution `scopeLabel` applies to a `"rule <id>"` scope's own label — see that doc comment for
+ *  why this is resolved live rather than sent across the wire), falling back to the raw id when
+ *  `titleLookup` is absent or doesn't recognize it. */
+function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): Token[] {
+  const ruleTitle = (ruleId: string) => quoted(titleLookup?.ruleTitle(ruleId) ?? ruleId);
+  switch (event.kind) {
+    case "IterationStarted":
+      return [{ kind: "text", text: m["debug.tree.qc.iteration_started"]({ iteration: event.iteration + 1 }) }];
+    case "RuleChecked":
+      return event.issue
+        ? [{ kind: "text", text: m["debug.tree.qc.rule_checked_found"]({ ruleId: ruleTitle(event.ruleId), issueKind: event.issue.issueKind }) }]
+        : [{ kind: "text", text: m["debug.tree.qc.rule_checked_clean"]({ ruleId: ruleTitle(event.ruleId) }) }];
+    case "RepairDispatched":
+      return [{
+        kind: "text",
+        text: event.result === "Fixed"
+          ? m["debug.tree.qc.repair_dispatched_fixed"]({ ruleId: ruleTitle(event.ruleId), applied: event.applied, proposed: event.proposed })
+          : m["debug.tree.qc.repair_dispatched_failed"]({ ruleId: ruleTitle(event.ruleId), applied: event.applied, proposed: event.proposed }),
+      }];
+    case "IterationNoProgress":
+      return [{ kind: "text", text: m["debug.tree.qc.iteration_no_progress"]() }];
+    case "IterationLimitReached":
+      return [{
+        kind: "text",
+        text: event.limit === "MaxIterations"
+          ? m["debug.tree.qc.iteration_limit_reached_max_iterations"]()
+          : m["debug.tree.qc.iteration_limit_reached_time_budget"](),
+      }];
+    case "DirectedEdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_edge_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalEdgeAdded":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_edge_added"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "DirectedTeleportAdded":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_teleport_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalTeleportAdded":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_added"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "EdgeRemoved":
+      return [{ kind: "text", text: m["debug.tree.qc.edge_removed"]() + " " }, { kind: "node", id: event.id }];
+    case "EdgeRemovedBetween":
+      return [{ kind: "text", text: m["debug.tree.qc.edge_removed_between"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "TeleportRemovedWithReverse":
+      return [{ kind: "text", text: m["debug.tree.qc.teleport_removed_with_reverse"]() + " " }, { kind: "node", id: event.id }];
+    case "StartSet":
+      return [{ kind: "text", text: m["debug.tree.qc.start_set"]() + " " }, { kind: "node", id: event.id }];
+    case "FinishSet":
+      return [{ kind: "text", text: m["debug.tree.qc.finish_set"]() + " " }, { kind: "node", id: event.id }];
+    case "DirectedEdgeDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_edge_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalEdgeDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_edge_declined"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "DirectedTeleportDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_teleport_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalTeleportDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_declined"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "EdgeRemoveDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.edge_remove_declined"]() + " " }, { kind: "node", id: event.id }];
+    case "EdgeRemoveBetweenDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.edge_remove_between_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "TeleportRemoveWithReverseDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.teleport_remove_with_reverse_declined"]() + " " }, { kind: "node", id: event.id }];
+    case "StartSetDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.start_set_declined"]() + " " }, { kind: "node", id: event.id }];
+    case "FinishSetDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.finish_set_declined"]() + " " }, { kind: "node", id: event.id }];
+  }
+}
+
+const QC_STAGE_SCOPE_RE = /^stage (.+)$/;
+const QC_ITERATION_SCOPE_RE = /^iteration (\d+)$/;
+const QC_RULE_SCOPE_RE = /^rule (.+)$/;
+
+const QC_ADAPTER: QcAdapter = {
+  mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingQcEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
+  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingQcEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
+  decodeEvent: decodeQcEvent,
+  isMutatingEvent: isMutatingQcEvent,
+  narrationTokensFor: narrationTokensForQc,
+  // "stage <id>"/"iteration N"/"rule <id>" are the only three scope shapes QC produces (see
+  // maze-core/src/quality_control/stage.rs's run_repair/dispatch). Stage/rule ids are opaque
+  // (core has no concept of their user-facing title, only their id) — `titleLookup` resolves each
+  // to its current title from the live store config; a missing lookup or an id no longer present
+  // in it (e.g. deleted after this tape was generated) falls back to showing the raw id, same as
+  // before a title lookup existed.
+  scopeLabel: (name, _children, titleLookup) => {
+    const stageMatch = QC_STAGE_SCOPE_RE.exec(name);
+    if (stageMatch) {
+      const stageId = stageMatch[1];
+      return m["debug.tree.qc.stage_scope"]({ stageId: quoted(titleLookup?.stageTitle(stageId) ?? stageId) });
+    }
+    const iterationMatch = QC_ITERATION_SCOPE_RE.exec(name);
+    if (iterationMatch) return m["debug.tree.qc.iteration_scope"]({ iteration: Number(iterationMatch[1]) });
+    const ruleMatch = QC_RULE_SCOPE_RE.exec(name);
+    if (ruleMatch) {
+      const ruleId = ruleMatch[1];
+      return m["debug.tree.qc.rule_scope"]({ ruleId: quoted(titleLookup?.ruleTitle(ruleId) ?? ruleId) });
+    }
+    return name;
+  },
+  apply: applyQc,
+};
+
+export type AnyAdapter = RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedAdapter | VertexBasedAdapter | QcAdapter;
+
+/** Non-overloaded dispatch, shared by `adapterFor`'s per-kind overloads below and by any caller
+ *  (e.g. `adapterForNode`, `generateConfigBuilder.ts`) that only has a plain `EventedEventKind`
+ *  union value at hand, not a literal — a union argument can't select a specific overload of
+ *  `adapterFor`. */
+export function adapterForKind(kind: EventedEventKind): AnyAdapter {
   switch (kind) {
     case "recursive_backtracker": return RB_ADAPTER;
     case "kruskal": return KRUSKAL_ADAPTER;
     case "wilson": return WILSON_ADAPTER;
     case "edge_based": return EDGE_BASED_ADAPTER;
     case "vertex_based": return VERTEX_BASED_ADAPTER;
+    case "quality_control": return QC_ADAPTER;
   }
+}
+
+export function adapterFor(kind: "recursive_backtracker"): RbAdapter;
+export function adapterFor(kind: "kruskal"): KruskalAdapter;
+export function adapterFor(kind: "wilson"): WilsonAdapter;
+export function adapterFor(kind: "edge_based"): EdgeBasedAdapter;
+export function adapterFor(kind: "vertex_based"): VertexBasedAdapter;
+export function adapterFor(kind: "quality_control"): QcAdapter;
+export function adapterFor(kind: EventedEventKind): AnyAdapter {
+  return adapterForKind(kind);
+}
+
+// `topLevelSourceScopes(tape)` is deterministic for a given `ParsedTape` (arena bytes never
+// mutate in place — a fresh generate() always produces a new tape object) — cached per-tape so
+// `adapterForNode`, called once per visible tree row by `DebugEventTree.tsx`'s `rowTokens`,
+// doesn't re-walk the merged root's children and re-allocate the scopes array on every single
+// row. Same caching shape as `debugTreeSelectors.ts`'s `stepIndexCache`/`coordIndexCache`.
+const topLevelScopesCache = new WeakMap<ParsedTape, TopLevelSourceScope[]>();
+function cachedTopLevelSourceScopes(tape: ParsedTape): TopLevelSourceScope[] {
+  const cached = topLevelScopesCache.get(tape);
+  if (cached) return cached;
+  const scopes = topLevelSourceScopes(tape);
+  topLevelScopesCache.set(tape, scopes);
+  return scopes;
+}
+
+/** Resolves the right adapter for an arbitrary arena node by walking up to its top-level source
+ *  scope first (Contract B, `Specs/event_log.md`'s #147 section) — the single place a caller needs
+ *  to go from "a node somewhere in a multi-source merged tape" to "which decoder/apply/narration
+ *  function owns it", without walking `record.parent` itself. `sourceEventKinds` is the tape's own
+ *  parallel `DebugTape.sourceEventKinds` list (same order as `topLevelSourceScopes`, GitHub issue
+ *  #169) — resolving the *kind* still needs this list since a scope's name alone (`"generation"`)
+ *  doesn't carry which concrete algorithm ran. */
+export function adapterForNode(
+  tape: ParsedTape,
+  nodeIndex: number,
+  sourceEventKinds: readonly EventedEventKind[],
+): AnyAdapter {
+  const scope = sourceScopeForNode(tape, nodeIndex);
+  const scopes = cachedTopLevelSourceScopes(tape);
+  const sourceIndex = scopes.findIndex((s) => s.nodeIndex === scope.nodeIndex);
+  if (sourceIndex === -1 || sourceIndex >= sourceEventKinds.length) {
+    throw new Error(`adapterForNode: no sourceEventKinds entry for scope "${scope.scopeName}" (node ${nodeIndex})`);
+  }
+  return adapterForKind(sourceEventKinds[sourceIndex]);
 }

@@ -103,7 +103,11 @@ function buildKruskalArenaTape(): ParsedTape {
 }
 
 function arenaWithEdges(edges: [bigint, bigint][]): DebugArenaHandle {
-  return { tape: buildTapeWithEdges(edges), algorithmKind: "recursive_backtracker", nodes, totalSteps: edges.length, checkpointFroms: [], debugValueNames: [] };
+  return {
+    tape: buildTapeWithEdges(edges), algorithmKind: "recursive_backtracker",
+    sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: edges.length }],
+    nodes, totalSteps: edges.length, checkpointFroms: [], debugValueNames: [],
+  };
 }
 
 // Wilson fixture, mirroring eventTape.test.ts's buildWilsonTape shape:
@@ -269,8 +273,9 @@ describe("selectDebugMazeView", () => {
     const tape = buildTapeWithEdges(edgePairs);
     // A checkpoint at arena node 0 (step 0) reflecting state after the first EdgeAdded.
     const checkpointFroms = [{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map(), step: 0, nodeIndex: 0 }];
-    const arenaWithCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", nodes, totalSteps: edgePairs.length, checkpointFroms, debugValueNames: [] };
-    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", nodes, totalSteps: edgePairs.length, checkpointFroms: [], debugValueNames: [] };
+    const sources: DebugArenaHandle["sources"] = [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: edgePairs.length }];
+    const arenaWithCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", sources, nodes, totalSteps: edgePairs.length, checkpointFroms, debugValueNames: [] };
+    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", sources, nodes, totalSteps: edgePairs.length, checkpointFroms: [], debugValueNames: [] };
 
     const withCheckpoint = selectDebugMazeView(arenaWithCheckpoint, 2);
     const withoutCheckpoint = selectDebugMazeView(arenaWithoutCheckpoint, 2);
@@ -307,7 +312,9 @@ describe("selectDebugMazeView", () => {
   it("dispatches Wilson arenas to applyWilson, populating debugValues and debugMaps", () => {
     const tape = buildWilsonArenaTape();
     const arena: DebugArenaHandle = {
-      tape, algorithmKind: "wilson", nodes, totalSteps: 4, checkpointFroms: [],
+      tape, algorithmKind: "wilson",
+      sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 0, startStep: 0, endStep: 4 }],
+      nodes, totalSteps: 4, checkpointFroms: [],
       debugValueNames: [{ name: "visited", kind: "region" }, { name: "current_walk", kind: "map" }],
     };
 
@@ -329,7 +336,9 @@ describe("selectDebugMazeView", () => {
   it("dispatches edge_based arenas to applyEdgeBased, populating edges and active/visited debugValues, with no dsuGroups/debugMaps/debugVertices", () => {
     const tape = buildEdgeBasedArenaTape();
     const arena: DebugArenaHandle = {
-      tape, algorithmKind: "edge_based", nodes, totalSteps: 3, checkpointFroms: [],
+      tape, algorithmKind: "edge_based",
+      sources: [{ scopeName: "generation", kind: "edge_based", nodeIndex: 0, startStep: 0, endStep: 3 }],
+      nodes, totalSteps: 3, checkpointFroms: [],
       debugValueNames: [{ name: "active", kind: "region" }, { name: "visited", kind: "region" }],
     };
 
@@ -348,7 +357,9 @@ describe("selectDebugMazeView", () => {
   it("dispatches vertex_based arenas to applyVertexBased, populating edges and visited/frontier debugValues, with no dsuGroups/debugMaps/debugVertices", () => {
     const tape = buildVertexBasedArenaTape();
     const arena: DebugArenaHandle = {
-      tape, algorithmKind: "vertex_based", nodes, totalSteps: 2, checkpointFroms: [],
+      tape, algorithmKind: "vertex_based",
+      sources: [{ scopeName: "generation", kind: "vertex_based", nodeIndex: 0, startStep: 0, endStep: 2 }],
+      nodes, totalSteps: 2, checkpointFroms: [],
       debugValueNames: [{ name: "visited", kind: "region" }, { name: "frontier", kind: "region" }, { name: "reserve", kind: "region" }],
     };
 
@@ -367,7 +378,9 @@ describe("selectDebugMazeView", () => {
   it("dispatches Kruskal arenas to applyKruskal, populating edges and dsuGroups", () => {
     const tape = buildKruskalArenaTape();
     const arena: DebugArenaHandle = {
-      tape, algorithmKind: "kruskal", nodes, totalSteps: 2, checkpointFroms: [], debugValueNames: [],
+      tape, algorithmKind: "kruskal",
+      sources: [{ scopeName: "generation", kind: "kruskal", nodeIndex: 0, startStep: 0, endStep: 2 }],
+      nodes, totalSteps: 2, checkpointFroms: [], debugValueNames: [],
     };
 
     // targetStep 1 = EdgeAdded(1,2), SetsMerged(1,2) both applied.

@@ -88,35 +88,24 @@ pub fn generate_maze<T: Tessellation>(
 /// `run_initial_generation` helper in `maze-wasm/src/runner.rs`, where an internal tuple stays
 /// readable).
 ///
-/// `tape` is always the output of [`crate::event_log::merge_tapes`] (GitHub issue #169) — even
-/// when there is exactly one instrumented source (every case today; QC/repair instrumentation,
-/// issue #147, will add a second), the tape is still wrapped in a merged root + one dedicated
-/// top-level source scope. There is no "skip merging for a single source" special case, so every
-/// consumer sees the same tree shape regardless of how many sources actually ran. Never absent —
-/// `generate_maze_with_events` is the only constructor and every algorithm arm produces a tape,
-/// so this is a plain [`crate::event_log::EncodedTape`], not an `Option`; a caller that needs to
-/// conditionally discard it (e.g. `maze-wasm/src/runner.rs`, when the web replay engine can't
-/// decode this event kind) wraps it in its own `Option` rather than this type carrying one it can
-/// never actually leave unset. `sources` records, per top-level scope (in the same order as the
-/// merged tree's top-level children), which concrete event enum that subtree was encoded from —
-/// the only source of truth a consumer (e.g. the web replay engine) needs to pick a decoder per
-/// source scope, instead of re-deriving "is this decodable" from the generation algorithm.
+/// `raw_source` is this call's own [`crate::event_log::TapeSource`] — **not** yet passed through
+/// [`crate::event_log::merge_tapes`] (GitHub issue #147 changed this: `merge_tapes` used to run
+/// inside this function, wrapping the single generation source in a merged root by itself; now
+/// that QC/repair instrumentation adds a second, independent source, only the caller that holds
+/// *both* sources — `maze-wasm/src/runner.rs::run_generate` — can call `merge_tapes` once, so this
+/// function stops doing it and hands back the unmerged piece instead). `event_kind` is the source's
+/// `EventedEventKind`, kept alongside rather than folded into a `sources` vec of its own, since
+/// there is exactly one of each here by construction — the caller assembles the final multi-source
+/// `sources` list itself once it knows how many sources it actually has.
 pub struct EventedGenerationResult {
-    pub tape: crate::event_log::EncodedTape,
-    /// One entry per top-level source scope present in `tape`, in the same order — never empty,
-    /// mirroring `tape`'s own "always present" guarantee. `merge_tapes` itself is domain-agnostic
-    /// and doesn't see `EventedEventKind` at all; this pairing is assembled here, the one place
-    /// that both knows which algorithm ran and calls `merge_tapes`.
-    pub sources: Vec<(&'static str, crate::event_log::EventedEventKind)>,
-    /// Intermediate snapshot checkpoints (GitHub issue #128), already folded into one combined
-    /// table by `merge_tapes` — `Some` exactly when at least one source produced any (today: only
-    /// Recursive Backtracker). `None` when no source produced checkpoints.
-    pub checkpoints: Option<crate::event_log::EncodedCheckpoints>,
-    /// Every debug-value name (already qualified with `"{scope_name}:"` when more than one source
-    /// is present — see [`qualify_debug_value_names`]) and its rendering kind (GitHub issue #131,
-    /// e.g. `"recursion_stack"`) the instrumented algorithm(s) declare — the static list(s) from
-    /// e.g. `recursive_backtracker::debug_value_names()`, not derived from what this particular
-    /// run happened to emit. Empty when no source declares any.
+    pub raw_source: crate::event_log::TapeSource,
+    pub event_kind: crate::event_log::EventedEventKind,
+    /// Every debug-value name (unqualified — qualification with `"{scope_name}:"` only makes sense
+    /// once the caller knows the final source count, see [`qualify_debug_value_names`]) and its
+    /// rendering kind (GitHub issue #131, e.g. `"recursion_stack"`) the instrumented algorithm
+    /// declares — the static list from e.g. `recursive_backtracker::debug_value_names()`, not
+    /// derived from what this particular run happened to emit. Empty when the algorithm declares
+    /// none.
     pub debug_value_names: Vec<(String, crate::event_log::DebugValueKind)>,
 }
 
@@ -126,8 +115,8 @@ pub struct EventedGenerationResult {
 /// independently, see `Specs/event_log.md`) don't collide once merged. Left unqualified for
 /// exactly one source, matching today's names/tests/UI verbatim — qualification only becomes
 /// necessary, and only then changes the wire format, once a second source genuinely exists.
-fn qualify_debug_value_names(
-    sources: &[(&'static str, Vec<(&'static str, crate::event_log::DebugValueKind)>)],
+pub fn qualify_debug_value_names(
+    sources: &[(&'static str, Vec<(&str, crate::event_log::DebugValueKind)>)],
 ) -> Vec<(String, crate::event_log::DebugValueKind)> {
     if sources.len() <= 1 {
         return sources.iter().flat_map(|(_, names)| names.iter().map(|(name, kind)| (name.to_string(), *kind))).collect();
@@ -144,10 +133,10 @@ fn qualify_debug_value_names(
 /// growing `dispatch`'s signature with a type every other branch would have to ignore. All five
 /// generation algorithms are instrumented; each arm builds its own `EventLog<E>`, finishes it, and
 /// encodes it to a type-erased [`crate::event_log::EncodedTape`], tagged with
-/// [`crate::event_log::EventedEventKind`] (see GitHub issue #161) — this function is the single
-/// place that calls [`crate::event_log::merge_tapes`] (GitHub issue #169) to fold the (today:
-/// always exactly one) instrumented source into the merged tree `EventedGenerationResult.tape`
-/// always carries.
+/// [`crate::event_log::EventedEventKind`] (see GitHub issue #161). Since GitHub issue #147, this
+/// function no longer calls [`crate::event_log::merge_tapes`] itself — it returns the unmerged
+/// [`crate::event_log::TapeSource`], leaving the (now potentially multi-source) merge to its
+/// caller (`maze-wasm/src/runner.rs::run_generate`).
 pub fn generate_maze_with_events<T: Tessellation>(
     graph: &mut Graph,
     field: &Field<T>,
@@ -197,16 +186,10 @@ pub fn generate_maze_with_events<T: Tessellation>(
         }
     };
 
-    let (merged_tape, merged_checkpoints) = crate::event_log::merge_tapes(vec![
-        crate::event_log::TapeSource { scope_name, tape, checkpoints },
-    ]);
-    let debug_value_names = qualify_debug_value_names(&[(scope_name, debug_value_names.to_vec())]);
-
     EventedGenerationResult {
-        tape: merged_tape,
-        sources: vec![(scope_name, event_kind)],
-        checkpoints: merged_checkpoints,
-        debug_value_names,
+        raw_source: crate::event_log::TapeSource { scope_name, tape, checkpoints },
+        event_kind,
+        debug_value_names: debug_value_names.iter().map(|(name, kind)| (name.to_string(), *kind)).collect(),
     }
 }
 

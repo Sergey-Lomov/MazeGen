@@ -6,7 +6,9 @@ use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::repair::RepairResult;
 use crate::quality_control::issue_kinds::RepairLimitKind;
+use crate::quality_control::issue_payload::resolve_issue_payload;
 use super::engine::RepairBudget;
+use super::event::{QcEvent, RepairResultKind};
 use super::issue::Issue;
 use super::rule::RuleTrait;
 
@@ -69,6 +71,7 @@ impl<T: Tessellation> Stage<T> {
         budget: &mut RepairBudget,
         timing: &mut TimingSink,
         now_ms: impl Fn() -> f64,
+        mut event_log: Option<&mut crate::event_log::ScopeGuard<QcEvent>>,
     ) -> StageOutcome {
         let now_ms: &dyn Fn() -> f64 = &now_ms;
         let mut failed: HashSet<String> = HashSet::new();
@@ -79,33 +82,54 @@ impl<T: Tessellation> Stage<T> {
         // (so the value-equality guard never fires) while nothing about the real graph ever
         // actually changes. See GitHub issue #118, Specs/repair.md's no-progress guard extension.
         let mut stalled_commands: HashMap<String, u32> = HashMap::new();
+        let mut iteration: u32 = 0;
         loop {
             if let Some(limit) = budget.exhausted(now_ms) {
+                if let Some(log) = event_log.as_mut() {
+                    log.emit(QcEvent::IterationLimitReached(limit));
+                }
                 return StageOutcome::LimitReached(limit);
             }
             budget.iterations_done += 1;
 
-            let qc_start = now_ms();
-            let active = self.collect_active(maze, rng, timing.per_check, now_ms, &failed);
-            *timing.qc_total_ms += now_ms() - qc_start;
+            // Each fixpoint pass is its own `"iteration N"` scope — opened and dropped within this
+            // block so the guard doesn't stay borrowed into the next loop pass (see
+            // `Specs/event_log.md`'s `ScopeGuard::enter` caveat).
+            {
+                let mut iteration_scope = event_log.as_mut().map(|log| log.enter_numbered("iteration"));
+                if let Some(g) = iteration_scope.as_mut() {
+                    g.emit(QcEvent::IterationStarted(iteration));
+                }
 
-            if active.is_empty() {
-                return StageOutcome::Done;
+                let qc_start = now_ms();
+                let active = self.collect_active(maze, rng, timing.per_check, now_ms, &failed, iteration_scope.as_mut());
+                *timing.qc_total_ms += now_ms() - qc_start;
+
+                if active.is_empty() {
+                    return StageOutcome::Done;
+                }
+
+                if Self::check_progress(&active, &previous_active) {
+                    let rule_ids = active.iter().map(|(rule, _)| rule.id().to_string()).collect();
+                    if let Some(g) = iteration_scope.as_mut() {
+                        g.emit(QcEvent::IterationNoProgress);
+                    }
+                    return StageOutcome::NoProgress(rule_ids);
+                }
+                previous_active = Some(active.iter().map(|(rule, issue)| (rule.id().to_string(), issue.clone_box())).collect());
+
+                let repair_start = now_ms();
+                let stalled = self.dispatch(&active, maze, rng, preset_state, timing.per_strategy, now_ms, &mut failed, &mut stalled_commands, iteration_scope.as_mut());
+                *timing.repair_total_ms += now_ms() - repair_start;
+
+                if !stalled.is_empty() {
+                    if let Some(g) = iteration_scope.as_mut() {
+                        g.emit(QcEvent::IterationNoProgress);
+                    }
+                    return StageOutcome::NoProgress(stalled);
+                }
             }
-
-            if Self::check_progress(&active, &previous_active) {
-                let rule_ids = active.iter().map(|(rule, _)| rule.id().to_string()).collect();
-                return StageOutcome::NoProgress(rule_ids);
-            }
-            previous_active = Some(active.iter().map(|(rule, issue)| (rule.id().to_string(), issue.clone_box())).collect());
-
-            let repair_start = now_ms();
-            let stalled = self.dispatch(&active, maze, rng, preset_state, timing.per_strategy, now_ms, &mut failed, &mut stalled_commands);
-            *timing.repair_total_ms += now_ms() - repair_start;
-
-            if !stalled.is_empty() {
-                return StageOutcome::NoProgress(stalled);
-            }
+            iteration += 1;
         }
     }
 
@@ -134,6 +158,14 @@ impl<T: Tessellation> Stage<T> {
     /// here rather than in `dispatch`. Sorted by `rule.id` once, immediately — the same order is
     /// then used unchanged by both `check_progress` and `dispatch`, matching the deterministic
     /// dispatch order the original flat pipeline used (`active.sort_unstable_by` by rule id).
+    /// `event_log` (GitHub issue #147): emits `QcEvent::RuleChecked` for every non-failed rule
+    /// (including ones filtered out below for having no strategy or no found issue — the
+    /// narration must show "rule X found nothing" too, not just active rules), directly into the
+    /// current iteration scope (not a per-rule nested scope — that only opens in `dispatch`, for
+    /// rules actually dispatched). Payload is resolved **here**, immediately after `run_checks`
+    /// returns and before any mutation this same QC pass might make later in the iteration (via
+    /// `dispatch`) — `resolve_issue_payload` reads `maze.graph`/`scc` as they stand right now, so
+    /// resolving it any later could describe a graph state the issue was no longer found against.
     fn collect_active<'a>(
         &'a self,
         maze: &Maze<T>,
@@ -141,17 +173,39 @@ impl<T: Tessellation> Stage<T> {
         timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: &dyn Fn() -> f64,
         failed: &HashSet<String>,
+        mut event_log: Option<&mut crate::event_log::ScopeGuard<QcEvent>>,
     ) -> Vec<(&'a dyn RuleTrait<T>, Box<dyn Issue>)> {
         // `run_checks` runs for every non-failed rule, including ones with no strategy — a
         // no-strategy rule's checks must still execute every iteration (matches the pre-#106
         // pipeline's stage-agnostic QC pass for such rules), not just once in the final report.
         // Only the has_strategy() filter, applied AFTER run_checks, decides what enters `active`
         // for the fixpoint/dispatch machinery below.
-        let mut active: Vec<(&'a dyn RuleTrait<T>, Box<dyn Issue>)> = self.rules.iter()
-            .filter(|rule| !failed.contains(rule.id()))
-            .filter_map(|rule| rule.run_checks(maze, rng, timing, now_ms).map(|issue| (rule.as_ref(), issue)))
-            .filter(|(rule, _)| rule.has_strategy())
-            .collect();
+        let mut active: Vec<(&'a dyn RuleTrait<T>, Box<dyn Issue>)> = Vec::new();
+        // Resolved lazily, at most once for the whole loop (not per rule) — `maze.graph` doesn't
+        // change within `collect_active` itself (mutation only happens later, in `dispatch`), so
+        // every rule that actually needs it this iteration shares the same `ConnectedComponents`
+        // clone instead of each re-triggering `MazeAnalysis::scc`'s own cache-hit clone. Only ever
+        // computed when `event_log` is `Some` *and* at least one rule's payload actually reads it
+        // (`resolve_issue_payload` only touches `scc` for `RegionNeedsExpansionIssue` — see that
+        // function's doc comment) — a rule with no issue, or an issue kind with no structural scc
+        // dependency, never forces this.
+        let mut scc: Option<crate::graph::scc::ConnectedComponents> = None;
+        for rule in self.rules.iter().filter(|rule| !failed.contains(rule.id())) {
+            let issue = rule.run_checks(maze, rng, timing, now_ms);
+            if let Some(g) = event_log.as_mut() {
+                let reported = issue.as_ref().map(|issue| {
+                    let scc = scc.get_or_insert_with(|| maze.analysis.scc(&maze.graph));
+                    let payload = resolve_issue_payload(issue.as_ref(), &maze.graph, scc);
+                    (issue.kind(), payload)
+                });
+                g.emit(QcEvent::RuleChecked { rule_id: rule.id().to_string(), issue: reported });
+            }
+            if let Some(issue) = issue {
+                if rule.has_strategy() {
+                    active.push((rule.as_ref(), issue));
+                }
+            }
+        }
         active.sort_unstable_by(|(a, _), (b, _)| a.id().cmp(b.id()));
         active
     }
@@ -196,10 +250,28 @@ impl<T: Tessellation> Stage<T> {
         now_ms: &dyn Fn() -> f64,
         failed: &mut HashSet<String>,
         stalled_commands: &mut HashMap<String, u32>,
+        mut event_log: Option<&mut crate::event_log::ScopeGuard<QcEvent>>,
     ) -> Vec<String> {
         let mut newly_stalled = Vec::new();
         for (rule, issue) in active {
-            let Some((result, outcome)) = rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, timing, now_ms) else { continue };
+            // Each dispatched rule gets its own `"rule <id>"` scope, opened and dropped within
+            // this block — same non-trivial-`Drop`-guard caveat as `run_repair`'s per-iteration
+            // scope: a guard opened inline in a loop body must live in its own block, or the
+            // borrow checker won't let the parent (`iteration_scope`, forwarded in as
+            // `event_log`) emit anything on the next loop pass.
+            let mut rule_scope = event_log.as_mut().map(|g| g.enter(format!("rule {}", rule.id())));
+            let Some((result, outcome)) = rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, timing, now_ms, rule_scope.as_mut()) else { continue };
+            // Emitted after `dispatch_repair` (not before) so `proposed`/`applied` — resolved by
+            // `apply_commands` inside that call — are already known; the mutating/`*Declined`
+            // events `apply_commands` emitted are this rule scope's own preceding children.
+            if let Some(g) = rule_scope.as_mut() {
+                g.emit(QcEvent::RepairDispatched {
+                    rule_id: rule.id().to_string(),
+                    result: RepairResultKind::from(&result),
+                    proposed: outcome.proposed as u32,
+                    applied: outcome.applied as u32,
+                });
+            }
             match result {
                 RepairResult::Failed => { failed.insert(rule.id().to_string()); }
                 RepairResult::Fixed { score: Some(s) } => {
@@ -331,7 +403,7 @@ mod stalled_commands_tests {
             Some(Box::new(MissingEndpointsIssue::new_from_check("check")))
         }
         fn report_checks(&self, _: &Maze<SquareTessellation>, _: &mut dyn RngCore, _: &mut HashMap<&'static str, (f64, u32)>, _: &dyn Fn() -> f64) -> Vec<Box<dyn Issue>> { vec![] }
-        fn dispatch_repair(&self, _: &dyn Issue, _: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &PresetState, _: &mut HashMap<&'static str, (f64, u32)>, _: &dyn Fn() -> f64) -> Option<(RepairResult, ApplyOutcome)> {
+        fn dispatch_repair(&self, _: &dyn Issue, _: &mut Maze<SquareTessellation>, _: &mut dyn RngCore, _: &PresetState, _: &mut HashMap<&'static str, (f64, u32)>, _: &dyn Fn() -> f64, _: Option<&mut crate::event_log::ScopeGuard<QcEvent>>) -> Option<(RepairResult, ApplyOutcome)> {
             let next = self.outcomes.borrow_mut().next();
             let outcome = next.unwrap_or_else(|| *self.last.borrow());
             *self.last.borrow_mut() = outcome;
@@ -359,7 +431,7 @@ mod stalled_commands_tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         use rand::SeedableRng;
         let mut timing = HashMap::new();
-        stage.dispatch(&active, maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0, failed, stalled_commands)
+        stage.dispatch(&active, maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0, failed, stalled_commands, None)
     }
 
     #[test]
@@ -450,7 +522,7 @@ mod stalled_commands_tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         use rand::SeedableRng;
         let mut timing = HashMap::new();
-        stage.dispatch(&active, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0, &mut failed, &mut stalled_commands);
+        stage.dispatch(&active, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0, &mut failed, &mut stalled_commands, None);
 
         assert_eq!(stalled_commands.get("a"), Some(&1));
         assert!(!stalled_commands.contains_key("b"), "a rule that applied a command must never gain a streak entry");

@@ -6,8 +6,8 @@
 import type { NodeDto } from "../wasm/types";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { ParsedTape, NodePayload } from "./eventTape";
-import { nodeAt, nodeView } from "./eventTape";
-import { adapterFor } from "./algorithmRegistry";
+import { nodeAt, nodeView, sourceContentStart } from "./eventTape";
+import { adapterForKind } from "./algorithmRegistry";
 
 export interface StepIndex {
   /** debugStep -> arena nodeIndex. Length === totalSteps. */
@@ -30,24 +30,33 @@ const stepIndexCache = new WeakMap<ParsedTape, StepIndex>();
  *  only builds one when `totalSteps > 0` — see `generateConfigBuilder.ts`), so `stepToNodeIndex`
  *  is always non-empty here. Before the first mutating event, `nearestStepByNodeIndex` is
  *  clamped to step 0 — not a separate edge case, just the natural initial value of "last seen
- *  step" given that guarantee. */
-export function buildStepIndex(tape: ParsedTape, algorithmKind: EventedEventKind): StepIndex {
+ *  step" given that guarantee.
+ *
+ *  `sources` (GitHub issue #147) is one entry per top-level source scope, in the same order as
+ *  `debugArena.sources`/`topLevelSourceScopes` — global `debugStep` numbering (Contract A,
+ *  `Specs/event_log.md`'s #147 section) means `stepToNodeIndex` is built by concatenating each
+ *  source's own `mutatingNodeIndices()` in scope order: source 0's steps come first, source 1's
+ *  immediately after, with no interleaving — this mirrors how `debugArena.sources[i].startStep/
+ *  endStep` are computed in `generateConfigBuilder.ts`. Defaults to a single implicit
+ *  `recursive_backtracker` source starting at arena index 0 when omitted, for callers (mostly
+ *  tests) working with a single, unwrapped, single-source tape that predates GitHub issue #169's
+ *  merge-wrapper shape. */
+export function buildStepIndex(
+  tape: ParsedTape,
+  sources: readonly { kind: EventedEventKind; nodeIndex: number }[] = [{ kind: "recursive_backtracker", nodeIndex: 0 }],
+): StepIndex {
   const cached = stepIndexCache.get(tape);
   if (cached) return cached;
 
-  // mutatingNodeIndices has the same `(tape) => number[]` shape on every adapter — this switch
-  // exists only to satisfy adapterFor's per-kind overloads (GitHub issue #163's review: a
-  // union-input overload returning the common surface as `unknown` would silently drop
-  // typechecking on decode/narrate call chains elsewhere, so adapterFor has no such overload).
-  const mutatingNodeIndices = algorithmKind === "kruskal"
-    ? adapterFor("kruskal").mutatingNodeIndices(tape)
-    : algorithmKind === "wilson"
-    ? adapterFor("wilson").mutatingNodeIndices(tape)
-    : algorithmKind === "edge_based"
-    ? adapterFor("edge_based").mutatingNodeIndices(tape)
-    : algorithmKind === "vertex_based"
-    ? adapterFor("vertex_based").mutatingNodeIndices(tape)
-    : adapterFor("recursive_backtracker").mutatingNodeIndices(tape);
+  const mutatingNodeIndices: number[] = [];
+  for (let i = 0; i < sources.length; i++) {
+    const source = sources[i];
+    // See `sourceContentStart`'s doc comment (GitHub issue #147) for why this isn't just
+    // `source.nodeIndex`/`sources[i + 1].nodeIndex`.
+    const startIndex = sourceContentStart(tape, source.nodeIndex);
+    const endIndex = i + 1 < sources.length ? sourceContentStart(tape, sources[i + 1].nodeIndex) : tape.nodeCount;
+    mutatingNodeIndices.push(...adapterForKind(source.kind).mutatingNodeIndices(tape, startIndex, endIndex));
+  }
   const mutatingNodeIndexSet = new Map<number, number>();
   mutatingNodeIndices.forEach((nodeIndex, step) => mutatingNodeIndexSet.set(nodeIndex, step));
 
@@ -83,19 +92,28 @@ export interface TreeRow {
   hasChildren: boolean;
 }
 
-/** End (exclusive) of `nodeIndex`'s subtree in arena-index space — the arena's linearization
- *  invariant (insertion order = DFS pre-order) means a node's subtree is always the contiguous
- *  range `[nodeIndex, subtreeEnd)`. Found by walking up through ancestors' `nextSibling` until
- *  one exists, or falling back to `tape.nodeCount` if `nodeIndex` (or an ancestor) is the last
- *  node in the whole arena. */
-function subtreeEnd(tape: ParsedTape, nodeIndex: number): number {
-  let current: number | null = nodeIndex;
-  while (current !== null) {
-    const record = nodeAt(tape, current);
-    if (record.nextSibling !== null) return record.nextSibling;
-    current = record.parent;
+/** First `debugStep` anywhere in `nodeIndex`'s subtree (document/DFS order), or `null` if it
+ *  contains no mutating event — a real structural walk via `firstChild`/`nextSibling`, not an
+ *  arena-index range scan. A plain "ordinary" scope's subtree *is* the contiguous arena-index
+ *  range `[nodeIndex + 1, nextSibling-or-ancestor's-nextSibling)` (the arena's DFS-preorder
+ *  linearization invariant), but a top-level source scope's real content is *not* contiguous with
+ *  its own index — `merge_tapes` lays every top-level scope's wrapper node out first, before any
+ *  source's actual content (`maze-core/src/event_log/mod.rs`), so an index-range scan starting at
+ *  `nodeIndex + 1` for a top-level scope would only ever see the next sibling *scope wrapper*, not
+ *  real content, and wrongly report no mutating events at all (GitHub issue #147's regression).
+ *  Walking `firstChild`/`nextSibling` structurally instead is correct for every scope shape,
+ *  top-level or not, without needing to special-case which shape a given `nodeIndex` is. */
+function firstStepInSubtree(tape: ParsedTape, stepIndex: StepIndex, nodeIndex: number): number | null {
+  const record = nodeAt(tape, nodeIndex);
+  let child = record.firstChild;
+  while (child !== null) {
+    const step = stepIndex.mutatingNodeIndexToStep.get(child);
+    if (step !== undefined) return step;
+    const nested = firstStepInSubtree(tape, stepIndex, child);
+    if (nested !== null) return nested;
+    child = nodeAt(tape, child).nextSibling;
   }
-  return tape.nodeCount;
+  return null;
 }
 
 /** The step-column label for a row (left-hand step-number column): a mutating leaf event shows
@@ -110,33 +128,50 @@ export function displayStepForRow(
   if (row.payload.kind !== "scope") {
     return stepIndex.mutatingNodeIndexToStep.get(row.nodeIndex) ?? null;
   }
-  const end = subtreeEnd(tape, row.nodeIndex);
-  for (let i = row.nodeIndex + 1; i < end; i++) {
-    const step = stepIndex.mutatingNodeIndexToStep.get(i);
-    if (step !== undefined) return step;
-  }
-  return null;
+  return firstStepInSubtree(tape, stepIndex, row.nodeIndex);
 }
 
 /** DFS over the tree layer, flattened to only the rows currently visible given `expanded`. The
- *  root (arena index 0) is never itself a row — it is not a "step", just the tree's wrapper —
- *  its direct children (the top-level `"step"` scopes) are always included regardless of
- *  `expanded`; deeper descendants only appear once their parent scope is in `expanded`. */
-export function flattenVisibleRows(tape: ParsedTape, expanded: ReadonlySet<number>): TreeRow[] {
+ *  tape's own root (arena index 0) is never itself a row — it is not a "step", just the tree's
+ *  wrapper — its direct children are always included regardless of `expanded`.
+ *
+ *  `transparentNodeIndices` (GitHub issue #147) names additional nodes to skip the exact same way
+ *  the root is skipped: never their own row, always expanded, their children rendered one depth
+ *  shallower than they'd otherwise sit at. The intended caller is `DebugEventTree.tsx`, passing
+ *  each top-level source scope's own former-root merge artifact — every source's own tape (before
+ *  merging, GitHub issue #169) is built by `EventLog::new()`, whose root becomes that source's
+ *  sole child once `merge_tapes` reparents it under a new top-level source scope
+ *  (`maze-core/src/event_log/mod.rs`), never renamed or removed, so every source's real content
+ *  sits one extra, purely structural level deeper than its top-level source scope. Rendering it as
+ *  its own row would show a meaningless "step 0"-shaped label (no adapter's `scopeLabel` was ever
+ *  designed to name a plain former-root scope) between the source scope and its real steps.
+ *
+ *  Deliberately *not* inferred from tree shape (e.g. "any depth-2 scope") inside this function —
+ *  `flattenVisibleRows` is a generic tree-flattening utility with no built-in notion of merged
+ *  tapes/source scopes; a fixed-depth heuristic here would misfire on any non-merged or
+ *  differently-shaped tree (this module's own unit tests build several). Callers that know which
+ *  nodes are merge artifacts (via `topLevelSourceScopes`) say so explicitly instead. Defaults to
+ *  empty, so callers unaware of merge semantics keep exactly their previous behavior. */
+export function flattenVisibleRows(
+  tape: ParsedTape,
+  expanded: ReadonlySet<number>,
+  transparentNodeIndices: ReadonlySet<number> = new Set(),
+): TreeRow[] {
   const rows: TreeRow[] = [];
 
   function visit(index: number, depth: number): void {
     const record = nodeAt(tape, index);
     const hasChildren = record.firstChild !== null;
-    if (depth > 0) {
+    const isTransparent = depth > 0 && transparentNodeIndices.has(index);
+    if (depth > 0 && !isTransparent) {
       const view = nodeView(tape, index);
       rows.push({ nodeIndex: index, depth, payload: view.payload(), hasChildren });
     }
-    if (depth === 0 || (hasChildren && expanded.has(index))) {
+    if (depth === 0 || isTransparent || (hasChildren && expanded.has(index))) {
       let child = record.firstChild;
       while (child !== null) {
         const childRecord = nodeAt(tape, child);
-        visit(child, depth + 1);
+        visit(child, isTransparent ? depth : depth + 1);
         child = childRecord.nextSibling;
       }
     }

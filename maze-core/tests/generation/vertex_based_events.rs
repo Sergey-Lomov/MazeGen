@@ -546,7 +546,7 @@ fn vertex_based_wired_into_generate_maze_with_events() {
         maze_core::generation::GenerationConfig { algorithm: config, elements: no_one_way_elements(), ..maze_core::generation::GenerationConfig::default() },
         &empty_preset(),
     );
-    assert_eq!(result.sources, vec![("generation", EventedEventKind::VertexBased)]);
+    assert_eq!(result.event_kind, EventedEventKind::VertexBased);
     assert_eq!(
         result.debug_value_names,
         vec![

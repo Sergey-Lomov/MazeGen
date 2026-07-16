@@ -51,7 +51,7 @@ fn apply_and_commit<T: maze_core::space::Tessellation, I: maze_core::quality_con
     nested: &[maze_core::repair::NestedStrategyConfig<T>],
 ) -> RepairResult {
     let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
-    apply_commands(maze, preset_state, commands);
+    apply_commands(maze, preset_state, commands, None);
     result
 }
 
@@ -252,7 +252,7 @@ fn rule_dispatch_repair_runs_its_own_strategy() {
     let rule = rule_with_strategy("g1", Box::new(RandomEndpointsStrategy));
     let issue = MissingEndpointsIssue::default();
     let mut timing = HashMap::new();
-    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &now_ms_stub);
+    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &now_ms_stub, None);
     assert!(matches!(result, Some((RepairResult::Fixed { score: _ }, _))));
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
@@ -265,7 +265,7 @@ fn rule_dispatch_repair_none_when_no_strategy() {
     let rule: Rule<SquareTessellation, MissingEndpointsIssue> = Rule::new("g1".to_string(), vec![], None, HashMap::new(), vec![]);
     let issue = MissingEndpointsIssue::default();
     let mut timing = HashMap::new();
-    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &now_ms_stub);
+    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &now_ms_stub, None);
     assert!(result.is_none());
     assert!(maze.meta.start.is_none());
 }
@@ -284,8 +284,8 @@ fn two_rules_same_kind_get_different_strategies() {
     let issue = MissingEndpointsIssue::default();
     let mut timing_a = HashMap::new();
     let mut timing_b = HashMap::new();
-    let result_a = rule_a.dispatch_repair_typed(&issue, &mut maze_a, &mut rng_a, &PresetState::empty(), &mut timing_a, &now_ms_stub);
-    let result_b = rule_b.dispatch_repair_typed(&issue, &mut maze_b, &mut rng_b, &PresetState::empty(), &mut timing_b, &now_ms_stub);
+    let result_a = rule_a.dispatch_repair_typed(&issue, &mut maze_a, &mut rng_a, &PresetState::empty(), &mut timing_a, &now_ms_stub, None);
+    let result_b = rule_b.dispatch_repair_typed(&issue, &mut maze_b, &mut rng_b, &PresetState::empty(), &mut timing_b, &now_ms_stub, None);
     assert!(matches!(result_a, Some((RepairResult::Fixed { score: _ }, _))));
     assert!(matches!(result_b, Some((RepairResult::Fixed { score: _ }, _))));
 }

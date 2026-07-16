@@ -1277,3 +1277,150 @@ unrelated runs.
   until a real second source exists)
 - A generalized replacement for the per-repair-strategy instrumentation this issue's architecture
   enables but does not itself build
+
+## QC/Repair Instrumentation and Multi-Source Web Replay (#147)
+
+The first real second source: `QcEvent` narration (`maze-core/src/quality_control/event.rs`, see
+`Specs/quality_control.md`'s "Narration-level debug instrumentation" section for the full
+scope/event catalog) merges alongside generation's own tape whenever `debug_events` is on and the
+QC/repair pass produced at least one event. This is where #169's multi-source merge machinery gets
+its first genuine multi-source consumer on the web side — `topLevelSourceScopes` goes from
+enumerating exactly one entry to potentially two (`"generation"`, then `"quality_control"`), and
+every web-side consumer that used to read `DebugArenaHandle.algorithmKind`/`sourceEventKinds[0]`
+as if it were the whole tape had to become genuinely per-source-scope-aware. The four contracts
+below are the rules that transition rests on — referenced by name (`Contract A`/`B`/`C`/`D`)
+throughout `eventTape.ts`/`algorithmRegistry.ts`/`debugSelectors.ts`/`debugTreeSelectors.ts`/
+`storeTypes.ts`/`generateConfigBuilder.ts`/`DebugEventTree.tsx`'s own doc comments, defined here
+once rather than re-explained at every call site.
+
+### Contract A — global `debugStep` numbering, source order = execution order
+
+One counter spans the whole merged tape: every mutating event in the first top-level source scope
+gets a lower `debugStep` than every mutating event in the second, with no interleaving between
+them. This isn't an arbitrary numbering choice — it reflects real execution order. QC/repair only
+ever starts after generation has fully finished (`maze-wasm/src/runner.rs::run_generate` calls
+`build_maze` strictly after `run_initial_generation` returns), so `debugStep=0..totalGenerationSteps-1`
+replays generation, and `debugStep=totalGenerationSteps..totalSteps-1` replays QC's mutations on
+top of generation's already-complete final state.
+
+`DebugArenaHandle.sources` (`storeTypes.ts`) is the concrete realization: one entry per top-level
+source scope, each owning a `[startStep, endStep)` half-open range of the shared `debugStep`
+space, built by `generateConfigBuilder.ts`'s debug-arena construction — `resolveMetadata`'s
+`totalSteps` per source accumulates into `runningStep`, and each source's `startStep`/`endStep`
+are just that running total before/after. A caller resolving global `debugStep` down to a specific
+source's own local step (`selectDebugMazeView`, `buildStepIndex`) finds the owning source by
+`startStep <= debugStep < endStep` and subtracts `startStep`.
+
+### Contract B — `sourceScopeForNode`/`adapterForNode` are the only ways to resolve "which source"
+
+Nothing outside `eventTape.ts` walks `NodeRecord.parent` by hand to find which top-level source
+scope a given arena node belongs to. `sourceScopeForNode(tape, nodeIndex)` walks `.parent` up to
+the nearest top-level scope and returns it; `adapterForNode(tape, nodeIndex, sourceEventKinds)`
+(`algorithmRegistry.ts`) builds on that to resolve the concrete decoder/apply/narration adapter for
+an arbitrary node — the one function `DebugEventTree.tsx`'s per-row rendering (`rowTokens`) and
+`debugTreeSelectors.ts` call, instead of re-deriving "which source" independently in each place.
+Every top-level source's own *content* starts at its scope wrapper's `firstChild`, not at the
+wrapper's own `nodeIndex` — `merge_tapes` lays every source's wrapper node out contiguously right
+after the merged root, *before* any source's actual content (`maze-core/src/event_log/mod.rs`), so
+a flat scan bounded by `nodeIndex` itself (instead of `firstChild`) runs straight into a different
+source's bytes. `sourceContentStart(tape, nodeIndex)` (`eventTape.ts`) is the single place this
+resolution happens — every bounded scan (`mutatingXEventsWithIndex`'s `startIndex`/`endIndex`,
+`resolveDebugArenaMetadata`, every `applyX`) is bounded through it, not through a top-level scope's
+raw `nodeIndex`. Getting this wrong was a real, shipped regression: an unbounded/mis-bounded scan
+of one source's tags ran into a later source's bytes and mis-decoded them using the wrong
+decoder — concretely, QC's `IterationStarted` tag (`1`) numerically collides with RB's
+`VertexSelected` tag (`1`), so the failure mode surfaces as a payload-length mismatch error
+("`tag 1 payload_len N does not match expected M`") rather than a silently wrong value.
+
+### Contract C — `mergeDebugMazeView` combines independent per-source contributions, never in place
+
+Each source's own `apply()` call (`applyKruskal`/`applyWilson`/`applyRecursiveBacktracker`/
+`applyEdgeBased`/`applyVertexBased`/`applyQc`) builds its contribution in complete independence —
+it never knows any other source exists, never reads another source's state, and is bounded to only
+its own arena range (Contract B). `debugSelectors.ts`'s `generationContribution`/`qcContribution`
+package each source's own `apply()` result into a `DebugMazeViewContribution`; `mergeDebugMazeView`
+is the *only* place contributions from more than one source are ever combined, folding them in
+source order (mirroring Contract A's execution order): the accumulator's `edges` starts from the
+first (generation) contribution's own list, and each subsequent contribution's `removedEdges` is
+applied as a retraction against edges contributed by an *earlier* source, before that contribution's
+own `edges` are appended. `dsuGroups`/`debugMaps`/`debugVertices` are generation-only fields (no
+`QcEvent` carries an equivalent — see `Specs/quality_control.md`'s note on why QC declares no debug
+values) and pass straight through from whichever single contribution actually populates them.
+
+**A single source's own `apply()` result must already be a net state, not two independent
+append-only logs**, or `mergeDebugMazeView`'s cross-source filter-then-concat can't correctly
+resolve an edge added and removed *within the same source's own replay window* (e.g. QC's repair
+loop adding a shortcut in one iteration and a later strategy removing that same edge, both within
+`[0, targetStep]`) — this was a real, shipped bug: `applyQc` used to accumulate `edges`/
+`removedEdges` as two flat, order-blind lists, so an intra-QC add-then-remove for the same `from:to`
+pair left the edge visible after merge instead of correctly net-removed. `applyQc` folds events
+into a `from:to`-keyed running map in emission order instead (a later event always overrides an
+earlier one for the same pair, whichever direction), and only reports `removedEdges` for a pair
+that was never added within this same call — i.e. one that can only have come from an *earlier*
+source's contribution. Debug-value/-map/-vertex names get a parallel per-contribution transform,
+`qualifyContribution`, mirroring `maze_core::generation::qualify_debug_value_names`'s own
+`"{scopeName}:"` qualification (applied only once `arena.sources.length > 1`) — the *declared* name
+list (`debugArena.debugValueNames`, what `DebugPanel.tsx` renders toggles from) is qualified on the
+core side, but the *replayed* state each `applyX` call returns is keyed by each algorithm's own
+unqualified name, so `debugSelectors.ts` must qualify it the same way or a toggle keyed by the
+qualified name never matches a replayed map's unqualified key — another real regression, fixed by
+`qualifyContribution`.
+
+### Contract D — a single source degenerates to identity, no special case anywhere
+
+With no QC source (debug_events off, or QC produced zero events) or a web-undecodable source
+filtered out, `arena.sources`/`topLevelSourceScopes` carry exactly one entry, same as every run
+before #147. `mergeDebugMazeView` called with exactly one contribution reduces to identity — the
+returned `edges` is just that contribution's own list, unchanged; `dsuGroups`/`debugMaps`/
+`debugVertices` pass through as-is. No caller anywhere (`selectDebugMazeView`,
+`debugTreeSelectors.ts`, `DebugEventTree.tsx`) special-cases `sources.length === 1` — the same code
+path that handles two sources handles one, which is what keeps every pre-#147 generation-only test
+(Kruskal/Wilson/RB/EdgeBased/VertexBased) passing unmodified.
+
+### Scope-id-to-title resolution stays on the web side, never round-tripped through the wire
+
+`"stage <id>"`/`"rule <id>"` scope names (`maze-core/src/quality_control/`) embed each `Stage`/
+`Rule`'s own opaque config `id`, never a user-facing display title — core has no concept of a
+rule's title at all (`QcRuleConfig` on the wire carries only `id`; `StageConfig` carries both `id`
+and `name`, but only `id` ever reaches a scope name). `algorithmRegistry.ts`'s `ScopeTitleLookup`
+resolves an id to its current title live, from the running store's `stages`/`rules` config
+(`DebugEventTree.tsx` builds it from `useMazeStore((s) => s.stages)`/`.rules`), rather than having
+core send the title across the wire — sending it wouldn't actually be any fresher: a title
+round-tripped through the wire at generation time would go stale exactly as fast after a later
+rename as one resolved from the live store on each render, so there is no correctness argument for
+the wire round-trip, only unnecessary wire/type surface. `BaseAlgorithmAdapter.scopeLabel`/
+`narrationTokensFor` both take an optional `titleLookup: ScopeTitleLookup` parameter — every
+non-QC adapter ignores it; `QC_ADAPTER` uses it to resolve `"stage <id>"`/`"rule <id>"` scope
+labels and `RuleChecked`/`RepairDispatched`'s narration text to the current title (quoted, via
+`quoted()`, so it reads as a distinct name rather than running into the surrounding sentence with
+no separator), falling back to the raw id when the lookup doesn't recognize it (e.g. the rule was
+deleted after this tape was generated).
+
+### Tree rendering: the former-root merge artifact never gets its own row
+
+Every top-level source scope's own single child is that source's former root (the scope
+`EventLog::new()` always names `"root"` before merging existed) — a purely structural artifact of
+`merge_tapes`, never a real narration step. `debugTreeSelectors.ts`'s `flattenVisibleRows` accepts
+an explicit `transparentNodeIndices` set (each source's former-root node index, computed by
+`DebugEventTree.tsx` from `topLevelSourceScopes`) and treats each one exactly like the merged root
+itself is already treated: never its own row, always expanded, its children rendered one depth
+shallower than they'd otherwise sit at — so the visible tree reads `<source scope> -> <real
+steps>` instead of `<source scope> -> "root" -> <real steps>`. Deliberately *not* inferred from
+tree shape (e.g. "any depth-2 scope is a former root") inside `flattenVisibleRows` itself — that
+function is a generic tree-flattening utility with no built-in notion of merged tapes, and this
+module's own unit tests build differently-shaped, non-merged trees that a depth-based heuristic
+would misfire on. `displayStepForRow`'s "first mutating step in this scope's subtree" resolution
+is a real structural walk via `firstChild`/`nextSibling` for the same reason a top-level scope's
+own subtree range check (`subtreeEnd`-style arena-index-range arithmetic) doesn't work: a top-level
+scope's real content isn't contiguous with its own arena index the way an ordinary nested scope's
+children are, so only a genuine tree walk gives the right answer for every scope shape uniformly.
+
+### Out of Scope (#147, beyond `Specs/quality_control.md`'s own "out of scope" note)
+
+- Per-repair-strategy instrumentation (a further breakdown inside one `"rule <id>"` scope) —
+  #169's architecture supports it, this issue doesn't build it
+- A third top-level source, or any change to `merge_tapes`'s own node-layout/tag-namespacing
+  mechanism — #147 only changes which callers reach `merge_tapes` and how many sources they hand
+  it, never the function itself
+- QC checkpoints (#128-style intermediate snapshots) — QC's own tape is expected far shorter than
+  a full generation tape, so `CHECKPOINT_INTERVAL`-scale resume isn't needed

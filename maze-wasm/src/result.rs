@@ -25,6 +25,7 @@ fn event_kind_wire_str(kind: maze_core::event_log::EventedEventKind) -> &'static
         maze_core::event_log::EventedEventKind::Wilson => "wilson",
         maze_core::event_log::EventedEventKind::EdgeBased => "edge_based",
         maze_core::event_log::EventedEventKind::VertexBased => "vertex_based",
+        maze_core::event_log::EventedEventKind::QualityControl => "quality_control",
     }
 }
 

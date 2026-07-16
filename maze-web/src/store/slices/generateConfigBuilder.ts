@@ -8,8 +8,8 @@ import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
-import { parseTape, parseCheckpoints } from "../../debug/eventTape";
-import { adapterFor } from "../../debug/algorithmRegistry";
+import { parseTape, parseCheckpoints, topLevelSourceScopes, sourceContentStart, type ApplyFrom } from "../../debug/eventTape";
+import { adapterForKind } from "../../debug/algorithmRegistry";
 
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
@@ -178,25 +178,39 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       const checkpoints = debugTape.snapshotTable && debugTape.snapshotPayload
         ? parseCheckpoints(debugTape.snapshotTable, debugTape.snapshotPayload)
         : null;
-      // Exactly one source is ever actually present today (GitHub issue #169's merge always
-      // wraps it in a dedicated top-level scope, but doesn't change how many real sources
-      // `run_generate` produces) — `algorithmKind` reads the first (only) entry. Consuming more
-      // than one source at once is out of scope until #147.
-      const eventKind = debugTape.sourceEventKinds[0];
-      const { totalSteps, checkpointFroms } = eventKind === "kruskal"
-        ? adapterFor("kruskal").resolveMetadata(tape, checkpoints)
-        : eventKind === "wilson"
-        ? adapterFor("wilson").resolveMetadata(tape, checkpoints)
-        : eventKind === "edge_based"
-        ? adapterFor("edge_based").resolveMetadata(tape, checkpoints)
-        : eventKind === "vertex_based"
-        ? adapterFor("vertex_based").resolveMetadata(tape, checkpoints)
-        : adapterFor("recursive_backtracker").resolveMetadata(tape, checkpoints);
+      // One entry per top-level source scope (GitHub issue #147/#169) — generation always first,
+      // QC (when present) always after, per Contract A (`Specs/event_log.md`'s #147 section).
+      // Checkpoints (GitHub issue #128) only ever apply to the first source (Recursive Backtracker
+      // is the only checkpointed algorithm) — every other source's resolveMetadata ignores the
+      // checkpoints argument and returns an empty checkpointFroms regardless.
+      const topLevelScopes = topLevelSourceScopes(tape);
+      let runningStep = 0;
+      const sources: DebugArenaHandle["sources"] = [];
+      let checkpointFroms: ApplyFrom[] = [];
+      for (let i = 0; i < topLevelScopes.length; i++) {
+        const scope = topLevelScopes[i];
+        const kind = debugTape.sourceEventKinds[i];
+        // See `sourceContentStart`'s doc comment (GitHub issue #147) for why this isn't just
+        // `scope.nodeIndex`/`topLevelScopes[i + 1].nodeIndex`.
+        const startIndex = sourceContentStart(tape, scope.nodeIndex);
+        const endIndex = i + 1 < topLevelScopes.length
+          ? sourceContentStart(tape, topLevelScopes[i + 1].nodeIndex)
+          : tape.nodeCount;
+        const metadata = adapterForKind(kind).resolveMetadata(tape, i === 0 ? checkpoints : null, startIndex, endIndex);
+        if (i === 0) checkpointFroms = metadata.checkpointFroms;
+        const startStep = runningStep;
+        runningStep += metadata.totalSteps;
+        sources.push({ scopeName: scope.scopeName, kind, nodeIndex: scope.nodeIndex, startStep, endStep: runningStep });
+      }
+      const totalSteps = runningStep;
       if (totalSteps > 0) {
         // debugValueNames (GitHub issue #131) comes from the WASM response's static declaration
         // (GenerateResult::debug_value_names()), not from scanning the tape — see
         // resolveDebugArenaMetadata's doc comment for why.
-        debugArena = { tape, algorithmKind: eventKind, nodes: snapshot.nodes, totalSteps, checkpointFroms, debugValueNames: debugTape.debugValueNames };
+        debugArena = {
+          tape, algorithmKind: sources[0].kind, sources, nodes: snapshot.nodes, totalSteps, checkpointFroms,
+          debugValueNames: debugTape.debugValueNames,
+        };
         lastStep = totalSteps - 1;
       }
     }

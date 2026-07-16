@@ -157,6 +157,45 @@ fn repro_268_alternative_not_created() {
     println!("remaining_issues={kinds:?}");
 }
 
+/// GitHub issue #147: `debug_events: true` on the QC/repair pipeline produces a `QcEvent` tape
+/// that decodes to the mutations the repair loop actually applied. Same fixture as
+/// `repro_qc_experiment_small_regions_not_merged` (25 isolated single-node regions merged into
+/// one via `reduce_scc_count`/`expand_region_passage`), with `debug_events: true` added — this is
+/// the one fixture in this file guaranteed to trigger real repair mutations, not just checks.
+#[test]
+fn repro_147_qc_debug_events_tape_matches_applied_mutations() {
+    use maze_core::event_log::DebugEvent;
+    use maze_core::quality_control::QcEvent;
+
+    let result = run_fixture("tests/fixtures/qc-experiment-small-regions-debug-events.json", 42);
+
+    let scc_count = result.region_sizes.values().map(|v| v.len()).sum::<usize>();
+    assert_eq!(scc_count, 1, "all 25 single-node regions must merge into one (same outcome as the non-debug fixture)");
+
+    let tape = result.qc_tape.expect("debug_events: true must produce a QC tape");
+    let mutating_events: Vec<&QcEvent> = tape.mutating_events().collect();
+    assert!(!mutating_events.is_empty(), "merging 25 regions into 1 must apply at least one mutating command");
+
+    // Every mutating event must actually be mutating per QcEvent::is_mutating (the tape only
+    // contains events built by real apply_commands calls, so this also guards against a stray
+    // *Declined trace variant leaking into mutating_events()).
+    for event in &mutating_events {
+        assert!(event.is_mutating(), "mutating_events() yielded a non-mutating event: {event:?}");
+    }
+
+    // The tree must contain at least a "stage stage_2" scope (where the merging happens) with a
+    // nested "iteration N" scope — proves the tape actually reflects QualityControlEngine's real
+    // stage/iteration structure, not just a flat event list.
+    let root = tape.root();
+    let stage_scope_names: Vec<String> = root.children()
+        .filter_map(|c| match c.payload() {
+            maze_core::event_log::NodePayload::Scope(name) => Some(name.to_string()),
+            maze_core::event_log::NodePayload::Event(_) => None,
+        })
+        .collect();
+    assert!(stage_scope_names.contains(&"stage stage_2".to_string()), "expected a \"stage stage_2\" top-level scope, got {stage_scope_names:?}");
+}
+
 /// Issue #95 (exact debug-toolbar "Copy config JSON" export, QC-only preset graph). Documents
 /// the known `FarthestEndpointsStrategy` heuristic limitation (see `Specs/repair.md`): the
 /// two-Dijkstra sweep isn't an exhaustive search, so it can land on a pair that isn't the true

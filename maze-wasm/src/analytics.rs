@@ -6,10 +6,9 @@ use maze_core::random::MazeRng;
 use maze_core::{
     space::Tessellation,
     quality_control::{
-        QualityControlEngine, Issue, CycleAnalysisOverflowedIssue, InvalidLoopIssue,
-        RegionNeedsExpansionIssue, RepairLimitReachedIssue, QcNoProgressIssue,
+        QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
+        RepairLimitReachedIssue, QcNoProgressIssue, IssuePayload, resolve_issue_payload,
     },
-    quality_control::issue_kinds::canonical_cycle_key,
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
     graph::{Graph, EdgeKind},
     ids::IdGenerator,
@@ -63,47 +62,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         let issue = issue.as_ref();
-        // Grouped by source check id (not one flat list) so a merged issue rendered as several
-        // bubbles (one per `source_checks` entry) highlights only the cycles *that check*
-        // flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment.
-        let mut invalid_loop_edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
-        if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
-            for &idx in invalid {
-                let Some(loop_edges) = all.get(idx) else { continue };
-                let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| {
-                    let edge = maze.graph.edge(eid)?;
-                    let from = u32::try_from(edge.from).ok()?;
-                    let to = u32::try_from(edge.to).ok()?;
-                    Some([from, to])
-                }).collect();
-                let key = canonical_cycle_key(loop_edges);
-                for source in invalid_sources.get(&key).into_iter().flatten() {
-                    invalid_loop_edges.entry(source.clone()).or_default().push(edge_pairs.clone());
-                }
-            }
-        }
-        let mut region_needs_expansion_nodes: HashMap<String, Vec<Vec<u32>>> = HashMap::new();
-        if let Some(RegionNeedsExpansionIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<RegionNeedsExpansionIssue>() {
-            for &idx in invalid {
-                let Some(region) = scc.components.get(idx) else { continue };
-                let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
-                for source in invalid_sources.get(&idx).into_iter().flatten() {
-                    region_needs_expansion_nodes.entry(source.clone()).or_default().push(node_ids.clone());
-                }
-            }
-        }
-        debug_assert!(
-            invalid_loop_edges.is_empty() || region_needs_expansion_nodes.is_empty(),
-            "issue {:?} produced both InvalidLoop and RegionNeedsExpansion payload data — \
-             at most one concrete Issue type should match per issue",
-            issue.kind()
-        );
-        let payload = if !invalid_loop_edges.is_empty() {
-            IssuePayloadDto::InvalidLoop { edges: invalid_loop_edges }
-        } else if !region_needs_expansion_nodes.is_empty() {
-            IssuePayloadDto::RegionNeedsExpansion { nodes: region_needs_expansion_nodes }
-        } else {
-            IssuePayloadDto::None
+        let payload = match resolve_issue_payload(issue, &maze.graph, &scc) {
+            IssuePayload::None => IssuePayloadDto::None,
+            // Grouped by source check id (not one flat list) so a merged issue rendered as
+            // several bubbles (one per `source_checks` entry) highlights only the cycles *that
+            // check* flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment.
+            IssuePayload::InvalidLoop { edges } => IssuePayloadDto::InvalidLoop { edges },
+            IssuePayload::RegionNeedsExpansion { nodes } => IssuePayloadDto::RegionNeedsExpansion { nodes },
         };
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()

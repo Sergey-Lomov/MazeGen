@@ -231,7 +231,7 @@ fn generate_maze_with_events_checkpoints_and_debug_values_stay_empty_for_kruskal
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    assert!(result.checkpoints.is_none(), "Kruskal checkpointing isn't wired up yet");
+    assert!(result.raw_source.checkpoints.is_none(), "Kruskal checkpointing isn't wired up yet");
     assert!(result.debug_value_names.is_empty(), "Kruskal declares no debug values yet");
 }
 
@@ -243,8 +243,8 @@ fn generate_maze_with_events_collects_tape_for_recursive_backtracker() {
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    assert_eq!(result.sources, vec![("generation", EventedEventKind::RecursiveBacktracker)]);
-    assert!(result.checkpoints.is_some(), "Recursive Backtracker must produce a checkpoint log");
+    assert_eq!(result.event_kind, EventedEventKind::RecursiveBacktracker);
+    assert!(result.raw_source.checkpoints.is_some(), "Recursive Backtracker must produce a checkpoint log");
     assert_eq!(
         result.debug_value_names,
         vec![("recursion_stack".to_string(), DebugValueKind::Sequence), ("visited".to_string(), DebugValueKind::Region)],
@@ -260,11 +260,14 @@ fn generate_maze_with_events_collects_tape_for_kruskal() {
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    let tape = result.tape;
-    assert_eq!(result.sources, vec![("generation", EventedEventKind::Kruskal)]);
-    assert!(result.checkpoints.is_none(), "Kruskal checkpointing isn't wired up yet");
+    assert_eq!(result.event_kind, EventedEventKind::Kruskal);
+    assert!(result.raw_source.checkpoints.is_none(), "Kruskal checkpointing isn't wired up yet");
     assert!(result.debug_value_names.is_empty(), "Kruskal doesn't declare debug values yet");
 
+    // generate_maze_with_events no longer merges its own source (GitHub issue #147) — reproduce
+    // what it used to do by merging the lone raw_source here, matching how run_generate merges it
+    // for real once a QC source may also be present.
+    let (tape, _) = maze_core::event_log::merge_tapes(vec![result.raw_source]);
     assert_eq!(tape.node_table.len() % maze_core::event_log::NODE_RECORD_SIZE, 0, "node table must be a whole number of NodeRecords");
     let record_count = tape.node_table.len() / maze_core::event_log::NODE_RECORD_SIZE;
     let has_event_node = (0..record_count).any(|i| {
@@ -283,9 +286,8 @@ fn generate_maze_with_events_collects_tape_and_visited_debug_value_for_wilson() 
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
     }, &empty_preset());
-    let tape = result.tape;
-    assert_eq!(result.sources, vec![("generation", EventedEventKind::Wilson)]);
-    assert!(result.checkpoints.is_none(), "Wilson checkpointing isn't wired up yet");
+    assert_eq!(result.event_kind, EventedEventKind::Wilson);
+    assert!(result.raw_source.checkpoints.is_none(), "Wilson checkpointing isn't wired up yet");
     assert_eq!(
         result.debug_value_names,
         vec![
@@ -297,6 +299,7 @@ fn generate_maze_with_events_collects_tape_and_visited_debug_value_for_wilson() 
         "Wilson declares the visited, current_walk, walk_start, and walk_head debug values"
     );
 
+    let (tape, _) = maze_core::event_log::merge_tapes(vec![result.raw_source]);
     assert_eq!(tape.node_table.len() % maze_core::event_log::NODE_RECORD_SIZE, 0, "node table must be a whole number of NodeRecords");
 }
 

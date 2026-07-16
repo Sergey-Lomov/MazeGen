@@ -33,7 +33,7 @@ fn apply_and_commit(
     preset_state: &PresetState,
 ) -> RepairResult {
     let (result, commands) = RepairStrategy::apply(&MissingRegionsStrategy, issue, maze, rng, params, preset_state, &[]);
-    crate::quality_control::rule::apply_commands(maze, preset_state, commands);
+    crate::quality_control::rule::apply_commands(maze, preset_state, commands, None);
     result
 }
 

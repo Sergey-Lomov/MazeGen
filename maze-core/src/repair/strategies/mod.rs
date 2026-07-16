@@ -53,7 +53,7 @@ pub(crate) mod test_utils {
         nested: &[NestedStrategyConfig<T>],
     ) -> RepairResult {
         let (result, commands) = strategy.apply(issue, maze, rng, params, preset_state, nested);
-        apply_commands(maze, preset_state, commands);
+        apply_commands(maze, preset_state, commands, None);
         result
     }
 

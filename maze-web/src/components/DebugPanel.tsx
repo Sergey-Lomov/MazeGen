@@ -6,6 +6,7 @@ import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
 import { ToggleRow } from "./ToggleRow";
 import * as m from "~/paraglide/messages";
+import type { EventedEventKind } from "../wasm/mazeService";
 
 const MIN_PANEL_WIDTH = 320;
 
@@ -25,8 +26,24 @@ const DEBUG_VALUE_LABELS: Record<string, () => string> = {
   reserve: () => m["debug.value.reserve"](),
 };
 
-function debugValueLabel(name: string): string {
-  return DEBUG_VALUE_LABELS[name]?.() ?? name;
+/** `name` may be qualified with a `"{scopeName}:"` prefix (`maze_core::generation::
+ *  qualify_debug_value_names`, GitHub issue #147 — applied once more than one source scope is
+ *  present, e.g. generation + QC) — `DEBUG_VALUE_LABELS` is keyed by each algorithm's own
+ *  unqualified name, so the prefix (if any) is stripped before lookup, not carried into the i18n
+ *  key match.
+ *
+ *  `"visited"` is declared independently by four algorithms (RB, Wilson, CustomEdgeBased,
+ *  CustomVertexBased — see `Specs/event_log.md`) with the same wire name but a different meaning
+ *  for RB specifically: RB's `"visited"` is every node the DFS has ever stepped onto (monotonic,
+ *  including ones it later backtracked past), which reads more naturally as "Visited" than the
+ *  shared generic "Completed" label the other three algorithms use — `algorithmKind` disambiguates
+ *  which wording applies without needing a second wire name. */
+function debugValueLabel(name: string, algorithmKind: EventedEventKind): string {
+  const unqualified = name.includes(":") ? name.slice(name.indexOf(":") + 1) : name;
+  if (unqualified === "visited" && algorithmKind === "recursive_backtracker") {
+    return m["debug.value.rb_visited"]();
+  }
+  return DEBUG_VALUE_LABELS[unqualified]?.() ?? name;
 }
 
 export function DebugPanel() {
@@ -164,7 +181,7 @@ export function DebugPanel() {
           {debugArena.debugValueNames.map(({ name }) => (
             <ToggleRow
               key={name}
-              label={debugValueLabel(name)}
+              label={debugValueLabel(name, debugArena.algorithmKind)}
               checked={debugValueToggles.has(name)}
               onChange={() => toggleDebugValue(name)}
             />

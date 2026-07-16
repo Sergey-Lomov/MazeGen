@@ -11,7 +11,8 @@ use maze_core::{
     space::{Field, Tessellation},
     generation::{generate_maze, build_preset_state, GenerationConfig},
     RegionClass, GenerationTiming,
-    quality_control::Issue,
+    quality_control::{Issue, QcEvent},
+    event_log::{EventLog, DebugTape},
 };
 use crate::config::{
     GenerateConfig, TessellationType,
@@ -32,6 +33,13 @@ pub struct MazeRunResult {
     /// (e.g. verifying a one-way vs. bidirectional connection was actually chosen), which none
     /// of the other summary fields expose.
     pub graph: Graph,
+    /// QC/repair narration-level debug event tape (GitHub issue #147) — `Some` exactly when
+    /// `config.debug_events` is set, `None` otherwise. Generation itself isn't instrumented here
+    /// (`maze-runner` calls the plain `generate_maze`, not `generate_maze_with_events` — no
+    /// browser-repro test needs to inspect generation's own narration, only QC's), so this is a
+    /// standalone, unmerged `QcEvent` tape rather than a multi-source merged one like
+    /// `maze-wasm::run_generate` produces.
+    pub qc_tape: Option<DebugTape<QcEvent>>,
 }
 
 pub fn pick_start<P: Copy>(points: &[P], to_xy: impl Fn(P) -> (i32, i32)) -> P {
@@ -92,7 +100,12 @@ fn run_generate_typed<T: Tessellation + 'static>(
         field.all_points().find(|&p| to_xy(p) == (fx, fy)).and_then(|p| field.node_at(p))
     });
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
-    let (maze, remaining_issues, timing) = build_maze(field, graph, seed, qc_engine, &repair_preset_state, limits, preset_start, preset_finish);
+    let mut qc_log = config.debug_events.then(EventLog::new);
+    let (maze, remaining_issues, timing) = build_maze(
+        field, graph, seed, qc_engine, &repair_preset_state, limits, preset_start, preset_finish,
+        qc_log.as_mut(),
+    );
+    let qc_tape = qc_log.map(EventLog::finish);
 
     let start_node = maze.meta.start;
     let finish_node = maze.meta.finish;
@@ -109,7 +122,7 @@ fn run_generate_typed<T: Tessellation + 'static>(
         }
     }
 
-    Ok(MazeRunResult { remaining_issues, timing, region_sizes, start: start_node, finish: finish_node, graph: maze.graph.clone() })
+    Ok(MazeRunResult { remaining_issues, timing, region_sizes, start: start_node, finish: finish_node, graph: maze.graph.clone(), qc_tape })
 }
 
 /// Parse JSON config and run the full generation+repair pipeline for the given seed.

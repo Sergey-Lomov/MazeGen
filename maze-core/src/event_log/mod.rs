@@ -113,6 +113,7 @@ pub enum EventedEventKind {
     Wilson,
     EdgeBased,
     VertexBased,
+    QualityControl,
 }
 
 /// Implemented by a concrete event enum to declare how its mutating variants affect named,

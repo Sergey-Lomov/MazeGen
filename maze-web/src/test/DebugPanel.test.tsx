@@ -70,18 +70,26 @@ function buildFixture(nodes: FixtureNode[]): ParsedTape {
   return parseTape(nodeTable, payload);
 }
 
-// root (0) -> "step 1" scope (1) -> EdgeAdded(1,2) (2)  [1 mutating event: step 0]
-//          -> "step 2" scope (3) -> EdgeAdded(2,3) (4)  [1 mutating event: step 1]
-//          -> "step 3" scope (5) -> EdgeAdded(3,4) (6)  [1 mutating event: step 2]
+// Wrapped in the merge shape `event_log::merge_tapes` always produces (GitHub issue #169): node 0
+// = merged root, node 1 = "generation" top-level source scope, node 2 = the algorithm's own
+// former root — one level deeper than pre-#169 fixtures had it. Real tags aren't namespaced here
+// (single source, source_index 0 -> tag unchanged, see merge_tapes' docs).
+//
+// root (0) -> "generation" scope (1) -> former root (2)
+//   -> "step 1" scope (3) -> EdgeAdded(1,2) (4)  [1 mutating event: step 0]
+//   -> "step 2" scope (5) -> EdgeAdded(2,3) (6)  [1 mutating event: step 1]
+//   -> "step 3" scope (7) -> EdgeAdded(3,4) (8)  [1 mutating event: step 2]
 function buildThreeStepTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-    { parent: 0, firstChild: 2, nextSibling: 3, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 1, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-    { parent: 0, firstChild: 4, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
-    { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(2n, 3n) },
-    { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 3") },
-    { parent: 5, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+    { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 2, firstChild: 4, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+    { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 2, firstChild: 6, nextSibling: 7, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
+    { parent: 5, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(2n, 3n) },
+    { parent: 2, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 3") },
+    { parent: 7, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
   ]);
 }
 
@@ -96,22 +104,30 @@ function threeStepArena() {
   const tape = buildThreeStepTape();
   const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
   const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
-  return { tape, algorithmKind: "recursive_backtracker" as const, nodes, totalSteps, checkpointFroms, debugValueNames: [] };
+  return {
+    tape, algorithmKind: "recursive_backtracker" as const,
+    sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps }],
+    nodes, totalSteps, checkpointFroms, debugValueNames: [],
+  };
 }
 
-// root (0) -> "step 1" scope (1) -> EdgeAdded(1,2) (2)
-//          -> "step 2" scope (3) -> EdgeAdded(2,3) (4)
-//          -> ... stepCount scopes total, each with one mutating EdgeAdded event.
+// Wrapped in the merge shape, same as buildThreeStepTape above:
+// root (0) -> "generation" scope (1) -> former root (2)
+//   -> "step 1" scope (3) -> EdgeAdded(1,2) (4)
+//   -> "step 2" scope (5) -> EdgeAdded(2,3) (6)
+//   -> ... stepCount scopes total, each with one mutating EdgeAdded event.
 function buildManyStepTape(stepCount: number): ParsedTape {
   const fixtureNodes: FixtureNode[] = [
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+    { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
   ];
   for (let i = 0; i < stepCount; i++) {
     const scopeIndex = fixtureNodes.length;
     const edgeIndex = scopeIndex + 1;
     const nextScopeIndex = i < stepCount - 1 ? edgeIndex + 1 : null;
     fixtureNodes.push({
-      parent: 0,
+      parent: 2,
       firstChild: edgeIndex,
       nextSibling: nextScopeIndex,
       tag: TAG_SCOPE,
@@ -133,7 +149,11 @@ function manyStepArena(stepCount: number) {
   const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
   const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
   const manyNodes: NodeDto[] = Array.from({ length: stepCount + 1 }, (_, i) => ({ id: i + 1, x: i, y: 0 }));
-  return { tape, algorithmKind: "recursive_backtracker" as const, nodes: manyNodes, totalSteps, checkpointFroms, debugValueNames: [] };
+  return {
+    tape, algorithmKind: "recursive_backtracker" as const,
+    sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps }],
+    nodes: manyNodes, totalSteps, checkpointFroms, debugValueNames: [],
+  };
 }
 
 // jsdom has no real layout — DebugEventTree's virtualized list needs a non-zero viewport (see
