@@ -31,7 +31,6 @@ impl Issue for MissingEndpointsIssue {
     fn meta(&self) -> &IssueMeta { &self.meta }
     fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
     fn as_any(&self) -> &dyn std::any::Any { self }
-    crate::impl_issue_dyn_boilerplate!();
 }
 
 impl IssueMerge for MissingEndpointsIssue {

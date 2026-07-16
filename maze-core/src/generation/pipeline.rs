@@ -11,14 +11,34 @@ pub const MAX_REPAIR_ITERATIONS: usize = 100;
 pub const DEFAULT_REPAIR_TIME_BUDGET_SECS: f64 = 10.0;
 
 /// Caps on the repair fixpoint loop in `build_maze`. Both bounds are optional and independent —
-/// whichever is hit first stops the loop. `None` for both means the loop only stops on
-/// convergence (no active issues) or no-progress, with no hard cap; callers surfacing this to
-/// users should treat "both None" as worth flagging, since an unconverging rule set can then loop
-/// indefinitely.
+/// whichever is hit first stops the loop. At least one bound must be `Some` — enforced once at
+/// construction (`RepairLimits::new`), not re-checked every iteration — since there is no other
+/// mechanism left to guarantee the fixpoint loop ever terminates (see GitHub issue #170: the old
+/// per-iteration no-progress guard was unreliable and easily defeated, so it was removed rather
+/// than kept as a second, partial safety net).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RepairLimits {
-    pub max_iterations: Option<usize>,
-    pub time_budget_secs: Option<f64>,
+    max_iterations: Option<usize>,
+    time_budget_secs: Option<f64>,
+}
+
+impl RepairLimits {
+    /// `Err` if both bounds are `None` — a `RepairLimits` value always guarantees the repair
+    /// fixpoint loop terminates.
+    pub fn new(max_iterations: Option<usize>, time_budget_secs: Option<f64>) -> Result<Self, String> {
+        if max_iterations.is_none() && time_budget_secs.is_none() {
+            return Err("RepairLimits requires at least one of max_iterations/time_budget_secs to be set".to_string());
+        }
+        Ok(RepairLimits { max_iterations, time_budget_secs })
+    }
+
+    pub fn max_iterations(&self) -> Option<usize> {
+        self.max_iterations
+    }
+
+    pub fn time_budget_secs(&self) -> Option<f64> {
+        self.time_budget_secs
+    }
 }
 
 impl Default for RepairLimits {

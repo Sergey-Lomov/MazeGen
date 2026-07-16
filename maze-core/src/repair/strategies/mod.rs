@@ -41,7 +41,7 @@ pub(crate) mod test_utils {
     use crate::quality_control::issue::IssueRequirement;
 
     /// Calls `strategy.apply` then immediately applies the returned commands to `maze` — mirrors
-    /// `Rule::dispatch_repair_typed`'s own apply-then-commit sequencing (GitHub issue #118), so
+    /// `Rule::check_and_repair_typed`'s own apply-then-commit sequencing (GitHub issue #118), so
     /// test assertions on `maze` after the call see the fully-committed result.
     pub fn apply_and_commit<T: Tessellation, I: IssueRequirement>(
         strategy: &impl RepairStrategy<T, I>,

@@ -8,7 +8,6 @@ pub enum IssueKind {
     MissingLoops,
     CycleAnalysisOverflowed,
     RepairLimitReached,
-    QcNoProgress,
     ExcessiveSccCount,
     RegionNeedsExpansion,
     MissingRegions,
@@ -40,13 +39,6 @@ pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflo
 /// analytics issue so the user can tell "still broken because the cap cut repair short" apart
 /// from "still broken because no strategy could fix it".
 pub const REPAIR_LIMIT_REACHED: IssueKind = IssueKind::RepairLimitReached;
-/// Not a toggleable QC check — pushed directly by `build_maze` when the repair fixpoint loop
-/// exits via the no-progress guard (the same `(rule_id, Issue)` set repeated identically across
-/// two iterations), rather than via convergence or a `RepairLimits` cap. Carries
-/// `QcNoProgressIssue { rule_ids }` naming the stuck rule(s) — typically a sign of two active
-/// rules whose strategies fight to a net-zero change each iteration (e.g. contradictory min/max
-/// thresholds on the same metric), distinct from simply running out of iterations/time.
-pub const QC_NO_PROGRESS: IssueKind = IssueKind::QcNoProgress;
 /// The graph is split into more strongly-connected components than a check's configured limit
 /// allows (currently only `SccCountCheck`) — often signals a poorly-connected or fragmented
 /// maze even when other checks pass. Reuses `build_scc` (`graph::scc`) rather than
@@ -88,7 +80,6 @@ impl IssueKind {
             IssueKind::MissingLoops => "missing_loops",
             IssueKind::CycleAnalysisOverflowed => "cycle_analysis_overflowed",
             IssueKind::RepairLimitReached => "repair_limit_reached",
-            IssueKind::QcNoProgress => "qc_no_progress",
             IssueKind::ExcessiveSccCount => "excessive_scc_count",
             IssueKind::RegionNeedsExpansion => "region_needs_expansion",
             IssueKind::MissingRegions => "missing_regions",
@@ -113,7 +104,6 @@ impl IssueKind {
             "missing_loops"      => Some(IssueKind::MissingLoops),
             "cycle_analysis_overflowed" => Some(IssueKind::CycleAnalysisOverflowed),
             "repair_limit_reached" => Some(IssueKind::RepairLimitReached),
-            "qc_no_progress" => Some(IssueKind::QcNoProgress),
             "excessive_scc_count" => Some(IssueKind::ExcessiveSccCount),
             "region_needs_expansion" => Some(IssueKind::RegionNeedsExpansion),
             "missing_regions" => Some(IssueKind::MissingRegions),
@@ -235,19 +225,6 @@ pub trait Issue: std::any::Any {
     fn meta_mut(&mut self) -> &mut IssueMeta;
     fn as_any(&self) -> &dyn std::any::Any;
 
-    /// Object-safe value equality for `Box<dyn Issue>`/`&dyn Issue` — used by `Stage`'s
-    /// no-progress fingerprint (`Stage::check_progress`), the one place two erased issues need
-    /// comparing. Different concrete types are always unequal; same type compares by `PartialEq`.
-    /// Must be part of `dyn Issue`'s vtable (called via `Box<dyn Issue>`), so it cannot carry a
-    /// `where Self: Sized` default body — every concrete type instead gets this one-line body via
-    /// `impl_issue_dyn_boilerplate!` (below), not hand-duplicated.
-    fn eq_dyn(&self, other: &dyn Issue) -> bool;
-
-    /// Object-safe clone for `Box<dyn Issue>` — used by `Stage`'s no-progress fingerprint, which
-    /// must keep a snapshot of the previous iteration's active issues to compare against the next.
-    /// Same object-safety constraint as `eq_dyn` — see that method's doc comment.
-    fn clone_box(&self) -> Box<dyn Issue>;
-
     fn source_checks(&self) -> &[String] {
         self.meta().source_checks()
     }
@@ -255,25 +232,6 @@ pub trait Issue: std::any::Any {
     fn details(&self) -> &HashMap<String, HashMap<&'static str, String>> {
         self.meta().details()
     }
-}
-
-/// Generates `Issue::eq_dyn`/`Issue::clone_box` for one concrete Issue type — both bodies are
-/// identical across every type (only `Self` varies, implicitly), so this exists purely to avoid
-/// hand-duplicating them in each of `quality_control::issue_kinds`'s 12 files, where a copy-paste
-/// slip (e.g. `downcast_ref::<Self>()` accidentally left referencing a different type after
-/// copying) would silently break `Stage`'s no-progress fingerprint instead of failing to compile.
-/// Invoked inside each type's own `impl Issue for ConcreteType { ... }` block, after the other
-/// four required methods (`kind`/`meta`/`meta_mut`/`as_any`) — see any `issue_kinds/*.rs` file.
-#[macro_export]
-macro_rules! impl_issue_dyn_boilerplate {
-    () => {
-        fn eq_dyn(&self, other: &dyn $crate::quality_control::Issue) -> bool {
-            $crate::quality_control::Issue::as_any(other).downcast_ref::<Self>().is_some_and(|o| self == o)
-        }
-        fn clone_box(&self) -> Box<dyn $crate::quality_control::Issue> {
-            Box::new(self.clone())
-        }
-    };
 }
 
 /// The compile-time `IssueKind` for a concrete `Issue` type — split out from `Issue` itself
@@ -309,37 +267,4 @@ pub trait IssueMerge: Issue + IssueKindConst {
 /// default and relies on this meaning "full".
 pub trait IssueRequirement: Issue {
     type Requirement: Default + Copy + 'static;
-}
-
-#[cfg(test)]
-mod dyn_issue_tests {
-    use super::*;
-    use crate::quality_control::issue_kinds::{MissingEndpointsIssue, UnreachableFinishIssue};
-
-    // `eq_dyn`'s "different concrete types are always unequal" branch — every issue_kinds/*.rs
-    // test only ever compares an issue against another instance of its own type (needed to
-    // exercise the real per-field `PartialEq`), so this is the one place two *different* concrete
-    // `Issue` types are compared via `eq_dyn`, proving `downcast_ref::<Self>()` actually gates on
-    // the concrete type rather than, say, only on `kind()` or field shape.
-    #[test]
-    fn eq_dyn_is_false_for_different_concrete_types() {
-        let a: Box<dyn Issue> = Box::new(MissingEndpointsIssue::new_from_check("check"));
-        let b: Box<dyn Issue> = Box::new(UnreachableFinishIssue::new_from_check("check"));
-        assert!(!a.eq_dyn(b.as_ref()));
-        assert!(!b.eq_dyn(a.as_ref()));
-    }
-
-    #[test]
-    fn eq_dyn_is_true_for_equal_same_type_issues() {
-        let a: Box<dyn Issue> = Box::new(MissingEndpointsIssue::new_from_check("check"));
-        let b: Box<dyn Issue> = Box::new(MissingEndpointsIssue::new_from_check("check"));
-        assert!(a.eq_dyn(b.as_ref()));
-    }
-
-    #[test]
-    fn clone_box_produces_an_equal_but_independently_owned_copy() {
-        let original: Box<dyn Issue> = Box::new(MissingEndpointsIssue::new_from_check("check"));
-        let cloned = original.clone_box();
-        assert!(original.eq_dyn(cloned.as_ref()));
-    }
 }

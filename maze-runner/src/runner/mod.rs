@@ -92,7 +92,7 @@ fn run_generate_typed<T: Tessellation + 'static>(
     }
 
     let qc_engine = build_qc_and_repair::<T>(config)?;
-    let limits = build_repair_limits(config);
+    let limits = build_repair_limits(config)?;
     let preset_start = config.preset_start.and_then(|[sx, sy]| {
         field.all_points().find(|&p| to_xy(p) == (sx, sy)).and_then(|p| field.node_at(p))
     });

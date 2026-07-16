@@ -13,24 +13,16 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const [open, setOpen] = useState(false);
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
   const setHoveredIssueRegionGroups = useMazeStore((s) => s.setHoveredIssueRegionGroups);
-  const rules = useMazeStore((s) => s.rules);
   const { description, severity } = resolveIssue(issue.kind);
   // No source check (e.g. `cycle_analysis_overflowed`, `repair_limit_reached` — neither is a
   // toggleable `Check<T>`) still checks `details` under the issue's own kind string — the only
   // way an issue without a check id can vary its label (see `repair_limit_reached`'s `limit`
   // detail, keyed this way in `build_analytics_snapshot`).
   const detailsKey = sourceCheck ?? issue.kind;
-  let details = issue.details[detailsKey];
-  // `qc_no_progress`'s `rule_ids` detail is core rule ids (opaque, e.g. "rule_6") — core has no
-  // concept of the user-facing `name` the web store assigns each rule (`QcRuleState.name`), so
-  // the substitution happens here, the only place with store access.
-  if (issue.kind === "qc_no_progress" && details?.rule_ids !== undefined) {
-    const names = details.rule_ids.split(", ").map((id) => rules.find((r) => r.id === id)?.name ?? id).join(", ");
-    details = { ...details, rule_ids: names };
-  }
+  const details = issue.details[detailsKey];
   // No source check -> fall back to the issue's own kind string as the DETAIL_LABELS key (e.g.
-  // `repair_limit_reached`/`qc_no_progress`, neither a toggleable `Check<T>` — see
-  // `issueRegistry.ts`'s doc comment on those two entries).
+  // `repair_limit_reached`, not a toggleable `Check<T>` — see `issueRegistry.ts`'s doc comment
+  // on that entry).
   const typeId = sourceCheck != null ? issue.source_check_types[sourceCheck] ?? sourceCheck : issue.kind;
   const label = resolveIssueSourceLabel(issue.kind, typeId, details);
   // Only this bubble's own source check's cycles — not every contributing check's cycles

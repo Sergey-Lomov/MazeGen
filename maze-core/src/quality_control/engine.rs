@@ -5,40 +5,38 @@ use crate::space::Tessellation;
 use crate::generation::PresetState;
 use crate::generation::pipeline::{RepairLimits, GenerationTiming, TimingEntry};
 use crate::event_log::EventLog;
-use crate::quality_control::issue_kinds::{RepairLimitKind, RepairLimitReachedIssue, QcNoProgressIssue};
+use crate::quality_control::issue_kinds::{RepairLimitKind, RepairLimitReachedIssue};
 use super::event::QcEvent;
 use super::issue::Issue;
 use super::stage::{Stage, StageOutcome, TimingSink};
 
 /// Shared repair budget across every stage in one `QualityControlEngine::run_full` call —
 /// `iterations_done`/`start_ms` are NOT reset per stage (see `Specs/repair.md`'s "Stages and the
-/// repair budget"). `limit_reached`/`no_progress` are written by `run_repair_stages`, not by
-/// `Stage::run_repair` itself — a `Stage` reports what happened in its own loop via
-/// `StageOutcome`, but deciding whether that should stop the whole stage sequence is the
-/// engine's call, not the stage's.
+/// repair budget"). `limit_reached` is written by `run_repair_stages`, not by `Stage::run_repair`
+/// itself — a `Stage` reports what happened in its own loop via `StageOutcome`, but deciding
+/// whether that should stop the whole stage sequence is the engine's call, not the stage's.
 pub(crate) struct RepairBudget {
     limits: RepairLimits,
     pub(crate) iterations_done: usize,
     start_ms: f64,
     pub(crate) limit_reached: Option<RepairLimitKind>,
-    pub(crate) no_progress: Option<Vec<String>>,
 }
 
 impl RepairBudget {
     fn new(limits: RepairLimits, now_ms: &impl Fn() -> f64) -> Self {
-        Self { limits, iterations_done: 0, start_ms: now_ms(), limit_reached: None, no_progress: None }
+        Self { limits, iterations_done: 0, start_ms: now_ms(), limit_reached: None }
     }
 
     /// `Some(kind)` for the first bound that has already been exhausted (max_iterations checked
     /// before time_budget, matching the pre-#106 flat pipeline's check order), `None` if neither
     /// bound is configured or both still have room.
     pub(crate) fn exhausted(&self, now_ms: &(impl Fn() -> f64 + ?Sized)) -> Option<RepairLimitKind> {
-        if let Some(max) = self.limits.max_iterations {
+        if let Some(max) = self.limits.max_iterations() {
             if self.iterations_done >= max {
                 return Some(RepairLimitKind::MaxIterations);
             }
         }
-        if let Some(budget_secs) = self.limits.time_budget_secs {
+        if let Some(budget_secs) = self.limits.time_budget_secs() {
             if now_ms() - self.start_ms >= budget_secs * 1000.0 {
                 return Some(RepairLimitKind::TimeBudget);
             }
@@ -93,9 +91,6 @@ impl<T: Tessellation> QualityControlEngine<T> {
         if let Some(limit) = budget.limit_reached {
             remaining.push(Box::new(RepairLimitReachedIssue::new(limit)));
         }
-        if let Some(rule_ids) = budget.no_progress {
-            remaining.push(Box::new(QcNoProgressIssue::new(rule_ids)));
-        }
         (remaining, timing)
     }
 
@@ -145,7 +140,6 @@ impl<T: Tessellation> QualityControlEngine<T> {
             match outcome {
                 StageOutcome::Done => continue,
                 StageOutcome::LimitReached(kind) => { budget.limit_reached = Some(kind); break; }
-                StageOutcome::NoProgress(rule_ids) => { budget.no_progress = Some(rule_ids); break; }
             }
         }
         timing.qc_total_ms += qc_total_ms;
@@ -192,15 +186,8 @@ mod repair_budget_tests {
     }
 
     #[test]
-    fn neither_bound_configured_never_exhausted() {
-        let limits = RepairLimits { max_iterations: None, time_budget_secs: None };
-        let budget = RepairBudget::new(limits, &clock_at(0.0));
-        assert_eq!(budget.exhausted(&clock_at(1_000_000.0)), None);
-    }
-
-    #[test]
     fn max_iterations_not_yet_reached_is_not_exhausted() {
-        let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
+        let limits = RepairLimits::new(Some(3), None).unwrap();
         let mut budget = RepairBudget::new(limits, &clock_at(0.0));
         budget.iterations_done = 2;
         assert_eq!(budget.exhausted(&clock_at(0.0)), None);
@@ -208,7 +195,7 @@ mod repair_budget_tests {
 
     #[test]
     fn max_iterations_reached_is_exhausted() {
-        let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
+        let limits = RepairLimits::new(Some(3), None).unwrap();
         let mut budget = RepairBudget::new(limits, &clock_at(0.0));
         budget.iterations_done = 3;
         assert_eq!(budget.exhausted(&clock_at(0.0)), Some(RepairLimitKind::MaxIterations));
@@ -216,14 +203,14 @@ mod repair_budget_tests {
 
     #[test]
     fn time_budget_not_yet_elapsed_is_not_exhausted() {
-        let limits = RepairLimits { max_iterations: None, time_budget_secs: Some(1.0) };
+        let limits = RepairLimits::new(None, Some(1.0)).unwrap();
         let budget = RepairBudget::new(limits, &clock_at(0.0));
         assert_eq!(budget.exhausted(&clock_at(500.0)), None);
     }
 
     #[test]
     fn time_budget_elapsed_is_exhausted() {
-        let limits = RepairLimits { max_iterations: None, time_budget_secs: Some(1.0) };
+        let limits = RepairLimits::new(None, Some(1.0)).unwrap();
         let budget = RepairBudget::new(limits, &clock_at(0.0));
         assert_eq!(budget.exhausted(&clock_at(1000.0)), Some(RepairLimitKind::TimeBudget));
     }
@@ -232,7 +219,7 @@ mod repair_budget_tests {
     fn max_iterations_checked_before_time_budget_when_both_configured() {
         // Both bounds already exhausted at once — max_iterations must win (matches the
         // pre-#106 flat pipeline's check order).
-        let limits = RepairLimits { max_iterations: Some(1), time_budget_secs: Some(1.0) };
+        let limits = RepairLimits::new(Some(1), Some(1.0)).unwrap();
         let mut budget = RepairBudget::new(limits, &clock_at(0.0));
         budget.iterations_done = 1;
         assert_eq!(budget.exhausted(&clock_at(2000.0)), Some(RepairLimitKind::MaxIterations));
@@ -243,9 +230,14 @@ mod repair_budget_tests {
         // Both bounds configured, but only time_budget has actually run out this time —
         // max_iterations being checked first (see test above) must not mask a genuine
         // TimeBudget result when max_iterations itself still has room.
-        let limits = RepairLimits { max_iterations: Some(100), time_budget_secs: Some(1.0) };
+        let limits = RepairLimits::new(Some(100), Some(1.0)).unwrap();
         let mut budget = RepairBudget::new(limits, &clock_at(0.0));
         budget.iterations_done = 1;
         assert_eq!(budget.exhausted(&clock_at(2000.0)), Some(RepairLimitKind::TimeBudget));
+    }
+
+    #[test]
+    fn new_rejects_both_bounds_none() {
+        assert!(RepairLimits::new(None, None).is_err());
     }
 }

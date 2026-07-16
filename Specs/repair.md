@@ -148,7 +148,7 @@ One variant per existing `generation::mod` mutating helper (`try_*`), not lower-
 
 `DraftMaze` **nests**: a strategy needing per-candidate rollback inside a larger multi-step attempt (`MissingRegionsStrategy::try_reuse`/`try_grow`) takes `DraftMaze::new(outer.maze.draft())` for each candidate, tries it, and on failure simply drops the inner `DraftMaze` — ordinary Rust drop, nothing to undo. On success, `outer.absorb(inner)` extends `outer`'s own command log with `inner.into_commands()` and replaces `outer.maze` with `inner.maze`'s final state, so the next attempt at `outer`'s level sees this one's committed effect. This replaces the old `SnapshotStack`'s per-candidate `snapshot`/`restore` pair with an ordinary owned value that simply goes out of scope on failure.
 
-**Where commands are applied and revalidated** (`apply_commands`, `quality_control::rule`): `Rule::dispatch_repair_typed` calls `strategy.apply(issue, maze, ...)` against an immutable borrow, gets back `(result, commands)`, then applies `commands` to the real `&mut Maze<T>` immediately — the Rule-level commit point, not batched across the whole `Stage`:
+**Where commands are applied and revalidated** (`apply_commands`, `quality_control::rule`): `Rule::check_and_repair_typed` calls `strategy.apply(issue, maze, ...)` against an immutable borrow, gets back `(result, commands)`, then applies `commands` to the real `&mut Maze<T>` immediately — the Rule-level commit point, not batched across the whole `Stage`:
 
 ```rust
 pub struct ApplyOutcome { pub proposed: usize, pub applied: usize }
@@ -215,7 +215,7 @@ pub struct NestedStrategyConfig<T: Tessellation> {
 
 **`slot_id` is part of a strategy's public configuration API**, not an internal detail — `StrategyConfig.slot_id` (config JSON, `maze-runner`), `maze-wasm`'s `NestedSlotDto.slot_id`, and the web store's `path: string[]` addressing all key off this exact string. Once a strategy ships with a given `slot_id`, renaming it is a breaking config-format change (same stability bar as `strategy_id()`/`IssueKind::as_str()`) — never renamed casually. Within `maze-core`, always reference it via the owning strategy's own exported constant, never a repeated string literal. `slot_id` distinguishes multiple slots that share the same `kind` but play different roles for the parent (e.g. a future "direct passage" slot and a separate "teleport" slot, both `REGION_NEEDS_EXPANSION`, not interchangeable alternatives of one "pick any" slot).
 
-**Dispatch**: `Rule::dispatch_repair_typed` always passes its own configured `nested` into `apply()`, for every strategy, whether or not it declares any `expected_nested()` slots — no per-strategy special-casing; a strategy that has nothing to do with nesting simply never reads the parameter.
+**Dispatch**: `Rule::check_and_repair_typed` always passes its own configured `nested` into `apply()`, for every strategy, whether or not it declares any `expected_nested()` slots — no per-strategy special-casing; a strategy that has nothing to do with nesting simply never reads the parameter.
 
 **Building `nested` (`maze-runner`)**: `maze-runner/src/runner.rs::build_nested` resolves a `StrategyConfig`'s `nested: Vec<StrategyConfig>` against the parent's `expected_nested()` — purely generically over `expected_nested()`/`handles()` on the erased `dyn ErasedRepairStrategy<T>` boundary, no strategy id ever compared in this validation logic (only the unavoidable id→struct `match` in `build_strategy_erased` mentions ids at all). For each nested `StrategyConfig`: `slot_id` must be present and match one of the parent's declared slots; the resolved strategy's `handles()` must equal that slot's `kind`; and, once every entry is resolved, each slot's filled count must fall within `[slot.min, slot.max]`. A slot's own nested strategies are validated the same way, recursively — depth is unbounded in the data model (a real second-level nested-capable strategy doesn't exist yet, but nothing stops one).
 
@@ -291,20 +291,46 @@ strategy that receives an already-bundled issue.
 
 ### Rule, Stage, and the unified QualityControlEngine
 
-See GitHub issue #106 (Stage/Rule ownership) and GitHub issue #113 (`Rule<T, I>` typing).
-`QualityControlEngine` is the **single orchestrator** for the whole check+repair process (or
-check-only, when no repair is requested) — there is no separate `RepairEngine` anymore. Control
-mirrors storage: `QualityControlEngine` owns an ordered list of `Stage<T>`s; each `Stage` owns
-`Vec<Box<dyn RuleTrait<T>>>` (erased — every concrete `Rule<T, I>` implements `RuleTrait<T>`,
-letting a `Stage` group rules of different `I` together); each concrete `Rule<T, I>` owns and
-drives its own checks plus its one strategy, all fixed to the same `I`. Each level calls into the
-next — `Stage::run_repair` calls `RuleTrait::run_checks`/`RuleTrait::dispatch_repair` (the erased
-entry points; internally these delegate to `Rule<T, I>`'s own `run_checks_typed`/
-`dispatch_repair_typed`), `QualityControlEngine::run_full` calls `Stage::run_repair` — rather than
-a flat loop reaching into all three levels at once, which is what the pre-#106
-`QualityControlEngine`+`RepairEngine`+`pipeline.rs` split did (a flat `checks: Vec<Box<dyn
-Check<T>>>` on `QualityControlEngine`, a separate `QcRule`/`RepairStage` config-only hierarchy on
-`RepairEngine`, re-matched every iteration in `pipeline.rs`).
+See GitHub issue #106 (Stage/Rule ownership), GitHub issue #113 (`Rule<T, I>` typing), and GitHub
+issue #170 (removing the no-progress guard and, with it, the erased `run_checks`/`dispatch_repair`
+call pair — see below). `QualityControlEngine` is the **single orchestrator** for the whole
+check+repair process (or check-only, when no repair is requested) — there is no separate
+`RepairEngine` anymore. Control mirrors storage: `QualityControlEngine` owns an ordered list of
+`Stage<T>`s; each `Stage` owns `Vec<Box<dyn RuleTrait<T>>>` (erased — every concrete `Rule<T, I>`
+implements `RuleTrait<T>`, letting a `Stage` group rules of different `I` together); each concrete
+`Rule<T, I>` owns and drives its own checks plus its one strategy, all fixed to the same `I`. Each
+level calls into the next — `Stage::check_and_dispatch` calls `RuleTrait::check_and_repair` (the
+one erased entry point into a rule's whole check→strategy pipeline; internally this delegates to
+`Rule<T, I>`'s own `check_and_repair_typed`), `QualityControlEngine::run_full` calls
+`Stage::run_repair` — rather than a flat loop reaching into all three levels at once, which is what
+the pre-#106 `QualityControlEngine`+`RepairEngine`+`pipeline.rs` split did (a flat `checks:
+Vec<Box<dyn Check<T>>>` on `QualityControlEngine`, a separate `QcRule`/`RepairStage` config-only
+hierarchy on `RepairEngine`, re-matched every iteration in `pipeline.rs`).
+
+**Since GitHub issue #170, the merged issue never crosses the `Rule`↔`Stage` boundary as a `Box<dyn
+Issue>`.** Pre-#170, `Stage`'s fixpoint loop called `RuleTrait::run_checks` to get a `Box<dyn
+Issue>`, held onto it across a no-progress snapshot comparison, then passed it into a separate
+`RuleTrait::dispatch_repair(issue, ...)` call — two erased entry points, with the issue itself
+living in `Stage`-owned storage in between. Once the no-progress guard was removed, nothing in
+`Stage` actually needed that intermediate issue value anymore — only whether checking found
+something and what repair did about it. `RuleTrait::check_and_repair` now runs both steps in one
+call entirely inside `Rule<T, I>` (`I` never erased), returning a `RuleIterationOutcome` describing
+the result instead of an issue the caller has to hold and pass back:
+
+```rust
+/// What happened when a rule's `check_and_repair`/`check_and_repair_typed` ran for one fixpoint
+/// iteration. Replaces the pre-#170 `Option<Box<dyn Issue>>` (from `run_checks`) plus a separate
+/// `Option<(RepairResult, ApplyOutcome)>` (from `dispatch_repair`) — one type instead of two,
+/// since the issue itself never needs to reach the caller anymore.
+pub enum RuleIterationOutcome {
+    /// No check in this rule found anything this iteration.
+    NoIssue,
+    /// A check found an issue, but this rule has no registered strategy ("no_fix").
+    NoStrategy,
+    /// A check found an issue and this rule's strategy was dispatched against it.
+    Repaired(RepairResult, ApplyOutcome),
+}
+```
 
 **Why there is no separate `RepairEngine` type**: in this model repair is never an independent
 operation over an arbitrary issue set — it always happens in the context of one `Rule`, which
@@ -347,6 +373,8 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
     /// most one merged `I` via `IssueMerge::merge` (moved here from `pipeline.rs` — see
     /// "Pipeline" below) — this is where rule-level issue merging naturally lives now, since a
     /// rule owns its own check dispatch. `None` if no check in this rule found anything this call.
+    /// `pub` (not just an internal step of `check_and_repair_typed` below) so tests can exercise
+    /// per-rule check-merge behavior directly, without needing a real repair dispatch.
     pub fn run_checks_typed(
         &self, maze: &Maze<T>, rng: &mut dyn RngCore,
         timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64,
@@ -360,30 +388,44 @@ impl<T: Tessellation, I: Issue + IssueMerge> Rule<T, I> {
         timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64,
     ) -> Vec<I>;
 
-    /// Dispatches this rule's own strategy against `issue` (already merged by
-    /// `run_checks_typed`) — builds `StrategyParams`, calls `apply` itself (no separate engine
-    /// involved), then immediately applies and revalidates the returned commands against the real
-    /// `maze` via `apply_commands` (see "Mutation-command contract" above) — the Rule-level commit
-    /// point, not batched across the whole `Stage`. `None` if this rule has no registered strategy.
-    pub fn dispatch_repair_typed(
-        &self, issue: &I, maze: &mut Maze<T>, rng: &mut dyn RngCore,
-        preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>,
+    /// Runs this rule's checks (`run_checks_typed`) then, if a check found anything and this rule
+    /// has a registered strategy, dispatches repair against it immediately — builds
+    /// `StrategyParams`, calls `apply` itself (no separate engine involved), then immediately
+    /// applies and revalidates the returned commands against the real `maze` via `apply_commands`
+    /// (see "Mutation-command contract" above) — the Rule-level commit point, not batched across
+    /// the whole `Stage`. Returns a `RuleIterationOutcome` (see above) describing what happened —
+    /// the merged issue itself never leaves this call (GitHub issue #170): unlike the pre-#170
+    /// `run_checks_typed`/`dispatch_repair_typed` pair, where the caller held the issue between
+    /// two separate calls, this is the only entry point, and `I` never crosses back out.
+    ///
+    /// `per_check`/`per_strategy` are separate timing accumulators (not one shared map) so
+    /// `GenerationTiming.per_check`/`per_strategy` stay distinct on the caller side. `qc_ms`/
+    /// `repair_ms` accumulate this call's own elapsed time into the caller's stage-level totals
+    /// (`GenerationTiming.qc_total_ms`/`repair_total_ms`) — `qc_ms` covers `run_checks_typed`,
+    /// `repair_ms` covers `apply`+`apply_commands`.
+    pub fn check_and_repair_typed(
+        &self, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState,
+        per_check: &mut HashMap<&'static str, (f64, u32)>,
+        per_strategy: &mut HashMap<&'static str, (f64, u32)>,
+        qc_ms: &mut f64, repair_ms: &mut f64,
         now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
-    ) -> Option<(RepairResult, ApplyOutcome)>;
+    ) -> RuleIterationOutcome;
 }
 
 /// Type-erased view of `Rule<T, I>` for the one place genuine cross-`I` heterogeneity is
 /// unavoidable: `Stage.rules` (a `Stage` deliberately groups rules of different `I` together).
-/// `Box<dyn Issue>`/`&dyn Issue` cross this boundary; `Stage` never mixes an `Issue` from one
-/// rule into another rule's `dispatch_repair` call — `dispatch_repair`'s own doc comment states
-/// this as the caller invariant its internal downcast (`expect()`, not `Result`) relies on.
+/// The check→strategy pipeline itself never crosses this boundary — `I` stays entirely inside
+/// `Rule::check_and_repair_typed`; `check_and_repair` below is the only erased entry point into it.
 pub trait RuleTrait<T: Tessellation> {
     fn id(&self) -> &str;
-    fn kind(&self) -> IssueKind;   // I::KIND, object-safe mirror for erased callers
-    fn has_strategy(&self) -> bool;
-    fn run_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Option<Box<dyn Issue>>;
     fn report_checks(&self, maze: &Maze<T>, rng: &mut dyn RngCore, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64) -> Vec<Box<dyn Issue>>;
-    fn dispatch_repair(&self, issue: &dyn Issue, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState, timing: &mut HashMap<&'static str, (f64, u32)>, now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>) -> Option<(RepairResult, ApplyOutcome)>;
+    fn check_and_repair(
+        &self, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState,
+        per_check: &mut HashMap<&'static str, (f64, u32)>,
+        per_strategy: &mut HashMap<&'static str, (f64, u32)>,
+        qc_ms: &mut f64, repair_ms: &mut f64,
+        now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+    ) -> RuleIterationOutcome;
 }
 ```
 
@@ -427,11 +469,15 @@ impl<T: Tessellation> Stage<T> {
     pub fn new(id: String, name: String, rules: Vec<Box<dyn RuleTrait<T>>>) -> Self;
     pub fn rules(&self) -> &[Box<dyn RuleTrait<T>>];
 
-    /// Drives this stage's own fixpoint repair loop until convergence (no active issues),
-    /// no-progress (same active rule/issue set twice in a row), or the shared `budget` (see
-    /// `QualityControlEngine` below) is exhausted. Returns `StageOutcome` describing which —
-    /// the caller (`QualityControlEngine::run_repair_stages`) decides what that means for the
-    /// rest of the stage sequence; a `Stage` never knows whether it is the last one or not.
+    /// Drives this stage's own fixpoint repair loop until convergence (no active issues) or the
+    /// shared `budget` (see `QualityControlEngine` below) is exhausted. Returns `StageOutcome`
+    /// describing which — the caller (`QualityControlEngine::run_repair_stages`) decides what
+    /// that means for the rest of the stage sequence; a `Stage` never knows whether it is the
+    /// last one or not. There is no separate no-progress guard (see GitHub issue #170) — the
+    /// pre-#170 value-equality and "commands dropped" guards were unreliable and easily defeated
+    /// (e.g. two rules whose issue content genuinely differs every iteration while the graph
+    /// never converges), so termination is guaranteed entirely by `budget`, which `RepairLimits`
+    /// requires to actually bound the loop (see that type's doc comment below).
     pub(crate) fn run_repair(
         &self, maze: &mut Maze<T>, rng: &mut dyn RngCore, preset_state: &PresetState,
         budget: &mut RepairBudget,
@@ -450,20 +496,18 @@ impl<T: Tessellation> Stage<T> {
 pub(crate) enum StageOutcome {
     Done,
     LimitReached(RepairLimitKind),
-    NoProgress(Vec<String>), // stuck rule ids
 }
 ```
 
-Inside `run_repair`, no-progress state (the previous-iteration fingerprint) and the per-rule
-`failed` set are **local variables** — not fields on `Stage` — living only for the duration of one
-`run_repair` call, resetting naturally on the next call rather than needing an explicit reset at a
-stage boundary the way the pre-#106 pipeline had to reset its fingerprint manually. A rule id
-never crosses a stage boundary (a rule is configured into exactly one stage), so `failed` never
-needs to be shared beyond the stage that owns it either.
+Inside `run_repair`, the per-rule `failed` set is a **local variable** — not a field on `Stage` —
+living only for the duration of one `run_repair` call, resetting naturally on the next call rather
+than needing an explicit reset at a stage boundary. A rule id never crosses a stage boundary (a
+rule is configured into exactly one stage), so `failed` never needs to be shared beyond the stage
+that owns it either.
 
 `event_log` (GitHub issue #147) — see `Specs/quality_control.md`'s "Narration-level debug
 instrumentation" section for the full scope shape (`"stage <id>"` → `"iteration N"` → `"rule
-<id>"`) and event catalog this threads through `run_repair`/`collect_active`/`dispatch` down to
+<id>"`) and event catalog this threads through `run_repair`/`check_and_dispatch` down to
 `apply_commands`. `None` on every non-debug call.
 
 ```rust
@@ -496,13 +540,13 @@ impl<T: Tessellation> QualityControlEngine<T> {
 }
 ```
 
-The shared repair budget (`RepairLimits` → `iterations_done`/`start_ms`, plus which limit fired
-and which rules no-progressed) is **not** reset per stage — `QualityControlEngine::run_repair_stages`
-constructs one `RepairBudget` before the first stage and passes the same `&mut RepairBudget` into
-every `stage.run_repair(...)` call in sequence. A stage reporting `StageOutcome::Done` simply
-advances to the next stage; `LimitReached`/`NoProgress` stops the whole sequence (mirrors the
-pre-#106 pipeline's `break 'stages'` — no-progress or a spent budget in one stage means later
-stages never get a chance to run against a maze whose current stage never reached a clean state).
+The shared repair budget (`RepairLimits` → `iterations_done`/`start_ms`, plus which limit fired)
+is **not** reset per stage — `QualityControlEngine::run_repair_stages` constructs one
+`RepairBudget` before the first stage and passes the same `&mut RepairBudget` into every
+`stage.run_repair(...)` call in sequence. A stage reporting `StageOutcome::Done` simply advances
+to the next stage; `LimitReached` stops the whole sequence (mirrors the pre-#106 pipeline's
+`break 'stages'` — a spent budget in one stage means later stages never get a chance to run
+against a maze whose current stage never reached a clean state).
 No `'stages` label is needed in the new code: the inner fixpoint loop lives entirely inside
 `Stage::run_repair`, which simply returns a `StageOutcome` instead of breaking through a label —
 `run_repair_stages` sees only one loop level, an ordinary `for` over `self.stages`.
@@ -798,12 +842,20 @@ pub const MAX_REPAIR_ITERATIONS: usize = 100;
 pub const DEFAULT_REPAIR_TIME_BUDGET_SECS: f64 = 10.0;
 
 /// Caps on the repair fixpoint loop. Both bounds are optional and independent — whichever is hit
-/// first stops the loop. `None` for both means no hard cap (loop only stops on convergence or
-/// no-progress) — callers surfacing this to users should flag that combination, since an
-/// unconverging rule set can then loop indefinitely.
+/// first stops the loop. At least one bound must be `Some` — enforced once at construction
+/// (`RepairLimits::new`), not re-checked every iteration (see GitHub issue #170): there is no
+/// no-progress guard anymore, so `RepairLimits` is the only mechanism left that guarantees the
+/// fixpoint loop terminates.
 pub struct RepairLimits {
-    pub max_iterations: Option<usize>,
-    pub time_budget_secs: Option<f64>,
+    max_iterations: Option<usize>,
+    time_budget_secs: Option<f64>,
+}
+
+impl RepairLimits {
+    /// `Err` if both bounds are `None`.
+    pub fn new(max_iterations: Option<usize>, time_budget_secs: Option<f64>) -> Result<Self, String>;
+    pub fn max_iterations(&self) -> Option<usize>;
+    pub fn time_budget_secs(&self) -> Option<f64>;
 }
 
 impl Default for RepairLimits {
@@ -830,7 +882,7 @@ pub fn build_maze<T: Tessellation>(
 
 `build_maze`, `MAX_REPAIR_ITERATIONS`, and `RepairLimits` are re-exported from `maze_core` root.
 
-**Since GitHub issue #106, `build_maze` is thin plumbing, not the algorithm.** All dispatch logic (the fixpoint repair loop, issue merging, the no-progress/limit guards, stage sequencing) lives on `QualityControlEngine`/`Stage`/`Rule` (see "Rule, Stage, and the unified QualityControlEngine" above) — `build_maze` itself only constructs the `Maze`, seeds the shared `MazeRng`, seeds `maze.meta.start`/`finish` from `preset_start`/`preset_finish` (before the repair loop runs, so a preset start is honored by the same idempotency check strategies already use — see GitHub issue #86), and delegates to `qc_engine.run_full(...)`:
+**Since GitHub issue #106, `build_maze` is thin plumbing, not the algorithm.** All dispatch logic (the fixpoint repair loop, issue merging, the limit guard, stage sequencing) lives on `QualityControlEngine`/`Stage`/`Rule` (see "Rule, Stage, and the unified QualityControlEngine" above) — `build_maze` itself only constructs the `Maze`, seeds the shared `MazeRng`, seeds `maze.meta.start`/`finish` from `preset_start`/`preset_finish` (before the repair loop runs, so a preset start is honored by the same idempotency check strategies already use — see GitHub issue #86), and delegates to `qc_engine.run_full(...)`:
 
 ```rust
 pub fn build_maze<T: Tessellation>(
@@ -851,34 +903,31 @@ pub fn build_maze<T: Tessellation>(
 `event_log` (GitHub issue #147) — forwarded straight into `qc_engine.run_full`. `None` on every
 non-debug call; see `Specs/quality_control.md`'s "Narration-level debug instrumentation" section
 for the full scope/event shape this threads through `run_full`/`run_repair_stages`/
-`Stage::run_repair` down to `apply_commands`.
+`Stage::run_repair`/`check_and_dispatch` down to `apply_commands`.
 
 The second return value is the list of unresolved issues after all repair iterations. An empty vec means all issues were resolved. Callers decide how to handle unresolved issues — the pipeline always returns a maze regardless.
 
 Time is measured via a small internal `now_ms()` helper, not `std::time::Instant` directly — `Instant` panics on `wasm32-unknown-unknown` (no syscall backing it). Native (including `cargo test`) reads a process-lifetime monotonic clock; the `wasm32` target reads `js_sys::Date::now()` instead. Either way, the value is only ever used for measuring elapsed duration within one `build_maze` call.
 
-**Full algorithm** (`QualityControlEngine::run_full` → `run_repair_stages` → `Stage::run_repair` → `RuleTrait::run_checks`/`dispatch_repair`, delegating internally to `Rule<T, I>::run_checks_typed`/`dispatch_repair_typed`):
+**Full algorithm** (`QualityControlEngine::run_full` → `run_repair_stages` → `Stage::run_repair` → `check_and_dispatch` → `RuleTrait::check_and_repair`, delegating internally to `Rule<T, I>::check_and_repair_typed`):
 
 1. `run_full` constructs one `GenerationTiming` accumulator for the whole call — every level below only *updates* it (via smaller `(f64, u32)` tuple maps folded in afterward), never creates its own.
-2. `run_repair_stages` constructs one `RepairBudget` (wraps `RepairLimits` plus `iterations_done`/`start_ms`, plus whichever limit fired / rules no-progressed) **before the first stage**, then iterates `self.stages` in order (`for stage in &self.stages`), passing the *same* `&mut RepairBudget` into every `stage.run_repair(...)` call — the budget is shared across all stages, never reset per stage (see below). A stage reporting `StageOutcome::Done` advances to the next; `LimitReached`/`NoProgress` stops the whole sequence — this mirrors the pre-#106 pipeline's `break 'stages'` exactly, just without needing a loop label, since the inner fixpoint loop is now entirely inside `Stage::run_repair` and simply `return`s a `StageOutcome` instead of breaking through several loop levels.
-3. **Inside `Stage::run_repair`** (one stage's own fixpoint loop, `failed`/no-progress fingerprint local to this call):
+2. `run_repair_stages` constructs one `RepairBudget` (wraps `RepairLimits` plus `iterations_done`/`start_ms`, plus whichever limit fired) **before the first stage**, then iterates `self.stages` in order (`for stage in &self.stages`), passing the *same* `&mut RepairBudget` into every `stage.run_repair(...)` call — the budget is shared across all stages, never reset per stage (see below). A stage reporting `StageOutcome::Done` advances to the next; `LimitReached` stops the whole sequence — this mirrors the pre-#106 pipeline's `break 'stages'` exactly, just without needing a loop label, since the inner fixpoint loop is now entirely inside `Stage::run_repair` and simply `return`s a `StageOutcome` instead of breaking through several loop levels.
+3. **Inside `Stage::run_repair`** (one stage's own fixpoint loop, `failed` local to this call):
    - Check `budget.exhausted(now_ms)` (max_iterations checked before time_budget) → `Some(kind)` means `LimitReached(kind)`.
    - `budget.iterations_done += 1`.
-   - **`collect_active`: run QC — stage-scoped, not stage-agnostic.** For each `Box<dyn RuleTrait<T>>` in `self.rules` (in `Vec` order), skipping ids already in the local `failed` set, call `rule.run_checks(maze, rng, ...)` — this only runs **this stage's own** checks, unlike the pre-#106 pipeline, which ran every check across every stage every iteration (explicitly called out as wasteful, see GitHub issue #106). **Rule-level merge happens inside `run_checks_typed` itself**, not here: a rule's own multiple checks fold into at most one issue via `IssueMerge::merge` (moved from `pipeline.rs` to `quality_control/rule.rs`, and from a runtime `merge_issue` function to each concrete type's own `IssueMerge` impl by GitHub issue #113 — same per-type merge rules: `InvalidLoopIssue` via a three-step normalize→dedup→remap canonical merge, `RegionNeedsExpansionIssue`/`InvalidTeleportIssue`/`TeleportGroupProximityIssue` via plain dedup-union, `MissingRegionsIssue` takes the value further from zero per class — see "Rule, Stage, and the unified QualityControlEngine" above and `quality_control.md`'s "Dedup interaction" for the full per-type rules). Keep only rules with `Some(issue)` **and** `rule.has_strategy()` → `active: Vec<(&dyn RuleTrait<T>, Box<dyn Issue>)>`, sorted by `rule.id()` once, immediately — the same sorted order is then reused by both the progress check and dispatch below, matching the pre-#106 pipeline's deterministic dispatch order (`active.sort_unstable_by` by rule id).
-   - If `active` is empty: `StageOutcome::Done` — this stage is finished.
-   - **Progress guard**: compare `active` (already sorted) against the previous iteration's snapshot, element-wise, on `(rule.id(), issue)` — full value equality via `Issue::eq_dyn` (object-safe, downcasts both sides to the same concrete type and compares by `PartialEq` — different concrete types always compare unequal), covering every field of the concrete issue, same semantics as before #113: catches true no-progress (identical rule set with identical issue content) without false-triggering when two iterations produce the same rule with genuinely different issue content (e.g. different cycles flagged invalid — GitHub issue #27). Equal → `StageOutcome::NoProgress(rule_ids)`.
-   - Otherwise snapshot `active` as `(rule.id().to_string(), issue.clone_box())` pairs for the next iteration's comparison, then dispatch: for each `(rule, issue)` in `active`'s order, call `rule.dispatch_repair(issue.as_ref(), maze, rng, preset_state, ...)` directly (no lookup — `active` already holds a reference to the rule, not just its id), getting back `(RepairResult, ApplyOutcome)` — `Failed` → add `rule.id()` to the local `failed` set; `Fixed { score: Some(s) }` → set `maze.meta.route_score` if not already set.
-   - **Extended no-progress guard, "commands dropped" signal** (GitHub issue #118, independent of the `(rule_id, Issue)` value-equality guard above): `Stage::run_repair` tracks, per rule, a streak of consecutive iterations where `ApplyOutcome.applied == 0 && ApplyOutcome.proposed > 0` (the rule proposed a non-empty command batch but every command got dropped on revalidation) — reset to `0` the moment a rule applies at least one command in some iteration. `proposed == 0 && applied == 0` (nothing proposed at all) is not counted as a stall — a strategy that legitimately proposes nothing this call isn't confused with one whose proposals keep getting rejected. Reaching a streak of 2 (same cadence as the value-equality guard) adds the rule to `failed` and to a `StageOutcome::NoProgress` the same way the value-equality guard does — this catches an infinite propose-reject loop where the issue *content* keeps changing between iterations (so the value-equality guard never fires) while nothing about the real graph ever actually changes. Different proposed command sets across stalled iterations still count as the same stall condition — the guard doesn't separately track *which* commands were proposed, only whether any landed.
-   - Loop.
+   - **`check_and_dispatch`: run QC and dispatch repair together — stage-scoped, not stage-agnostic.** For each `Box<dyn RuleTrait<T>>` in `self.rules`, **in `self.rules`' own configured order** (no sorting — see GitHub issue #170: sorting by rule id existed only to give the pre-#170 no-progress guard a stable snapshot to compare across iterations; once that guard was removed, nothing needs a re-derived order, so dispatch simply follows the order the rule config itself specifies), skipping ids already in the local `failed` set, call `rule.check_and_repair(maze, rng, preset_state, ...)` — this only runs **this stage's own** checks, unlike the pre-#106 pipeline, which ran every check across every stage every iteration (explicitly called out as wasteful, see GitHub issue #106), and immediately dispatches repair for that same rule if it found anything and has a strategy — no intermediate `Box<dyn Issue>` list held across a second pass (see GitHub issue #170's "Rule, Stage" section above). **Rule-level merge happens inside `check_and_repair_typed`'s own `run_checks_typed` step**: a rule's own multiple checks fold into at most one issue via `IssueMerge::merge` (moved from `pipeline.rs` to `quality_control/rule.rs`, and from a runtime `merge_issue` function to each concrete type's own `IssueMerge` impl by GitHub issue #113 — same per-type merge rules: `InvalidLoopIssue` via a three-step normalize→dedup→remap canonical merge, `RegionNeedsExpansionIssue`/`InvalidTeleportIssue`/`TeleportGroupProximityIssue` via plain dedup-union, `MissingRegionsIssue` takes the value further from zero per class — see "Rule, Stage, and the unified QualityControlEngine" above and `quality_control.md`'s "Dedup interaction" for the full per-type rules). Each call's `RuleIterationOutcome` decides what happens next: `NoIssue` → nothing; `NoStrategy` → counts toward "this stage isn't converged yet" but nothing to apply; `Repaired(result, outcome)` → `Failed` adds `rule.id()` to the local `failed` set, `Fixed { score: Some(s) }` sets `maze.meta.route_score` if not already set.
+   - If no rule in this pass produced `NoIssue` for every rule (i.e. at least one rule returned `NoStrategy` or `Repaired`): loop again. Otherwise (every rule found nothing): `StageOutcome::Done` — this stage is finished.
+   - Loop. **No no-progress guard** (see GitHub issue #170) — the loop keeps iterating until no rule finds anything or `budget` is exhausted; there is no separate mechanism that stops it early on a stuck-but-still-changing issue set.
 4. Back in `run_repair_stages`: fold each stage's timing tuples into `GenerationTiming`'s `TimingEntry` maps. Return the final `RepairBudget`.
 5. `run_full` runs the **unconditional final report pass** (`collect_final_report`, regardless of how the stage sequence ended) — walks `self.stages` again, concatenating `stage.run_report(...)` (i.e. `RuleTrait::report_checks`, `report_check`-based, one issue per flagged instance — see GitHub issue #102) for every rule in every stage. Same effective check set as the pre-#106 stage-agnostic final pass, just reached by walking the same stage/rule hierarchy instead of a flat check list.
-6. Pushes `RepairLimitReachedIssue`/`QcNoProgressIssue` synthetic issues (`Box::new(...) as Box<dyn Issue>`) based on the returned `RepairBudget`, same as before. Returns `(remaining, timing)`.
+6. Pushes a `RepairLimitReachedIssue` synthetic issue (`Box::new(...) as Box<dyn Issue>`) if `budget.limit_reached` is `Some`. Returns `(remaining, timing)`.
 
-Two rules producing the same concrete `Issue` type are fully independent through this — each owns its own checks and strategy, its own fingerprint (within whichever stage owns it), and its own `failed` tracking; there is no shared routing table for either to collide on. A failure on one rule does not affect another rule's repair dispatch, in the same or a different stage. A no-progress break, however, *does* stop every later stage — see above.
+Two rules producing the same concrete `Issue` type are fully independent through this — each owns its own checks and strategy, and its own `failed` tracking; there is no shared routing table for either to collide on. A failure on one rule does not affect another rule's repair dispatch, in the same or a different stage. A `LimitReached` break, however, *does* stop every later stage — see above.
 
 ### Stages and the repair budget
 
-`RepairLimits` (`max_iterations`/`time_budget_secs`) is shared across every stage in one `run_full` call via the single `RepairBudget` constructed in `run_repair_stages`, not reset per stage — `iterations_done`/`start_ms` are set once, before the first stage, and never reset at a stage boundary. If the budget is exhausted mid-stage, the whole stage sequence stops (not just the current stage) — the same `REPAIR_LIMIT_REACHED` issue construction as before staging existed applies unchanged; it just may now fire while a later stage never even got a chance to start. `QC_NO_PROGRESS` similarly always names whichever stage's rules were stuck when the break happened.
+`RepairLimits` (`max_iterations`/`time_budget_secs`) is shared across every stage in one `run_full` call via the single `RepairBudget` constructed in `run_repair_stages`, not reset per stage — `iterations_done`/`start_ms` are set once, before the first stage, and never reset at a stage boundary. If the budget is exhausted mid-stage, the whole stage sequence stops (not just the current stage) — the same `REPAIR_LIMIT_REACHED` issue construction as before staging existed applies unchanged; it just may now fire while a later stage never even got a chance to start.
 
 **Note:** `generate_maze` must be called **before** `build_maze`. `build_maze` only handles metadata, not graph structure.
 
@@ -906,12 +955,12 @@ pub fn build_maze<T: Tessellation>(..., event_log: Option<&mut EventLog<QcEvent>
 ```
 
 - `initial_build_ms` is left at `0.0` by `build_maze` itself — it only runs the QC/repair fixpoint loop, not the initial `generate_maze` call. `maze-wasm::run_generate` is the only caller that also runs that stage; it times it with the same `now_ms()` clock and fills `timing.initial_build_ms` in after `build_maze` returns.
-- `qc_total_ms`/`per_check` cover every `RuleTrait::run_checks` call across the whole `run_full` call — every fixpoint iteration's QC pass (`run_repair_stages`) plus the final unconditional report pass (`collect_final_report`, `RuleTrait::report_checks`) that computes `remaining`. Since GitHub issue #106, this is `QualityControlEngine::run_full`'s single accumulator, not a separate timed/untimed method pair — see "Rule, Stage, and the unified QualityControlEngine" above.
-- `repair_total_ms`/`per_strategy` cover every `RuleTrait::dispatch_repair` call (one per fixpoint iteration's active rule).
+- `qc_total_ms`/`per_check` cover every check-running step across the whole `run_full` call — every fixpoint iteration's QC pass (`run_repair_stages` → `Stage::check_and_dispatch` → `RuleTrait::check_and_repair`'s internal `run_checks_typed` step) plus the final unconditional report pass (`collect_final_report`, `RuleTrait::report_checks`) that computes `remaining`. Since GitHub issue #106, this is `QualityControlEngine::run_full`'s single accumulator, not a separate timed/untimed method pair — see "Rule, Stage, and the unified QualityControlEngine" above. Since GitHub issue #170, `check_and_repair`/`check_and_repair_typed` take separate `qc_ms`/`repair_ms` (and separate `per_check`/`per_strategy` maps) as explicit out-parameters, so `Stage` can still fold each into the right `GenerationTiming` accumulator despite checking and dispatching happening in one call.
+- `repair_total_ms`/`per_strategy` cover every strategy-dispatch step inside `RuleTrait::check_and_repair` (one per fixpoint iteration's rule that found an issue and has a strategy).
 - `per_check` is keyed by **check type id** (`Check::check_type_id()`, e.g. `"min_loop_length"` — the same string as `available_checks()`'s `CheckDescriptor.id`), not by instance id — two active instances of the same type (GitHub issue #60) aggregate into one entry, since the issue calls for per-check-*type* timing, not per-configured-instance.
 - `per_strategy` is keyed by **strategy id** (`RepairStrategy::strategy_id()`, e.g. `"invalid_loop_random"` — the same string as `StrategyConfig.id`), not by rule id — two rules backed by the same strategy aggregate into one entry.
-- **Nested strategies (see "Nested strategies" above) are not timed separately.** `Rule::dispatch_repair_typed` only wraps the top-level `strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` entry, with no separate entry for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading `per_strategy` cannot distinguish a parent's own work from its nested delegate's.
-- `QualityControlEngine::run_full` (timed, drives repair) and `run_check_only` (untimed — check-only callers, e.g. `build_analytics_snapshot`, have no generation to time and pass a throwaway one-off accumulator internally) are the two entry points — there is no separate `run`/`run_timed` method pair anymore; each `Rule`'s own `run_checks_typed`/`report_checks_typed`/`dispatch_repair_typed` methods (exposed to `Stage` via the erased `RuleTrait` wrappers) take the timing accumulator and `now_ms` clock as parameters (injected so the same wasm/native-aware clock from `pipeline.rs` is reused) and wrap each `Check::repair_check`/`report_check`/`RepairStrategy::apply` call internally.
+- **Nested strategies (see "Nested strategies" above) are not timed separately.** `Rule::check_and_repair_typed` only wraps the top-level `strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` entry, with no separate entry for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading `per_strategy` cannot distinguish a parent's own work from its nested delegate's.
+- `QualityControlEngine::run_full` (timed, drives repair) and `run_check_only` (untimed — check-only callers, e.g. `build_analytics_snapshot`, have no generation to time and pass a throwaway one-off accumulator internally) are the two entry points — there is no separate `run`/`run_timed` method pair anymore; each `Rule`'s own `run_checks_typed`/`report_checks_typed`/`check_and_repair_typed` methods (exposed to `Stage` via the erased `RuleTrait` wrappers) take the timing accumulator(s) and `now_ms` clock as parameters (injected so the same wasm/native-aware clock from `pipeline.rs` is reused) and wrap each `Check::repair_check`/`report_check`/`RepairStrategy::apply` call internally.
 - `now_ms()` (`pipeline.rs`) is `pub`, not private, specifically so `maze-wasm::run_generate` can time the initial-build stage with the same clock.
 
 `maze-wasm`'s `GenerationTimingDto` (see `analytics-web.md`) is the serialized form, surfaced on `MazeSnapshot.timing` — `Some` only for snapshots from a full generation run (`run_generate`); `None` for analytics-only paths (post-edit, `compute_analytics`) that never call `build_maze`.

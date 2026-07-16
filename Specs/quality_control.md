@@ -15,7 +15,6 @@ pub enum IssueKind {
     MissingLoops,
     CycleAnalysisOverflowed,
     RepairLimitReached,
-    QcNoProgress,
     ExcessiveSccCount,
     RegionNeedsExpansion,
     MissingRegions,
@@ -75,7 +74,7 @@ between them was only ever caught (if at all) by a handful of manual
 `debug_assert_eq!(issue.kind, self.handles())` calls. `Issue` is now a **trait**, with one
 concrete type per former `IssueKind` variant living in `quality_control::issue_kinds`:
 `MissingEndpointsIssue`, `UnreachableFinishIssue`, `InvalidLoopIssue`, `MissingLoopsIssue`,
-`CycleAnalysisOverflowedIssue`, `RepairLimitReachedIssue`, `QcNoProgressIssue`,
+`CycleAnalysisOverflowedIssue`, `RepairLimitReachedIssue`,
 `ExcessiveSccCountIssue`, `RegionNeedsExpansionIssue`, `MissingRegionsIssue`,
 `InvalidTeleportIssue`, `TeleportGroupProximityIssue`. `Check<T, I>`, `RepairStrategy<T, I>`, and
 `Rule<T, I>` are all generic over the concrete `I` — the compiler now guarantees that a `Rule`'s
@@ -88,8 +87,6 @@ pub trait Issue: std::any::Any {
     fn meta(&self) -> &IssueMeta;
     fn meta_mut(&mut self) -> &mut IssueMeta;
     fn as_any(&self) -> &dyn std::any::Any;     // downcast entry point at the erased boundary
-    fn eq_dyn(&self, other: &dyn Issue) -> bool;    // object-safe value equality
-    fn clone_box(&self) -> Box<dyn Issue>;          // object-safe clone
 
     fn source_checks(&self) -> &[String] { self.meta().source_checks() }
     fn details(&self) -> &HashMap<String, HashMap<&'static str, String>> { self.meta().details() }
@@ -134,14 +131,12 @@ actually reads (e.g. `InvalidLoopRequirement::VALID_CYCLES`), not `all()`, unles
 every layer that exists today; `all()` used as a stand-in for "the one flag I need" silently starts
 requesting any future flag too.
 
-`dyn Issue` is object-safe through exactly `kind()`/`meta()`/`meta_mut()`/`as_any()`/`eq_dyn()`/
-`clone_box()` — the only methods callable on `&dyn Issue`/`Box<dyn Issue>`. `eq_dyn`/`clone_box`
-bodies are identical across every concrete type (only `Self` in `downcast_ref::<Self>()` varies,
-implicitly) — generated via `impl_issue_dyn_boilerplate!()`, invoked once inside each type's own
-`impl Issue for ConcreteType { ... }` block, rather than hand-duplicated in all 12
-`issue_kinds/*.rs` files. `const KIND` (via `IssueKindConst`) and `merge` (via `IssueMerge`) are
-**not** object-safe and are never called through the erased boundary — everywhere `Self` is
-statically known, code reads `Self::KIND` directly, never `self.kind()`.
+`dyn Issue` is object-safe through exactly `kind()`/`meta()`/`meta_mut()`/`as_any()` — the only
+methods callable on `&dyn Issue`/`Box<dyn Issue>`. `const KIND` (via `IssueKindConst`) and `merge`
+(via `IssueMerge`) are **not** object-safe and are never called through the erased boundary —
+everywhere `Self` is statically known, code reads `Self::KIND` directly, never `self.kind()`.
+(Pre-GitHub-issue-#170, `Issue` also carried object-safe `eq_dyn`/`clone_box` methods solely for
+`Stage`'s no-progress fingerprint — removed along with that guard, since nothing else needed them.)
 
 Each concrete type carries its own data fields directly (what used to be one `IssueData` enum
 variant) plus a shared `meta: IssueMeta` for `source_checks`/`details` bookkeeping:
@@ -171,8 +166,8 @@ between a `Check<T, I>` and the matching `RepairStrategy<T, I>` within one QC pa
 serialized (see "Not exposed over WASM" below). `kind()`, `source_checks()`, and `details()` are
 the exception: the WASM layer (`maze-wasm/src/analytics.rs`) does serialize these into `IssueDto`
 for the web UI, downcasting `&dyn Issue` to whichever concrete type it needs a payload from (e.g.
-`InvalidLoopIssue`/`RegionNeedsExpansionIssue` for `IssuePayloadDto`, `RepairLimitReachedIssue`/
-`QcNoProgressIssue` for their own no-source-check detail entries — see "IssueDto" below).
+`InvalidLoopIssue`/`RegionNeedsExpansionIssue` for `IssuePayloadDto`, `RepairLimitReachedIssue`
+for its own no-source-check detail entry — see "IssueDto" below).
 
 `IssueMeta`'s `source_checks`/`details` fields are private, mutated only via `push_source`/
 `merge_details` (both `pub(crate)`, called exclusively from each concrete type's own `IssueMerge`
@@ -188,10 +183,11 @@ lookup).
 genuine cross-`I` heterogeneity and stay type-erased by design:
 - `Stage.rules: Vec<Box<dyn RuleTrait<T>>>` — a `Stage` deliberately groups rules of different
   concrete `Issue` types together. `RuleTrait<T>` is the erased view of `Rule<T, I>` for exactly
-  this boundary (`run_checks`/`report_checks` return `Box<dyn Issue>`/`Vec<Box<dyn Issue>>`;
-  `dispatch_repair` takes `issue: &dyn Issue`, downcasting internally to the rule's own `I` — an
-  internal invariant, never a legitimate external input, so it `expect()`s rather than returning
-  `Result`).
+  this boundary — `report_checks` returns `Vec<Box<dyn Issue>>`. Since GitHub issue #170,
+  `check_and_repair` (the one erased entry point covering both checking and repair dispatch) never
+  takes or returns a `Box<dyn Issue>`/`&dyn Issue` at all — the merged issue stays entirely inside
+  `Rule<T, I>::check_and_repair_typed`'s own generic `I`, never erased in the first place, so there
+  is no downcast for this call to get wrong.
 - Nested-strategy slots (`NestedStrategyConfig<T>`, see `repair.md`) — a parent strategy's own `I`
   and its nested strategy's `I` are independent (e.g. `ReduceSccCountStrategy` handles
   `ExcessiveSccCountIssue` but delegates to a `RegionNeedsExpansionIssue`-handling nested
@@ -204,7 +200,7 @@ compile-time-checked path (a `Rule<T, I>`'s own checks and strategy) never needs
 only the two genuinely-heterogeneous boundaries above do.
 
 - **Dedup interaction**: multiple checks may produce an issue of the same concrete type in one QC pass. The pipeline (see `repair.md`'s "Pipeline" section) **merges** them into a single issue via `IssueMerge::merge` rather than keeping only the first and dropping the rest. The merge rule is per-concrete-type: for `InvalidLoopIssue`, cycles are merged canonically (a cycle is identified by its edge set, not by `Vec` order, so the same cycle found by two checks collapses to one entry instead of being duplicated); `invalid_sources` is unioned per canonical key (no remap needed); `source_checks`/`details` (via `IssueMeta`) are unioned. A type whose fields have no sensible merge rule is a `debug_assert!`/panic in debug builds, not a silent pick-one-side fallback.
-- **Not exposed over WASM**: the WASM layer serializes `kind()`, `source_checks()`, and `details()` (see `IssueDto` below) but never a concrete type's own data fields directly — those stay internal, Check-to-Strategy plumbing only, except where `analytics.rs` explicitly downcasts to build a payload DTO (`InvalidLoopIssue`/`RegionNeedsExpansionIssue`) or a synthetic detail entry (`RepairLimitReachedIssue`/`QcNoProgressIssue`, both raised outside any `Check<T, I>` — see their own doc comments in `issue_kinds/`).
+- **Not exposed over WASM**: the WASM layer serializes `kind()`, `source_checks()`, and `details()` (see `IssueDto` below) but never a concrete type's own data fields directly — those stay internal, Check-to-Strategy plumbing only, except where `analytics.rs` explicitly downcasts to build a payload DTO (`InvalidLoopIssue`/`RegionNeedsExpansionIssue`) or a synthetic detail entry (`RepairLimitReachedIssue`, raised outside any `Check<T, I>` — see its own doc comment in `issue_kinds/`).
 
 ### Check trait
 
@@ -262,16 +258,33 @@ insertion order.
 See GitHub issue #147. Mirrors the narration-level `EventLog` instrumentation already built for
 every generation algorithm (`Specs/event_log.md`) — a debug-events run threads an optional
 `EventLog<QcEvent>`/`ScopeGuard<QcEvent>` through the whole repair fixpoint call chain
-(`QualityControlEngine::run_full` → `run_repair_stages` → `Stage::run_repair` → `collect_active`/
-`dispatch` → `Rule::dispatch_repair_typed` → `apply_commands`, `quality_control/rule.rs`), the same
-zero-cost `Option<&mut T>` opt-out pattern every other instrumented pass already uses — every
-signature in this chain grows one extra parameter, always the last, always `None` on the normal
-(non-debug) path. `build_maze` (`generation/pipeline.rs`) forwards its own `event_log` parameter
-straight into `run_full` — `maze-wasm/src/runner.rs::run_generate` is the only caller that builds a
-real `EventLog::new()` (when `config.debug_events` is set) and is also the single place that calls
+(`QualityControlEngine::run_full` → `run_repair_stages` → `Stage::run_repair` →
+`check_and_dispatch` → `RuleTrait::check_and_repair` → `Rule::check_and_repair_typed` →
+`apply_commands`, `quality_control/rule.rs`), the same zero-cost `Option<&mut T>` opt-out pattern
+every other instrumented pass already uses — every signature in this chain grows one extra
+parameter, always the last, always `None` on the normal (non-debug) path. `build_maze`
+(`generation/pipeline.rs`) forwards its own `event_log` parameter straight into `run_full` —
+`maze-wasm/src/runner.rs::run_generate` is the only caller that builds a real `EventLog::new()`
+(when `config.debug_events` is set) and is also the single place that calls
 `crate::event_log::merge_tapes` to fold this QC tape together with generation's own tape into one
 merged arena (see `Specs/event_log.md`'s "#147" notes on why `merge_tapes` moved out of
 `generate_maze_with_events` for this).
+
+**Known gap (GitHub issue #170 follow-up, not yet done): `RuleChecked`/`RepairDispatched` are
+currently never emitted.** The pre-#170 `Stage`-owned `collect_active`/`dispatch` split (each
+holding its own `event_log` scope reference) emitted both events — see the "Trace events" section
+below for the payload shape they're specified to carry and where they resolve it. #170's Rule/Stage
+merge moved the equivalent checking/dispatching work inside `Rule::check_and_repair_typed`, but the
+`.emit(QcEvent::RuleChecked { ... })`/`.emit(QcEvent::RepairDispatched { ... })` calls themselves
+were dropped rather than carried along — `check_and_dispatch` still opens a `"rule <id>"`
+`ScopeGuard` per rule and forwards it into `check_and_repair`, but nothing inside that call chain
+emits into it right now. `quality_control_event_log_test.rs`'s
+`exact_sequence_on_smallest_deterministic_repair_scenario` and
+`rule_checked_payload_is_resolved_before_this_rules_own_dispatch_in_the_same_iteration` are left
+red as the tracking signal for this gap. Restoring these emits belongs inside
+`Rule::check_and_repair_typed` (the only place that still knows both the per-rule `Issue`
+value and the `RepairResult`/`ApplyOutcome` pair without re-deriving them) — the sections below
+describe the target shape, not necessarily code that runs today.
 
 **Only the repair loop is instrumented — `run_check_only` (the check-only path
 `build_analytics_snapshot` uses) is not.** There is no narrative of iterations/dispatch there,
@@ -282,11 +295,14 @@ only a flat report pass, so no `EventLog` parameter was added to it.
   opaque `id`, not its user-facing `name` — see below).
 - `Stage::run_repair` opens one `"iteration N"` scope (`enter_numbered("iteration")`, mirrors RB's
   `"step N"`) per fixpoint pass, emitting `IterationStarted(n)` on entry and
-  `IterationNoProgress`/`IterationLimitReached(kind)` on the corresponding exit path (no event for
-  a clean `StageOutcome::Done` — convergence is visible as "no further iterations").
-- `Stage::dispatch` opens one `"rule {rule.id}"` scope per dispatched rule, only for rules that
-  actually reach `dispatch_repair` (a rule with no issue this iteration, or no strategy, gets a
-  `RuleChecked` trace event directly in the iteration scope but no rule scope of its own).
+  `IterationLimitReached(kind)` on the corresponding exit path (no event for a clean
+  `StageOutcome::Done` — convergence is visible as "no further iterations").
+- `Stage::check_and_dispatch` opens one `"rule {rule.id}"` scope per rule (see the "Known gap"
+  note above: currently opened for every non-`failed` rule regardless of outcome, not only ones
+  that reach a strategy dispatch — the pre-#170 code opened it only for dispatched rules, with a
+  no-issue/no-strategy rule instead getting a `RuleChecked` trace event directly in the iteration
+  scope and no rule scope of its own; this distinction needs re-establishing when the emits above
+  are restored).
 
 Every scope is opened and dropped **within its own block** inside the loop body that creates it —
 a `ScopeGuard` kept alive across a loop iteration boundary would keep the parent guard borrowed and
@@ -310,26 +326,27 @@ for sending it, only unnecessary wire/type surface.
   ones later dispatched — narration must show "rule X found nothing" too). `IssuePayload` is
   resolved via `resolve_issue_payload` (`quality_control::issue_payload`, shared with
   `maze-wasm/src/analytics.rs`'s JSON `IssuePayloadDto` — same source of truth, no second
-  independently-maintained downcast/resolve copy) — **resolved immediately after `run_checks`
-  returns, before any mutation this same QC pass might make later via `dispatch`** (payload reads
-  `maze.graph`/`scc` as they stand right now; resolving it any later could describe a graph state
-  the issue was no longer found against). `scc` itself is resolved lazily, at most once per
-  `collect_active` call (not once per rule) — `maze.graph` doesn't change within `collect_active`'s
-  own loop (only `dispatch`, called afterward, mutates), so every rule needing `scc` this iteration
-  shares one `ConnectedComponents` clone instead of each re-triggering `MazeAnalysis::scc`'s own
-  cache-hit clone; a rule with no issue, or an issue kind with no structural `scc` dependency (only
-  `RegionNeedsExpansionIssue` reads it — see `resolve_issue_payload`'s doc comment), never forces
-  this computation at all.
+  independently-maintained downcast/resolve copy) — must be resolved immediately after
+  `run_checks_typed` returns and before this same rule's own strategy dispatch might mutate the
+  maze (payload reads `maze.graph`/`scc` as they stand right now; resolving it any later could
+  describe a graph state the issue was no longer found against). Pre-#170, `scc` was resolved
+  lazily and shared across every rule in one `collect_active` pass (all rules' checks ran before
+  any rule's dispatch mutated the maze, so one `ConnectedComponents` clone served the whole
+  iteration); since #170 merged checking and dispatching into one per-rule call
+  (`check_and_repair_typed`), a rule's own dispatch can mutate the maze before the *next* rule's
+  checks run, so this cross-rule sharing no longer applies as directly — restoring the emit needs
+  its own resolution strategy, not a straight port of the pre-#170 `scc` cache.
 - `RepairDispatched { rule_id, result: RepairResultKind, proposed, applied }` — a rule's strategy
   was dispatched. `proposed`/`applied` mirror `rule::ApplyOutcome`'s own fields, copied directly
   into the event (not left for a narration consumer to recompute by counting this rule's own
   subsequent mutating/`*Declined` events in its scope). `RepairResultKind` is a simplified,
   `Copy`/wire-friendly mirror of `repair::RepairResult` — drops the `Fixed` variant's
   `score: Option<f64>` (narration doesn't need the route-score value, only fixed-vs-failed).
-- `IterationNoProgress` — the fixpoint loop stopped because the same active issue set repeated
-  across two iterations (`Stage::check_progress`) or the "commands dropped" streak guard tripped
-  (see `repair.md`'s no-progress guard section) — GitHub issue #170 tracks removing this guard.
-- `IterationLimitReached(RepairLimitKind)` — the shared `RepairBudget` was exhausted.
+- `IterationLimitReached(RepairLimitKind)` — the shared `RepairBudget` was exhausted. The only way
+  a stage's fixpoint loop stops without converging — GitHub issue #170 removed the previous
+  no-progress guard (both the `(rule_id, Issue)` value-equality check and the "commands dropped"
+  streak) as unreliable and easily defeated; `RepairLimits` (see `repair.md`) is now the sole
+  termination guarantee, enforced once at construction rather than re-checked every iteration.
 
 **Mutating events — an exact 1:1 mirror of `repair::MutationCommand`'s 9 variants**
 (`DirectedEdgeAdded`, `BidirectionalEdgeAdded`, `DirectedTeleportAdded`,

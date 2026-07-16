@@ -95,7 +95,7 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// mutation-command contract. A strategy never mutates `Maze` directly; it inspects `maze`
     /// (and, for a strategy needing intermediate state — currently only `MissingRegionsStrategy`
     /// — a `maze.draft()`/`DraftMaze` working copy, see `repair::draft`) and returns the list of
-    /// `MutationCommand`s it wants applied. The caller (`Rule::dispatch_repair_typed`) applies and
+    /// `MutationCommand`s it wants applied. The caller (`Rule::check_and_repair_typed`) applies and
     /// revalidates those commands against the real `Maze` immediately after this call returns —
     /// a command that no longer holds by then is silently dropped, not an error, and does not
     /// change the `RepairResult` this method returns. `rng` is owned by the caller, one instance

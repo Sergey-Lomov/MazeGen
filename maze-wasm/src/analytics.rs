@@ -7,7 +7,7 @@ use maze_core::{
     space::Tessellation,
     quality_control::{
         QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
-        RepairLimitReachedIssue, QcNoProgressIssue, IssuePayload, resolve_issue_payload,
+        RepairLimitReachedIssue, IssuePayload, resolve_issue_payload,
     },
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
     graph::{Graph, EdgeKind},
@@ -82,13 +82,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         // others — keyed by the issue's own kind string instead, the only stable key available here.
         if let Some(RepairLimitReachedIssue { limit, .. }) = issue.as_any().downcast_ref::<RepairLimitReachedIssue>() {
             details.insert(issue.kind().to_string(), HashMap::from([("limit".to_string(), limit.as_str().to_string())]));
-        }
-        // Same rationale as `REPAIR_LIMIT_REACHED` above — `QC_NO_PROGRESS` carries no source
-        // check either. `rule_ids` is joined into one comma-separated string since `details`'
-        // values are flat strings, not lists; the web side only needs it for display, not
-        // further parsing into a structured rule reference.
-        if let Some(QcNoProgressIssue { rule_ids, .. }) = issue.as_any().downcast_ref::<QcNoProgressIssue>() {
-            details.insert(issue.kind().to_string(), HashMap::from([("rule_ids".to_string(), rule_ids.join(", "))]));
         }
         // Invariant: every key in `source_checks` has a matching entry here, no extras — both
         // come from the same composite-id set built while constructing the active checks (see

@@ -14,7 +14,6 @@ mod wire_tags {
     pub const ITERATION_STARTED: u16 = 1;
     pub const RULE_CHECKED: u16 = 2;
     pub const REPAIR_DISPATCHED: u16 = 3;
-    pub const ITERATION_NO_PROGRESS: u16 = 4;
     pub const ITERATION_LIMIT_REACHED: u16 = 5;
 
     pub const DIRECTED_EDGE_ADDED: u16 = 6;
@@ -85,9 +84,6 @@ pub enum QcEvent {
     /// narration consumer to recompute by counting this rule's own subsequent mutating/`*Declined`
     /// events in this same `"rule <id>"` scope.
     RepairDispatched { rule_id: String, result: RepairResultKind, proposed: u32, applied: u32 },
-    /// `Stage::run_repair`'s fixpoint loop stopped because the same active issue set repeated
-    /// across two iterations (see `Stage::check_progress`/`StageOutcome::NoProgress`).
-    IterationNoProgress,
     /// `Stage::run_repair`'s fixpoint loop stopped because the shared `RepairBudget` was
     /// exhausted (see `StageOutcome::LimitReached`).
     IterationLimitReached(RepairLimitKind),
@@ -203,7 +199,6 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::IterationStarted(_) => wire_tags::ITERATION_STARTED,
             QcEvent::RuleChecked { .. } => wire_tags::RULE_CHECKED,
             QcEvent::RepairDispatched { .. } => wire_tags::REPAIR_DISPATCHED,
-            QcEvent::IterationNoProgress => wire_tags::ITERATION_NO_PROGRESS,
             QcEvent::IterationLimitReached(_) => wire_tags::ITERATION_LIMIT_REACHED,
 
             QcEvent::DirectedEdgeAdded { .. } => wire_tags::DIRECTED_EDGE_ADDED,
@@ -248,7 +243,6 @@ impl EncodeEventPayload for QcEvent {
                 out.extend_from_slice(&proposed.to_le_bytes());
                 out.extend_from_slice(&applied.to_le_bytes());
             }
-            QcEvent::IterationNoProgress => {}
             QcEvent::IterationLimitReached(kind) => out.push(match kind {
                 RepairLimitKind::MaxIterations => 0,
                 RepairLimitKind::TimeBudget => 1,
@@ -299,7 +293,6 @@ mod tests {
         assert!(!QcEvent::IterationStarted(0).is_mutating());
         assert!(!QcEvent::RuleChecked { rule_id: "r".into(), issue: None }.is_mutating());
         assert!(!QcEvent::RepairDispatched { rule_id: "r".into(), result: RepairResultKind::Fixed, proposed: 1, applied: 1 }.is_mutating());
-        assert!(!QcEvent::IterationNoProgress.is_mutating());
         assert!(!QcEvent::IterationLimitReached(RepairLimitKind::MaxIterations).is_mutating());
     }
 
@@ -323,7 +316,6 @@ mod tests {
             QcEvent::IterationStarted(0),
             QcEvent::RuleChecked { rule_id: "r".into(), issue: None },
             QcEvent::RepairDispatched { rule_id: "r".into(), result: RepairResultKind::Fixed, proposed: 0, applied: 0 },
-            QcEvent::IterationNoProgress,
             QcEvent::IterationLimitReached(RepairLimitKind::MaxIterations),
             QcEvent::DirectedEdgeAdded { from: 0, to: 0 },
             QcEvent::BidirectionalEdgeAdded { a: 0, b: 0 },

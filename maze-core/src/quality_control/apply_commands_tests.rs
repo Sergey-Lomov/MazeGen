@@ -144,10 +144,10 @@ fn empty_batch_is_a_no_op() {
 }
 
 /// Full integration path (GitHub issue #118): `strategy.apply` -> `(RepairResult,
-/// Vec<MutationCommand>)` -> `Rule::dispatch_repair_typed` -> `apply_commands` -> real `Maze`.
+/// Vec<MutationCommand>)` -> `Rule::check_and_repair_typed` -> `apply_commands` -> real `Maze`.
 /// Proves the `Rule`-level commit point actually wires the pieces together correctly, not just
 /// that `apply_commands` in isolation behaves — a strategy returning several commands must see
-/// all of them land on the real maze after one `dispatch_repair_typed` call, and the returned
+/// all of them land on the real maze after one `check_and_repair_typed` call, and the returned
 /// `ApplyOutcome` must reflect that.
 struct MultiCommandStrategy;
 impl RepairStrategy<SquareTessellation, crate::quality_control::MissingEndpointsIssue> for MultiCommandStrategy {
@@ -173,19 +173,27 @@ impl RepairStrategy<SquareTessellation, crate::quality_control::MissingEndpoints
     }
 }
 #[test]
-fn dispatch_repair_typed_applies_every_returned_command_to_the_real_maze() {
+fn check_and_repair_typed_applies_every_returned_command_to_the_real_maze() {
+    use crate::quality_control::checks::MissingEndpointsCheck;
+
     let (mut maze, _nodes) = maze_n(2);
     let rule: Rule<SquareTessellation, crate::quality_control::MissingEndpointsIssue> = Rule::new(
-        "r".to_string(), vec![], Some(Box::new(MultiCommandStrategy)), HashMap::new(), vec![],
+        "r".to_string(),
+        vec![("missing_endpoints".to_string(), Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }))],
+        Some(Box::new(MultiCommandStrategy)), HashMap::new(), vec![],
     );
-    let issue = crate::quality_control::MissingEndpointsIssue::default();
     let mut rng = MazeRng::seed_from_u64(0);
-    let mut timing = HashMap::new();
-    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &|| 0.0, None);
+    let mut per_check = HashMap::new();
+    let mut per_strategy = HashMap::new();
+    let mut qc_ms = 0.0;
+    let mut repair_ms = 0.0;
+    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &mut qc_ms, &mut repair_ms, &|| 0.0, None);
 
-    let Some((repair_result, outcome)) = result else { panic!("rule has a strategy, must return Some") };
+    let crate::quality_control::RuleIterationOutcome::Repaired(repair_result, apply_outcome) = outcome else {
+        panic!("rule found an issue and has a strategy, must return Repaired")
+    };
     assert!(matches!(repair_result, RepairResult::Fixed { score: None }));
-    assert_eq!(outcome, ApplyOutcome { proposed: 3, applied: 3 });
+    assert_eq!(apply_outcome, ApplyOutcome { proposed: 3, applied: 3 });
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
     assert!(maze.graph.edges().count() >= 2, "the bidirectional edge command must have landed too");

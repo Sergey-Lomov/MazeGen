@@ -8,7 +8,7 @@ use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{
     QualityControlEngine, Rule, RuleTrait, Stage, Check, Issue, IssueMerge, IssueRequirement,
     MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck,
-    MissingEndpointsIssue, InvalidLoopIssue, InvalidLoopRequirement, RepairLimitReachedIssue, QcNoProgressIssue,
+    MissingEndpointsIssue, InvalidLoopIssue, InvalidLoopRequirement, RepairLimitReachedIssue,
     RepairLimitKind,
 };
 use maze_core::repair::{RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, MutationCommand};
@@ -152,6 +152,47 @@ fn pipeline_warns_when_no_strategy_for_issue() {
     assert!(!warnings.is_empty());
 }
 
+/// Regression: a no-strategy ("no_fix") rule whose check keeps finding an issue every iteration
+/// must not keep the stage's fixpoint loop spinning — `check_and_dispatch`'s `NoStrategy` outcome
+/// must not count toward convergence, since a rule with no strategy can never make progress no
+/// matter how many more iterations run (matches the pre-#170 behavior, where such a rule was
+/// filtered out of `active` before the convergence check ran at all). Without this, the loop only
+/// stops via `RepairLimits`, silently degrading performance and misreporting a spurious
+/// `RepairLimitReachedIssue` for a stage that should have converged immediately.
+#[test]
+fn no_strategy_rule_with_always_found_issue_does_not_block_convergence() {
+    struct AlwaysIssueNoOpCheck {
+        calls: Arc<AtomicUsize>,
+    }
+    impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysIssueNoOpCheck {
+        fn check_type_id(&self) -> &'static str { "always_issue_logging_only" }
+
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            issues.push(MissingEndpointsIssue::new_from_check("always_issue_logging_only"));
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let logging_rule = Rule::new(
+        "g_logging".to_string(),
+        vec![("always_issue_logging_only".to_string(), Box::new(AlwaysIssueNoOpCheck { calls: Arc::clone(&calls) }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
+        None, HashMap::new(), vec![],
+    );
+    let qc = QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(logging_rule) as Box<dyn RuleTrait<SquareTessellation>>])]);
+
+    let (_, _warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), RepairLimits::default(), None, None, None);
+
+    // 2, not 1: one fixpoint-loop pass (which must converge immediately) plus the unconditional
+    // final report pass every `run_full` call makes regardless of how the stage sequence ended
+    // (`collect_final_report`, `RuleTrait::report_checks`) — see GitHub issue #102. If the
+    // no-strategy rule's ever-present issue kept the fixpoint loop spinning, this would instead
+    // read `RepairLimits::default()`'s `MAX_REPAIR_ITERATIONS` (100) plus 1.
+    assert_eq!(calls.load(Ordering::SeqCst), 2,
+        "stage must converge after a single fixpoint iteration — a no-strategy rule's ever-present issue must not keep the loop running until RepairLimits' cap");
+}
+
 #[test]
 fn pipeline_warns_when_strategy_always_fails() {
     use maze_core::repair::{RepairResult, RepairStrategy};
@@ -229,7 +270,7 @@ fn pipeline_stops_at_max_iterations_cap() {
     let counter = Arc::clone(&call_count);
     let (field, graph, qc) = never_converging_setup(move || { counter.fetch_add(1, Ordering::SeqCst); });
 
-    let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
+    let limits = RepairLimits::new(Some(3), None).unwrap();
     let (_, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), limits, None, None, None);
     assert_eq!(call_count.load(Ordering::SeqCst), 3, "strategy must be called exactly max_iterations times");
     assert!(!warnings.is_empty(), "issue is still unresolved after the cap stops the loop early");
@@ -249,7 +290,7 @@ fn pipeline_stops_at_time_budget() {
         sleep(Duration::from_millis(20));
     });
 
-    let limits = RepairLimits { max_iterations: None, time_budget_secs: Some(0.05) };
+    let limits = RepairLimits::new(None, Some(0.05)).unwrap();
     let (_, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), limits, None, None, None);
     let calls = call_count.load(Ordering::SeqCst);
     assert!(calls >= 1, "at least one iteration should run before the budget is exhausted");
@@ -257,38 +298,6 @@ fn pipeline_stops_at_time_budget() {
     assert!(!warnings.is_empty(), "issue is still unresolved after the budget stops the loop early");
     let limit_issue = warnings.iter().find_map(|i| as_issue::<RepairLimitReachedIssue>(i.as_ref())).expect("must surface a RepairLimitReachedIssue");
     assert_eq!(limit_issue.limit, RepairLimitKind::TimeBudget);
-}
-
-#[test]
-fn pipeline_surfaces_qc_no_progress_with_stuck_rule_id() {
-    use maze_core::repair::{RepairResult, RepairStrategy};
-
-    struct AlwaysSameIssueCheck;
-    impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysSameIssueCheck {
-        fn check_type_id(&self) -> &'static str { "always_same_issue_check" }
-
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
-            issues.push(MissingEndpointsIssue::new_from_check("missing_endpoints"));
-        }
-    }
-    struct NoOpFix;
-    impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for NoOpFix {
-        fn strategy_id(&self) -> &'static str { "no_op_fix" }
-
-        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
-            (RepairResult::Fixed { score: None }, vec![])
-        }
-    }
-
-    let (field, graph) = make_generated_graph(1);
-    let qc = engine_with_rule(
-        vec![("missing_endpoints", Box::new(AlwaysSameIssueCheck) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
-        Box::new(NoOpFix),
-    );
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), RepairLimits::default(), None, None, None);
-
-    let issue = warnings.iter().find_map(|i| as_issue::<QcNoProgressIssue>(i.as_ref())).expect("must surface a QcNoProgressIssue");
-    assert_eq!(issue.rule_ids, vec!["g".to_string()]);
 }
 
 #[test]
@@ -772,117 +781,6 @@ fn failed_rule_in_middle_stage_does_not_block_last_stage() {
 }
 
 #[test]
-fn no_progress_in_stage_1_aborts_stage_2_entirely() {
-    use maze_core::repair::{RepairResult, RepairStrategy};
-
-    struct AlwaysSameIssueCheck;
-    impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysSameIssueCheck {
-        fn check_type_id(&self) -> &'static str { "always_same_issue_check" }
-
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
-            issues.push(MissingEndpointsIssue::new_from_check("missing_endpoints"));
-        }
-    }
-    struct NoOpFix;
-    impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for NoOpFix {
-        fn strategy_id(&self) -> &'static str { "no_op_fix" }
-
-        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
-            (RepairResult::Fixed { score: None }, vec![])
-        }
-    }
-
-    let call_count = Arc::new(AtomicUsize::new(0));
-    struct CountingFix {
-        count: Arc<AtomicUsize>,
-    }
-    impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for CountingFix {
-        fn strategy_id(&self) -> &'static str { "counting_fix" }
-
-        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
-            self.count.fetch_add(1, Ordering::SeqCst);
-            (RepairResult::Fixed { score: None }, vec![])
-        }
-    }
-
-    let (field, graph) = make_generated_graph(1);
-    let qc = two_stages(
-        (vec![("missing_endpoints", Box::new(AlwaysSameIssueCheck) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
-         Box::new(NoOpFix) as Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>),
-        (vec![],
-         Box::new(CountingFix { count: Arc::clone(&call_count) })),
-    );
-
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), RepairLimits::default(), None, None, None);
-    assert!(warnings.iter().any(|i| as_issue::<QcNoProgressIssue>(i.as_ref()).is_some()), "must surface QcNoProgressIssue for stuck stage 1");
-    assert_eq!(call_count.load(Ordering::SeqCst), 0, "stage 2 must never be reached once stage 1 no-progresses");
-}
-
-#[test]
-fn no_progress_in_middle_stage_aborts_last_stage_too() {
-    // 3 stages: stage 1 resolves cleanly, stage 2 no-progresses, stage 3 must never be reached
-    // either — not just "the very next stage after the failing one", but every later stage,
-    // however many there are. no_progress_in_stage_1_aborts_stage_2_entirely above only proves
-    // this for the immediately-following stage; this proves the abort propagates past it.
-    use maze_core::repair::{RepairResult, RepairStrategy};
-
-    struct AlwaysSameIssueCheck;
-    impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysSameIssueCheck {
-        fn check_type_id(&self) -> &'static str { "always_same_issue_check" }
-
-        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
-            issues.push(MissingEndpointsIssue::new_from_check("stage2_check"));
-        }
-    }
-    struct NoOpFix;
-    impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for NoOpFix {
-        fn strategy_id(&self) -> &'static str { "no_op_fix" }
-
-        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
-            (RepairResult::Fixed { score: None }, vec![])
-        }
-    }
-    let stage_3_calls = Arc::new(AtomicUsize::new(0));
-    struct CountingFix {
-        count: Arc<AtomicUsize>,
-    }
-    impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for CountingFix {
-        fn strategy_id(&self) -> &'static str { "counting_fix" }
-
-        fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
-            self.count.fetch_add(1, Ordering::SeqCst);
-            (RepairResult::Fixed { score: None }, vec![])
-        }
-    }
-
-    let (field, graph) = make_generated_graph(1);
-    let rule_1 = Rule::new(
-        "g1".to_string(),
-        vec![("missing_endpoints".to_string(), Box::new(MissingEndpointsCheck { instance_id: "g1:missing_endpoints".to_string() }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
-        Some(Box::new(FarthestEndpointsStrategy)), HashMap::new(), vec![],
-    );
-    let rule_2 = Rule::new(
-        "g2".to_string(),
-        vec![("stage2_check".to_string(), Box::new(AlwaysSameIssueCheck) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
-        Some(Box::new(NoOpFix)), HashMap::new(), vec![],
-    );
-    let rule_3: Rule<SquareTessellation, MissingEndpointsIssue> = Rule::new(
-        "g3".to_string(), vec![],
-        Some(Box::new(CountingFix { count: Arc::clone(&stage_3_calls) })), HashMap::new(), vec![],
-    );
-    let qc = QualityControlEngine::new(vec![
-        Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule_1) as Box<dyn RuleTrait<SquareTessellation>>]),
-        Stage::new("stage_2".to_string(), "Stage 2".to_string(), vec![Box::new(rule_2) as Box<dyn RuleTrait<SquareTessellation>>]),
-        Stage::new("stage_3".to_string(), "Stage 3".to_string(), vec![Box::new(rule_3) as Box<dyn RuleTrait<SquareTessellation>>]),
-    ]);
-
-    let (maze, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), RepairLimits::default(), None, None, None);
-    assert!(maze.meta.start.is_some() && maze.meta.finish.is_some(), "stage 1 must have resolved cleanly");
-    assert!(warnings.iter().any(|i| as_issue::<QcNoProgressIssue>(i.as_ref()).is_some()), "must surface QcNoProgressIssue for stuck stage 2");
-    assert_eq!(stage_3_calls.load(Ordering::SeqCst), 0, "stage 3 must never be reached once stage 2 no-progresses");
-}
-
-#[test]
 fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
     use maze_core::repair::{RepairResult, RepairStrategy};
 
@@ -931,7 +829,7 @@ fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
          Box::new(NoOpFix2)),
     );
 
-    let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
+    let limits = RepairLimits::new(Some(3), None).unwrap();
     let (_, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), limits, None, None, None);
     let limit_issue = warnings.iter().find_map(|i| as_issue::<RepairLimitReachedIssue>(i.as_ref())).expect("must surface RepairLimitReachedIssue once budget exhausts mid stage 2");
     assert_eq!(limit_issue.limit, RepairLimitKind::MaxIterations);
@@ -1081,7 +979,7 @@ fn no_strategy_rule_checks_run_every_iteration_not_just_final_report() {
         ]),
     ]);
 
-    let limits = RepairLimits { max_iterations: Some(3), time_budget_secs: None };
+    let limits = RepairLimits::new(Some(3), None).unwrap();
     let (_, _, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), limits, None, None, None);
 
     // MultiIterationFix always returns Fixed but never actually resolves MISSING_ENDPOINTS
@@ -1094,18 +992,13 @@ fn no_strategy_rule_checks_run_every_iteration_not_just_final_report() {
         "no-strategy rule's check must run every fixpoint iteration (3) plus the final report pass (1), not just the final report");
 }
 
-/// End-to-end test for the "commands dropped" no-progress signal (GitHub issue #118,
-/// `Specs/repair.md`'s no-progress guard extension) through the full `build_maze` pipeline, not
-/// just `Stage::dispatch` in isolation. A strategy always proposes removing an edge that was
-/// already removed by an earlier call — `apply_commands` revalidates against the live graph and
-/// silently drops it every time, so `ApplyOutcome` is always `applied == 0, proposed == 1` —
-/// meanwhile the producing check ticks a counter into the issue's own detail every call, so the
-/// raw issue content genuinely differs iteration to iteration and the existing `(rule_id, Issue)`
-/// value-equality guard never fires. Without the `stalled_commands` extension this would loop
-/// until `RepairLimits` (or forever, with no cap) instead of stopping via `QcNoProgressIssue`
-/// after 2 consecutive stalled iterations.
+/// End-to-end regression for GitHub issue #170: a strategy that always proposes removing an
+/// already-removed edge (so `ApplyOutcome` is always `applied == 0, proposed == 1`), paired with
+/// a check whose issue content genuinely differs every iteration — the exact "no-progress guard
+/// never fires" scenario the issue describes. Without any no-progress guard left, termination is
+/// now guaranteed purely by `RepairLimits`.
 #[test]
-fn pipeline_stops_via_stalled_commands_guard_when_content_keeps_changing_but_nothing_ever_applies() {
+fn pipeline_terminates_via_repair_limits_when_content_keeps_changing_but_nothing_ever_applies() {
     use maze_core::repair::{RepairResult, RepairStrategy};
 
     struct TickingCheck {
@@ -1150,14 +1043,11 @@ fn pipeline_stops_via_stalled_commands_guard_when_content_keeps_changing_but_not
         Box::new(AlwaysProposesAnAlreadyRemovedEdge { edge_id, calls: Arc::clone(&calls) }),
     );
 
-    // No hard iteration cap — if the stalled_commands guard didn't exist, this would only ever
-    // stop via RepairLimits::default()'s MAX_REPAIR_ITERATIONS; asserting a small call count here
-    // proves the guard stopped the loop well before that cap, specifically at the stalled-commands
-    // threshold (2 consecutive stalls).
-    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), RepairLimits::default(), None, None, None);
+    let limits = RepairLimits::new(Some(5), None).unwrap();
+    let (_, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), limits, None, None, None);
 
-    assert_eq!(calls.load(Ordering::SeqCst), 2,
-        "strategy must be called exactly twice — the stalled_commands guard must stop the loop after 2 consecutive applied==0 iterations, not run until RepairLimits' cap");
-    assert!(warnings.iter().any(|i| as_issue::<QcNoProgressIssue>(i.as_ref()).is_some()),
-        "must surface QcNoProgressIssue, the same signal an explicit no-progress or Failed rule would produce");
+    assert_eq!(calls.load(Ordering::SeqCst), 5,
+        "with no no-progress guard left, the loop must run the strategy every iteration up to max_iterations");
+    let limit_issue = warnings.iter().find_map(|i| as_issue::<RepairLimitReachedIssue>(i.as_ref())).expect("must surface a RepairLimitReachedIssue");
+    assert_eq!(limit_issue.limit, RepairLimitKind::MaxIterations);
 }

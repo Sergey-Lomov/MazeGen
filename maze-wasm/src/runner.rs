@@ -454,8 +454,9 @@ pub fn run_generate<T: Tessellation + 'static>(
         .then(maze_core::event_log::EventLog::new);
 
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
+    let limits = build_repair_limits(config).map_err(|e| JsValue::from_str(&e))?;
     let (mut maze, issues, mut timing) = build_maze(
-        field, graph, seed, qc_engine, &repair_preset_state, build_repair_limits(config), preset_start, preset_finish,
+        field, graph, seed, qc_engine, &repair_preset_state, limits, preset_start, preset_finish,
         qc_log.as_mut(),
     );
     timing.initial_build_ms = initial_build_ms;

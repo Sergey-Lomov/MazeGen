@@ -5,8 +5,9 @@ use maze_core::{Graph, IdGenerator, Maze, NodeId};
 use maze_core::generation::PresetState;
 use maze_core::graph::EdgeKind;
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
-use maze_core::quality_control::{Rule, MissingEndpointsIssue};
+use maze_core::quality_control::{Rule, MissingEndpointsIssue, RuleIterationOutcome};
 use maze_core::quality_control::rule::apply_commands;
+use maze_core::quality_control::checks::MissingEndpointsCheck;
 use maze_core::repair::{
     RepairResult, RepairStrategy, StrategyParams,
     RandomEndpointsStrategy, FarthestEndpointsStrategy,
@@ -232,9 +233,11 @@ fn farthest_endpoints_isolated_nav_node_returns_failed() {
     assert!(matches!(result, RepairResult::Failed));
 }
 
-// --- Rule::dispatch_repair routing ---
-// (was "RepairEngine routing" against the pre-#106 flat `RepairEngine` — dispatch now lives
-// directly on `Rule`, which owns its own strategy; there is no separate routing engine anymore.)
+// --- Rule::check_and_repair_typed routing ---
+// (was "RepairEngine routing" against the pre-#106 flat `RepairEngine`, then "Rule::dispatch_repair
+// routing" against the pre-#170 split `run_checks_typed`/`dispatch_repair_typed` pair — dispatch now
+// lives in one `Rule::check_and_repair_typed` call, which owns its own strategy; there is no
+// separate routing engine, and no separate check/dispatch call pair, anymore.)
 
 fn now_ms_stub() -> f64 { 0.0 }
 
@@ -242,31 +245,37 @@ fn rule_with_strategy(
     id: &str,
     strategy: Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>,
 ) -> Rule<SquareTessellation, MissingEndpointsIssue> {
-    Rule::new(id.to_string(), vec![], Some(strategy), HashMap::new(), vec![])
+    let checks = vec![("missing_endpoints".to_string(), Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }) as Box<_>)];
+    Rule::new(id.to_string(), checks, Some(strategy), HashMap::new(), vec![])
 }
 
 #[test]
-fn rule_dispatch_repair_runs_its_own_strategy() {
+fn rule_check_and_repair_runs_its_own_strategy() {
     let (mut maze, _) = make_connected_maze(3);
     let mut rng = make_rng();
     let rule = rule_with_strategy("g1", Box::new(RandomEndpointsStrategy));
-    let issue = MissingEndpointsIssue::default();
-    let mut timing = HashMap::new();
-    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &now_ms_stub, None);
-    assert!(matches!(result, Some((RepairResult::Fixed { score: _ }, _))));
+    let mut per_check = HashMap::new();
+    let mut per_strategy = HashMap::new();
+    let mut qc_ms = 0.0;
+    let mut repair_ms = 0.0;
+    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &mut qc_ms, &mut repair_ms, &now_ms_stub, None);
+    assert!(matches!(outcome, RuleIterationOutcome::Repaired(RepairResult::Fixed { score: _ }, _)));
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
 }
 
 #[test]
-fn rule_dispatch_repair_none_when_no_strategy() {
+fn rule_check_and_repair_none_when_no_strategy() {
     let mut maze = make_maze(2, 1);
     let mut rng = make_rng();
-    let rule: Rule<SquareTessellation, MissingEndpointsIssue> = Rule::new("g1".to_string(), vec![], None, HashMap::new(), vec![]);
-    let issue = MissingEndpointsIssue::default();
-    let mut timing = HashMap::new();
-    let result = rule.dispatch_repair_typed(&issue, &mut maze, &mut rng, &PresetState::empty(), &mut timing, &now_ms_stub, None);
-    assert!(result.is_none());
+    let checks = vec![("missing_endpoints".to_string(), Box::new(MissingEndpointsCheck { instance_id: "missing_endpoints".to_string() }) as Box<_>)];
+    let rule: Rule<SquareTessellation, MissingEndpointsIssue> = Rule::new("g1".to_string(), checks, None, HashMap::new(), vec![]);
+    let mut per_check = HashMap::new();
+    let mut per_strategy = HashMap::new();
+    let mut qc_ms = 0.0;
+    let mut repair_ms = 0.0;
+    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &mut qc_ms, &mut repair_ms, &now_ms_stub, None);
+    assert!(matches!(outcome, RuleIterationOutcome::NoStrategy));
     assert!(maze.meta.start.is_none());
 }
 
@@ -281,11 +290,16 @@ fn two_rules_same_kind_get_different_strategies() {
     let mut rng_b = make_rng();
     let rule_a = rule_with_strategy("g_random", Box::new(RandomEndpointsStrategy));
     let rule_b = rule_with_strategy("g_farthest", Box::new(FarthestEndpointsStrategy));
-    let issue = MissingEndpointsIssue::default();
-    let mut timing_a = HashMap::new();
-    let mut timing_b = HashMap::new();
-    let result_a = rule_a.dispatch_repair_typed(&issue, &mut maze_a, &mut rng_a, &PresetState::empty(), &mut timing_a, &now_ms_stub, None);
-    let result_b = rule_b.dispatch_repair_typed(&issue, &mut maze_b, &mut rng_b, &PresetState::empty(), &mut timing_b, &now_ms_stub, None);
-    assert!(matches!(result_a, Some((RepairResult::Fixed { score: _ }, _))));
-    assert!(matches!(result_b, Some((RepairResult::Fixed { score: _ }, _))));
+    let mut per_check_a = HashMap::new();
+    let mut per_strategy_a = HashMap::new();
+    let mut per_check_b = HashMap::new();
+    let mut per_strategy_b = HashMap::new();
+    let mut qc_ms_a = 0.0;
+    let mut repair_ms_a = 0.0;
+    let mut qc_ms_b = 0.0;
+    let mut repair_ms_b = 0.0;
+    let outcome_a = rule_a.check_and_repair_typed(&mut maze_a, &mut rng_a, &PresetState::empty(), &mut per_check_a, &mut per_strategy_a, &mut qc_ms_a, &mut repair_ms_a, &now_ms_stub, None);
+    let outcome_b = rule_b.check_and_repair_typed(&mut maze_b, &mut rng_b, &PresetState::empty(), &mut per_check_b, &mut per_strategy_b, &mut qc_ms_b, &mut repair_ms_b, &now_ms_stub, None);
+    assert!(matches!(outcome_a, RuleIterationOutcome::Repaired(RepairResult::Fixed { score: _ }, _)));
+    assert!(matches!(outcome_b, RuleIterationOutcome::Repaired(RepairResult::Fixed { score: _ }, _)));
 }

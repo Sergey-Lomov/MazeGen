@@ -15,7 +15,6 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_loop: () => ({ label: m["issue.invalid_loop.label"](), description: m["issue.invalid_loop.description"](), severity: "warning" }),
   cycle_analysis_overflowed: () => ({ label: m["issue.cycle_analysis_overflowed.label"](), description: m["issue.cycle_analysis_overflowed.description"](), severity: "critical" }),
   repair_limit_reached: () => ({ label: m["issue.repair_limit_reached.label"](), description: m["issue.repair_limit_reached.description"](), severity: "critical" }),
-  qc_no_progress: () => ({ label: m["issue.qc_no_progress.label"](), description: m["issue.qc_no_progress.description"](), severity: "critical" }),
   excessive_scc_count: () => ({ label: m["issue.excessive_scc_count.label"](), description: m["issue.excessive_scc_count.description"](), severity: "warning" }),
   region_needs_expansion: () => ({ label: m["issue.region_needs_expansion.label"](), description: m["issue.region_needs_expansion.description"](), severity: "warning" }),
   missing_regions: () => ({ label: m["issue.missing_regions.label"](), description: m["issue.missing_regions.description"](), severity: "warning" }),
@@ -48,7 +47,6 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
     : d.limit === "time_budget"
     ? m["issue.repair_limit_reached.time_budget_label"]()
     : undefined,
-  qc_no_progress: (d) => d.rule_ids !== undefined ? m["issue.qc_no_progress.rule_ids_label"]({ rule_ids: d.rule_ids }) : undefined,
   scc_count: (d) => d.scc_count !== undefined && d.max_scc_count !== undefined
     ? m["issue.excessive_scc_count.scc_count_label"]({ scc_count: d.scc_count, max_scc_count: d.max_scc_count })
     : undefined,

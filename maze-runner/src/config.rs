@@ -157,9 +157,9 @@ pub struct GenerateConfig {
     pub tessellation: TessellationConfig,
     #[serde(default)]
     pub stages: Vec<StageConfig>,
-    #[serde(default)]
+    #[serde(default = "default_repair_max_iterations")]
     pub repair_max_iterations: Option<usize>,
-    #[serde(default)]
+    #[serde(default = "default_repair_time_budget_secs")]
     pub repair_time_budget_secs: Option<f64>,
     #[serde(default)]
     pub initial: InitialGenerationConfig,
@@ -218,8 +218,8 @@ impl Default for GenerateConfig {
                     ],
                 },
             ],
-            repair_max_iterations: RepairLimits::default().max_iterations,
-            repair_time_budget_secs: RepairLimits::default().time_budget_secs,
+            repair_max_iterations: default_repair_max_iterations(),
+            repair_time_budget_secs: default_repair_time_budget_secs(),
             initial: InitialGenerationConfig::default(),
             elements: ElementsConfigDto::default(),
             preset_connections: vec![],
@@ -233,11 +233,22 @@ impl Default for GenerateConfig {
     }
 }
 
-pub fn build_repair_limits(config: &GenerateConfig) -> RepairLimits {
-    RepairLimits {
-        max_iterations: config.repair_max_iterations,
-        time_budget_secs: config.repair_time_budget_secs,
-    }
+/// `serde(default = ...)` for `GenerateConfig::repair_max_iterations` — a config predating this
+/// field (e.g. an older browser export) omits the key entirely; falling back to `None` here would
+/// silently combine with an omitted `repair_time_budget_secs` into an invalid "no cap at all"
+/// `RepairLimits`, rejected by `RepairLimits::new` (see GitHub issue #170). Falls back to
+/// `RepairLimits::default()`'s bound instead, matching `Default for GenerateConfig` below.
+fn default_repair_max_iterations() -> Option<usize> {
+    RepairLimits::default().max_iterations()
+}
+
+/// See `default_repair_max_iterations` above — same rationale for the time-budget bound.
+fn default_repair_time_budget_secs() -> Option<f64> {
+    RepairLimits::default().time_budget_secs()
+}
+
+pub fn build_repair_limits(config: &GenerateConfig) -> Result<RepairLimits, String> {
+    RepairLimits::new(config.repair_max_iterations, config.repair_time_budget_secs)
 }
 
 pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
