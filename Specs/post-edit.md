@@ -168,6 +168,19 @@ When `postEditAutoConfirm = false`:
 - `postEditEdges`, `postEditMeta`, `postEditAnalytics` remain frozen at last confirm.
 - Manual Confirm button calls `confirmPostEdit()` explicitly.
 
+Reconfirm on rule change is independent of `postEditAutoConfirm` — see "Reconfirm on QC rule changes" below; that flag only gates edge/endpoint/teleport edits.
+
+## Reconfirm on QC rule changes
+
+See GitHub issue #111. Editing checks/strategies/stages in the Quality panel (`Specs/quality-feature.md`) changes what `confirmPostEdit`'s own `checks` derivation (`postEditSlice.ts`, filtered from `state.rules`/`state.stages` — see "On `confirmPostEdit()`" above) would produce, but by itself does not touch `postEditDraftEdges`/`postEditDraftMeta`, so nothing triggers a recompute. `postEditAnalytics`/`issues` are left stale — still reflecting whichever ruleset was active at the last confirm — until something else calls `confirmPostEdit()`.
+
+`MazeScene.subscribeToQualityRulesReconfirm` (`maze-web/src/pixi/MazeScene.ts`) closes this gap with two triggers, independent of `postEditAutoConfirm`:
+
+- **Debounced reconfirm while the Quality panel is open** — any `state.rules`/`state.stages` reference change (every rule/stage-mutating store action replaces these arrays, so a reference change is a reliable "something changed" signal) while `openCard === "quality"` (re)schedules a `confirmPostEdit()` call 300ms out, same interval `PostEditController.scheduleConfirm` uses for edge edits — batches rapid edits (e.g. dragging a param slider) into one recompute instead of one per keystroke.
+- **Immediate flush on leaving the Quality panel** — the moment `openCard` transitions away from `"quality"`, any pending debounce timer is cancelled and `confirmPostEdit()` is called immediately, so the report is never left stale by a pending-but-not-yet-fired debounce once the panel that could have caused the staleness closes.
+
+Both triggers call the same `confirmPostEdit()` used everywhere else — no separate recompute path. `confirmPostEdit` is already a no-op before the first generation (`postEditDraftEdges === null`), so no extra guard against an unstarted maze is needed here.
+
 ## Canvas Renderer — PostEditRenderer
 
 Reads from `postEditDraftEdges`, `postEditDraftTeleports`, and `postEditDraftMeta` — always shows the current working state, regardless of `autoConfirm`.

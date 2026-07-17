@@ -65,6 +65,8 @@ export class MazeScene {
   private unsubscribeEditField: (() => void) | null = null;
   private unsubscribePreview: (() => void) | null = null;
   private unsubscribeQualityOpen: (() => void) | null = null;
+  private unsubscribeQualityRules: (() => void) | null = null;
+  private qualityRulesConfirmTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(app: Application) {
     this.app = app;
@@ -172,6 +174,7 @@ export class MazeScene {
     this.subscribeToEditField();
     this.subscribeToPreview();
     this.subscribeToQualityOpen();
+    this.subscribeToQualityRulesReconfirm();
     this.syncLayersToViewport();
   }
 
@@ -243,6 +246,45 @@ export class MazeScene {
     });
   }
 
+  /** Keeps post-edit's QC report/analytics in sync with the active ruleset (GitHub issue #111) —
+   * editing checks/strategies/stages in the Quality panel while a maze is loaded otherwise leaves
+   * `postEditAnalytics` stale, still reflecting whatever ruleset was active at the last confirm.
+   * Debounces a `confirmPostEdit()` (~300ms, same interval `PostEditController.scheduleConfirm`
+   * uses for edge edits) on every `rules`/`stages` change, and flushes immediately — bypassing the
+   * debounce — the moment the user leaves the Quality panel, so the report is never left stale
+   * once the panel that could have caused the staleness closes. `confirmPostEdit` itself is a
+   * no-op before the first generation (`postEditDraftEdges === null`), so no extra guard is needed
+   * here for that case. */
+  private subscribeToQualityRulesReconfirm(): void {
+    let prevRules = useMazeStore.getState().rules;
+    let prevStages = useMazeStore.getState().stages;
+    let prevCard = useMazeStore.getState().openCard;
+    this.unsubscribeQualityRules = useMazeStore.subscribe((state) => {
+      const rulesChanged = state.rules !== prevRules || state.stages !== prevStages;
+      prevRules = state.rules;
+      prevStages = state.stages;
+      const wasQuality = prevCard === "quality";
+      const leftQuality = wasQuality && state.openCard !== "quality";
+      prevCard = state.openCard;
+
+      if (leftQuality) {
+        if (this.qualityRulesConfirmTimer !== null) {
+          clearTimeout(this.qualityRulesConfirmTimer);
+          this.qualityRulesConfirmTimer = null;
+        }
+        void useMazeStore.getState().confirmPostEdit();
+        return;
+      }
+      if (rulesChanged && state.openCard === "quality") {
+        if (this.qualityRulesConfirmTimer !== null) clearTimeout(this.qualityRulesConfirmTimer);
+        this.qualityRulesConfirmTimer = setTimeout(() => {
+          this.qualityRulesConfirmTimer = null;
+          void useMazeStore.getState().confirmPostEdit();
+        }, 300);
+      }
+    });
+  }
+
   private subscribeToEditField(): void {
     let prevCard = useMazeStore.getState().openCard;
     let prevMode = useMazeStore.getState().fieldEditMode;
@@ -301,6 +343,8 @@ export class MazeScene {
     this.unsubscribeEditField?.();
     this.unsubscribePreview?.();
     this.unsubscribeQualityOpen?.();
+    this.unsubscribeQualityRules?.();
+    if (this.qualityRulesConfirmTimer !== null) clearTimeout(this.qualityRulesConfirmTimer);
     this.generationRenderer.destroy();
     this.tessellationRenderer.destroy();
     this.analyticsRenderer.destroy();
