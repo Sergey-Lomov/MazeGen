@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DebugEventTree } from "../components/DebugEventTree";
 import { useMazeStore } from "../store/mazeStore";
@@ -168,7 +168,7 @@ afterEach(() => {
 describe("DebugEventTree", () => {
   beforeEach(() => {
     useMazeStore.setState({
-      debugArena: { tape: buildTwoStepTape(), algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 4 }], nodes, totalSteps: 4, checkpointFroms: [], debugValueNames: [] },
+      debugArena: { tape: buildTwoStepTape(), algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 4, checkpointFroms: [] }], nodes, totalSteps: 4, debugValueNames: [] },
       debugStep: 0,
     });
   });
@@ -320,7 +320,7 @@ describe("DebugEventTree", () => {
       { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
       { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(99n) },
     ]);
-    useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1 }], nodes, totalSteps: 1, checkpointFroms: [], debugValueNames: [] }, debugStep: 0 });
+    useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] }], nodes, totalSteps: 1, debugValueNames: [] }, debugStep: 0 });
 
     // Suppress React's expected error-boundary console noise for this deliberate-throw case.
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -334,7 +334,7 @@ describe("DebugEventTree", () => {
 describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
   beforeEach(() => {
     useMazeStore.setState({
-      debugArena: { tape: buildOneWalkWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3 }], nodes, totalSteps: 3, checkpointFroms: [], debugValueNames: [] },
+      debugArena: { tape: buildOneWalkWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3, checkpointFroms: [] }], nodes, totalSteps: 3, debugValueNames: [] },
       debugStep: 0,
     });
   });
@@ -363,7 +363,7 @@ describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
 
   it("renders LoopErased/WalkDeadEnd narration — untouched by buildOneWalkWilsonTape's straight-line walk", () => {
     useMazeStore.setState({
-      debugArena: { tape: buildLoopErasedDeadEndWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3 }], nodes, totalSteps: 3, checkpointFroms: [], debugValueNames: [] },
+      debugArena: { tape: buildLoopErasedDeadEndWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3, checkpointFroms: [] }], nodes, totalSteps: 3, debugValueNames: [] },
       debugStep: 0,
     });
     render(<DebugEventTree />);
@@ -408,12 +408,11 @@ describe("DebugEventTree with a two-source (generation + QC) tape (GitHub issue 
         tape: buildGenerationPlusQcTape(),
         algorithmKind: "recursive_backtracker",
         sources: [
-          { scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1 },
-          { scopeName: "quality_control", kind: "quality_control", nodeIndex: 5, startStep: 1, endStep: 2 },
+          { scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] },
+          { scopeName: "quality_control", kind: "quality_control", nodeIndex: 5, startStep: 1, endStep: 2, checkpointFroms: [] },
         ],
         nodes,
         totalSteps: 2,
-        checkpointFroms: [],
         debugValueNames: [],
       },
       debugStep: 0,

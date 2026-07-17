@@ -2,16 +2,15 @@ import { describe, it, expect } from "vitest";
 import {
   parseTape, nodeAt, nodeView, mutatingRbEvents, applyRecursiveBacktracker,
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent,
-  parseCheckpoints, checkpointAt,
-  resolveCheckpointFroms, nearestCheckpointFromAtOrBefore, resolveDebugArenaMetadata,
+  resolveDebugArenaMetadata, countMutatingEvents,
   decodeKruskalEvent, isMutatingKruskalEvent, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEvents, applyWilson,
   decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEvents, applyEdgeBased,
   decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEvents, applyVertexBased,
   topLevelSourceScopes,
-  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, CHECKPOINT_RECORD_SIZE,
+  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG,
   SOURCE_SHIFT, SOURCE_MASK, LOCAL_TAG_MASK,
-  type ParsedTape, type ParsedCheckpoints,
+  type ParsedTape, type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult,
 } from "../debug/eventTape";
 
 // --- Hand-built fixture encoder, mirroring `DebugTape::encode()` (maze-core/src/event_log/mod.rs)
@@ -350,194 +349,88 @@ describe("nodeAt", () => {
   });
 });
 
-// --- Checkpoint buffer (GitHub issue #128) ---
-// Hand-built fixture mirroring `CheckpointLog::encode()` (maze-core/src/event_log/checkpoint.rs)
-// and the edges-payload encoding written by `CheckpointTracker::record`
-// (maze-core/src/generation/recursive_backtracker.rs).
+// --- Intermediate snapshot checkpoints (GitHub issue #128) ---
+// Snapshots are now computed entirely on the web side by `resolveDebugArenaMetadata`, from the
+// plain event tape — there is no separate checkpoint buffer to decode. `CHECKPOINT_INTERVAL` is
+// an internal constant (500 mutating events); these tests build a long flat chain of `EdgeAdded`
+// events to actually cross that threshold.
 
-interface FixtureCheckpoint {
-  nodeIndex: number;
-  edges: Array<[bigint, bigint]>;
-  /** Named debug-value sets (GitHub issue #131) — defaults to none for fixtures that don't
-   *  specifically exercise debug-value checkpointing. */
-  debugValues?: Array<[string, bigint[]]>;
-}
-
-/** Encodes one checkpoint's payload: edges, then named debug-value sets — mirrors
- *  `CheckpointTracker::record`'s wire format in `recursive_backtracker.rs`. */
-function checkpointPayload(edges: Array<[bigint, bigint]>, debugValues: Array<[string, bigint[]]>): Uint8Array {
-  const textEncoder = new TextEncoder();
-  const chunks: Uint8Array[] = [u32le(edges.length)];
-  for (const [from, to] of edges) {
-    chunks.push(u64le(from), u64le(to));
-  }
-  chunks.push(u32le(debugValues.length));
-  for (const [name, ids] of debugValues) {
-    const nameBytes = textEncoder.encode(name);
-    chunks.push(u32le(nameBytes.byteLength), nameBytes, u32le(ids.length), ...ids.map(u64le));
-  }
-  return concatBytes(chunks);
-}
-
-function buildCheckpointFixture(checkpoints: FixtureCheckpoint[]): ParsedCheckpoints {
-  const tableChunks: Uint8Array[] = [];
-  const payloadChunks: Uint8Array[] = [];
-  let payloadOffset = 0;
-  for (const cp of checkpoints) {
-    const bytes = checkpointPayload(cp.edges, cp.debugValues ?? []);
-    tableChunks.push(u32le(cp.nodeIndex), u32le(payloadOffset), u32le(bytes.byteLength));
-    payloadChunks.push(bytes);
-    payloadOffset += bytes.byteLength;
-  }
-  return parseCheckpoints(concatBytes(tableChunks), concatBytes(payloadChunks));
-}
-
-describe("parseCheckpoints / checkpointAt", () => {
-  it("round-trips a single checkpoint's node index and edges", () => {
-    const tape = buildCheckpointFixture([{ nodeIndex: 42, edges: [[1n, 2n], [2n, 1n]] }]);
-    expect(tape.checkpointCount).toBe(1);
-    expect(tape.table.byteLength).toBe(CHECKPOINT_RECORD_SIZE);
-    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 42, edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map() });
-  });
-
-  it("round-trips multiple checkpoints with distinct payload slices", () => {
-    const tape = buildCheckpointFixture([
-      { nodeIndex: 10, edges: [[1n, 2n]] },
-      { nodeIndex: 520, edges: [[1n, 2n], [3n, 4n], [4n, 3n]] },
-    ]);
-    expect(tape.checkpointCount).toBe(2);
-    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 10, edges: [{ from: 1n, to: 2n }], debugValues: new Map() });
-    expect(checkpointAt(tape, 1)).toEqual({
-      nodeIndex: 520,
-      edges: [{ from: 1n, to: 2n }, { from: 3n, to: 4n }, { from: 4n, to: 3n }],
-      debugValues: new Map(),
+/** A flat tape (no scopes beyond root) of `count` sequential `EdgeAdded` events,
+ *  `i -> i+1` for `i` in `[1, count]` — long enough to exercise `resolveDebugArenaMetadata`'s
+ *  internal `CHECKPOINT_INTERVAL` pacing when `count >= 500`. */
+function buildLongEdgeChainTape(count: number): ParsedTape {
+  const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
+  for (let i = 0; i < count; i++) {
+    nodes.push({
+      parent: 0,
+      firstChild: null,
+      nextSibling: i + 1 < count ? i + 2 : null,
+      tag: RB_TAG.EDGE_ADDED,
+      payloadBytes: edgeAddedPayload(BigInt(i + 1), BigInt(i + 2), false),
     });
-  });
+  }
+  return buildFixture(nodes);
+}
 
-  it("round-trips a checkpoint with zero edges", () => {
-    const tape = buildCheckpointFixture([{ nodeIndex: 5, edges: [] }]);
-    expect(checkpointAt(tape, 0)).toEqual({ nodeIndex: 5, edges: [], debugValues: new Map() });
-  });
-
-  it("round-trips a checkpoint with a named debug-value set (GitHub issue #131)", () => {
-    const tape = buildCheckpointFixture([{ nodeIndex: 7, edges: [[1n, 2n]], debugValues: [["recursion_stack", [3n, 5n, 8n]]] }]);
-    expect(checkpointAt(tape, 0)).toEqual({
-      nodeIndex: 7,
-      edges: [{ from: 1n, to: 2n }],
-      debugValues: new Map([["recursion_stack", [3n, 5n, 8n]]]),
-    });
-  });
-
-  it("an empty buffer has zero checkpoints", () => {
-    const tape = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
-    expect(tape.checkpointCount).toBe(0);
-  });
-});
-
-
-describe("resolveCheckpointFroms / nearestCheckpointFromAtOrBefore", () => {
-  // buildTwoStepTape()'s mutating events, in step order: EdgeAdded (node 2, step 0),
-  // VertexVisited (node 3, step 1), VertexPushed (node 4, step 2), VertexPopped (node 7, step 3).
-
-  it("resolves an empty checkpoint table to an empty array", () => {
-    const tape = buildTwoStepTape();
-    const checkpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
-    expect(resolveCheckpointFroms(tape, checkpoints)).toEqual([]);
-  });
-
-  it("translates a checkpoint's arena nodeIndex into its mutating-event step", () => {
-    const tape = buildTwoStepTape();
-    // Checkpoint recorded at arena node 4 (the VertexPushed event) — step 2.
-    const checkpoints = buildCheckpointFixture([{ nodeIndex: 4, edges: [[1n, 2n], [2n, 1n]] }]);
-    const froms = resolveCheckpointFroms(tape, checkpoints);
-    expect(froms).toEqual([{ edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map(), step: 2, nodeIndex: 4 }]);
-  });
-
-  it("resolves multiple checkpoints in ascending step order", () => {
-    const tape = buildTwoStepTape();
-    const checkpoints = buildCheckpointFixture([
-      { nodeIndex: 2, edges: [[1n, 2n], [2n, 1n]] }, // EdgeAdded, step 0
-      { nodeIndex: 7, edges: [[1n, 2n], [2n, 1n]] }, // VertexPopped, step 3
-    ]);
-    const froms = resolveCheckpointFroms(tape, checkpoints);
-    expect(froms.map((f) => f.step)).toEqual([0, 3]);
-    expect(froms.map((f) => f.nodeIndex)).toEqual([2, 7]);
-  });
-
-  it("a resolved checkpoint plugged into applyRecursiveBacktracker as `from` matches a full replay", () => {
-    const tape = buildTwoStepTape();
-    const checkpoints = buildCheckpointFixture([{ nodeIndex: 4, edges: [[1n, 2n], [2n, 1n]] }]);
-    const [from] = resolveCheckpointFroms(tape, checkpoints);
-
-    const viaCheckpoint = applyRecursiveBacktracker(tape, 3, from);
-    const fromScratch = applyRecursiveBacktracker(tape, 3);
-    expect(viaCheckpoint.edges).toEqual(fromScratch.edges);
-  });
-
-  it("nearestCheckpointFromAtOrBefore finds the greatest step <= target, or null", () => {
-    const tape = buildTwoStepTape();
-    const checkpoints = buildCheckpointFixture([
-      { nodeIndex: 2, edges: [[1n, 2n], [2n, 1n]] }, // step 0
-      { nodeIndex: 7, edges: [[1n, 2n], [2n, 1n]] }, // step 3
-    ]);
-    const froms = resolveCheckpointFroms(tape, checkpoints);
-
-    expect(nearestCheckpointFromAtOrBefore(froms, 0)?.step).toBe(0);
-    expect(nearestCheckpointFromAtOrBefore(froms, 2)?.step).toBe(0);
-    expect(nearestCheckpointFromAtOrBefore(froms, 3)?.step).toBe(3);
-    expect(nearestCheckpointFromAtOrBefore(froms, 100)?.step).toBe(3);
-  });
-
-  it("nearestCheckpointFromAtOrBefore returns null when no checkpoint precedes the target step", () => {
-    const froms = resolveCheckpointFroms(buildTwoStepTape(), buildCheckpointFixture([{ nodeIndex: 4, edges: [] }]));
-    expect(nearestCheckpointFromAtOrBefore(froms, 1)).toBeNull();
-  });
-
-  it("nearestCheckpointFromAtOrBefore returns null on an empty array", () => {
-    expect(nearestCheckpointFromAtOrBefore([], 5)).toBeNull();
-  });
-});
+/** Convenience wrapper mirroring `RB_ADAPTER.resolveMetadata` (`algorithmRegistry.ts`) — every
+ *  test in this `describe` block exercises RB through the same generic `resolveDebugArenaMetadata`
+ *  production code actually calls it with, rather than a bespoke RB-only helper. */
+function resolveRbMetadata(tape: ParsedTape, startIndex = 0, endIndex = tape.nodeCount) {
+  return resolveDebugArenaMetadata<ApplyResult>(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, s, e),
+    (step, previous) => applyRecursiveBacktracker(tape, step, previous, endIndex),
+    startIndex, endIndex,
+  );
+}
 
 describe("resolveDebugArenaMetadata", () => {
-  // buildTwoStepTape()'s mutating events, in step order: EdgeAdded (node 2, step 0),
-  // VertexVisited (node 3, step 1), VertexPushed (node 4, step 2), VertexPopped (node 7, step 3).
-
-  it("totalSteps matches mutatingRbEvents(tape).length when there are no checkpoints", () => {
+  it("totalSteps matches mutatingRbEvents(tape).length and checkpointFroms is empty for a short run", () => {
     const tape = buildTwoStepTape();
-    const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
-    const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
+    const { totalSteps, checkpointFroms } = resolveRbMetadata(tape);
     expect(totalSteps).toBe(mutatingRbEvents(tape).length);
     expect(checkpointFroms).toEqual([]);
-  });
-
-  it("produces the same checkpointFroms as resolveCheckpointFroms for the same inputs", () => {
-    const tape = buildTwoStepTape();
-    const checkpoints = buildCheckpointFixture([
-      { nodeIndex: 2, edges: [[1n, 2n], [2n, 1n]] },
-      { nodeIndex: 7, edges: [[1n, 2n], [2n, 1n]] },
-    ]);
-    const combined = resolveDebugArenaMetadata(tape, checkpoints);
-    const separate = resolveCheckpointFroms(tape, checkpoints);
-    expect(combined.checkpointFroms).toEqual(separate);
-    expect(combined.totalSteps).toBe(mutatingRbEvents(tape).length);
   });
 
   it("totalSteps is 0 and checkpointFroms is empty for a tape with no mutating events", () => {
     const tape = buildFixture([
       { parent: null, firstChild: null, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     ]);
-    const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
-    const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
+    const { totalSteps, checkpointFroms } = resolveRbMetadata(tape);
     expect(totalSteps).toBe(0);
     expect(checkpointFroms).toEqual([]);
   });
 
-  it("still resolves checkpointFroms correctly even when a checkpoint sits at the very last mutating event", () => {
-    const tape = buildTwoStepTape();
-    const checkpoints = buildCheckpointFixture([{ nodeIndex: 7, edges: [[1n, 2n]] }]); // last mutating event (VertexPopped)
-    const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, checkpoints);
-    expect(totalSteps).toBe(4);
-    expect(checkpointFroms).toEqual([{ edges: [{ from: 1n, to: 2n }], debugValues: new Map(), step: 3, nodeIndex: 7 }]);
+  it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events", () => {
+    const tape = buildLongEdgeChainTape(1000);
+    const { totalSteps, checkpointFroms } = resolveRbMetadata(tape);
+    expect(totalSteps).toBe(1000);
+    expect(checkpointFroms.map((f) => f.step)).toEqual([499, 999]);
+  });
+
+  it("a cached snapshot's edges/step match a full replay to the same step", () => {
+    const tape = buildLongEdgeChainTape(1000);
+    const { checkpointFroms } = resolveRbMetadata(tape);
+    const snapshot = checkpointFroms[0];
+    const fromScratch = applyRecursiveBacktracker(tape, snapshot.step);
+    expect(snapshot.result.edges).toEqual(fromScratch.edges);
+  });
+
+  it("a cached snapshot plugged into applyRecursiveBacktracker as `from` matches a full replay further ahead", () => {
+    const tape = buildLongEdgeChainTape(1000);
+    const { checkpointFroms } = resolveRbMetadata(tape);
+    const [from] = checkpointFroms;
+
+    const viaSnapshot = applyRecursiveBacktracker(tape, 999, from.result);
+    const fromScratch = applyRecursiveBacktracker(tape, 999);
+    expect(viaSnapshot.edges).toEqual(fromScratch.edges);
+  });
+
+  it("no snapshot is cached when the run is shorter than CHECKPOINT_INTERVAL", () => {
+    const tape = buildLongEdgeChainTape(499);
+    const { totalSteps, checkpointFroms } = resolveRbMetadata(tape);
+    expect(totalSteps).toBe(499);
+    expect(checkpointFroms).toEqual([]);
   });
 });
 
@@ -688,6 +581,60 @@ describe("applyKruskal", () => {
     expect(result.dsuGroups.get(1n)).toBe(1n);
     expect(result.dsuGroups.get(2n)).toBe(1n);
   });
+
+  it("resuming from a previous result (GitHub issue #128's generalization) matches a full replay to the same targetStep", () => {
+    const tape = buildKruskalTape();
+    const from = applyKruskal(tape, 0);
+    const viaResume = applyKruskal(tape, 1, from);
+    const fromScratch = applyKruskal(tape, 1);
+    expect(viaResume).toEqual(fromScratch);
+  });
+
+  describe("end-to-end through resolveDebugArenaMetadata on a long chain (GitHub issue #128)", () => {
+    /** A flat tape of `count` sequential `EdgeAdded` events, `i -> i+1` for `i` in `[1, count]`
+     *  (mirrors `buildLongEdgeChainTape` above, RB-tag'd) — `EdgeAdded` alone is mutating for
+     *  Kruskal, so this is enough to cross `CHECKPOINT_INTERVAL` without a real DSU-merge shape. */
+    function buildLongKruskalChainTape(count: number): ParsedTape {
+      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
+      for (let i = 0; i < count; i++) {
+        nodes.push({
+          parent: 0,
+          firstChild: null,
+          nextSibling: i + 1 < count ? i + 2 : null,
+          tag: KRUSKAL_TAG.EDGE_ADDED,
+          payloadBytes: edgeAddedPayload(BigInt(i + 1), BigInt(i + 2)),
+        });
+      }
+      return buildFixture(nodes);
+    }
+
+    function resolveKruskalMetadata(tape: ParsedTape) {
+      return resolveDebugArenaMetadata<KruskalApplyResult>(
+        tape,
+        (t, s, e) => countMutatingEvents(t, decodeKruskalEvent, isMutatingKruskalEvent, s, e),
+        (step, previous) => applyKruskal(tape, step, previous),
+        0, tape.nodeCount,
+      );
+    }
+
+    it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
+      const tape = buildLongKruskalChainTape(1000);
+      const { totalSteps, checkpointFroms } = resolveKruskalMetadata(tape);
+      expect(totalSteps).toBe(1000);
+      expect(checkpointFroms.map((f) => f.step)).toEqual([499, 999]);
+      for (const snapshot of checkpointFroms) {
+        expect(snapshot.result).toEqual(applyKruskal(tape, snapshot.step));
+      }
+    });
+
+    it("chaining resume through two successive snapshots matches a from-scratch replay at the end", () => {
+      const tape = buildLongKruskalChainTape(1000);
+      const { checkpointFroms } = resolveKruskalMetadata(tape);
+      const [first, second] = checkpointFroms;
+      expect(second.result).toEqual(applyKruskal(tape, second.step, first.result));
+      expect(second.result).toEqual(applyKruskal(tape, second.step));
+    });
+  });
 });
 
 // --- Wilson (GitHub issue #145) ---
@@ -832,6 +779,63 @@ describe("mutatingWilsonEvents / applyWilson", () => {
   it("throws when targetStep is out of range", () => {
     const tape = buildWilsonTape();
     expect(() => applyWilson(tape, 8)).toThrow(/out of range/);
+  });
+
+  it("resuming from a previous result (GitHub issue #128's generalization) matches a full replay to the same targetStep, across edges/debugValues/debugMaps/debugVertices", () => {
+    const tape = buildWilsonTape();
+    const from = applyWilson(tape, 4); // WalkStartPicked, StepTaken x2, LoopErased, EdgeAdded
+    const viaResume = applyWilson(tape, 7, from); // + NodeVisited, EdgeAdded, NodeVisited
+    const fromScratch = applyWilson(tape, 7);
+    expect(viaResume).toEqual(fromScratch);
+  });
+
+  describe("end-to-end through resolveDebugArenaMetadata on a long chain (GitHub issue #128)", () => {
+    /** A flat tape of `count` sequential `NodeVisited(i)` events — `NodeVisited` alone is
+     *  mutating for Wilson and inserts into the "visited" (Region-kind) debug value, exercising
+     *  the presence-Set resume path this issue's Wilson fix specifically targeted. */
+    function buildLongWilsonChainTape(count: number): ParsedTape {
+      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
+      for (let i = 0; i < count; i++) {
+        nodes.push({
+          parent: 0,
+          firstChild: null,
+          nextSibling: i + 1 < count ? i + 2 : null,
+          tag: WILSON_TAG.NODE_VISITED,
+          payloadBytes: vertexPayload(BigInt(i + 1)),
+        });
+      }
+      return buildFixture(nodes);
+    }
+
+    function resolveWilsonMetadata(tape: ParsedTape) {
+      return resolveDebugArenaMetadata<WilsonApplyResult>(
+        tape,
+        (t, s, e) => countMutatingEvents(t, decodeWilsonEvent, isMutatingWilsonEvent, s, e),
+        (step, previous) => applyWilson(tape, step, previous),
+        0, tape.nodeCount,
+      );
+    }
+
+    it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
+      const tape = buildLongWilsonChainTape(1000);
+      const { totalSteps, checkpointFroms } = resolveWilsonMetadata(tape);
+      expect(totalSteps).toBe(1000);
+      expect(checkpointFroms.map((f) => f.step)).toEqual([499, 999]);
+      for (const snapshot of checkpointFroms) {
+        expect(snapshot.result).toEqual(applyWilson(tape, snapshot.step));
+      }
+      // The 500th distinct id (index 499, 1-based node id 500) must be present in the first
+      // snapshot's "visited" list — pins down that presence-Set resume didn't silently drop it.
+      expect(checkpointFroms[0].result.debugValues.get("visited")).toHaveLength(500);
+    });
+
+    it("chaining resume through two successive snapshots matches a from-scratch replay at the end", () => {
+      const tape = buildLongWilsonChainTape(1000);
+      const { checkpointFroms } = resolveWilsonMetadata(tape);
+      const [first, second] = checkpointFroms;
+      expect(second.result).toEqual(applyWilson(tape, second.step, first.result));
+      expect(second.result).toEqual(applyWilson(tape, second.step));
+    });
   });
 });
 
@@ -1083,6 +1087,62 @@ describe("mutatingEdgeBasedEvents / applyEdgeBased", () => {
   it("throws when targetStep is out of range", () => {
     const tape = buildEdgeBasedTape();
     expect(() => applyEdgeBased(tape, 3)).toThrow(/out of range/);
+  });
+
+  it("resuming from a previous result (GitHub issue #128's generalization) matches a full replay to the same targetStep, across independent active/visited debug values", () => {
+    const tape = buildEdgeBasedTape();
+    const from = applyEdgeBased(tape, 0); // EdgeAdded
+    const viaResume = applyEdgeBased(tape, 2, from); // + NodeActivated, SrcExhausted
+    const fromScratch = applyEdgeBased(tape, 2);
+    expect(viaResume).toEqual(fromScratch);
+  });
+
+  describe("end-to-end through resolveDebugArenaMetadata on a long chain (GitHub issue #128)", () => {
+    /** A flat tape of `count` sequential `NodeActivated(i, parent=null, treeDepth=0)` events —
+     *  `NodeActivated` alone is mutating for EdgeBased and inserts into the "active" (Region-kind)
+     *  debug value, independent of "visited" (only `SrcExhausted(EmptyPool)` touches that one) —
+     *  exercises the per-name presence-Map resume path. */
+    function buildLongEdgeBasedChainTape(count: number): ParsedTape {
+      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
+      for (let i = 0; i < count; i++) {
+        nodes.push({
+          parent: 0,
+          firstChild: null,
+          nextSibling: i + 1 < count ? i + 2 : null,
+          tag: EDGE_BASED_TAG.NODE_ACTIVATED,
+          payloadBytes: concatBytes([u64le(BigInt(i + 1)), optionalNodeIdPayload(null), u32le(0)]),
+        });
+      }
+      return buildFixture(nodes);
+    }
+
+    function resolveEdgeBasedMetadata(tape: ParsedTape) {
+      return resolveDebugArenaMetadata<EdgeBasedApplyResult>(
+        tape,
+        (t, s, e) => countMutatingEvents(t, decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, s, e),
+        (step, previous) => applyEdgeBased(tape, step, previous),
+        0, tape.nodeCount,
+      );
+    }
+
+    it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
+      const tape = buildLongEdgeBasedChainTape(1000);
+      const { totalSteps, checkpointFroms } = resolveEdgeBasedMetadata(tape);
+      expect(totalSteps).toBe(1000);
+      expect(checkpointFroms.map((f) => f.step)).toEqual([499, 999]);
+      for (const snapshot of checkpointFroms) {
+        expect(snapshot.result).toEqual(applyEdgeBased(tape, snapshot.step));
+      }
+      expect(checkpointFroms[0].result.debugValues.get("active")).toHaveLength(500);
+    });
+
+    it("chaining resume through two successive snapshots matches a from-scratch replay at the end", () => {
+      const tape = buildLongEdgeBasedChainTape(1000);
+      const { checkpointFroms } = resolveEdgeBasedMetadata(tape);
+      const [first, second] = checkpointFroms;
+      expect(second.result).toEqual(applyEdgeBased(tape, second.step, first.result));
+      expect(second.result).toEqual(applyEdgeBased(tape, second.step));
+    });
   });
 
   it("tags reconstructed edges with kind: teleport when EdgeAdded.teleport is true (regression for GitHub issue #144's teleport-rendering bug)", () => {
@@ -1366,6 +1426,62 @@ describe("mutatingVertexBasedEvents / applyVertexBased", () => {
   it("throws when targetStep is out of range", () => {
     const tape = buildVertexBasedTape();
     expect(() => applyVertexBased(tape, 3)).toThrow(/out of range/);
+  });
+
+  it("resuming from a previous result (GitHub issue #128's generalization) matches a full replay to the same targetStep, across visited/frontier/reserve debug values", () => {
+    const tape = buildVertexBasedTape();
+    const from = applyVertexBased(tape, 0); // SrcChosenFromFrontier
+    const viaResume = applyVertexBased(tape, 2, from); // + EdgeAdded, NodeVisited
+    const fromScratch = applyVertexBased(tape, 2);
+    expect(viaResume).toEqual(fromScratch);
+  });
+
+  describe("end-to-end through resolveDebugArenaMetadata on a long chain (GitHub issue #128)", () => {
+    /** A flat tape of `count` sequential `NodeVisited(i, parent=i-1)` events — `NodeVisited`
+     *  alone is mutating for VertexBased and touches all three of visited/frontier/reserve at
+     *  once (insert/insert/remove), exercising the Set-per-name resume path built from
+     *  `from.debugValues`. */
+    function buildLongVertexBasedChainTape(count: number): ParsedTape {
+      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
+      for (let i = 0; i < count; i++) {
+        nodes.push({
+          parent: 0,
+          firstChild: null,
+          nextSibling: i + 1 < count ? i + 2 : null,
+          tag: VERTEX_BASED_TAG.NODE_VISITED,
+          payloadBytes: concatBytes([u64le(BigInt(i + 1)), u64le(BigInt(i))]),
+        });
+      }
+      return buildFixture(nodes);
+    }
+
+    function resolveVertexBasedMetadata(tape: ParsedTape) {
+      return resolveDebugArenaMetadata<VertexBasedApplyResult>(
+        tape,
+        (t, s, e) => countMutatingEvents(t, decodeVertexBasedEvent, isMutatingVertexBasedEvent, s, e),
+        (step, previous) => applyVertexBased(tape, step, previous),
+        0, tape.nodeCount,
+      );
+    }
+
+    it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
+      const tape = buildLongVertexBasedChainTape(1000);
+      const { totalSteps, checkpointFroms } = resolveVertexBasedMetadata(tape);
+      expect(totalSteps).toBe(1000);
+      expect(checkpointFroms.map((f) => f.step)).toEqual([499, 999]);
+      for (const snapshot of checkpointFroms) {
+        expect(snapshot.result).toEqual(applyVertexBased(tape, snapshot.step));
+      }
+      expect(checkpointFroms[0].result.debugValues.get("visited")).toHaveLength(500);
+    });
+
+    it("chaining resume through two successive snapshots matches a from-scratch replay at the end", () => {
+      const tape = buildLongVertexBasedChainTape(1000);
+      const { checkpointFroms } = resolveVertexBasedMetadata(tape);
+      const [first, second] = checkpointFroms;
+      expect(second.result).toEqual(applyVertexBased(tape, second.step, first.result));
+      expect(second.result).toEqual(applyVertexBased(tape, second.step));
+    });
   });
 
   it("removes a node from reserve on NodeVisited even without a preceding ReserveCandidateChosen (the connected/free_preset/teleport-connect paths)", () => {

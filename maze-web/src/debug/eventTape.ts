@@ -1,4 +1,4 @@
-/** Web-side replay engine for the debug event tape (GitHub issue #125). Turns the two flat
+﻿/** Web-side replay engine for the debug event tape (GitHub issue #125). Turns the two flat
  *  buffers produced by `DebugTape::encode()` (`maze-core/src/event_log/mod.rs`, see GitHub issue
  *  #124 and `Specs/event_log.md`) into "maze state at step N" — pure logic, no store/UI wiring.
  *
@@ -206,6 +206,29 @@ export function mutatingEventsWithIndex<E>(
     if (isMutating(event)) result.push({ event, nodeIndex: i });
   }
   return result;
+}
+
+/** Counts mutating events over `[startIndex, endIndex)` without materializing a
+ *  `MutatingEventAt<E>[]` array or allocating a `{event, nodeIndex}` per hit — same decode/
+ *  is-mutating cost as `mutatingEventsWithIndex` (an event still has to be decoded to know whether
+ *  it's mutating), but `resolveDebugArenaMetadata`'s `totalSteps` count (GitHub issue #128) only
+ *  ever needs the count, so this skips the throwaway array/object allocations that would otherwise
+ *  dominate for a large tape (tens of thousands of events). */
+export function countMutatingEvents<E>(
+  tape: ParsedTape,
+  decode: (tag: number, bytes: Uint8Array) => E,
+  isMutating: (event: E) => boolean,
+  startIndex = 0,
+  endIndex = tape.nodeCount,
+): number {
+  let count = 0;
+  for (let i = startIndex; i < endIndex; i++) {
+    const record = nodeAt(tape, i);
+    if (record.tag === TAG_SCOPE) continue;
+    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
+    if (isMutating(decode(record.tag, bytes))) count++;
+  }
+  return count;
 }
 
 /** Reads and decodes one fixed-stride node record by index — used by both the flat and tree
@@ -557,6 +580,14 @@ class KruskalDsu {
     for (const id of this.parent.keys()) result.set(id, this.find(id));
     return result;
   }
+
+  /** Restores state from a previously-flattened `groups()` snapshot (GitHub issue #128's generic
+   *  resume) — since `groups()` always returns fully path-compressed `id -> root` pairs, seeding
+   *  `parent` directly from them (root entries point at themselves) reproduces the exact same
+   *  flattened structure `find`/`union` would see, without replaying every original `union` call. */
+  seed(id: bigint, root: bigint): void {
+    this.parent.set(id, root);
+  }
 }
 
 /** Locates the single `PresetUnionsApplied` event, if any — emitted once, directly under the
@@ -606,18 +637,35 @@ export interface KruskalApplyResult {
  *  `PresetUnionsApplied`'s pairs (if any — see `findPresetUnions`), then folds in every `SetsMerged`
  *  up to `targetStep` via `KruskalDsu.union(rootA, rootB)`, mirroring the core's own
  *  `union_by_min` — so a replayed root always equals what the core actually computed. */
-export function applyKruskal(tape: ParsedTape, targetStep: number, startIndex = 0, endIndex?: number): KruskalApplyResult {
+export function applyKruskal(tape: ParsedTape, targetStep: number, from?: KruskalApplyResult, startIndex = 0, endIndex?: number): KruskalApplyResult {
   validateStepShape("targetStep", targetStep);
+  if (from) {
+    validateStepShape("from.step", from.step);
+    validateStepShape("from.nodeIndex", from.nodeIndex);
+    if (from.step > targetStep) {
+      throw new Error(`applyKruskal: from.step ${from.step} is ahead of targetStep ${targetStep}`);
+    }
+    if (from.step === targetStep) {
+      return { edges: [...from.edges], dsuGroups: new Map(from.dsuGroups), step: targetStep, nodeIndex: from.nodeIndex };
+    }
+  }
 
-  const events = mutatingKruskalEventsWithIndex(tape, targetStep + 1, startIndex, endIndex);
-  if (events.length <= targetStep) {
-    throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
+  const scanStart = from ? from.nodeIndex + 1 : startIndex;
+  const needed = targetStep - (from?.step ?? -1);
+  const events = mutatingKruskalEventsWithIndex(tape, needed, scanStart, endIndex);
+  if (events.length < needed) {
+    const total = (from?.step ?? -1) + 1 + events.length;
+    throw new Error(`targetStep ${targetStep} out of range [0, ${total})`);
   }
 
   const dsu = new KruskalDsu();
-  for (const [a, b] of findPresetUnions(tape)) dsu.union(a, b);
+  if (from) {
+    for (const [id, root] of from.dsuGroups) dsu.seed(id, root);
+  } else {
+    for (const [a, b] of findPresetUnions(tape)) dsu.union(a, b);
+  }
 
-  const edges: Edge[] = [];
+  const edges = from ? [...from.edges] : [];
   for (const { event } of events) {
     if (event.kind === "EdgeAdded") {
       edges.push({ from: event.from, to: event.to });
@@ -631,7 +679,7 @@ export function applyKruskal(tape: ParsedTape, targetStep: number, startIndex = 
     }
   }
 
-  return { edges, dsuGroups: dsu.groups(), step: targetStep, nodeIndex: events[targetStep].nodeIndex };
+  return { edges, dsuGroups: dsu.groups(), step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
 }
 
 // --- Wilson event decoding (GitHub issue #145) ---
@@ -818,8 +866,7 @@ export interface Edge {
  *  `debugValues.get("recursion_stack")`. `bigint[]`, not `Set<bigint>` — order matters for
  *  `DebugValueKind.Sequence` values (e.g. `"recursion_stack"`, rendered as a chain of arrows
  *  between consecutive ids in insertion order); `Region` values are unordered by nature but a
- *  duplicate-free array is still a valid representation, mirroring the Rust side's
- *  `CheckpointTracker::debug_values: BTreeMap<&str, Vec<NodeId>>`. Never mutated in place by
+ *  duplicate-free array is still a valid representation. Never mutated in place by
  *  `applyRecursiveBacktracker`; a fresh `Map`/`Array` is built whenever a delta is folded in,
  *  mirroring `edges`' own copy-on-write discipline. */
 export type DebugValues = Map<string, bigint[]>;
@@ -850,6 +897,14 @@ export interface ApplyResult {
 function cloneDebugValues(values: DebugValues): DebugValues {
   const result: DebugValues = new Map();
   for (const [name, ids] of values) result.set(name, [...ids]);
+  return result;
+}
+
+/** Clones a `DebugMaps` map two levels deep (fresh outer `Map`, fresh inner `Map` per name) —
+ *  same never-mutate-the-caller's-`from` discipline as `cloneDebugValues`. */
+function cloneDebugMaps(maps: DebugMaps): DebugMaps {
+  const result: DebugMaps = new Map();
+  for (const [name, m] of maps) result.set(name, new Map(m));
   return result;
 }
 
@@ -916,8 +971,7 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
   // `Set` mirror of each list, membership-only — makes `insert`'s dedup check O(1) instead of an
   // O(n) `Array.includes` scan. Without it, a monotonically-growing Region value (e.g. "visited",
   // one insert per node, never removed) makes this loop O(n²) over a run: every scrub/autoplay
-  // tick re-scans a list approaching the full node count on every single insert. Mirrors the same
-  // fix applied to `CheckpointTracker::record` on the Rust side (`DebugValueList`, GitHub issue
+  // tick re-scans a list approaching the full node count on every single insert (GitHub issue
   // #142's follow-up) — built fresh here (not carried in `ApplyFrom`/`DebugValues` itself) so the
   // public `bigint[]` shape every consumer (store selectors, render overlays) depends on doesn't
   // change; it's discarded once this function returns.
@@ -956,198 +1010,81 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
 
 // --- Intermediate snapshot checkpoints (GitHub issue #128) ---
 //
-// A separate flat buffer pair (table + payload), produced by `CheckpointLog::encode()`
-// (`maze-core/src/event_log/checkpoint.rs`) — deliberately independent of the node table/payload
-// above, mirroring that Rust type's independence from `EventLog`/`DebugTape`. This module only
-// parses the buffer and exposes the step-keyed lookup (`nearestCheckpointFromAtOrBefore`, since
-// checkpoints are stored keyed by arena `nodeIndex` but `applyRecursiveBacktracker` needs `step`
-// — see `resolveCheckpointFroms` below) — the actual wiring into `applyRecursiveBacktracker`/
-// `ApplyFrom` lives in `store/debugSelectors.ts`'s `selectDebugMazeView`, not in this module.
+// Snapshots are built entirely on the web side — the core has no notion of "snapshot" at all (it
+// only ever produces the plain event tape). Algorithm-agnostic: `resolveDebugArenaMetadata` below
+// knows nothing about `edges`/`debugValues`/`dsuGroups`/or any other concrete shape — it only
+// knows "count mutating events" (`mutatingNodeIndices`, already generic across every adapter) and
+// "snapshot the opaque result of `apply()` at this step" (`applySnapshot`, likewise generic). What
+// a snapshot actually *contains* is entirely the calling adapter's own `TResult` — this module
+// never inspects it.
 
-/** Byte size of one encoded checkpoint record — mirrors `CHECKPOINT_RECORD_SIZE` in
- *  `maze-core/src/event_log/checkpoint.rs`. */
-export const CHECKPOINT_RECORD_SIZE = 12;
+/** Mutating events between cached snapshots (mirrors the pacing the old core mechanism used) — a
+ *  tunable constant, not user-facing config: frequent enough that a resumed replay never walks
+ *  more than this many events from the nearest snapshot, sparse enough that the cached snapshot
+ *  list itself stays small. */
+const CHECKPOINT_INTERVAL = 500;
 
-export interface ParsedCheckpoints {
-  table: Uint8Array;
-  payload: Uint8Array;
-  tableView: DataView;
-  checkpointCount: number;
+/** One cached snapshot — an opaque `apply()` result plus the `step` it was taken at. `TResult` is
+ *  whichever adapter produced it (`ApplyResult`/`KruskalApplyResult`/`WilsonApplyResult`/etc) —
+ *  this type itself carries no assumption about what's inside. */
+export interface Snapshot<TResult> {
+  step: number;
+  result: TResult;
 }
 
-export function parseCheckpoints(table: Uint8Array, payload: Uint8Array): ParsedCheckpoints {
-  return {
-    table,
-    payload,
-    tableView: new DataView(table.buffer, table.byteOffset, table.byteLength),
-    checkpointCount: table.byteLength / CHECKPOINT_RECORD_SIZE,
-  };
-}
-
-export interface Checkpoint {
-  nodeIndex: number;
-  edges: Edge[];
-  debugValues: DebugValues;
-}
-
-/** Decodes one checkpoint's payload: a `u32` LE length prefix followed by that many
- *  `(from: u64, to: u64)` edge pairs, then a `u32` LE count of named debug-value sets, each a
- *  `u32` LE name length + UTF-8 name bytes + `u32` LE id count + that many `u64` LE ids — mirrors
- *  the encoding `CheckpointTracker::record` writes in
- *  `maze-core/src/generation/recursive_backtracker.rs`. Returns the byte offset immediately past
- *  the decoded payload alongside the decoded value, so `checkpointAt` doesn't need to duplicate
- *  the edges-length arithmetic to find where the debug-values section starts. */
-function decodeCheckpointPayload(payload: Uint8Array, offset: number, len: number): { edges: Edge[]; debugValues: DebugValues } {
-  const bytes = payload.subarray(offset, offset + len);
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let pos = 0;
-
-  const edgeCount = dv.getUint32(pos, true);
-  pos += 4;
-  const edges: Edge[] = [];
-  for (let i = 0; i < edgeCount; i++) {
-    edges.push({ from: dv.getBigUint64(pos, true), to: dv.getBigUint64(pos + 8, true) });
-    pos += 16;
-  }
-
-  const debugValues: DebugValues = new Map();
-  const setCount = dv.getUint32(pos, true);
-  pos += 4;
-  const textDecoder2 = new TextDecoder();
-  for (let i = 0; i < setCount; i++) {
-    const nameLen = dv.getUint32(pos, true);
-    pos += 4;
-    const name = textDecoder2.decode(bytes.subarray(pos, pos + nameLen));
-    pos += nameLen;
-    const idCount = dv.getUint32(pos, true);
-    pos += 4;
-    const ids: bigint[] = [];
-    for (let j = 0; j < idCount; j++) {
-      ids.push(dv.getBigUint64(pos, true));
-      pos += 8;
-    }
-    debugValues.set(name, ids);
-  }
-
-  return { edges, debugValues };
-}
-
-/** Reads and decodes one fixed-stride checkpoint record by index. */
-export function checkpointAt(tape: ParsedCheckpoints, index: number): Checkpoint {
-  const base = index * CHECKPOINT_RECORD_SIZE;
-  const dv = tape.tableView;
-  const nodeIndex = dv.getUint32(base + 0, true);
-  const offset = dv.getUint32(base + 4, true);
-  const len = dv.getUint32(base + 8, true);
-  const { edges, debugValues } = decodeCheckpointPayload(tape.payload, offset, len);
-  return { nodeIndex, edges, debugValues };
-}
-
-// --- Checkpoint-accelerated apply ---
-//
-// `applyRecursiveBacktracker`'s `targetStep`/`ApplyFrom.step` are indices into the flat
-// mutating-event sequence (`mutatingRbEvents`), not arena node indices — so a checkpoint (keyed
-// by arena `nodeIndex`) can't be handed to `applyRecursiveBacktracker` as `from` until its
-// `nodeIndex` is translated into the matching `step`. `resolveCheckpointFroms` does that
-// translation via a single forward scan over the tape, producing ready-to-use `ApplyFrom` values
-// sorted by ascending `step` (same order as ascending `nodeIndex`, since arena index and
-// mutating-event order grow together) — `nearestCheckpointFromAtOrBefore` then binary-searches
-// that small array directly by `step`, with no further tape scanning. `generateConfigBuilder.ts`
-// itself doesn't call `resolveCheckpointFroms` directly — it uses `resolveDebugArenaMetadata`
-// (below), which folds this same translation into the scan that also computes `totalSteps`.
-
-/** Resolves every checkpoint in `checkpoints` into an `ApplyFrom` ready to pass into
- *  `applyRecursiveBacktracker` — computing each checkpoint's `step` (its position in the flat
- *  mutating-event sequence) via one forward scan over `tape`. Call once when a tape's debug arena
- *  is built (see `generateConfigBuilder.ts`), not on every scrub — the result is small (one entry
- *  per `CHECKPOINT_INTERVAL` mutating events) and reused for the arena's whole lifetime.
- *
- *  Stops scanning early once every checkpoint has been resolved — cheaper than
- *  `resolveDebugArenaMetadata` below when the caller doesn't also need `totalSteps` (e.g. tests),
- *  but `generateConfigBuilder.ts` should prefer `resolveDebugArenaMetadata` since it needs both. */
-export function resolveCheckpointFroms(tape: ParsedTape, checkpoints: ParsedCheckpoints): ApplyFrom[] {
-  const result: ApplyFrom[] = [];
-  if (checkpoints.checkpointCount === 0) return result;
-
-  let nextCheckpoint = 0;
-  let step = 0;
-  for (let i = 0; i < tape.nodeCount && nextCheckpoint < checkpoints.checkpointCount; i++) {
-    const record = nodeAt(tape, i);
-    if (record.tag === TAG_SCOPE) continue;
-    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
-    const event = decodeRecursiveBacktrackerEvent(record.tag, bytes);
-    if (!isMutatingRbEvent(event)) continue;
-
-    while (nextCheckpoint < checkpoints.checkpointCount) {
-      const checkpoint = checkpointAt(checkpoints, nextCheckpoint);
-      if (checkpoint.nodeIndex !== i) break;
-      result.push({ edges: checkpoint.edges, debugValues: checkpoint.debugValues, step, nodeIndex: i });
-      nextCheckpoint++;
-    }
-    step++;
-  }
-  return result;
-}
-
-export interface DebugArenaMetadata {
+export interface DebugArenaMetadata<TResult> {
   totalSteps: number;
-  checkpointFroms: ApplyFrom[];
+  checkpointFroms: Snapshot<TResult>[];
 }
 
-/** Combines what used to be two independent full-tape forward scans — `mutatingRbEvents(tape).length`
- *  (to compute `totalSteps`) and `resolveCheckpointFroms` (to compute `checkpointFroms`) — into one
- *  pass, each of which decodes every node-table record exactly once. Building a debug arena for a
- *  large run (tens of thousands of mutating events) used to pay this decode cost twice; this pays
- *  it once. Semantically identical to calling `mutatingRbEvents(tape).length` and
- *  `resolveCheckpointFroms(tape, checkpoints)` separately (when `checkpoints.checkpointCount === 0`,
- *  behaves exactly like counting alone). The intended, and only, caller is
- *  `generateConfigBuilder.ts`'s debug-arena construction, which always needs both values together.
+/** Counts mutating events (`totalSteps`, via `countMutatingEvents` — a lightweight count with no
+ *  array/object materialization) and, every `CHECKPOINT_INTERVAL` of them, calls `applySnapshot`
+ *  to cache that step's `apply()` result — replacing the old core-produced checkpoint buffer
+ *  (GitHub issue #128) with an equivalent computed here from the plain event tape, for *any*
+ *  instrumented algorithm, not just Recursive Backtracker. Call once when a tape's debug arena is
+ *  built (see `generateConfigBuilder.ts`), not on every scrub — the result is small (one entry per
+ *  `CHECKPOINT_INTERVAL` mutating events) and reused for the arena's whole lifetime.
+ *
+ *  `applySnapshot(step, previous)` is a thin closure over one adapter's own `apply` (see each
+ *  adapter's `resolveMetadata` in `algorithmRegistry.ts`) — `previous` is the last cached snapshot
+ *  (if any), so each new snapshot resumes from the previous one instead of replaying from the
+ *  tape's start, keeping this whole scan O(totalSteps) rather than O(totalSteps²/CHECKPOINT_INTERVAL).
  *
  *  Does *not* collect debug-value names (GitHub issue #131) — those come from the WASM response's
  *  static `debugValueNames` (`GenerateResult::debug_value_names()`, mirroring the algorithm's own
  *  declaration), not from scanning which deltas this particular run happened to emit. A trivial
  *  run that never triggers a delta would otherwise silently omit a name the algorithm still
  *  declares — see `Specs/event_log.md`'s Generic Debug Values section. */
-export function resolveDebugArenaMetadata(
+export function resolveDebugArenaMetadata<TResult extends { step: number; nodeIndex: number }>(
   tape: ParsedTape,
-  checkpoints: ParsedCheckpoints,
+  countMutating: (tape: ParsedTape, startIndex?: number, endIndex?: number) => number,
+  applySnapshot: (step: number, previous: TResult | undefined) => TResult,
   startIndex = 0,
   endIndex = tape.nodeCount,
-): DebugArenaMetadata {
-  const checkpointFroms: ApplyFrom[] = [];
-  let nextCheckpoint = 0;
-  let step = 0;
-
-  for (let i = startIndex; i < endIndex; i++) {
-    const record = nodeAt(tape, i);
-    if (record.tag === TAG_SCOPE) continue;
-    const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
-    const event = decodeRecursiveBacktrackerEvent(record.tag, bytes);
-    if (!isMutatingRbEvent(event)) continue;
-
-    while (nextCheckpoint < checkpoints.checkpointCount) {
-      const checkpoint = checkpointAt(checkpoints, nextCheckpoint);
-      if (checkpoint.nodeIndex !== i) break;
-      checkpointFroms.push({ edges: checkpoint.edges, debugValues: checkpoint.debugValues, step, nodeIndex: i });
-      nextCheckpoint++;
-    }
-    step++;
+): DebugArenaMetadata<TResult> {
+  const totalSteps = countMutating(tape, startIndex, endIndex);
+  const checkpointFroms: Snapshot<TResult>[] = [];
+  let previous: TResult | undefined;
+  for (let step = CHECKPOINT_INTERVAL - 1; step < totalSteps; step += CHECKPOINT_INTERVAL) {
+    previous = applySnapshot(step, previous);
+    checkpointFroms.push({ step, result: previous });
   }
-  return { totalSteps: step, checkpointFroms };
+  return { totalSteps, checkpointFroms };
 }
 
-/** Binary-searches `checkpointFroms` (as produced by `resolveCheckpointFroms`, sorted by
+/** Binary-searches `checkpointFroms` (as produced by `resolveDebugArenaMetadata`, sorted by
  *  ascending `step`) for the entry with the greatest `step <= targetStep`, or `null` if none
- *  precedes it. Step-keyed, not arena-node-indexed — matches what `applyRecursiveBacktracker`
- *  callers need, since `from`/`targetStep` are indices into the flat mutating-event sequence. */
-export function nearestCheckpointFromAtOrBefore(checkpointFroms: ApplyFrom[], targetStep: number): ApplyFrom | null {
+ *  precedes it. Step-keyed, not arena-node-indexed — matches what every adapter's `apply` needs,
+ *  since `from`/`targetStep` are indices into the flat mutating-event sequence. Generic over
+ *  `TResult` — this function never inspects what's inside a snapshot, only its `step`. */
+export function nearestCheckpointFromAtOrBefore<TResult>(checkpointFroms: Snapshot<unknown>[], targetStep: number): TResult | null {
   let lo = 0;
   let hi = checkpointFroms.length - 1;
-  let result: ApplyFrom | null = null;
+  let result: TResult | null = null;
   while (lo <= hi) {
     const mid = (lo + hi) >>> 1;
     if (checkpointFroms[mid].step <= targetStep) {
-      result = checkpointFroms[mid];
+      result = checkpointFroms[mid].result as TResult;
       lo = mid + 1;
     } else {
       hi = mid - 1;
@@ -1247,19 +1184,44 @@ export interface WilsonApplyResult {
  *
  *  A bidirectional `EdgeAdded` contributes both `{from, to}` and `{to, from}` to `edges` — mirrors
  *  `applyRecursiveBacktracker`/`applyKruskal`'s handling of the same field. */
-export function applyWilson(tape: ParsedTape, targetStep: number, startIndex = 0, endIndex?: number): WilsonApplyResult {
+export function applyWilson(tape: ParsedTape, targetStep: number, from?: WilsonApplyResult, startIndex = 0, endIndex?: number): WilsonApplyResult {
   validateStepShape("targetStep", targetStep);
-
-  const events = mutatingWilsonEventsWithIndex(tape, targetStep + 1, startIndex, endIndex);
-  if (events.length <= targetStep) {
-    throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
+  if (from) {
+    validateStepShape("from.step", from.step);
+    validateStepShape("from.nodeIndex", from.nodeIndex);
+    if (from.step > targetStep) {
+      throw new Error(`applyWilson: from.step ${from.step} is ahead of targetStep ${targetStep}`);
+    }
+    if (from.step === targetStep) {
+      return {
+        edges: [...from.edges],
+        debugValues: cloneDebugValues(from.debugValues),
+        debugMaps: cloneDebugMaps(from.debugMaps),
+        debugVertices: new Map(from.debugVertices),
+        step: targetStep,
+        nodeIndex: from.nodeIndex,
+      };
+    }
   }
 
-  const edges: Edge[] = [];
-  const debugValues: DebugValues = new Map();
-  const presence = new Set<bigint>();
-  const debugMaps: DebugMaps = new Map();
-  const debugVertices: DebugVertices = new Map();
+  const scanStart = from ? from.nodeIndex + 1 : startIndex;
+  const needed = targetStep - (from?.step ?? -1);
+  const events = mutatingWilsonEventsWithIndex(tape, needed, scanStart, endIndex);
+  if (events.length < needed) {
+    const total = (from?.step ?? -1) + 1 + events.length;
+    throw new Error(`targetStep ${targetStep} out of range [0, ${total})`);
+  }
+
+  const edges = from ? [...from.edges] : [];
+  const debugValues: DebugValues = from ? cloneDebugValues(from.debugValues) : new Map();
+  // Presence tracked per debug-value name (mirrors applyEdgeBased's own discipline) — Wilson
+  // declares only one Insert/Remove-based value ("visited") today, but a single shared Set would
+  // silently misbehave the moment a second one is added, so this doesn't take the VISITED-only
+  // shortcut a single Set would tempt.
+  const presence = new Map<string, Set<bigint>>();
+  for (const [name, ids] of debugValues) presence.set(name, new Set(ids));
+  const debugMaps: DebugMaps = from ? cloneDebugMaps(from.debugMaps) : new Map();
+  const debugVertices: DebugVertices = from ? new Map(from.debugVertices) : new Map();
 
   for (const { event } of events) {
     if (event.kind === "EdgeAdded") {
@@ -1274,9 +1236,14 @@ export function applyWilson(tape: ParsedTape, targetStep: number, startIndex = 0
         ids = [];
         debugValues.set(name, ids);
       }
+      let seen = presence.get(name);
+      if (!seen) {
+        seen = new Set();
+        presence.set(name, seen);
+      }
       if (op === "insert") {
-        if (!presence.has(id)) { presence.add(id); ids.push(id); }
-      } else if (presence.delete(id)) {
+        if (!seen.has(id)) { seen.add(id); ids.push(id); }
+      } else if (seen.delete(id)) {
         const at = ids.indexOf(id);
         if (at !== -1) ids.splice(at, 1);
       }
@@ -1298,7 +1265,7 @@ export function applyWilson(tape: ParsedTape, targetStep: number, startIndex = 0
     }
   }
 
-  return { edges, debugValues, debugMaps, debugVertices, step: targetStep, nodeIndex: events[targetStep].nodeIndex };
+  return { edges, debugValues, debugMaps, debugVertices, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
 }
 
 // --- CustomEdgeBased event decoding (GitHub issue #144) ---
@@ -1541,21 +1508,35 @@ export interface EdgeBasedApplyResult {
  *  one-way coin flip isn't otherwise knowable from the event's other fields) — mirrors RB/
  *  Kruskal/Wilson's own `EdgeAdded.bidirectional` handling: a bidirectional edge contributes both
  *  `{from, to}` and `{to, from}` to `edges`, a one-way edge only the forward pair. */
-export function applyEdgeBased(tape: ParsedTape, targetStep: number, startIndex = 0, endIndex?: number): EdgeBasedApplyResult {
+export function applyEdgeBased(tape: ParsedTape, targetStep: number, from?: EdgeBasedApplyResult, startIndex = 0, endIndex?: number): EdgeBasedApplyResult {
   validateStepShape("targetStep", targetStep);
-
-  const events = mutatingEdgeBasedEventsWithIndex(tape, targetStep + 1, startIndex, endIndex);
-  if (events.length <= targetStep) {
-    throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
+  if (from) {
+    validateStepShape("from.step", from.step);
+    validateStepShape("from.nodeIndex", from.nodeIndex);
+    if (from.step > targetStep) {
+      throw new Error(`applyEdgeBased: from.step ${from.step} is ahead of targetStep ${targetStep}`);
+    }
+    if (from.step === targetStep) {
+      return { edges: [...from.edges], debugValues: cloneDebugValues(from.debugValues), step: targetStep, nodeIndex: from.nodeIndex };
+    }
   }
 
-  const edges: Edge[] = [];
-  const debugValues: DebugValues = new Map();
+  const scanStart = from ? from.nodeIndex + 1 : startIndex;
+  const needed = targetStep - (from?.step ?? -1);
+  const events = mutatingEdgeBasedEventsWithIndex(tape, needed, scanStart, endIndex);
+  if (events.length < needed) {
+    const total = (from?.step ?? -1) + 1 + events.length;
+    throw new Error(`targetStep ${targetStep} out of range [0, ${total})`);
+  }
+
+  const edges = from ? [...from.edges] : [];
+  const debugValues: DebugValues = from ? cloneDebugValues(from.debugValues) : new Map();
   // Presence tracked per debug-value name (unlike Wilson/RB's single `Set<bigint>`, which only
   // ever needs to track one Insert/Remove-based value at a time) — "active" and "visited" are
   // two independent id sets here, so a shared presence set would let an id's membership in one
   // wrongly gate insert/remove for the other.
   const presence = new Map<string, Set<bigint>>();
+  for (const [name, ids] of debugValues) presence.set(name, new Set(ids));
 
   for (const { event } of events) {
     if (event.kind === "EdgeAdded" || event.kind === "CyclicEdgeAdded") {
@@ -1585,7 +1566,7 @@ export function applyEdgeBased(tape: ParsedTape, targetStep: number, startIndex 
     }
   }
 
-  return { edges, debugValues, step: targetStep, nodeIndex: events[targetStep].nodeIndex };
+  return { edges, debugValues, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
 }
 
 // --- CustomVertexBased event decoding (GitHub issue #143) ---
@@ -1823,23 +1804,40 @@ export interface VertexBasedApplyResult {
  *  `{to, from}` to `edges`, a one-way edge only the forward pair. `PresetNeighborVisited` and the
  *  step-count-worthy-but-edgeless mutating variants (`ReserveCandidateChosen`,
  *  `NodeQueuedToReserve`) contribute no `edges` entry of their own. */
-export function applyVertexBased(tape: ParsedTape, targetStep: number, startIndex = 0, endIndex?: number): VertexBasedApplyResult {
+export function applyVertexBased(tape: ParsedTape, targetStep: number, from?: VertexBasedApplyResult, startIndex = 0, endIndex?: number): VertexBasedApplyResult {
   validateStepShape("targetStep", targetStep);
-
-  const events = mutatingVertexBasedEventsWithIndex(tape, targetStep + 1, startIndex, endIndex);
-  if (events.length <= targetStep) {
-    throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
+  if (from) {
+    validateStepShape("from.step", from.step);
+    validateStepShape("from.nodeIndex", from.nodeIndex);
+    if (from.step > targetStep) {
+      throw new Error(`applyVertexBased: from.step ${from.step} is ahead of targetStep ${targetStep}`);
+    }
+    if (from.step === targetStep) {
+      return { edges: [...from.edges], debugValues: cloneDebugValues(from.debugValues), step: targetStep, nodeIndex: from.nodeIndex };
+    }
   }
 
-  const edges: Edge[] = [];
+  const scanStart = from ? from.nodeIndex + 1 : startIndex;
+  const needed = targetStep - (from?.step ?? -1);
+  const events = mutatingVertexBasedEventsWithIndex(tape, needed, scanStart, endIndex);
+  if (events.length < needed) {
+    const total = (from?.step ?? -1) + 1 + events.length;
+    throw new Error(`targetStep ${targetStep} out of range [0, ${total})`);
+  }
+
+  const edges = from ? [...from.edges] : [];
   // Built as Set<bigint> per name, not Array, while replaying — "visited"/"frontier"/"reserve"
   // are Region-kind (order carries no meaning, see VertexBasedEvent's DebugValueDelta doc comment
   // in vertex_based.rs), so a Set gives O(1) insert/remove instead of the O(n) indexOf+splice a
   // growing/shrinking array would cost per delta. SrcChosenFromFrontier fires a frontier removal
-  // on every single step, so this path runs at O(steps) removes per full replay (this function
-  // always replays from index 0, no checkpoints) — an O(n) removal here would make replay O(n^2).
-  // Converted to the `bigint[]` the DebugValues type/UI expects only once, after the loop.
+  // on every single step, so this path runs at O(steps) removes per full replay — an O(n) removal
+  // here would make replay O(n^2). Converted to the `bigint[]` the DebugValues type/UI expects
+  // only once, after the loop. Seeded from `from.debugValues` when resuming, same discipline as
+  // every other adapter's `presence` mirror.
   const sets = new Map<string, Set<bigint>>();
+  if (from) {
+    for (const [name, ids] of from.debugValues) sets.set(name, new Set(ids));
+  }
 
   for (const { event } of events) {
     if (
@@ -1872,7 +1870,7 @@ export function applyVertexBased(tape: ParsedTape, targetStep: number, startInde
     debugValues.set(name, [...set]);
   }
 
-  return { edges, debugValues, step: targetStep, nodeIndex: events[targetStep].nodeIndex };
+  return { edges, debugValues, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
 }
 
 // --- Quality-control/repair event decoding (GitHub issue #147) ---
@@ -2271,21 +2269,37 @@ export interface QcApplyResult {
  *  #171's follow-up fix — resolved on the Rust side from the graph immediately before removal,
  *  since the wire's own `EdgeId` alone is meaningless off-graph) and participate in the keyed
  *  accumulator exactly like `EdgeRemovedBetween`. */
-export function applyQc(tape: ParsedTape, targetStep: number, startNodeIndex = 0): QcApplyResult {
+export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResult, startNodeIndex = 0): QcApplyResult {
   validateStepShape("targetStep", targetStep);
+  if (from) {
+    validateStepShape("from.step", from.step);
+    validateStepShape("from.nodeIndex", from.nodeIndex);
+    if (from.step > targetStep) {
+      throw new Error(`applyQc: from.step ${from.step} is ahead of targetStep ${targetStep}`);
+    }
+    if (from.step === targetStep) {
+      return { edges: [...from.edges], removedEdges: [...from.removedEdges], start: from.start, finish: from.finish, step: targetStep, nodeIndex: from.nodeIndex };
+    }
+  }
 
-  const events = mutatingQcEventsWithIndex(tape, targetStep + 1, startNodeIndex);
-  if (events.length <= targetStep) {
-    throw new Error(`targetStep ${targetStep} out of range [0, ${events.length})`);
+  const scanStart = from ? from.nodeIndex + 1 : startNodeIndex;
+  const needed = targetStep - (from?.step ?? -1);
+  const events = mutatingQcEventsWithIndex(tape, needed, scanStart);
+  if (events.length < needed) {
+    const total = (from?.step ?? -1) + 1 + events.length;
+    throw new Error(`targetStep ${targetStep} out of range [0, ${total})`);
   }
 
   // Keyed by `from:to`, in event order — `net.set(key, edge)` on add, `net.delete(key)` on
   // remove, so a later event always overrides an earlier one for the same pair, regardless of
-  // whether it's add-then-remove or remove-then-(re-)add.
-  const net = new Map<string, Edge>();
-  const removedFromEarlierSources = new Set<string>();
-  let start: bigint | null = null;
-  let finish: bigint | null = null;
+  // whether it's add-then-remove or remove-then-(re-)add. Seeded from `from`'s own net state when
+  // resuming — `from.edges`/`from.removedEdges` are already the flattened `[0, from.step]` result,
+  // so re-keying them back into `net`/`removedFromEarlierSources` reproduces the same accumulator
+  // a from-scratch replay up to `from.step` would have built.
+  const net = new Map<string, Edge>(from ? from.edges.map((e) => [`${e.from}:${e.to}`, e]) : undefined);
+  const removedFromEarlierSources = new Set<string>(from ? from.removedEdges.map((e) => `${e.from}:${e.to}`) : undefined);
+  let start: bigint | null = from?.start ?? null;
+  let finish: bigint | null = from?.finish ?? null;
 
   const add = (from: bigint, to: bigint, kind: "basic" | "teleport") => {
     const key = `${from}:${to}`;
@@ -2339,7 +2353,7 @@ export function applyQc(tape: ParsedTape, targetStep: number, startNodeIndex = 0
     return { from: BigInt(from), to: BigInt(to) };
   });
 
-  return { edges, removedEdges, start, finish, step: targetStep, nodeIndex: events[targetStep].nodeIndex };
+  return { edges, removedEdges, start, finish, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
 }
 
 /** Given any arena node index, walks `.parent` up to the nearest top-level source scope and

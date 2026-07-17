@@ -1,6 +1,7 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { DebugArenaHandle } from "./storeTypes";
 import { nearestCheckpointFromAtOrBefore, sourceContentStart } from "../debug/eventTape";
+import type { ApplyFrom, KruskalApplyResult, WilsonApplyResult, EdgeBasedApplyResult, VertexBasedApplyResult, QcApplyResult } from "../debug/eventTape";
 import { adapterFor } from "../debug/algorithmRegistry";
 
 export interface DebugMazeView {
@@ -93,33 +94,38 @@ function qualifyContribution(contribution: DebugMazeViewContribution, scopeName:
  *  contribution instead of applied directly to the final view. `localStep` is relative to this
  *  source's own mutating-event stream (0-based), already resolved from the global `debugStep` by
  *  the caller. */
-function generationContribution(arena: DebugArenaHandle, kind: Exclude<DebugArenaHandle["sources"][number]["kind"], "quality_control">, localStep: number, startIndex: number, endIndex: number, scopeName: string, qualify: boolean): DebugMazeViewContribution {
+function generationContribution(arena: DebugArenaHandle, source: DebugArenaHandle["sources"][number], localStep: number, startIndex: number, endIndex: number, qualify: boolean): DebugMazeViewContribution {
   const contribution = emptyContribution();
+  const kind = source.kind;
   if (kind === "kruskal") {
-    const result = adapterFor("kruskal").apply(arena.tape, localStep, startIndex, endIndex);
+    const from = nearestCheckpointFromAtOrBefore<KruskalApplyResult>(source.checkpointFroms, localStep) ?? undefined;
+    const result = adapterFor("kruskal").apply(arena.tape, localStep, from, startIndex, endIndex);
     contribution.edges = result.edges;
     contribution.dsuGroups = new Map(result.dsuGroups);
   } else if (kind === "wilson") {
-    const result = adapterFor("wilson").apply(arena.tape, localStep, startIndex, endIndex);
+    const from = nearestCheckpointFromAtOrBefore<WilsonApplyResult>(source.checkpointFroms, localStep) ?? undefined;
+    const result = adapterFor("wilson").apply(arena.tape, localStep, from, startIndex, endIndex);
     contribution.edges = result.edges;
     contribution.debugValues = result.debugValues;
     contribution.debugMaps = result.debugMaps;
     contribution.debugVertices = result.debugVertices;
   } else if (kind === "edge_based") {
-    const result = adapterFor("edge_based").apply(arena.tape, localStep, startIndex, endIndex);
+    const from = nearestCheckpointFromAtOrBefore<EdgeBasedApplyResult>(source.checkpointFroms, localStep) ?? undefined;
+    const result = adapterFor("edge_based").apply(arena.tape, localStep, from, startIndex, endIndex);
     contribution.edges = result.edges;
     contribution.debugValues = result.debugValues;
   } else if (kind === "vertex_based") {
-    const result = adapterFor("vertex_based").apply(arena.tape, localStep, startIndex, endIndex);
+    const from = nearestCheckpointFromAtOrBefore<VertexBasedApplyResult>(source.checkpointFroms, localStep) ?? undefined;
+    const result = adapterFor("vertex_based").apply(arena.tape, localStep, from, startIndex, endIndex);
     contribution.edges = result.edges;
     contribution.debugValues = result.debugValues;
   } else {
-    const from = nearestCheckpointFromAtOrBefore(arena.checkpointFroms, localStep) ?? undefined;
+    const from = nearestCheckpointFromAtOrBefore<ApplyFrom>(source.checkpointFroms, localStep) ?? undefined;
     const result = adapterFor("recursive_backtracker").apply(arena.tape, localStep, from, endIndex);
     contribution.edges = result.edges;
     contribution.debugValues = result.debugValues;
   }
-  return qualifyContribution(contribution, scopeName, qualify);
+  return qualifyContribution(contribution, source.scopeName, qualify);
 }
 
 /** Builds QC's contribution (GitHub issue #147) — `applyQc` already returns an add/remove patch
@@ -127,8 +133,9 @@ function generationContribution(arena: DebugArenaHandle, kind: Exclude<DebugAren
  *  this just repackages it, plus `start`/`finish` (QC's own `SetStart`/`SetFinish` mutating
  *  events — a value generation itself never reconstructs, since none of the five generation
  *  algorithms carry start/finish in their own event streams). */
-function qcContribution(arena: DebugArenaHandle, startNodeIndex: number, localStep: number): DebugMazeViewContribution {
-  const result = adapterFor("quality_control").apply(arena.tape, localStep, startNodeIndex);
+function qcContribution(arena: DebugArenaHandle, source: DebugArenaHandle["sources"][number], startNodeIndex: number, localStep: number): DebugMazeViewContribution {
+  const from = nearestCheckpointFromAtOrBefore<QcApplyResult>(source.checkpointFroms, localStep) ?? undefined;
+  const result = adapterFor("quality_control").apply(arena.tape, localStep, from, startNodeIndex);
   const contribution = emptyContribution();
   contribution.edges = result.edges;
   contribution.removedEdges = result.removedEdges;
@@ -207,11 +214,12 @@ let lastView: DebugMazeView | null = null;
  *  `debugStep` has reached its own range; a source whose range starts after `debugStep` doesn't run
  *  at all this call (e.g. scrubbing to step 5 of a 200-step generation run never touches QC).
  *
- *  Resumes generation's own replay from the nearest intermediate snapshot checkpoint at or before
- *  its local step (GitHub issue #128), when one exists, instead of always replaying from the
- *  source's start — bounds the cost of scrubbing to a large `debugStep` by `CHECKPOINT_INTERVAL`
- *  mutating events rather than by `debugStep` itself. Checkpointing is Recursive-Backtracker-only
- *  (`arena.checkpointFroms` is always empty otherwise). */
+ *  Resumes each source's own replay from the nearest intermediate snapshot checkpoint at or before
+ *  its local step (GitHub issue #128, generalized past Recursive Backtracker), when one exists,
+ *  instead of always replaying from the source's start — bounds the cost of scrubbing to a large
+ *  `debugStep` by `CHECKPOINT_INTERVAL` mutating events rather than by `debugStep` itself. Every
+ *  source's own `checkpointFroms` (`source.checkpointFroms`, see `DebugArenaHandle.sources`'s doc
+ *  comment) is empty when that source is shorter than `CHECKPOINT_INTERVAL`. */
 export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: number): DebugMazeView | null {
   if (!arena) return null;
   if (lastArena === arena && lastStep === debugStep) return lastView;
@@ -228,8 +236,8 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
     const qualify = arena.sources.length > 1;
     contributions.push(
       source.kind === "quality_control"
-        ? qcContribution(arena, startIndex, localStep)
-        : generationContribution(arena, source.kind, localStep, startIndex, endIndex, source.scopeName, qualify),
+        ? qcContribution(arena, source, startIndex, localStep)
+        : generationContribution(arena, source, localStep, startIndex, endIndex, qualify),
     );
   }
 

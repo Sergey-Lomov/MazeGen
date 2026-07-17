@@ -37,9 +37,7 @@ export const MERGED_TAPE_NODE_OFFSET = 3;
  *  (also named "root", per `merge_tapes`'s relinking — see `MERGED_TAPE_NODE_OFFSET`), wrapping
  *  the edges, which start at node `MERGED_TAPE_NODE_OFFSET`. Returns raw buffers (not a parsed
  *  `ParsedTape`) since that's the shape `generateWithSeed` receives from
- *  `mazeService.generateMaze` before it calls `parseTape` itself. A checkpoint fixture
- *  referencing one of these edges by node index must add `MERGED_TAPE_NODE_OFFSET` to the index
- *  it would have used pre-#169. */
+ *  `mazeService.generateMaze` before it calls `parseTape` itself. */
 export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array; sourceScopeNames: string[]; sourceEventKinds: ["recursive_backtracker"]; debugValueNames: DebugValueDescriptor[] } {
   const textEncoder = new TextEncoder();
   const rootBytes = textEncoder.encode("root");
@@ -87,46 +85,6 @@ export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uin
   // so an empty default is correct here; a test that specifically needs a non-empty list should
   // override the field on the returned object.
   return { nodeTable, payload, sourceScopeNames: ["generation"], sourceEventKinds: ["recursive_backtracker"], debugValueNames: [] };
-}
-
-function u32le(v: number): Uint8Array {
-  const bytes = new Uint8Array(4);
-  new DataView(bytes.buffer).setUint32(0, v, true);
-  return bytes;
-}
-
-/** Encodes intermediate snapshot checkpoints (GitHub issue #128) into the raw
- *  `{ snapshotTable, snapshotPayload }` buffer pair `generateMaze()` returns as
- *  `debugTape.snapshotTable`/`snapshotPayload` — mirrors `CheckpointTracker::record`'s wire
- *  format in `maze-core/src/generation/recursive_backtracker.rs` (see `Specs/event_log.md`):
- *  edges (`u32` count + `(u64, u64)` pairs), then named debug-value sets (GitHub issue #131,
- *  `u32` count of sets, each `u32` name length + UTF-8 name + `u32` id count + `u64` ids).
- *  `checkpoints` must be given in ascending `nodeIndex` order, same invariant `CheckpointLog::push`
- *  enforces on the Rust side. `debugValues` defaults to no sets — fixtures that don't specifically
- *  exercise debug-value checkpointing don't need to pass it. */
-export function encodeCheckpoints(checkpoints: Array<{ nodeIndex: number; edges: [bigint, bigint][]; debugValues?: [string, bigint[]][] }>): { snapshotTable: Uint8Array; snapshotPayload: Uint8Array } {
-  const textEncoder = new TextEncoder();
-  const payloadChunks: Uint8Array[] = [];
-  const tableChunks: Uint8Array[] = [];
-  let payloadOffset = 0;
-  for (const { nodeIndex, edges, debugValues = [] } of checkpoints) {
-    const nameBytes = debugValues.map(([name]) => textEncoder.encode(name));
-    const bytes = concatBytes([
-      u32le(edges.length),
-      ...edges.flatMap(([from, to]) => [u64le(from), u64le(to)]),
-      u32le(debugValues.length),
-      ...debugValues.flatMap(([, ids], i) => [
-        u32le(nameBytes[i].byteLength),
-        nameBytes[i],
-        u32le(ids.length),
-        ...ids.map(u64le),
-      ]),
-    ]);
-    tableChunks.push(u32le(nodeIndex), u32le(payloadOffset), u32le(bytes.byteLength));
-    payloadChunks.push(bytes);
-    payloadOffset += bytes.byteLength;
-  }
-  return { snapshotTable: concatBytes(tableChunks), snapshotPayload: concatBytes(payloadChunks) };
 }
 
 export const mockSnapshot = {

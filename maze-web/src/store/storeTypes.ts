@@ -1,5 +1,5 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
-import type { ParsedTape, ApplyFrom, DebugValueDescriptor } from "../debug/eventTape";
+import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
@@ -319,25 +319,29 @@ export interface DebugArenaHandle {
    *  `startStep`/`endStep` are 0-based, half-open `[startStep, endStep)` ranges into the same
    *  global `debugStep` numbering `debugStep`/`totalSteps` already use (Contract A) — e.g. with a
    *  200-step generation source followed by a 12-step QC source, `sources` is
-   *  `[{ startStep: 0, endStep: 200, ... }, { startStep: 200, endStep: 212, ... }]`. */
+   *  `[{ startStep: 0, endStep: 200, ... }, { startStep: 200, endStep: 212, ... }]`.
+   *
+   *  `checkpointFroms` (GitHub issue #128, generalized past Recursive Backtracker) is this
+   *  source's own intermediate snapshot cache, resolved once at generation time via
+   *  `resolveDebugArenaMetadata` — opaque `Snapshot<unknown>[]` here since each source's adapter
+   *  produces a structurally different result type (`ApplyResult`/`KruskalApplyResult`/
+   *  `QcApplyResult`/etc); only the adapter that produced a given source's snapshots knows how to
+   *  consume them (`selectDebugMazeView` always calls `adapterForKind(source.kind)`, so the cast
+   *  back to that adapter's own `TResult` is sound at every real call site). Empty when the source
+   *  is shorter than `CHECKPOINT_INTERVAL`. */
   sources: {
     scopeName: string;
     kind: EventedEventKind;
     nodeIndex: number;
     startStep: number;
     endStep: number;
+    checkpointFroms: Snapshot<unknown>[];
   }[];
   nodes: NodeDto[];
   /** Total mutating-event count across every source in `tape` — a static property of the arena
    *  (computed once at generation time), not a per-step cache; lets the UI know the last valid
    *  `debugStep` without a bounded-scan trick on every render. */
   totalSteps: number;
-  /** Intermediate snapshot checkpoints (GitHub issue #128), resolved once at generation time via
-   *  `resolveCheckpointFroms` into `ApplyFrom`-ready values sorted by ascending `step` — lets
-   *  `selectDebugMazeView` resume `applyRecursiveBacktracker` from the nearest checkpoint instead
-   *  of always replaying from scratch. Empty when the run produced no checkpoints (e.g. shorter
-   *  than `CHECKPOINT_INTERVAL`) or the core didn't record any (non-Recursive-Backtracker runs). */
-  checkpointFroms: ApplyFrom[];
   /** Every debug value (GitHub issue #131, e.g. `"recursion_stack"`) the instrumented algorithm
    *  declares, name plus rendering `kind` — sourced from the WASM response's static
    *  `debugValueNames` (`GenerateResult::debugValueNames()`/`debugValueKinds()`, mirroring the

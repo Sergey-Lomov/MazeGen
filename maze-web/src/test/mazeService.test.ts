@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 import { generateMaze } from "../wasm/mazeService";
 
 vi.mock("../wasm/wasmLoader", () => ({
@@ -20,8 +20,6 @@ function fakeGenerateResult(snapshot: unknown) {
     snapshot: () => snapshot,
     debugTapeNodeTable: () => undefined,
     debugTapePayload: () => undefined,
-    debugSnapshotTable: () => undefined,
-    debugSnapshotPayload: () => undefined,
     debugValueNames: () => [],
     debugValueKinds: () => [],
     free: () => {},
@@ -137,8 +135,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => nodeTableBytes,
       debugTapePayload: () => payloadBytes,
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation"],
       sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => [],
@@ -156,37 +152,6 @@ describe("generateMaze / validateSnapshot", () => {
     expect(result.debugTape?.payload).not.toBe(payloadBytes);
   });
 
-  it("copies checkpoint buffers out of WASM memory when present (GitHub issue #128)", () => {
-    const nodeTableBytes = new Uint8Array([1, 2, 3]);
-    const payloadBytes = new Uint8Array([4, 5, 6]);
-    const snapshotTableBytes = new Uint8Array([7, 8]);
-    const snapshotPayloadBytes = new Uint8Array([9, 10, 11]);
-    mockGenerate.mockReturnValue({
-      snapshot: () => validSnapshot,
-      debugTapeNodeTable: () => nodeTableBytes,
-      debugTapePayload: () => payloadBytes,
-      debugSnapshotTable: () => snapshotTableBytes,
-      debugSnapshotPayload: () => snapshotPayloadBytes,
-      sourceScopeNames: () => ["generation"],
-      sourceEventKinds: () => ["recursive_backtracker"],
-      debugValueNames: () => ["recursion_stack"],
-      debugValueKinds: () => ["sequence"],
-      free: () => {},
-    });
-    const result = generateMaze(1, defaultConfig);
-    expect(result.debugTape).toEqual({
-      nodeTable: nodeTableBytes,
-      payload: payloadBytes,
-      snapshotTable: snapshotTableBytes,
-      snapshotPayload: snapshotPayloadBytes,
-      sourceScopeNames: ["generation"],
-      sourceEventKinds: ["recursive_backtracker"],
-      debugValueNames: [{ name: "recursion_stack", kind: "sequence" }],
-    });
-    expect(result.debugTape?.snapshotTable).not.toBe(snapshotTableBytes);
-    expect(result.debugTape?.snapshotPayload).not.toBe(snapshotPayloadBytes);
-  });
-
   it("copies a Kruskal debug tape and tags it with eventKind (GitHub issue #146)", () => {
     const nodeTableBytes = new Uint8Array([1, 2, 3]);
     const payloadBytes = new Uint8Array([4, 5, 6]);
@@ -194,8 +159,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => nodeTableBytes,
       debugTapePayload: () => payloadBytes,
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation"],
       sourceEventKinds: () => ["kruskal"],
       debugValueNames: () => [],
@@ -213,8 +176,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => nodeTableBytes,
       debugTapePayload: () => payloadBytes,
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation"],
       sourceEventKinds: () => ["wilson"],
       debugValueNames: () => [],
@@ -232,8 +193,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => nodeTableBytes,
       debugTapePayload: () => payloadBytes,
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation"],
       sourceEventKinds: () => ["edge_based"],
       debugValueNames: () => [],
@@ -251,8 +210,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => nodeTableBytes,
       debugTapePayload: () => payloadBytes,
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation"],
       sourceEventKinds: () => ["vertex_based"],
       debugValueNames: () => [],
@@ -268,8 +225,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => [],
       sourceEventKinds: () => [],
       debugValueNames: () => [],
@@ -284,8 +239,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation", "quality_control"],
       sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => [],
@@ -300,8 +253,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation"],
       sourceEventKinds: () => ["not_a_real_kind"],
       debugValueNames: () => [],
@@ -316,8 +267,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation"],
       sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => ["recursion_stack", "visited"],
@@ -332,8 +281,6 @@ describe("generateMaze / validateSnapshot", () => {
       snapshot: () => validSnapshot,
       debugTapeNodeTable: () => new Uint8Array([1, 2, 3]),
       debugTapePayload: () => new Uint8Array([4, 5, 6]),
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
       sourceScopeNames: () => ["generation"],
       sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => ["recursion_stack"],
@@ -343,26 +290,5 @@ describe("generateMaze / validateSnapshot", () => {
     expect(() => generateMaze(1, defaultConfig)).toThrow(/unknown debug value kind/);
   });
 
-  it("omits checkpoint fields entirely when no checkpoints were recorded", () => {
-    const nodeTableBytes = new Uint8Array([1, 2, 3]);
-    const payloadBytes = new Uint8Array([4, 5, 6]);
-    mockGenerate.mockReturnValue({
-      snapshot: () => validSnapshot,
-      debugTapeNodeTable: () => nodeTableBytes,
-      debugTapePayload: () => payloadBytes,
-      debugSnapshotTable: () => undefined,
-      debugSnapshotPayload: () => undefined,
-      sourceScopeNames: () => ["generation"],
-      sourceEventKinds: () => ["recursive_backtracker"],
-      debugValueNames: () => [],
-      debugValueKinds: () => [],
-      free: () => {},
-    });
-    const result = generateMaze(1, defaultConfig);
-    expect(result.debugTape?.snapshotTable).toBeUndefined();
-    expect(result.debugTape?.snapshotPayload).toBeUndefined();
-    expect(result.debugTape).not.toHaveProperty("snapshotTable");
-    expect(result.debugTape).not.toHaveProperty("snapshotPayload");
-  });
 });
 

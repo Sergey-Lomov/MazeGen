@@ -3,8 +3,9 @@ import {
   parseTape, nodeAt, nodeView, topLevelSourceScopes, sourceScopeForNode,
   decodeQcEvent, isMutatingQcEvent, mutatingQcEvents, mutatingQcEventsWithIndex, applyQc,
   decodeRecursiveBacktrackerEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
+  resolveDebugArenaMetadata, countMutatingEvents,
   TAG_SCOPE, NO_NODE, RB_TAG, QC_TAG,
-  type ParsedTape,
+  type ParsedTape, type QcApplyResult,
 } from "../debug/eventTape";
 import { adapterFor, adapterForNode, adapterForKind, type ScopeTitleLookup } from "../debug/algorithmRegistry";
 import { selectDebugMazeView } from "../store/debugSelectors";
@@ -322,7 +323,7 @@ describe("mutatingQcEvents / applyQc", () => {
 
   it("accumulates edges/removedEdges/start/finish across steps, in emission order", () => {
     const tape = buildQcTwoSourceTape();
-    const result = applyQc(tape, 3, 5);
+    const result = applyQc(tape, 3, undefined, 5);
     expect(result.start).toBe(10n);
     expect(result.finish).toBe(20n);
     expect(result.edges).toEqual([{ from: 10n, to: 20n, kind: "basic" }, { from: 20n, to: 10n, kind: "basic" }]);
@@ -340,7 +341,7 @@ describe("mutatingQcEvents / applyQc", () => {
       { parent: 0, firstChild: null, nextSibling: 4, tag: QC_TAG.EDGE_REMOVED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
       { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(3n), u64le(4n)]) },
     ]);
-    const result = applyQc(tape, 3, 0);
+    const result = applyQc(tape, 3, undefined, 0);
     expect(result.edges).toEqual([{ from: 2n, to: 1n, kind: "basic" }, { from: 4n, to: 3n, kind: "teleport" }]);
     expect(result.removedEdges).toEqual([]);
   });
@@ -356,7 +357,15 @@ describe("mutatingQcEvents / applyQc", () => {
 
   it("throws when targetStep is out of range", () => {
     const tape = buildQcTwoSourceTape();
-    expect(() => applyQc(tape, 4, 5)).toThrow(/out of range/);
+    expect(() => applyQc(tape, 4, undefined, 5)).toThrow(/out of range/);
+  });
+
+  it("resuming from a previous result (GitHub issue #128's generalization) matches a full replay to the same targetStep, across edges/removedEdges/start/finish", () => {
+    const tape = buildQcTwoSourceTape();
+    const from = applyQc(tape, 1, undefined, 5); // StartSet, FinishSet
+    const viaResume = applyQc(tape, 3, from, 5); // + BidirectionalEdgeAdded, EdgeRemovedBetween
+    const fromScratch = applyQc(tape, 3, undefined, 5);
+    expect(viaResume).toEqual(fromScratch);
   });
 
   it("stops before reaching QC's own events when scanning generation's own source (startIndex bound)", () => {
@@ -372,6 +381,106 @@ describe("mutatingQcEvents / applyQc", () => {
       nodeAt(tape, rbEvents[0].nodeIndex).payloadOffset,
       nodeAt(tape, rbEvents[0].nodeIndex).payloadOffset + nodeAt(tape, rbEvents[0].nodeIndex).payloadLen,
     ))).toEqual({ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true });
+  });
+
+  describe("end-to-end through resolveDebugArenaMetadata on a long chain (GitHub issue #128)", () => {
+    /** A flat tape of `count` sequential `DirectedEdgeAdded(i, i+1)` events, directly under root
+     *  (no generation source prefix — `applyQc`'s own `startNodeIndex` defaults to 0, matching a
+     *  from-scratch scan starting right at this tape's own first node). `DirectedEdgeAdded` alone
+     *  is mutating for QC and exercises the `net`/`removedFromEarlierSources` keyed-accumulator
+     *  resume path this issue's generalization added. */
+    function buildLongQcChainTape(count: number): ParsedTape {
+      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
+      for (let i = 0; i < count; i++) {
+        nodes.push({
+          parent: 0,
+          firstChild: null,
+          nextSibling: i + 1 < count ? i + 2 : null,
+          tag: QC_TAG.DIRECTED_EDGE_ADDED,
+          payloadBytes: concatBytes([u64le(BigInt(i + 1)), u64le(BigInt(i + 2))]),
+        });
+      }
+      return buildFixture(nodes);
+    }
+
+    function resolveQcMetadata(tape: ParsedTape) {
+      return resolveDebugArenaMetadata<QcApplyResult>(
+        tape,
+        (t, s, e) => countMutatingEvents(t, decodeQcEvent, isMutatingQcEvent, s, e),
+        (step, previous) => applyQc(tape, step, previous, 0),
+        0, tape.nodeCount,
+      );
+    }
+
+    it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
+      const tape = buildLongQcChainTape(1000);
+      const { totalSteps, checkpointFroms } = resolveQcMetadata(tape);
+      expect(totalSteps).toBe(1000);
+      expect(checkpointFroms.map((f) => f.step)).toEqual([499, 999]);
+      for (const snapshot of checkpointFroms) {
+        expect(snapshot.result).toEqual(applyQc(tape, snapshot.step, undefined, 0));
+      }
+      expect(checkpointFroms[0].result.edges).toHaveLength(500);
+    });
+
+    it("chaining resume through two successive snapshots matches a from-scratch replay at the end", () => {
+      const tape = buildLongQcChainTape(1000);
+      const { checkpointFroms } = resolveQcMetadata(tape);
+      const [first, second] = checkpointFroms;
+      expect(second.result).toEqual(applyQc(tape, second.step, first.result, 0));
+      expect(second.result).toEqual(applyQc(tape, second.step, undefined, 0));
+    });
+
+    /** 600 `DirectedEdgeAdded(i, i+1)` events (steps 0..599, crossing the first CHECKPOINT_INTERVAL
+     *  boundary at step 499), followed by `EdgeRemovedBetween` events removing edge 1 (added at
+     *  step 0, well before the snapshot) and edge 550 (added at step 549, after the snapshot but
+     *  before targetStep) — exercises `removedFromEarlierSources`/`net.delete` seeded from a
+     *  resumed `from`, not just monotonic growth (GitHub issue #128's review follow-up: none of
+     *  the other long-chain assertions ever remove or re-add an id after the snapshot point). */
+    function buildQcChainWithRemovals(): ParsedTape {
+      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
+      const addCount = 600;
+      for (let i = 0; i < addCount; i++) {
+        nodes.push({
+          parent: 0, firstChild: null, nextSibling: i + 1,
+          tag: QC_TAG.DIRECTED_EDGE_ADDED,
+          payloadBytes: concatBytes([u64le(BigInt(i + 1)), u64le(BigInt(i + 2))]),
+        });
+      }
+      // Remove edge (1,2) [added at step 0, before the snapshot] and edge (550,551) [added at
+      // step 549, after the snapshot].
+      nodes.push({
+        parent: 0, firstChild: null, nextSibling: addCount + 2,
+        tag: QC_TAG.EDGE_REMOVED_BETWEEN,
+        payloadBytes: concatBytes([u64le(1n), u64le(2n)]),
+      });
+      nodes.push({
+        parent: 0, firstChild: null, nextSibling: null,
+        tag: QC_TAG.EDGE_REMOVED_BETWEEN,
+        payloadBytes: concatBytes([u64le(550n), u64le(551n)]),
+      });
+      return buildFixture(nodes);
+    }
+
+    it("resuming from a snapshot correctly folds a later removal of an edge added before the snapshot", () => {
+      const tape = buildQcChainWithRemovals();
+      const { checkpointFroms } = resolveQcMetadata(tape);
+      const [first] = checkpointFroms; // step 499, before either removal
+
+      const lastStep = 601; // 600 adds (0..599) + 2 removals (600, 601)
+      const viaResume = applyQc(tape, lastStep, first.result, 0);
+      const fromScratch = applyQc(tape, lastStep, undefined, 0);
+      expect(viaResume).toEqual(fromScratch);
+      // Both removed pairs are gone from `edges`; (1,2) was added before the snapshot `first` was
+      // taken from, so this also confirms the snapshot's own edges/net state resumed correctly.
+      // Neither pair reaches `removedEdges` — both were added *within this same call's own scan*
+      // (whether resumed from `first` or replayed from scratch), so removing them just cancels
+      // the add out of `net` rather than crossing into "removed from an earlier source" territory
+      // (see `applyQc`'s own doc comment on `removedEdges`' semantics).
+      expect(fromScratch.edges.some((e) => e.from === 1n && e.to === 2n)).toBe(false);
+      expect(fromScratch.edges.some((e) => e.from === 550n && e.to === 551n)).toBe(false);
+      expect(fromScratch.removedEdges).toEqual([]);
+    });
   });
 });
 
@@ -439,7 +548,7 @@ describe("applyRecursiveBacktracker / applyQc — full two-source replay, mirror
     // QC source: 4 mutating events, replayed from its own former root (node 5) — must not include
     // or be affected by generation's own EdgeAdded, confirming the two sources stay independent
     // contributions (Contract C) even though both live in the same merged tape.
-    const qcResult = applyQc(tape, 3, 5);
+    const qcResult = applyQc(tape, 3, undefined, 5);
     expect(qcResult.edges).toEqual([{ from: 10n, to: 20n, kind: "basic" }, { from: 20n, to: 10n, kind: "basic" }]);
     expect(qcResult.removedEdges).toEqual([{ from: 1n, to: 2n }]);
   });
@@ -642,12 +751,11 @@ describe("selectDebugMazeView — two-source (generation + QC) combine (GitHub i
       tape,
       algorithmKind: "recursive_backtracker",
       sources: [
-        { scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1 },
-        { scopeName: "quality_control", kind: "quality_control", nodeIndex: 4, startStep: 1, endStep: 5 },
+        { scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] },
+        { scopeName: "quality_control", kind: "quality_control", nodeIndex: 4, startStep: 1, endStep: 5, checkpointFroms: [] },
       ],
       nodes: [],
       totalSteps: 5,
-      checkpointFroms: [],
       debugValueNames: [],
     };
   }

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DebugPanel } from "../components/DebugPanel";
 import { useMazeStore } from "../store/mazeStore";
-import { parseTape, resolveDebugArenaMetadata, parseCheckpoints, TAG_SCOPE, RB_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, RB_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
+import { adapterForKind } from "../debug/algorithmRegistry";
 import type { NodeDto } from "../wasm/types";
 
 // --- Fixture encoder — same shape as DebugEventTree.test.tsx's buildTwoStepTape (this component
@@ -102,12 +103,11 @@ const nodes: NodeDto[] = [
 
 function threeStepArena() {
   const tape = buildThreeStepTape();
-  const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
-  const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
+  const { totalSteps, checkpointFroms } = adapterForKind("recursive_backtracker").resolveMetadata(tape);
   return {
     tape, algorithmKind: "recursive_backtracker" as const,
-    sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps }],
-    nodes, totalSteps, checkpointFroms, debugValueNames: [],
+    sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps, checkpointFroms }],
+    nodes, totalSteps, debugValueNames: [],
   };
 }
 
@@ -146,13 +146,12 @@ function buildManyStepTape(stepCount: number): ParsedTape {
 
 function manyStepArena(stepCount: number) {
   const tape = buildManyStepTape(stepCount);
-  const emptyCheckpoints = parseCheckpoints(new Uint8Array(0), new Uint8Array(0));
-  const { totalSteps, checkpointFroms } = resolveDebugArenaMetadata(tape, emptyCheckpoints);
+  const { totalSteps, checkpointFroms } = adapterForKind("recursive_backtracker").resolveMetadata(tape);
   const manyNodes: NodeDto[] = Array.from({ length: stepCount + 1 }, (_, i) => ({ id: i + 1, x: i, y: 0 }));
   return {
     tape, algorithmKind: "recursive_backtracker" as const,
-    sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps }],
-    nodes: manyNodes, totalSteps, checkpointFroms, debugValueNames: [],
+    sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps, checkpointFroms }],
+    nodes: manyNodes, totalSteps, debugValueNames: [],
   };
 }
 

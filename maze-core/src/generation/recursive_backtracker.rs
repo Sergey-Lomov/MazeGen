@@ -4,130 +4,8 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
-use crate::event_log::{CheckpointLog, DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog};
+use crate::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog};
 use super::{PresetState, try_add_bidirectional_edge, can_connect};
-
-/// Number of mutating events between intermediate snapshot checkpoints (GitHub issue #128) — a
-/// tunable constant, not user-facing config, per the issue's pilot scope. Picked empirically:
-/// frequent enough that a replay consumer never has to walk more than this many mutating events
-/// from the nearest checkpoint, sparse enough that the checkpoint table itself stays small.
-const CHECKPOINT_INTERVAL: u32 = 500;
-
-/// Accumulates checkpoint state alongside `generate`'s event emission — kept separate from
-/// `EventLog`/`CheckpointLog` themselves (see `Specs/event_log.md`'s #128 section) since neither
-/// of those types knows what a "snapshot" is; that's this algorithm's concern.
-///
-/// Tracks the same reconstructable state `applyRecursiveBacktracker` (`maze-web/src/debug/eventTape.ts`)
-/// builds from `EdgeAdded` events — an edge list, not the full graph — so a snapshot is a drop-in
-/// stand-in for "replay from scratch up to this node index". Deliberately excludes preset edges
-/// (already in `graph` before `generate` runs, never emitted as `EdgeAdded`), matching what a full
-/// replay from an empty `edges: []` would reconstruct.
-///
-/// Also tracks every named debug value set (issue #131 — e.g. `"recursion_stack"`), folding in each
-/// event's `DebugValueDelta::debug_value_deltas()` the same way `edges` folds in `EdgeAdded` — a
-/// snapshot must equal what a from-scratch replay to the same node index would produce, so
-/// debug-value sets ride along in the same checkpoint payload rather than a separate mechanism.
-/// One named debug-value's tracked state: the ordered id list (what actually gets encoded into
-/// the checkpoint payload — see `CheckpointTracker::record`) plus a `HashSet` mirror of the same
-/// ids, used only to make `Insert`'s membership check O(1) instead of an O(n) `Vec::contains`
-/// scan. Without the set, a monotonically-growing `Region` value like `"visited"` (one `Insert`
-/// per node, never removed) turns every checkpoint-recording pass into O(n²) over a run — see
-/// GitHub issue #142's follow-up. `Remove` still does an O(n) `Vec::retain` (no reverse
-/// id→position index) — acceptable because it's only exercised by `Sequence` values like
-/// `"recursion_stack"`, bounded by DFS stack depth rather than total node count.
-#[derive(Default)]
-struct DebugValueList {
-    ids: Vec<NodeId>,
-    present: HashSet<NodeId>,
-}
-
-impl DebugValueList {
-    fn insert(&mut self, id: NodeId) {
-        if self.present.insert(id) {
-            self.ids.push(id);
-        }
-    }
-
-    fn remove(&mut self, id: NodeId) {
-        if self.present.remove(&id) {
-            self.ids.retain(|existing| *existing != id);
-        }
-    }
-}
-
-/// Accumulates checkpoint state alongside `generate`'s event emission — kept separate from
-/// `EventLog`/`CheckpointLog` themselves (see `Specs/event_log.md`'s #128 section) since neither
-/// of those types knows what a "snapshot" is; that's this algorithm's concern.
-///
-/// Tracks the same reconstructable state `applyRecursiveBacktracker` (`maze-web/src/debug/eventTape.ts`)
-/// builds from `EdgeAdded` events — an edge list, not the full graph — so a snapshot is a drop-in
-/// stand-in for "replay from scratch up to this node index". Deliberately excludes preset edges
-/// (already in `graph` before `generate` runs, never emitted as `EdgeAdded`), matching what a full
-/// replay from an empty `edges: []` would reconstruct.
-///
-/// Also tracks every named debug value set (issue #131 — e.g. `"recursion_stack"`), folding in each
-/// event's `DebugValueDelta::debug_value_deltas()` the same way `edges` folds in `EdgeAdded` — a
-/// snapshot must equal what a from-scratch replay to the same node index would produce, so
-/// debug-value sets ride along in the same checkpoint payload rather than a separate mechanism.
-struct CheckpointTracker<'a> {
-    log: &'a mut CheckpointLog,
-    edges: Vec<(NodeId, NodeId)>,
-    /// `DebugValueList`'s `ids: Vec` (not a plain set) — insertion order matters for
-    /// `DebugValueKind::Sequence` values (e.g. `"recursion_stack"`), which the web side renders
-    /// as a chain of arrows between consecutive ids in this order. `Region` values (e.g.
-    /// `"visited"`) are unordered by nature but still stored the same way — a duplicate-free
-    /// ordered list is a valid (if order-irrelevant) representation of a set.
-    debug_values: std::collections::BTreeMap<&'static str, DebugValueList>,
-    since_last_checkpoint: u32,
-}
-
-impl<'a> CheckpointTracker<'a> {
-    fn new(log: &'a mut CheckpointLog) -> Self {
-        Self { log, edges: Vec::new(), debug_values: std::collections::BTreeMap::new(), since_last_checkpoint: 0 }
-    }
-
-    /// Call after every mutating event emit, passing the event itself — `event`'s `EdgeAdded`
-    /// payload (if any) is folded into the tracked edge list (both directions, mirroring
-    /// `EdgeAdded`'s `bidirectional` flag handling in the TS replay engine), and
-    /// `DebugValueDelta::debug_value_deltas()` is folded into `debug_values`. `node_index` is the
-    /// arena index `emit` returned for this event — the checkpoint (if the interval is reached)
-    /// is tagged with that index, not with whatever the arena's length happens to be later.
-    fn record(&mut self, node_index: u32, event: &RecursiveBacktrackerEvent) {
-        if let RecursiveBacktrackerEvent::EdgeAdded { from, to, bidirectional } = *event {
-            self.edges.push((from, to));
-            if bidirectional {
-                self.edges.push((to, from));
-            }
-        }
-        for (name, op, id) in event.debug_value_deltas() {
-            let list = self.debug_values.entry(name).or_default();
-            match op {
-                DebugValueOp::Insert => list.insert(id),
-                DebugValueOp::Remove => list.remove(id),
-            }
-        }
-        self.since_last_checkpoint += 1;
-        if self.since_last_checkpoint >= CHECKPOINT_INTERVAL {
-            self.since_last_checkpoint = 0;
-            let mut bytes = Vec::with_capacity(4 + self.edges.len() * 16);
-            bytes.extend_from_slice(&(self.edges.len() as u32).to_le_bytes());
-            for (from, to) in &self.edges {
-                bytes.extend_from_slice(&from.to_le_bytes());
-                bytes.extend_from_slice(&to.to_le_bytes());
-            }
-            bytes.extend_from_slice(&(self.debug_values.len() as u32).to_le_bytes());
-            for (name, list) in &self.debug_values {
-                bytes.extend_from_slice(&(name.len() as u32).to_le_bytes());
-                bytes.extend_from_slice(name.as_bytes());
-                bytes.extend_from_slice(&(list.ids.len() as u32).to_le_bytes());
-                for id in &list.ids {
-                    bytes.extend_from_slice(&id.to_le_bytes());
-                }
-            }
-            self.log.push(node_index, &bytes);
-        }
-    }
-}
 
 /// Stable wire tags for [`RecursiveBacktrackerEvent`] (GitHub issue #124's binary encoding) —
 /// manually assigned, never derived from Rust enum variant order/discriminant, so the wire
@@ -217,9 +95,8 @@ impl DebugValueDelta<NodeId> for RecursiveBacktrackerEvent {
 /// though the algorithm declares it. References the same `RECURSION_STACK`/`VISITED` constants
 /// `debug_value_deltas` emits, so the declared names and the emitted names cannot drift apart.
 ///
-/// `"recursion_stack"` is `Sequence` — insertion order matters (it's the actual DFS stack, and
-/// `CheckpointTracker` preserves that order). `"visited"` is `Region` — an unordered set with no
-/// relationship between members.
+/// `"recursion_stack"` is `Sequence` — insertion order matters (it's the actual DFS stack).
+/// `"visited"` is `Region` — an unordered set with no relationship between members.
 pub fn debug_value_names() -> &'static [(&'static str, DebugValueKind)] {
     &[(RECURSION_STACK, DebugValueKind::Sequence), (VISITED, DebugValueKind::Region)]
 }
@@ -275,18 +152,9 @@ pub fn generate<T: Tessellation>(
     start: NodeId,
     preset_state: &PresetState,
     mut event_log: Option<&mut EventLog<RecursiveBacktrackerEvent>>,
-    checkpoint_log: Option<&mut CheckpointLog>,
 ) {
-    debug_assert!(
-        checkpoint_log.is_none() || event_log.is_some(),
-        "recursive_backtracker::generate: checkpoint_log requires event_log — a checkpoint is tagged with an \
-         arena node index from event_log's emit(), so checkpointing without an event tree has nothing to \
-         attach a snapshot to (see CheckpointTracker::record's node_index parameter)"
-    );
-
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut rng = MazeRng::seed_from_u64(seed);
-    let mut checkpoints = checkpoint_log.map(CheckpointTracker::new);
 
     let preset_connected = &preset_state.preset_connected;
     visited.insert(start);
@@ -308,11 +176,7 @@ pub fn generate<T: Tessellation>(
         if unvisited.is_empty() {
             if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::DeadEnd); }
             stack.pop();
-            if let Some(g) = step_guard.as_mut() {
-                let event = RecursiveBacktrackerEvent::VertexPopped(current);
-                let idx = g.emit(event.clone());
-                if let Some(t) = checkpoints.as_mut() { t.record(idx, &event); }
-            }
+            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexPopped(current)); }
         } else {
             let chosen = unvisited[rng.random_range(0..unvisited.len())];
             if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::CandidateChosen(chosen)); }
@@ -320,76 +184,14 @@ pub fn generate<T: Tessellation>(
             if !preset_connected.contains(&chosen) {
                 try_add_bidirectional_edge(graph, current, chosen, preset_state);
                 if let Some(g) = step_guard.as_mut() {
-                    let event = RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen, bidirectional: true };
-                    let idx = g.emit(event.clone());
-                    if let Some(t) = checkpoints.as_mut() { t.record(idx, &event); }
+                    g.emit(RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen, bidirectional: true });
                 }
             }
             visited.insert(chosen);
-            if let Some(g) = step_guard.as_mut() {
-                let event = RecursiveBacktrackerEvent::VertexVisited(chosen);
-                let idx = g.emit(event.clone());
-                if let Some(t) = checkpoints.as_mut() { t.record(idx, &event); }
-            }
+            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexVisited(chosen)); }
             stack.push(chosen);
-            if let Some(g) = step_guard.as_mut() {
-                let event = RecursiveBacktrackerEvent::VertexPushed(chosen);
-                let idx = g.emit(event.clone());
-                if let Some(t) = checkpoints.as_mut() { t.record(idx, &event); }
-            }
+            if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexPushed(chosen)); }
         }
     }
 }
 
-#[cfg(test)]
-mod debug_value_list_tests {
-    use super::DebugValueList;
-
-    // `DebugValueList` is private, so these live inline rather than in the external
-    // `maze-core/tests/generation/recursive_backtracker.rs` suite, which can only reach `pub`
-    // items.
-
-    #[test]
-    fn insert_of_a_new_id_appends_it() {
-        let mut list = DebugValueList::default();
-        list.insert(1);
-        list.insert(2);
-        assert_eq!(list.ids, vec![1, 2]);
-    }
-
-    #[test]
-    fn insert_of_an_already_present_id_is_a_no_op() {
-        // Guards the exact bug the HashSet mirror was added to fix (GitHub issue #142's
-        // follow-up): without the `present.insert(id)` short-circuit, a repeated `Insert` would
-        // push a duplicate onto `ids`, and — before the fix — `Vec::contains` re-scanned the
-        // whole list on every insert regardless. No real Recursive Backtracker run currently
-        // inserts the same id twice, so this invariant isn't exercised by any generation-level
-        // test; it only holds by inspection of `insert`'s `if self.present.insert(id)` guard
-        // unless asserted directly here.
-        let mut list = DebugValueList::default();
-        list.insert(1);
-        list.insert(2);
-        list.insert(1); // repeat — must not duplicate
-        assert_eq!(list.ids, vec![1, 2]);
-    }
-
-    #[test]
-    fn remove_deletes_the_id_and_allows_reinsertion() {
-        let mut list = DebugValueList::default();
-        list.insert(1);
-        list.insert(2);
-        list.remove(1);
-        assert_eq!(list.ids, vec![2]);
-
-        list.insert(1);
-        assert_eq!(list.ids, vec![2, 1], "re-inserting a removed id must append it again, not silently no-op");
-    }
-
-    #[test]
-    fn remove_of_an_absent_id_is_a_no_op() {
-        let mut list = DebugValueList::default();
-        list.insert(1);
-        list.remove(99);
-        assert_eq!(list.ids, vec![1]);
-    }
-}

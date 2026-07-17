@@ -39,16 +39,12 @@ function isIssueDto(v: unknown): v is IssueDto {
  *  `maze-wasm/src/result.rs`), so this is the point where that constraint is discharged — every
  *  consumer downstream of `generateMaze` gets a plain owned `Uint8Array`, safe to hold onto.
  *
- *  `snapshotTable`/`snapshotPayload` (GitHub issue #128) carry intermediate snapshot checkpoints
- *  — present exactly when the core recorded at least the checkpoint infrastructure for this run
- *  (i.e. whenever `nodeTable`/`payload` are, since both come from the same Recursive Backtracker
- *  run); `undefined` otherwise. Independent buffers, not folded into `nodeTable`/`payload`, per
- *  `maze-core/src/event_log/checkpoint.rs`'s `CheckpointLog` living apart from the event arena. */
+ *  Intermediate snapshot checkpoints (GitHub issue #128) are computed entirely on the web side
+ *  from this tape (see `eventTape.ts`'s `resolveDebugArenaMetadata`) — the core has no notion of
+ *  "snapshot" and never crosses the WASM boundary with one. */
 export interface DebugTape {
   nodeTable: Uint8Array;
   payload: Uint8Array;
-  snapshotTable?: Uint8Array;
-  snapshotPayload?: Uint8Array;
   /** Name of each top-level source scope in the merged tape's tree (GitHub issue #169), same
    *  order as `sourceEventKinds`, sourced from `GenerateResult::sourceScopeNames()` — e.g.
    *  `["generation"]` today. */
@@ -147,10 +143,6 @@ export function generateMaze(seed: number, config: GenerateConfig): GenerateMaze
     // `maze-wasm/src/result.rs`), so this is the only safe place to read them.
     const nodeTable = result.debugTapeNodeTable();
     const payload = result.debugTapePayload();
-    // Checkpoint buffers (GitHub issue #128) — copied only when present; no empty-array
-    // placeholders are created when the core recorded no checkpoints.
-    const snapshotTable = result.debugSnapshotTable();
-    const snapshotPayload = result.debugSnapshotPayload();
     let debugTape: DebugTape | undefined;
     if (nodeTable && payload) {
       const sourceScopeNames = result.sourceScopeNames();
@@ -164,9 +156,6 @@ export function generateMaze(seed: number, config: GenerateConfig): GenerateMaze
       debugTape = {
         nodeTable: nodeTable.slice(),
         payload: payload.slice(),
-        ...(snapshotTable && snapshotPayload
-          ? { snapshotTable: snapshotTable.slice(), snapshotPayload: snapshotPayload.slice() }
-          : {}),
         sourceScopeNames,
         sourceEventKinds: rawSourceEventKinds.map(toEventedEventKind),
         debugValueNames: zipDebugValueNames(result.debugValueNames(), result.debugValueKinds()),

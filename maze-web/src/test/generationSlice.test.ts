@@ -3,15 +3,15 @@ import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { fieldConfigToWasm, buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
-import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape, encodeCheckpoints, MERGED_TAPE_NODE_OFFSET } from "./storeTestHelpers";
+import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape } from "./storeTestHelpers";
 import { parseTape } from "../debug/eventTape";
 import type { DebugArenaHandle } from "../store/storeTypes";
 
 function emptyDebugArena(): DebugArenaHandle {
   return {
     tape: parseTape(new Uint8Array(0), new Uint8Array(0)), algorithmKind: "recursive_backtracker",
-    sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: 0 }],
-    nodes: [], totalSteps: 0, checkpointFroms: [], debugValueNames: [],
+    sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: 0, checkpointFroms: [] }],
+    nodes: [], totalSteps: 0, debugValueNames: [],
   };
 }
 
@@ -1374,22 +1374,16 @@ describe("mazeStore generation misc actions", () => {
     expect(s.debugStep).toBe(2);
   });
 
-  it("generate() with debugMode on and checkpoint buffers present resolves them into debugArena.checkpointFroms (GitHub issue #128)", () => {
-    // Node-table layout mirrors encodeEdgeAddedTape (GitHub issue #169's merge offset): node 0 =
-    // merged root, node 1 = "generation" scope, node MERGED_TAPE_NODE_OFFSET (2) = EdgeAdded(1,2),
-    // node 3 = EdgeAdded(2,3), node 4 = EdgeAdded(3,4) — a checkpoint at node 3 (step 1)
-    // reflecting the first two edges.
-    const debugTape = {
-      ...encodeEdgeAddedTape([[1n, 2n], [2n, 3n], [3n, 4n]]),
-      ...encodeCheckpoints([{ nodeIndex: MERGED_TAPE_NODE_OFFSET + 1, edges: [[1n, 2n], [2n, 1n], [2n, 3n], [3n, 2n]] }]),
-    };
+  it("generate() with debugMode on and a long-enough tape resolves a web-computed snapshot into debugArena.checkpointFroms (GitHub issue #128)", () => {
+    // Snapshots are now computed entirely on the web side (`resolveDebugArenaMetadata`) every
+    // CHECKPOINT_INTERVAL (500) mutating events — a 1000-edge chain crosses that threshold once.
+    const edges: [bigint, bigint][] = Array.from({ length: 1000 }, (_, i) => [BigInt(i + 1), BigInt(i + 2)]);
+    const debugTape = encodeEdgeAddedTape(edges);
     vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
     useMazeStore.getState().generate();
     const s = useMazeStore.getState();
-    expect(s.debugArena?.checkpointFroms).toEqual([
-      { edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }, { from: 2n, to: 3n }, { from: 3n, to: 2n }], debugValues: new Map(), step: 1, nodeIndex: MERGED_TAPE_NODE_OFFSET + 1 },
-    ]);
+    expect(s.debugArena?.sources[0].checkpointFroms.map((f) => f.step)).toEqual([499, 999]);
   });
 
   it("generate() with debugMode on but a tape with zero mutating events leaves debugArena null", () => {

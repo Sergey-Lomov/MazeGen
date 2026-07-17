@@ -13,7 +13,7 @@
  *  entry point into those functions from outside this module and `eventTape.ts` itself. */
 
 import {
-  type ParsedTape, type ParsedCheckpoints, type ApplyFrom, type NodeView,
+  type ParsedTape, type ApplyFrom, type NodeView,
   type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent, type QcEvent, type IssuePayload,
   type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult, type QcApplyResult,
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
@@ -22,7 +22,7 @@ import {
   decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEventsWithIndex, applyEdgeBased,
   decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEventsWithIndex, applyVertexBased, VERTEX_BASED_TAG,
   decodeQcEvent, isMutatingQcEvent, mutatingQcEventsWithIndex, applyQc, sourceScopeForNode, topLevelSourceScopes,
-  resolveDebugArenaMetadata, parseCheckpoints, type DebugArenaMetadata, type TopLevelSourceScope,
+  resolveDebugArenaMetadata, countMutatingEvents, type DebugArenaMetadata, type TopLevelSourceScope,
 } from "./eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
 import { resolveCheckLabel, resolveStrategyLabel } from "../components/features/qualityI18n";
@@ -96,8 +96,10 @@ function issueReasons(
 
 /** Shape shared by every algorithm's adapter. Parameterized by the concrete event type `E`
  *  (`RecursiveBacktrackerEvent`/`KruskalEvent`/`WilsonEvent`) so `decodeEvent`/`isMutatingEvent`/
- *  `narrationTokensFor` stay fully typed at every call site — no `unknown`/`any` laundering. */
-export interface BaseAlgorithmAdapter<E> {
+ *  `narrationTokensFor` stay fully typed at every call site — no `unknown`/`any` laundering, and by
+ *  `TResult` (`ApplyResult`/`KruskalApplyResult`/etc, GitHub issue #128's generalization) so
+ *  `resolveMetadata`'s cached snapshots stay typed too. */
+export interface BaseAlgorithmAdapter<E, TResult extends { step: number; nodeIndex: number } = { step: number; nodeIndex: number }> {
   /** debugTreeSelectors.ts: flat-layer mutating-event node indices, for `buildStepIndex`.
    *  `startIndex`/`endIndex` (GitHub issue #147, default the whole tape) bound the underlying
    *  node-table scan to `[startIndex, endIndex)` — needed when this adapter's source isn't the
@@ -106,11 +108,14 @@ export interface BaseAlgorithmAdapter<E> {
    *  scanning generation unbounded past its own range decoded QC's `IterationStarted` tag as RB's
    *  numerically-colliding `VertexSelected` tag). */
   mutatingNodeIndices(tape: ParsedTape, startIndex?: number, endIndex?: number): number[];
-  /** generateConfigBuilder.ts: totalSteps + checkpointFroms for a freshly-parsed tape.
-   *  `startIndex`/`endIndex` (GitHub issue #147, default the whole tape) bound the scan to this
-   *  source's own range — same rationale as `mutatingNodeIndices`' own doc comment: an unbounded
-   *  scan of one source runs into a later source's bytes and mis-decodes them. */
-  resolveMetadata(tape: ParsedTape, checkpoints: ParsedCheckpoints | null, startIndex?: number, endIndex?: number): DebugArenaMetadata;
+  /** generateConfigBuilder.ts: totalSteps + checkpointFroms for a freshly-parsed tape, computed
+   *  generically by `resolveDebugArenaMetadata` (GitHub issue #128) — every adapter's own
+   *  implementation is a thin closure over its own `mutatingNodeIndices`/`apply`, unaware that the
+   *  snapshot-caching logic itself is shared. `startIndex`/`endIndex` (GitHub issue #147, default
+   *  the whole tape) bound the scan to this source's own range — same rationale as
+   *  `mutatingNodeIndices`' own doc comment: an unbounded scan of one source runs into a later
+   *  source's bytes and mis-decodes them. */
+  resolveMetadata(tape: ParsedTape, startIndex?: number, endIndex?: number): DebugArenaMetadata<TResult>;
   decodeEvent(tag: number, bytes: Uint8Array): E;
   isMutatingEvent(event: E): boolean;
   /** DebugEventTree.tsx: narration tokens for one decoded event. `titleLookup` (GitHub issue
@@ -154,30 +159,35 @@ export interface ScopeTitleLookup {
   checkTypeId(instanceId: string): string | undefined;
 }
 
-/** RB is the only algorithm with checkpoint-based resume (GitHub issue #128 stays RB-only) — its
- *  `apply` takes an optional `from` no other adapter has. */
-export interface RbAdapter extends BaseAlgorithmAdapter<RecursiveBacktrackerEvent> {
+/** Every adapter's `apply` now takes an optional `from` of its own result type (GitHub issue
+ *  #128's generalization — snapshot-based resume is no longer RB-only) — passing back a previous
+ *  call's result resumes the underlying scan right after it instead of replaying from the start.
+ *  `resolveDebugArenaMetadata` (`eventTape.ts`) is the generic caller that builds/consumes these
+ *  snapshots without knowing what's actually inside a given `TResult`. */
+export interface RbAdapter extends BaseAlgorithmAdapter<RecursiveBacktrackerEvent, ApplyResult> {
   apply(tape: ParsedTape, targetStep: number, from?: ApplyFrom, endIndex?: number): ApplyResult;
 }
-export interface KruskalAdapter extends BaseAlgorithmAdapter<KruskalEvent> {
-  apply(tape: ParsedTape, targetStep: number, startIndex?: number, endIndex?: number): KruskalApplyResult;
+export interface KruskalAdapter extends BaseAlgorithmAdapter<KruskalEvent, KruskalApplyResult> {
+  apply(tape: ParsedTape, targetStep: number, from?: KruskalApplyResult, startIndex?: number, endIndex?: number): KruskalApplyResult;
 }
-export interface WilsonAdapter extends BaseAlgorithmAdapter<WilsonEvent> {
-  apply(tape: ParsedTape, targetStep: number, startIndex?: number, endIndex?: number): WilsonApplyResult;
+export interface WilsonAdapter extends BaseAlgorithmAdapter<WilsonEvent, WilsonApplyResult> {
+  apply(tape: ParsedTape, targetStep: number, from?: WilsonApplyResult, startIndex?: number, endIndex?: number): WilsonApplyResult;
 }
-export interface EdgeBasedAdapter extends BaseAlgorithmAdapter<EdgeBasedEvent> {
-  apply(tape: ParsedTape, targetStep: number, startIndex?: number, endIndex?: number): EdgeBasedApplyResult;
+export interface EdgeBasedAdapter extends BaseAlgorithmAdapter<EdgeBasedEvent, EdgeBasedApplyResult> {
+  apply(tape: ParsedTape, targetStep: number, from?: EdgeBasedApplyResult, startIndex?: number, endIndex?: number): EdgeBasedApplyResult;
 }
-export interface VertexBasedAdapter extends BaseAlgorithmAdapter<VertexBasedEvent> {
-  apply(tape: ParsedTape, targetStep: number, startIndex?: number, endIndex?: number): VertexBasedApplyResult;
+export interface VertexBasedAdapter extends BaseAlgorithmAdapter<VertexBasedEvent, VertexBasedApplyResult> {
+  apply(tape: ParsedTape, targetStep: number, from?: VertexBasedApplyResult, startIndex?: number, endIndex?: number): VertexBasedApplyResult;
 }
-/** QC's `apply` takes a required `startNodeIndex` (GitHub issue #147) — unlike every generation
- *  adapter, which always replays from the tape's start (index 0) since generation is always the
- *  first-and-only source before #147, QC is always merged as a *later* source (Contract A,
- *  `Specs/event_log.md`'s #147 section): its own mutating events never start at arena index 0, so
- *  its `apply` needs to know where its own top-level source scope begins. */
-export interface QcAdapter extends BaseAlgorithmAdapter<QcEvent> {
-  apply(tape: ParsedTape, targetStep: number, startNodeIndex: number): QcApplyResult;
+/** QC's `apply` additionally takes a required `startNodeIndex` (GitHub issue #147) — unlike every
+ *  generation adapter, which defaults to scanning from the tape's start (index 0) since generation
+ *  is always the first-and-only source before #147, QC is always merged as a *later* source
+ *  (Contract A, `Specs/event_log.md`'s #147 section): its own mutating events never start at arena
+ *  index 0, so a from-scratch call (`from` absent) needs to know where its own top-level source
+ *  scope begins. A resumed call (`from` present) ignores `startNodeIndex` — `from.nodeIndex + 1`
+ *  is already the correct scan start. */
+export interface QcAdapter extends BaseAlgorithmAdapter<QcEvent, QcApplyResult> {
+  apply(tape: ParsedTape, targetStep: number, from: QcApplyResult | undefined, startNodeIndex: number): QcApplyResult;
 }
 
 const STEP_SCOPE_RE = /^(?:step|edge|walk) (\d+)$/;
@@ -203,7 +213,12 @@ function narrationTokensForRb(event: RecursiveBacktrackerEvent): Token[] {
 
 const RB_ADAPTER: RbAdapter = {
   mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingRbEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
-  resolveMetadata: (tape, checkpoints, startIndex = 0, endIndex) => resolveDebugArenaMetadata(tape, checkpoints ?? parseCheckpoints(new Uint8Array(0), new Uint8Array(0)), startIndex, endIndex),
+  resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, s, e),
+    (step, previous) => applyRecursiveBacktracker(tape, step, previous, endIndex),
+    startIndex, endIndex,
+  ),
   decodeEvent: decodeRecursiveBacktrackerEvent,
   isMutatingEvent: isMutatingRbEvent,
   narrationTokensFor: narrationTokensForRb,
@@ -248,7 +263,12 @@ function narrationTokensForKruskal(event: KruskalEvent): Token[] {
 
 const KRUSKAL_ADAPTER: KruskalAdapter = {
   mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingKruskalEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
-  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingKruskalEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
+  resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decodeKruskalEvent, isMutatingKruskalEvent, s, e),
+    (step, previous) => applyKruskal(tape, step, previous, startIndex, endIndex),
+    startIndex, endIndex,
+  ),
   decodeEvent: decodeKruskalEvent,
   isMutatingEvent: isMutatingKruskalEvent,
   narrationTokensFor: narrationTokensForKruskal,
@@ -275,7 +295,12 @@ function narrationTokensForWilson(event: WilsonEvent): Token[] {
 
 const WILSON_ADAPTER: WilsonAdapter = {
   mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingWilsonEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
-  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingWilsonEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
+  resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decodeWilsonEvent, isMutatingWilsonEvent, s, e),
+    (step, previous) => applyWilson(tape, step, previous, startIndex, endIndex),
+    startIndex, endIndex,
+  ),
   decodeEvent: decodeWilsonEvent,
   isMutatingEvent: isMutatingWilsonEvent,
   narrationTokensFor: narrationTokensForWilson,
@@ -380,7 +405,12 @@ function narrationTokensForEdgeBased(event: EdgeBasedEvent): Token[] {
 
 const EDGE_BASED_ADAPTER: EdgeBasedAdapter = {
   mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingEdgeBasedEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
-  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingEdgeBasedEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
+  resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, s, e),
+    (step, previous) => applyEdgeBased(tape, step, previous, startIndex, endIndex),
+    startIndex, endIndex,
+  ),
   decodeEvent: decodeEdgeBasedEvent,
   isMutatingEvent: isMutatingEdgeBasedEvent,
   narrationTokensFor: narrationTokensForEdgeBased,
@@ -498,7 +528,12 @@ function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
 
 const VERTEX_BASED_ADAPTER: VertexBasedAdapter = {
   mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingVertexBasedEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
-  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingVertexBasedEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
+  resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decodeVertexBasedEvent, isMutatingVertexBasedEvent, s, e),
+    (step, previous) => applyVertexBased(tape, step, previous, startIndex, endIndex),
+    startIndex, endIndex,
+  ),
   decodeEvent: decodeVertexBasedEvent,
   isMutatingEvent: isMutatingVertexBasedEvent,
   narrationTokensFor: narrationTokensForVertexBased,
@@ -662,7 +697,12 @@ const QC_STRATEGY_SCOPE_RE = /^strategy (.+)$/;
 
 const QC_ADAPTER: QcAdapter = {
   mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingQcEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
-  resolveMetadata: (tape, _checkpoints, startIndex = 0, endIndex) => ({ totalSteps: mutatingQcEventsWithIndex(tape, undefined, startIndex, endIndex).length, checkpointFroms: [] }),
+  resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decodeQcEvent, isMutatingQcEvent, s, e),
+    (step, previous) => applyQc(tape, step, previous, startIndex),
+    startIndex, endIndex,
+  ),
   decodeEvent: decodeQcEvent,
   isMutatingEvent: isMutatingQcEvent,
   narrationTokensFor: narrationTokensForQc,

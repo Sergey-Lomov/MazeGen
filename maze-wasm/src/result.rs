@@ -40,19 +40,11 @@ fn event_kind_wire_str(kind: maze_core::event_log::EventedEventKind) -> &'static
 /// instrumented source (today: always exactly one, "generation"; QC/repair instrumentation,
 /// issue #147, will add more). `source_scope_names`/`source_event_kinds` (below) describe that
 /// top-level structure.
-///
-/// A third, independent pair of buffers carries intermediate snapshot checkpoints (GitHub issue
-/// #128, see `maze_core::event_log::CheckpointLog::encode`) — populated whenever the debug event
-/// tape is (both come from the same run), attached separately via [`Self::with_checkpoints`]
-/// rather than folded into `with_debug_tape`'s parameters, so the two concerns (event tree
-/// transfer vs. checkpoint transfer) stay independently constructible.
 #[wasm_bindgen]
 pub struct GenerateResult {
     snapshot: JsValue,
     node_table: Option<Vec<u8>>,
     payload: Option<Vec<u8>>,
-    snapshot_table: Option<Vec<u8>>,
-    snapshot_payload: Option<Vec<u8>>,
     /// Debug-value names (GitHub issue #131, e.g. `"recursion_stack"`) declared by the instrumented
     /// algorithm(s) — see `maze_core::generation::EventedGenerationResult::debug_value_names`.
     /// Already qualified with `"{scope_name}:"` when more than one source is present (see that
@@ -78,7 +70,7 @@ pub struct GenerateResult {
 impl GenerateResult {
     pub fn without_debug_tape(snapshot: JsValue) -> Self {
         Self {
-            snapshot, node_table: None, payload: None, snapshot_table: None, snapshot_payload: None,
+            snapshot, node_table: None, payload: None,
             debug_value_names: Vec::new(), debug_value_kinds: Vec::new(),
             source_scope_names: Vec::new(), source_event_kinds: Vec::new(),
         }
@@ -97,37 +89,9 @@ impl GenerateResult {
             .map(|(scope_name, kind)| (scope_name.to_string(), event_kind_wire_str(kind).to_string()))
             .unzip();
         Self {
-            snapshot, node_table: Some(node_table), payload: Some(payload), snapshot_table: None, snapshot_payload: None,
+            snapshot, node_table: Some(node_table), payload: Some(payload),
             debug_value_names: names, debug_value_kinds: kinds, source_scope_names, source_event_kinds,
         }
-    }
-
-    /// Attaches checkpoint buffers to an already-built result — must be chained onto
-    /// `with_debug_tape` specifically, e.g. `GenerateResult::with_debug_tape(...).with_checkpoints(table, payload)`,
-    /// never onto `without_debug_tape`. Checkpoints are only ever produced alongside a debug event
-    /// tape (both come from the same Recursive Backtracker run — see `EventedGenerationResult`'s
-    /// `tape`/`checkpoints` fields on the core side), so a `GenerateResult` with checkpoints but no
-    /// tape would contradict that invariant; asserted here rather than left to caller discipline.
-    ///
-    /// Also asserts `snapshot_table`'s length is a whole number of `CHECKPOINT_RECORD_SIZE`
-    /// records — currently always true for the only caller (`runner.rs`, which passes
-    /// `CheckpointLog::encode()`'s output straight through), but a real `assert!` (not
-    /// `debug_assert!`) catches a malformed buffer here rather than letting it silently propagate
-    /// to the web side, which would misinterpret record boundaries in `parseCheckpoints`.
-    pub fn with_checkpoints(mut self, snapshot_table: Vec<u8>, snapshot_payload: Vec<u8>) -> Self {
-        assert!(
-            self.node_table.is_some() && self.payload.is_some(),
-            "GenerateResult::with_checkpoints called without a debug tape — checkpoints require \
-             with_debug_tape to have been called first (see EventedGenerationResult's tape/checkpoints pairing)"
-        );
-        assert_eq!(
-            snapshot_table.len() % maze_core::event_log::CHECKPOINT_RECORD_SIZE, 0,
-            "GenerateResult::with_checkpoints: snapshot_table length {} is not a whole number of CHECKPOINT_RECORD_SIZE ({}) records",
-            snapshot_table.len(), maze_core::event_log::CHECKPOINT_RECORD_SIZE
-        );
-        self.snapshot_table = Some(snapshot_table);
-        self.snapshot_payload = Some(snapshot_payload);
-        self
     }
 }
 
@@ -145,17 +109,8 @@ impl GenerateResult {
         }
     }
 
-    /// Test-only accessor for the raw checkpoint buffers — see [`Self::debug_tape_bytes`].
-    pub(crate) fn checkpoint_bytes(&self) -> Option<(&[u8], &[u8])> {
-        match (&self.snapshot_table, &self.snapshot_payload) {
-            (Some(table), Some(payload)) => Some((table, payload)),
-            (None, None) => None,
-            _ => panic!("GenerateResult: snapshot_table/snapshot_payload must always be Some/None together (see with_checkpoints)"),
-        }
-    }
-
     /// Test-only accessor for `debug_value_names` — avoids the `#[wasm_bindgen]` method for the
-    /// same reason as `debug_tape_bytes`/`checkpoint_bytes`, though this field is a plain
+    /// same reason as `debug_tape_bytes`, though this field is a plain
     /// `Vec<String>` and doesn't itself need a real WASM runtime; kept alongside the others for
     /// consistency of the test-only accessor surface.
     pub(crate) fn debug_value_names_bytes(&self) -> &[String] {
@@ -211,23 +166,6 @@ impl GenerateResult {
     pub fn debug_tape_payload(&self) -> Option<js_sys::Uint8Array> {
         // SAFETY: see `debug_tape_node_table`.
         self.payload.as_deref().map(|bytes| unsafe { js_sys::Uint8Array::view(bytes) })
-    }
-
-    /// Zero-copy view of the intermediate snapshot checkpoint table (GitHub issue #128, see
-    /// `maze_core::event_log::CHECKPOINT_RECORD_SIZE`), or `undefined` if no checkpoints were
-    /// recorded for this `generate()` call. Same detachment caveat as [`Self::debug_tape_node_table`].
-    #[wasm_bindgen(js_name = debugSnapshotTable)]
-    pub fn debug_snapshot_table(&self) -> Option<js_sys::Uint8Array> {
-        // SAFETY: see `debug_tape_node_table`.
-        self.snapshot_table.as_deref().map(|bytes| unsafe { js_sys::Uint8Array::view(bytes) })
-    }
-
-    /// Zero-copy view of the intermediate snapshot checkpoint payload byte arena — same
-    /// lifetime/detachment caveat as [`Self::debug_tape_node_table`].
-    #[wasm_bindgen(js_name = debugSnapshotPayload)]
-    pub fn debug_snapshot_payload(&self) -> Option<js_sys::Uint8Array> {
-        // SAFETY: see `debug_tape_node_table`.
-        self.snapshot_payload.as_deref().map(|bytes| unsafe { js_sys::Uint8Array::view(bytes) })
     }
 
     /// Debug-value names (GitHub issue #131) declared by the instrumented algorithm — empty when
@@ -286,40 +224,6 @@ mod tests {
         let (node_table, payload) = result.debug_tape_bytes().expect("both buffers must be present");
         assert_eq!(node_table, &[1, 2, 3]);
         assert_eq!(payload, &[4, 5]);
-    }
-
-    #[test]
-    fn without_checkpoints_has_no_checkpoint_buffers() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)]);
-        assert!(result.checkpoint_bytes().is_none());
-    }
-
-    #[test]
-    fn with_checkpoints_carries_both_checkpoint_buffers() {
-        let snapshot_table = vec![0u8; maze_core::event_log::CHECKPOINT_RECORD_SIZE]; // one whole record
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)])
-            .with_checkpoints(snapshot_table.clone(), vec![8, 9, 10]);
-        let (node_table, payload) = result.debug_tape_bytes().expect("debug tape buffers must still be present");
-        assert_eq!(node_table, &[1, 2, 3]);
-        assert_eq!(payload, &[4, 5]);
-        let (checkpoint_table, snapshot_payload) = result.checkpoint_bytes().expect("checkpoint buffers must be present");
-        assert_eq!(checkpoint_table, snapshot_table.as_slice());
-        assert_eq!(snapshot_payload, &[8, 9, 10]);
-    }
-
-    #[test]
-    #[should_panic(expected = "not a whole number of CHECKPOINT_RECORD_SIZE")]
-    fn with_checkpoints_rejects_a_table_length_not_a_multiple_of_checkpoint_record_size() {
-        GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::RecursiveBacktracker)])
-            .with_checkpoints(vec![6, 7], vec![8, 9, 10]);
-    }
-
-    #[test]
-    #[should_panic(expected = "with_checkpoints called without a debug tape")]
-    fn with_checkpoints_rejects_being_chained_onto_without_debug_tape() {
-        let snapshot_table = vec![0u8; maze_core::event_log::CHECKPOINT_RECORD_SIZE];
-        GenerateResult::without_debug_tape(JsValue::UNDEFINED)
-            .with_checkpoints(snapshot_table, vec![8, 9, 10]);
     }
 
     #[test]

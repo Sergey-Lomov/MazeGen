@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import {
   TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG,
   mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex, mutatingWilsonEventsWithIndex, mutatingEdgeBasedEventsWithIndex, mutatingVertexBasedEventsWithIndex,
@@ -125,8 +125,8 @@ describe("adapterFor(\"recursive_backtracker\")", () => {
   });
 
   it("resolveMetadata's totalSteps matches mutatingRbEvents(tape).length", () => {
-    expect(adapter.resolveMetadata(tape, null).totalSteps).toBe(mutatingRbEvents(tape).length);
-    expect(adapter.resolveMetadata(tape, null).checkpointFroms).toEqual([]);
+    expect(adapter.resolveMetadata(tape).totalSteps).toBe(mutatingRbEvents(tape).length);
+    expect(adapter.resolveMetadata(tape).checkpointFroms).toEqual([]);
   });
 
   it("decodeEvent/isMutatingEvent match the direct functions", () => {
@@ -154,8 +154,8 @@ describe("adapterFor(\"kruskal\")", () => {
   });
 
   it("resolveMetadata's totalSteps matches mutatingKruskalEvents(tape).length and checkpointFroms is empty", () => {
-    expect(adapter.resolveMetadata(tape, null).totalSteps).toBe(mutatingKruskalEvents(tape).length);
-    expect(adapter.resolveMetadata(tape, null).checkpointFroms).toEqual([]);
+    expect(adapter.resolveMetadata(tape).totalSteps).toBe(mutatingKruskalEvents(tape).length);
+    expect(adapter.resolveMetadata(tape).checkpointFroms).toEqual([]);
   });
 
   it("decodeEvent/isMutatingEvent match the direct functions", () => {
@@ -182,8 +182,8 @@ describe("adapterFor(\"wilson\")", () => {
   });
 
   it("resolveMetadata's totalSteps matches mutatingWilsonEvents(tape).length and checkpointFroms is empty", () => {
-    expect(adapter.resolveMetadata(tape, null).totalSteps).toBe(mutatingWilsonEvents(tape).length);
-    expect(adapter.resolveMetadata(tape, null).checkpointFroms).toEqual([]);
+    expect(adapter.resolveMetadata(tape).totalSteps).toBe(mutatingWilsonEvents(tape).length);
+    expect(adapter.resolveMetadata(tape).checkpointFroms).toEqual([]);
   });
 
   it("decodeEvent/isMutatingEvent match the direct functions", () => {
@@ -234,8 +234,8 @@ describe("adapterFor(\"edge_based\")", () => {
   });
 
   it("resolveMetadata's totalSteps matches mutatingEdgeBasedEvents(tape).length and checkpointFroms is empty", () => {
-    expect(adapter.resolveMetadata(tape, null).totalSteps).toBe(mutatingEdgeBasedEvents(tape).length);
-    expect(adapter.resolveMetadata(tape, null).checkpointFroms).toEqual([]);
+    expect(adapter.resolveMetadata(tape).totalSteps).toBe(mutatingEdgeBasedEvents(tape).length);
+    expect(adapter.resolveMetadata(tape).checkpointFroms).toEqual([]);
   });
 
   it("decodeEvent/isMutatingEvent match the direct functions", () => {
@@ -286,8 +286,8 @@ describe("adapterFor(\"vertex_based\")", () => {
   });
 
   it("resolveMetadata's totalSteps matches mutatingVertexBasedEvents(tape).length and checkpointFroms is empty", () => {
-    expect(adapter.resolveMetadata(tape, null).totalSteps).toBe(mutatingVertexBasedEvents(tape).length);
-    expect(adapter.resolveMetadata(tape, null).checkpointFroms).toEqual([]);
+    expect(adapter.resolveMetadata(tape).totalSteps).toBe(mutatingVertexBasedEvents(tape).length);
+    expect(adapter.resolveMetadata(tape).checkpointFroms).toEqual([]);
   });
 
   it("decodeEvent/isMutatingEvent match the direct functions", () => {

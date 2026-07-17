@@ -9,9 +9,6 @@
 
 use std::borrow::Cow;
 
-pub mod checkpoint;
-pub use checkpoint::{CheckpointLog, EncodedCheckpoints, CHECKPOINT_RECORD_SIZE};
-
 enum NodeKind<E> {
     Scope(Cow<'static, str>),
     Event(E),
@@ -244,9 +241,7 @@ impl<E> EventLog<E> {
 
     /// Emits an event directly into the current cursor's scope (the root scope, if no
     /// guard is open) without opening a nested scope for it. Returns the arena index the event
-    /// was inserted at — an opaque handle (not exposed elsewhere as an indexable position), used
-    /// e.g. by checkpoint recording (see [`checkpoint`]) to tag a snapshot with the mutating
-    /// event it reflects state up to and including.
+    /// was inserted at — an opaque handle (not exposed elsewhere as an indexable position).
     pub fn emit(&mut self, event: E) -> u32 {
         self.emit_inner(event)
     }
@@ -475,7 +470,6 @@ pub const LOCAL_TAG_MASK: u16 = 0x00FF;
 pub struct TapeSource {
     pub scope_name: &'static str,
     pub tape: EncodedTape,
-    pub checkpoints: Option<EncodedCheckpoints>,
 }
 
 /// Merges several already-encoded, independently-produced tapes into one combined arena (GitHub
@@ -500,16 +494,12 @@ pub struct TapeSource {
 /// actually present.
 ///
 /// Every node index a caller may have captured against one of `sources`' original, unmerged
-/// `EncodedTape`s (including a raw `node_index` inside an [`EncodedCheckpoints::table`] read
-/// before this call) becomes meaningless after merging — every index is renumbered. Checkpoints
-/// from every source that has any are concatenated into one combined `EncodedCheckpoints`, each
-/// entry's `node_index` shifted the same way as its source's own node table; the result is `None`
-/// only when none of `sources` supplied checkpoints.
+/// `EncodedTape`s becomes meaningless after merging — every index is renumbered.
 ///
 /// `sources` must not be empty — an empty merge has no meaningful combined tree to build; the
 /// caller must simply skip calling this function when there is nothing to merge (a `debug_assert!`
 /// documents this rather than returning some placeholder empty tape).
-pub fn merge_tapes(sources: Vec<TapeSource>) -> (EncodedTape, Option<EncodedCheckpoints>) {
+pub fn merge_tapes(sources: Vec<TapeSource>) -> EncodedTape {
     debug_assert!(!sources.is_empty(), "merge_tapes called with no sources — caller should skip merging entirely instead");
 
     // Pass 1: figure out, for each source, the node-index / payload-byte offset its records will
@@ -606,41 +596,7 @@ pub fn merge_tapes(sources: Vec<TapeSource>) -> (EncodedTape, Option<EncodedChec
         }
     }
 
-    let merged_checkpoints = merge_checkpoints(&sources, &node_offsets);
-
-    (EncodedTape { node_table, payload }, merged_checkpoints)
-}
-
-/// Concatenates every source's [`EncodedCheckpoints`] (if any) into one combined table, shifting
-/// each entry's `node_index` by that source's node offset in the merged arena — see
-/// [`merge_tapes`]'s docs. `None` only when no source supplied checkpoints at all.
-fn merge_checkpoints(sources: &[TapeSource], node_offsets: &[u32]) -> Option<EncodedCheckpoints> {
-    if sources.iter().all(|s| s.checkpoints.is_none()) {
-        return None;
-    }
-
-    let mut table = Vec::new();
-    let mut payload = Vec::new();
-    for (source_index, source) in sources.iter().enumerate() {
-        let Some(checkpoints) = &source.checkpoints else { continue };
-        let node_offset = node_offsets[source_index];
-        let payload_offset = payload.len() as u32;
-        payload.extend_from_slice(&checkpoints.payload);
-
-        let record_count = checkpoints.table.len() / CHECKPOINT_RECORD_SIZE;
-        for i in 0..record_count {
-            let base = i * CHECKPOINT_RECORD_SIZE;
-            let bytes = &checkpoints.table[base..base + CHECKPOINT_RECORD_SIZE];
-            let node_index = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) + node_offset;
-            let offset = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) + payload_offset;
-            let len = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
-            table.extend_from_slice(&node_index.to_le_bytes());
-            table.extend_from_slice(&offset.to_le_bytes());
-            table.extend_from_slice(&len.to_le_bytes());
-        }
-    }
-
-    Some(EncodedCheckpoints { table, payload })
+    EncodedTape { node_table, payload }
 }
 
 /// What a [`NodeView`] points at — either a named scope or a leaf event.
@@ -1280,8 +1236,7 @@ mod merge_tapes_tests {
         let (tape, node_count) = fixture_tape(10);
         assert_eq!(node_count, 4, "root(step-tape) + step scope + Mutating + Trace = 4 nodes in the unmerged tape");
 
-        let (merged, checkpoints) = merge_tapes(vec![TapeSource { scope_name: "generation", tape, checkpoints: None }]);
-        assert!(checkpoints.is_none());
+        let merged = merge_tapes(vec![TapeSource { scope_name: "generation", tape }]);
 
         // Node 0: new merged root, first_child = 1 (the "generation" top-level scope).
         let (parent, first_child, next_sibling, tag, _, _) = read_node_record(&merged.node_table, 0);
@@ -1312,7 +1267,7 @@ mod merge_tapes_tests {
         // skipped. A decoder must always apply the mask/shift, never assume "first source needs
         // no unpacking".
         let (tape, _) = fixture_tape(10);
-        let (merged, _) = merge_tapes(vec![TapeSource { scope_name: "generation", tape, checkpoints: None }]);
+        let merged = merge_tapes(vec![TapeSource { scope_name: "generation", tape }]);
 
         // Layout: 0=merged root, 1="generation" scope, 2=former root("root"), 3=former "step"
         // scope, 4=Mutating(10), 5=Trace(11).
@@ -1326,9 +1281,9 @@ mod merge_tapes_tests {
     fn second_source_gets_a_nonzero_source_prefix_and_first_source_stays_untouched() {
         let (tape_a, _) = fixture_tape(10);
         let (tape_b, _) = fixture_tape(20);
-        let (merged, _) = merge_tapes(vec![
-            TapeSource { scope_name: "generation", tape: tape_a, checkpoints: None },
-            TapeSource { scope_name: "quality_control", tape: tape_b, checkpoints: None },
+        let merged = merge_tapes(vec![
+            TapeSource { scope_name: "generation", tape: tape_a },
+            TapeSource { scope_name: "quality_control", tape: tape_b },
         ]);
 
         // Layout: 0=root, 1="generation" scope, 2="quality_control" scope,
@@ -1348,9 +1303,9 @@ mod merge_tapes_tests {
     fn tag_scope_is_never_namespaced() {
         let (tape_a, _) = fixture_tape(10);
         let (tape_b, _) = fixture_tape(20);
-        let (merged, _) = merge_tapes(vec![
-            TapeSource { scope_name: "generation", tape: tape_a, checkpoints: None },
-            TapeSource { scope_name: "quality_control", tape: tape_b, checkpoints: None },
+        let merged = merge_tapes(vec![
+            TapeSource { scope_name: "generation", tape: tape_a },
+            TapeSource { scope_name: "quality_control", tape: tape_b },
         ]);
 
         // Every scope node (root, both top-level scopes, both former roots, both "step" scopes)
@@ -1368,9 +1323,9 @@ mod merge_tapes_tests {
         let original_a_payload = tape_a.payload.clone();
         let original_b_payload = tape_b.payload.clone();
 
-        let (merged, _) = merge_tapes(vec![
-            TapeSource { scope_name: "generation", tape: tape_a, checkpoints: None },
-            TapeSource { scope_name: "quality_control", tape: tape_b, checkpoints: None },
+        let merged = merge_tapes(vec![
+            TapeSource { scope_name: "generation", tape: tape_a },
+            TapeSource { scope_name: "quality_control", tape: tape_b },
         ]);
 
         // The merged payload arena holds each source's payload bytes concatenated verbatim first
@@ -1378,81 +1333,6 @@ mod merge_tapes_tests {
         // names ("root", "generation", "quality_control" — interned after the sources' bytes).
         assert_eq!(&merged.payload[0..original_a_payload.len()], &original_a_payload[..]);
         assert_eq!(&merged.payload[original_a_payload.len()..original_a_payload.len() + original_b_payload.len()], &original_b_payload[..]);
-    }
-
-    #[test]
-    fn no_source_checkpoints_yields_none() {
-        let (tape, _) = fixture_tape(10);
-        let (_, checkpoints) = merge_tapes(vec![TapeSource { scope_name: "generation", tape, checkpoints: None }]);
-        assert!(checkpoints.is_none());
-    }
-
-    #[test]
-    fn single_source_checkpoints_are_shifted_by_that_sources_node_offset() {
-        let (tape, node_count) = fixture_tape(10);
-        // A checkpoint recorded at local node_index 2 (the Mutating(10) event, per fixture_tape's
-        // shape: 0=root, 1=step, 2=Mutating, 3=Trace).
-        let mut checkpoint_log = CheckpointLog::new();
-        checkpoint_log.push(2, &[0xAA, 0xBB]);
-        let checkpoints = checkpoint_log.encode();
-
-        let (_merged, merged_checkpoints) = merge_tapes(vec![TapeSource { scope_name: "generation", tape, checkpoints: Some(checkpoints) }]);
-        let merged_checkpoints = merged_checkpoints.expect("checkpoints must survive the merge");
-
-        assert_eq!(merged_checkpoints.table.len(), CHECKPOINT_RECORD_SIZE);
-        let node_index = u32::from_le_bytes(merged_checkpoints.table[0..4].try_into().unwrap());
-        // node offset for the single source is root_and_scopes_len (1 root + 1 top-level scope) = 2.
-        assert_eq!(node_index, 2 + 2, "local node_index 2 must be shifted by the source's node offset (2)");
-        assert_eq!(merged_checkpoints.payload, vec![0xAA, 0xBB]);
-        let _ = node_count;
-    }
-
-    #[test]
-    fn checkpoints_from_multiple_sources_are_concatenated_and_shifted_independently() {
-        let (tape_a, _) = fixture_tape(10);
-        let (tape_b, _) = fixture_tape(20);
-
-        let mut log_a = CheckpointLog::new();
-        log_a.push(2, &[0x01]);
-        let checkpoints_a = log_a.encode();
-
-        let mut log_b = CheckpointLog::new();
-        log_b.push(2, &[0x02]);
-        let checkpoints_b = log_b.encode();
-
-        let (_, merged_checkpoints) = merge_tapes(vec![
-            TapeSource { scope_name: "generation", tape: tape_a, checkpoints: Some(checkpoints_a) },
-            TapeSource { scope_name: "quality_control", tape: tape_b, checkpoints: Some(checkpoints_b) },
-        ]);
-        let merged_checkpoints = merged_checkpoints.expect("at least one source has checkpoints");
-
-        assert_eq!(merged_checkpoints.table.len(), 2 * CHECKPOINT_RECORD_SIZE);
-        let node_index_a = u32::from_le_bytes(merged_checkpoints.table[0..4].try_into().unwrap());
-        let node_index_b = u32::from_le_bytes(merged_checkpoints.table[CHECKPOINT_RECORD_SIZE..CHECKPOINT_RECORD_SIZE + 4].try_into().unwrap());
-        // source a's node offset: root(1) + 2 top-level scopes(2) = 3. source b's own node
-        // offset: 3 + 4 (a's record count: root/step/Mutating/Trace) = 7.
-        assert_eq!(node_index_a, 2 + 3);
-        assert_eq!(node_index_b, 2 + 7);
-        assert!(node_index_b > node_index_a, "second source's checkpoint entries must sort after the first's");
-        assert_eq!(merged_checkpoints.payload, vec![0x01, 0x02]);
-    }
-
-    #[test]
-    fn only_one_source_has_checkpoints_others_contribute_nothing() {
-        let (tape_a, _) = fixture_tape(10);
-        let (tape_b, _) = fixture_tape(20);
-
-        let mut log_a = CheckpointLog::new();
-        log_a.push(2, &[0x01]);
-        let checkpoints_a = log_a.encode();
-
-        let (_, merged_checkpoints) = merge_tapes(vec![
-            TapeSource { scope_name: "generation", tape: tape_a, checkpoints: Some(checkpoints_a) },
-            TapeSource { scope_name: "quality_control", tape: tape_b, checkpoints: None },
-        ]);
-        let merged_checkpoints = merged_checkpoints.expect("one source has checkpoints, so the result must be Some");
-
-        assert_eq!(merged_checkpoints.table.len(), CHECKPOINT_RECORD_SIZE, "only source a contributed a checkpoint record");
     }
 
     #[test]
@@ -1473,8 +1353,7 @@ mod merge_tapes_tests {
         // which always emits at least the root scope) — the top-level source scope must not
         // point at a nonexistent former-root node, and the relink pass over 0 records is a no-op.
         let empty_tape = EncodedTape { node_table: Vec::new(), payload: Vec::new() };
-        let (merged, checkpoints) = merge_tapes(vec![TapeSource { scope_name: "generation", tape: empty_tape, checkpoints: None }]);
-        assert!(checkpoints.is_none());
+        let merged = merge_tapes(vec![TapeSource { scope_name: "generation", tape: empty_tape }]);
 
         // Node 0: merged root, first_child = 1 ("generation" scope) as usual.
         let (_, first_child, _, _, _, _) = read_node_record(&merged.node_table, 0);

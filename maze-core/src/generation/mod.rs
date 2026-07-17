@@ -64,7 +64,7 @@ fn dispatch<T: Tessellation>(
         GenerationAlgorithm::CustomEdgeBased(params) =>
             edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, None),
         GenerationAlgorithm::RecursiveBacktracker =>
-            recursive_backtracker::generate(graph, field, seed, start, preset_state, None, None),
+            recursive_backtracker::generate(graph, field, seed, start, preset_state, None),
         GenerationAlgorithm::WilsonAlgorithm =>
             wilson::generate(graph, field, seed, start, preset_state, None),
         GenerationAlgorithm::KruskalAlgorithm =>
@@ -145,49 +145,46 @@ pub fn generate_maze_with_events<T: Tessellation>(
     config: GenerationConfig,
     preset_state: &PresetState,
 ) -> EventedGenerationResult {
-    let (scope_name, event_kind, tape, checkpoints, debug_value_names): (
+    let (scope_name, event_kind, tape, debug_value_names): (
         &'static str,
         crate::event_log::EventedEventKind,
         crate::event_log::EncodedTape,
-        Option<crate::event_log::EncodedCheckpoints>,
         &'static [(&'static str, crate::event_log::DebugValueKind)],
     ) = match config.algorithm {
         GenerationAlgorithm::RecursiveBacktracker => {
             let mut log = crate::event_log::EventLog::new();
-            let mut checkpoint_log = crate::event_log::CheckpointLog::new();
-            recursive_backtracker::generate(graph, field, seed, start, preset_state, Some(&mut log), Some(&mut checkpoint_log));
+            recursive_backtracker::generate(graph, field, seed, start, preset_state, Some(&mut log));
             (
                 "generation",
                 crate::event_log::EventedEventKind::RecursiveBacktracker,
                 log.finish().encode(),
-                Some(checkpoint_log.encode()),
                 recursive_backtracker::debug_value_names(),
             )
         }
         GenerationAlgorithm::KruskalAlgorithm => {
             let mut log = crate::event_log::EventLog::new();
             kruskal::generate(graph, field, seed, preset_state, Some(&mut log));
-            ("generation", crate::event_log::EventedEventKind::Kruskal, log.finish().encode(), None, &[])
+            ("generation", crate::event_log::EventedEventKind::Kruskal, log.finish().encode(), &[])
         }
         GenerationAlgorithm::WilsonAlgorithm => {
             let mut log = crate::event_log::EventLog::new();
             wilson::generate(graph, field, seed, start, preset_state, Some(&mut log));
-            ("generation", crate::event_log::EventedEventKind::Wilson, log.finish().encode(), None, wilson::debug_value_names())
+            ("generation", crate::event_log::EventedEventKind::Wilson, log.finish().encode(), wilson::debug_value_names())
         }
         GenerationAlgorithm::CustomEdgeBased(params) => {
             let mut log = crate::event_log::EventLog::new();
             edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, Some(&mut log));
-            ("generation", crate::event_log::EventedEventKind::EdgeBased, log.finish().encode(), None, edge_based::debug_value_names())
+            ("generation", crate::event_log::EventedEventKind::EdgeBased, log.finish().encode(), edge_based::debug_value_names())
         }
         GenerationAlgorithm::CustomVertexBased(params) => {
             let mut log = crate::event_log::EventLog::new();
             vertex_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, Some(&mut log));
-            ("generation", crate::event_log::EventedEventKind::VertexBased, log.finish().encode(), None, vertex_based::debug_value_names())
+            ("generation", crate::event_log::EventedEventKind::VertexBased, log.finish().encode(), vertex_based::debug_value_names())
         }
     };
 
     EventedGenerationResult {
-        raw_source: crate::event_log::TapeSource { scope_name, tape, checkpoints },
+        raw_source: crate::event_log::TapeSource { scope_name, tape },
         event_kind,
         debug_value_names: debug_value_names.iter().map(|(name, kind)| (name.to_string(), *kind)).collect(),
     }
