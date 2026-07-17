@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { cellCenter } from "./hexGeometry";
-import { NODE_RADIUS } from "./colorUtils";
+import { NODE_RADIUS, adaptiveLineWidth } from "./sizing";
 import type { RouteInfoDto, NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
@@ -12,6 +12,7 @@ export interface RouteData {
   routeInfo: RouteInfoDto;
   nodes: NodeDto[];
   cfg: TessellationConfig;
+  vpScale?: number;
 }
 
 export class RouteOverlay {
@@ -23,7 +24,7 @@ export class RouteOverlay {
   }
 
   render(data: RouteData): void {
-    const { routeInfo, nodes, cfg } = data;
+    const { routeInfo, nodes, cfg, vpScale = 1 } = data;
     this.g.clear();
     if (routeInfo.path.length < 2) return;
 
@@ -40,10 +41,11 @@ export class RouteOverlay {
     for (let i = 1; i < positions.length; i++) {
       this.g.lineTo(positions[i].x, positions[i].y);
     }
-    this.g.stroke({ color: ROUTE_LINE_COLOR, width: ROUTE_LINE_WIDTH });
+    this.g.stroke({ color: ROUTE_LINE_COLOR, width: adaptiveLineWidth(vpScale, ROUTE_LINE_WIDTH) });
 
+    const dotRadius = adaptiveLineWidth(vpScale, ROUTE_DOT_RADIUS);
     for (const p of positions) {
-      this.g.circle(p.x, p.y, ROUTE_DOT_RADIUS);
+      this.g.circle(p.x, p.y, dotRadius);
     }
     this.g.fill(ROUTE_LINE_COLOR);
   }

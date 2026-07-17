@@ -3,7 +3,7 @@ import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
 import { drawEdge, type RenderEdge } from "../BaseGraphRenderer";
-import { NODE_RADIUS } from "../colorUtils";
+import { NODE_RADIUS } from "../sizing";
 
 export interface SequenceHighlightData {
   nodes: NodeDto[];

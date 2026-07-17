@@ -3,7 +3,8 @@ import type { WallEdge } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellVertices, getNeighborData } from "../tessellationGeometry";
 import { drawOneWayTriangle } from "./wallUtils";
-import { canvas, WALL_THICKNESS } from "../colorUtils";
+import { canvas } from "../colorUtils";
+import { WALL_THICKNESS, adaptiveLineWidth } from "../sizing";
 
 const WALL_STYLES = {
   solid:      { color: canvas.wall.default,     cap: "round" as const, join: "round" as const },
@@ -19,8 +20,9 @@ export class WallRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { edges: WallEdge[] }, cfg?: TessellationConfig): void {
+  render(data: { edges: WallEdge[]; vpScale?: number }, cfg?: TessellationConfig): void {
     this.g.clear();
+    const width = adaptiveLineWidth(data.vpScale ?? 1, WALL_THICKNESS);
     for (const edge of data.edges) {
       if (!cfg) continue;
       const seg = this.getEdgeSegment(edge, cfg);
@@ -30,7 +32,7 @@ export class WallRenderer {
       this.g
         .moveTo(seg.v0.x, seg.v0.y)
         .lineTo(seg.v1.x, seg.v1.y)
-        .stroke({ width: WALL_THICKNESS, ...styleBase });
+        .stroke({ width, ...styleBase });
 
       if (edge.oneWayDir) {
         const midX = (seg.v0.x + seg.v1.x) / 2;

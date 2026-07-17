@@ -12,6 +12,7 @@ export interface NavGraphData {
   start: number | null;
   finish: number | null;
   cfg: TessellationConfig;
+  vpScale?: number;
 }
 
 export class NavGraphRenderer extends BaseGraphRenderer {
@@ -19,7 +20,8 @@ export class NavGraphRenderer extends BaseGraphRenderer {
     this.resetContainers();
     if (data.nodes.length === 0) return;
 
-    const { nodes, navNodes, navEdges, start, finish, cfg } = data;
+    const { nodes, navNodes, navEdges, start, finish, cfg, vpScale = 1 } = data;
+    this.vpScale = vpScale;
     const nodePos = new Map<number, Pos>();
     for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
 

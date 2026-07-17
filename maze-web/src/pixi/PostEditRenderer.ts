@@ -14,6 +14,9 @@ import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorUtils";
 import type { NodeDto } from "../wasm/types";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
+import { debounce } from "./utils/debounce";
+
+const ZOOM_REDRAW_DEBOUNCE_MS = 150;
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -37,6 +40,11 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly markers: WaypointsRenderer;
   private readonly hover: EdgeHighlightRenderer;
   private readonly teleportPreview: Graphics;
+
+  private readonly debouncedZoomRedraw = debounce(() => {
+    const state = useMazeStore.getState();
+    if (this.isCardOpen(state)) this.redrawAll(state);
+  }, ZOOM_REDRAW_DEBOUNCE_MS);
 
   constructor(container: Container) {
     super();
@@ -88,9 +96,11 @@ export class PostEditRenderer extends BaseFieldRenderer {
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
+    const prevScale = this.viewport.scale;
     this.updateViewport(x, y, w, h, scale);
     if (useMazeStore.getState().openCard === "post_edit" && this.cfg) {
       this.grid.render({ viewport: this.viewport }, this.cfg);
+      if (scale !== prevScale) this.debouncedZoomRedraw();
     }
   }
 
@@ -163,7 +173,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
 
     const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
-    this.walls.render({ edges: wallEdges }, cfg);
+    this.walls.render({ edges: wallEdges, vpScale: this.viewport.scale }, cfg);
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);
@@ -189,6 +199,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   }
 
   protected destroyChildren(): void {
+    this.debouncedZoomRedraw.cancel();
     this.grid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();

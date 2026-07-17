@@ -2,7 +2,8 @@ import { Container, Graphics } from "pixi.js";
 import type { NodeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { cellCenter } from "./hexGeometry";
-import { NODE_RADIUS, canvas } from "./colorUtils";
+import { canvas } from "./colorUtils";
+import { NODE_RADIUS, adaptiveLineWidth } from "./sizing";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
 
@@ -19,6 +20,7 @@ export interface PureCyclesData {
   /** Set of "from_maze_id,to_maze_id" keys for pure-cycle edges. */
   pureCycleEdgeKeys: Set<string>;
   cfg: TessellationConfig;
+  vpScale?: number;
 }
 
 interface Pos { x: number; y: number; }
@@ -33,11 +35,15 @@ export class PureCyclesOverlay {
 
   render(data: PureCyclesData): void {
     this.clear();
-    const { nodes, navEdges, pureCycleNodeIds, pureCycleEdgeKeys, cfg } = data;
+    const { nodes, navEdges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, vpScale = 1 } = data;
     if (nodes.length === 0) return;
 
     const nodePos = new Map<number, Pos>();
     for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
+
+    const nodeRadius = adaptiveLineWidth(vpScale, NODE_RADIUS);
+    const edgeWidth = adaptiveLineWidth(vpScale, PURE_EDGE_WIDTH);
+    const margin = nodeRadius + 1;
 
     const g = new Graphics();
 
@@ -66,14 +72,13 @@ export class PureCyclesOverlay {
       const lenEnd = Math.sqrt(dxEnd * dxEnd + dyEnd * dyEnd);
       if (lenStart < 1 || lenEnd < 1) continue;
 
-      const margin = NODE_RADIUS + 1;
       const startPt: Pos = { x: first.x + (dxStart / lenStart) * margin, y: first.y + (dyStart / lenStart) * margin };
       const endPt: Pos = { x: last.x - (dxEnd / lenEnd) * margin, y: last.y - (dyEnd / lenEnd) * margin };
 
       g.moveTo(startPt.x, startPt.y);
       for (let i = 1; i < path.length - 1; i++) g.lineTo(path[i].x, path[i].y);
       g.lineTo(endPt.x, endPt.y);
-      g.stroke({ width: PURE_EDGE_WIDTH, color: PURE_EDGE_COLOR });
+      g.stroke({ width: edgeWidth, color: PURE_EDGE_COLOR });
 
       // Arrow for one-way edges (no reverse in nav edges).
       const hasReverse = allNavEdgeKeys.has(`${toId},${fromId}`);
@@ -93,7 +98,7 @@ export class PureCyclesOverlay {
     for (const nodeId of pureCycleNodeIds) {
       const pos = nodePos.get(nodeId);
       if (!pos) continue;
-      g.circle(pos.x, pos.y, NODE_RADIUS);
+      g.circle(pos.x, pos.y, nodeRadius);
       g.fill({ color: PURE_NODE_COLOR, alpha: PURE_NODE_ALPHA });
     }
 

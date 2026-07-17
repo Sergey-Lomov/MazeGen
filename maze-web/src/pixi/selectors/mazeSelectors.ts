@@ -4,7 +4,8 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, PassageKind, TeleportEdge } from "../renderers/types";
 import { getCellCenter, getNeighborData } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
-import { NODE_RADIUS, canvas } from "../colorUtils";
+import { canvas } from "../colorUtils";
+import { NODE_RADIUS } from "../sizing";
 
 // Teleport edges are never part of `postEditEdges` — they're tracked separately (see
 // `postEditDraftTeleportEdges`/`postEditTeleportEdges` in storeTypes.ts) since a Teleport and a

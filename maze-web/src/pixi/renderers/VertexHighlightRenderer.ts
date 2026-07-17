@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
-import { NODE_RADIUS } from "../colorUtils";
+import { NODE_RADIUS } from "../sizing";
 
 const VERTEX_MARKER_RADIUS = NODE_RADIUS * 1.35;
 

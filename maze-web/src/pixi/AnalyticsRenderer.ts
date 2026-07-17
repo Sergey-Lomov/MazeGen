@@ -11,6 +11,9 @@ import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { postEditEdgesToDto } from "./selectors/mazeSelectors";
 import type { Viewport } from "./renderers/types";
+import { debounce } from "./utils/debounce";
+
+const ZOOM_REDRAW_DEBOUNCE_MS = 150;
 
 export class AnalyticsRenderer {
   private readonly gridContainer: Container;
@@ -39,6 +42,10 @@ export class AnalyticsRenderer {
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
+
+  private readonly debouncedZoomRedraw = debounce(() => {
+    this.syncAll(useMazeStore.getState());
+  }, ZOOM_REDRAW_DEBOUNCE_MS);
 
   constructor(container: Container) {
     this.gridContainer        = new Container();
@@ -151,7 +158,7 @@ export class AnalyticsRenderer {
     this.markersContainer.visible     = showMaze;
     if (showMaze) {
       this.grid.render({ viewport: this.viewport }, cfg);
-      this.mazeOverlay.render({ nodes, edges, start, finish, cfg });
+      this.mazeOverlay.render({ nodes, edges, start, finish, cfg, vpScale: this.viewport.scale });
     }
 
     // Components list shared by both Regions and Region classes overlays — built from
@@ -194,6 +201,7 @@ export class AnalyticsRenderer {
         selectedNode: null,
         start, finish, cfg,
         interactive: false,
+        vpScale: this.viewport.scale,
       });
     }
 
@@ -201,7 +209,7 @@ export class AnalyticsRenderer {
     const showNavGraph = analyticsOpen && showNavGraphOverlay && navNodes.length > 0;
     this.navGraphContainer.visible = showNavGraph;
     if (showNavGraph) {
-      this.navGraphRenderer.render({ nodes, navNodes, navEdges, start, finish, cfg });
+      this.navGraphRenderer.render({ nodes, navNodes, navEdges, start, finish, cfg, vpScale: this.viewport.scale });
     }
 
     // Pure cycles overlay
@@ -212,7 +220,7 @@ export class AnalyticsRenderer {
     const showPureCycles = analyticsOpen && showPureCyclesOverlay && navNodes.length > 0;
     this.pureCyclesContainer.visible = showPureCycles;
     if (showPureCycles) {
-      this.pureCyclesRenderer.render({ nodes, navEdges, pureCycleNodeIds, pureCycleEdgeKeys, cfg });
+      this.pureCyclesRenderer.render({ nodes, navEdges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, vpScale: this.viewport.scale });
     } else {
       this.pureCyclesRenderer.clear();
     }
@@ -221,7 +229,7 @@ export class AnalyticsRenderer {
     const showRoute = analyticsOpen && showRouteOverlay && routeInfo != null;
     this.routeContainer.visible = showRoute;
     if (showRoute) {
-      this.routeRenderer.render({ routeInfo, nodes, cfg });
+      this.routeRenderer.render({ routeInfo, nodes, cfg, vpScale: this.viewport.scale });
     } else {
       this.routeRenderer.clear();
     }
@@ -239,14 +247,17 @@ export class AnalyticsRenderer {
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
+    const prevScale = this.viewport.scale;
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
     if (state.openCard === "analytics" && state.showMazeOverlay && state.nodes.length > 0) {
       this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
     }
+    if (state.openCard === "analytics" && scale !== prevScale) this.debouncedZoomRedraw();
   }
 
   destroy(): void {
+    this.debouncedZoomRedraw.cancel();
     this.unsubscribe?.();
     this.grid.destroy();
     this.mazeOverlay.destroy();

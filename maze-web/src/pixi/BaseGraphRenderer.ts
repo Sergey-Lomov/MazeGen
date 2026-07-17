@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { NODE_RADIUS, canvas } from "./colorUtils";
+import { canvas } from "./colorUtils";
+import { NODE_RADIUS, adaptiveLineWidth } from "./sizing";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
 
@@ -13,8 +14,9 @@ export function nodeColor(id: number, selectedNode: number | null, start: number
   return canvas.node.default;
 }
 
-export function nodeRadius(id: number, start: number | null, finish: number | null): number {
-  return (id === start || id === finish) ? NODE_RADIUS * 1.5 : NODE_RADIUS;
+export function nodeRadius(id: number, start: number | null, finish: number | null, vpScale = 1): number {
+  const base = adaptiveLineWidth(vpScale, NODE_RADIUS);
+  return (id === start || id === finish) ? base * 1.5 : base;
 }
 
 export interface RenderEdge {
@@ -85,7 +87,7 @@ export function buildPathRenderEdges(
  *  #131's follow-up) can reuse the exact same visual without subclassing `BaseGraphRenderer` —
  *  per `maze-web/CLAUDE.md`'s feature-renderer ownership rule, a debug-value overlay owned by
  *  `GenerationRenderer` must not share a renderer instance with another feature. */
-export function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
+export function drawEdge(g: Graphics, edge: RenderEdge, color: number, vpScale = 1): void {
   const pts = edge.path;
   if (pts.length < 2) return;
 
@@ -104,7 +106,8 @@ export function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
 
   if (lenStart < 1 || lenEnd < 1) return;
 
-  const margin = NODE_RADIUS + 1;
+  const width = adaptiveLineWidth(vpScale, 2);
+  const margin = adaptiveLineWidth(vpScale, NODE_RADIUS) + 1;
   const startPt: Pos = {
     x: first.x + (dxStart / lenStart) * margin,
     y: first.y + (dyStart / lenStart) * margin,
@@ -119,7 +122,7 @@ export function drawEdge(g: Graphics, edge: RenderEdge, color: number): void {
     g.lineTo(pts[i].x, pts[i].y);
   }
   g.lineTo(endPt.x, endPt.y);
-  g.stroke({ width: 2, color });
+  g.stroke({ width, color });
 
   if (!edge.hasReverse) {
     const midX = (startPt.x + endPt.x) / 2;
@@ -154,9 +157,13 @@ export abstract class BaseGraphRenderer {
     this.overlayContainer.addChild(this.nodesContainer);
   }
 
+  /** Kept in sync by subclasses on each `render()` so the pointerover/pointerout handlers below
+   *  (fired long after render, on hover) still use the current zoom's sizing. */
+  protected vpScale = 1;
+
   protected drawEdges(edges: RenderEdge[], color: number): void {
     const g = new Graphics();
-    for (const edge of edges) drawEdge(g, edge, color);
+    for (const edge of edges) drawEdge(g, edge, color, this.vpScale);
     this.edgesContainer.addChild(g);
   }
 
@@ -177,7 +184,7 @@ export abstract class BaseGraphRenderer {
     for (const { id, pos } of renderNodes) {
       const g = new Graphics();
       const color = nodeColor(id, selectedNode, start, finish);
-      this.redrawNode(g, nodeRadius(id, start, finish), color);
+      this.redrawNode(g, nodeRadius(id, start, finish, this.vpScale), color);
       g.x = pos.x;
       g.y = pos.y;
 
@@ -188,12 +195,12 @@ export abstract class BaseGraphRenderer {
           const s = useMazeStore.getState();
           if (s.selectedNode !== id) {
             const base = nodeColor(id, null, s.start, s.finish);
-            this.redrawNode(g, nodeRadius(id, s.start, s.finish), base !== canvas.node.default ? base : canvas.node.hover);
+            this.redrawNode(g, nodeRadius(id, s.start, s.finish, this.vpScale), base !== canvas.node.default ? base : canvas.node.hover);
           }
         });
         g.on("pointerout", () => {
           const s = useMazeStore.getState();
-          this.redrawNode(g, nodeRadius(id, s.start, s.finish), nodeColor(id, s.selectedNode, s.start, s.finish));
+          this.redrawNode(g, nodeRadius(id, s.start, s.finish, this.vpScale), nodeColor(id, s.selectedNode, s.start, s.finish));
         });
         g.on("pointerdown", (e) => {
           e.stopPropagation();

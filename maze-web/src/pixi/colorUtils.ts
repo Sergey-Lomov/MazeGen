@@ -1,7 +1,5 @@
 import { base, hexToNumber } from "../styles/palette";
 
-export const NODE_RADIUS = 6;
-export const WALL_THICKNESS = 3;
 export const GRID_LINE_ALPHA = 1.0;
 export const ORIGIN_ALPHA = 0.9;
 export const ACTIVE_CELL_ALPHA = 0.7;

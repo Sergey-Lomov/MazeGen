@@ -1,7 +1,8 @@
 import { Graphics, Text, TextStyle } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { NODE_RADIUS, canvas } from "./colorUtils";
+import { canvas } from "./colorUtils";
+import { NODE_RADIUS } from "./sizing";
 import { base, hexToNumber } from "../styles/palette";
 import { cellCenter } from "./hexGeometry";
 import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges } from "./BaseGraphRenderer";
@@ -19,6 +20,7 @@ export interface MazeGraphData {
   finish: number | null;
   cfg: TessellationConfig;
   interactive?: boolean;
+  vpScale?: number;
 }
 
 export class MazeGraphRenderer extends BaseGraphRenderer {
@@ -35,7 +37,8 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
       || data.edges !== prev.edges
       || data.start !== prev.start
       || data.finish !== prev.finish
-      || data.cfg !== prev.cfg;
+      || data.cfg !== prev.cfg
+      || data.vpScale !== prev.vpScale;
     const debugChanged = !prev
       || data.showNodeIds !== prev.showNodeIds
       || data.showCoords !== prev.showCoords;
@@ -57,7 +60,8 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
   }
 
   private renderGraph(data: MazeGraphData): void {
-    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true } = data;
+    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true, vpScale = 1 } = data;
+    this.vpScale = vpScale;
     this.nodeViews.clear();
     this.nodeLabels.clear();
     this.resetContainers();
@@ -110,11 +114,11 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
   private updateSelection(prevId: number | null, nextId: number | null, start: number | null, finish: number | null): void {
     if (prevId !== null) {
       const g = this.nodeViews.get(prevId);
-      if (g) this.redrawNode(g, nodeRadius(prevId, start, finish), nodeColor(prevId, null, start, finish));
+      if (g) this.redrawNode(g, nodeRadius(prevId, start, finish, this.vpScale), nodeColor(prevId, null, start, finish));
     }
     if (nextId !== null) {
       const g = this.nodeViews.get(nextId);
-      if (g) this.redrawNode(g, nodeRadius(nextId, start, finish), canvas.node.selected);
+      if (g) this.redrawNode(g, nodeRadius(nextId, start, finish, this.vpScale), canvas.node.selected);
     }
   }
 

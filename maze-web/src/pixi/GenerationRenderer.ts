@@ -17,6 +17,9 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 import { canvas } from "./colorUtils";
 import { resolveDebugValueColor } from "./debugValueColors";
+import { debounce } from "./utils/debounce";
+
+const ZOOM_REDRAW_DEBOUNCE_MS = 150;
 
 export class GenerationRenderer {
   private readonly gridContainer: Container;
@@ -41,6 +44,11 @@ export class GenerationRenderer {
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
+
+  private readonly debouncedZoomRedraw = debounce(() => {
+    const state = useMazeStore.getState();
+    if (state.openCard === "generation" && state.showMaze) this.renderAll(state);
+  }, ZOOM_REDRAW_DEBOUNCE_MS);
 
   // Keyed on the view's nodes/edges array identity (stable across debug steps that don't change
   // the reconstructed edge set) plus the tessellation config, since buildMazeWalls/buildMazeMarkers
@@ -150,11 +158,13 @@ export class GenerationRenderer {
   }
 
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
+    const prevScale = this.viewport.scale;
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
     if (state.openCard === "generation" && state.showMaze) {
       const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
       this.grid.render({ viewport: this.viewport }, cfg);
+      if (scale !== prevScale) this.debouncedZoomRedraw();
     }
   }
 
@@ -192,7 +202,7 @@ export class GenerationRenderer {
       };
     }
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
-    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg);
+    this.walls.render({ edges: this.geometryCache.wallEdges, vpScale: this.viewport.scale }, cfg);
     this.teleports.render({ edges: this.geometryCache.teleportEdges });
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
@@ -248,6 +258,7 @@ export class GenerationRenderer {
   }
 
   destroy(): void {
+    this.debouncedZoomRedraw.cancel();
     this.unsubscribe?.();
     this.grid.destroy();
     this.floor.destroy();

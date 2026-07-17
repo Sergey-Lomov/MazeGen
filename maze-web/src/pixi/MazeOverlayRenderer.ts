@@ -14,6 +14,7 @@ export interface MazeOverlayData {
   start: number | null;
   finish: number | null;
   cfg: TessellationConfig;
+  vpScale?: number;
 }
 
 export interface MazeOverlayContainers {
@@ -40,7 +41,7 @@ export class MazeOverlayRenderer {
   }
 
   render(data: MazeOverlayData): void {
-    const { nodes, edges, start, finish, cfg } = data;
+    const { nodes, edges, start, finish, cfg, vpScale = 1 } = data;
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
@@ -49,7 +50,7 @@ export class MazeOverlayRenderer {
     this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
 
     const wallEdges = buildMazeWalls(nodes, edges, cfg);
-    this.walls.render({ edges: wallEdges }, cfg);
+    this.walls.render({ edges: wallEdges, vpScale }, cfg);
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);

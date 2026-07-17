@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { nodeRadius, buildPairedRenderEdges, buildPathRenderEdges } from "../pixi/BaseGraphRenderer";
-import { NODE_RADIUS } from "../pixi/colorUtils";
+import { NODE_RADIUS } from "../pixi/sizing";
 import type { Pos } from "../pixi/BaseGraphRenderer";
 
 describe("nodeRadius", () => {

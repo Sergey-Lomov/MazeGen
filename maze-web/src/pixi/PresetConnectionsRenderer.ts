@@ -22,7 +22,8 @@ import {
   buildInvalidEdgeHighlights,
   buildHoverEdgeHighlight,
 } from "./selectors/presetSelectors";
-import { canvas, NODE_RADIUS } from "./colorUtils";
+import { canvas } from "./colorUtils";
+import { NODE_RADIUS } from "./sizing";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
