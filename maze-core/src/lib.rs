@@ -1,3 +1,4 @@
+pub mod diag;
 pub mod math;
 pub mod random;
 pub mod dsu;

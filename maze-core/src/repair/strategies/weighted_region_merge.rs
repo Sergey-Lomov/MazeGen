@@ -1,8 +1,10 @@
-﻿use rand::RngCore;
+﻿use std::collections::HashSet;
+use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::{RegionNeedsExpansionIssue, Issue, REGION_NEEDS_EXPANSION};
 use crate::generation::PresetState;
+use crate::graph::scc::ConnectedComponents;
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
@@ -50,26 +52,63 @@ fn resolve_weight(param_overrides: &std::collections::HashMap<String, String>) -
 /// random selection without replacement, retrying a different nested strategy if the chosen one
 /// returns `Failed`, until one succeeds or every candidate has been tried.
 ///
-/// The parent issue is passed through to the nested call unchanged (unlike
-/// `ReduceSccCountStrategy`, which synthesizes a new `Issue` naming which regions to merge) —
-/// this strategy only picks the merge *mechanism*, not which regions need merging; that's
-/// already `issue.data`'s `invalid`.
+/// **One dispatch per region, not per `apply()` call** (GitHub issue #120): `issue.invalid` can
+/// carry several independent undersized regions in one batch. Dispatching the *whole* batch to a
+/// single weighted pick (the original #90 design) meant a low-weight candidate that happened to
+/// win controlled the outcome for every region still left in the batch at that point, not just
+/// its own configured share — a rare 1%-odds win could still absorb most of a large batch,
+/// making the configured weight ratio not track the actual per-region merge frequency. Splitting
+/// `invalid` into one independent `dispatch_weighted` call per region was tried when #90 first
+/// shipped and reverted at the time: it broke snapshot-reuse, since re-dispatching per region
+/// forced a fresh, possibly differently-numbered `scc()` snapshot after every mutation. That
+/// blocker no longer applies — the immutable-snapshot `MutationCommand` contract (GitHub issue
+/// #118) means `apply()` only ever proposes commands, never mutates `maze.graph` in place, so one
+/// `scc()` snapshot taken up front stays valid (and correctly numbered) for the whole `apply()`
+/// call. This strategy now runs its own `invalid`-batch loop directly, synthesizing a
+/// single-region `RegionNeedsExpansionIssue` for each `dispatch_weighted` call so a weight always
+/// governs exactly one region's outcome.
 ///
-/// **One dispatch per `apply()` call, not per region**: `issue.data.invalid` can carry several
-/// independent undersized regions in one batch — the chosen nested strategy's own `apply()`
-/// (via `region_merge_core::run_merge_loop`) is responsible for merging as many of them as it
-/// can within that single call, using one `maze.analysis.scc()` snapshot for the whole batch.
-/// Splitting `invalid` into one independent dispatch per region was tried (see GitHub issue #90's
-/// follow-up) and reverted: it broke the snapshot-reuse the batch loop relies on (a `ComponentId`
-/// from `invalid` is only stable within the SCC snapshot it was read from, and re-dispatching
-/// per region forced a fresh, possibly differently-numbered snapshot for each one after an
-/// earlier region's merge). The proper fix for the weight-ratio-vs-batch-size mismatch this was
-/// meant to address is to stop bundling several regions into one issue in the first place — see
-/// GitHub issue #99 — not to fragment the dispatch here.
+/// The parent issue is passed through to each nested call as a synthetic single-region copy
+/// (unlike `ReduceSccCountStrategy`, which synthesizes a new `Issue` naming which regions to
+/// merge for a different reason) — this strategy only picks the merge *mechanism* per region, not
+/// which regions need merging; that's already `issue.invalid`.
 ///
 /// **`issue.data` is mandatory for this kind**, same contract as `ExpandRegionPassageStrategy`:
 /// `invalid` is the producing check's result — there is no other channel to learn it.
 pub struct WeightedRegionMergeStrategy;
+
+/// Every `NodeId` a `MutationCommand` connects — used to find which SCC component (other than the
+/// one just dispatched) a nested strategy's proposed command actually reached, so an already-
+/// merged neighbor from the same batch can be skipped rather than re-dispatched. `SetStart`/
+/// `SetFinish`/`RemoveEdge` (by opaque `EdgeId`, endpoints not recoverable without the graph)
+/// never arise here — every `merge_target` nested strategy only ever proposes an
+/// edge/teleport-adding command between two region nodes.
+fn command_endpoints(command: &MutationCommand) -> Option<(crate::ids::NodeId, crate::ids::NodeId)> {
+    match *command {
+        MutationCommand::AddDirectedEdge { from, to } => Some((from, to)),
+        MutationCommand::AddBidirectionalEdge { a, b } => Some((a, b)),
+        MutationCommand::AddDirectedTeleport { from, to } => Some((from, to)),
+        MutationCommand::AddBidirectionalTeleport { a, b } => Some((a, b)),
+        MutationCommand::RemoveEdge { .. }
+        | MutationCommand::RemoveEdgeBetween { .. }
+        | MutationCommand::RemoveTeleportWithReverse { .. }
+        | MutationCommand::SetStart(_)
+        | MutationCommand::SetFinish(_) => None,
+    }
+}
+
+/// Scans `commands` for any component index (other than `region_idx` itself) that a proposed
+/// mutation actually connects to — that neighbor, if it's also a still-pending region in this
+/// batch, has effectively been merged away by this dispatch and must not be separately
+/// dispatched later in the same `apply()` call's loop.
+fn merged_neighbor(commands: &[MutationCommand], scc: &ConnectedComponents, region_idx: usize) -> Option<usize> {
+    commands.iter().find_map(|cmd| {
+        let (a, b) = command_endpoints(cmd)?;
+        [a, b].into_iter()
+            .filter_map(|node| scc.component_of(node))
+            .find(|&idx| idx != region_idx)
+    })
+}
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedRegionMergeStrategy {
     fn strategy_id(&self) -> &'static str { "weighted_region_merge" }
@@ -117,7 +156,43 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedR
             .map(|&config| WeightedCandidate { config, weight: resolve_weight(&config.param_overrides) })
             .collect();
 
-        dispatch_weighted(issue as &dyn Issue, maze, rng, preset_state, &candidates)
+        // One fixed snapshot for the whole batch loop — every nested strategy's own `apply()`
+        // would otherwise re-fetch this same cache entry per region anyway (keyed on
+        // `graph.version()`, untouched since this call never mutates `maze.graph`), so reading it
+        // once here just skips the redundant re-fetch, not a new caching decision.
+        let scc = maze.analysis.scc(&maze.graph);
+
+        let mut pending: Vec<usize> = invalid.clone();
+        let mut merged_away: HashSet<usize> = HashSet::new();
+        let mut all_commands: Vec<MutationCommand> = Vec::new();
+        let mut any_fixed = false;
+
+        while let Some(region_idx) = pending.pop() {
+            if merged_away.contains(&region_idx) {
+                continue;
+            }
+
+            let single_region_issue = RegionNeedsExpansionIssue::synthetic(vec![region_idx]);
+            let (result, commands) = dispatch_weighted(
+                &single_region_issue as &dyn Issue, maze, rng, preset_state, &candidates,
+            );
+
+            if matches!(result, RepairResult::Fixed { .. }) {
+                any_fixed = true;
+                if let Some(neighbor_idx) = merged_neighbor(&commands, &scc, region_idx) {
+                    if invalid.contains(&neighbor_idx) {
+                        merged_away.insert(neighbor_idx);
+                    }
+                }
+                all_commands.extend(commands);
+            }
+        }
+
+        if any_fixed {
+            (RepairResult::Fixed { score: None }, all_commands)
+        } else {
+            (RepairResult::Failed, vec![])
+        }
     }
 }
 
