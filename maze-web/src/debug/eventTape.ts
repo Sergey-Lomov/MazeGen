@@ -1918,6 +1918,8 @@ export const QC_TAG = {
   TELEPORT_REMOVE_WITH_REVERSE_PROPOSED: 31,
   START_SET_PROPOSED: 32,
   FINISH_SET_PROPOSED: 33,
+
+  PRESET_SEEDED: 34,
 } as const;
 
 export type RepairLimitKind = "MaxIterations" | "TimeBudget";
@@ -1965,7 +1967,8 @@ export type QcEvent =
   | { kind: "EdgeRemoveBetweenProposed"; from: bigint; to: bigint }
   | { kind: "TeleportRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "StartSetProposed"; id: bigint }
-  | { kind: "FinishSetProposed"; id: bigint };
+  | { kind: "FinishSetProposed"; id: bigint }
+  | { kind: "PresetSeeded"; edges: { from: bigint; to: bigint; bidirectional: boolean }[] };
 
 /** Reads a `u32`-length-prefixed UTF-8 string starting at `offset` — mirrors `write_str` in
  *  `maze-core/src/quality_control/event.rs`. Returns the decoded string and the byte offset
@@ -2194,14 +2197,29 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
     case QC_TAG.FINISH_SET_PROPOSED:
       expectLen(tag, bytes, 8);
       return { kind: "FinishSetProposed", id: readNodeId(bytes, 0) };
+
+    case QC_TAG.PRESET_SEEDED: {
+      const count = readU32(bytes, 0);
+      expectLen(tag, bytes, 4 + count * 17);
+      const edges: { from: bigint; to: bigint; bidirectional: boolean }[] = [];
+      for (let i = 0; i < count; i++) {
+        const offset = 4 + i * 17;
+        edges.push({
+          from: readNodeId(bytes, offset),
+          to: readNodeId(bytes, offset + 8),
+          bidirectional: bytes[offset + 16] !== 0,
+        });
+      }
+      return { kind: "PresetSeeded", edges };
+    }
     default:
       throw new Error(`QcEvent: unknown wire tag ${tag}`);
   }
 }
 
 /** Mirrors `DebugEvent::is_mutating`'s split for `QcEvent` in
- *  `maze-core/src/quality_control/event.rs` — `true` for exactly the 9 mutation-mirror variants;
- *  every `*Declined` variant and every trace variant is `false`. */
+ *  `maze-core/src/quality_control/event.rs` — `true` for the 9 mutation-mirror variants plus
+ *  `PresetSeeded`; every `*Declined` variant and every trace variant is `false`. */
 export function isMutatingQcEvent(event: QcEvent): boolean {
   return (
     event.kind === "DirectedEdgeAdded" ||
@@ -2212,7 +2230,8 @@ export function isMutatingQcEvent(event: QcEvent): boolean {
     event.kind === "EdgeRemovedBetween" ||
     event.kind === "TeleportRemovedWithReverse" ||
     event.kind === "StartSet" ||
-    event.kind === "FinishSet"
+    event.kind === "FinishSet" ||
+    event.kind === "PresetSeeded"
   );
 }
 
@@ -2346,6 +2365,12 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
         break;
       case "FinishSet":
         finish = event.id;
+        break;
+      case "PresetSeeded":
+        for (const edge of event.edges) {
+          add(edge.from, edge.to, "basic");
+          if (edge.bidirectional) add(edge.to, edge.from, "basic");
+        }
         break;
       default:
         break;

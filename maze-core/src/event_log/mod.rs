@@ -410,6 +410,7 @@ impl NodeRecord {
 /// event payloads are written into (deduplicated for scope names — an implementation detail of
 /// the encoder, not part of the wire format). This is the tape's canonical binary format,
 /// independent of any particular transport (WASM, file, ...) — see GitHub issue #124.
+#[derive(Clone)]
 pub struct EncodedTape {
     pub node_table: Vec<u8>,
     pub payload: Vec<u8>,

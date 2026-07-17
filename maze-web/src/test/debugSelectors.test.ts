@@ -227,6 +227,22 @@ describe("selectDebugMazeView", () => {
     expect(selectDebugMazeView(null, 0)).toBeNull();
   });
 
+  it("a source with zero mutating events (startStep === endStep, GitHub issue #173) yields an empty view instead of a negative-localStep crash", () => {
+    const arena = arenaWithEdges([]);
+    expect(arena.totalSteps).toBe(0);
+    const view = selectDebugMazeView(arena, 0);
+    expect(view).toEqual({
+      nodes,
+      edges: [],
+      start: null,
+      finish: null,
+      debugValues: new Map(),
+      dsuGroups: null,
+      debugMaps: new Map(),
+      debugVertices: new Map(),
+    });
+  });
+
   it("returns the arena's static node list and the exact edges reconstructed at debugStep, both directions per bidirectional EdgeAdded (GitHub issue #135)", () => {
     const arena = arenaWithEdges([[1n, 2n], [2n, 3n], [3n, 4n]]);
     const view = selectDebugMazeView(arena, 1);

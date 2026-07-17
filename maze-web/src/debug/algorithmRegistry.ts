@@ -689,6 +689,11 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.start_set_proposed"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSetProposed":
       return [{ kind: "text", text: m["debug.tree.qc.finish_set_proposed"]() + " " }, { kind: "node", id: event.id }];
+    case "PresetSeeded":
+      return [
+        { kind: "text", text: m["debug.tree.qc.preset_seeded"]() + " " },
+        { kind: "cycle", edges: event.edges.map((e) => [e.from, e.to] as [bigint, bigint]) },
+      ];
   }
 }
 

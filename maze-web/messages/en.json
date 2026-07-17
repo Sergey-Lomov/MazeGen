@@ -223,6 +223,7 @@
   "debug.tree.qc.teleport_remove_with_reverse_proposed": "Teleport removal proposed:",
   "debug.tree.qc.start_set_proposed": "Start proposed:",
   "debug.tree.qc.finish_set_proposed": "Finish proposed:",
+  "debug.tree.qc.preset_seeded": "Preset setup applied:",
   "debug.value.recursion_stack": "Recursion stack",
   "debug.value.current_walk": "Current walk",
   "debug.value.walk_start": "Walk start",

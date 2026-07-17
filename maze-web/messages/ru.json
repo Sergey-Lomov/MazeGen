@@ -229,6 +229,7 @@
   "debug.tree.qc.teleport_remove_with_reverse_proposed": "Предложено удаление телепорта:",
   "debug.tree.qc.start_set_proposed": "Предложена установка старта:",
   "debug.tree.qc.finish_set_proposed": "Предложена установка финиша:",
+  "debug.tree.qc.preset_seeded": "Применена настройка пресетов:",
   "debug.value.recursion_stack": "Стек рекурсии",
   "debug.value.current_walk": "Текущий трек",
   "debug.value.walk_start": "Старт обхода",

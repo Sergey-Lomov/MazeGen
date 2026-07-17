@@ -44,6 +44,8 @@ mod wire_tags {
     pub const TELEPORT_REMOVE_WITH_REVERSE_PROPOSED: u16 = 31;
     pub const START_SET_PROPOSED: u16 = 32;
     pub const FINISH_SET_PROPOSED: u16 = 33;
+
+    pub const PRESET_SEEDED: u16 = 34;
 }
 
 /// Narration-level events for the quality-control/repair pipeline (GitHub issue #147) — see
@@ -51,12 +53,14 @@ mod wire_tags {
 /// `Specs/event_log.md` for the general event-log narration policy this instrumentation follows.
 ///
 /// Trace events narrate the repair fixpoint loop's own decisions (iteration boundaries, which
-/// rule found what, dispatch outcomes). Mutating events are an exact 1:1 mirror of
+/// rule found what, dispatch outcomes). Mutating events are almost entirely a 1:1 mirror of
 /// `repair::MutationCommand`'s 9 variants — each command actually applied by `apply_commands`
 /// (`quality_control::rule`) gets its own mutating variant here, and each command *declined* by
 /// `apply_commands`'s revalidation gets its own trace-only `*Declined` counterpart with the same
 /// fields (not one shared payload-less "declined" event) — so narration/tests can say exactly
-/// which command failed revalidation, not just that some command did.
+/// which command failed revalidation, not just that some command did. `PresetSeeded` is the one
+/// exception (GitHub issue #173): it doesn't mirror a `MutationCommand` at all — see its own doc
+/// comment.
 #[derive(Debug, Clone, PartialEq)]
 pub enum QcEvent {
     /// One fixpoint pass of `Stage::run_repair`'s loop has started.
@@ -131,6 +135,17 @@ pub enum QcEvent {
     TeleportRemovedWithReverse { from: NodeId, to: NodeId },
     StartSet(NodeId),
     FinishSet(NodeId),
+    /// Mutating, but not a `MutationCommand` mirror (GitHub issue #173) — emitted at most once,
+    /// before the first iteration, only in `qc_experiment` mode: that mode skips the generation
+    /// algorithm entirely, so there is no generation-phase event tape to establish the preset
+    /// edges `build_preset_state` already wrote into the graph before QC/repair started. Without
+    /// this, the web replay engine's first reconstructed frame would show an empty graph even
+    /// though the real graph QC/repair operates on already has these edges. Carries every preset
+    /// edge as one batch (not one event per edge) specifically so scrubbing through a large
+    /// preset setup costs one step, not one step per edge. `bidirectional` mirrors
+    /// `BidirectionalEdgeAdded`'s semantics (both directions), `false` mirrors
+    /// `DirectedEdgeAdded`'s (forward only).
+    PresetSeeded { edges: Vec<(NodeId, NodeId, bool)> },
 
     // --- trace: same fields as the matching mutating variant above, for a command
     // `apply_commands` proposed but whose revalidation rejected it (its `ok == false` branch). ---
@@ -151,10 +166,10 @@ pub enum QcEvent {
 }
 
 impl DebugEvent for QcEvent {
-    /// `true` for exactly the 9 mutation-mirror variants — these are the only `QcEvent`s that
-    /// change the maze graph. Every `*Declined` variant is `false` alongside every trace variant:
-    /// a declined command never touched the graph, only narrates that the strategy's proposal
-    /// didn't survive revalidation.
+    /// `true` for the 9 mutation-mirror variants plus `PresetSeeded` — these are the only
+    /// `QcEvent`s that change the maze graph. Every `*Declined` variant is `false` alongside every
+    /// trace variant: a declined command never touched the graph, only narrates that the
+    /// strategy's proposal didn't survive revalidation.
     fn is_mutating(&self) -> bool {
         matches!(
             self,
@@ -167,6 +182,7 @@ impl DebugEvent for QcEvent {
                 | QcEvent::TeleportRemovedWithReverse { .. }
                 | QcEvent::StartSet(_)
                 | QcEvent::FinishSet(_)
+                | QcEvent::PresetSeeded { .. }
         )
     }
 }
@@ -280,6 +296,8 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::TeleportRemoveWithReverseProposed { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_PROPOSED,
             QcEvent::StartSetProposed(_) => wire_tags::START_SET_PROPOSED,
             QcEvent::FinishSetProposed(_) => wire_tags::FINISH_SET_PROPOSED,
+
+            QcEvent::PresetSeeded { .. } => wire_tags::PRESET_SEEDED,
         }
     }
 
@@ -325,6 +343,15 @@ impl EncodeEventPayload for QcEvent {
             | QcEvent::FinishSet(id) | QcEvent::FinishSetDeclined(id) | QcEvent::FinishSetProposed(id) => {
                 write_node_id(out, *id);
             }
+
+            QcEvent::PresetSeeded { edges } => {
+                out.extend_from_slice(&(edges.len() as u32).to_le_bytes());
+                for (from, to, bidirectional) in edges {
+                    write_node_id(out, *from);
+                    write_node_id(out, *to);
+                    out.push(if *bidirectional { 1 } else { 0 });
+                }
+            }
         }
     }
 }
@@ -345,6 +372,12 @@ mod tests {
         assert!(QcEvent::TeleportRemovedWithReverse { from: 1, to: 2 }.is_mutating());
         assert!(QcEvent::StartSet(1).is_mutating());
         assert!(QcEvent::FinishSet(1).is_mutating());
+    }
+
+    #[test]
+    fn preset_seeded_is_mutating() {
+        assert!(QcEvent::PresetSeeded { edges: vec![(1, 2, false)] }.is_mutating());
+        assert!(QcEvent::PresetSeeded { edges: vec![] }.is_mutating());
     }
 
     #[test]
@@ -420,6 +453,7 @@ mod tests {
             QcEvent::TeleportRemoveWithReverseProposed { from: 0, to: 0 },
             QcEvent::StartSetProposed(0),
             QcEvent::FinishSetProposed(0),
+            QcEvent::PresetSeeded { edges: vec![(0, 0, false)] },
         ];
         let mut tags = HashSet::new();
         for event in &events {
@@ -439,6 +473,30 @@ mod tests {
         declined.encode_payload(&mut declined_bytes);
         assert_eq!(added_bytes, declined_bytes);
         assert_ne!(added.type_id(), declined.type_id());
+    }
+
+    #[test]
+    fn preset_seeded_encodes_count_then_from_to_bidirectional_per_edge() {
+        let event = QcEvent::PresetSeeded { edges: vec![(1, 2, false), (3, 4, true)] };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+
+        assert_eq!(bytes.len(), 4 + 2 * 17, "u32 count + 2 * (8 + 8 + 1) bytes per edge");
+        assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 2);
+        assert_eq!(u64::from_le_bytes(bytes[4..12].try_into().unwrap()), 1);
+        assert_eq!(u64::from_le_bytes(bytes[12..20].try_into().unwrap()), 2);
+        assert_eq!(bytes[20], 0);
+        assert_eq!(u64::from_le_bytes(bytes[21..29].try_into().unwrap()), 3);
+        assert_eq!(u64::from_le_bytes(bytes[29..37].try_into().unwrap()), 4);
+        assert_eq!(bytes[37], 1);
+    }
+
+    #[test]
+    fn preset_seeded_with_no_edges_encodes_a_zero_count() {
+        let event = QcEvent::PresetSeeded { edges: vec![] };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, 0u32.to_le_bytes().to_vec());
     }
 
     fn read_u32le(bytes: &[u8], offset: &mut usize) -> u32 {

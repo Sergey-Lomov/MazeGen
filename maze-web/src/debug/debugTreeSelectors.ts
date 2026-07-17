@@ -26,11 +26,12 @@ const stepIndexCache = new WeakMap<ParsedTape, StepIndex>();
 
 /** Builds both mappings in one forward pass over `[0, nodeCount)`.
  *
- *  Contract: only ever called with a tape backed by a non-empty `DebugArenaHandle` (the store
- *  only builds one when `totalSteps > 0` — see `generateConfigBuilder.ts`), so `stepToNodeIndex`
- *  is always non-empty here. Before the first mutating event, `nearestStepByNodeIndex` is
- *  clamped to step 0 — not a separate edge case, just the natural initial value of "last seen
- *  step" given that guarantee.
+ *  `stepToNodeIndex` can be empty (GitHub issue #173 — a `qc_experiment` run with zero repair
+ *  mutations still builds a `DebugArenaHandle`, just with `totalSteps: 0`) — callers that index
+ *  into it by `debugStep` (`nodeIndexForStep`, `resolveHighlightTarget`) must check length first
+ *  rather than assume a match always exists. Before the first mutating event (or when there is
+ *  none at all), `nearestStepByNodeIndex` is clamped to step 0 — not a separate edge case, just
+ *  the natural initial value of "last seen step".
  *
  *  `sources` (GitHub issue #147) is one entry per top-level source scope, in the same order as
  *  `debugArena.sources`/`topLevelSourceScopes` — global `debugStep` numbering (Contract A,
@@ -189,14 +190,23 @@ export function flattenVisibleRows(
  *  in `visibleRowIndexByNodeIndex`. Always terminates without reaching `parent === null`: every
  *  top-level "step" scope is unconditionally present in `visibleRowIndexByNodeIndex` (see
  *  `flattenVisibleRows`), so any node's walk up stops at its own top-level ancestor at the
- *  latest. */
+ *  latest.
+ *
+ *  `stepIndex.stepToNodeIndex` can be empty (GitHub issue #173 — a `qc_experiment` run with zero
+ *  repair mutations still builds a debug arena, just with `totalSteps: 0`) — `nodeIndexForStep`
+ *  then has no arena index for `debugStep` to resolve, so this falls back to `fallbackNodeIndex`
+ *  (the caller's first top-level source scope — the merged tape's own root, arena index 0, is
+ *  never itself a row per `flattenVisibleRows`'s doc comment, so it can't serve as this
+ *  fallback). */
 export function resolveHighlightTarget(
   tape: ParsedTape,
   stepIndex: StepIndex,
   debugStep: number,
   visibleRowIndexByNodeIndex: ReadonlyMap<number, number>,
+  fallbackNodeIndex: number,
 ): number {
-  let nodeIndex: number | null = nodeIndexForStep(stepIndex, debugStep);
+  let nodeIndex: number | null =
+    debugStep < stepIndex.stepToNodeIndex.length ? nodeIndexForStep(stepIndex, debugStep) : fallbackNodeIndex;
   while (nodeIndex !== null && !visibleRowIndexByNodeIndex.has(nodeIndex)) {
     nodeIndex = nodeAt(tape, nodeIndex).parent;
   }

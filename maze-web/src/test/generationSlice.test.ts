@@ -1386,13 +1386,16 @@ describe("mazeStore generation misc actions", () => {
     expect(s.debugArena?.sources[0].checkpointFroms.map((f) => f.step)).toEqual([499, 999]);
   });
 
-  it("generate() with debugMode on but a tape with zero mutating events leaves debugArena null", () => {
+  it("generate() with debugMode on but a tape with zero mutating events still builds a (zero-step) debugArena (GitHub issue #173)", () => {
+    // A source scope always exists even with zero mutating events (the tape's own root scope
+    // node) — the debug panel should render a single static frame rather than not appear at all.
     const debugTape = encodeEdgeAddedTape([]);
     vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
     useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true });
     useMazeStore.getState().generate();
     const s = useMazeStore.getState();
-    expect(s.debugArena).toBeNull();
+    expect(s.debugArena).not.toBeNull();
+    expect(s.debugArena?.totalSteps).toBe(0);
     expect(s.debugStep).toBe(0);
   });
 

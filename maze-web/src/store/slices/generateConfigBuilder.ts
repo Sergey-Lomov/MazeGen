@@ -160,6 +160,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
   if (!config) return;
   if (qcExperiment) {
     applyQcExperimentOverrides(config);
+    if (debugMode) config.debug_events = true;
   } else if (debugMode) {
     config.debug_events = true;
   }
@@ -194,7 +195,12 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
         sources.push({ scopeName: scope.scopeName, kind, nodeIndex: scope.nodeIndex, startStep, endStep: runningStep, checkpointFroms: metadata.checkpointFroms });
       }
       const totalSteps = runningStep;
-      if (totalSteps > 0) {
+      // `sources.length > 0` (not `totalSteps > 0`, GitHub issue #173) — a qc_experiment run with
+      // zero repair mutations (e.g. an empty field, no preset connections, no strategy able to
+      // act) still has a "quality_control" scope to show, just with nothing to scrub through: the
+      // debug panel should render a single static frame (the graph as-is) rather than not appear
+      // at all. `lastStep` stays 0 in that case (nothing to advance to).
+      if (sources.length > 0) {
         // debugValueNames (GitHub issue #131) comes from the WASM response's static declaration
         // (GenerateResult::debug_value_names()), not from scanning the tape — see
         // resolveDebugArenaMetadata's doc comment for why.
@@ -202,7 +208,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
           tape, algorithmKind: sources[0].kind, sources, nodes: snapshot.nodes, totalSteps,
           debugValueNames: debugTape.debugValueNames,
         };
-        lastStep = totalSteps - 1;
+        lastStep = Math.max(0, totalSteps - 1);
       }
     }
     const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges);

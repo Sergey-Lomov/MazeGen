@@ -211,3 +211,23 @@ fn repro_95_qc_only_official_export() {
     assert!(result.finish.is_some(), "farthest_endpoints must assign a finish");
 }
 
+
+/// GitHub issue #173: an empty 5x5 field, no preset connections, `qc_experiment` + `debug_events`
+/// on. No repair strategy can act on a completely edgeless graph (`missing_endpoints`'s
+/// `scored_endpoints` strategy needs some structure to score candidates against), so QC/repair
+/// produces zero mutating events — this is the exact scenario that made the debug panel not
+/// appear at all before this fix (`maze-web`'s `debugArena` build used to require `totalSteps > 0`
+/// and `maze-wasm`'s tape merge used to drop a QC tape with an empty `node_table`). The tape
+/// itself must still exist and decode cleanly even with nothing mutating in it.
+#[test]
+fn repro_173_qc_only_empty_field_no_preset_yields_a_present_but_empty_qc_tape() {
+    use maze_core::quality_control::QcEvent;
+
+    let result = run_fixture("tests/fixtures/issue-173-qc-only-empty-no-preset.json", 42);
+    assert!(result.start.is_none(), "no strategy can assign a start on an edgeless graph");
+    assert!(result.finish.is_none(), "no strategy can assign a finish on an edgeless graph");
+
+    let tape = result.qc_tape.expect("debug_events: true must still produce a QC tape even with zero mutating events");
+    let mutating_events: Vec<&QcEvent> = tape.mutating_events().collect();
+    assert!(mutating_events.is_empty(), "an edgeless graph with no preset connections has nothing for repair to mutate");
+}

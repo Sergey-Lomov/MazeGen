@@ -341,7 +341,7 @@ describe("resolveHighlightTarget", () => {
     const rows = flattenVisibleRows(tape, new Set([1]));
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
 
-    const target = resolveHighlightTarget(tape, stepIndex, 0, rowIndexByNodeIndex); // step 0 -> nodeIndex 2 (EdgeAdded)
+    const target = resolveHighlightTarget(tape, stepIndex, 0, rowIndexByNodeIndex, 0); // step 0 -> nodeIndex 2 (EdgeAdded)
     expect(target).toBe(2);
   });
 
@@ -351,7 +351,7 @@ describe("resolveHighlightTarget", () => {
     const rows = flattenVisibleRows(tape, new Set()); // fully collapsed
     const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
 
-    const target = resolveHighlightTarget(tape, stepIndex, 0, rowIndexByNodeIndex); // nodeIndex 2, invisible
+    const target = resolveHighlightTarget(tape, stepIndex, 0, rowIndexByNodeIndex, 0); // nodeIndex 2, invisible
     expect(target).toBe(1); // its top-level step scope, which is visible
     expect(rowIndexByNodeIndex.has(target)).toBe(true);
   });
@@ -363,7 +363,25 @@ describe("resolveHighlightTarget", () => {
     // see flattenVisibleRows), exercised here to pin down the fail-loud behavior fixed after review.
     const emptyMap = new Map<number, number>();
 
-    expect(() => resolveHighlightTarget(tape, stepIndex, 0, emptyMap)).toThrow(/no visible ancestor/);
+    expect(() => resolveHighlightTarget(tape, stepIndex, 0, emptyMap, 0)).toThrow(/no visible ancestor/);
+  });
+
+  it("falls back to fallbackNodeIndex when stepToNodeIndex is empty (GitHub issue #173 — zero mutating events)", () => {
+    // root (0) -> "quality_control" scope (1) -> IterationStarted (2, trace-only, not mutating)
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("quality_control") },
+      { parent: 1, firstChild: null, nextSibling: null, tag: 1 /* trace-only tag, not RB's EDGE_ADDED */, payloadBytes: new Uint8Array(4) },
+    ]);
+    const stepIndex = buildStepIndex(tape, [{ kind: "quality_control", nodeIndex: 1 }]);
+    expect(stepIndex.stepToNodeIndex).toHaveLength(0);
+
+    const rows = flattenVisibleRows(tape, new Set([1]));
+    const rowIndexByNodeIndex = new Map(rows.map((r, i) => [r.nodeIndex, i]));
+    expect(rowIndexByNodeIndex.has(1)).toBe(true);
+
+    const target = resolveHighlightTarget(tape, stepIndex, 0, rowIndexByNodeIndex, 1);
+    expect(target).toBe(1);
   });
 });
 

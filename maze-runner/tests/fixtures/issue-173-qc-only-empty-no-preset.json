@@ -1,0 +1,36 @@
+{
+  "tessellation": {
+    "tessellation_type": "square",
+    "points": [[-2,-2],[-2,-1],[-2,0],[-2,1],[-2,2],[-1,-2],[-1,-1],[-1,0],[-1,1],[-1,2],[0,-2],[0,-1],[0,0],[0,1],[0,2],[1,-2],[1,-1],[1,0],[1,1],[1,2],[2,-2],[2,-1],[2,0],[2,1],[2,2]]
+  },
+  "stages": [
+    {
+      "id": "stage_ac5a492c-0d0d-435a-be08-3f479179406b",
+      "name": "Stage 1",
+      "rules": [
+        {
+          "id": "rule_34884b3e-50a4-4c77-9c73-c9864b669fb9",
+          "checks": [
+            { "local_id": "0", "type_id": "missing_endpoints", "params": {} }
+          ],
+          "strategy": { "id": "scored_endpoints", "params": {} }
+        },
+        {
+          "id": "rule_ab411a8a-c274-4a77-8596-c4b0eb785d84",
+          "checks": [
+            { "local_id": "0", "type_id": "unreachable_finish", "params": {} }
+          ],
+          "strategy": null
+        }
+      ]
+    }
+  ],
+  "repair_max_iterations": 100,
+  "repair_time_budget_secs": 10,
+  "initial": { "method": "recursive_backtracker" },
+  "elements": { "one_way_chance": 0.04, "teleport_chance": 0, "teleport_one_way_chance": 0 },
+  "preset_connections": [],
+  "locked_nodes": [],
+  "qc_experiment": true,
+  "debug_events": true
+}

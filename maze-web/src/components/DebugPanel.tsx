@@ -164,7 +164,7 @@ export function DebugPanel() {
 
       <div style={styles.stepRow}>
         <span style={styles.stepLabel}>
-          <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "right" as const }}>{debugStep + 1}</span>
+          <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "right" as const }}>{total === 0 ? 0 : debugStep + 1}</span>
           {" / "}
           <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "left" as const }}>{total}</span>
         </span>

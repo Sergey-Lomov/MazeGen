@@ -228,6 +228,11 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
   for (let i = 0; i < arena.sources.length; i++) {
     const source = arena.sources[i];
     if (debugStep < source.startStep) break;
+    // A source with zero mutating events (endStep === startStep, GitHub issue #173 — e.g. a
+    // qc_experiment run where no repair strategy could act on an edgeless graph) has nothing to
+    // replay — skip it rather than computing a negative localStep, which every applyX would
+    // reject via validateStepShape.
+    if (source.endStep === source.startStep) continue;
     const localStep = Math.min(debugStep, source.endStep - 1) - source.startStep;
     const startIndex = sourceContentStart(arena.tape, source.nodeIndex);
     const endIndex = i + 1 < arena.sources.length

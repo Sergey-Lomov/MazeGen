@@ -58,6 +58,13 @@ function edgeAddedPayload(from: bigint, to: bigint, bidirectional = true): Uint8
   return concatBytes([u64le(from), u64le(to), new Uint8Array([bidirectional ? 1 : 0])]);
 }
 
+function presetSeededPayload(edges: [bigint, bigint, boolean][]): Uint8Array {
+  return concatBytes([
+    u32le(edges.length),
+    ...edges.map(([from, to, bidirectional]) => concatBytes([u64le(from), u64le(to), new Uint8Array([bidirectional ? 1 : 0])])),
+  ]);
+}
+
 function buildFixture(nodes: FixtureNode[]): ParsedTape {
   const payloadChunks: Uint8Array[] = [];
   const offsets: number[] = [];
@@ -233,6 +240,25 @@ describe("decodeQcEvent", () => {
   it("throws on a payload_len mismatch for a fixed-size variant", () => {
     expect(() => decodeQcEvent(QC_TAG.START_SET, new Uint8Array(3))).toThrow(/payload_len/);
   });
+
+  it("decodes PresetSeeded (count + per-edge from/to/bidirectional, GitHub issue #173)", () => {
+    const bytes = concatBytes([
+      u32le(2),
+      u64le(1n), u64le(2n), new Uint8Array([0]),
+      u64le(3n), u64le(4n), new Uint8Array([1]),
+    ]);
+    expect(decodeQcEvent(QC_TAG.PRESET_SEEDED, bytes)).toEqual({
+      kind: "PresetSeeded",
+      edges: [
+        { from: 1n, to: 2n, bidirectional: false },
+        { from: 3n, to: 4n, bidirectional: true },
+      ],
+    });
+  });
+
+  it("decodes PresetSeeded with zero edges", () => {
+    expect(decodeQcEvent(QC_TAG.PRESET_SEEDED, u32le(0))).toEqual({ kind: "PresetSeeded", edges: [] });
+  });
 });
 
 describe("isMutatingQcEvent", () => {
@@ -269,6 +295,8 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "StartSetProposed", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "FinishSetProposed", id: 1n })).toBe(false);
+
+    expect(isMutatingQcEvent({ kind: "PresetSeeded", edges: [] })).toBe(true);
   });
 });
 
@@ -344,6 +372,31 @@ describe("mutatingQcEvents / applyQc", () => {
     const result = applyQc(tape, 3, undefined, 0);
     expect(result.edges).toEqual([{ from: 2n, to: 1n, kind: "basic" }, { from: 4n, to: 3n, kind: "teleport" }]);
     expect(result.removedEdges).toEqual([]);
+  });
+
+  it("PresetSeeded applies every preset edge in one step, directed and bidirectional (GitHub issue #173)", () => {
+    // root (0) -> PresetSeeded([(1,2,false), (3,4,true)]) (1) -> DirectedEdgeAdded(5,6) (2)
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.PRESET_SEEDED, payloadBytes: presetSeededPayload([[1n, 2n, false], [3n, 4n, true]]) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.DIRECTED_EDGE_ADDED, payloadBytes: concatBytes([u64le(5n), u64le(6n)]) },
+    ]);
+
+    // Step 0 (just PresetSeeded) already carries every preset edge — not one step per edge.
+    const afterSeed = applyQc(tape, 0, undefined, 0);
+    expect(afterSeed.edges).toEqual([
+      { from: 1n, to: 2n, kind: "basic" },
+      { from: 3n, to: 4n, kind: "basic" },
+      { from: 4n, to: 3n, kind: "basic" },
+    ]);
+
+    const afterNext = applyQc(tape, 1, undefined, 0);
+    expect(afterNext.edges).toEqual([
+      { from: 1n, to: 2n, kind: "basic" },
+      { from: 3n, to: 4n, kind: "basic" },
+      { from: 4n, to: 3n, kind: "basic" },
+      { from: 5n, to: 6n, kind: "basic" },
+    ]);
   });
 
   it("a *Declined event advances the step count but contributes nothing to edges/removedEdges/start/finish", () => {

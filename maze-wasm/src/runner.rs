@@ -398,12 +398,28 @@ pub fn run_generate<T: Tessellation + 'static>(
         field.all_points().find(|&p| point_to_xy(p) == (fx, fy)).and_then(|p| field.node_at(p))
     });
 
-    // QC/repair gets its own `EventLog<QcEvent>` only when `debug_events` is on and generation
-    // itself produced a forwardable source — a QC tape with no generation tape to merge it
-    // against isn't useful (the web replay engine has nothing to anchor step 0 against), so this
-    // deliberately doesn't run QC logging independently of `generation_source`'s presence.
-    let mut qc_log = (config.debug_events && generation_source.is_some())
+    // QC/repair gets its own `EventLog<QcEvent>` when `debug_events` is on and either generation
+    // itself produced a forwardable source to anchor against, or `qc_experiment` mode is active —
+    // in that mode generation never runs by design (see `run_initial_generation`'s doc comment),
+    // so QC/repair's own tape is the only thing there is to debug, and stands on its own as the
+    // sole top-level scope (GitHub issue #173).
+    let mut qc_log = (config.debug_events && (generation_source.is_some() || config.qc_experiment))
         .then(maze_core::event_log::EventLog::new);
+
+    // Seed QC's own event log with the preset edges `build_preset_state` already wrote into
+    // `graph` above, before handing it to `build_maze` — only in `qc_experiment` mode, where
+    // there's no generation-phase tape to establish them (see `QcEvent::PresetSeeded`'s doc
+    // comment, GitHub issue #173). One event carries every edge, not one event per edge, so
+    // scrubbing a large preset setup costs a single step.
+    if config.qc_experiment {
+        if let Some(log) = qc_log.as_mut() {
+            let edges: Vec<(maze_core::ids::NodeId, maze_core::ids::NodeId, bool)> =
+                graph.edges().map(|e| (e.from, e.to, false)).collect();
+            if !edges.is_empty() {
+                log.emit(maze_core::quality_control::QcEvent::PresetSeeded { edges });
+            }
+        }
+    }
 
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
     let limits = build_repair_limits(config).map_err(|e| JsValue::from_str(&e))?;
@@ -421,21 +437,48 @@ pub fn run_generate<T: Tessellation + 'static>(
     let snapshot_js = snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    // Single `merge_tapes` call for the whole pipeline (GitHub issue #147/#169) — folds
-    // generation's and QC's independently-produced sources into one merged arena, in execution
-    // order (generation always finishes before QC/repair starts). QC's tape is only added when it
-    // actually emitted at least one node (an empty stage sequence, or a run that converged with
-    // zero repair iterations, produces an empty `DebugTape` — merging an empty source would still
-    // add an empty top-level "quality_control" scope, which is harmless but pointless noise).
-    let (debug_tape, debug_value_names, sources) = match generation_source {
-        Some(generation_source) => {
+    let qc_tape = qc_log.map(|log| log.finish().encode());
+    let (debug_tape, debug_value_names, sources) = merge_generation_and_qc_tapes(
+        generation_source, generation_kind, generation_debug_value_names, qc_tape,
+    );
+
+    Ok(build_generate_result(snapshot_js, debug_tape, debug_value_names, sources))
+}
+
+/// Single `merge_tapes` call for the whole pipeline (GitHub issue #147/#169) — folds generation's
+/// and QC's independently-produced sources into one merged arena, in execution order (generation
+/// always finishes before QC/repair starts). QC's tape is included whenever `qc_log` existed at
+/// all (i.e. `debug_events` was on and QC ran) — even a tape with zero mutating events still
+/// becomes a (zero-step) "quality_control" scope, since a `DebugTape`'s encoded `node_table` is
+/// never actually empty (the log's own root scope node is always present).
+///
+/// `qc_experiment` mode (GitHub issue #173) never has a `generation_source` (generation is
+/// skipped entirely) — QC/repair's tape stands alone as the only top-level scope in that case, so
+/// a `qc_experiment` run with zero repair mutations (e.g. an empty field with no preset
+/// connections, where no strategy can act on an edgeless graph) still surfaces a debug arena
+/// rather than none at all. Split out of `run_generate` (mirrors `build_generate_result`'s own
+/// doc comment on why) so this matching logic is testable natively without a WASM runtime.
+fn merge_generation_and_qc_tapes(
+    generation_source: Option<maze_core::event_log::TapeSource>,
+    generation_kind: Option<maze_core::event_log::EventedEventKind>,
+    generation_debug_value_names: Vec<(String, maze_core::event_log::DebugValueKind)>,
+    qc_tape: Option<maze_core::event_log::EncodedTape>,
+) -> (
+    Option<maze_core::event_log::EncodedTape>,
+    Vec<(String, maze_core::event_log::DebugValueKind)>,
+    Vec<(&'static str, maze_core::event_log::EventedEventKind)>,
+) {
+    let qc_source = qc_tape.map(|tape| maze_core::event_log::TapeSource { scope_name: "quality_control", tape });
+
+    match (generation_source, qc_source) {
+        (Some(generation_source), qc_source) => {
             let mut sources_meta = vec![(generation_source.scope_name, generation_kind.expect("generation_source implies generation_kind"))];
             let mut tape_sources = vec![generation_source];
             let mut debug_value_name_sources = vec![("generation", generation_debug_value_names)];
 
-            if let Some(qc_tape) = qc_log.map(|log| log.finish().encode()).filter(|tape| !tape.node_table.is_empty()) {
+            if let Some(qc_source) = qc_source {
                 sources_meta.push(("quality_control", maze_core::event_log::EventedEventKind::QualityControl));
-                tape_sources.push(maze_core::event_log::TapeSource { scope_name: "quality_control", tape: qc_tape });
+                tape_sources.push(qc_source);
                 debug_value_name_sources.push(("quality_control", Vec::new()));
             }
 
@@ -447,10 +490,115 @@ pub fn run_generate<T: Tessellation + 'static>(
             let debug_value_names = maze_core::generation::qualify_debug_value_names(&debug_value_name_sources);
             (Some(merged_tape), debug_value_names, sources_meta)
         }
-        None => (None, Vec::new(), Vec::new()),
-    };
+        (None, Some(qc_source)) => {
+            let sources_meta = vec![("quality_control", maze_core::event_log::EventedEventKind::QualityControl)];
+            let merged_tape = maze_core::event_log::merge_tapes(vec![qc_source]);
+            let debug_value_name_sources: Vec<(&'static str, Vec<(&str, maze_core::event_log::DebugValueKind)>)> = vec![("quality_control", Vec::new())];
+            let debug_value_names = maze_core::generation::qualify_debug_value_names(&debug_value_name_sources);
+            (Some(merged_tape), debug_value_names, sources_meta)
+        }
+        (None, None) => (None, Vec::new(), Vec::new()),
+    }
+}
 
-    Ok(build_generate_result(snapshot_js, debug_tape, debug_value_names, sources))
+#[cfg(test)]
+mod merge_generation_and_qc_tapes_tests {
+    use super::merge_generation_and_qc_tapes;
+    use maze_core::event_log::{EncodedTape, EventedEventKind, EventLog, TapeSource};
+    use maze_core::quality_control::QcEvent;
+
+    fn generation_tape_source() -> TapeSource {
+        let mut log = EventLog::new();
+        log.emit(maze_core::generation::RecursiveBacktrackerEvent::EdgeAdded { from: 0, to: 1, bidirectional: true });
+        TapeSource { scope_name: "generation", tape: log.finish().encode() }
+    }
+
+    fn qc_tape_with_one_event() -> EncodedTape {
+        let mut log = EventLog::new();
+        log.emit(QcEvent::PresetSeeded { edges: vec![(0, 1, false)] });
+        log.finish().encode()
+    }
+
+    fn empty_qc_tape() -> EncodedTape {
+        EventLog::<QcEvent>::new().finish().encode()
+    }
+
+    #[test]
+    fn no_generation_no_qc_yields_no_tape() {
+        let (tape, names, sources) = merge_generation_and_qc_tapes(None, None, Vec::new(), None);
+        assert!(tape.is_none());
+        assert!(names.is_empty());
+        assert!(sources.is_empty());
+    }
+
+    #[test]
+    fn qc_only_no_generation_source_still_yields_a_tape_with_just_the_quality_control_scope() {
+        // GitHub issue #173: qc_experiment mode never has a generation_source, but QC/repair's own
+        // tape (e.g. a PresetSeeded event) must still surface, not be dropped.
+        let (tape, names, sources) = merge_generation_and_qc_tapes(None, None, Vec::new(), Some(qc_tape_with_one_event()));
+        assert!(tape.is_some(), "a standalone QC tape must still produce a merged tape");
+        assert_eq!(sources, vec![("quality_control", EventedEventKind::QualityControl)]);
+        assert!(names.is_empty(), "PresetSeeded declares no debug values");
+    }
+
+    #[test]
+    fn generation_only_no_qc_tape_yields_just_the_generation_scope() {
+        let (tape, _names, sources) = merge_generation_and_qc_tapes(
+            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), None,
+        );
+        assert!(tape.is_some());
+        assert_eq!(sources, vec![("generation", EventedEventKind::RecursiveBacktracker)]);
+    }
+
+    #[test]
+    fn generation_plus_qc_yields_both_scopes_in_order() {
+        let (tape, _names, sources) = merge_generation_and_qc_tapes(
+            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), Some(qc_tape_with_one_event()),
+        );
+        assert!(tape.is_some());
+        assert_eq!(sources, vec![
+            ("generation", EventedEventKind::RecursiveBacktracker),
+            ("quality_control", EventedEventKind::QualityControl),
+        ]);
+    }
+
+    #[test]
+    fn generation_with_a_missing_qc_tape_omits_the_quality_control_scope() {
+        let (tape, _names, sources) = merge_generation_and_qc_tapes(
+            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), None,
+        );
+        assert!(tape.is_some());
+        assert_eq!(sources.len(), 1, "no quality_control scope when qc_tape is None");
+    }
+
+    #[test]
+    fn generation_with_an_empty_qc_tape_still_adds_a_zero_step_quality_control_scope() {
+        // An empty QC tape (e.g. debug_events on but zero repair iterations ran) next to a real
+        // generation source still becomes its own scope — QcEvent's own is_mutating split (not
+        // presence/absence of a scope) is what keeps an empty QC contribution from adding visible
+        // steps to totalSteps; the scope itself existing is harmless and lets narration show
+        // "quality control did nothing" rather than silently omitting the phase.
+        let (tape, _names, sources) = merge_generation_and_qc_tapes(
+            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), Some(empty_qc_tape()),
+        );
+        assert!(tape.is_some());
+        assert_eq!(sources, vec![
+            ("generation", EventedEventKind::RecursiveBacktracker),
+            ("quality_control", EventedEventKind::QualityControl),
+        ]);
+    }
+
+    #[test]
+    fn qc_only_with_an_empty_qc_tape_still_yields_a_zero_step_quality_control_scope() {
+        // GitHub issue #173: qc_experiment mode on a graph with no preset connections and no
+        // repair mutations (e.g. an empty field where no strategy can act) — QC's tape is empty,
+        // but with no generation_source it's the only thing there is to show, so it must still
+        // surface as a (zero-step) scope rather than yield no debug arena at all.
+        let (tape, names, sources) = merge_generation_and_qc_tapes(None, None, Vec::new(), Some(empty_qc_tape()));
+        assert!(tape.is_some(), "an empty QC tape must still produce a merged tape when it's the only source");
+        assert_eq!(sources, vec![("quality_control", EventedEventKind::QualityControl)]);
+        assert!(names.is_empty());
+    }
 }
 
 /// Assembles the final `GenerateResult` from the encoded debug tape buffers — split out of

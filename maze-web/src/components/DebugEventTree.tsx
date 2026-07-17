@@ -215,9 +215,9 @@ export function DebugEventTree() {
   }, [tape, expanded, sourceEventKinds, topLevelScopeKinds, transparentNodeIndices, titleLookup]);
 
   const stepBasedHighlight = useMemo(() => {
-    if (!tape || !stepIndex) return null;
-    return resolveHighlightTarget(tape, stepIndex, debugStep, rowIndexByNodeIndex);
-  }, [tape, stepIndex, debugStep, rowIndexByNodeIndex]);
+    if (!tape || !stepIndex || !debugArena || debugArena.sources.length === 0) return null;
+    return resolveHighlightTarget(tape, stepIndex, debugStep, rowIndexByNodeIndex, debugArena.sources[0].nodeIndex);
+  }, [tape, stepIndex, debugStep, rowIndexByNodeIndex, debugArena]);
   // A row click's own node wins over the step-based target (see `clickedNodeIndex`'s doc comment)
   // as long as it's still visible under the current expand/collapse state — otherwise falls back
   // to the step-based target the same way a stale `debugStep` target would.
