@@ -32,11 +32,11 @@ export interface DebugValueHighlightData {
    *  renderer (`RegionHighlightRenderer` per-node fill vs. `SequenceHighlightRenderer` arrow
    *  chain) a name's layer uses. */
   kindFor: (name: string) => DebugValueKind;
-  /** Resolves a debug value's highlight color — `GenerationRenderer` builds this from
-   *  `buildDebugValuePalette(debugValueNames.length)` indexed by position in the declared name
-   *  list — a small set of calm, analogous hues (not the full-spectrum palette regions use),
-   *  varied by lightness, so simultaneously-toggled debug values read as related shades rather
-   *  than clashing colors, without a hand-picked constant per name. */
+  /** Resolves a debug value's highlight color — `GenerationRenderer` builds this via
+   *  `resolveDebugValueColor` (GitHub issue #164): a predefined color per (algorithm, name) pair
+   *  where one exists, so a name like `"visited"` reads consistently across runs of the same
+   *  algorithm, falling back to a stable slot in the non-toxic random-looking palette
+   *  (`colorUtils.ts`'s `buildPalette`) for undeclared names. */
   colorFor: (name: string) => number;
   cfg: TessellationConfig;
 }

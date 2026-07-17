@@ -15,7 +15,8 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge } from "./renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
-import { canvas, buildDebugValuePalette } from "./colorUtils";
+import { canvas } from "./colorUtils";
+import { resolveDebugValueColor } from "./debugValueColors";
 
 export class GenerationRenderer {
   private readonly gridContainer: Container;
@@ -212,10 +213,12 @@ export class GenerationRenderer {
     if (state.debugMode && state.debugValueToggles.size > 0) {
       const descriptors = state.debugArena?.debugValueNames ?? [];
       if (!this.debugValuePaletteCache || this.debugValuePaletteCache.descriptors !== descriptors) {
-        const palette = buildDebugValuePalette(descriptors.length);
+        const scope = state.debugArena?.algorithmKind ?? "";
         this.debugValuePaletteCache = {
           descriptors,
-          colorByName: new Map(descriptors.map(({ name }, i) => [name, palette[i]])),
+          colorByName: new Map(
+            descriptors.map(({ name }, i) => [name, resolveDebugValueColor(scope, name, i)]),
+          ),
           kindByName: new Map(descriptors.map(({ name, kind }) => [name, kind])),
         };
       }
