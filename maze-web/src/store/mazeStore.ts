@@ -148,10 +148,12 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       error: null,
     });
 
-    // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store
-    // skipConfirmPostEdit=true to avoid double confirmPostEdit (we call it ourselves below)
+    // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.
+    // Its own post-edit fields (filled from the fresh generation snapshot) get overwritten below
+    // if a saved postEdit exists, then confirmPostEdit recomputes analytics over the restored
+    // state either way (see the final confirmPostEdit call below).
     set({ lastUsedSeed: file.generation.seed });
-    generateWithSeed(file.generation.seed, get, set, true, file.generation.qcExperiment);
+    generateWithSeed(file.generation.seed, get, set, file.generation.qcExperiment);
 
     // Only proceed with post-edit and analytics if generation succeeded
     if (get().generationStatus !== "done") return;

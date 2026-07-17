@@ -3,7 +3,7 @@ import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
-import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports } from "../../pixi/postEditUtils";
+import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto } from "../../pixi/postEditUtils";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
@@ -148,7 +148,7 @@ function applyQcExperimentOverrides(config: GenerateConfig): void {
   config.locked_nodes = [];
 }
 
-export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, skipConfirmPostEdit = false, qcExperiment = false): void {
+export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcExperiment = false): void {
   const state = get();
   if (state.isEditingField && state.fieldPoints.size < 2) {
     set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
@@ -212,6 +212,8 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       }
     }
     const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges);
+    const draftEdges = buildPostEditDraftEdgesFromGenerated(snapshot.edges);
+    const draftMeta = { start: snapshot.start, finish: snapshot.finish };
     set({
       nodes: snapshot.nodes,
       edges: snapshot.edges,
@@ -235,22 +237,33 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, ski
       debugStale: false,
       debugValueToggles: new Set(),
       showKruskalDsuGroups: false,
-      postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(snapshot.edges),
+      postEditDraftEdges: draftEdges,
       postEditDraftTeleports: generatedTeleports,
       _nextPostEditTeleportId: nextTeleportId,
       postEditTeleportPendingFrom: null,
-      postEditEdges: null,
-      postEditTeleportEdges: [],
-      postEditMeta: null,
-      postEditAnalytics: null,
-      postEditDraftMeta: { start: snapshot.start, finish: snapshot.finish },
+      // Filled directly from the just-computed `snapshot` (same graph, same analytics) instead
+      // of re-running `confirmPostEdit`'s own `computeAnalytics` wasm call, which would recompute
+      // an identical result from scratch (see GitHub issue #138 profiling).
+      postEditEdges: draftEdges,
+      postEditTeleportEdges: postEditTeleportsToDto(generatedTeleports),
+      postEditMeta: draftMeta,
+      postEditAnalytics: {
+        nodeStats: snapshot.node_stats,
+        edgeStats: snapshot.edge_stats,
+        teleportEdgeStats: snapshot.teleport_edge_stats,
+        routeInfo: snapshot.route_info,
+        navNodes: snapshot.nav_nodes,
+        navEdges: snapshot.nav_edges,
+        graphAnalytics: snapshot.graph_analytics,
+        issues: snapshot.issues,
+      },
+      postEditDraftMeta: draftMeta,
       postEditTool: "wall" as PostEditTool,
       postEditDirty: false,
       mazeDirty: true,
       _generatedStart: snapshot.start,
       _generatedFinish: snapshot.finish,
     });
-    if (!skipConfirmPostEdit) void get().confirmPostEdit();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     set({ error: msg, generationStatus: "error" });

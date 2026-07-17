@@ -114,14 +114,14 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       set({ seed: usedSeed });
     }
     set({ lastUsedSeed: usedSeed, lastUsedQcExperiment: state.qcExperiment });
-    generateWithSeed(usedSeed, get, set, false, state.qcExperiment);
+    generateWithSeed(usedSeed, get, set, state.qcExperiment);
   },
 
   regenerate: () => {
     const state = get();
     if (state.lastUsedSeed === null) return;
     set({ lastUsedQcExperiment: state.qcExperiment });
-    generateWithSeed(state.lastUsedSeed, get, set, false, state.qcExperiment);
+    generateWithSeed(state.lastUsedSeed, get, set, state.qcExperiment);
   },
 
   setQcExperiment: (v) => set((state) => ({ qcExperiment: v, debugStale: debugStaleOf(state) })),
