@@ -5,7 +5,8 @@ import type { PresetConnectionEntry, FieldEdge } from "../fieldEditUtils";
 import { edgeKey, canonicalize, computeInvalidKeysFromCells } from "../fieldEditUtils";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
-import { NODE_RADIUS, WALL_THICKNESS, canvas } from "../colorUtils";
+import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
+import { canvas } from "../colorTokens";
 
 export function buildPresetWallGroups(
   cells: [number, number][],

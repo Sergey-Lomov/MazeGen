@@ -3,7 +3,8 @@ import type { WallEdge } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellVertices, getNeighborData } from "../tessellationGeometry";
 import { drawOneWayTriangle } from "./wallUtils";
-import { canvas, WALL_THICKNESS } from "../colorUtils";
+import { WALL_THICKNESS } from "../renderConstants";
+import { canvas } from "../colorTokens";
 
 const WALL_STYLES = {
   solid:      { color: canvas.wall.default,     cap: "round" as const, join: "round" as const },

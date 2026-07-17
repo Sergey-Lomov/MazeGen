@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { cellCenter } from "./hexGeometry";
-import { NODE_RADIUS } from "./colorUtils";
+import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 

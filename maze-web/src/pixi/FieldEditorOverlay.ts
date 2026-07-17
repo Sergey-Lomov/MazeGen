@@ -8,7 +8,8 @@ import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { OriginRenderer } from "./renderers/OriginRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { buildActiveCells } from "./selectors/fieldSelectors";
-import { canvas, ACTIVE_CELL_ALPHA } from "./colorUtils";
+import { ACTIVE_CELL_ALPHA } from "./renderConstants";
+import { canvas } from "./colorTokens";
 import type { Viewport } from "./renderers/types";
 
 const CELL_HOVER_COLOR = 0x888888;

@@ -394,7 +394,7 @@ matching `onMouseLeave` otherwise, leaving the canvas highlight stuck.
 Owned by `GenerationRenderer`, not `AnalyticsRenderer`/`IssueHighlightOverlay` — per
 `maze-web/CLAUDE.md`'s feature-renderer ownership rule, no renderer instance is shared across
 features. Uses a distinct accent color from Analytics' issue-highlight red (`0xff4444`):
-`canvas.debug.refHighlight` / `base.debugRefHighlight` (`#44ccff`, cyan) in `colorUtils.ts` /
+`canvas.debug.refHighlight` / `base.debugRefHighlight` (`#44ccff`, cyan) in `colorTokens.ts` /
 `palette.ts`, plus a matching DOM pair `ui.debug.refHighlight` (`theme.ts`) for the bubble itself.
 
 Dispatches on `HoveredDebugRef.kind`, holding one instance each of two renderer classes shared

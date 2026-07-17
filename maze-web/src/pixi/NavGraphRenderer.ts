@@ -1,6 +1,6 @@
 import type { NodeDto, NavNodeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { canvas } from "./colorUtils";
+import { canvas } from "./colorTokens";
 import { cellCenter } from "./hexGeometry";
 import { BaseGraphRenderer, buildPathRenderEdges } from "./BaseGraphRenderer";
 import type { Pos, RenderNode } from "./BaseGraphRenderer";

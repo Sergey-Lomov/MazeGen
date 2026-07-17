@@ -1,7 +1,8 @@
 import { Graphics, Text, TextStyle } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { NODE_RADIUS, canvas } from "./colorUtils";
+import { NODE_RADIUS } from "./renderConstants";
+import { canvas } from "./colorTokens";
 import { base, hexToNumber } from "../styles/palette";
 import { cellCenter } from "./hexGeometry";
 import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges } from "./BaseGraphRenderer";

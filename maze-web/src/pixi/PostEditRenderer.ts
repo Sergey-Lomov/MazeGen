@@ -11,7 +11,7 @@ import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
-import { canvas } from "./colorUtils";
+import { canvas } from "./colorTokens";
 import type { NodeDto } from "../wasm/types";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 

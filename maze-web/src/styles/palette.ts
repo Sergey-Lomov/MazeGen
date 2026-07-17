@@ -1,5 +1,5 @@
 // Single source of truth for raw color values, shared by the UI (DOM) and canvas (Pixi) layers.
-// `theme.ts` and `pixi/colorUtils.ts` build their namespaced tokens from these base values.
+// `theme.ts` and `pixi/colorTokens.ts` build their namespaced tokens from these base values.
 
 function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));

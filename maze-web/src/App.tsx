@@ -7,7 +7,7 @@ import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
 import { useMazeStore } from "./store/mazeStore";
 import { ui, typography, disabled } from "./styles/theme";
-import { canvas } from "./pixi/colorUtils";
+import { canvas } from "./pixi/colorTokens";
 import { useLocale } from "./i18n/useLocale";
 import * as m from "~/paraglide/messages";
 

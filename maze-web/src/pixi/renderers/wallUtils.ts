@@ -1,6 +1,6 @@
 import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorUtils";
+import { canvas } from "../colorTokens";
 
 // Draws a direction arrow triangle centered at (cx, cy), pointing in (dx, dy) direction.
 // size controls the scale. Color defaults to canvas.edge.oneWay.

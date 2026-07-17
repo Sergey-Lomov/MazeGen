@@ -6,7 +6,7 @@ import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { canvas } from "./colorUtils";
+import { canvas } from "./colorTokens";
 
 export interface MazeOverlayData {
   nodes: NodeDto[];

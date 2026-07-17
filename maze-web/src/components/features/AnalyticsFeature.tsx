@@ -8,7 +8,7 @@ import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
 import { Modal } from "../Modal";
-import { canvas } from "../../pixi/colorUtils";
+import { canvas } from "../../pixi/colorTokens";
 import * as m from "~/paraglide/messages";
 
 const REGION_CLASS_LEGEND: { cls: keyof typeof canvas.region; label: () => string; desc: () => string }[] = [

@@ -3,7 +3,7 @@ import type { LockEntry } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellCenter } from "../tessellationGeometry";
 import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorUtils";
+import { canvas } from "../colorTokens";
 
 export class LockRenderer {
   private readonly g: Graphics;

@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { TeleportEdge } from "./types";
 import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorUtils";
+import { canvas } from "../colorTokens";
 
 const SQUARE_SIZE = TILE_SIZE * 0.28;
 const SQUARE_STROKE_WIDTH = 3;

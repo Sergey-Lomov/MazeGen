@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { NODE_RADIUS, canvas } from "./colorUtils";
+import { NODE_RADIUS } from "./renderConstants";
+import { canvas } from "./colorTokens";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
 

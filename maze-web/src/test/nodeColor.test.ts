@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { nodeColor } from "../pixi/BaseGraphRenderer";
-import { canvas } from "../pixi/colorUtils";
+import { canvas } from "../pixi/colorTokens";
 
 vi.mock("pixi.js", () => {
   class FakeTextStyle {}

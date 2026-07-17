@@ -3,7 +3,8 @@ import type { Viewport } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
 import { getCellVertices } from "../tessellationGeometry";
-import { canvas, GRID_LINE_ALPHA } from "../colorUtils";
+import { GRID_LINE_ALPHA } from "../renderConstants";
+import { canvas } from "../colorTokens";
 
 export class GridRenderer {
   private readonly g: Graphics;

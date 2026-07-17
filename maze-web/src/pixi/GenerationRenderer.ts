@@ -15,7 +15,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge } from "./renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
-import { canvas } from "./colorUtils";
+import { canvas } from "./colorTokens";
 import { resolveDebugValueColor } from "./debugValueColors";
 
 export class GenerationRenderer {

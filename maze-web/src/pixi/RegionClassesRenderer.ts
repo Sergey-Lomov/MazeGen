@@ -3,7 +3,8 @@ import type { NodeDto, RegionClass } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import type { CellFillGroup } from "./renderers/CellFillRenderer";
-import { canvas, REGION_CLASS_MASK_ALPHA } from "./colorUtils";
+import { REGION_CLASS_MASK_ALPHA } from "./renderConstants";
+import { canvas } from "./colorTokens";
 
 export interface RegionClassesData {
   nodes: NodeDto[];

@@ -2,7 +2,8 @@ import { Container, Graphics } from "pixi.js";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
 import { TILE_SIZE } from "../constants";
-import { canvas, ORIGIN_ALPHA } from "../colorUtils";
+import { ORIGIN_ALPHA } from "../renderConstants";
+import { canvas } from "../colorTokens";
 
 export class OriginRenderer {
   private readonly g: Graphics;
