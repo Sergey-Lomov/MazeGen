@@ -177,7 +177,7 @@ describe("DebugEventTree", () => {
     render(<DebugEventTree />);
     expect(screen.getByText(m["debug.tree.step_scope"]({ index: 1 }))).toBeInTheDocument();
     expect(screen.getByText(m["debug.tree.step_scope"]({ index: 2 }))).toBeInTheDocument();
-    expect(screen.queryByText(/Edge added/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Passage added/)).not.toBeInTheDocument();
   });
 
   it("clicking a step row's body reveals its children without changing debugStep", () => {
@@ -188,7 +188,7 @@ describe("DebugEventTree", () => {
     const firstStepRow = screen.getByText(m["debug.tree.step_scope"]({ index: 1 }));
     fireEvent.click(firstStepRow);
 
-    expect(screen.getByText(/Edge added/)).toBeInTheDocument();
+    expect(screen.getByText(/Passage added/)).toBeInTheDocument();
     expect(setDebugStep).not.toHaveBeenCalled();
   });
 
@@ -357,8 +357,8 @@ describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
     fireEvent.click(screen.getByText(m["debug.tree.commit_scope"]()));
 
     expect(screen.getByText(/Step taken/)).toBeInTheDocument();
-    expect(screen.getByText(/Edge added/)).toBeInTheDocument();
-    expect(screen.getByText(/Tile marked visited/)).toBeInTheDocument();
+    expect(screen.getByText(/Passage added/)).toBeInTheDocument();
+    expect(screen.getByText(/Cell marked visited/)).toBeInTheDocument();
   });
 
   it("renders LoopErased/WalkDeadEnd narration — untouched by buildOneWalkWilsonTape's straight-line walk", () => {

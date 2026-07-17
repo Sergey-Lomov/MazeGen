@@ -4,6 +4,28 @@ Infrastructure for narration-level generation debug logging (GitHub issue #122, 
 
 Module: `maze-core/src/event_log/`.
 
+## Narration Terminology (#167)
+
+Wire-level Rust/TS code (`NodeId`, `EdgeAdded`, event variant names) stays graph-jargon —
+unaffected by this section. But the *user-facing narration text* rendered in the debug tree
+(`messages/en.json`/`ru.json`'s `debug.tree.*` keys, built by each adapter's
+`narrationTokensFor` in `maze-web/src/debug/algorithmRegistry.ts`) had four different words for
+a graph node (tile, node, cell, vertex) and two for a graph edge (edge, connection), mixed
+across algorithms and sometimes within the same enum's narration. Canonical picks, matching the
+non-debug UI's own vocabulary (`field.cell`/`field.cells`, `preset.passage`/`analytics.passages`)
+rather than graph terminology, since the maze reads to a user as a visual grid, not a graph:
+
+- **cell** — a graph node/vertex, in narration text.
+- **passage** — a graph edge/connection, in narration text (covers directed, bidirectional, and
+  teleport passages alike — QC's directed/bidirectional wording stays, only the noun changes).
+
+Verb tense: mutating-event narration (an action that happened) is past tense/passive
+("added", "removed", "chosen", "rejected", "proposed", "declined") site-wide. Trace-event
+narration describing a roll/comparison outcome may read as a short clause instead
+("roots equal", "corridor not continued") — not required to be past tense, but should stay
+consistent with sibling variants of the same event (e.g. a `fired`/`not_fired` pair must use the
+same tense on both branches).
+
 ## Core Concepts
 
 ### DebugEvent

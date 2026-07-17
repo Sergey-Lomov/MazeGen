@@ -46,7 +46,7 @@ function estimateRowHeight(tokens: Token[], depth: number, containerWidth: numbe
 }
 
 /** Bubble label — coordinates only, per user decision (narration text around it stays wordless,
- *  e.g. "Edge added", not "Edge added: 3:18 → 3:19"). Format is `x:y`, no parens/comma. `issue`
+ *  e.g. "Passage added", not "Passage added: 3:18 → 3:19"). Format is `x:y`, no parens/comma. `issue`
  *  tokens are the one exception: there's no id to format, so the label is the issue kind's own
  *  resolved display name (`resolveIssue`, the same registry `IssuesBlock`'s `IssueBubble` reads),
  *  not a coordinate. */
