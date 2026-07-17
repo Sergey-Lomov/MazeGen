@@ -241,7 +241,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                           />
                         ) : (
                           <span style={styles.ruleCardTitleText}>
-                            {slot.producedBy.length === 0 ? `${slot.name} (${slot.label})` : slot.name}
+                            {slot.name === slot.label ? slot.name : `${slot.name} (${slot.label})`}
                           </span>
                         )}
                         <div style={styles.ruleCardTools}>

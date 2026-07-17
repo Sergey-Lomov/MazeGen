@@ -751,7 +751,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
       { stageTitle: () => undefined, ruleTitle: () => undefined, checkTypeId: (id) => (id === "r1:check1" ? "min_loop_length" : undefined) },
     );
     expect(tokens).toEqual([
-      { kind: "text", text: 'Check "Minimum loop length": issue found ' },
+      { kind: "text", text: 'Check "Min length": issue found ' },
       { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop shorter than 10 tiles"] },
     ]);
   });
