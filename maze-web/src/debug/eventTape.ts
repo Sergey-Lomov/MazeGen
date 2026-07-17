@@ -87,6 +87,7 @@ export const EDGE_BASED_TAG = {
   PRESET_SKIPPED: 17,
   NODE_ACTIVATED: 18,
   SRC_EXHAUSTED: 19,
+  CYCLIC_ALREADY_ROLLED: 20,
 } as const;
 
 /** `CustomVertexBased` event wire tags — mirrors `wire_tags` in
@@ -1278,6 +1279,7 @@ export type EdgeBasedEvent =
   | { kind: "TeleportRolled"; src: bigint; roll: number; teleportChance: number; fired: boolean }
   | { kind: "TeleportAlreadyRolled"; src: bigint }
   | { kind: "CyclicRolled"; src: bigint; roll: number; cyclicity: number; fired: boolean }
+  | { kind: "CyclicAlreadyRolled"; src: bigint }
   | { kind: "CandidatePoolBuilt"; src: bigint; geometric: boolean; candidates: bigint[] }
   | { kind: "SrcExhaustedEmptyPool"; src: bigint }
   | { kind: "CyclicCandidatesComputed"; src: bigint; geometric: boolean; candidates: bigint[] }
@@ -1381,6 +1383,9 @@ export function decodeEdgeBasedEvent(tag: number, bytes: Uint8Array): EdgeBasedE
         cyclicity: readF64(bytes, 16),
         fired: bytes[24] !== 0,
       };
+    case EDGE_BASED_TAG.CYCLIC_ALREADY_ROLLED:
+      expectLen(tag, bytes, 8);
+      return { kind: "CyclicAlreadyRolled", src: readNodeId(bytes, 0) };
     case EDGE_BASED_TAG.CANDIDATE_POOL_BUILT: {
       const src = readNodeId(bytes, 0);
       const geometric = bytes[8] !== 0;

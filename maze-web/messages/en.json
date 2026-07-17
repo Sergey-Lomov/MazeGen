@@ -141,6 +141,7 @@
   "debug.tree.teleport_already_rolled": "Teleport already rolled for this source, skipped",
   "debug.tree.cyclic_rolled_fired": "Cyclicity {param}, roll {roll} (< {param}) → extra cyclic edge",
   "debug.tree.cyclic_rolled_not_fired": "Cyclicity {param}, roll {roll} (≥ {param}) → no cyclic edge",
+  "debug.tree.cyclic_already_rolled": "Cyclicity already rolled for this source, skipped",
   "debug.tree.candidate_pool_built_geometric": "{count} geometric candidate(s) found",
   "debug.tree.candidate_pool_built_teleport": "{count} teleport candidate(s) found",
   "debug.tree.src_exhausted_empty_pool": "No reachable node left, marked completed",

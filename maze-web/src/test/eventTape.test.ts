@@ -963,6 +963,10 @@ describe("decodeEdgeBasedEvent", () => {
     });
   });
 
+  it("decodes CyclicAlreadyRolled (8 bytes)", () => {
+    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_ALREADY_ROLLED, u64le(1n))).toEqual({ kind: "CyclicAlreadyRolled", src: 1n });
+  });
+
   it("decodes CandidatePoolBuilt (variable length)", () => {
     expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CANDIDATE_POOL_BUILT, candidatePoolBuiltPayload(1n, true, [2n, 3n]))).toEqual({
       kind: "CandidatePoolBuilt", src: 1n, geometric: true, candidates: [2n, 3n],
@@ -1051,6 +1055,7 @@ describe("isMutatingEdgeBasedEvent", () => {
 
     expect(isMutatingEdgeBasedEvent({ kind: "CorridorRollSkipped" })).toBe(false);
     expect(isMutatingEdgeBasedEvent({ kind: "TeleportAlreadyRolled", src: 1n })).toBe(false);
+    expect(isMutatingEdgeBasedEvent({ kind: "CyclicAlreadyRolled", src: 1n })).toBe(false);
     expect(isMutatingEdgeBasedEvent({ kind: "PresetSkipped", src: 1n, dst: 2n })).toBe(false);
   });
 });

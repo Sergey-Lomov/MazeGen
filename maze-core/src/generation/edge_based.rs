@@ -18,6 +18,7 @@ mod wire_tags {
     pub const TELEPORT_ROLLED: u16 = 5;
     pub const TELEPORT_ALREADY_ROLLED: u16 = 6;
     pub const CYCLIC_ROLLED: u16 = 7;
+    pub const CYCLIC_ALREADY_ROLLED: u16 = 20;
     pub const CANDIDATE_POOL_BUILT: u16 = 8;
     pub const SRC_EXHAUSTED_EMPTY_POOL: u16 = 9;
     pub const CYCLIC_CANDIDATES_COMPUTED: u16 = 10;
@@ -71,8 +72,14 @@ pub enum EdgeBasedEvent {
     /// skipped this time and treated as not-fired, without consuming a new RNG sample.
     TeleportAlreadyRolled { src: NodeId },
     /// The cyclic-edge roll for this step against `params.cyclicity`, decided independently of
-    /// the teleport roll. `fired` is `roll < cyclicity`.
+    /// the teleport roll — guarded to at most once per node's lifetime as `src` (see
+    /// `CyclicAlreadyRolled`), mirroring `TeleportRolled`/`TeleportAlreadyRolled`. `fired` is
+    /// `roll < cyclicity`.
     CyclicRolled { src: NodeId, roll: f64, cyclicity: f64, fired: bool },
+    /// `src` already had its cyclic chance rolled during an earlier pass as `src` (a node can
+    /// become `src` multiple times before exhausting its geometric neighbors) — the roll is
+    /// skipped this time and treated as not-fired, without consuming a new RNG sample.
+    CyclicAlreadyRolled { src: NodeId },
     /// The candidate pool built for the main dst choice: `geometric = true` means unseen field
     /// neighbors of `src`; `geometric = false` means every unseen node in the graph (the teleport
     /// pool). Empty exactly when the following event is `SrcExhaustedEmptyPool`.
@@ -222,6 +229,7 @@ impl EncodeEventPayload for EdgeBasedEvent {
             EdgeBasedEvent::TeleportRolled { .. } => wire_tags::TELEPORT_ROLLED,
             EdgeBasedEvent::TeleportAlreadyRolled { .. } => wire_tags::TELEPORT_ALREADY_ROLLED,
             EdgeBasedEvent::CyclicRolled { .. } => wire_tags::CYCLIC_ROLLED,
+            EdgeBasedEvent::CyclicAlreadyRolled { .. } => wire_tags::CYCLIC_ALREADY_ROLLED,
             EdgeBasedEvent::CandidatePoolBuilt { .. } => wire_tags::CANDIDATE_POOL_BUILT,
             EdgeBasedEvent::SrcExhaustedEmptyPool { .. } => wire_tags::SRC_EXHAUSTED_EMPTY_POOL,
             EdgeBasedEvent::CyclicCandidatesComputed { .. } => wire_tags::CYCLIC_CANDIDATES_COMPUTED,
@@ -282,6 +290,9 @@ impl EncodeEventPayload for EdgeBasedEvent {
                 out.extend_from_slice(&roll.to_le_bytes());
                 out.extend_from_slice(&cyclicity.to_le_bytes());
                 out.push(if *fired { 1 } else { 0 });
+            }
+            EdgeBasedEvent::CyclicAlreadyRolled { src } => {
+                out.extend_from_slice(&src.to_le_bytes());
             }
             EdgeBasedEvent::CandidatePoolBuilt { src, geometric, candidates } => {
                 out.extend_from_slice(&src.to_le_bytes());
@@ -360,11 +371,14 @@ struct NodeEntry {
     /// same node's effective teleport probability would compound with its degree instead of
     /// applying once per node.
     teleport_rolled: bool,
+    /// Whether `cyclicity` has already been rolled for this node while it was `src`, mirroring
+    /// `teleport_rolled` — see `CyclicAlreadyRolled` and `roll_cyclic`.
+    cyclic_rolled: bool,
 }
 
 impl NodeEntry {
     fn unseen() -> Self {
-        Self { state: NodeState::Unseen, parent: None, tree_depth: 0, teleport_rolled: false }
+        Self { state: NodeState::Unseen, parent: None, tree_depth: 0, teleport_rolled: false, cyclic_rolled: false }
     }
 }
 
@@ -393,7 +407,7 @@ pub fn generate<T: Tessellation>(
 
     // Ensure start is Active.
     if nodes.get(&start).map_or(true, |e| e.state == NodeState::Unseen) {
-        nodes.insert(start, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 0, teleport_rolled: false });
+        nodes.insert(start, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 0, teleport_rolled: false, cyclic_rolled: false });
         active.push(start);
         if let Some(log) = event_log.as_deref_mut() {
             log.emit(EdgeBasedEvent::NodeActivated { node: start, parent: None, tree_depth: 0 });
@@ -450,10 +464,17 @@ pub fn generate<T: Tessellation>(
             }
         }
 
-        let cyclic_roll = rng.random::<f64>();
-        let cyclic_flag = cyclic_roll < params.cyclicity;
+        let cyclic_roll = roll_cyclic(src, &mut nodes, params, &mut rng);
+        let cyclic_flag = cyclic_roll.map(|(_, fired)| fired).unwrap_or(false);
         if let Some(g) = step_scope.as_mut() {
-            g.emit(EdgeBasedEvent::CyclicRolled { src, roll: cyclic_roll, cyclicity: params.cyclicity, fired: cyclic_flag });
+            match cyclic_roll {
+                Some((roll, fired)) => {
+                    g.emit(EdgeBasedEvent::CyclicRolled { src, roll, cyclicity: params.cyclicity, fired });
+                }
+                None => {
+                    g.emit(EdgeBasedEvent::CyclicAlreadyRolled { src });
+                }
+            }
         }
         let use_geometric_pool = !teleport_flag || cyclic_flag;
 
@@ -524,7 +545,7 @@ pub fn generate<T: Tessellation>(
         }
 
         let depth = nodes.get(&src).map(|e| e.tree_depth + 1).unwrap_or(1);
-        nodes.insert(dst, NodeEntry { state: NodeState::Active, parent: Some(src), tree_depth: depth, teleport_rolled: false });
+        nodes.insert(dst, NodeEntry { state: NodeState::Active, parent: Some(src), tree_depth: depth, teleport_rolled: false, cyclic_rolled: false });
         active.push(dst);
         if let Some(g) = step_scope.as_mut() {
             g.emit(EdgeBasedEvent::NodeActivated { node: dst, parent: Some(src), tree_depth: depth });
@@ -584,6 +605,26 @@ fn roll_teleport(
     let roll = rng.random::<f64>();
     let hit = roll < elements.teleport_chance;
     if let Some(entry) = nodes.get_mut(&src) { entry.teleport_rolled = true; }
+    Some((roll, hit))
+}
+
+/// Rolls `cyclicity` for `src`, guarded to at most once per node (`NodeEntry.cyclic_rolled`),
+/// mirroring `roll_teleport` — a node may become `src` multiple times before exhausting its
+/// geometric neighbors, so without this guard the same node's effective cyclic-edge probability
+/// would compound with its degree instead of applying once per node.
+/// Returns `None` when the roll was skipped (already rolled for this node — see
+/// `EdgeBasedEvent::CyclicAlreadyRolled`), or `Some((roll, fired))` when a fresh roll happened.
+fn roll_cyclic(
+    src: NodeId,
+    nodes: &mut HashMap<NodeId, NodeEntry>,
+    params: &EdgeBasedParams,
+    rng: &mut MazeRng,
+) -> Option<(f64, bool)> {
+    let already_rolled = nodes.get(&src).map_or(false, |e| e.cyclic_rolled);
+    if already_rolled { return None; }
+    let roll = rng.random::<f64>();
+    let hit = roll < params.cyclicity;
+    if let Some(entry) = nodes.get_mut(&src) { entry.cyclic_rolled = true; }
     Some((roll, hit))
 }
 

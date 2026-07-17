@@ -161,8 +161,8 @@ fn choose_src_returns_last_dst_when_corridor_length_one() {
     let neighbor = field.neighbors(center)[0];
 
     let mut nodes: HashMap<_, _> = all.iter().map(|&n| (n, NodeEntry::unseen())).collect();
-    nodes.insert(center,   NodeEntry { state: NodeState::Active, parent: None,          tree_depth: 0, teleport_rolled: false });
-    nodes.insert(neighbor, NodeEntry { state: NodeState::Active, parent: Some(center),  tree_depth: 1, teleport_rolled: false });
+    nodes.insert(center,   NodeEntry { state: NodeState::Active, parent: None,          tree_depth: 0, teleport_rolled: false, cyclic_rolled: false });
+    nodes.insert(neighbor, NodeEntry { state: NodeState::Active, parent: Some(center),  tree_depth: 1, teleport_rolled: false, cyclic_rolled: false });
 
     let active = vec![center, neighbor];
     let params = EdgeBasedParams { corridor_length: 1.0, depth_first: 0.5, branching: 0.0, directionality: 0.0, cyclicity: 0.0 };
@@ -187,8 +187,8 @@ fn choose_src_ignores_corridor_when_length_zero() {
     let b = all[1];
 
     let mut nodes: HashMap<_, _> = all.iter().map(|&n| (n, NodeEntry::unseen())).collect();
-    nodes.insert(a, NodeEntry { state: NodeState::Active, parent: None,    tree_depth: 0, teleport_rolled: false });
-    nodes.insert(b, NodeEntry { state: NodeState::Active, parent: Some(a), tree_depth: 1, teleport_rolled: false });
+    nodes.insert(a, NodeEntry { state: NodeState::Active, parent: None,    tree_depth: 0, teleport_rolled: false, cyclic_rolled: false });
+    nodes.insert(b, NodeEntry { state: NodeState::Active, parent: Some(a), tree_depth: 1, teleport_rolled: false, cyclic_rolled: false });
 
     let active = vec![a, b];
     let params = EdgeBasedParams { corridor_length: 0.0, depth_first: 0.5, branching: 0.0, directionality: 0.0, cyclicity: 0.0 };
@@ -215,8 +215,8 @@ fn choose_src_depth_first_one_prefers_newest() {
     let newest = all[3]; // position 3 in active (last)
 
     let mut nodes: HashMap<_, _> = all.iter().map(|&n| (n, NodeEntry::unseen())).collect();
-    nodes.insert(oldest, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 0, teleport_rolled: false });
-    nodes.insert(newest, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 1, teleport_rolled: false });
+    nodes.insert(oldest, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 0, teleport_rolled: false, cyclic_rolled: false });
+    nodes.insert(newest, NodeEntry { state: NodeState::Active, parent: None, tree_depth: 1, teleport_rolled: false, cyclic_rolled: false });
 
     let active = vec![oldest, newest];
     let params = EdgeBasedParams { corridor_length: 0.0, depth_first: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 0.0 };

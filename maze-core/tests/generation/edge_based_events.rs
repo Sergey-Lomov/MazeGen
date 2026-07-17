@@ -203,6 +203,35 @@ fn teleport_elements() -> maze_core::generation::ElementsConfig {
 }
 
 #[test]
+fn edge_based_cyclic_rolled_at_most_once_per_node() {
+    // Mirrors TeleportRolled's once-per-node guard (GitHub issue #165): a node that becomes
+    // `src` multiple times before exhausting its geometric neighbors must only get a fresh
+    // CyclicRolled once — every subsequent pass as `src` must emit CyclicAlreadyRolled instead,
+    // never another CyclicRolled for the same node.
+    let (mut graph, field, start) = build(6, 6);
+    let params = EdgeBasedParams { corridor_length: 0.0, branching: 1.0, depth_first: 0.5, directionality: 0.0, cyclicity: 0.5 };
+    let elements = no_one_way_elements();
+    let mut log: EventLog<EdgeBasedEvent> = EventLog::new();
+    generate_edge_based(&mut graph, &field, 3, start, &params, &elements, &empty_preset(), Some(&mut log));
+    let tape = log.finish();
+
+    let mut fresh_rolls: std::collections::HashMap<maze_core::ids::NodeId, usize> = std::collections::HashMap::new();
+    for child in tape.root().children() {
+        if let NodePayload::Scope(_) = child.payload() {
+            for step_child in child.children() {
+                if let NodePayload::Event(EdgeBasedEvent::CyclicRolled { src, .. }) = step_child.payload() {
+                    *fresh_rolls.entry(*src).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    for (src, count) in &fresh_rolls {
+        assert_eq!(*count, 1, "node {src:?} got a fresh CyclicRolled {count} times, expected at most once");
+    }
+}
+
+#[test]
 fn edge_based_every_step_scope_is_nonempty_and_directly_under_root() {
     let (mut graph, field, start) = build(6, 6);
     let params = EdgeBasedParams::default();

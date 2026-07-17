@@ -358,6 +358,8 @@ function narrationTokensForEdgeBased(event: EdgeBasedEvent): Token[] {
           ? m["debug.tree.cyclic_rolled_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) })
           : m["debug.tree.cyclic_rolled_not_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) }),
       }];
+    case "CyclicAlreadyRolled":
+      return [{ kind: "text", text: m["debug.tree.cyclic_already_rolled"]() }];
     case "CandidatePoolBuilt":
       return [{
         kind: "text",

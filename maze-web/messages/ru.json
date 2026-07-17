@@ -147,6 +147,7 @@
   "debug.tree.teleport_already_rolled": "Ролл телепорта для этого источника уже был сделан ранее, пропущен",
   "debug.tree.cyclic_rolled_fired": "Параметр цикличности {param}, ролл {roll} (< {param}) → добавляем циклическое ребро",
   "debug.tree.cyclic_rolled_not_fired": "Параметр цикличности {param}, ролл {roll} (≥ {param}) → циклическое ребро не добавляем",
+  "debug.tree.cyclic_already_rolled": "Ролл цикличности для этого источника уже был сделан ранее, пропущен",
   "debug.tree.candidate_pool_built_geometric": "Найдено {count} геометрических кандидатов",
   "debug.tree.candidate_pool_built_teleport": "Найдено {count} кандидатов для телепорта",
   "debug.tree.src_exhausted_empty_pool": "Нет доступных узлов, помечено завершённым",
