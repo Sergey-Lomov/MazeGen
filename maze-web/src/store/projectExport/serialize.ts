@@ -24,6 +24,8 @@ export function serializeProject(state: MazeState): ProjectFile {
       initial: state.initialConfig,
       elements: state.elementsConfig,
       qcExperiment: state.qcExperiment,
+      seedHistory: state.seedHistory,
+      seedHistoryIndex: state.seedHistoryIndex,
     },
     quality: {
       // `nextLocalCheckId` deliberately omitted — recomputed on load, see CheckInstance's doc

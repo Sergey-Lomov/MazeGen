@@ -58,7 +58,10 @@ Single Zustand store (`useMazeStore`) for all application state. No local compon
 |-------|------|-------------|
 | `seed` | `number` | RNG seed |
 | `randomSeed` | `boolean` | Use random seed on each generate |
-| `lastUsedSeed` | `number \| null` | Seed from last generate (for regenerate) |
+| `lastUsedSeed` | `number \| null` | Seed from last generate (used by `buildExactGenerateCallPayload` debug export) |
+| `seedHistory` | `number[]` | Stack of past generate seeds, oldest first, capped at 20 (oldest dropped) |
+| `seedHistoryIndex` | `number` | Index into `seedHistory` of the currently-shown seed; meaningful only when `seedHistory.length > 0` |
+| `seedAttachedToHistory` | `boolean` | True right after history navigation; false after a hand-edited seed. Only affects whether `generate()` mutates history, not the truncation point (always `seedHistoryIndex`) |
 | `generationStatus` | `"idle" \| "done" \| "error"` | Last generation result |
 | `initialConfig` | `InitialGenerationConfig` | Algorithm + params |
 | `elementsConfig` | `ElementsConfig` | One-way chance etc. |
@@ -131,8 +134,8 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 - `setTessellationConfig(cfg)` — full config override, derives kind/shape from config type
 
 ### Generation
-- `generate()` — generates with current (possibly random) seed; sets `debugArena` if `debugMode`
-- `regenerate()` — repeats generate with `lastUsedSeed`
+- `generate()` — generates with current (possibly random) seed; sets `debugArena` if `debugMode`. Also updates `seedHistory`: truncates from `seedHistoryIndex` and appends the used seed (capped at 20, oldest dropped), unless this is a repeat-generate on the exact seed just navigated to via history (`seedAttachedToHistory` and unchanged)
+- `seedHistoryBack()` / `seedHistoryForward()` / `seedHistoryJump(index)` — move `seedHistoryIndex` and copy that seed into `seed`; does not trigger generation. Also turns `randomSeed` off. No-op past either end of history
 - `reset()` — clears maze data
 - `setDebugMode(v)` — enable/disable; disabling also clears `debugStale`
 - `setDebugStep(n)` — set current step

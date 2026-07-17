@@ -8,6 +8,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     savedConfigs: {},
     seed: 42,
     randomSeed: false,
+    seedHistory: [],
+    seedHistoryIndex: 0,
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: {},
     qcExperiment: false,
@@ -84,6 +86,34 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     delete raw.generation.qcExperiment;
     const reparsed = parseAndValidate(raw);
     expect(reparsed.generation.qcExperiment).toBe(false);
+  });
+
+  it("round-trips a non-empty seed history and index", () => {
+    const state = makeState({ seedHistory: [10, 20, 30], seedHistoryIndex: 1 });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.generation.seedHistory).toEqual([10, 20, 30]);
+    expect(reparsed.generation.seedHistoryIndex).toBe(1);
+  });
+
+  it("defaults seedHistory/seedHistoryIndex for a project file saved before seed history existed", () => {
+    const state = makeState();
+    const raw = JSON.parse(JSON.stringify(serializeProject(state)));
+    delete raw.generation.seedHistory;
+    delete raw.generation.seedHistoryIndex;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.generation.seedHistory).toEqual([]);
+    expect(reparsed.generation.seedHistoryIndex).toBe(0);
+  });
+
+  it("drops non-integer garbage from seedHistory and clamps an out-of-range seedHistoryIndex", () => {
+    const state = makeState({ seedHistory: [10, 20, 30], seedHistoryIndex: 2 });
+    const raw = JSON.parse(JSON.stringify(serializeProject(state)));
+    raw.generation.seedHistory = [10, NaN, "20", 1.5, 30];
+    raw.generation.seedHistoryIndex = 99;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.generation.seedHistory).toEqual([10, 30]);
+    expect(reparsed.generation.seedHistoryIndex).toBe(1);
   });
 
   it("defaults repair limits for a project file saved before this setting existed", () => {

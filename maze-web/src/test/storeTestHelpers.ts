@@ -111,6 +111,11 @@ export const mockGenerateMazeResult = { snapshot: mockSnapshot, debugTape: undef
 export function baseStoreState() {
   return {
     seed: 42,
+    randomSeed: false,
+    lastUsedSeed: null,
+    seedHistory: [],
+    seedHistoryIndex: 0,
+    seedAttachedToHistory: false,
     tessellationKind: "square" as const,
     squareShape: "rect" as const,
     hexShape: "parallelogram" as const,

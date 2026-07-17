@@ -374,6 +374,15 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // Optional — absent in project files saved before QC Only became a persistent toggle (see
   // GitHub issue #96); old files default to off, same as a fresh store.
   const qcExperiment = optBool(genObj, "qcExperiment", false);
+  // Optional — absent in project files saved before seed history existed (see GitHub issue #114).
+  // Elements are filtered to safe integers, not just `typeof === "number"`, to drop NaN/Infinity/
+  // fractional garbage from a corrupted file. `seedHistoryIndex` is clamped into range rather than
+  // rejected outright — an out-of-range or missing index just falls back to "most recent".
+  const rawSeedHistory = Array.isArray(genObj.seedHistory) ? genObj.seedHistory : [];
+  const seedHistory = rawSeedHistory.filter((v): v is number => typeof v === "number" && Number.isSafeInteger(v));
+  const seedHistoryIndex = seedHistory.length === 0
+    ? 0
+    : Math.min(Math.max(optNumber(genObj, "seedHistoryIndex", seedHistory.length - 1), 0), seedHistory.length - 1);
 
   // quality
   const qualObj = assertObject(migrated.quality, "quality");
@@ -496,7 +505,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   return {
     version: CURRENT_VERSION,
     tessellation: { config, savedConfigs },
-    generation: { seed, randomSeed, initial, elements, qcExperiment },
+    generation: { seed, randomSeed, initial, elements, qcExperiment, seedHistory, seedHistoryIndex },
     quality: { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
     presets: {
       connections,

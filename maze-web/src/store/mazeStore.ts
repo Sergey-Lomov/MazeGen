@@ -76,6 +76,10 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       elementsConfig: file.generation.elements,
       qcExperiment: file.generation.qcExperiment,
       lastUsedQcExperiment: file.generation.qcExperiment,
+      seedHistory: file.generation.seedHistory,
+      seedHistoryIndex: file.generation.seedHistoryIndex,
+      seedAttachedToHistory: file.generation.seedHistory.length > 0
+        && file.generation.seedHistory[file.generation.seedHistoryIndex] === file.generation.seed,
       // quality
       // nextLocalCheckId recomputed below, not stored in the project file — see CheckInstance's
       // doc comment in storeTypes.ts.

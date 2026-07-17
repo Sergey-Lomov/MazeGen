@@ -38,7 +38,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
   showFieldOrigin: true,
   fieldDirty: false,
 
-  setSeed: (seed) => set({ seed, error: null }),
+  setSeed: (seed) => set({ seed, error: null, seedAttachedToHistory: false }),
 
   setPreviewKind: (kind) => set((state) => ({
     previewKind: kind,

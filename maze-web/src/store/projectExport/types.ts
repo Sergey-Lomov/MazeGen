@@ -86,6 +86,8 @@ export interface ProjectFile {
     initial: InitialGenerationConfig;
     elements: ElementsConfig;
     qcExperiment: boolean;
+    seedHistory: number[];
+    seedHistoryIndex: number;
   };
   quality: {
     rules: ProjectFileQcRule[];

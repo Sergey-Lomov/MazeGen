@@ -44,6 +44,9 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   timing: null,
   randomSeed: false,
   lastUsedSeed: null,
+  seedHistory: [],
+  seedHistoryIndex: 0,
+  seedAttachedToHistory: false,
   qcExperiment: false,
   lastUsedQcExperiment: false,
   generationStatus: "idle" as const,
@@ -111,18 +114,50 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     let usedSeed = state.seed;
     if (state.randomSeed) {
       usedSeed = Math.floor(Math.random() * 1_000_000);
-      set({ seed: usedSeed });
     }
-    set({ lastUsedSeed: usedSeed, lastUsedQcExperiment: state.qcExperiment });
+
+    // Repeat-generate on the exact seed just navigated to (Back/Forward/Jump, unedited) leaves
+    // history untouched. Anything else — a new seed, or a hand-edited one, even if it happens to
+    // match an old value — truncates from the current position and appends, standard undo/redo
+    // stack semantics. Truncation point is always `seedHistoryIndex`, regardless of how it got
+    // there (navigation or a prior generate).
+    const reuseSameHistorySeed = state.seedAttachedToHistory
+      && state.seedHistory.length > 0
+      && state.seedHistory[state.seedHistoryIndex] === usedSeed;
+    const historyPatch = reuseSameHistorySeed
+      ? {}
+      : (() => {
+          const truncated = state.seedHistory.slice(0, state.seedHistoryIndex + (state.seedHistory.length > 0 ? 1 : 0));
+          let next = [...truncated, usedSeed];
+          if (next.length > 20) next = next.slice(next.length - 20);
+          return { seedHistory: next, seedHistoryIndex: next.length - 1, seedAttachedToHistory: true };
+        })();
+
+    set({
+      seed: usedSeed,
+      lastUsedSeed: usedSeed,
+      lastUsedQcExperiment: state.qcExperiment,
+      ...historyPatch,
+    });
     generateWithSeed(usedSeed, get, set, state.qcExperiment);
   },
 
-  regenerate: () => {
-    const state = get();
-    if (state.lastUsedSeed === null) return;
-    set({ lastUsedQcExperiment: state.qcExperiment });
-    generateWithSeed(state.lastUsedSeed, get, set, state.qcExperiment);
-  },
+  seedHistoryBack: () => set((state) => {
+    if (state.seedHistory.length === 0 || state.seedHistoryIndex <= 0) return {};
+    const idx = state.seedHistoryIndex - 1;
+    return { seed: state.seedHistory[idx], seedHistoryIndex: idx, seedAttachedToHistory: true, randomSeed: false, error: null };
+  }),
+
+  seedHistoryForward: () => set((state) => {
+    if (state.seedHistoryIndex >= state.seedHistory.length - 1) return {};
+    const idx = state.seedHistoryIndex + 1;
+    return { seed: state.seedHistory[idx], seedHistoryIndex: idx, seedAttachedToHistory: true, randomSeed: false, error: null };
+  }),
+
+  seedHistoryJump: (index) => set((state) => {
+    if (index < 0 || index >= state.seedHistory.length) return {};
+    return { seed: state.seedHistory[index], seedHistoryIndex: index, seedAttachedToHistory: true, randomSeed: false, error: null };
+  }),
 
   setQcExperiment: (v) => set((state) => ({ qcExperiment: v, debugStale: debugStaleOf(state) })),
 

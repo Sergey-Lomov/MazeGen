@@ -412,6 +412,20 @@ export interface GenerationState {
   // Runtime generation state
   randomSeed: boolean;
   lastUsedSeed: number | null;
+  /** Stack of seeds used by past `generate()` calls, oldest first, capped at 20 (oldest dropped).
+   *  Persisted in the project file. Navigation (`seedHistoryBack/Forward/Jump`) only updates
+   *  `seed`, it never triggers generation. See `Specs/`-adjacent doc in `store.md`. */
+  seedHistory: number[];
+  /** Index into `seedHistory` of the seed currently shown in the seed field — meaningful only
+   *  when `seedHistory.length > 0`; always `0 <= seedHistoryIndex <= seedHistory.length - 1` in
+   *  that case. Undefined/unused while `seedHistory` is empty. */
+  seedHistoryIndex: number;
+  /** True right after seed-history navigation (Back/Forward/Jump); false after the seed field was
+   *  edited by hand (`setSeed`). Distinguishes "repeat generate on the exact seed just navigated
+   *  to" (history untouched) from "generate with a new/edited seed" (history truncated from
+   *  `seedHistoryIndex` and the new seed appended) — see `generate()`. Does not affect where the
+   *  truncation point is; that is always `seedHistoryIndex`. */
+  seedAttachedToHistory: boolean;
   /** Persistent QC Only mode toggle — part of the serialized project file (`generation.qcExperiment`
    *  in `ProjectFile`), so loading a project restores it and the next `generate`/`regenerate` call
    *  reproduces `qc_experiment` correctly without the user re-selecting the mode. This is the
@@ -468,8 +482,18 @@ export interface GenerationState {
 
 export interface GenerationActions {
   generate: () => void;
+  /** Moves `seedHistoryIndex` one step back and copies that seed into `seed` — does not trigger
+   *  generation. No-op at the start of history. Also turns `randomSeed` off (a navigated-to seed
+   *  would otherwise be discarded by the next `generate()`). */
+  seedHistoryBack: () => void;
+  /** Same as `seedHistoryBack` but one step forward. No-op at the end of history. */
+  seedHistoryForward: () => void;
+  /** Jumps `seedHistoryIndex` directly to `index` and copies that seed into `seed` — does not
+   *  trigger generation. No-op if `index` is out of range. Also turns `randomSeed` off, same as
+   *  `seedHistoryBack`/`seedHistoryForward`. */
+  seedHistoryJump: (index: number) => void;
   /** Sets the persistent QC Only mode toggle — see `GenerationState.qcExperiment`'s doc comment.
-   * When on, `generate`/`regenerate` skip the generation algorithm entirely and run QC/repair
+   * When on, `generate` skips the generation algorithm entirely and runs QC/repair
    * directly on the preset-seeded graph (preset connections applied, no algorithmic edges added). */
   setQcExperiment: (v: boolean) => void;
   reset: () => void;
@@ -576,7 +600,6 @@ export interface GenerationActions {
   toggleDebugValue: (name: string) => void;
   /** Flips `showKruskalDsuGroups`. */
   toggleKruskalDsuGroups: () => void;
-  regenerate: () => void;
   setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;
   setRepairTimeBudgetSecs: (v: number | null) => void;

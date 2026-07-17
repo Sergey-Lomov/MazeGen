@@ -1,6 +1,8 @@
-﻿import React, { useState } from "react";
+﻿import React, { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
+import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
 import { ConfirmModal } from "../ConfirmModal";
 import { sharedStyles } from "../../styles/shared";
 import { ui, radius, typography, muted } from "../../styles/theme";
@@ -18,7 +20,8 @@ interface Props {
 export function GenerationFeature({ canGenerate }: Props) {
   const seed = useMazeStore((s) => s.seed);
   const randomSeed = useMazeStore((s) => s.randomSeed);
-  const lastUsedSeed = useMazeStore((s) => s.lastUsedSeed);
+  const seedHistory = useMazeStore((s) => s.seedHistory);
+  const seedHistoryIndex = useMazeStore((s) => s.seedHistoryIndex);
   const generationStatus = useMazeStore((s) => s.generationStatus);
   const debugMode = useMazeStore((s) => s.debugMode);
   const error = useMazeStore((s) => s.error);
@@ -28,17 +31,22 @@ export function GenerationFeature({ canGenerate }: Props) {
 
   const setSeed = useMazeStore((s) => s.setSeed);
   const setRandomSeed = useMazeStore((s) => s.setRandomSeed);
+  const seedHistoryBack = useMazeStore((s) => s.seedHistoryBack);
+  const seedHistoryForward = useMazeStore((s) => s.seedHistoryForward);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
   const setGenerationParam = useMazeStore((s) => s.setGenerationParam);
   const setEdgeBasedParam = useMazeStore((s) => s.setEdgeBasedParam);
   const setElementsParam = useMazeStore((s) => s.setElementsParam);
   const setQcExperiment = useMazeStore((s) => s.setQcExperiment);
   const generate = useMazeStore((s) => s.generate);
-  const regenerate = useMazeStore((s) => s.regenerate);
   const postEditDirty = useMazeStore(selectPostEditDirty);
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"generate" | "regenerate" | null>(null);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"generate" | null>(null);
+  const [seedDraft, setSeedDraft] = useState(String(seed));
+
+  useEffect(() => { setSeedDraft(String(seed)); }, [seed]);
 
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
@@ -53,37 +61,67 @@ export function GenerationFeature({ canGenerate }: Props) {
     generate();
   }
 
-  function handleRegenerate() {
-    if (postEditDirty) { setPendingAction("regenerate"); return; }
-    regenerate();
-  }
-
   function confirmPending() {
     if (pendingAction === "generate") generate();
-    else if (pendingAction === "regenerate") regenerate();
     setPendingAction(null);
   }
 
-  const canRegenerate = lastUsedSeed !== null && canGenerate;
-  const regenTooltip = lastUsedSeed !== null
-    ? m["generation.regenerate_tooltip"]({ seed: lastUsedSeed })
-    : m["generation.generate_first"]();
+  const canSeedBack = seedHistory.length > 0 && seedHistoryIndex > 0;
+  const canSeedForward = seedHistoryIndex < seedHistory.length - 1;
 
   return (
     <div style={styles.root}>
-      {/* Seed row */}
-      <div style={styles.row}>
-        <span style={styles.seedLabel}>{m["generation.seed"]()}</span>
-        <input
-          type="number"
-          style={{ ...sharedStyles.input, width: 90, minWidth: 0, opacity: randomSeed ? 0.4 : 1 }}
-          value={seed}
-          readOnly={randomSeed}
-          onChange={(e) => setSeed(Number(e.target.value))}
-        />
-        <span style={{ ...styles.switchLabel, marginLeft: "auto" }}>{m["generation.random"]()}</span>
-        <Switch checked={randomSeed} onChange={setRandomSeed} />
+      {/* Seed block */}
+      <div style={styles.algorithmBlock}>
+        <span style={styles.sectionCaption}>{m["generation.seed_section"]()}</span>
+        <div style={{ ...styles.row, paddingLeft: 8, gap: 4 }}>
+          <span style={styles.algorithmLabel}>{m["generation.seed_value"]()}</span>
+          <input
+            type="number"
+            style={{ ...sharedStyles.input, width: 110, minWidth: 0, opacity: randomSeed ? 0.4 : 1 }}
+            value={seedDraft}
+            readOnly={randomSeed}
+            onChange={(e) => {
+              setSeedDraft(e.target.value);
+              const parsed = Number(e.target.value);
+              if (Number.isSafeInteger(parsed)) setSeed(parsed);
+            }}
+          />
+          <button
+            className={canSeedBack ? "hoverable" : undefined}
+            style={{ ...styles.seedToolbarBtn, ...(!canSeedBack ? styles.seedToolbarBtnDisabled : {}) }}
+            disabled={!canSeedBack}
+            onClick={seedHistoryBack}
+            title={m["generation.seed_history_prev_tooltip"]()}
+          >
+            <ChevronLeft size={16} color={ui.text.tertiary} />
+          </button>
+          <button
+            className={canSeedForward ? "hoverable" : undefined}
+            style={{ ...styles.seedToolbarBtn, ...(!canSeedForward ? styles.seedToolbarBtnDisabled : {}) }}
+            disabled={!canSeedForward}
+            onClick={seedHistoryForward}
+            title={m["generation.seed_history_next_tooltip"]()}
+          >
+            <ChevronRight size={16} color={ui.text.tertiary} />
+          </button>
+          <button
+            className="hoverable"
+            style={styles.seedToolbarBtn}
+            onClick={() => setHistoryDialogOpen(true)}
+            title={m["generation.seed_history_open_tooltip"]()}
+          >
+            <History size={16} color={ui.text.tertiary} />
+          </button>
+        </div>
+        <div style={{ ...styles.row, paddingLeft: 8 }}>
+          <span style={styles.algorithmLabel}>{m["generation.random"]()}</span>
+          <div style={styles.switchRight}>
+            <Switch checked={randomSeed} onChange={setRandomSeed} />
+          </div>
+        </div>
       </div>
+      <div style={styles.divider} />
 
       {/* Algorithm block */}
       <div style={styles.algorithmBlock}>
@@ -111,19 +149,22 @@ export function GenerationFeature({ canGenerate }: Props) {
           </div>
         )}
       </div>
+      <div style={styles.divider} />
 
       {/* Elements block */}
       <div style={styles.algorithmBlock}>
         <span style={styles.sectionCaption}>{m["generation.elements"]()}</span>
-        {isCanonical ? (
-          <WarningBubble message={m["generation.canonical_elements_warning"]({ qualityTitle: m["quality.title"]() })} severity="info" />
-        ) : (
-          <div style={styles.paramValues}>
-            <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.04} onChange={(v) => setElementsParam("one_way_chance", v)} />
-            <SliderParam variant="primary" label={m["generation.teleport_chance"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
-            <SliderParam variant="primary" label={m["generation.teleport_one_way_chance"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
-          </div>
-        )}
+        <div style={{ ...styles.paramValues, paddingLeft: 8 }}>
+          {isCanonical ? (
+            <WarningBubble message={m["generation.canonical_elements_warning"]({ qualityTitle: m["quality.title"]() })} severity="info" />
+          ) : (
+            <>
+              <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.04} onChange={(v) => setElementsParam("one_way_chance", v)} />
+              <SliderParam variant="primary" label={m["generation.teleport_chance"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
+              <SliderParam variant="primary" label={m["generation.teleport_one_way_chance"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Status line */}
@@ -158,19 +199,13 @@ export function GenerationFeature({ canGenerate }: Props) {
         >
           {m["generation.generate"]()}
         </button>
-        <button
-          className={canRegenerate ? "hoverable" : undefined}
-          style={{ ...styles.btnRegenerate, ...(!canRegenerate ? styles.btnDisabled : {}) }}
-          disabled={!canRegenerate}
-          title={regenTooltip}
-          onClick={handleRegenerate}
-        >
-          {m["generation.regenerate"]()}
-        </button>
       </div>
 
       {algorithmDialogOpen && (
         <AlgorithmSelectDialog onClose={() => setAlgorithmDialogOpen(false)} />
+      )}
+      {historyDialogOpen && (
+        <SeedHistoryDialog onClose={() => setHistoryDialogOpen(false)} />
       )}
       {pendingAction !== null && (
         <ConfirmModal
@@ -193,11 +228,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 8,
-  },
-  seedLabel: {
-    ...muted(typography.body),
-    flexShrink: 0,
-    whiteSpace: "nowrap" as const,
   },
   switchLabel: {
     ...muted(typography.body),
@@ -230,6 +260,23 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     opacity: 0.7,
   },
+  seedToolbarBtn: {
+    background: "none",
+    border: "none",
+    color: ui.text.tertiary,
+    padding: "2px 1px",
+    cursor: "default",
+    lineHeight: 1,
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
+    borderRadius: radius.sm,
+    opacity: 0.85,
+  },
+  seedToolbarBtnDisabled: {
+    opacity: 0.3,
+    cursor: "default",
+  },
   paramValues: {
     paddingLeft: 16,
     display: "flex",
@@ -254,16 +301,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 4px",
-    cursor: "default",
-    borderRadius: radius.sm,
-  },
-  btnRegenerate: {
-    ...typography.control,
-    flex: 1,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.secondary,
     padding: "5px 4px",
     cursor: "default",
     borderRadius: radius.sm,
