@@ -1,6 +1,7 @@
 use super::*;
 use rand::SeedableRng;
 use crate::{Graph, IdGenerator};
+use crate::ids::NodeId;
 use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
 
 const TEST_ID: &str = "teleport_group_proximity";
@@ -323,14 +324,18 @@ fn unreachable_pair_in_both_directions_is_never_flagged() {
     assert!(issues.is_empty(), "unreachable in both directions must not be treated as distance 0");
 }
 
-#[test]
-fn protect_route_excludes_a_pair_where_both_teleports_are_route_critical() {
-    // start=entry_a(0), finish=exit_b(3): the only route is entry_a->exit_a(teleport a),
-    // then exit_a--entry_b via a short corridor, then entry_b->exit_b(teleport b) -- both
-    // teleports are route-critical. Their entries sit 1 nav-hop apart (well within the
-    // check's threshold), so without protect_route this pair would fire.
+/// entry_a(0) and entry_b(2) are 1 hop apart via a one-way Basic edge entry_b->entry_a --
+/// independent of either teleport, so their proximity (measured via `min(forward, reverse)`,
+/// same as the check itself) is genuine, not an artifact of routing through a teleport hop
+/// (GitHub issue #190). It's one-way (not bidirectional) so it can never shortcut the
+/// entry_a->exit_b route below: `route_info` only ever searches forward from `start`, and
+/// entry_a has no *forward* edge to entry_b, only a reverse one. A separate forward-only route
+/// chain (start=entry_a -> exit_a via teleport a -> bridge -> entry_b -> exit_b via teleport b
+/// -> finish) makes both teleports route-critical without that chain being the reason
+/// entry_a/entry_b look close to each other.
+fn maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+    let field: Field<SquareTessellation> = Field::new(square_rect(6, 1), &mut ids).unwrap();
     let mut g = Graph::new();
     field.build_nodes(&mut g);
     let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
@@ -338,10 +343,25 @@ fn protect_route_excludes_a_pair_where_both_teleports_are_route_critical() {
     let exit_a = p(1);
     let entry_b = p(2);
     let exit_b = p(3);
+    let bridge = p(4);
+    g.add_edge(entry_b, entry_a, EdgeKind::Basic); // one-way proximity edge, reverse direction only
     g.add_edge(entry_a, exit_a, EdgeKind::Teleport);
-    g.add_bidirectional_edge(exit_a, entry_b, EdgeKind::Basic);
     g.add_edge(entry_b, exit_b, EdgeKind::Teleport);
-    let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+    // Forward-only route chain: entry_a -> exit_a (teleport a) -> bridge -> entry_b (basic) ->
+    // exit_b (teleport b), entirely separate from the entry_b->entry_a proximity edge above.
+    g.add_edge(exit_a, bridge, EdgeKind::Basic);
+    g.add_edge(bridge, entry_b, EdgeKind::Basic);
+    let maze: Maze<SquareTessellation> = Maze::new(field, g);
+    (maze, entry_a, exit_a, entry_b, exit_b)
+}
+
+#[test]
+fn protect_route_excludes_a_pair_where_both_teleports_are_route_critical() {
+    // start=entry_a, finish=exit_b: the only route is entry_a->exit_a (teleport a) ->
+    // bridge -> entry_b (basic) -> exit_b (teleport b) -- both teleports are route-critical.
+    // entry_a and entry_b are still only 1 hop apart via their own direct corridor (well
+    // within the check's threshold), so without protect_route this pair would fire.
+    let (mut maze, entry_a, _exit_a, _entry_b, exit_b) = maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries();
     maze.meta.start = Some(entry_a);
     maze.meta.finish = Some(exit_b);
 
@@ -353,22 +373,10 @@ fn protect_route_excludes_a_pair_where_both_teleports_are_route_critical() {
 
 #[test]
 fn protect_route_still_records_a_pair_where_only_one_side_is_route_critical() {
-    // Same topology, but finish is set to exit_a instead -- only teleport a is route-critical
-    // (entry_a -> exit_a is the whole route); teleport b is unrelated and still a legitimate
-    // removal candidate, so the pair must still be recorded.
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
-    let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
-    let entry_a = p(0);
-    let exit_a = p(1);
-    let entry_b = p(2);
-    let exit_b = p(3);
-    g.add_edge(entry_a, exit_a, EdgeKind::Teleport);
-    g.add_bidirectional_edge(exit_a, entry_b, EdgeKind::Basic);
-    g.add_edge(entry_b, exit_b, EdgeKind::Teleport);
-    let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+    // start=entry_a, finish=exit_a: only teleport a is route-critical; teleport b is unrelated
+    // and still a legitimate removal candidate, so the pair must still be recorded. entry_a and
+    // entry_b are connected by a direct Basic corridor, independent of either teleport.
+    let (mut maze, entry_a, exit_a, _entry_b, _exit_b) = maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries();
     maze.meta.start = Some(entry_a);
     maze.meta.finish = Some(exit_a);
 
@@ -519,11 +527,94 @@ fn fires_for_both_directions_of_a_two_way_teleport_independently() {
 }
 
 #[test]
+fn a_teleport_hop_is_never_used_as_a_shortcut_when_measuring_proximity() {
+    // entry_a(0) -> exit_a(1) [teleport a]. exit_a is 1 hop (basic) from entry_b(2), which in
+    // turn has its own teleport b. entry_a itself has NO basic connection to anything -- the
+    // only edge out of it is the teleport. Before GitHub issue #190's fix, Dijkstra could ride
+    // teleport a (1 hop) then the basic corridor (1 hop) to reach entry_b, reporting dist=2.
+    // With teleport hops excluded from the traversal, entry_a has no path to entry_b at all.
+    let mut ids = IdGenerator::new();
+    let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let entry_a = p(0);
+    let exit_a = p(1);
+    let entry_b = p(2);
+    let exit_b = p(3);
+    g.add_edge(entry_a, exit_a, EdgeKind::Teleport);
+    g.add_bidirectional_edge(exit_a, entry_b, EdgeKind::Basic);
+    g.add_edge(entry_b, exit_b, EdgeKind::Teleport);
+    let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(issues.is_empty(), "riding through a's own teleport hop must not count as pedestrian proximity to b");
+}
+
+#[test]
+fn a_basic_edge_running_parallel_to_a_teleport_still_counts_as_pedestrian_proximity() {
+    // entry_a(0) -> exit_a(1): connected by BOTH a Teleport edge AND a plain Basic edge in the
+    // same direction (Graph::add_edge's kind-aware dedup explicitly allows this). exit_a is
+    // teleport b's entry. The Basic edge alone must be enough to make entry_a and exit_a look
+    // close -- the presence of a parallel Teleport edge between the same pair must not blind the
+    // Dijkstra pass to the genuinely pedestrian Basic edge sitting right alongside it.
+    let mut ids = IdGenerator::new();
+    let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let entry_a = p(0);
+    let exit_a_entry_b = p(1);
+    let exit_b = p(2);
+    g.add_edge(entry_a, exit_a_entry_b, EdgeKind::Teleport);
+    g.add_edge(entry_a, exit_a_entry_b, EdgeKind::Basic);
+    g.add_edge(exit_a_entry_b, exit_b, EdgeKind::Teleport);
+    let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    assert_eq!(issues.len(), 1, "the parallel Basic edge must still make entry_a and exit_a_entry_b look close, despite the Teleport edge sharing the same pair");
+}
+
+#[test]
+fn a_third_unrelated_teleport_is_never_used_as_a_shortcut_when_measuring_proximity() {
+    // entry_a(0) -> far_a(1) [teleport a] -- far_a is otherwise isolated except for teleport c.
+    // far_a -> entry_c(2) [teleport c] -- entry_c is 1 basic hop from entry_b(3), which has its
+    // own teleport b. Before the fix, Dijkstra from entry_a could ride teleport a, then teleport
+    // c, then the basic hop, to reach entry_b (dist=3) -- none of that is real pedestrian
+    // proximity, it's three teleport-assisted jumps. With ALL teleport hops excluded (not just
+    // a's own), entry_a has no path to entry_b at all: it has no basic edges whatsoever.
+    let mut ids = IdGenerator::new();
+    let field: Field<SquareTessellation> = Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let entry_a = p(0);
+    let far_a = p(1);
+    let entry_c = p(2);
+    let entry_b = p(3);
+    let exit_b = p(4);
+    g.add_edge(entry_a, far_a, EdgeKind::Teleport);
+    g.add_edge(far_a, entry_c, EdgeKind::Teleport);
+    g.add_bidirectional_edge(entry_c, entry_b, EdgeKind::Basic);
+    g.add_edge(entry_b, exit_b, EdgeKind::Teleport);
+    let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    check(10.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(issues.is_empty(), "riding through an unrelated third teleport must not count as pedestrian proximity to b either");
+}
+
+#[test]
 fn a_two_way_teleport_never_pairs_with_its_own_reverse_direction() {
     // fwd and bwd are the two directions of one physical two-way teleport, entry/exit swapped --
     // fwd's entry and bwd's entry are the *same* two nodes as fwd's own endpoints, so under a
     // loose enough threshold they would look "close" to each other if not excluded. GitHub issue
-    // #191: the reverse direction must never be recorded as a problematic pair with `own_id`,
+    // #190: the reverse direction must never be recorded as a problematic pair with `own_id`,
     // regardless of distance.
     let mut ids = IdGenerator::new();
     let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::EdgeKind;
-use crate::graph::distance_map::{compute_distance_map, min_optional_distance, DistanceDirection};
-use crate::graph::nav::NavNodeId;
+use crate::graph::{EdgeKind, Graph};
+use crate::graph::distance_map::{compute_distance_map_filtered, min_optional_distance, DistanceDirection};
+use crate::graph::nav::{NavEdge, NavNodeId};
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
@@ -44,7 +44,7 @@ pub enum TeleportProximityEdge {
 /// teleport participates in). Each direction of a two-way teleport is its own independent element
 /// of this scan, same as every other per-teleport check from issue #74 — **except** against its
 /// own opposite-direction counterpart (`Graph::teleport_reverse`), which is excluded from the
-/// candidate scan (GitHub issue #191): both directions belong to the same physical teleport, so
+/// candidate scan (GitHub issue #190): both directions belong to the same physical teleport, so
 /// they are never a legitimate "two teleports too close to each other" pair, however close the
 /// teleport's own entry/exit happen to sit.
 ///
@@ -84,15 +84,43 @@ fn endpoints_of(edge: TeleportProximityEdge, from: crate::ids::NodeId, to: crate
 /// (`find_all_simple_cycles`), whose cost can grow exponentially in graph size and therefore need
 /// `MAX_SIMPLE_CYCLES`/`TooManyCycles` to cap runaway work. No equivalent cap is needed here since
 /// growth stays linear regardless of maze topology.
+///
+/// Every Dijkstra pass excludes `Teleport`-edge hops from the traversal entirely (GitHub issue
+/// #190) — this check measures *pedestrian* topological proximity between teleport endpoints, not
+/// reachability via teleporting. Without this, a path could "cheat" through any teleport (the one
+/// being scanned or an unrelated third one) for a 1-tile hop, making two teleports look close
+/// merely because a teleport ride connects them, which isn't the proximity problem this check
+/// exists to catch.
 struct DirectedDistanceCache<'a> {
     nav: &'a crate::graph::nav::NavGraph,
+    graph: &'a Graph,
     forward: HashMap<NavNodeId, HashMap<NavNodeId, usize>>,
     reverse: HashMap<NavNodeId, HashMap<NavNodeId, usize>>,
 }
 
 impl<'a> DirectedDistanceCache<'a> {
-    fn new(nav: &'a crate::graph::nav::NavGraph) -> Self {
-        Self { nav, forward: HashMap::new(), reverse: HashMap::new() }
+    fn new(nav: &'a crate::graph::nav::NavGraph, graph: &'a Graph) -> Self {
+        Self { nav, graph, forward: HashMap::new(), reverse: HashMap::new() }
+    }
+
+    /// A nav-edge is traversable unless it's a single-hop transition (`path.len() == 2`) that can
+    /// *only* be a `Teleport` ride — a corridor-compressed nav-edge is always `Basic` hops end to
+    /// end (teleport endpoints are never corridor-compressed, see `graph::nav::build`'s
+    /// `is_corridor_node`), so only the direct one-hop case can possibly be a teleport ride.
+    ///
+    /// A `Basic` and a `Teleport` edge may coexist in the same direction between the same pair
+    /// (`Graph::add_edge`'s kind-aware dedup) — `graph.outgoing_neighbors` doesn't dedupe by
+    /// target, so nav-graph construction (`dfs_from_junction`) builds one one-hop `NavEdge` per
+    /// physical edge in that case, not one shared `NavEdge`. Checking only "does *a* Teleport edge
+    /// exist between these nodes" would wrongly exclude the Basic-backed `NavEdge` too, hiding a
+    /// genuine pedestrian passage. Excluding only when no `Basic` edge also exists between the
+    /// pair keeps that passage traversable while still blocking the teleport-only case.
+    fn is_not_teleport_hop(graph: &Graph, edge: &NavEdge) -> bool {
+        if edge.path.len() != 2 {
+            return true;
+        }
+        graph.edge_between_kind(edge.path[0], edge.path[1], &EdgeKind::Basic).is_some()
+            || graph.edge_between_kind(edge.path[0], edge.path[1], &EdgeKind::Teleport).is_none()
     }
 
     /// min(forward, reverse) tile-hop distance between two nav-nodes — the graph stays
@@ -102,11 +130,12 @@ impl<'a> DirectedDistanceCache<'a> {
         if a == b {
             return Some(0);
         }
+        let graph = self.graph;
         let fwd = self.forward.entry(a)
-            .or_insert_with(|| compute_distance_map(self.nav, a, DistanceDirection::Forward))
+            .or_insert_with(|| compute_distance_map_filtered(self.nav, a, DistanceDirection::Forward, |e| Self::is_not_teleport_hop(graph, e)))
             .get(&b).copied();
         let rev = self.reverse.entry(a)
-            .or_insert_with(|| compute_distance_map(self.nav, a, DistanceDirection::Reverse))
+            .or_insert_with(|| compute_distance_map_filtered(self.nav, a, DistanceDirection::Reverse, |e| Self::is_not_teleport_hop(graph, e)))
             .get(&b).copied();
         min_optional_distance(fwd, rev)
     }
@@ -125,7 +154,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
         }
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let mut dist_cache = DirectedDistanceCache::new(&nav);
+        let mut dist_cache = DirectedDistanceCache::new(&nav, &maze.graph);
         let mut pairs: Vec<(EdgeId, EdgeId)> = Vec::new();
 
         for &(own_id, own_from, own_to) in &teleports {
@@ -139,7 +168,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
 
             // The opposite-direction Teleport edge of the same physical two-way teleport is not
             // a distinct teleport to be close to — it's the same entity, so it's excluded from
-            // the candidate scan alongside `own_id` itself (GitHub issue #191).
+            // the candidate scan alongside `own_id` itself (GitHub issue #190).
             let own_reverse = maze.graph.teleport_reverse(own_id);
 
             for &(other_id, other_from, other_to) in &teleports {

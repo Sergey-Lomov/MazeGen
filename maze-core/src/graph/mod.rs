@@ -80,11 +80,14 @@ impl Graph {
         id
     }
 
-    /// Dedup lookup used by `add_edge` — only matches an existing edge of the same `kind`,
-    /// so a `Teleport` edge can coexist with a `Basic` edge in the same direction between the
-    /// same pair (e.g. a tile already reachable by a normal passage can also have a teleport
-    /// into it). Private: callers needing "any kind" use the public `edge_between` instead.
-    fn edge_between_kind(&self, from: NodeId, to: NodeId, kind: &EdgeKind) -> Option<EdgeId> {
+    /// Kind-specific lookup — only matches an existing edge of the same `kind`, so a `Teleport`
+    /// edge can coexist with a `Basic` edge in the same direction between the same pair (e.g. a
+    /// tile already reachable by a normal passage can also have a teleport into it). Originally
+    /// private (used by `add_edge`'s dedup); `pub(crate)` so a caller that needs to know whether
+    /// a *specific* kind of edge exists between a pair (not just "any edge") can ask directly,
+    /// instead of resolving the ambiguity of `edge_between`'s "arbitrary matching edge" itself.
+    /// Callers needing "any kind" use the public `edge_between` instead.
+    pub(crate) fn edge_between_kind(&self, from: NodeId, to: NodeId, kind: &EdgeKind) -> Option<EdgeId> {
         self.outgoing.get(&from)?.iter().find(|&&eid| {
             self.edges[eid].as_ref().map_or(false, |e| e.to == to && &e.kind == kind)
         }).copied()

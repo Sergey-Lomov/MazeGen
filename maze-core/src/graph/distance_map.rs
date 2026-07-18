@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use super::nav::{NavGraph, NavNodeId};
-use super::pathfinding::{dijkstra_forward, dijkstra_reverse};
+use super::nav::{NavEdge, NavGraph, NavNodeId};
+use super::pathfinding::{dijkstra_forward, dijkstra_forward_filtered, dijkstra_reverse, dijkstra_reverse_filtered};
 
 /// Direction of traversal relative to `source`, following directed nav-edge semantics
 /// (never treated as undirected).
@@ -27,6 +27,26 @@ pub(crate) fn compute_distance_map(nav: &NavGraph, source: NavNodeId, direction:
     let nav_dist = match direction {
         DistanceDirection::Forward => dijkstra_forward(nav, source),
         DistanceDirection::Reverse => dijkstra_reverse(nav, source),
+    };
+
+    nav_dist.into_iter()
+        .enumerate()
+        .filter(|&(_, dist)| dist != usize::MAX)
+        .collect()
+}
+
+/// Like `compute_distance_map`, but a nav-edge is only traversable if `edge_filter` accepts it —
+/// lets a caller exclude specific transitions from the traversal itself (e.g. a teleport hop),
+/// rather than merely filtering the resulting distances after the fact.
+pub(crate) fn compute_distance_map_filtered(
+    nav: &NavGraph,
+    source: NavNodeId,
+    direction: DistanceDirection,
+    edge_filter: impl Fn(&NavEdge) -> bool,
+) -> HashMap<NavNodeId, usize> {
+    let nav_dist = match direction {
+        DistanceDirection::Forward => dijkstra_forward_filtered(nav, source, edge_filter),
+        DistanceDirection::Reverse => dijkstra_reverse_filtered(nav, source, edge_filter),
     };
 
     nav_dist.into_iter()

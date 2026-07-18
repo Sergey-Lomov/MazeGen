@@ -1,6 +1,6 @@
 use std::collections::BinaryHeap;
 use std::cmp::Reverse;
-use super::nav::NavGraph;
+use super::nav::{NavEdge, NavGraph};
 
 pub(crate) type NavNodeId = super::nav::NavNodeId;
 
@@ -46,6 +46,32 @@ pub(crate) fn dijkstra_forward(nav: &NavGraph, source: NavNodeId) -> Vec<usize> 
 pub(crate) fn dijkstra_reverse(nav: &NavGraph, target: NavNodeId) -> Vec<usize> {
     dijkstra_generic(nav, target, |nav, u| {
         nav.incoming_edges(u).map(|e| (e.from, e.path.len().saturating_sub(1)))
+    })
+}
+
+/// Like `dijkstra_forward`, but a nav-edge is only traversable if `edge_filter` accepts it —
+/// lets a caller exclude specific transitions (e.g. a teleport hop) from the traversal entirely,
+/// rather than merely filtering results after the fact. `edge_filter` sees the full `NavEdge`
+/// (its `path` is enough to resolve back to base-graph edges/kinds if needed).
+pub(crate) fn dijkstra_forward_filtered(
+    nav: &NavGraph,
+    source: NavNodeId,
+    edge_filter: impl Fn(&NavEdge) -> bool,
+) -> Vec<usize> {
+    dijkstra_generic(nav, source, |nav, u| {
+        nav.outgoing_edges(u).filter(|e| edge_filter(e)).map(|e| (e.to, e.path.len().saturating_sub(1)))
+    })
+}
+
+/// Like `dijkstra_reverse`, but a nav-edge is only traversable if `edge_filter` accepts it — see
+/// `dijkstra_forward_filtered`.
+pub(crate) fn dijkstra_reverse_filtered(
+    nav: &NavGraph,
+    target: NavNodeId,
+    edge_filter: impl Fn(&NavEdge) -> bool,
+) -> Vec<usize> {
+    dijkstra_generic(nav, target, |nav, u| {
+        nav.incoming_edges(u).filter(|e| edge_filter(e)).map(|e| (e.from, e.path.len().saturating_sub(1)))
     })
 }
 
