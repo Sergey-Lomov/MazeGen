@@ -643,7 +643,27 @@ The overlap counts (`edge -> (short_overlap, other_overlap)`) are computed **onc
 
 Same candidate filtering (existence + preset-protection), same cut mechanics (`try_remove_edge` plus reverse), same connectivity/bridge-status non-guarantee, and same `Fixed { score: None }` return as `InvalidLoopRandomStrategy`.
 
-**No `INVALID_LOOP_GROUP` strategy yet** — see GitHub issue #183. `MaxLoopDensityCheck` (`quality_control.md`) produces `InvalidLoopGroupIssue`, but no `RepairStrategy<T, InvalidLoopGroupIssue>` is registered — a rule using `max_loop_density` with a configured strategy will fail to build (same "unknown strategy" rejection any mismatched-kind config gets), and a rule with `strategy: None` simply logs the issue without fixing it. `InvalidLoopGroupIssue` has the exact same `all`/`invalid` shape `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` already consume (both operate on raw slices, not the issue type itself), so adding equivalent strategies for this kind is expected to be a straightforward port, not a new design.
+### InvalidLoopGroupSelectStrategy
+
+Handles `INVALID_LOOP_GROUP` — see GitHub issue #183. `MaxLoopDensityCheck`/`MaxLoopsCountCheck` (`quality_control.md`) both flag their *entire* field-wide cycle set `invalid` at once (no per-check subset selection); this strategy is where the actual "which loops to break, and how many this pass" decision lives. It picks a *sample* of the flagged cycles (sized by `sample_mode`/`sample_size`, ordered by `selection_mode`) and resolves them one at a time by delegating to a nested `RepairStrategy<T, InvalidLoopIssue>` (typically `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`) filling the `cut_target` nested slot (`kind: INVALID_LOOP`, `min: 1`, `max: Some(1)`).
+
+**Parameters:**
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `selection_mode` | Enum | `random` | `random`, `shortest`, `longest` | Which flagged cycles enter the sample first, and the tie-break/pick criterion within it |
+| `sample_mode` | Enum | `count` | `count`, `percent` | Whether `sample_size` below is an absolute cycle count or a percentage of `issue.invalid.len()` |
+| `sample_size` | Float | `1.0` | `[0, 100_000]` | Sample size, interpreted per `sample_mode` |
+
+**Sample sizing**: `count` mode takes `sample_size` cycles literally (rounded up via `ceil`); `percent` mode takes `ceil(sample_size / 100 * issue.invalid.len())`. Either way the result is clamped to `[1, issue.invalid.len()]` — at least 1 (there is always something to do when `issue.invalid` is non-empty, the only case `apply` reaches this far for) and never more than what's actually flagged.
+
+`issue.invalid`'s indices are first reordered by `selection_mode` — `shortest`/`longest` sort by edge count (ties broken by ascending original index, for determinism), `random` does a seeded Fisher-Yates shuffle through the strategy's `rng` — then the first `sample_size` (after sizing) become the sample; the rest of `issue.invalid`, plus all of `issue.valid`, become `valid`-context for every synthetic issue built this call.
+
+**Queue processing**: the sample is a `VecDeque`. Each iteration pops the front cycle as the nested strategy's target and synthesizes an `InvalidLoopIssue` where every *other* still-pending sample cycle is `invalid` context (so the nested strategy's own overlap-scoring, if any, sees the rest of the batch) and every non-sampled cycle is `valid` context — then delegates via the nested strategy's `apply`. After each nested call, `removed_edge_ids` (see `repair::command`) extracts every `EdgeId` the call reported removing, and any remaining queued cycle (in the sample queue or the valid-context list) sharing one of those edges is dropped entirely — it's already broken by the same cut, so it is neither re-offered as a future target nor kept around as context, distinct from a cycle that simply wasn't sampled this round. `removed_edge_ids` only recognizes `RemoveEdge`/`RemoveTeleportWithReverse` (not `RemoveEdgeBetween`, which addresses by node pair, not `EdgeId`) — this is treated as a heuristic, not a guarantee; a cycle missed by this dedup just gets re-offered to the nested strategy later and discovered already-broken there (e.g. via `candidate_edges`'s own already-removed filtering), never causing incorrect behavior.
+
+The loop ends when the sample queue empties. Returns `Fixed` (with every nested call's commands concatenated, in order — "parent, then nested" per this section's own command-concatenation rule) if **at least one** nested call in the batch succeeded, even if a later cycle in the same batch failed; returns `Failed` (no commands) only if **every** nested call in the batch failed. A mix of successes and failures within one sample is not itself surfaced beyond "at least one worked."
+
+Cannot translate the nested strategy's own `requirement()` into `InvalidLoopGroupRequirement` — `Rule::new` resolves a strategy's `requirement()` from `&self, params` alone, before `nested` is known to it at all, so there is no nested `RepairStrategy` to consult yet at that point. Always requests `InvalidLoopGroupRequirement::all()` ("compute everything") — safe (never wrong, just potentially wasted computation) regardless of what the eventually-configured nested strategy turns out to need.
 
 ### region_merge_core (shared, not a strategy)
 

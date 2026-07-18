@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -95,6 +95,13 @@ pub fn available_strategies() -> JsValue {
             params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopScoredStrategy)),
             experimental: <InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::is_experimental(&InvalidLoopScoredStrategy),
             nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "invalid_loop_group_select",
+            handles: INVALID_LOOP_GROUP.as_str(),
+            params: strategy_params_dto(<InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopGroupIssue>>::params(&InvalidLoopGroupSelectStrategy)),
+            experimental: <InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopGroupIssue>>::is_experimental(&InvalidLoopGroupSelectStrategy),
+            nested_slots: nested_slots_dto(<InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopGroupIssue>>::expected_nested(&InvalidLoopGroupSelectStrategy)),
         },
         StrategyDescriptor {
             id: "missing_loops_random",

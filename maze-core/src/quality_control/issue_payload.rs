@@ -58,6 +58,30 @@ fn resolve_invalid_loop_payload(
     if edges.is_empty() { None } else { Some(IssuePayload::InvalidLoop { edges }) }
 }
 
+/// `InvalidLoopGroupIssue`-specific variant of `resolve_invalid_loop_payload` — its `invalid`
+/// field is already the direct list of flagged cycles (no `all`/index indirection), so there's no
+/// index to resolve through.
+fn resolve_invalid_loop_group_payload(
+    invalid: &[Vec<crate::ids::EdgeId>],
+    invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>,
+    graph: &Graph,
+) -> Option<IssuePayload> {
+    let mut edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
+    for loop_edges in invalid {
+        let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| {
+            let edge = graph.edge(eid)?;
+            let from = u32::try_from(edge.from).ok()?;
+            let to = u32::try_from(edge.to).ok()?;
+            Some([from, to])
+        }).collect();
+        let key = canonical_cycle_key(loop_edges);
+        for source in invalid_sources.get(&key).into_iter().flatten() {
+            edges.entry(source.clone()).or_default().push(edge_pairs.clone());
+        }
+    }
+    if edges.is_empty() { None } else { Some(IssuePayload::InvalidLoop { edges }) }
+}
+
 pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         if let Some(payload) = resolve_invalid_loop_payload(all, invalid, invalid_sources, graph) {
@@ -65,8 +89,8 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
         }
     }
 
-    if let Some(InvalidLoopGroupIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopGroupIssue>() {
-        if let Some(payload) = resolve_invalid_loop_payload(all, invalid, invalid_sources, graph) {
+    if let Some(InvalidLoopGroupIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopGroupIssue>() {
+        if let Some(payload) = resolve_invalid_loop_group_payload(invalid, invalid_sources, graph) {
             return payload;
         }
     }
@@ -150,7 +174,7 @@ mod tests {
         let key = canonical_cycle_key(&cycle);
         let mut invalid_sources = HashMap::new();
         invalid_sources.insert(key, vec!["max_loop_density".to_string()]);
-        let issue = InvalidLoopGroupIssue::new_from_check("max_loop_density", vec![cycle], vec![0], invalid_sources);
+        let issue = InvalidLoopGroupIssue::new_from_check("max_loop_density", vec![cycle], vec![], invalid_sources);
 
         let payload = resolve_issue_payload(&issue, &graph, &scc);
         let IssuePayload::InvalidLoop { edges } = payload else { panic!("expected InvalidLoop, got {payload:?}") };

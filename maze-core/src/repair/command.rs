@@ -41,3 +41,45 @@ pub enum MutationCommand {
     /// as `SetStart` for having no paired helper.
     SetFinish(NodeId),
 }
+
+/// Every `EdgeId` a batch of commands proposes removing — a strategy building on another
+/// strategy's returned commands (e.g. `InvalidLoopGroupSelectStrategy` dropping cycles that
+/// share a now-cut edge from its own pending queue) needs this to know what just got cut, without
+/// caring which specific removal variant did it.
+///
+/// **Maintenance risk, deliberately accepted**: covers only the `EdgeId`-addressed variants
+/// (`RemoveEdge`, `RemoveTeleportWithReverse`) — `RemoveEdgeBetween` addresses by node pair, not
+/// `EdgeId`, so it cannot be included without resolving it against a `Graph` first (which this
+/// function, taking only `&[MutationCommand]`, has no access to). A future removal variant could
+/// likewise go unnoticed here. Treat any use of this as a heuristic, not a guarantee — safe to
+/// miss (a caller acting on a stale/already-cut cycle just wastes a bit of work re-discovering
+/// it's gone, e.g. via `candidate_edges`'s own already-removed filtering), never unsafe to miss.
+pub fn removed_edge_ids(commands: &[MutationCommand]) -> Vec<EdgeId> {
+    commands.iter().filter_map(|cmd| match cmd {
+        MutationCommand::RemoveEdge { id } => Some(*id),
+        MutationCommand::RemoveTeleportWithReverse { id } => Some(*id),
+        _ => None,
+    }).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removed_edge_ids_collects_remove_edge_and_remove_teleport_variants() {
+        let commands = vec![
+            MutationCommand::RemoveEdge { id: 1 },
+            MutationCommand::RemoveTeleportWithReverse { id: 2 },
+            MutationCommand::AddDirectedEdge { from: 3, to: 4 },
+            MutationCommand::RemoveEdgeBetween { from: 5, to: 6 },
+        ];
+        assert_eq!(removed_edge_ids(&commands), vec![1, 2]);
+    }
+
+    #[test]
+    fn removed_edge_ids_empty_for_no_removal_commands() {
+        let commands = vec![MutationCommand::SetStart(1), MutationCommand::AddBidirectionalEdge { a: 1, b: 2 }];
+        assert!(removed_edge_ids(&commands).is_empty());
+    }
+}

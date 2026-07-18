@@ -39,6 +39,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.max_loop_density.label"] as MessageFn,
     description: m["check.max_loop_density.description"] as MessageFn,
   },
+  max_loops_count: {
+    label: m["check.max_loops_count.label"] as MessageFn,
+    description: m["check.max_loops_count.description"] as MessageFn,
+  },
   scc_count: {
     label: m["check.scc_count.label"] as MessageFn,
     description: m["check.scc_count.description"] as MessageFn,
@@ -159,6 +163,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.invalid_loop_scored.label"] as MessageFn,
     description: m["strategy.invalid_loop_scored.description"] as MessageFn,
   },
+  invalid_loop_group_select: {
+    label: m["strategy.invalid_loop_group_select.label"] as MessageFn,
+    description: m["strategy.invalid_loop_group_select.description"] as MessageFn,
+  },
   missing_loops_random: {
     label: m["strategy.missing_loops_random.label"] as MessageFn,
     description: m["strategy.missing_loops_random.description"] as MessageFn,
@@ -221,6 +229,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   max_density: {
     label: m["param.max_density.label"] as MessageFn,
     description: m["param.max_density.description"] as MessageFn,
+  },
+  max_loops_count: {
+    label: m["param.max_loops_count.label"] as MessageFn,
+    description: m["param.max_loops_count.description"] as MessageFn,
   },
   min_density: {
     label: m["param.min_density.label"] as MessageFn,
@@ -326,6 +338,18 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.merge_priority.label"] as MessageFn,
     description: m["param.merge_priority.description"] as MessageFn,
   },
+  selection_mode: {
+    label: m["param.selection_mode.label"] as MessageFn,
+    description: m["param.selection_mode.description"] as MessageFn,
+  },
+  sample_mode: {
+    label: m["param.sample_mode.label"] as MessageFn,
+    description: m["param.sample_mode.description"] as MessageFn,
+  },
+  sample_size: {
+    label: m["param.sample_size.label"] as MessageFn,
+    description: m["param.sample_size.description"] as MessageFn,
+  },
   distance: {
     label: m["param.distance.label"] as MessageFn,
     description: m["param.distance.description"] as MessageFn,
@@ -391,6 +415,11 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "merge_priority.smallest": m["param.merge_priority.option.smallest"] as MessageFn,
   "merge_priority.largest": m["param.merge_priority.option.largest"] as MessageFn,
   "merge_priority.random": m["param.merge_priority.option.random"] as MessageFn,
+  "selection_mode.random": m["param.selection_mode.option.random"] as MessageFn,
+  "selection_mode.shortest": m["param.selection_mode.option.shortest"] as MessageFn,
+  "selection_mode.longest": m["param.selection_mode.option.longest"] as MessageFn,
+  "sample_mode.count": m["param.sample_mode.option.count"] as MessageFn,
+  "sample_mode.percent": m["param.sample_mode.option.percent"] as MessageFn,
   "waypoint.start": m["param.waypoint.option.start"] as MessageFn,
   "waypoint.finish": m["param.waypoint.option.finish"] as MessageFn,
   "waypoint.any": m["param.waypoint.option.any"] as MessageFn,
@@ -433,6 +462,11 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "merge_priority.smallest": m["param.merge_priority.option.smallest.explanation"] as MessageFn,
   "merge_priority.largest": m["param.merge_priority.option.largest.explanation"] as MessageFn,
   "merge_priority.random": m["param.merge_priority.option.random.explanation"] as MessageFn,
+  "selection_mode.random": m["param.selection_mode.option.random.explanation"] as MessageFn,
+  "selection_mode.shortest": m["param.selection_mode.option.shortest.explanation"] as MessageFn,
+  "selection_mode.longest": m["param.selection_mode.option.longest.explanation"] as MessageFn,
+  "sample_mode.count": m["param.sample_mode.option.count.explanation"] as MessageFn,
+  "sample_mode.percent": m["param.sample_mode.option.percent.explanation"] as MessageFn,
   "waypoint.start": m["param.waypoint.option.start.explanation"] as MessageFn,
   "waypoint.finish": m["param.waypoint.option.finish.explanation"] as MessageFn,
   "waypoint.any": m["param.waypoint.option.any.explanation"] as MessageFn,

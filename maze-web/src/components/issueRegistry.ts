@@ -40,6 +40,7 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   loop_distance_from_start: (d) => d.min_distance_from_start !== undefined ? m["issue.invalid_loop.loop_distance_from_start_label"]({ min_distance_from_start: d.min_distance_from_start }) : undefined,
   loop_distance_from_finish: (d) => d.min_distance_from_finish !== undefined ? m["issue.invalid_loop.loop_distance_from_finish_label"]({ min_distance_from_finish: d.min_distance_from_finish }) : undefined,
   max_loop_density: (d) => d.max_density !== undefined ? m["issue.invalid_loop_group.max_loop_density_label"]({ max_density: d.max_density }) : undefined,
+  max_loops_count: (d) => d.max_loops_count !== undefined ? m["issue.invalid_loop_group.max_loops_count_label"]({ max_loops_count: d.max_loops_count }) : undefined,
   // Keyed by the issue's own kind string, not a CheckId — `repair_limit_reached` carries no
   // source check (see `IssuesBlock`'s null-sourceCheck fallback).
   repair_limit_reached: (d) => d.limit === "max_iterations"

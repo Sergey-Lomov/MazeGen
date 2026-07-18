@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use rand::RngCore;
-use rand::seq::SliceRandom;
 use crate::Maze;
 use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
@@ -11,14 +10,12 @@ use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
 
-/// Flags excess simple loops when too large a share of the field is covered by them — see
-/// GitHub issue #37. Density is the count of distinct field cells touched by any loop (each
-/// cell counted once, even if covered by several loops), per 100 field cells. When density
-/// exceeds `max_density`, loops are picked in random order and flagged `InvalidLoop` one at a
-/// time — recomputing the remaining density against only the still-unselected loops after each
-/// pick, since removing a loop only frees the cells not also covered by another loop not yet
-/// selected — until enough are flagged to bring density down to `max_density`, or every loop
-/// has been flagged.
+/// Flags every simple loop invalid when too large a share of the field is covered by loops
+/// overall — see GitHub issue #37. Density is the count of distinct field cells touched by any
+/// loop (each cell counted once, even if covered by several loops), per 100 field cells. This is
+/// a group-level decision (which loops to actually break is a repair strategy's job, e.g.
+/// `InvalidLoopGroupSelectStrategy` — see GitHub issue #183): once density exceeds `max_density`,
+/// every loop on the field is flagged, none stay valid.
 pub struct MaxLoopDensityCheck {
     pub instance_id: String,
     pub max_density: u32,
@@ -27,9 +24,9 @@ pub struct MaxLoopDensityCheck {
 impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopDensityCheck {
     fn check_type_id(&self) -> &'static str { "max_loop_density" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopGroupIssue>, rng: &mut dyn RngCore, _requirement: InvalidLoopGroupRequirement) {
-        // Not yet migrated to honor `_requirement` — the density algorithm inherently needs
-        // every cycle's coverage, not just the flagged ones, so it always computes all().
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopGroupIssue>, _rng: &mut dyn RngCore, _requirement: InvalidLoopGroupRequirement) {
+        // Not yet migrated to honor `_requirement` — this check always flags every loop it finds
+        // (see the struct's doc comment), so there is never a "valid cycle" to skip computing.
         let field_cells = maze.field.node_count();
         if field_cells == 0 {
             return;
@@ -43,33 +40,18 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopDensityCheck {
         }
 
         let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
-        let cell_sets: Vec<HashSet<NodeId>> = all.iter()
-            .map(|cycle| cycle_cells(&maze.graph, cycle))
+        let covered: HashSet<NodeId> = all.iter()
+            .flat_map(|cycle| cycle_cells(&maze.graph, cycle))
             .collect();
-
-        let covered: HashSet<NodeId> = cell_sets.iter().flatten().copied().collect();
         if density_per_100(covered.len(), field_cells) <= self.max_density {
             return;
         }
 
-        let mut order: Vec<usize> = (0..all.len()).collect();
-        order.shuffle(rng);
-
-        let mut remaining = covered;
-        let mut excess: Vec<usize> = Vec::new();
-        for idx in order {
-            excess.push(idx);
-            remaining.retain(|cell| !cell_sets[idx].contains(cell));
-            if density_per_100(remaining.len(), field_cells) <= self.max_density {
-                break;
-            }
-        }
-
         let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
-        for &idx in &excess {
-            invalid_sources.entry(canonical_cycle_key(&all[idx])).or_default().push(self.instance_id.clone());
+        for cycle in &all {
+            invalid_sources.entry(canonical_cycle_key(cycle)).or_default().push(self.instance_id.clone());
         }
-        let issue = InvalidLoopGroupIssue::new_from_check(&self.instance_id, all, excess, invalid_sources)
+        let issue = InvalidLoopGroupIssue::new_from_check(&self.instance_id, all, vec![], invalid_sources)
             .with_detail(&self.instance_id, "max_density", self.max_density.to_string());
         issues.push(issue);
     }
@@ -114,15 +96,15 @@ mod tests {
     }
 
     #[test]
-    fn fires_and_flags_loops_when_density_exceeds_max() {
+    fn fires_and_flags_every_loop_when_density_exceeds_max() {
         let maze = maze_with_two_disjoint_triangles();
         let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30 };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
-        assert_eq!(issues[0].all.len(), 2, "both triangles enumerated");
-        assert_eq!(issues[0].invalid.len(), 1, "flagging one triangle (3 of 6 covered cells) is enough to drop to 30%");
+        assert_eq!(issues[0].invalid.len(), 2, "both triangles must be flagged invalid, deciding which to break is a repair strategy's job");
+        assert!(issues[0].valid.is_empty());
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("max_density")),
             Some(&"30".to_string()),
@@ -161,11 +143,9 @@ mod tests {
     }
 
     #[test]
-    fn overlapping_loops_account_for_shared_cells_when_selecting() {
-        // Two triangles sharing one vertex: 5 distinct covered cells out of 10 (50%).
-        // Flagging either triangle alone only frees 2 unique cells (3 shared with none, since
-        // only the apex is shared) -> still need both flagged is NOT required; one triangle
-        // brings 5-3=2 covered remaining -> 20%, clears a max of 30 immediately.
+    fn overlapping_loops_share_cells_but_both_still_get_flagged() {
+        // Two triangles sharing one vertex: 5 distinct covered cells out of 10 (50%), over the
+        // 30% max — both loops are flagged, regardless of how much cell coverage overlaps.
         let mut ids = IdGenerator::new();
         let field: Field<SquareTessellation> = Field::new(square_rect(10, 1), &mut ids).unwrap();
         let mut g = Graph::new();
@@ -184,17 +164,7 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid.len(), 1, "flagging one of the two overlapping triangles already clears the target");
-    }
-
-    #[test]
-    fn flags_all_loops_when_target_unreachable() {
-        let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid.len(), issues[0].all.len(), "every loop must be flagged when even all of them can't reach max_density 0");
+        assert_eq!(issues[0].invalid.len(), 2, "both overlapping triangles must be flagged");
     }
 
     #[test]

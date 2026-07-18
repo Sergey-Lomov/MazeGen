@@ -8,6 +8,7 @@ pub mod external_escape_diversity;
 pub mod loop_distance_from_start;
 pub mod loop_distance_from_finish;
 pub mod max_loop_density;
+pub mod max_loops_count;
 pub mod scc_count;
 pub mod min_region_size;
 pub mod min_region_ratio;
@@ -32,6 +33,7 @@ pub use external_escape_diversity::{ExternalEscapeDiversityCheck, EXTERNAL_ESCAP
 pub use loop_distance_from_start::{LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT};
 pub use loop_distance_from_finish::{LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT};
 pub use max_loop_density::{MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT};
+pub use max_loops_count::{MaxLoopsCountCheck, MAX_LOOPS_COUNT_DEFAULT};
 pub use scc_count::{SccCountCheck, MAX_SCC_COUNT_DEFAULT};
 pub use min_region_size::{MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT};
 pub use min_region_ratio::{MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT};

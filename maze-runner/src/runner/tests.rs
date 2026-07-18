@@ -370,7 +370,7 @@ mod build_check_tests {
         "missing_endpoints", "unreachable_finish",
         "min_loops_count", "min_loop_density", "loop_length",
         "external_escape_diversity", "loop_distance_from_start", "loop_distance_from_finish",
-        "max_loop_density", "scc_count", "min_region_size", "min_region_ratio",
+        "max_loop_density", "max_loops_count", "scc_count", "min_region_size", "min_region_ratio",
         "max_region_size", "max_region_ratio", "min_region_count",
         "teleport_duplicates_connection", "teleport_waypoint_distance",
         "teleport_geometric_length",

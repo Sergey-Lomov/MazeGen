@@ -34,6 +34,7 @@ pub use checks::{
     LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT,
     LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT,
     MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT,
+    MaxLoopsCountCheck, MAX_LOOPS_COUNT_DEFAULT,
     SccCountCheck, MAX_SCC_COUNT_DEFAULT,
     MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT,
     MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT,

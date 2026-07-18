@@ -10,6 +10,7 @@ use maze_core::{
         EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck,
         LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck,
         LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT,
+        MaxLoopsCountCheck, MAX_LOOPS_COUNT_DEFAULT,
         SccCountCheck, MAX_SCC_COUNT_DEFAULT, MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT,
         MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT,
         MaxRegionSizeCheck, MAX_REGION_SIZE_DEFAULT, MaxRegionRatioCheck, MAX_REGION_RATIO_DEFAULT,
@@ -62,6 +63,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "loop_distance_from_start"  => KindTag::InvalidLoop,
         "loop_distance_from_finish" => KindTag::InvalidLoop,
         "max_loop_density"          => KindTag::InvalidLoopGroup,
+        "max_loops_count"           => KindTag::InvalidLoopGroup,
         "scc_count"                 => KindTag::ExcessiveSccCount,
         "min_region_size"           => KindTag::RegionNeedsExpansion,
         "min_region_ratio"          => KindTag::RegionNeedsExpansion,
@@ -221,6 +223,13 @@ pub(crate) fn build_invalid_loop_group_check<T: Tessellation>(instance: &CheckIn
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
             Some(Box::new(MaxLoopDensityCheck { instance_id, max_density }))
+        }
+        "max_loops_count" => {
+            let max_loops_count = instance.params.get("max_loops_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_LOOPS_COUNT_DEFAULT);
+            Some(Box::new(MaxLoopsCountCheck { instance_id, max_loops_count }))
         }
         _ => None,
     }
