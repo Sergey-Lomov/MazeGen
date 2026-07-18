@@ -5,11 +5,13 @@ pub enum IssueKind {
     MissingEndpoints,
     UnreachableFinish,
     InvalidLoop,
+    InvalidLoopGroup,
     MissingLoops,
     CycleAnalysisOverflowed,
     RepairLimitReached,
     ExcessiveSccCount,
     RegionNeedsExpansion,
+    RegionNeedsShrink,
     MissingRegions,
     InvalidTeleport,
     TeleportGroupProximity,
@@ -22,6 +24,14 @@ pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
 /// other reasons entirely (e.g. too long) and reuse this same kind — see `InvalidLoopIssue` and
 /// `Issue::source_checks` for how multiple checks contributing to one kind are distinguished.
 pub const INVALID_LOOP: IssueKind = IssueKind::InvalidLoop;
+/// A cycle is flagged not for a property of its own, but as part of a group decision across every
+/// loop on the field (currently only excess field-density — see `MaxLoopDensityCheck`). Mirrors
+/// `TELEPORT_GROUP_PROXIMITY`'s split from `INVALID_TELEPORT`: `INVALID_LOOP` flags a single cycle
+/// invalid on its own terms, this kind flags cycles selected as part of a group-level fix (e.g.
+/// "pick enough loops to remove until density drops"), so it gets its own kind and strategies
+/// rather than being folded into `INVALID_LOOP`. Carries `InvalidLoopGroupIssue` — same shape as
+/// `InvalidLoopIssue`, see that type's doc comment.
+pub const INVALID_LOOP_GROUP: IssueKind = IssueKind::InvalidLoopGroup;
 /// The maze has fewer loops than some check requires (currently only `MinLoopsCountCheck`).
 /// Mirrors `INVALID_LOOP`'s role for invalid cycles, but for a missing-count condition instead
 /// of a specific-cycle one — future checks needing more loops added can reuse this kind. Carries
@@ -51,6 +61,14 @@ pub const EXCESSIVE_SCC_COUNT: IssueKind = IssueKind::ExcessiveSccCount;
 /// flag a region as needing expansion for reasons unrelated to size and reuse this same kind.
 /// Carries `RegionNeedsExpansionIssue` — see that type's doc comment.
 pub const REGION_NEEDS_EXPANSION: IssueKind = IssueKind::RegionNeedsExpansion;
+/// An SCC region needs to be shrunk for some check-specific reason (currently: larger than a
+/// configured absolute tile count, or larger than a configured share of the field — see
+/// `MaxRegionSizeCheck`/`MaxRegionRatioCheck`) — see GitHub issue #177. Distinct from
+/// `REGION_NEEDS_EXPANSION`: min/max on region size are a count-shaped deficit/surplus pair (the
+/// two directions need different repair actions — grow vs. shrink), not a single-entity
+/// min/max-comparison pair, so they get separate `IssueKind`s and strategies rather than merging
+/// via `Comparison`. Carries `RegionNeedsShrinkIssue` — see that type's doc comment.
+pub const REGION_NEEDS_SHRINK: IssueKind = IssueKind::RegionNeedsShrink;
 /// The maze has fewer regions of some `RegionClass` than a check's configured minimum requires
 /// (currently only `MinRegionCountCheck`) — e.g. guaranteeing at least N trap or alternative-route
 /// regions for structural variety. Carries `MissingRegionsIssue { balance_by_class }` — see that
@@ -77,11 +95,13 @@ impl IssueKind {
             IssueKind::MissingEndpoints => "missing_endpoints",
             IssueKind::UnreachableFinish => "unreachable_finish",
             IssueKind::InvalidLoop => "invalid_loop",
+            IssueKind::InvalidLoopGroup => "invalid_loop_group",
             IssueKind::MissingLoops => "missing_loops",
             IssueKind::CycleAnalysisOverflowed => "cycle_analysis_overflowed",
             IssueKind::RepairLimitReached => "repair_limit_reached",
             IssueKind::ExcessiveSccCount => "excessive_scc_count",
             IssueKind::RegionNeedsExpansion => "region_needs_expansion",
+            IssueKind::RegionNeedsShrink => "region_needs_shrink",
             IssueKind::MissingRegions => "missing_regions",
             IssueKind::InvalidTeleport => "invalid_teleport",
             IssueKind::TeleportGroupProximity => "teleport_group_proximity",
@@ -101,11 +121,13 @@ impl IssueKind {
             "missing_endpoints"  => Some(IssueKind::MissingEndpoints),
             "unreachable_finish" => Some(IssueKind::UnreachableFinish),
             "invalid_loop"       => Some(IssueKind::InvalidLoop),
+            "invalid_loop_group" => Some(IssueKind::InvalidLoopGroup),
             "missing_loops"      => Some(IssueKind::MissingLoops),
             "cycle_analysis_overflowed" => Some(IssueKind::CycleAnalysisOverflowed),
             "repair_limit_reached" => Some(IssueKind::RepairLimitReached),
             "excessive_scc_count" => Some(IssueKind::ExcessiveSccCount),
             "region_needs_expansion" => Some(IssueKind::RegionNeedsExpansion),
+            "region_needs_shrink" => Some(IssueKind::RegionNeedsShrink),
             "missing_regions" => Some(IssueKind::MissingRegions),
             "invalid_teleport" => Some(IssueKind::InvalidTeleport),
             "teleport_group_proximity" => Some(IssueKind::TeleportGroupProximity),

@@ -72,6 +72,11 @@ pub enum IssuePayloadDto {
     RegionNeedsExpansion {
         nodes: HashMap<String, Vec<Vec<u32>>>,
     },
+    /// Mirrors `RegionNeedsExpansion`'s shape, for an oversized region flagged for shrinking
+    /// instead (`max_region_size`/`max_region_ratio` — see GitHub issue #177).
+    RegionNeedsShrink {
+        nodes: HashMap<String, Vec<Vec<u32>>>,
+    },
 }
 
 #[derive(Serialize)]

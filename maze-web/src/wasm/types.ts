@@ -99,6 +99,12 @@ export type IssuePayloadDto =
        * same way preset boundary walls are derived from a cell set). Keyed per check for the same
        * reason as the `invalid_loop` variant's `edges`. */
       nodes: Record<string, number[][]>;
+    }
+  | {
+      kind: "region_needs_shrink";
+      /** Mirrors `region_needs_expansion`'s `nodes` shape, for an oversized region flagged for
+       * shrinking instead (`max_region_size`/`max_region_ratio`). */
+      nodes: Record<string, number[][]>;
     };
 
 export interface IssueDto {

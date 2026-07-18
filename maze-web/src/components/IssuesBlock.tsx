@@ -31,8 +31,10 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? issue.payload.edges[sourceCheck] ?? null
     : null;
   // Same per-check isolation as `loopEdges` above — only this bubble's own source check's
-  // flagged regions, not every contributing check's regions combined.
-  const regionNodes = sourceCheck != null && issue.payload.kind === "region_needs_expansion"
+  // flagged regions, not every contributing check's regions combined. Covers both
+  // `region_needs_expansion` (undersized) and `region_needs_shrink` (oversized) — both highlight
+  // the same way, just flagged for opposite reasons.
+  const regionNodes = sourceCheck != null && (issue.payload.kind === "region_needs_expansion" || issue.payload.kind === "region_needs_shrink")
     ? issue.payload.nodes[sourceCheck] ?? null
     : null;
   const palette = notificationPalette(severity);

@@ -69,6 +69,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             // check* flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment.
             IssuePayload::InvalidLoop { edges } => IssuePayloadDto::InvalidLoop { edges },
             IssuePayload::RegionNeedsExpansion { nodes } => IssuePayloadDto::RegionNeedsExpansion { nodes },
+            IssuePayload::RegionNeedsShrink { nodes } => IssuePayloadDto::RegionNeedsShrink { nodes },
         };
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()

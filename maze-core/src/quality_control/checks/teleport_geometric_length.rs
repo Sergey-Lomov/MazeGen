@@ -2,30 +2,35 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
+use crate::quality_control::comparison::Comparison;
 use crate::quality_control::InvalidTeleportIssue;
 use super::teleport_geometric_length_core::{build_issue, find_invalid_teleports};
 
-pub const TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT: f64 = 0.0;
+pub const TELEPORT_GEOMETRIC_LENGTH_DEFAULT: f64 = 0.0;
+pub const TELEPORT_GEOMETRIC_LENGTH_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
 
 /// Flags a teleport edge whose geometric (Euclidean, unit tile scale — see
-/// `space::geometric_distance`) distance between its entry and exit is shorter than a configured
-/// minimum — see GitHub issue #74. A teleport meant to feel like a meaningful "jump" across the
-/// maze becomes pointless noise if its endpoints are only a couple of tiles apart in Cartesian
-/// space, even when they're topologically far (no direct passage).
-pub struct TeleportMinGeometricLengthCheck {
+/// `space::geometric_distance`) distance between its entry and exit compares against a configured
+/// threshold — see GitHub issue #74/#177. Merges the former
+/// `TeleportMinGeometricLengthCheck`/`TeleportMaxGeometricLengthCheck` (a min/max pair validating
+/// the same single-teleport property, both flagging `INVALID_TELEPORT`) into one check type
+/// parametrized by `Comparison` — `comparison: Lt` reproduces the old "shorter than minimum"
+/// behavior, `Gt` reproduces "longer than maximum".
+pub struct TeleportGeometricLengthCheck {
     pub instance_id: String,
-    pub min_length: f64,
+    pub comparison: Comparison,
+    pub length: f64,
     /// GitHub issue #78, default `true`: a teleport lying on the maze's current start->finish
     /// route (`is_teleport_route_protected`) is never included in `invalid`.
     pub protect_route: bool,
 }
 
-impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportMinGeometricLengthCheck {
-    fn check_type_id(&self) -> &'static str { "teleport_min_geometric_length" }
+impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGeometricLengthCheck {
+    fn check_type_id(&self) -> &'static str { "teleport_geometric_length" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let invalid = find_invalid_teleports(maze, self.protect_route, |d| d < self.min_length);
-        if let Some(issue) = build_issue(invalid, &self.instance_id, "min_length", self.min_length) {
+        let invalid = find_invalid_teleports(maze, self.protect_route, self.comparison, self.length);
+        if let Some(issue) = build_issue(invalid, &self.instance_id, self.length) {
             issues.push(issue);
         }
     }
@@ -39,7 +44,7 @@ mod tests {
     use crate::graph::EdgeKind;
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
 
-    const TEST_ID: &str = "teleport_min_geometric_length";
+    const TEST_ID: &str = "teleport_geometric_length";
 
     fn maze_with_teleport(from: (i32, i32), to: (i32, i32)) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
@@ -53,9 +58,9 @@ mod tests {
     }
 
     #[test]
-    fn fires_when_shorter_than_minimum() {
+    fn lt_fires_when_shorter_than_minimum() {
         let maze = maze_with_teleport((0, 0), (1, 0)); // distance 1.0
-        let check = TeleportMinGeometricLengthCheck { instance_id: TEST_ID.to_string(), min_length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -65,14 +70,14 @@ mod tests {
     }
 
     #[test]
-    fn protect_route_excludes_a_route_critical_short_teleport() {
+    fn lt_protect_route_excludes_a_route_critical_short_teleport() {
         let mut maze = maze_with_teleport((0, 0), (1, 0)); // distance 1.0
         let teleport = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap();
         let (start, finish) = (teleport.from, teleport.to);
         maze.meta.start = Some(start);
         maze.meta.finish = Some(finish);
 
-        let check = TeleportMinGeometricLengthCheck { instance_id: TEST_ID.to_string(), min_length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -80,9 +85,9 @@ mod tests {
     }
 
     #[test]
-    fn silent_when_longer_than_minimum() {
+    fn lt_silent_when_longer_than_minimum() {
         let maze = maze_with_teleport((0, 0), (10, 0)); // distance 10.0
-        let check = TeleportMinGeometricLengthCheck { instance_id: TEST_ID.to_string(), min_length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -90,13 +95,50 @@ mod tests {
     }
 
     #[test]
-    fn silent_when_threshold_is_zero() {
+    fn lt_silent_when_threshold_is_zero() {
         let maze = maze_with_teleport((0, 0), (1, 0));
-        let check = TeleportMinGeometricLengthCheck { instance_id: TEST_ID.to_string(), min_length: 0.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 0.0, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty(), "a threshold of 0 should never flag any teleport");
+    }
+
+    #[test]
+    fn gt_fires_when_longer_than_maximum() {
+        let maze = maze_with_teleport((0, 0), (10, 0)); // distance 10.0
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert_eq!(issues.len(), 1);
+        let teleport_id = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap().id;
+        assert_eq!(issues[0].invalid, vec![teleport_id]);
+    }
+
+    #[test]
+    fn gt_protect_route_excludes_a_route_critical_long_teleport() {
+        let mut maze = maze_with_teleport((0, 0), (10, 0)); // distance 10.0
+        let teleport = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).unwrap();
+        let (start, finish) = (teleport.from, teleport.to);
+        maze.meta.start = Some(start);
+        maze.meta.finish = Some(finish);
+
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert!(issues.is_empty(), "route-critical teleport must not be flagged when protect_route is enabled");
+    }
+
+    #[test]
+    fn gt_silent_when_shorter_than_maximum() {
+        let maze = maze_with_teleport((0, 0), (1, 0)); // distance 1.0
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert!(issues.is_empty());
     }
 
     #[test]
@@ -110,7 +152,7 @@ mod tests {
         g.add_edge(a, b, EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = TeleportMinGeometricLengthCheck { instance_id: TEST_ID.to_string(), min_length: 100.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 100.0, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -131,7 +173,7 @@ mod tests {
         g.add_edge(b, a, EdgeKind::Teleport);
         let maze = Maze::new(field, g);
 
-        let check = TeleportMinGeometricLengthCheck { instance_id: TEST_ID.to_string(), min_length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());

@@ -7,7 +7,7 @@ use maze_core::generation::{generate_maze, GenerationAlgorithm, EdgeBasedParams,
 use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{
     QualityControlEngine, Rule, RuleTrait, Stage, Check, Issue, IssueMerge, IssueRequirement,
-    MissingEndpointsCheck, UnreachableFinishCheck, MinLoopLengthCheck,
+    MissingEndpointsCheck, UnreachableFinishCheck, LoopLengthCheck, Comparison,
     MissingEndpointsIssue, InvalidLoopIssue, InvalidLoopRequirement, RepairLimitReachedIssue,
     RepairLimitKind,
 };
@@ -353,7 +353,7 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
     let qc = two_rules(
         (vec![("missing_endpoints", Box::new(MissingEndpointsCheck { instance_id: "ga:missing_endpoints".to_string() }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
          Box::new(FarthestEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>),
-        (vec![("min_loop_length", Box::new(MinLoopLengthCheck { instance_id: "gb:min_loop_length".to_string(), min_loop_length: 10 }))],
+        (vec![("min_loop_length", Box::new(LoopLengthCheck { instance_id: "gb:min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 }))],
          Box::new(InvalidLoopRandomStrategy) as Box<dyn RepairStrategy<SquareTessellation, InvalidLoopIssue>>),
     );
 
@@ -393,7 +393,7 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
         let qc = two_rules(
             (vec![("missing_endpoints", Box::new(MissingEndpointsCheck { instance_id: "ga:missing_endpoints".to_string() }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
              Box::new(RandomEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>),
-            (vec![("min_loop_length", Box::new(MinLoopLengthCheck { instance_id: "gb:min_loop_length".to_string(), min_loop_length: 10 }))],
+            (vec![("min_loop_length", Box::new(LoopLengthCheck { instance_id: "gb:min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 }))],
              Box::new(InvalidLoopRandomStrategy) as Box<dyn RepairStrategy<SquareTessellation, InvalidLoopIssue>>),
         );
 
@@ -434,7 +434,7 @@ fn exact_issue_23_seed_never_isolates_a_node() {
     let qc = two_rules(
         (vec![("missing_endpoints", Box::new(MissingEndpointsCheck { instance_id: "ga:missing_endpoints".to_string() }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
          Box::new(RandomEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>),
-        (vec![("min_loop_length", Box::new(MinLoopLengthCheck { instance_id: "gb:min_loop_length".to_string(), min_loop_length: 10 }))],
+        (vec![("min_loop_length", Box::new(LoopLengthCheck { instance_id: "gb:min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 }))],
          Box::new(InvalidLoopRandomStrategy) as Box<dyn RepairStrategy<SquareTessellation, InvalidLoopIssue>>),
     );
 

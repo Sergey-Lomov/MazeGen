@@ -5,9 +5,11 @@ use crate::graph::distance_map::min_optional_distance;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
+use crate::quality_control::comparison::Comparison;
 use crate::quality_control::{Issue, InvalidTeleportIssue};
 
 pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT: u32 = 0;
+pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
 
 /// Which waypoint(s) a `TeleportWaypointDistanceCheck` instance measures distance against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +42,9 @@ pub enum TeleportEdgeSelector {
 pub struct TeleportWaypointDistanceCheck {
     pub instance_id: String,
     pub distance: u32,
+    /// GitHub issue #177: `Lt` reproduces the pre-#177 "too close" behavior (flag if closer than
+    /// `distance`); other operators let a user flag "too far" (`Gt`) or other relations instead.
+    pub comparison: Comparison,
     pub waypoint: TeleportWaypoint,
     pub edge: TeleportEdgeSelector,
     /// GitHub issue #78, default `true`: a teleport lying on the maze's current start->finish
@@ -87,7 +92,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
                     TeleportEdgeSelector::EntryOnly => None,
                     TeleportEdgeSelector::EntryOrExit => waypoint_distance(t.to),
                 };
-                min_optional_distance(entry_dist, exit_dist).is_some_and(|d| d < self.distance as usize)
+                min_optional_distance(entry_dist, exit_dist).is_some_and(|d| self.comparison.compare(d as u32, self.distance))
             })
             .filter(|t| !self.protect_route || !is_teleport_route_protected(maze, t.id))
             .map(|e| e.id)
@@ -141,6 +146,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: true,
@@ -158,6 +164,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: true,
@@ -166,6 +173,23 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn gt_fires_when_entry_farther_than_threshold_from_start() {
+        let (maze, _) = maze_with_teleport_entry_at_distance(10);
+        let check = TeleportWaypointDistanceCheck {
+            instance_id: TEST_ID.to_string(),
+            distance: 5,
+            comparison: Comparison::Gt,
+            waypoint: TeleportWaypoint::Start,
+            edge: TeleportEdgeSelector::EntryOnly,
+            protect_route: true,
+        };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert_eq!(issues.len(), 1, "entry at distance 10 is > 5");
     }
 
     #[test]
@@ -178,6 +202,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: true,
@@ -210,6 +235,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOrExit,
             protect_route: true,
@@ -243,6 +269,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Any,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: true,
@@ -264,6 +291,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: true,
@@ -282,6 +310,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: false,
@@ -298,6 +327,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 0,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: true,
@@ -315,6 +345,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 100,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: true,
@@ -345,6 +376,7 @@ mod tests {
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
             distance: 1000,
+            comparison: Comparison::Lt,
             waypoint: TeleportWaypoint::Start,
             edge: TeleportEdgeSelector::EntryOnly,
             protect_route: true,

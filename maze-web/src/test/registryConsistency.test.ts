@@ -81,6 +81,9 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
           const key = `${param.id}.${opt}`;
           expect(paramOptionI18n[key], `missing paramOptionI18n entry for "${key}" (${ownerKind} "${entity.id}")`).toBeDefined();
           expect(paramOptionI18n[key]().length).toBeGreaterThan(0);
+          // comparison options (lt/gt/le/ge/eq) are self-explanatory from their label alone —
+          // no separate explanation entry is kept for them.
+          if (param.id === "comparison") continue;
           expect(paramOptionExplanationI18n[key], `missing paramOptionExplanationI18n entry for "${key}" (${ownerKind} "${entity.id}")`).toBeDefined();
           expect(paramOptionExplanationI18n[key]().length).toBeGreaterThan(0);
         }

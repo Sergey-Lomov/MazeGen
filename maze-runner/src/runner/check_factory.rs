@@ -3,24 +3,28 @@ use maze_core::{
     space::Tessellation,
     quality_control::{
         MissingEndpointsCheck, UnreachableFinishCheck,
-        MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT,
-        AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MinLoopLengthCheck, MIN_LOOP_LENGTH_DEFAULT,
-        MaxLoopLengthCheck, MAX_LOOP_LENGTH_DEFAULT, ExternalEscapeDiversityCheck,
+        MinLoopsCountCheck, MIN_LOOPS_DEFAULT,
+        MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT,
+        AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, LoopLengthCheck, LOOP_LENGTH_DEFAULT,
+        ExternalEscapeDiversityCheck,
         EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck,
         LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck,
         LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT,
         SccCountCheck, MAX_SCC_COUNT_DEFAULT, MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT,
-        MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT, MinRegionCountCheck,
+        MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT,
+        MaxRegionSizeCheck, MAX_REGION_SIZE_DEFAULT, MaxRegionRatioCheck, MAX_REGION_RATIO_DEFAULT,
+        MinRegionCountCheck,
         MIN_REGION_COUNT_DEFAULT,
         TeleportDuplicatesConnectionCheck,
         TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
-        TeleportMinGeometricLengthCheck, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT,
-        TeleportMaxGeometricLengthCheck, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT,
+        TeleportGeometricLengthCheck, TELEPORT_GEOMETRIC_LENGTH_DEFAULT,
         TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
+        Comparison,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
-        ExcessiveSccCountIssue, RegionNeedsExpansionIssue, MissingRegionsIssue, InvalidTeleportIssue,
-        TeleportGroupProximityIssue,
+        InvalidLoopGroupIssue,
+        ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
+        InvalidTeleportIssue, TeleportGroupProximityIssue,
     },
     RegionClass,
 };
@@ -38,8 +42,10 @@ pub(crate) enum KindTag {
     UnreachableFinish,
     MissingLoops,
     InvalidLoop,
+    InvalidLoopGroup,
     ExcessiveSccCount,
     RegionNeedsExpansion,
+    RegionNeedsShrink,
     MissingRegions,
     InvalidTeleport,
     TeleportGroupProximity,
@@ -51,20 +57,20 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "unreachable_finish"        => KindTag::UnreachableFinish,
         "min_loops_count"           => KindTag::MissingLoops,
         "min_loop_density"          => KindTag::MissingLoops,
-        "min_loop_length"           => KindTag::InvalidLoop,
-        "max_loop_length"           => KindTag::InvalidLoop,
+        "loop_length"               => KindTag::InvalidLoop,
         "external_escape_diversity" => KindTag::InvalidLoop,
         "loop_distance_from_start"  => KindTag::InvalidLoop,
         "loop_distance_from_finish" => KindTag::InvalidLoop,
-        "max_loop_density"          => KindTag::InvalidLoop,
+        "max_loop_density"          => KindTag::InvalidLoopGroup,
         "scc_count"                 => KindTag::ExcessiveSccCount,
         "min_region_size"           => KindTag::RegionNeedsExpansion,
         "min_region_ratio"          => KindTag::RegionNeedsExpansion,
+        "max_region_size"           => KindTag::RegionNeedsShrink,
+        "max_region_ratio"          => KindTag::RegionNeedsShrink,
         "min_region_count"          => KindTag::MissingRegions,
         "teleport_duplicates_connection" => KindTag::InvalidTeleport,
         "teleport_waypoint_distance" => KindTag::InvalidTeleport,
-        "teleport_min_geometric_length" => KindTag::InvalidTeleport,
-        "teleport_max_geometric_length" => KindTag::InvalidTeleport,
+        "teleport_geometric_length" => KindTag::InvalidTeleport,
         "teleport_super_hub_avoidance" => KindTag::InvalidTeleport,
         "teleport_group_proximity" => KindTag::TeleportGroupProximity,
         other => panic!("unknown check type_id: {other}"),
@@ -122,6 +128,12 @@ fn parse_protect_route(param: Option<&String>) -> bool {
     }
 }
 
+/// GitHub issue #177: `comparison` is shared by every check merged around `Comparison` — missing
+/// or unparseable falls back to `default`, the check's own pre-#177 fixed operator.
+fn parse_comparison(param: Option<&String>, default: Comparison) -> Comparison {
+    param.and_then(|v| Comparison::from_str(v)).unwrap_or(default)
+}
+
 /// One `build_*_check` function per `KindTag` — `type_id`s that share a `KindTag` (e.g.
 /// `min_loops_count`/`min_loop_density`, both `MissingLoops`) are handled by the same function's
 /// own `match`. Parsing logic per arm is unchanged from the pre-#113 single `build_check`, just
@@ -168,19 +180,13 @@ pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanc
 
 pub(crate) fn build_invalid_loop_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidLoopIssue>>> {
     match instance.type_id.as_str() {
-        "min_loop_length" => {
-            let min_loop_length = instance.params.get("min_loop_length")
+        "loop_length" => {
+            let length = instance.params.get("length")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
-                .unwrap_or(MIN_LOOP_LENGTH_DEFAULT);
-            Some(Box::new(MinLoopLengthCheck { instance_id, min_loop_length }))
-        }
-        "max_loop_length" => {
-            let max_loop_length = instance.params.get("max_loop_length")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.max(1) as u32)
-                .unwrap_or(MAX_LOOP_LENGTH_DEFAULT);
-            Some(Box::new(MaxLoopLengthCheck { instance_id, max_loop_length }))
+                .unwrap_or(LOOP_LENGTH_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
+            Some(Box::new(LoopLengthCheck { instance_id, comparison, length }))
         }
         "external_escape_diversity" => {
             let min_distinct_exits = instance.params.get("min_distinct_exits")
@@ -203,6 +209,12 @@ pub(crate) fn build_invalid_loop_check<T: Tessellation>(instance: &CheckInstance
                 .unwrap_or(LOOP_DISTANCE_FROM_FINISH_DEFAULT);
             Some(Box::new(LoopDistanceFromFinishCheck { instance_id, min_distance_from_finish }))
         }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_invalid_loop_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidLoopGroupIssue>>> {
+    match instance.type_id.as_str() {
         "max_loop_density" => {
             let max_density = instance.params.get("max_density")
                 .and_then(|v| v.parse::<i64>().ok())
@@ -249,6 +261,28 @@ pub(crate) fn build_region_needs_expansion_check<T: Tessellation>(instance: &Che
     }
 }
 
+pub(crate) fn build_region_needs_shrink_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, RegionNeedsShrinkIssue>>> {
+    match instance.type_id.as_str() {
+        "max_region_size" => {
+            let max_region_size = instance.params.get("max_region_size")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MAX_REGION_SIZE_DEFAULT);
+            let region_classes = parse_region_class_filter(instance.params.get("region_class"));
+            Some(Box::new(MaxRegionSizeCheck { instance_id, max_region_size, region_classes }))
+        }
+        "max_region_ratio" => {
+            let max_region_ratio = instance.params.get("max_region_ratio")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(MAX_REGION_RATIO_DEFAULT);
+            let region_classes = parse_region_class_filter(instance.params.get("region_class"));
+            Some(Box::new(MaxRegionRatioCheck { instance_id, max_region_ratio, region_classes }))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn build_missing_regions_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingRegionsIssue>>> {
     match instance.type_id.as_str() {
         "min_region_count" => {
@@ -279,28 +313,21 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(TELEPORT_WAYPOINT_DISTANCE_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
             let waypoint = parse_teleport_waypoint(instance.params.get("waypoint"));
             let edge = parse_teleport_edge_selector(instance.params.get("edge"));
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Some(Box::new(TeleportWaypointDistanceCheck { instance_id, distance, waypoint, edge, protect_route }))
+            Some(Box::new(TeleportWaypointDistanceCheck { instance_id, distance, comparison, waypoint, edge, protect_route }))
         }
-        "teleport_min_geometric_length" => {
-            let min_length = instance.params.get("min_length")
+        "teleport_geometric_length" => {
+            let length = instance.params.get("length")
                 .and_then(|v| v.parse::<f64>().ok())
                 .filter(|v| v.is_finite())
                 .map(|v| v.max(0.0))
-                .unwrap_or(TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT);
+                .unwrap_or(TELEPORT_GEOMETRIC_LENGTH_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Some(Box::new(TeleportMinGeometricLengthCheck { instance_id, min_length, protect_route }))
-        }
-        "teleport_max_geometric_length" => {
-            let max_length = instance.params.get("max_length")
-                .and_then(|v| v.parse::<f64>().ok())
-                .filter(|v| v.is_finite())
-                .map(|v| v.max(0.0))
-                .unwrap_or(TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT);
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Some(Box::new(TeleportMaxGeometricLengthCheck { instance_id, max_length, protect_route }))
+            Some(Box::new(TeleportGeometricLengthCheck { instance_id, comparison, length, protect_route }))
         }
         "teleport_super_hub_avoidance" => {
             let max_connections = instance.params.get("max_connections")

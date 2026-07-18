@@ -19,13 +19,9 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.min_loop_density.label"] as MessageFn,
     description: m["check.min_loop_density.description"] as MessageFn,
   },
-  min_loop_length: {
-    label: m["check.min_loop_length.label"] as MessageFn,
-    description: m["check.min_loop_length.description"] as MessageFn,
-  },
-  max_loop_length: {
-    label: m["check.max_loop_length.label"] as MessageFn,
-    description: m["check.max_loop_length.description"] as MessageFn,
+  loop_length: {
+    label: m["check.loop_length.label"] as MessageFn,
+    description: m["check.loop_length.description"] as MessageFn,
   },
   external_escape_diversity: {
     label: m["check.external_escape_diversity.label"] as MessageFn,
@@ -55,6 +51,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.min_region_ratio.label"] as MessageFn,
     description: m["check.min_region_ratio.description"] as MessageFn,
   },
+  max_region_size: {
+    label: m["check.max_region_size.label"] as MessageFn,
+    description: m["check.max_region_size.description"] as MessageFn,
+  },
+  max_region_ratio: {
+    label: m["check.max_region_ratio.label"] as MessageFn,
+    description: m["check.max_region_ratio.description"] as MessageFn,
+  },
   min_region_count: {
     label: m["check.min_region_count.label"] as MessageFn,
     description: m["check.min_region_count.description"] as MessageFn,
@@ -67,13 +71,9 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.teleport_waypoint_distance.label"] as MessageFn,
     description: m["check.teleport_waypoint_distance.description"] as MessageFn,
   },
-  teleport_min_geometric_length: {
-    label: m["check.teleport_min_geometric_length.label"] as MessageFn,
-    description: m["check.teleport_min_geometric_length.description"] as MessageFn,
-  },
-  teleport_max_geometric_length: {
-    label: m["check.teleport_max_geometric_length.label"] as MessageFn,
-    description: m["check.teleport_max_geometric_length.description"] as MessageFn,
+  teleport_geometric_length: {
+    label: m["check.teleport_geometric_length.label"] as MessageFn,
+    description: m["check.teleport_geometric_length.description"] as MessageFn,
   },
   teleport_super_hub_avoidance: {
     label: m["check.teleport_super_hub_avoidance.label"] as MessageFn,
@@ -102,6 +102,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_loop.label"] as MessageFn,
     description: m["issue.invalid_loop.description"] as MessageFn,
   },
+  invalid_loop_group: {
+    label: m["issue.invalid_loop_group.label"] as MessageFn,
+    description: m["issue.invalid_loop_group.description"] as MessageFn,
+  },
   excessive_scc_count: {
     label: m["issue.excessive_scc_count.label"] as MessageFn,
     description: m["issue.excessive_scc_count.description"] as MessageFn,
@@ -109,6 +113,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   region_needs_expansion: {
     label: m["issue.region_needs_expansion.label"] as MessageFn,
     description: m["issue.region_needs_expansion.description"] as MessageFn,
+  },
+  region_needs_shrink: {
+    label: m["issue.region_needs_shrink.label"] as MessageFn,
+    description: m["issue.region_needs_shrink.description"] as MessageFn,
   },
   missing_regions: {
     label: m["issue.missing_regions.label"] as MessageFn,
@@ -190,13 +198,13 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.min_loops.label"] as MessageFn,
     description: m["param.min_loops.description"] as MessageFn,
   },
-  min_loop_length: {
-    label: m["param.min_loop_length.label"] as MessageFn,
-    description: m["param.min_loop_length.description"] as MessageFn,
+  length: {
+    label: m["param.length.label"] as MessageFn,
+    description: m["param.length.description"] as MessageFn,
   },
-  max_loop_length: {
-    label: m["param.max_loop_length.label"] as MessageFn,
-    description: m["param.max_loop_length.description"] as MessageFn,
+  comparison: {
+    label: m["param.comparison.label"] as MessageFn,
+    description: m["param.comparison.description"] as MessageFn,
   },
   min_distinct_exits: {
     label: m["param.min_distinct_exits.label"] as MessageFn,
@@ -262,6 +270,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.min_region_ratio.label"] as MessageFn,
     description: m["param.min_region_ratio.description"] as MessageFn,
   },
+  max_region_size: {
+    label: m["param.max_region_size.label"] as MessageFn,
+    description: m["param.max_region_size.description"] as MessageFn,
+  },
+  max_region_ratio: {
+    label: m["param.max_region_ratio.label"] as MessageFn,
+    description: m["param.max_region_ratio.description"] as MessageFn,
+  },
   target_mode: {
     label: m["param.target_mode.label"] as MessageFn,
     description: m["param.target_mode.description"] as MessageFn,
@@ -321,14 +337,6 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   edge: {
     label: m["param.edge.label"] as MessageFn,
     description: m["param.edge.description"] as MessageFn,
-  },
-  min_length: {
-    label: m["param.min_length.label"] as MessageFn,
-    description: m["param.min_length.description"] as MessageFn,
-  },
-  max_length: {
-    label: m["param.max_length.label"] as MessageFn,
-    description: m["param.max_length.description"] as MessageFn,
   },
   max_connections: {
     label: m["param.max_connections.label"] as MessageFn,
@@ -399,6 +407,11 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "other_edge.entry_or_exit": m["param.other_edge.option.entry_or_exit"] as MessageFn,
   "priority.random": m["param.priority.option.random"] as MessageFn,
   "priority.problematic": m["param.priority.option.problematic"] as MessageFn,
+  "comparison.lt": m["param.comparison.option.lt"] as MessageFn,
+  "comparison.gt": m["param.comparison.option.gt"] as MessageFn,
+  "comparison.le": m["param.comparison.option.le"] as MessageFn,
+  "comparison.ge": m["param.comparison.option.ge"] as MessageFn,
+  "comparison.eq": m["param.comparison.option.eq"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's

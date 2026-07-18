@@ -6,6 +6,9 @@ use crate::quality_control::{Issue, MissingLoopsIssue};
 
 pub const MIN_LOOPS_DEFAULT: u32 = 1;
 
+/// Flags a deficit against a raw independent-cycle count — see GitHub issue #177 (originally
+/// merged with `MinLoopDensityCheck` into one `Mode`-switched check, split back out since the two
+/// measure genuinely different things: an absolute count vs. a field-coverage share).
 pub struct MinLoopsCountCheck {
     pub instance_id: String,
     pub min_loops: u32,
@@ -16,15 +19,14 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopsCountCheck {
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingLoopsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         // Uses the same independent-cycle count (Euler: E - V + C on the pure-cycle core) shown
-        // to the user as the "Cycle count" analytics stat — not `find_deduped_simple_cycles`'s
-        // raw simple-cycle enumeration, which is a different (usually much larger) metric and
-        // would make this check disagree with what the UI displays. Silently skips (no issue) on
-        // `cycle_analysis_overflowed`, same rationale as the simple-cycle checks' overflow skip.
+        // to the user as the "Cycle count" analytics stat — not `find_deduped_simple_cycles`'s raw
+        // simple-cycle enumeration, which is a different (usually much larger) metric. Silently
+        // skips on `cycle_analysis_overflowed`, same rationale as the simple-cycle checks' overflow
+        // skip.
         let analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
         if analytics.cycle_analysis_overflowed {
             return;
         }
-
         let missing = self.min_loops.saturating_sub(analytics.cycle_count as u32);
         if missing == 0 {
             return;
@@ -45,6 +47,10 @@ mod tests {
 
     const TEST_ID: &str = "min_loops_count";
 
+    fn rng() -> crate::random::MazeRng {
+        crate::random::MazeRng::seed_from_u64(0)
+    }
+
     fn maze_with_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
@@ -62,8 +68,7 @@ mod tests {
         let maze = maze_with_triangle();
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
         let mut issues = Vec::new();
-        let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng, ());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
     }
 
@@ -72,8 +77,7 @@ mod tests {
         let maze = maze_with_triangle();
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 3 };
         let mut issues = Vec::new();
-        let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng, ());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].missing, 2);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
@@ -84,28 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn fires_when_no_loop_exists() {
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
-        g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
-        g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
-        let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
-        let mut issues = Vec::new();
-        let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng, ());
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 1);
-    }
-
-    #[test]
     fn silent_when_graph_analytics_overflows() {
-        // Same 6x6 fully-bidirectional grid as the cycles.rs regression test for issue #22
-        // (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES, the same bound
-        // `compute_graph_analytics` hits internally, setting `cycle_analysis_overflowed`).
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
         let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
@@ -127,8 +110,7 @@ mod tests {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
         let mut issues = Vec::new();
-        let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng, ());
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 }

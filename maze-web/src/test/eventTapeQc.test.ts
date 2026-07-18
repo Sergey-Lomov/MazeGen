@@ -716,7 +716,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "region_needs_expansion", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Region validation"] },
+      { kind: "issue", issueKind: "region_needs_expansion", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Region expansion"] },
     ]);
   });
 
@@ -738,7 +738,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "region_needs_expansion", target: null, reasons: ["Region validation"] },
+      { kind: "issue", issueKind: "region_needs_expansion", target: null, reasons: ["Region expansion"] },
     ]);
   });
 
@@ -748,11 +748,11 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
         kind: "CheckRan", checkId: "r1:check1",
         issue: { issueKind: "invalid_loop", payload: { kind: "None" }, details: new Map([["threshold", "10"]]) },
       },
-      { stageTitle: () => undefined, ruleTitle: () => undefined, checkTypeId: (id) => (id === "r1:check1" ? "min_loop_length" : undefined) },
+      { stageTitle: () => undefined, ruleTitle: () => undefined, checkTypeId: (id) => (id === "r1:check1" ? "loop_length" : undefined) },
     );
     expect(tokens).toEqual([
-      { kind: "text", text: 'Check "Min length": issue found ' },
-      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop shorter than 10 tiles"] },
+      { kind: "text", text: 'Check "Loop length": issue found ' },
+      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop length compared against 10 tiles"] },
     ]);
   });
 
@@ -765,12 +765,12 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
       { kind: "IssuesMerged", issueKind: "invalid_loop", payload: { kind: "None" }, details },
       {
         stageTitle: () => undefined, ruleTitle: () => undefined,
-        checkTypeId: (id) => (id === "r1:check1" || id === "r1:check2" ? "min_loop_length" : undefined),
+        checkTypeId: (id) => (id === "r1:check1" || id === "r1:check2" ? "loop_length" : undefined),
       },
     );
     expect(tokens).toEqual([
       { kind: "text", text: "Merged into issue " },
-      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop shorter than 10 tiles"] },
+      { kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop length compared against 10 tiles"] },
     ]);
   });
 

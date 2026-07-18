@@ -16,7 +16,7 @@ beforeEach(() => {
 describe("IssueSelectDialog", () => {
   it("lists distinct issue kinds, not one per check", () => {
     render(<IssueSelectDialog onSelect={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getAllByText("Loop count")).toHaveLength(1);
+    expect(screen.getAllByText("Add loops")).toHaveLength(1);
     expect(screen.getAllByText("Loop validation")).toHaveLength(1);
   });
 

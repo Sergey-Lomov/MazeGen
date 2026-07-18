@@ -202,6 +202,10 @@ fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(2);
             write_str_keyed_node_lists(out, nodes);
         }
+        IssuePayload::RegionNeedsShrink { nodes } => {
+            out.push(3);
+            write_str_keyed_node_lists(out, nodes);
+        }
     }
 }
 

@@ -533,7 +533,7 @@ describe("mazeStore.loadRegistry", () => {
     vi.mocked(getAvailableChecks).mockReturnValue(checks);
     vi.mocked(getAvailableStrategies).mockReturnValue([]);
     await useMazeStore.getState().loadRegistry();
-    expect(useMazeStore.getState().rules[0].name).toBe("Endpoint presence");
+    expect(useMazeStore.getState().rules[0].name).toBe("Add waypoints");
   });
 
   it("prefers scored_endpoints over earlier-listed strategies for the missing_endpoints kind", async () => {

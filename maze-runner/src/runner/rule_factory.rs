@@ -4,15 +4,17 @@ use maze_core::{
     quality_control::{
         QualityControlEngine, RuleTrait, Rule, Stage,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
-        ExcessiveSccCountIssue, RegionNeedsExpansionIssue, MissingRegionsIssue, InvalidTeleportIssue,
-        TeleportGroupProximityIssue,
+        InvalidLoopGroupIssue,
+        ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
+        InvalidTeleportIssue, TeleportGroupProximityIssue,
     },
 };
 use crate::config::GenerateConfig;
 use super::check_factory::{
     KindTag, check_kind_for_type, composite_check_id,
     build_missing_endpoints_check, build_unreachable_finish_check, build_missing_loops_check,
-    build_invalid_loop_check, build_excessive_scc_count_check, build_region_needs_expansion_check,
+    build_invalid_loop_check, build_invalid_loop_group_check, build_excessive_scc_count_check, build_region_needs_expansion_check,
+    build_region_needs_shrink_check,
     build_missing_regions_check, build_invalid_teleport_check, build_teleport_group_proximity_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
@@ -70,8 +72,10 @@ fn build_rule<T: Tessellation + 'static>(rule_cfg: &crate::config::QcRuleConfig)
         KindTag::UnreachableFinish => build_rule_for!(UnreachableFinishIssue, build_unreachable_finish_check, rule_cfg),
         KindTag::MissingLoops => build_rule_for!(MissingLoopsIssue, build_missing_loops_check, rule_cfg),
         KindTag::InvalidLoop => build_rule_for!(InvalidLoopIssue, build_invalid_loop_check, rule_cfg),
+        KindTag::InvalidLoopGroup => build_rule_for!(InvalidLoopGroupIssue, build_invalid_loop_group_check, rule_cfg),
         KindTag::ExcessiveSccCount => build_rule_for!(ExcessiveSccCountIssue, build_excessive_scc_count_check, rule_cfg),
         KindTag::RegionNeedsExpansion => build_rule_for!(RegionNeedsExpansionIssue, build_region_needs_expansion_check, rule_cfg),
+        KindTag::RegionNeedsShrink => build_rule_for!(RegionNeedsShrinkIssue, build_region_needs_shrink_check, rule_cfg),
         KindTag::MissingRegions => build_rule_for!(MissingRegionsIssue, build_missing_regions_check, rule_cfg),
         KindTag::InvalidTeleport => build_rule_for!(InvalidTeleportIssue, build_invalid_teleport_check, rule_cfg),
         KindTag::TeleportGroupProximity => build_rule_for!(TeleportGroupProximityIssue, build_teleport_group_proximity_check, rule_cfg),

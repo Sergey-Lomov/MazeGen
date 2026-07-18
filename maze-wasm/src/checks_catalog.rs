@@ -1,7 +1,7 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
-    quality_control::{IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, MIN_LOOP_LENGTH_DEFAULT, MAX_LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, TELEPORT_GROUP_PROXIMITY, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT},
+    quality_control::{IssueKind, Comparison, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, TELEPORT_GROUP_PROXIMITY, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT},
     RegionClass,
 };
 
@@ -79,6 +79,21 @@ fn protect_route_param() -> ParamDescriptor {
     }
 }
 
+/// Shared `comparison` param descriptor — GitHub issue #177: checks merged around `Comparison`
+/// (min/max validating a single entity, both flagging the same issue kind) expose one `comparison`
+/// enum param instead of being two near-duplicate check types. `default` is the merged check's
+/// pre-#177 fixed operator, so an unset param reproduces the old check's exact behavior.
+fn comparison_param(default: Comparison) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "comparison",
+        label: "Comparison",
+        kind: ParamKindDto::Enum {
+            options: Comparison::ALL.iter().map(|c| c.as_str()).collect(),
+            default: default.as_str(),
+        },
+    }
+}
+
 pub fn available_checks_list() -> Vec<CheckDescriptor> {
     vec![
         CheckDescriptor {
@@ -98,183 +113,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: false,
         },
         CheckDescriptor {
-            id: "min_loops_count",
-            label: "Minimum loop count",
-            description: "Fires if the maze has fewer loops than the required minimum.",
-            issue_kinds: vec![kind_str(MISSING_LOOPS)],
-            params: vec![ParamDescriptor {
-                id: "min_loops",
-                label: "Min loop count",
-                kind: ParamKindDto::Integer { default: MIN_LOOPS_DEFAULT as i64, min: 1, max: 1_000_000 },
-            }],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "min_loop_density",
-            label: "Minimum loop density",
-            description: "Fires if too small a share of the field is covered by loops; the missing cell count is converted into a requested loop count via an estimated average loop length.",
-            issue_kinds: vec![kind_str(MISSING_LOOPS)],
-            params: vec![
-                ParamDescriptor {
-                    id: "min_density",
-                    label: "Min loop density (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MIN_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
-                },
-                ParamDescriptor {
-                    id: "avg_loop_length_estimate",
-                    label: "Average loop length estimate",
-                    kind: ParamKindDto::Integer { default: AVG_LOOP_LENGTH_ESTIMATE_DEFAULT as i64, min: 1, max: 100_000 },
-                },
-            ],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "scc_count",
-            label: "Maximum SCC region count",
-            description: "Fires if the graph is split into more strongly-connected components than the allowed maximum, signalling a fragmented maze.",
-            issue_kinds: vec![kind_str(EXCESSIVE_SCC_COUNT)],
-            params: vec![ParamDescriptor {
-                id: "max_scc_count",
-                label: "Max SCC region count",
-                kind: ParamKindDto::Integer { default: MAX_SCC_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
-            }],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "min_region_size",
-            label: "Minimum SCC region size",
-            description: "Fires if any strongly-connected region has fewer tiles than the required minimum.",
-            issue_kinds: vec![kind_str(REGION_NEEDS_EXPANSION)],
-            params: vec![
-                ParamDescriptor {
-                    id: "min_region_size",
-                    label: "Min region size (tiles)",
-                    kind: ParamKindDto::Integer { default: MIN_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
-                },
-                region_class_filter_param(),
-            ],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "min_region_ratio",
-            label: "Minimum SCC region ratio",
-            description: "Fires if any strongly-connected region covers less than the required share of the field.",
-            issue_kinds: vec![kind_str(REGION_NEEDS_EXPANSION)],
-            params: vec![
-                ParamDescriptor {
-                    id: "min_region_ratio",
-                    label: "Min region ratio (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MIN_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
-                },
-                region_class_filter_param(),
-            ],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "min_region_count",
-            label: "Minimum region count",
-            description: "Fires if the maze has too few (or, for repair purposes, more than enough) regions of any class (path/alternative/unreachable/trap) against its configured minimum.",
-            issue_kinds: vec![kind_str(MISSING_REGIONS)],
-            params: vec![
-                ParamDescriptor {
-                    id: "path_count",
-                    label: "Min Path region count",
-                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
-                },
-                ParamDescriptor {
-                    id: "alternative_count",
-                    label: "Min Alternative region count",
-                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
-                },
-                ParamDescriptor {
-                    id: "unreachable_count",
-                    label: "Min Unreachable region count",
-                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
-                },
-                ParamDescriptor {
-                    id: "trap_count",
-                    label: "Min Trap region count",
-                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
-                },
-            ],
-            // A single instance now evaluates all four classes at once (see GitHub issue #60's
-            // multi-instance design, retired — `MinRegionCountCheck` no longer needs more than
-            // one active instance to express "different minimums per class").
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "min_loop_length",
-            label: "Minimum loop length",
-            description: "Fires if the maze has simple loops shorter than the required minimum tile length.",
-            issue_kinds: vec![kind_str(INVALID_LOOP)],
-            params: vec![ParamDescriptor {
-                id: "min_loop_length",
-                label: "Min loop length",
-                kind: ParamKindDto::Integer { default: MIN_LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
-            }],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "max_loop_length",
-            label: "Maximum loop length",
-            description: "Fires if the maze has simple loops longer than the allowed maximum tile length.",
-            issue_kinds: vec![kind_str(INVALID_LOOP)],
-            params: vec![ParamDescriptor {
-                id: "max_loop_length",
-                label: "Max loop length",
-                kind: ParamKindDto::Integer { default: MAX_LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
-            }],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "external_escape_diversity",
-            label: "External escape diversity",
-            description: "Fires if a simple loop's outgoing connections converge on too few distinct destinations outside the loop, instead of spreading out diversely.",
-            issue_kinds: vec![kind_str(INVALID_LOOP)],
-            params: vec![ParamDescriptor {
-                id: "min_distinct_exits",
-                label: "Min distinct exits",
-                kind: ParamKindDto::Integer { default: EXTERNAL_ESCAPE_DIVERSITY_DEFAULT as i64, min: 0, max: 1_000 },
-            }],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "loop_distance_from_start",
-            label: "Loop distance from start",
-            description: "Fires if a simple loop sits closer to start (in tiles, directed graph distance) than the required minimum.",
-            issue_kinds: vec![kind_str(INVALID_LOOP)],
-            params: vec![ParamDescriptor {
-                id: "min_distance_from_start",
-                label: "Min distance from start",
-                kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_START_DEFAULT as i64, min: 0, max: 100_000 },
-            }],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "loop_distance_from_finish",
-            label: "Loop distance from finish",
-            description: "Fires if a simple loop sits closer to finish (in tiles, directed graph distance) than the required minimum.",
-            issue_kinds: vec![kind_str(INVALID_LOOP)],
-            params: vec![ParamDescriptor {
-                id: "min_distance_from_finish",
-                label: "Min distance from finish",
-                kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_FINISH_DEFAULT as i64, min: 0, max: 100_000 },
-            }],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "max_loop_density",
-            label: "Maximum loop density",
-            description: "Fires if too large a share of the field is covered by loops; excess loops are picked at random and flagged until density drops to the allowed maximum.",
-            issue_kinds: vec![kind_str(INVALID_LOOP)],
-            params: vec![ParamDescriptor {
-                id: "max_density",
-                label: "Max loop density (per 100 cells)",
-                kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
-            }],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
             id: "teleport_duplicates_connection",
             label: "Teleport duplicates connection",
             description: "Fires if a teleport edge duplicates a regular connection already present between the same pair in the same direction.",
@@ -285,14 +123,15 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
         CheckDescriptor {
             id: "teleport_waypoint_distance",
             label: "Teleport waypoint distance",
-            description: "Fires if a teleport's entry (or entry/exit) sits closer than the required minimum logical distance to start and/or finish.",
+            description: "Fires if a teleport's entry (or entry/exit) logical distance to start and/or finish compares against the configured threshold.",
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
             params: vec![
                 ParamDescriptor {
                     id: "distance",
-                    label: "Min distance",
+                    label: "Distance threshold",
                     kind: ParamKindDto::Integer { default: TELEPORT_WAYPOINT_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
                 },
+                comparison_param(Comparison::Lt),
                 ParamDescriptor {
                     id: "waypoint",
                     label: "Waypoint",
@@ -311,31 +150,17 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: true,
         },
         CheckDescriptor {
-            id: "teleport_min_geometric_length",
-            label: "Teleport minimum geometric length",
-            description: "Fires if the geometric (straight-line) distance between a teleport's entry and exit is shorter than the required minimum.",
+            id: "teleport_geometric_length",
+            label: "Teleport geometric length",
+            description: "Fires if the geometric (straight-line) distance between a teleport's entry and exit compares against the configured threshold.",
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
             params: vec![
                 ParamDescriptor {
-                    id: "min_length",
-                    label: "Min length (tiles)",
-                    kind: ParamKindDto::Float { default: TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 100_000.0 },
+                    id: "length",
+                    label: "Length threshold (tiles)",
+                    kind: ParamKindDto::Float { default: TELEPORT_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 1_000_000.0 },
                 },
-                protect_route_param(),
-            ],
-            allow_multiple_instances: false,
-        },
-        CheckDescriptor {
-            id: "teleport_max_geometric_length",
-            label: "Teleport maximum geometric length",
-            description: "Fires if the geometric (straight-line) distance between a teleport's entry and exit exceeds the allowed maximum.",
-            issue_kinds: vec![kind_str(INVALID_TELEPORT)],
-            params: vec![
-                ParamDescriptor {
-                    id: "max_length",
-                    label: "Max length (tiles)",
-                    kind: ParamKindDto::Float { default: TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 1_000_000.0 },
-                },
+                comparison_param(Comparison::Lt),
                 protect_route_param(),
             ],
             allow_multiple_instances: false,
@@ -388,6 +213,206 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // separately "exits close to each other") -- same rationale as
             // teleport_waypoint_distance's allow_multiple_instances.
             allow_multiple_instances: true,
+        },
+        CheckDescriptor {
+            id: "min_loops_count",
+            label: "Minimum loop count",
+            description: "Fires if the maze has fewer independent loops than the required minimum.",
+            issue_kinds: vec![kind_str(MISSING_LOOPS)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_loops",
+                    label: "Min loop count",
+                    kind: ParamKindDto::Integer { default: MIN_LOOPS_DEFAULT as i64, min: 1, max: 1_000_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "min_loop_density",
+            label: "Minimum loop density",
+            description: "Fires if too small a share of the field is covered by loops, converting the coverage deficit into a loop count via an estimated average loop length.",
+            issue_kinds: vec![kind_str(MISSING_LOOPS)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_density",
+                    label: "Min loop density (per 100 cells)",
+                    kind: ParamKindDto::Integer { default: MIN_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+                },
+                ParamDescriptor {
+                    id: "avg_loop_length_estimate",
+                    label: "Average loop length estimate",
+                    kind: ParamKindDto::Integer { default: AVG_LOOP_LENGTH_ESTIMATE_DEFAULT as i64, min: 1, max: 100_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "loop_length",
+            label: "Loop length",
+            description: "Fires if a simple loop's tile length compares against the configured threshold (e.g. shorter or longer than a limit).",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "length",
+                    label: "Length threshold",
+                    kind: ParamKindDto::Integer { default: LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
+                },
+                comparison_param(Comparison::Lt),
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "external_escape_diversity",
+            label: "External escape diversity",
+            description: "Fires if a simple loop's outgoing connections converge on too few distinct destinations outside the loop, instead of spreading out diversely.",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![ParamDescriptor {
+                id: "min_distinct_exits",
+                label: "Min distinct exits",
+                kind: ParamKindDto::Integer { default: EXTERNAL_ESCAPE_DIVERSITY_DEFAULT as i64, min: 0, max: 1_000 },
+            }],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "loop_distance_from_start",
+            label: "Loop distance from start",
+            description: "Fires if a simple loop sits closer to start (in tiles, directed graph distance) than the required minimum.",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![ParamDescriptor {
+                id: "min_distance_from_start",
+                label: "Min distance from start",
+                kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_START_DEFAULT as i64, min: 0, max: 100_000 },
+            }],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "loop_distance_from_finish",
+            label: "Loop distance from finish",
+            description: "Fires if a simple loop sits closer to finish (in tiles, directed graph distance) than the required minimum.",
+            issue_kinds: vec![kind_str(INVALID_LOOP)],
+            params: vec![ParamDescriptor {
+                id: "min_distance_from_finish",
+                label: "Min distance from finish",
+                kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_FINISH_DEFAULT as i64, min: 0, max: 100_000 },
+            }],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "max_loop_density",
+            label: "Maximum loop density",
+            description: "Fires if too large a share of the field is covered by loops; excess loops are picked at random and flagged until density drops to the allowed maximum.",
+            issue_kinds: vec![kind_str(INVALID_LOOP_GROUP)],
+            params: vec![ParamDescriptor {
+                id: "max_density",
+                label: "Max loop density (per 100 cells)",
+                kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+            }],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "scc_count",
+            label: "Maximum SCC region count",
+            description: "Fires if the graph is split into more strongly-connected components than the allowed maximum, signalling a fragmented maze.",
+            issue_kinds: vec![kind_str(EXCESSIVE_SCC_COUNT)],
+            params: vec![ParamDescriptor {
+                id: "max_scc_count",
+                label: "Max SCC region count",
+                kind: ParamKindDto::Integer { default: MAX_SCC_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
+            }],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "min_region_size",
+            label: "Minimum SCC region size",
+            description: "Fires if any strongly-connected region has fewer tiles than the required minimum.",
+            issue_kinds: vec![kind_str(REGION_NEEDS_EXPANSION)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_region_size",
+                    label: "Min region size (tiles)",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
+                },
+                region_class_filter_param(),
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "min_region_ratio",
+            label: "Minimum SCC region ratio",
+            description: "Fires if any strongly-connected region covers less than the required share of the field.",
+            issue_kinds: vec![kind_str(REGION_NEEDS_EXPANSION)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_region_ratio",
+                    label: "Min region ratio (per 100 cells)",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
+                },
+                region_class_filter_param(),
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "max_region_size",
+            label: "Maximum SCC region size",
+            description: "Fires if any strongly-connected region has more tiles than the allowed maximum.",
+            issue_kinds: vec![kind_str(REGION_NEEDS_SHRINK)],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_region_size",
+                    label: "Max region size (tiles)",
+                    kind: ParamKindDto::Integer { default: MAX_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
+                },
+                region_class_filter_param(),
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "max_region_ratio",
+            label: "Maximum SCC region ratio",
+            description: "Fires if any strongly-connected region covers more than the allowed share of the field.",
+            issue_kinds: vec![kind_str(REGION_NEEDS_SHRINK)],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_region_ratio",
+                    label: "Max region ratio (per 100 cells)",
+                    kind: ParamKindDto::Integer { default: MAX_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
+                },
+                region_class_filter_param(),
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "min_region_count",
+            label: "Minimum region count",
+            description: "Fires if the maze has too few (or, for repair purposes, more than enough) regions of any class (path/alternative/unreachable/trap) against its configured minimum.",
+            issue_kinds: vec![kind_str(MISSING_REGIONS)],
+            params: vec![
+                ParamDescriptor {
+                    id: "path_count",
+                    label: "Min Path region count",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+                ParamDescriptor {
+                    id: "alternative_count",
+                    label: "Min Alternative region count",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+                ParamDescriptor {
+                    id: "unreachable_count",
+                    label: "Min Unreachable region count",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+                ParamDescriptor {
+                    id: "trap_count",
+                    label: "Min Trap region count",
+                    kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
+            // A single instance now evaluates all four classes at once (see GitHub issue #60's
+            // multi-instance design, retired — `MinRegionCountCheck` no longer needs more than
+            // one active instance to express "different minimums per class").
+            allow_multiple_instances: false,
         },
     ]
 }

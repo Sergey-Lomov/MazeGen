@@ -12,11 +12,13 @@ pub enum IssueKind {
     MissingEndpoints,
     UnreachableFinish,
     InvalidLoop,
+    InvalidLoopGroup,
     MissingLoops,
     CycleAnalysisOverflowed,
     RepairLimitReached,
     ExcessiveSccCount,
     RegionNeedsExpansion,
+    RegionNeedsShrink,
     MissingRegions,
     InvalidTeleport,
     TeleportGroupProximity,
@@ -25,7 +27,9 @@ pub enum IssueKind {
 
 `LoopDistanceFromStartCheck`/`LoopDistanceFromFinishCheck` (below) reuse `InvalidLoop` — no new `IssueKind` variant, same as every other check flagging cycles invalid for a check-specific reason.
 
-`MissingLoops` mirrors `InvalidLoop`'s role, but for a missing-count condition (too few loops overall) instead of a specific invalid cycle — currently produced only by `MinLoopsCountCheck`; future checks needing more loops added may reuse this kind rather than inventing a new one.
+`InvalidLoopGroup` is a distinct kind from `InvalidLoop`, not a reuse — mirrors `TeleportGroupProximity`'s split from `InvalidTeleport` (below). Where `InvalidLoop` flags a single cycle invalid on its own terms, `InvalidLoopGroup` flags cycles selected as part of a group-level decision across every loop on the field (currently only excess field-density, via `MaxLoopDensityCheck`). Carries `InvalidLoopGroupIssue` — same `all`/`invalid`/`invalid_sources` shape as `InvalidLoopIssue`, see that type's doc comment. **No repair strategy registered yet** (see GitHub issue #183) — a rule using it can only log the issue.
+
+`MissingLoops` mirrors `InvalidLoop`'s role, but for a missing-count condition (too few loops overall) instead of a specific invalid cycle — currently produced by `MinLoopsCountCheck`/`MinLoopDensityCheck`; future checks needing more loops added may reuse this kind rather than inventing a new one.
 
 Each variant has a canonical string representation used in serialization and config:
 
@@ -42,6 +46,7 @@ Named constants alias the variants for use across crates:
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
 pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
 pub const INVALID_LOOP:       IssueKind = IssueKind::InvalidLoop;
+pub const INVALID_LOOP_GROUP: IssueKind = IssueKind::InvalidLoopGroup;
 pub const MISSING_LOOPS:      IssueKind = IssueKind::MissingLoops;
 pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflowed;
 pub const INVALID_TELEPORT:  IssueKind = IssueKind::InvalidTeleport;
@@ -53,15 +58,17 @@ relates to the type-level `Issue` design (GitHub issue #113).
 
 `MissingRegions` mirrors `MissingLoops`'s role, but for a deficit in the count of regions of a specific `RegionClass` (Path/Alternative/Unreachable/Trap — see "Region Classes" in `graph-analytics.md`) instead of overall loop count — currently produced only by `MinRegionCountCheck`.
 
-`InvalidTeleport` mirrors `InvalidLoop`'s role, but for a `Teleport` edge (`EdgeKind::Teleport`) flagged invalid for a check-specific reason instead of a cycle — see GitHub issue #74. Currently produced by `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport), `TeleportWaypointDistanceCheck` (the teleport sits too close to a waypoint), `TeleportMinGeometricLengthCheck`/`TeleportMaxGeometricLengthCheck` (the teleport's geometric length is out of the configured range), and `TeleportSuperHubAvoidanceCheck` (an endpoint vertex already has too many outgoing connections). Carries `IssueData::InvalidTeleports` — see that variant's doc comment. Repaired by `RemoveTeleportStrategy` (see `repair.md`).
+`InvalidTeleport` mirrors `InvalidLoop`'s role, but for a `Teleport` edge (`EdgeKind::Teleport`) flagged invalid for a check-specific reason instead of a cycle — see GitHub issue #74. Currently produced by `TeleportDuplicatesConnectionCheck` (a regular connection already duplicates the teleport), `TeleportWaypointDistanceCheck` (the teleport's distance to a waypoint compares against a configured threshold), `TeleportGeometricLengthCheck` (the teleport's geometric length compares against a configured threshold), and `TeleportSuperHubAvoidanceCheck` (an endpoint vertex already has too many outgoing connections). Carries `IssueData::InvalidTeleports` — see that variant's doc comment. Repaired by `RemoveTeleportStrategy` (see `repair.md`).
 
 `TeleportGroupProximity` is a distinct kind from `InvalidTeleport`, not a reuse — see GitHub issue #75. Where `InvalidTeleport` flags a single teleport edge invalid on its own, `TeleportGroupProximity` flags a *relationship* between two teleport edges (neither individually invalid). Currently produced only by `TeleportGroupProximityCheck`. Carries `TeleportGroupProximityIssue { pairs, .. }` — see that type's doc comment. Repaired by `TeleportGroupProximityStrategy` (see `repair.md`).
 
 Always use the named constant — never use string literals or enum variants inline.
 
-**Hard rule: `IssueKind` is a semantic category, not a producer id.** `InvalidLoop` means "this cycle is invalid for some check-specific reason" — it does not identify *which* check found it. Multiple checks can legitimately produce the same `IssueKind` for different underlying reasons — currently `MinLoopLengthCheck` (cycles shorter than a threshold) and `MaxLoopLengthCheck` (cycles longer than a threshold); future checks may flag cycles invalid for still other reasons and reuse this same kind rather than inventing a new one per reason. Which check(s) actually contributed to a given `Issue` is tracked separately, in `Issue.source_checks` (below) — never by adding more `IssueKind` variants.
+**Hard rule: `IssueKind` is a semantic category, not a producer id.** `InvalidLoop` means "this cycle is invalid for some check-specific reason" — it does not identify *which* check found it. Multiple checks (or multiple instances of the same check, e.g. two `LoopLengthCheck` instances with different `comparison`/`length`) can legitimately produce the same `IssueKind` for different underlying reasons; future checks may flag cycles invalid for still other reasons and reuse this same kind rather than inventing a new one per reason. Which check(s) actually contributed to a given `Issue` is tracked separately, in `Issue.source_checks` (below) — never by adding more `IssueKind` variants.
 
 `RegionNeedsExpansion` mirrors `InvalidLoop`'s role for SCC regions: a semantic category ("this region needs to be expanded for some check-specific reason"), not tied to size specifically or to any one reason. Currently produced by `MinRegionSizeCheck` (region smaller than a configured absolute tile count) and `MinRegionRatioCheck` (region smaller than a configured share of the field), but future checks may flag a region as needing expansion for reasons unrelated to size and reuse this same kind. Carries `IssueData::RegionsNeedingExpansion` — see that variant's doc comment.
+
+`RegionNeedsShrink` — see GitHub issue #177 — mirrors `RegionNeedsExpansion`'s role for the opposite direction: a region that needs to be shrunk for some check-specific reason. Currently produced by `MaxRegionSizeCheck`/`MaxRegionRatioCheck`. Kept a **distinct** `IssueKind` from `RegionNeedsExpansion` rather than merged via `Comparison` — see the "Comparison operator" section above: min/max region size name different corrective actions (grow vs. shrink), not the same action with a different comparison direction, so they get separate kinds, check types, and (eventually) repair strategies. **No repair strategy is registered for this kind yet** — see GitHub issue #181; a `RegionNeedsShrinkIssue` surfaces in the QC report but is never auto-fixed until that follow-up lands. Carries `RegionNeedsShrinkIssue` — see that type's doc comment.
 
 **`CycleAnalysisOverflowed` is not a toggleable QC check** — every other kind here is produced by a `Check<T, I>` implementation the user selects via `config.checks`; this one is raised directly by `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) whenever `GraphAnalytics::cycle_analysis_overflowed` is true (cycle enumeration aborted past `MAX_SIMPLE_CYCLES` — see `graph-analytics.md`). It bypasses `QualityControlEngine` entirely: `build_analytics_snapshot` pushes `Box::new(CycleAnalysisOverflowedIssue::default())` straight into the issue list after the engine (or `issues_override`) has already run, so it surfaces unconditionally — same `IssuesBlock`/`FeatureCard` UI as any other issue, but with no corresponding `Check<T, I>` or `RepairStrategy` and no way for a user to disable it. `IssueKind::from_str` still parses it like any other kind (used to validate `config.strategies` keys), but no strategy can ever be registered against it — see `from_str`'s doc comment.
 
@@ -234,10 +241,10 @@ final QC report is never accidentally built from a narrowed issue.
 - A check may produce zero or more issues per call.
 - A check may read `maze.analysis` to avoid redundant computation.
 - **`repair_check` vs `report_check`** — see GitHub issue #102. Both methods detect the exact same problems; they differ only in how many issue values they produce per flagged instance:
-  - `repair_check` is the detection the repair fixpoint loop (`Rule::run_checks_typed`, driven by `Stage::run_repair`) drives. It may bundle every flagged problem instance into one merged issue per call (e.g. `MinLoopLengthCheck` bundles all short cycles into one `InvalidLoopIssue { all, invalid, invalid_sources }`), since the loop dispatches one repair strategy call per rule against the whole batch — batching there is a feature, not a limitation, of the repair-dispatch contract.
+  - `repair_check` is the detection the repair fixpoint loop (`Rule::run_checks_typed`, driven by `Stage::run_repair`) drives. It may bundle every flagged problem instance into one merged issue per call (e.g. `LoopLengthCheck` bundles all flagged cycles into one `InvalidLoopIssue { all, invalid, invalid_sources }`), since the loop dispatches one repair strategy call per rule against the whole batch — batching there is a feature, not a limitation, of the repair-dispatch contract.
   - `report_check` is the detection the final QC report (`remaining_issues`, analytics, UI) drives — driven by `Rule::report_checks_typed`, called both by `build_maze`'s final report pass and by `build_analytics_snapshot`'s check-only path (unified since GitHub issue #106; see `repair.md`). It must produce one issue per flagged problem instance instead, since a batched issue can't be split into accurate per-item counts, per-item highlighting, or (eventually) one-issue-per-cycle repair dispatch. Default implementation delegates to `repair_check` (calls it into a temporary `Vec` and returns it) — no behavior change for a check that doesn't override it.
   - Both methods return/populate the same concrete `I` — there is no separate report-only issue type.
-  - `check_type_id()` identifies the check **type** (e.g. `"min_loop_length"`), used by `Rule::run_checks_typed`/`report_checks_typed` to aggregate per-check-type timing — distinct from `instance_id`, the per-instance composite routing key.
+  - `check_type_id()` identifies the check **type** (e.g. `"loop_length"`), used by `Rule::run_checks_typed`/`report_checks_typed` to aggregate per-check-type timing — distinct from `instance_id`, the per-instance composite routing key.
 
 ### QualityControlEngine, Rule, and Stage
 
@@ -410,7 +417,19 @@ Produces `UnreachableFinishIssue::new_from_check("unreachable_finish")` if both 
 
 Skips the check silently if either endpoint is `None` — those cases are covered by `MissingEndpointsCheck`.
 
-### MinLoopsCountCheck
+### Comparison operator (`Comparison`)
+
+```rust
+pub enum Comparison { Lt, Gt, Le, Ge, Eq }
+```
+
+`Comparison` (`quality_control::comparison`) — see GitHub issue #177. A shared operator for checks that validate a single entity's numeric property against a threshold, letting a min/max pair whose two directions both flag the *same* problem on the *same* entity (4.2, "this entity is invalid" — same `IssueKind`, same repair strategy) merge into one check type instead of staying two near-duplicate types. `comparison.compare(value, threshold)`/`compare_f64` return whether `value` triggers the check for that operator.
+
+**When to merge, when not to** — the rule that decides whether a min/max pair becomes one `Comparison`-parametrized check or stays two separate checks:
+- **Merge** when both directions validate one entity and both name the *same* corrective action (4.2 checks) — e.g. `LoopLengthCheck`'s `Lt`/`Gt` both mean "this cycle is invalid, cut it", so `min_loop_length`/`max_loop_length` merged into one `loop_length` check type. `TeleportGeometricLengthCheck` and `TeleportWaypointDistanceCheck`'s `comparison` param follow the same rule.
+- **Do not merge** when the two directions name *different* corrective actions — a deficit (4.1, "add more") vs. a surplus (4.3, "remove the excess") are semantically different problems even when they're a min/max pair on the same metric, so they keep separate `IssueKind`s, separate check types, and separate repair strategies. `MinRegionSizeCheck`/`MaxRegionSizeCheck` (and their `*_ratio` counterparts) are the standing example: `min_region_size` flags `REGION_NEEDS_EXPANSION` (grow the region), `max_region_size` flags `REGION_NEEDS_SHRINK` (shrink it) — see `REGION_NEEDS_SHRINK`'s doc comment. Count-vs-count pairs (`min_loops_count` vs. a hypothetical `max_loops_count`, `min_region_count`'s balance) follow the same non-merge rule for the same reason.
+
+### MinLoopsCountCheck / MinLoopDensityCheck
 
 ```rust
 pub const MIN_LOOPS_DEFAULT: u32 = 1;
@@ -418,13 +437,7 @@ pub const MIN_LOOPS_DEFAULT: u32 = 1;
 pub struct MinLoopsCountCheck {
     pub min_loops: u32,
 }
-```
 
-Counts loops via `maze.analysis.graph_analytics(&maze.graph, &maze.meta).cycle_count` — the **independent** cycle count (Euler's formula, `E - V + C` on the pure-cycle core, see `graph-analytics.md`), the same number shown to the user as the "Cycle count" analytics stat. Deliberately **not** `find_deduped_simple_cycles`'s raw simple-cycle enumeration: that is a different (usually much larger) metric, and using it here would make this check disagree with what the UI displays as the maze's loop count. Silently skips (no issue) when `graph_analytics.cycle_analysis_overflowed` is true, same overflow rationale as the simple-cycle checks below (shared underlying enumeration). If `cycle_count` is below `min_loops`, fires `MissingLoopsIssue::new_from_check("min_loops_count", missing)` with `.with_detail("min_loops_count", "missing", missing.to_string())` chained on, where `missing = min_loops.saturating_sub(cycle_count)`. No issue is fired when the count meets or exceeds `min_loops`.
-
-### MinLoopDensityCheck
-
-```rust
 pub const MIN_LOOP_DENSITY_DEFAULT: u32 = 30;
 pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
 
@@ -434,45 +447,34 @@ pub struct MinLoopDensityCheck {
 }
 ```
 
-Flags too few loops when too small a share of the field is covered by loops overall — see GitHub issue #36. Symmetric counterpart to `MaxLoopDensityCheck` (below): same **density** metric (count of distinct field cells covered by any simple loop, a cell shared by several loops counted once, expressed per 100 field cells via `maze.field.node_count()`), same cycle enumeration pipeline (`nav_graph` → `find_deduped_simple_cycles` → `resolve_to_edge_ids`), same silent skip on `CycleSearchResult::TooManyCycles` overflow — but checked against a **minimum** instead of a maximum, and producing `MISSING_LOOPS` (a loop-count deficit) instead of `INVALID_LOOP` (specific cycles to cut), since adding loops rather than removing them is the only way to raise coverage.
+Two separate check types, both flagging `MISSING_LOOPS`. GitHub issue #177 originally merged these into one `MinLoopsCheck` parametrized by a `LoopsMode` enum (`Absolute`/`Ratio`); that merge was reverted — an absolute count and a field-coverage share are genuinely different metrics with no shared "same corrective action on the same entity" relationship (see the "Comparison operator" section's merge rule above), so they don't belong in one check type the way a `Comparison`-parametrized min/max pair does.
 
-If density is at or above `min_density`, the check is silent, same as every other loop check producing no issue when nothing is wrong. If density is below `min_density`, the deficit is converted from a cell count into a loop count: `missing_cells = (min_density - density) * field_cells / 100`, then `missing = ceil(missing_cells / avg_loop_length_estimate)` — rounded up so the request never undershoots the actual deficit (the repair strategy can always add more loops than asked, but never fewer to safely close the gap, since `avg_loop_length_estimate` is only an estimate, not a guarantee any newly added loop covers exactly that many cells). If `missing` rounds to `0` (deficit too small relative to the estimate), no issue is fired.
+`MinLoopsCountCheck` (`check_type_id() == "min_loops_count"`) — counts loops via `maze.analysis.graph_analytics(&maze.graph, &maze.meta).cycle_count` — the **independent** cycle count (Euler's formula, `E - V + C` on the pure-cycle core, see `graph-analytics.md`), the same number shown to the user as the "Cycle count" analytics stat. Deliberately **not** `find_deduped_simple_cycles`'s raw simple-cycle enumeration: that is a different (usually much larger) metric, and using it here would make this check disagree with what the UI displays as the maze's loop count. Silently skips (no issue) when `graph_analytics.cycle_analysis_overflowed` is true, same overflow rationale as the simple-cycle checks below (shared underlying enumeration). If `cycle_count` is below `min_loops`, `missing = min_loops.saturating_sub(cycle_count)`.
 
-Fires `MissingLoopsIssue::new_from_check("min_loop_density", missing)` with `.with_detail("min_loop_density", "missing", missing.to_string())` chained on — same detail key as `MinLoopsCountCheck`, so the web UI's per-source-check label resolver can render both with one shared message shape. Repaired the same way as `MinLoopsCountCheck`'s `MISSING_LOOPS` issues — `MissingLoopsRandomStrategy` (see `repair.md`) needs no new logic, since both checks produce the same `MissingLoopsIssue` shape.
+`MinLoopDensityCheck` (`check_type_id() == "min_loop_density"`) — flags too few loops when too small a share of the field is covered by loops overall. Symmetric counterpart to `MaxLoopDensityCheck` (below): same **density** metric (count of distinct field cells covered by any simple loop, a cell shared by several loops counted once, expressed per 100 field cells via `maze.field.node_count()`), same cycle enumeration pipeline (`nav_graph` → `find_deduped_simple_cycles` → `resolve_to_edge_ids`), same silent skip on `CycleSearchResult::TooManyCycles` overflow — but checked against a **minimum** instead of a maximum, and producing `MISSING_LOOPS` (a loop-count deficit) instead of `INVALID_LOOP_GROUP` (specific cycles to cut), since adding loops rather than removing them is the only way to raise coverage. If density is at or above `min_density`, the check is silent. If density is below `min_density`, the deficit is converted from a cell count into a loop count: `missing_cells = (min_density - density) * field_cells / 100`, then `missing = ceil(missing_cells / avg_loop_length_estimate)` — rounded up so the request never undershoots the actual deficit (the repair strategy can always add more loops than asked, but never fewer to safely close the gap, since `avg_loop_length_estimate` is only an estimate, not a guarantee any newly added loop covers exactly that many cells).
 
-### MinLoopLengthCheck
+Either way, if `missing` is `0`, the check is silent; otherwise fires `MissingLoopsIssue::new_from_check(instance_id, missing)` with `.with_detail(instance_id, "missing", missing.to_string())` chained on — the same detail key regardless of which check type fired, so the web UI's per-source-check label resolver renders both with one shared message shape. Repaired by `MissingLoopsRandomStrategy` (see `repair.md`) — no strategy-side branching on which check produced the issue, since both types produce the same `MissingLoopsIssue` shape.
+
+### LoopLengthCheck
 
 ```rust
-pub const MIN_LOOP_LENGTH_DEFAULT: u32 = 10;
+pub const LOOP_LENGTH_DEFAULT: u32 = 10;
 
-pub struct MinLoopLengthCheck {
-    pub min_loop_length: u32,
+pub struct LoopLengthCheck {
+    pub comparison: Comparison,
+    pub length: u32,
 }
 ```
 
-A separate, unrelated check from `MinLoopsCountCheck` (that one counts total loops; this one checks individual loop *length*). Uses `maze.analysis.nav_graph(&maze.graph, &maze.meta)` (the shared, pinned-by-`meta` cache — see `analysis.md`), then `find_all_simple_cycles` (`maze-core/src/graph/cycles.rs`, Johnson's algorithm — see `graph-analytics.md` for the full description of this shared, single-source-of-truth cycle enumeration), `dedup_bidirectional_pairs` (collapses each visual loop walked in either direction to one entry, drops trivial reverse-pair turn-arounds). Every resulting cycle (short and long alike) is resolved to base-`Graph` `EdgeId`s and stored in `InvalidLoopIssue.all`; the subset whose tile-length is below `min_loop_length` becomes `invalid` (indices into `all`).
+Merges the former `MinLoopLengthCheck`/`MaxLoopLengthCheck` — see GitHub issue #177's "Comparison operator" rule above (`comparison: Lt` reproduces the old `min_loop_length`'s "shorter than" behavior, `Gt` reproduces `max_loop_length`'s "longer than"; `Le`/`Ge`/`Eq` are new). `check_type_id() == "loop_length"`.
 
-Symmetric counterpart: `MaxLoopLengthCheck` (below) flags cycles whose tile-length exceeds a maximum instead. Both checks may run in the same QC pass and both produce `INVALID_LOOP` — see the merge behavior in `repair.md`'s "Pipeline" section.
+A separate, unrelated check from `MinLoopsCountCheck`/`MinLoopDensityCheck` (those count total loops; this one checks individual loop *length*). Uses `maze.analysis.nav_graph(&maze.graph, &maze.meta)` (the shared, pinned-by-`meta` cache — see `analysis.md`), then `find_all_simple_cycles` (`maze-core/src/graph/cycles.rs`, Johnson's algorithm — see `graph-analytics.md` for the full description of this shared, single-source-of-truth cycle enumeration), `dedup_bidirectional_pairs` (collapses each visual loop walked in either direction to one entry, drops trivial reverse-pair turn-arounds). Every resulting cycle (short and long alike) is resolved to base-`Graph` `EdgeId`s and stored in `InvalidLoopIssue.all`; the subset satisfying `comparison.compare(tile_length, length)` becomes `invalid` (indices into `all`).
 
 Not a fundamental cycle basis — a basis only yields β₁ cycles relative to one spanning tree and can miss short cycles that are the symmetric difference of two longer fundamental cycles (unacceptable false negatives for a health check). `find_all_simple_cycles` enumerates ALL simple directed cycles with no length bound; this check filters the already-complete result by tile-length afterward, rather than embedding a bound into the search itself (kept uniform with the other consumers of `find_all_simple_cycles` — see `graph-analytics.md`).
 
 Self-loop nav-edges (junction-free rings) are included — previously a known gap (a ring with at most one junction compresses into a self-loop `NavEdge` that the old `build_cyclic_core` unconditionally excluded, making such loops invisible to this check). Fixed by `find_all_simple_cycles` treating self-loops as first-class cycles.
 
-If any cycles below the threshold are found (`invalid` non-empty), fires a single `InvalidLoopIssue::new_from_check("min_loop_length", all, invalid, invalid_sources)` with `.with_detail("min_loop_length", "min_loop_length", self.min_loop_length.to_string())` chained on — the configured threshold, for the web UI to render a specific message ("loop shorter than N tiles") instead of the generic `INVALID_LOOP` label. No issue is fired if `invalid` is empty, even if `all` is not. Other checks may also produce `INVALID_LOOP` issues for different reasons in the same pass — see the pipeline's merge behavior in `repair.md`.
-
-### MaxLoopLengthCheck
-
-```rust
-pub const MAX_LOOP_LENGTH_DEFAULT: u32 = 100;
-
-pub struct MaxLoopLengthCheck {
-    pub max_loop_length: u32,
-}
-```
-
-Symmetric counterpart to `MinLoopLengthCheck` — same cycle enumeration pipeline (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs` → tile-length filter → `resolve_to_edge_ids`), same silent skip on `CycleSearchResult::TooManyCycles` overflow, same `InvalidLoopIssue` shape. The only difference: the filter keeps cycles whose tile-length is **above** `max_loop_length` (`tile_length > max_loop_length`) instead of below a minimum.
-
-If any cycles above the threshold are found (`invalid` non-empty), fires a single `InvalidLoopIssue::new_from_check("max_loop_length", all, invalid, invalid_sources)` with `.with_detail("max_loop_length", "max_loop_length", self.max_loop_length.to_string())` chained on, same rationale as `MinLoopLengthCheck` above. No issue is fired if `invalid` is empty. Both `MinLoopLengthCheck` and `MaxLoopLengthCheck` can be active at once — they each populate their own `invalid` subset and the pipeline merges the two `INVALID_LOOP` issues canonically (see "Dedup interaction" above and `repair.md`'s "Pipeline" section); the merged issue then carries both checks' details, and the UI renders one bubble per source check.
+If any cycles satisfy `comparison` against `length` (`invalid` non-empty), fires a single `InvalidLoopIssue::new_from_check("loop_length", all, invalid, invalid_sources)` with `.with_detail("loop_length", "threshold", self.length.to_string())` chained on — the configured threshold, for the web UI to render a specific message instead of the generic `INVALID_LOOP` label. No issue is fired if `invalid` is empty, even if `all` is not. Other checks may also produce `INVALID_LOOP` issues for different reasons in the same pass — see the pipeline's merge behavior in `repair.md`. Two active `loop_length` instances with different `comparison`/`length` (e.g. one `Lt` and one `Gt`) reproduce the pre-#177 "both min and max active" configuration — they merge into one `INVALID_LOOP` issue per the same dedup rule.
 
 ### ExternalEscapeDiversityCheck
 
@@ -484,9 +486,9 @@ pub struct ExternalEscapeDiversityCheck {
 }
 ```
 
-Detects cycles that are "locally trapped" despite having many outgoing connections — see issue #32. Uses the same enumeration pipeline as `MinLoopLengthCheck`/`MaxLoopLengthCheck` (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles`), but the filter is purely topological rather than length- or geometry-based: for each cycle, collect the set of cycle vertices (nav-nodes touched by any of its nav-edges), then count the distinct nav-nodes outside that set reached by a direct outgoing nav-edge from any cycle vertex (`distinct_exit_count`). No further traversal past that one hop, no geometry, no connected-component analysis on the rest of the graph — a cycle with 8 outgoing edges that all land on the same external node scores 1, not 8.
+Detects cycles that are "locally trapped" despite having many outgoing connections — see issue #32. Uses the same enumeration pipeline as `LoopLengthCheck` (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles`), but the filter is purely topological rather than length- or geometry-based: for each cycle, collect the set of cycle vertices (nav-nodes touched by any of its nav-edges), then count the distinct nav-nodes outside that set reached by a direct outgoing nav-edge from any cycle vertex (`distinct_exit_count`). No further traversal past that one hop, no geometry, no connected-component analysis on the rest of the graph — a cycle with 8 outgoing edges that all land on the same external node scores 1, not 8.
 
-If any cycle's distinct exit count is below `min_distinct_exits`, fires a single `InvalidLoopIssue::new_from_check("external_escape_diversity", all, invalid, invalid_sources)` with `.with_detail("external_escape_diversity", "min_distinct_exits", self.min_distinct_exits.to_string())` chained on. No issue is fired if `invalid` is empty. Can be active alongside `MinLoopLengthCheck`/`MaxLoopLengthCheck` — all three merge into one `INVALID_LOOP` issue per the same dedup rule.
+If any cycle's distinct exit count is below `min_distinct_exits`, fires a single `InvalidLoopIssue::new_from_check("external_escape_diversity", all, invalid, invalid_sources)` with `.with_detail("external_escape_diversity", "min_distinct_exits", self.min_distinct_exits.to_string())` chained on. No issue is fired if `invalid` is empty. Can be active alongside `LoopLengthCheck` — both merge into one `INVALID_LOOP` issue per the same dedup rule.
 
 ### LoopDistanceFromStartCheck
 
@@ -528,13 +530,13 @@ pub struct MaxLoopDensityCheck {
 }
 ```
 
-Flags excess simple loops when too large a share of the field is covered by loops overall — see GitHub issue #37. Unlike the other loop checks, this one judges the maze's loops as a set rather than each cycle independently.
+Flags excess simple loops when too large a share of the field is covered by loops overall — see GitHub issue #37. Unlike the other loop checks, this one judges the maze's loops as a set rather than each cycle independently — which is also why it flags `INVALID_LOOP_GROUP` rather than `INVALID_LOOP`: a flagged loop here isn't invalid on its own terms (the way a too-short or too-long loop is), it's picked as part of a group-level decision across every loop on the field. See `INVALID_LOOP_GROUP`'s doc comment and `InvalidLoopGroupIssue` (same `all`/`invalid`/`invalid_sources` shape as `InvalidLoopIssue`, distinct type/kind).
 
 Same cycle enumeration pipeline as the other loop checks (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles` overflow), then resolves every cycle to its base-`Graph` `EdgeId`s via `resolve_to_edge_ids` same as the others, but additionally maps each cycle's edges to the set of base-`Graph` `NodeId`s (cells) its edges touch. **Density** is the count of distinct field cells covered by any loop (a cell shared by several loops counts once), expressed per 100 field cells (`maze.field.node_count()`): `covered_cells * 100 / field_cells`. If density is at or below `max_density`, the check is silent — same as every other loop check producing no issue when nothing is wrong.
 
 If density exceeds `max_density`, the check must pick which loops to flag — there is no single deterministic "worst" loop the way there is a shortest/longest one, so it shuffles the cycle indices via the `rng` passed into `check` (see the `Check` trait's `rng` note above) and flags them one at a time in that random order, recomputing the remaining covered-cell count after each pick: removing a loop only frees the cells not also covered by another loop not yet picked, so the running total is the *set difference* against the still-unselected loops' coverage, not a flat per-loop cell count. Picking stops as soon as the remaining density is at or below `max_density`, or once every loop has been picked (covers the case where even flagging all of them can't reach an unusually low `max_density`). The picked indices become `invalid`.
 
-Fires a single `InvalidLoopIssue::new_from_check("max_loop_density", all, invalid, invalid_sources)` with `.with_detail("max_loop_density", "max_density", self.max_density.to_string())` chained on. Can be active alongside any other `INVALID_LOOP`-producing check — all merge into one issue per the same dedup rule. The flagged loops need no new repair logic — `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` cut them exactly like any other check's `invalid` entries.
+Fires a single `InvalidLoopGroupIssue::new_from_check("max_loop_density", all, invalid, invalid_sources)` with `.with_detail("max_loop_density", "max_density", self.max_density.to_string())` chained on. `max_loop_density` is currently the only check producing `INVALID_LOOP_GROUP`, so there is no cross-check merge case yet, but the same dedup rule as `InvalidLoopIssue` would apply if a future check joined it — both share the `merge_cycle_sets` implementation (`quality_control::issue_kinds`). **No repair strategy is registered for `INVALID_LOOP_GROUP` yet** — a rule using `max_loop_density` can only log the issue (`no_fix`); see GitHub issue #183 for adding one (the flagged loops need no new repair logic — `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`'s cut algorithm is directly reusable, since both operate on raw `all`/`invalid` slices, not the issue type itself).
 
 ### SccCountCheck
 
@@ -580,6 +582,38 @@ Counterpart to `MinRegionSizeCheck` using a relative threshold instead of an abs
 
 Can be active alongside `MinRegionSizeCheck` — both produce `REGION_NEEDS_EXPANSION` and merge into one issue (see `merge_regions_needing_expansion` in `repair.md`'s "Pipeline" section): since both checks read the same `scc()` cache entry within one QC pass, a region's component index is stable across the merge, so unioning `invalid` and `invalid_sources` needs no remap, unlike the cycle-index remap `merge_invalid_loops` must do.
 
+### MaxRegionSizeCheck
+
+```rust
+pub const MAX_REGION_SIZE_DEFAULT: u32 = 1_000_000;
+
+pub struct MaxRegionSizeCheck {
+    pub max_region_size: u32,
+    pub region_classes: Vec<RegionClass>,
+}
+```
+
+Flags SCC regions with more tiles than a configured absolute maximum — see GitHub issue #177. Symmetric counterpart to `MinRegionSizeCheck`, but flags `REGION_NEEDS_SHRINK` (a distinct issue kind — see that kind's doc comment above for why this isn't a `Comparison`-merged variant of `MinRegionSizeCheck`) instead of `REGION_NEEDS_EXPANSION`. Uses the same `scc()` cache, flags every component whose `len()` is above `max_region_size`. If no region is oversized, the check is silent. Otherwise fires a single `RegionNeedsShrinkIssue::new_from_check("max_region_size", invalid, invalid_sources)` with `.with_detail("max_region_size", "max_region_size", self.max_region_size.to_string())` chained on.
+
+`region_classes` works exactly as for `MinRegionSizeCheck` — see GitHub issue #54.
+
+**No repair strategy is registered for `REGION_NEEDS_SHRINK` yet** — see GitHub issue #181.
+
+### MaxRegionRatioCheck
+
+```rust
+pub const MAX_REGION_RATIO_DEFAULT: u32 = 75;
+
+pub struct MaxRegionRatioCheck {
+    pub max_region_ratio: u32,
+    pub region_classes: Vec<RegionClass>,
+}
+```
+
+Counterpart to `MaxRegionSizeCheck` using a relative threshold instead of an absolute tile count — see GitHub issue #177, mirrors `MinRegionRatioCheck`'s relationship to `MinRegionSizeCheck`. Flags every SCC region covering more than `max_region_ratio` percent of the field: `region.len() * 100 > max_region_ratio * field_cells`. Silently skips (no issue) if the field has zero cells. Otherwise fires a single `RegionNeedsShrinkIssue::new_from_check("max_region_ratio", invalid, invalid_sources)` with `.with_detail("max_region_ratio", "max_region_ratio", self.max_region_ratio.to_string())` chained on.
+
+`region_classes` works exactly as for `MinRegionSizeCheck` — see GitHub issue #54. Can be active alongside `MaxRegionSizeCheck` — both produce `REGION_NEEDS_SHRINK` and merge into one issue, same rationale as `MinRegionSizeCheck`/`MinRegionRatioCheck`'s merge.
+
 ### MinRegionCountCheck
 
 ```rust
@@ -624,17 +658,20 @@ pub enum TeleportEdgeSelector { EntryOnly, EntryOrExit }
 pub struct TeleportWaypointDistanceCheck {
     pub instance_id: String,
     pub distance: u32,
+    pub comparison: Comparison,
     pub waypoint: TeleportWaypoint,
     pub edge: TeleportEdgeSelector,
     pub protect_route: bool,
 }
 ```
 
-Flags a teleport edge placed too close to a waypoint (start/finish) in progression space — see GitHub issue #74. Multiple instances may be active at once (different `waypoint`/`edge`/`distance` combinations are all legitimate simultaneously, e.g. "entry must be far from start" AND separately "exit must be far from finish") — `allow_multiple_instances: true` (see "Available checks" below), same rationale as `MinRegionCountCheck`.
+Flags a teleport edge whose distance to a waypoint (start/finish) in progression space compares against a configured threshold — see GitHub issue #74/#177. Multiple instances may be active at once (different `waypoint`/`edge`/`distance`/`comparison` combinations are all legitimate simultaneously, e.g. "entry must be far from start" AND separately "exit must be far from finish") — `allow_multiple_instances: true` (see "Available checks" below), same rationale as `MinRegionCountCheck`.
 
-Distance is logical (tile count via `maze.analysis.distance_from_start`/`distance_from_finish`, see `graph-analytics.md`'s "Distance Maps" section), never geometric. For each teleport edge, resolves the relevant endpoint(s) (`from` only for `EntryOnly`, both `from` and `to` for `EntryOrExit`) to a `NavNodeId` via `maze.analysis.nav_graph(...).nav_node_for(...)` — always `Some` for a teleport endpoint, since a node touching a `Teleport` edge is never compressed into a passage node (see `nav-graph.md`'s "Passage Node" exemption). Looks up each resolved endpoint's distance in the relevant map(s) (`distance_from_start` for `Start`, `distance_from_finish` for `Finish`, both for `Any`) and takes the **minimum** across every relevant (endpoint, waypoint) combination — a teleport is flagged if that minimum is below `distance`. A combination whose endpoint is absent from the relevant distance map (unreachable from that waypoint) is skipped entirely, not treated as distance `0` — if every relevant combination is unreachable, the teleport is never flagged, symmetric with `LoopDistanceFromStartCheck`'s "cycle has no defined distance" rule.
+`comparison` (GitHub issue #177, default `Lt`) — see the "Comparison operator" section above. `Lt` reproduces the pre-#177 "too close" behavior (flag if closer than `distance`); other operators (e.g. `Gt`, "too far") are new, added for taxonomy completeness even though the issue that introduced `Comparison` didn't name this check explicitly.
 
-Silently skips (no issue) if the maze doesn't have the waypoint(s) this instance needs set (`meta.start` for `Start`/`Any`, `meta.finish` for `Finish`/`Any`) — covered by `MissingEndpointsCheck`, same rationale as the loop-distance checks. Default `distance` of `0` never fires on its own, same as `LoopDistanceFromStartCheck`'s `min_distance_from_start`.
+Distance is logical (tile count via `maze.analysis.distance_from_start`/`distance_from_finish`, see `graph-analytics.md`'s "Distance Maps" section), never geometric. For each teleport edge, resolves the relevant endpoint(s) (`from` only for `EntryOnly`, both `from` and `to` for `EntryOrExit`) to a `NavNodeId` via `maze.analysis.nav_graph(...).nav_node_for(...)` — always `Some` for a teleport endpoint, since a node touching a `Teleport` edge is never compressed into a passage node (see `nav-graph.md`'s "Passage Node" exemption). Looks up each resolved endpoint's distance in the relevant map(s) (`distance_from_start` for `Start`, `distance_from_finish` for `Finish`, both for `Any`) and takes the **minimum** across every relevant (endpoint, waypoint) combination — a teleport is flagged if `comparison.compare(min_distance, distance)` is true. A combination whose endpoint is absent from the relevant distance map (unreachable from that waypoint) is skipped entirely, not treated as distance `0` — if every relevant combination is unreachable, the teleport is never flagged, symmetric with `LoopDistanceFromStartCheck`'s "cycle has no defined distance" rule.
+
+Silently skips (no issue) if the maze doesn't have the waypoint(s) this instance needs set (`meta.start` for `Start`/`Any`, `meta.finish` for `Finish`/`Any`) — covered by `MissingEndpointsCheck`, same rationale as the loop-distance checks. Default `distance` of `0` never fires on its own under `Lt`, same as `LoopDistanceFromStartCheck`'s `min_distance_from_start`.
 
 If any teleports are flagged, fires `InvalidTeleportIssue::new_from_check("teleport_waypoint_distance", invalid)` with `.with_detail("teleport_waypoint_distance", "distance", self.distance.to_string())` chained on. Can be active alongside `TeleportDuplicatesConnectionCheck` (or another `teleport_waypoint_distance` instance) — all merge into one `INVALID_TELEPORT` issue per the dedup rule in `repair.md`'s "Pipeline" section.
 
@@ -650,43 +687,26 @@ Shared utility the two checks below build on — see GitHub issue #74. `Tessella
 
 **WASM Interface**: `cartesian_coords(config: { tessellation_type, points }) -> [[f64; 2]]` (`maze-wasm/src/lib.rs`) exposes `cartesian` to the frontend — given a tessellation type and a list of points, returns each point's canonical projection in the same order. `maze-web`'s single caller is `cartesianCache.ts`: `warmCartesianCache(cfg)` batches one call over every field cell whenever the tessellation kind changes (confirmTessellation, project load, generate), populating a `Map<"x,y", [number, number]>` that `getCartesian(x, y, cfg)` reads from synchronously — render loops call tile-center lookups every frame, so a per-call wasm round-trip would be far too slow. A cache miss (a point outside the prewarmed field, e.g. an invalid preset connection's endpoint) falls back to a single-point wasm call, cached afterward. `tessellationGeometry.ts`'s `squareCenter`/`hexCenter`/`triCenter` read from this cache and apply their own tile-size scale, half-tile offset, and (for hex/tri) orientation rotation on top — the single source of truth for tile geometry, replacing what used to be independently-maintained TypeScript formulas.
 
-### TeleportMinGeometricLengthCheck
+### TeleportGeometricLengthCheck
 
 ```rust
-pub const TELEPORT_MIN_GEOMETRIC_LENGTH_DEFAULT: f64 = 0.0;
+pub const TELEPORT_GEOMETRIC_LENGTH_DEFAULT: f64 = 0.0;
 
-pub struct TeleportMinGeometricLengthCheck {
+pub struct TeleportGeometricLengthCheck {
     pub instance_id: String,
-    pub min_length: f64,
+    pub comparison: Comparison,
+    pub length: f64,
     pub protect_route: bool,
 }
 ```
 
-Flags a teleport edge whose geometric (Euclidean, unit tile scale) distance between its entry and exit is shorter than a configured minimum — see GitHub issue #74. A teleport meant to feel like a meaningful "jump" across the maze becomes pointless noise if its endpoints are only a couple of tiles apart in Cartesian space, even when they're topologically far (no direct passage).
+Merges the former `TeleportMinGeometricLengthCheck`/`TeleportMaxGeometricLengthCheck` — see GitHub issue #74/#177's "Comparison operator" rule above (`comparison: Lt` reproduces the old "shorter than minimum" behavior, `Gt` reproduces "longer than maximum"). `check_type_id() == "teleport_geometric_length"`. Flags a teleport edge whose geometric (Euclidean, unit tile scale) distance between its entry and exit compares against `length`. A teleport meant to feel like a meaningful "jump" across the maze becomes pointless noise if its endpoints are only a couple of tiles apart in Cartesian space, even when they're topologically far (no direct passage); conversely a maximum keeps teleports from spanning the entire field when a more local "jump" is desired.
 
 Distance is purely geometric — via `space::geometric_distance` (`Tessellation::cartesian`, see the "Geometric distance" section above), resolving each teleport edge's `from`/`to` maze `NodeId` to its tessellation `Point` via `maze.field.point_of(...)`. Never logical/graph distance (that's `TeleportWaypointDistanceCheck`'s concern). A teleport endpoint whose point can't be resolved (shouldn't happen for a live edge in a well-formed `Maze`) is silently excluded from `invalid`, not treated as distance `0`.
 
-No waypoint/edge-selector parameters — unlike `TeleportWaypointDistanceCheck`, geometric length is a property of the teleport edge alone, not relative to start/finish. Default `min_length` of `0.0` never fires on its own (no distance is negative).
+No waypoint/edge-selector parameters — unlike `TeleportWaypointDistanceCheck`, geometric length is a property of the teleport edge alone, not relative to start/finish. Default `length` of `0.0` with `comparison: Lt` never fires on its own (no distance is negative).
 
-If any teleports are flagged, fires `InvalidTeleportIssue::new_from_check("teleport_min_geometric_length", invalid)` with `.with_detail("teleport_min_geometric_length", "min_length", self.min_length.to_string())` chained on. Can be active alongside any other `INVALID_TELEPORT`-producing check — all merge into one issue per the dedup rule in `repair.md`'s "Pipeline" section.
-
-`protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
-
-### TeleportMaxGeometricLengthCheck
-
-```rust
-pub const TELEPORT_MAX_GEOMETRIC_LENGTH_DEFAULT: f64 = 1_000.0;
-
-pub struct TeleportMaxGeometricLengthCheck {
-    pub instance_id: String,
-    pub max_length: f64,
-    pub protect_route: bool,
-}
-```
-
-Symmetric counterpart to `TeleportMinGeometricLengthCheck` — flags a teleport edge whose geometric distance between entry and exit **exceeds** a configured maximum instead, e.g. to keep teleports from spanning the entire field when a more local "jump" is desired. Same `geometric_distance`/`point_of` mechanics, same silent-exclusion-on-unresolvable-point behavior.
-
-Fires `InvalidTeleportIssue::new_from_check("teleport_max_geometric_length", invalid)` with `.with_detail("teleport_max_geometric_length", "max_length", self.max_length.to_string())` chained on. Can be active alongside `TeleportMinGeometricLengthCheck` (or any other `INVALID_TELEPORT`-producing check) — all merge into one issue per the same dedup rule.
+If any teleports are flagged, fires `InvalidTeleportIssue::new_from_check("teleport_geometric_length", invalid)` with `.with_detail("teleport_geometric_length", "length", self.length.to_string())` chained on. Can be active alongside any other `INVALID_TELEPORT`-producing check — all merge into one issue per the dedup rule in `repair.md`'s "Pipeline" section. Two active instances with different `comparison`/`length` (e.g. one `Lt` and one `Gt`) reproduce the pre-#177 "both min and max active" configuration.
 
 `protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
 
@@ -756,7 +776,7 @@ Multiple instances may be active at once (`allow_multiple_instances: true`) — 
 
 ### `protect_route`: route protection for per-teleport checks
 
-`TeleportDuplicatesConnectionCheck`, `TeleportWaypointDistanceCheck`, `TeleportMinGeometricLengthCheck`, `TeleportMaxGeometricLengthCheck`, and `TeleportSuperHubAvoidanceCheck` all share the same `protect_route` rule (GitHub issue #78) — `TeleportGroupProximityCheck`'s own variant is described above, since it works on pairs rather than single edges.
+`TeleportDuplicatesConnectionCheck`, `TeleportWaypointDistanceCheck`, `TeleportGeometricLengthCheck`, and `TeleportSuperHubAvoidanceCheck` all share the same `protect_route` rule (GitHub issue #78) — `TeleportGroupProximityCheck`'s own variant is described above, since it works on pairs rather than single edges.
 
 For these five checks: when `protect_route` is `true` (the default), a teleport edge that would otherwise be flagged is excluded from `invalid` if `graph::route_protection::is_teleport_route_protected(maze, edge_id)` reports it lies on the maze's current start→finish route (`maze.analysis.route_info(&maze.graph, &maze.meta)`, reusing that cache rather than recomputing the path). For a two-way teleport (two independent `EdgeId`s in the base `Graph` — no `reverse_edge` link like `NavEdge` has), protection covers both directions: if either direction is itself a route hop, both are excluded, so `protect_route` never silently downgrades a two-way teleport to one-way. Setting `protect_route` to `false` reproduces the pre-#78 behavior exactly (every teleport meeting the check's own criterion is flagged, regardless of route).
 
@@ -786,10 +806,11 @@ enum IssuePayloadDto {
     None,
     InvalidLoop { edges: HashMap<String, Vec<Vec<[u32; 2]>>> }, // invalid_loop only, keyed by source check instance id
     RegionNeedsExpansion { nodes: HashMap<String, Vec<Vec<u32>>> }, // region_needs_expansion only, keyed by source check instance id
+    RegionNeedsShrink { nodes: HashMap<String, Vec<Vec<u32>>> }, // region_needs_shrink only, keyed by source check instance id
 }
 ```
 
-`payload` is a discriminated union tagged via `#[serde(tag = "kind")]`, serialized through `serde_wasm_bindgen::Serializer::json_compatible()` into a real TS discriminated union — the web side narrows on `payload.kind` (`"none" | "invalid_loop" | "region_needs_expansion"`) to know which field (`edges`/`nodes`) is present, instead of reading two parallel always-mostly-empty maps. `IssueDto.kind` remains the source of truth for UI filtering/labels; `payload.kind` is purely a narrowing discriminant. `payload.kind`'s variant tags mirror `IssueKind::as_str()`'s wire strings by construction — `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) asserts (debug-only) that they never diverge.
+`payload` is a discriminated union tagged via `#[serde(tag = "kind")]`, serialized through `serde_wasm_bindgen::Serializer::json_compatible()` into a real TS discriminated union — the web side narrows on `payload.kind` (`"none" | "invalid_loop" | "region_needs_expansion" | "region_needs_shrink"`) to know which field (`edges`/`nodes`) is present, instead of reading two parallel always-mostly-empty maps. `IssueDto.kind` remains the source of truth for UI filtering/labels; `payload.kind` is purely a narrowing discriminant. `payload.kind`'s variant tags mirror `IssueKind::as_str()`'s wire strings by construction — `build_analytics_snapshot` (`maze-wasm/src/analytics.rs`) asserts (debug-only) that they never diverge.
 
 `source_checks` and `details` are the serialized form of `Issue`'s same-named accessors (see
 "Issue" above) — the web UI uses them to render one bubble per contributing check, each with a
@@ -807,8 +828,8 @@ builds while constructing the active checks for this pass — invariant: exactly
 this snapshot, no extras.
 
 `IssuePayloadDto::InvalidLoop.edges` is keyed by source check instance id, not one flat list — a
-merged `invalid_loop` issue may carry cycles from several checks at once (e.g. both
-`min_loop_length`'s short loops and `max_loop_length`'s long loops), and each is attributed to its
+merged `invalid_loop` issue may carry cycles from several checks at once (e.g. two `loop_length`
+instances, one `Lt` and one `Gt`), and each is attributed to its
 own check's entry so the UI can highlight only the cycles relevant to the bubble being hovered,
 not every contributing check's cycles combined. Built by looking up each invalid cycle's
 canonical key (`canonical_cycle_key`) in `InvalidLoopIssue.invalid_sources` to find which
@@ -828,6 +849,12 @@ see `IssueHighlightOverlay.ts`/`issueHighlightSelectors.ts`). Built from
 remap needed within one QC pass — see `RegionNeedsExpansionIssue`'s doc comment above).
 `payload` is only `RegionNeedsExpansion` when the issue is `region_needs_expansion` and at least
 one check flagged a region — otherwise it's `None`.
+
+`IssuePayloadDto::RegionNeedsShrink.nodes` mirrors `RegionNeedsExpansion.nodes`'s shape and build
+logic exactly, for `region_needs_shrink` issues (currently produced by
+`MaxRegionSizeCheck`/`MaxRegionRatioCheck`) — built from `RegionNeedsShrinkIssue.invalid`/
+`invalid_sources` the same way. `payload` is only `RegionNeedsShrink` when the issue is
+`region_needs_shrink` and at least one check flagged a region — otherwise it's `None`.
 
 ### CheckDescriptor
 
@@ -951,26 +978,26 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `unreachable_finish` | `unreachable_finish` | — | yes |
 | `min_loops_count` | `missing_loops` | `min_loops: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_loop_density` | `missing_loops` | `min_density: Integer(default=30, min=0, max=100)`, `avg_loop_length_estimate: Integer(default=10, min=1, max=100_000)` | no |
-| `min_loop_length` | `invalid_loop` | `min_loop_length: Integer(default=10, min=1, max=100_000)` | no |
-| `max_loop_length` | `invalid_loop` | `max_loop_length: Integer(default=100, min=1, max=100_000)` | no |
+| `loop_length` | `invalid_loop` | `length: Integer(default=10, min=1, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
 | `external_escape_diversity` | `invalid_loop` | `min_distinct_exits: Integer(default=3, min=0, max=1_000)` | no |
 | `loop_distance_from_start` | `invalid_loop` | `min_distance_from_start: Integer(default=0, min=0, max=100_000)` | no |
 | `loop_distance_from_finish` | `invalid_loop` | `min_distance_from_finish: Integer(default=0, min=0, max=100_000)` | no |
-| `max_loop_density` | `invalid_loop` | `max_density: Integer(default=30, min=0, max=100)` | no |
+| `max_loop_density` | `invalid_loop_group` | `max_density: Integer(default=30, min=0, max=100)` | no |
 | `scc_count` | `excessive_scc_count` | `max_scc_count: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Integer(default=25, min=0, max=100)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
+| `max_region_size` | `region_needs_shrink` | `max_region_size: Integer(default=1_000_000, min=1, max=1_000_000)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
+| `max_region_ratio` | `region_needs_shrink` | `max_region_ratio: Integer(default=75, min=0, max=100)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_count` | `missing_regions` | `region_class: Enum(options=[path,alternative,unreachable,trap], default=trap)`, `count: Integer(default=1, min=0, max=1_000_000)` | no |
 | `teleport_duplicates_connection` | `invalid_teleport` | `protect_route: Bool(default=true)` | no |
-| `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
-| `teleport_min_geometric_length` | `invalid_teleport` | `min_length: Float(default=0.0, min=0.0, max=100_000.0)`, `protect_route: Bool(default=true)` | no |
-| `teleport_max_geometric_length` | `invalid_teleport` | `max_length: Float(default=1_000.0, min=0.0, max=1_000_000.0)`, `protect_route: Bool(default=true)` | no |
+| `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
+| `teleport_geometric_length` | `invalid_teleport` | `length: Float(default=0.0, min=0.0, max=1_000_000.0)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `protect_route: Bool(default=true)` | no |
 | `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
 | `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 
-`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance` combinations are a legitimate simultaneous configuration.
+`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration.
 
 ## Architectural Contract
 

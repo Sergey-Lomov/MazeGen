@@ -16,9 +16,9 @@ beforeEach(() => {
 describe("CheckSelectDialog", () => {
   it("only lists checks of the given issue kind", () => {
     render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByText("Min length")).toBeInTheDocument();
-    expect(screen.getByText("Max length")).toBeInTheDocument();
-    expect(screen.queryByText("Min count")).not.toBeInTheDocument();
+    expect(screen.getByText("Minimum loop length")).toBeInTheDocument();
+    expect(screen.getByText("Maximum loop length")).toBeInTheDocument();
+    expect(screen.queryByText("Minimum loop count")).not.toBeInTheDocument();
   });
 
   it("Next is enabled with the first check selected by default", () => {
@@ -38,7 +38,7 @@ describe("CheckSelectDialog", () => {
   it("Next hands the selected check id to onNext, without touching the store", () => {
     const onNext = vi.fn();
     render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={onNext} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Max length"));
+    fireEvent.click(screen.getByText("Maximum loop length"));
     fireEvent.click(screen.getByText("Next"));
     expect(onNext).toHaveBeenCalledWith("max_loop_length", {});
     expect(useMazeStore.getState().rules).toEqual([]);

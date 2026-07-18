@@ -13,10 +13,12 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   unreachable_finish: () => ({ label: m["issue.unreachable_finish.label"](), description: m["issue.unreachable_finish.description"](), severity: "warning" }),
   missing_loops: () => ({ label: m["issue.missing_loops.label"](), description: m["issue.missing_loops.description"](), severity: "warning" }),
   invalid_loop: () => ({ label: m["issue.invalid_loop.label"](), description: m["issue.invalid_loop.description"](), severity: "warning" }),
+  invalid_loop_group: () => ({ label: m["issue.invalid_loop_group.label"](), description: m["issue.invalid_loop_group.description"](), severity: "warning" }),
   cycle_analysis_overflowed: () => ({ label: m["issue.cycle_analysis_overflowed.label"](), description: m["issue.cycle_analysis_overflowed.description"](), severity: "critical" }),
   repair_limit_reached: () => ({ label: m["issue.repair_limit_reached.label"](), description: m["issue.repair_limit_reached.description"](), severity: "critical" }),
   excessive_scc_count: () => ({ label: m["issue.excessive_scc_count.label"](), description: m["issue.excessive_scc_count.description"](), severity: "warning" }),
   region_needs_expansion: () => ({ label: m["issue.region_needs_expansion.label"](), description: m["issue.region_needs_expansion.description"](), severity: "warning" }),
+  region_needs_shrink: () => ({ label: m["issue.region_needs_shrink.label"](), description: m["issue.region_needs_shrink.description"](), severity: "warning" }),
   missing_regions: () => ({ label: m["issue.missing_regions.label"](), description: m["issue.missing_regions.description"](), severity: "warning" }),
   invalid_teleport: () => ({ label: m["issue.invalid_teleport.label"](), description: m["issue.invalid_teleport.description"](), severity: "warning" }),
   teleport_group_proximity: () => ({ label: m["issue.teleport_group_proximity.label"](), description: m["issue.teleport_group_proximity.description"](), severity: "warning" }),
@@ -33,13 +35,11 @@ export function resolveIssue(kind: string): IssueInfo {
 /// to the kind's generic label (`resolveIssue`).
 const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string | undefined> = {
   min_loops_count: (d) => d.missing !== undefined ? m["issue.missing_loops.min_loops_count_label"]({ missing: d.missing }) : undefined,
-  min_loop_density: (d) => d.missing !== undefined ? m["issue.missing_loops.min_loop_density_label"]({ missing: d.missing }) : undefined,
-  min_loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.min_loop_length_label"]({ min_loop_length: d.threshold }) : undefined,
-  max_loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.max_loop_length_label"]({ max_loop_length: d.threshold }) : undefined,
+  loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.loop_length_label"]({ threshold: d.threshold }) : undefined,
   external_escape_diversity: (d) => d.min_distinct_exits !== undefined ? m["issue.invalid_loop.external_escape_diversity_label"]({ min_distinct_exits: d.min_distinct_exits }) : undefined,
   loop_distance_from_start: (d) => d.min_distance_from_start !== undefined ? m["issue.invalid_loop.loop_distance_from_start_label"]({ min_distance_from_start: d.min_distance_from_start }) : undefined,
   loop_distance_from_finish: (d) => d.min_distance_from_finish !== undefined ? m["issue.invalid_loop.loop_distance_from_finish_label"]({ min_distance_from_finish: d.min_distance_from_finish }) : undefined,
-  max_loop_density: (d) => d.max_density !== undefined ? m["issue.invalid_loop.max_loop_density_label"]({ max_density: d.max_density }) : undefined,
+  max_loop_density: (d) => d.max_density !== undefined ? m["issue.invalid_loop_group.max_loop_density_label"]({ max_density: d.max_density }) : undefined,
   // Keyed by the issue's own kind string, not a CheckId — `repair_limit_reached` carries no
   // source check (see `IssuesBlock`'s null-sourceCheck fallback).
   repair_limit_reached: (d) => d.limit === "max_iterations"
@@ -66,6 +66,22 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
     }
     return m["issue.region_needs_expansion.min_region_ratio_label"]({ min_region_ratio: d.min_region_ratio });
   },
+  max_region_size: (d) => {
+    if (d.max_region_size === undefined) return undefined;
+    if (d.region_classes !== undefined) {
+      const classes = d.region_classes.split(",").map((c) => resolveParamOptionLabel("region_class", c)).join(", ");
+      return m["issue.region_needs_shrink.max_region_size_with_classes_label"]({ region_classes: classes, max_region_size: d.max_region_size });
+    }
+    return m["issue.region_needs_shrink.max_region_size_label"]({ max_region_size: d.max_region_size });
+  },
+  max_region_ratio: (d) => {
+    if (d.max_region_ratio === undefined) return undefined;
+    if (d.region_classes !== undefined) {
+      const classes = d.region_classes.split(",").map((c) => resolveParamOptionLabel("region_class", c)).join(", ");
+      return m["issue.region_needs_shrink.max_region_ratio_with_classes_label"]({ region_classes: classes, max_region_ratio: d.max_region_ratio });
+    }
+    return m["issue.region_needs_shrink.max_region_ratio_label"]({ max_region_ratio: d.max_region_ratio });
+  },
   min_region_count: (d) => {
     if (d.region_classes === undefined) return undefined;
     const classes = d.region_classes.split(",");
@@ -82,8 +98,7 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
     });
   },
   teleport_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_waypoint_distance_label"]({ distance: d.distance }) : undefined,
-  teleport_min_geometric_length: (d) => d.min_length !== undefined ? m["issue.invalid_teleport.teleport_min_geometric_length_label"]({ min_length: d.min_length }) : undefined,
-  teleport_max_geometric_length: (d) => d.max_length !== undefined ? m["issue.invalid_teleport.teleport_max_geometric_length_label"]({ max_length: d.max_length }) : undefined,
+  teleport_geometric_length: (d) => d.length !== undefined ? m["issue.invalid_teleport.teleport_geometric_length_label"]({ length: d.length }) : undefined,
   teleport_super_hub_avoidance: (d) => d.max_connections !== undefined ? m["issue.invalid_teleport.teleport_super_hub_avoidance_label"]({ max_connections: d.max_connections }) : undefined,
   teleport_group_proximity: (d) => d.distance !== undefined ? m["issue.teleport_group_proximity.teleport_group_proximity_label"]({ distance: d.distance }) : undefined,
 };

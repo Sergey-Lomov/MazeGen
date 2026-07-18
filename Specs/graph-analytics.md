@@ -42,13 +42,13 @@ Maze-id translation happens in `build_analytics_snapshot` (maze-wasm/src/analyti
 
 ## Single Source of Truth: `find_all_simple_cycles`
 
-`maze-core/src/graph/cycles.rs` implements **Johnson's algorithm** (1975) for enumerating ALL simple directed cycles of a `NavGraph` — no length bound, no per-consumer variant. This single function feeds the pure-cycle core (this spec), `MinLoopLengthCheck` (`quality_control.md`), and the analytics overlay.
+`maze-core/src/graph/cycles.rs` implements **Johnson's algorithm** (1975) for enumerating ALL simple directed cycles of a `NavGraph` — no length bound, no per-consumer variant. This single function feeds the pure-cycle core (this spec), `LoopLengthCheck` (`quality_control.md`), and the analytics overlay.
 
 - **Self-loops are first-class cycles.** A self-loop `NavEdge` (`from == to`, produced only by `build_ring` for a junction-free ring) forms its own SCC of size 1 *with* a cycle, distinct from a size-1 SCC with no self-loop (no cycle). A self-loop's CW and CCW directions (if the ring is bidirectional) are linked via `reverse_edge` by the same path-reversal mechanism used for ordinary corridors — no special-case dedup needed.
 - **Johnson's itself produces no duplicates** — each simple directed cycle is visited exactly once, by construction (SCC decomposition + per-vertex blocking). If a bidirectional corridor exists as two separate nav-edges (`u->v` and `v->u`, linked via `reverse_edge`), Johnson's correctly returns BOTH as distinct directed cycles (`[u->v->u]`, `[v->u->v]`) — this is directed-correct, not a bug.
 - **Trivial reverse-pair 2-cycles** (walking a corridor edge then immediately its own `reverse_edge` — e.g. stepping into a dead-end spur and back) are excluded from the algorithm's output via a deliberate post-filter (`drop_trivial_reverse_pairs` / `is_trivial_reverse_pair`), not inside the DFS itself — forbidding the reverse-edge step *inside* Johnson's blocking DFS breaks its blocking invariant (a node whose only path back happens to be the forbidden reverse gets wrongly marked "no cycle, stay blocked", hiding other genuinely longer cycles through that same node).
-- **`dedup_bidirectional_pairs`** additionally collapses cycles that are the same physical loop walked in opposite directions via `reverse_edge` pairs (ordinary corridors or a self-loop CW/CCW pair) into one entry — used where "one entry per visual loop" matters (`MinLoopLengthCheck`).
-- No length bound is enforced inside the algorithm itself — `MinLoopLengthCheck` filters the full result by tile-length after the fact.
+- **`dedup_bidirectional_pairs`** additionally collapses cycles that are the same physical loop walked in opposite directions via `reverse_edge` pairs (ordinary corridors or a self-loop CW/CCW pair) into one entry — used where "one entry per visual loop" matters (`LoopLengthCheck`).
+- No length bound is enforced inside the algorithm itself — `LoopLengthCheck` filters the full result by tile-length after the fact.
 
 ### `MAX_SIMPLE_CYCLES` abort bound
 
@@ -66,7 +66,7 @@ pub(crate) enum CycleSearchResult {
 It aborts and returns `TooManyCycles` once the running cycle count exceeds `MAX_SIMPLE_CYCLES` (20,000 — comfortably above the 5x5 raw count, well below the 6x6 regime) — checked both inside `johnson_circuit` (so a single pathologically dense SCC can't run unbounded before control returns) and after each SCC in the outer loop. Every caller must handle both outcomes:
 
 - **`cycle_core`** (`graph_analytics.rs`, used by `compute_graph_analytics` — no toggle, runs unconditionally) returns `None` on `TooManyCycles`. `compute_graph_analytics` then returns a `GraphAnalytics` with `cycle_analysis_overflowed: true` and empty/zero placeholders for the other cycle fields, instead of hanging.
-- **`MinLoopLengthCheck`** (toggleable) silently skips the check on `TooManyCycles` — same effect as if the check were disabled for that maze.
+- **`LoopLengthCheck`** (toggleable) silently skips the check on `TooManyCycles` — same effect as if the check were disabled for that maze.
 
 ### Surfacing the overflow as an `Issue`
 

@@ -354,7 +354,8 @@ mod build_check_tests {
     use crate::runner::check_factory::{
         check_kind_for_type,
         build_missing_endpoints_check, build_unreachable_finish_check, build_missing_loops_check,
-        build_invalid_loop_check, build_excessive_scc_count_check, build_region_needs_expansion_check,
+        build_invalid_loop_check, build_invalid_loop_group_check, build_excessive_scc_count_check, build_region_needs_expansion_check,
+        build_region_needs_shrink_check,
         build_missing_regions_check, build_invalid_teleport_check, build_teleport_group_proximity_check,
     };
 
@@ -367,11 +368,12 @@ mod build_check_tests {
     // a live config exercised the missing arm (and `check_kind_for_type` panics on an unknown id).
     const ALL_KNOWN_CHECK_TYPE_IDS: &[&str] = &[
         "missing_endpoints", "unreachable_finish",
-        "min_loops_count", "min_loop_density", "min_loop_length", "max_loop_length",
+        "min_loops_count", "min_loop_density", "loop_length",
         "external_escape_diversity", "loop_distance_from_start", "loop_distance_from_finish",
-        "max_loop_density", "scc_count", "min_region_size", "min_region_ratio", "min_region_count",
+        "max_loop_density", "scc_count", "min_region_size", "min_region_ratio",
+        "max_region_size", "max_region_ratio", "min_region_count",
         "teleport_duplicates_connection", "teleport_waypoint_distance",
-        "teleport_min_geometric_length", "teleport_max_geometric_length",
+        "teleport_geometric_length",
         "teleport_super_hub_avoidance", "teleport_group_proximity",
     ];
 
@@ -391,8 +393,10 @@ mod build_check_tests {
         try_ctor!(build_unreachable_finish_check);
         try_ctor!(build_missing_loops_check);
         try_ctor!(build_invalid_loop_check);
+        try_ctor!(build_invalid_loop_group_check);
         try_ctor!(build_excessive_scc_count_check);
         try_ctor!(build_region_needs_expansion_check);
+        try_ctor!(build_region_needs_shrink_check);
         try_ctor!(build_missing_regions_check);
         try_ctor!(build_invalid_teleport_check);
         try_ctor!(build_teleport_group_proximity_check);
