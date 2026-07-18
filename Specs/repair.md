@@ -556,6 +556,16 @@ No `'stages` label is needed in the new code: the inner fixpoint loop lives enti
 
 ## Built-in Strategies
 
+### Naming convention (labels/descriptions)
+
+User-facing strategy `label`s (`maze-web/messages/{en,ru}.json`, `strategy.<id>.label`) are
+**nominalized** — an action-as-noun phrase, matching how rules/checks are named — not an
+imperative verb phrase. E.g. "Remove teleport", not "Remove the teleport" or "Removes teleport".
+Cardinality in the label must match what the strategy actually does: a strategy that can act on
+several items in one call (e.g. `InvalidLoopGroupSelectStrategy` sampling multiple cycles) uses a
+plural/generic noun ("Loop selection and break"), not a singular one ("...one loop") that
+overclaims a 1:1 guarantee.
+
 ### RandomEndpointsStrategy
 
 Handles `MISSING_ENDPOINTS`. No configurable parameters.
