@@ -11,7 +11,7 @@ import type { EdgeHL } from "./renderers/types";
 import type { Pos } from "./tessellationGeometry";
 
 const HIGHLIGHT_WIDTH = 3;
-const HIGHLIGHT_ALPHA = 0.9;
+const HIGHLIGHT_ALPHA = 1;
 
 export interface DebugRefHighlightData {
   nodes: NodeDto[];
