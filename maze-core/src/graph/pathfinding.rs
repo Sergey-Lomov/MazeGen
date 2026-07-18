@@ -14,6 +14,25 @@ where
     I: Iterator<Item = (NavNodeId, usize)> + 'a,
     F: Fn(&'a NavGraph, NavNodeId) -> I,
 {
+    dijkstra_generic_bounded(nav, source, neighbors, None)
+}
+
+/// Like `dijkstra_generic`, but stops expanding once the popped cost exceeds `max_dist` (when
+/// `Some`) — everything still in the heap at that point is guaranteed at least as far, per
+/// Dijkstra's non-decreasing pop order, so the remainder of the reachable graph is safely
+/// skipped. Nodes beyond `max_dist` are left at `usize::MAX` (i.e. reported unreachable), same
+/// as any other node the traversal never got to — callers only using this to test "is anything
+/// within max_dist" don't care about their true distance.
+pub(crate) fn dijkstra_generic_bounded<'a, I, F>(
+    nav: &'a NavGraph,
+    source: NavNodeId,
+    neighbors: F,
+    max_dist: Option<usize>,
+) -> Vec<usize>
+where
+    I: Iterator<Item = (NavNodeId, usize)> + 'a,
+    F: Fn(&'a NavGraph, NavNodeId) -> I,
+{
     let n = nav.nodes.len();
     let mut dist = vec![usize::MAX; n];
     let mut heap: BinaryHeap<Reverse<(usize, NavNodeId)>> = BinaryHeap::new();
@@ -23,6 +42,9 @@ where
 
     while let Some(Reverse((cost, u))) = heap.pop() {
         if dist[u] < cost { continue; }
+        if let Some(max) = max_dist {
+            if cost > max { break; }
+        }
         for (v, weight) in neighbors(nav, u) {
             let next_cost = cost + weight;
             if next_cost < dist[v] {
@@ -52,27 +74,31 @@ pub(crate) fn dijkstra_reverse(nav: &NavGraph, target: NavNodeId) -> Vec<usize> 
 /// Like `dijkstra_forward`, but a nav-edge is only traversable if `edge_filter` accepts it —
 /// lets a caller exclude specific transitions (e.g. a teleport hop) from the traversal entirely,
 /// rather than merely filtering results after the fact. `edge_filter` sees the full `NavEdge`
-/// (its `path` is enough to resolve back to base-graph edges/kinds if needed).
-pub(crate) fn dijkstra_forward_filtered(
+/// (its `path` is enough to resolve back to base-graph edges/kinds if needed). Also stops
+/// expanding once the popped cost exceeds `max_dist` (when `Some`) — see `dijkstra_generic_bounded`.
+pub(crate) fn dijkstra_forward_filtered_bounded(
     nav: &NavGraph,
     source: NavNodeId,
     edge_filter: impl Fn(&NavEdge) -> bool,
+    max_dist: Option<usize>,
 ) -> Vec<usize> {
-    dijkstra_generic(nav, source, |nav, u| {
+    dijkstra_generic_bounded(nav, source, |nav, u| {
         nav.outgoing_edges(u).filter(|e| edge_filter(e)).map(|e| (e.to, e.path.len().saturating_sub(1)))
-    })
+    }, max_dist)
 }
 
-/// Like `dijkstra_reverse`, but a nav-edge is only traversable if `edge_filter` accepts it — see
-/// `dijkstra_forward_filtered`.
-pub(crate) fn dijkstra_reverse_filtered(
+/// Like `dijkstra_reverse`, but a nav-edge is only traversable if `edge_filter` accepts it, and
+/// stops expanding once the popped cost exceeds `max_dist` (when `Some`) — see
+/// `dijkstra_forward_filtered_bounded`/`dijkstra_generic_bounded`.
+pub(crate) fn dijkstra_reverse_filtered_bounded(
     nav: &NavGraph,
     target: NavNodeId,
     edge_filter: impl Fn(&NavEdge) -> bool,
+    max_dist: Option<usize>,
 ) -> Vec<usize> {
-    dijkstra_generic(nav, target, |nav, u| {
+    dijkstra_generic_bounded(nav, target, |nav, u| {
         nav.incoming_edges(u).filter(|e| edge_filter(e)).map(|e| (e.from, e.path.len().saturating_sub(1)))
-    })
+    }, max_dist)
 }
 
 /// Dijkstra with prev_edge tracking for path reconstruction.
@@ -212,6 +238,31 @@ mod tests {
             assert!(hops <= 3, "predecessor chain must not loop");
         }
         assert_eq!(hops, 2);
+    }
+
+    #[test]
+    fn dijkstra_forward_filtered_bounded_leaves_nodes_past_max_dist_unreached() {
+        // A 10-hop chain 0->1->...->10. With max_dist=2, node 10 (true distance 10) must stay
+        // at usize::MAX -- not merely because it's filtered out afterward, but because the heap
+        // never got far enough to relax it. This is the actual proof the traversal stops early
+        // (GitHub issue #196), as opposed to just computing the full map and discarding results.
+        let mut g = Graph::new();
+        let ids: Vec<u64> = (0..=10).collect();
+        for &id in &ids { g.add_node(id); }
+        for w in ids.windows(2) {
+            g.add_edge(w[0], w[1], EdgeKind::Basic);
+        }
+        let nav = build_nav_graph_pinned(&g, &pinned(&ids));
+        let source = nav.nav_node_for(0).unwrap();
+        let far = nav.nav_node_for(10).unwrap();
+        let near = nav.nav_node_for(2).unwrap();
+
+        let bounded = dijkstra_forward_filtered_bounded(&nav, source, |_| true, Some(2));
+        assert_eq!(bounded[near], 2, "node within max_dist must still get its correct distance");
+        assert_eq!(bounded[far], usize::MAX, "node past max_dist must be left unreached, not merely filtered");
+
+        let unbounded = dijkstra_forward_filtered_bounded(&nav, source, |_| true, None);
+        assert_eq!(unbounded[far], 10, "sanity check: without a bound the same traversal does reach node 10");
     }
 
     #[test]

@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use super::nav::{NavEdge, NavGraph, NavNodeId};
-use super::pathfinding::{dijkstra_forward, dijkstra_forward_filtered, dijkstra_reverse, dijkstra_reverse_filtered};
+use super::pathfinding::{
+    dijkstra_forward, dijkstra_forward_filtered_bounded,
+    dijkstra_reverse, dijkstra_reverse_filtered_bounded,
+};
 
 /// Direction of traversal relative to `source`, following directed nav-edge semantics
 /// (never treated as undirected).
@@ -35,18 +38,22 @@ pub(crate) fn compute_distance_map(nav: &NavGraph, source: NavNodeId, direction:
         .collect()
 }
 
-/// Like `compute_distance_map`, but a nav-edge is only traversable if `edge_filter` accepts it —
-/// lets a caller exclude specific transitions from the traversal itself (e.g. a teleport hop),
-/// rather than merely filtering the resulting distances after the fact.
-pub(crate) fn compute_distance_map_filtered(
+/// Like `compute_distance_map`, but the Dijkstra pass itself stops expanding once the
+/// popped cost exceeds `max_dist` — for callers that only need to know distances up to a fixed
+/// threshold (e.g. a proximity check), this bounds traversal cost to the threshold radius
+/// instead of always walking the entire reachable nav-graph. Nodes beyond `max_dist` are simply
+/// absent from the result, same as genuinely unreachable ones — a caller relying on this bound
+/// must never query beyond `max_dist` and expect a meaningful distance back.
+pub(crate) fn compute_distance_map_filtered_bounded(
     nav: &NavGraph,
     source: NavNodeId,
     direction: DistanceDirection,
     edge_filter: impl Fn(&NavEdge) -> bool,
+    max_dist: usize,
 ) -> HashMap<NavNodeId, usize> {
     let nav_dist = match direction {
-        DistanceDirection::Forward => dijkstra_forward_filtered(nav, source, edge_filter),
-        DistanceDirection::Reverse => dijkstra_reverse_filtered(nav, source, edge_filter),
+        DistanceDirection::Forward => dijkstra_forward_filtered_bounded(nav, source, edge_filter, Some(max_dist)),
+        DistanceDirection::Reverse => dijkstra_reverse_filtered_bounded(nav, source, edge_filter, Some(max_dist)),
     };
 
     nav_dist.into_iter()

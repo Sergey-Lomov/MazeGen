@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::{EdgeKind, Graph};
-use crate::graph::distance_map::{compute_distance_map_filtered, min_optional_distance, DistanceDirection};
+use crate::graph::distance_map::{compute_distance_map_filtered_bounded, min_optional_distance, DistanceDirection};
 use crate::graph::nav::{NavEdge, NavNodeId};
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::EdgeId;
@@ -91,16 +91,25 @@ fn endpoints_of(edge: TeleportProximityEdge, from: crate::ids::NodeId, to: crate
 /// being scanned or an unrelated third one) for a 1-tile hop, making two teleports look close
 /// merely because a teleport ride connects them, which isn't the proximity problem this check
 /// exists to catch.
+///
+/// Every pass is also bounded to `distance`'s radius (GitHub issue #196) — the check only ever
+/// needs to know whether *some* candidate lies within `distance`, so Dijkstra stops expanding
+/// once it's gone far enough rather than always walking the entire reachable nav-graph.
 struct DirectedDistanceCache<'a> {
     nav: &'a crate::graph::nav::NavGraph,
     graph: &'a Graph,
+    /// Largest tile-hop distance the check can ever act on — see `distance_bound` — passed to
+    /// each Dijkstra pass so it stops expanding once it's gone far enough (GitHub issue #196):
+    /// the check only ever needs "is anything within `distance`", so traversing the full
+    /// reachable nav-graph past that radius is wasted work.
+    max_dist: usize,
     forward: HashMap<NavNodeId, HashMap<NavNodeId, usize>>,
     reverse: HashMap<NavNodeId, HashMap<NavNodeId, usize>>,
 }
 
 impl<'a> DirectedDistanceCache<'a> {
-    fn new(nav: &'a crate::graph::nav::NavGraph, graph: &'a Graph) -> Self {
-        Self { nav, graph, forward: HashMap::new(), reverse: HashMap::new() }
+    fn new(nav: &'a crate::graph::nav::NavGraph, graph: &'a Graph, max_dist: usize) -> Self {
+        Self { nav, graph, max_dist, forward: HashMap::new(), reverse: HashMap::new() }
     }
 
     /// A nav-edge is traversable unless it's a single-hop transition (`path.len() == 2`) that can
@@ -131,11 +140,12 @@ impl<'a> DirectedDistanceCache<'a> {
             return Some(0);
         }
         let graph = self.graph;
+        let max_dist = self.max_dist;
         let fwd = self.forward.entry(a)
-            .or_insert_with(|| compute_distance_map_filtered(self.nav, a, DistanceDirection::Forward, |e| Self::is_not_teleport_hop(graph, e)))
+            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Forward, |e| Self::is_not_teleport_hop(graph, e), max_dist))
             .get(&b).copied();
         let rev = self.reverse.entry(a)
-            .or_insert_with(|| compute_distance_map_filtered(self.nav, a, DistanceDirection::Reverse, |e| Self::is_not_teleport_hop(graph, e)))
+            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Reverse, |e| Self::is_not_teleport_hop(graph, e), max_dist))
             .get(&b).copied();
         min_optional_distance(fwd, rev)
     }
@@ -154,7 +164,13 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
         }
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let mut dist_cache = DirectedDistanceCache::new(&nav, &maze.graph);
+        // Largest tile-hop distance `dist < self.distance` can ever hold for — e.g.
+        // distance=5.0 admits dist=4 but not 5, distance=1.5 admits dist=1 but not 2. Bounds
+        // every Dijkstra pass to this radius (GitHub issue #196) instead of always walking the
+        // full reachable nav-graph, since a hit farther than this can never pass the `<` check
+        // below regardless of its exact distance.
+        let max_dist = (self.distance.ceil() as isize - 1).max(0) as usize;
+        let mut dist_cache = DirectedDistanceCache::new(&nav, &maze.graph, max_dist);
         let mut pairs: Vec<(EdgeId, EdgeId)> = Vec::new();
 
         for &(own_id, own_from, own_to) in &teleports {
