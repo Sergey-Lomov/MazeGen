@@ -8,7 +8,7 @@ use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, TeleportGroupProximityIssue};
+use crate::quality_control::{Issue, InvalidTeleportGroupIssue};
 
 pub const TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 
@@ -108,10 +108,10 @@ impl<'a> DirectedDistanceCache<'a> {
     }
 }
 
-impl<T: Tessellation> Check<T, TeleportGroupProximityIssue> for TeleportGroupProximityCheck {
+impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProximityCheck {
     fn check_type_id(&self) -> &'static str { "teleport_group_proximity" }
 
-    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<TeleportGroupProximityIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
+    fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let teleports: Vec<_> = maze.graph.edges()
             .filter(|e| e.kind == EdgeKind::Teleport)
             .map(|e| (e.id, e.from, e.to))
@@ -173,7 +173,7 @@ impl<T: Tessellation> Check<T, TeleportGroupProximityIssue> for TeleportGroupPro
         if pairs.is_empty() {
             return;
         }
-        let issue = TeleportGroupProximityIssue::new_from_check(&self.instance_id, pairs)
+        let issue = InvalidTeleportGroupIssue::new_from_check(&self.instance_id, pairs)
             .with_detail(&self.instance_id, "distance", self.distance.to_string());
         issues.push(issue);
     }

@@ -2,7 +2,7 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, TELEPORT_GROUP_PROXIMITY},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
@@ -140,9 +140,9 @@ pub fn available_strategies() -> JsValue {
         },
         StrategyDescriptor {
             id: "teleport_group_proximity",
-            handles: TELEPORT_GROUP_PROXIMITY.as_str(),
-            params: strategy_params_dto(<TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::TeleportGroupProximityIssue>>::params(&TeleportGroupProximityStrategy)),
-            experimental: <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::TeleportGroupProximityIssue>>::is_experimental(&TeleportGroupProximityStrategy),
+            handles: INVALID_TELEPORT_GROUP.as_str(),
+            params: strategy_params_dto(<TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::params(&TeleportGroupProximityStrategy)),
+            experimental: <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::is_experimental(&TeleportGroupProximityStrategy),
             nested_slots: vec![],
         },
         StrategyDescriptor {

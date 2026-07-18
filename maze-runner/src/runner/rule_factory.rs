@@ -6,7 +6,7 @@ use maze_core::{
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
-        InvalidTeleportIssue, TeleportGroupProximityIssue,
+        InvalidTeleportIssue, InvalidTeleportGroupIssue,
     },
 };
 use crate::config::GenerateConfig;
@@ -78,7 +78,7 @@ fn build_rule<T: Tessellation + 'static>(rule_cfg: &crate::config::QcRuleConfig)
         KindTag::RegionNeedsShrink => build_rule_for!(RegionNeedsShrinkIssue, build_region_needs_shrink_check, rule_cfg),
         KindTag::MissingRegions => build_rule_for!(MissingRegionsIssue, build_missing_regions_check, rule_cfg),
         KindTag::InvalidTeleport => build_rule_for!(InvalidTeleportIssue, build_invalid_teleport_check, rule_cfg),
-        KindTag::TeleportGroupProximity => build_rule_for!(TeleportGroupProximityIssue, build_teleport_group_proximity_check, rule_cfg),
+        KindTag::InvalidTeleportGroup => build_rule_for!(InvalidTeleportGroupIssue, build_teleport_group_proximity_check, rule_cfg),
     }
 }
 

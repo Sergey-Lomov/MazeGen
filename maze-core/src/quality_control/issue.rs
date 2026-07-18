@@ -14,7 +14,7 @@ pub enum IssueKind {
     RegionNeedsShrink,
     MissingRegions,
     InvalidTeleport,
-    TeleportGroupProximity,
+    InvalidTeleportGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -26,7 +26,7 @@ pub const UNREACHABLE_FINISH: IssueKind = IssueKind::UnreachableFinish;
 pub const INVALID_LOOP: IssueKind = IssueKind::InvalidLoop;
 /// A cycle is flagged not for a property of its own, but as part of a group decision across every
 /// loop on the field (currently only excess field-density — see `MaxLoopDensityCheck`). Mirrors
-/// `TELEPORT_GROUP_PROXIMITY`'s split from `INVALID_TELEPORT`: `INVALID_LOOP` flags a single cycle
+/// `INVALID_TELEPORT_GROUP`'s split from `INVALID_TELEPORT`: `INVALID_LOOP` flags a single cycle
 /// invalid on its own terms, this kind flags cycles selected as part of a group-level fix (e.g.
 /// "pick enough loops to remove until density drops"), so it gets its own kind and strategies
 /// rather than being folded into `INVALID_LOOP`. Carries `InvalidLoopGroupIssue` — same shape as
@@ -86,8 +86,8 @@ pub const INVALID_TELEPORT: IssueKind = IssueKind::InvalidTeleport;
 /// (currently only `TeleportGroupProximityCheck`) — see GitHub issue #75. Distinct from
 /// `INVALID_TELEPORT`: that kind flags a single teleport edge invalid on its own; this one flags
 /// a *relationship* between two teleport edges, neither of which is individually invalid. Carries
-/// `TeleportGroupProximityIssue` — see that type's doc comment.
-pub const TELEPORT_GROUP_PROXIMITY: IssueKind = IssueKind::TeleportGroupProximity;
+/// `InvalidTeleportGroupIssue` — see that type's doc comment.
+pub const INVALID_TELEPORT_GROUP: IssueKind = IssueKind::InvalidTeleportGroup;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -104,7 +104,7 @@ impl IssueKind {
             IssueKind::RegionNeedsShrink => "region_needs_shrink",
             IssueKind::MissingRegions => "missing_regions",
             IssueKind::InvalidTeleport => "invalid_teleport",
-            IssueKind::TeleportGroupProximity => "teleport_group_proximity",
+            IssueKind::InvalidTeleportGroup => "invalid_teleport_group",
         }
     }
 
@@ -130,7 +130,7 @@ impl IssueKind {
             "region_needs_shrink" => Some(IssueKind::RegionNeedsShrink),
             "missing_regions" => Some(IssueKind::MissingRegions),
             "invalid_teleport" => Some(IssueKind::InvalidTeleport),
-            "teleport_group_proximity" => Some(IssueKind::TeleportGroupProximity),
+            "invalid_teleport_group" => Some(IssueKind::InvalidTeleportGroup),
             _ => None,
         }
     }

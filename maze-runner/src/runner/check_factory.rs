@@ -24,7 +24,7 @@ use maze_core::{
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
-        InvalidTeleportIssue, TeleportGroupProximityIssue,
+        InvalidTeleportIssue, InvalidTeleportGroupIssue,
     },
     RegionClass,
 };
@@ -48,7 +48,7 @@ pub(crate) enum KindTag {
     RegionNeedsShrink,
     MissingRegions,
     InvalidTeleport,
-    TeleportGroupProximity,
+    InvalidTeleportGroup,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -72,7 +72,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "teleport_waypoint_distance" => KindTag::InvalidTeleport,
         "teleport_geometric_length" => KindTag::InvalidTeleport,
         "teleport_super_hub_avoidance" => KindTag::InvalidTeleport,
-        "teleport_group_proximity" => KindTag::TeleportGroupProximity,
+        "teleport_group_proximity" => KindTag::InvalidTeleportGroup,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -342,7 +342,7 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
     }
 }
 
-pub(crate) fn build_teleport_group_proximity_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, TeleportGroupProximityIssue>>> {
+pub(crate) fn build_teleport_group_proximity_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidTeleportGroupIssue>>> {
     match instance.type_id.as_str() {
         "teleport_group_proximity" => {
             let distance = instance.params.get("distance")

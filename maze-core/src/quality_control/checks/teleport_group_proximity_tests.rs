@@ -484,7 +484,7 @@ fn records_the_configured_distance_as_a_detail() {
 #[test]
 fn check_type_id_matches_registered_type_id() {
     let c = check(0.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry);
-    assert_eq!(<TeleportGroupProximityCheck as Check<SquareTessellation, TeleportGroupProximityIssue>>::check_type_id(&c), "teleport_group_proximity");
+    assert_eq!(<TeleportGroupProximityCheck as Check<SquareTessellation, InvalidTeleportGroupIssue>>::check_type_id(&c), "teleport_group_proximity");
 }
 
 #[test]

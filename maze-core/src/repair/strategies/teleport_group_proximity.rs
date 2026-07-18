@@ -3,7 +3,7 @@ use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
-use crate::quality_control::{IssueKindConst, TeleportGroupProximityIssue};
+use crate::quality_control::{IssueKindConst, InvalidTeleportGroupIssue};
 use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
@@ -45,7 +45,7 @@ static PARAMS: &[StrategyParam] = &[
     },
 ];
 
-/// Handles `TELEPORT_GROUP_PROXIMITY` — see GitHub issue #75. For each problematic pair flagged by
+/// Handles `INVALID_TELEPORT_GROUP` — see GitHub issue #75. For each problematic pair flagged by
 /// `TeleportGroupProximityCheck`, removes one of the two teleport edges: removing a teleport
 /// immediately drops every problematic pair that references it, so a pair already resolved by an
 /// earlier removal in the same `apply()` call is skipped rather than acted on twice.
@@ -65,7 +65,7 @@ static PARAMS: &[StrategyParam] = &[
 /// direction is correctly treated as already resolved.
 pub struct TeleportGroupProximityStrategy;
 
-impl<T: Tessellation> RepairStrategy<T, TeleportGroupProximityIssue> for TeleportGroupProximityStrategy {
+impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportGroupProximityStrategy {
     fn strategy_id(&self) -> &'static str { "teleport_group_proximity" }
 
     fn params(&self) -> &'static [StrategyParam] {
@@ -74,7 +74,7 @@ impl<T: Tessellation> RepairStrategy<T, TeleportGroupProximityIssue> for Telepor
 
     fn apply(
         &self,
-        issue: &TeleportGroupProximityIssue,
+        issue: &InvalidTeleportGroupIssue,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
         params: &StrategyParams,
@@ -144,7 +144,7 @@ impl<T: Tessellation> RepairStrategy<T, TeleportGroupProximityIssue> for Telepor
     }
 }
 
-crate::impl_erased_repair_strategy!(TeleportGroupProximityStrategy, TeleportGroupProximityIssue);
+crate::impl_erased_repair_strategy!(TeleportGroupProximityStrategy, InvalidTeleportGroupIssue);
 
 #[cfg(test)]
 #[path = "teleport_group_proximity_tests.rs"]

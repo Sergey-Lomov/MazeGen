@@ -126,7 +126,7 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_teleport.label"] as MessageFn,
     description: m["issue.invalid_teleport.description"] as MessageFn,
   },
-  teleport_group_proximity: {
+  invalid_teleport_group: {
     label: m["issue.teleport_group_proximity.label"] as MessageFn,
     description: m["issue.teleport_group_proximity.description"] as MessageFn,
   },
