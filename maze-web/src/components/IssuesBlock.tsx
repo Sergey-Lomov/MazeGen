@@ -30,6 +30,13 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const loopEdges = sourceCheck != null && issue.payload.kind === "invalid_loop"
     ? issue.payload.edges[sourceCheck] ?? null
     : null;
+  // `invalid_teleport`/`invalid_teleport_group` share the same `invalid_teleport` payload shape
+  // (a single flagged teleport is a group of size one — see `IssuePayloadDto`'s doc comment) —
+  // flattened and rendered through the same edge-highlight path as `loopEdges`, no dedicated
+  // renderer needed.
+  const teleportEdges = sourceCheck != null && issue.payload.kind === "invalid_teleport"
+    ? issue.payload.groups[sourceCheck] ?? null
+    : null;
   // Same per-check isolation as `loopEdges` above — only this bubble's own source check's
   // flagged regions, not every contributing check's regions combined. Covers both
   // `region_needs_expansion` (undersized) and `region_needs_shrink` (oversized) — both highlight
@@ -41,10 +48,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
 
   const handleMouseEnter = loopEdges != null
     ? () => setHoveredIssueLoopEdges(loopEdges.flat())
+    : teleportEdges != null
+    ? () => setHoveredIssueLoopEdges(teleportEdges.flat())
     : regionNodes != null
     ? () => setHoveredIssueRegionGroups(regionNodes)
     : undefined;
-  const handleMouseLeave = loopEdges != null
+  const handleMouseLeave = loopEdges != null || teleportEdges != null
     ? () => setHoveredIssueLoopEdges(null)
     : regionNodes != null
     ? () => setHoveredIssueRegionGroups(null)

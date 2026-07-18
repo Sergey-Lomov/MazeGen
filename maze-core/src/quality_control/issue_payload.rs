@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 use crate::graph::{Graph, scc::ConnectedComponents};
 use super::issue::Issue;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue};
 
 /// Structural payload data for an `Issue`, resolved against the current `Graph`/`ConnectedComponents`
 /// — one shared source of truth for both `maze-wasm`'s JSON `IssuePayloadDto` (via a thin
 /// conversion, `maze-wasm/src/dto.rs`) and the narration-level QC event tape's binary
 /// `RuleChecked` payload (`quality_control::event`). Only `InvalidLoopIssue`/
-/// `InvalidLoopGroupIssue`/`RegionNeedsExpansionIssue`/`RegionNeedsShrinkIssue` carry structural
-/// edge/node data today — every other concrete `Issue` type resolves to `None`, same as
-/// `build_analytics_snapshot`'s pre-existing behavior. `InvalidLoopGroupIssue` reuses the
-/// `InvalidLoop` payload variant (identical shape) rather than getting its own wire tag.
+/// `InvalidLoopGroupIssue`/`RegionNeedsExpansionIssue`/`RegionNeedsShrinkIssue`/
+/// `InvalidTeleportIssue`/`InvalidTeleportGroupIssue` carry structural edge/node data today —
+/// every other concrete `Issue` type resolves to `None`, same as `build_analytics_snapshot`'s
+/// pre-existing behavior. `InvalidLoopGroupIssue` reuses the `InvalidLoop` payload variant
+/// (identical shape) rather than getting its own wire tag — `InvalidTeleportGroupIssue` reuses
+/// `InvalidTeleport` the same way.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum IssuePayload {
     #[default]
@@ -25,6 +27,14 @@ pub enum IssuePayload {
     /// region flagged for shrinking (see GitHub issue #177). Mirrors
     /// `IssuePayloadDto::RegionNeedsShrink`.
     RegionNeedsShrink { nodes: HashMap<String, Vec<Vec<u32>>> },
+    /// Keyed by source check id — each inner `Vec` is one flagged teleport "group", expressed as
+    /// base-graph `[from, to]` maze node-id pairs, one pair per teleport edge in the group.
+    /// `InvalidTeleportIssue` (a single flagged teleport is really a group of size one) and
+    /// `InvalidTeleportGroupIssue` (a problematic pair) both resolve into this same shape rather
+    /// than getting their own payload variant each — see GitHub issue #195, mirrors
+    /// `InvalidLoop`'s reuse across `InvalidLoopIssue`/`InvalidLoopGroupIssue`. Mirrors
+    /// `IssuePayloadDto::InvalidTeleport`.
+    InvalidTeleport { groups: HashMap<String, Vec<Vec<[u32; 2]>>> },
 }
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
@@ -82,6 +92,44 @@ fn resolve_invalid_loop_group_payload(
     if edges.is_empty() { None } else { Some(IssuePayload::InvalidLoop { edges }) }
 }
 
+/// Resolves a single flagged teleport `EdgeId` into a one-edge group, keyed by the specific
+/// check(s) that flagged *that* edge (`invalid_sources`, not the issue's whole `source_checks`
+/// list) — shared by `InvalidTeleportIssue`'s resolve path below. See GitHub issue #195's
+/// follow-up: without per-edge attribution, a merged issue combining two checks' flagged edges
+/// would highlight every edge on every contributing check's bubble, not just the edges that
+/// specific check actually flagged (the bug `InvalidLoopIssue.invalid_sources` already avoids).
+fn resolve_invalid_teleport_payload(invalid: &[crate::ids::EdgeId], invalid_sources: &HashMap<crate::ids::EdgeId, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
+    let mut groups: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
+    for &eid in invalid {
+        let Some(edge) = graph.edge(eid) else { continue };
+        let (Ok(from), Ok(to)) = (u32::try_from(edge.from), u32::try_from(edge.to)) else { continue };
+        for source in invalid_sources.get(&eid).into_iter().flatten() {
+            groups.entry(source.clone()).or_default().push(vec![[from, to]]);
+        }
+    }
+    if groups.is_empty() { None } else { Some(IssuePayload::InvalidTeleport { groups }) }
+}
+
+/// Resolves every flagged teleport pair into a two-edge group, keyed by the specific check(s)
+/// that flagged *that* pair (`invalid_sources`, canonical-key-keyed) — shared by
+/// `InvalidTeleportGroupIssue`'s resolve path below. Same per-pair attribution rationale as
+/// `resolve_invalid_teleport_payload` above.
+fn resolve_invalid_teleport_group_payload(pairs: &[(crate::ids::EdgeId, crate::ids::EdgeId)], invalid_sources: &HashMap<(crate::ids::EdgeId, crate::ids::EdgeId), Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
+    let mut groups: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
+    for &(a, b) in pairs {
+        let Some(edge_a) = graph.edge(a) else { continue };
+        let Some(edge_b) = graph.edge(b) else { continue };
+        let (Ok(a_from), Ok(a_to)) = (u32::try_from(edge_a.from), u32::try_from(edge_a.to)) else { continue };
+        let (Ok(b_from), Ok(b_to)) = (u32::try_from(edge_b.from), u32::try_from(edge_b.to)) else { continue };
+        let pair = vec![[a_from, a_to], [b_from, b_to]];
+        let key = if a <= b { (a, b) } else { (b, a) };
+        for source in invalid_sources.get(&key).into_iter().flatten() {
+            groups.entry(source.clone()).or_default().push(pair.clone());
+        }
+    }
+    if groups.is_empty() { None } else { Some(IssuePayload::InvalidTeleport { groups }) }
+}
+
 pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         if let Some(payload) = resolve_invalid_loop_payload(all, invalid, invalid_sources, graph) {
@@ -120,6 +168,18 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
         }
         if !nodes.is_empty() {
             return IssuePayload::RegionNeedsShrink { nodes };
+        }
+    }
+
+    if let Some(InvalidTeleportIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportIssue>() {
+        if let Some(payload) = resolve_invalid_teleport_payload(invalid, invalid_sources, graph) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidTeleportGroupIssue { pairs, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportGroupIssue>() {
+        if let Some(payload) = resolve_invalid_teleport_group_payload(pairs, invalid_sources, graph) {
+            return payload;
         }
     }
 
@@ -290,5 +350,99 @@ mod tests {
         let mut region = check1_regions[0].clone();
         region.sort();
         assert_eq!(region, vec![1, 2, 3]);
+    }
+
+    fn teleport_graph() -> (Graph, crate::ids::EdgeId, crate::ids::EdgeId) {
+        use crate::graph::EdgeKind;
+        let mut graph = Graph::new();
+        graph.add_node(1);
+        graph.add_node(2);
+        graph.add_node(3);
+        let e1 = graph.add_edge(1, 2, EdgeKind::Teleport);
+        let e2 = graph.add_edge(2, 3, EdgeKind::Teleport);
+        (graph, e1, e2)
+    }
+
+    #[test]
+    fn invalid_teleport_issue_with_no_flagged_edges_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidTeleportIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve_issue_payload(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_teleport_issue_resolves_flagged_edge_as_one_element_group() {
+        let (graph, e1, _) = teleport_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![e1]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+        assert_eq!(groups.len(), 1);
+        let check1_groups = &groups["teleport_duplicates_connection"];
+        assert_eq!(check1_groups, &vec![vec![[1, 2]]]);
+    }
+
+    #[test]
+    fn invalid_teleport_group_issue_with_no_flagged_pairs_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidTeleportGroupIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve_issue_payload(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_teleport_group_issue_resolves_flagged_pair_as_two_element_group() {
+        let (graph, e1, e2) = teleport_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", vec![(e1, e2)]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+        assert_eq!(groups.len(), 1);
+        let check1_groups = &groups["teleport_group_proximity"];
+        assert_eq!(check1_groups, &vec![vec![[1, 2], [2, 3]]]);
+    }
+
+    #[test]
+    fn invalid_teleport_issue_merged_from_two_checks_attributes_each_edge_to_only_its_own_check() {
+        // GitHub issue #195's follow-up: teleport_duplicates_connection flags e1,
+        // teleport_waypoint_distance flags e2 -- after merge, hovering one check's bubble must
+        // highlight only the edge that check actually flagged, not both.
+        use crate::quality_control::issue::IssueMerge;
+        let (graph, e1, e2) = teleport_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let mut issue = InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![e1]);
+        issue.merge(InvalidTeleportIssue::new_from_check("teleport_waypoint_distance", vec![e2]));
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+        assert_eq!(groups["teleport_duplicates_connection"], vec![vec![[1, 2]]], "must not include e2");
+        assert_eq!(groups["teleport_waypoint_distance"], vec![vec![[2, 3]]], "must not include e1");
+    }
+
+    #[test]
+    fn invalid_teleport_issue_silently_skips_a_stale_edge_id_absent_from_the_graph() {
+        // A flagged EdgeId that no longer resolves in `graph` (e.g. removed by a repair mutation
+        // between the check running and the payload being resolved) must be dropped, not panic.
+        let (graph, e1, _) = teleport_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let stale_id = e1 + 1000;
+        let issue = InvalidTeleportIssue::new_from_check("teleport_duplicates_connection", vec![e1, stale_id]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+        assert_eq!(groups["teleport_duplicates_connection"], vec![vec![[1, 2]]], "stale edge id must be dropped, not panic");
+    }
+
+    #[test]
+    fn invalid_teleport_group_issue_silently_skips_a_pair_with_a_stale_edge_id() {
+        let (graph, e1, e2) = teleport_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let stale_id = e2 + 1000;
+        let issue = InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", vec![(e1, e2), (e1, stale_id)]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
+        assert_eq!(groups["teleport_group_proximity"], vec![vec![[1, 2], [2, 3]]], "the pair with a stale edge id must be dropped, not panic");
     }
 }

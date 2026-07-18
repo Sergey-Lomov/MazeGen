@@ -5,6 +5,7 @@ import { cellCenter } from "./hexGeometry";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
+import { touchedNodeIds } from "./renderers/edgeUtils";
 
 const HIGHLIGHT_COLOR = 0xff4444;
 const HIGHLIGHT_WIDTH = 3;
@@ -12,7 +13,8 @@ const HIGHLIGHT_ALPHA = 0.9;
 
 export interface IssueHighlightData {
   nodes: NodeDto[];
-  /** Base-graph [from, to] edges to highlight — typically the loops of a hovered issue. */
+  /** Base-graph [from, to] edges to highlight — typically the loops of a hovered issue, or (GitHub
+   * issue #195) a hovered invalid-teleport/teleport-group issue's flagged teleport edge(s). */
   edges: [number, number][] | null;
   /** SCC regions to highlight, each as its own list of maze node ids — typically the undersized
    * regions of a hovered issue. Kept as separate groups (not one flat list) so each region gets
@@ -64,12 +66,7 @@ export class IssueHighlightOverlay {
       g.stroke({ width: HIGHLIGHT_WIDTH, color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
     }
 
-    const touchedNodeIds = new Set<number>();
-    for (const [from, to] of edges) {
-      touchedNodeIds.add(from);
-      touchedNodeIds.add(to);
-    }
-    for (const nodeId of touchedNodeIds) {
+    for (const nodeId of touchedNodeIds(edges)) {
       const pos = nodePos.get(nodeId);
       if (!pos) continue;
       g.circle(pos.x, pos.y, NODE_RADIUS);

@@ -242,6 +242,10 @@ fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(3);
             write_str_keyed_node_lists(out, nodes);
         }
+        IssuePayload::InvalidTeleport { groups } => {
+            out.push(4);
+            write_str_keyed_edge_pairs(out, groups);
+        }
     }
 }
 
@@ -725,6 +729,34 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 region
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // region has 1 node
         assert_eq!(read_u32le(&bytes, &mut offset), 5); // node id
+        assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
+        assert_eq!(bytes.len(), offset);
+    }
+
+    #[test]
+    fn check_ran_with_invalid_teleport_payload_encodes_the_full_str_keyed_edge_pairs_map() {
+        let mut groups = std::collections::HashMap::new();
+        groups.insert("check1".to_string(), vec![vec![[1u32, 2u32]]]);
+        let event = QcEvent::CheckRan {
+            check_id: "c1".to_string(),
+            issue: Some((IssueKind::from_str("invalid_teleport").unwrap(), IssuePayload::InvalidTeleport { groups }, HashMap::new())),
+        };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+
+        let mut offset = 0;
+        assert_eq!(read_str(&bytes, &mut offset), "c1");
+        assert_eq!(bytes[offset], 1); // issue present
+        offset += 1;
+        assert_eq!(read_str(&bytes, &mut offset), "invalid_teleport");
+        assert_eq!(bytes[offset], 4); // IssuePayload::InvalidTeleport variant tag
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // map: 1 entry
+        assert_eq!(read_str(&bytes, &mut offset), "check1");
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 group
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // group has 1 edge pair
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // from
+        assert_eq!(read_u32le(&bytes, &mut offset), 2); // to
         assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
         assert_eq!(bytes.len(), offset);
     }

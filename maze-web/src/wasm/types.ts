@@ -105,6 +105,15 @@ export type IssuePayloadDto =
       /** Mirrors `region_needs_expansion`'s `nodes` shape, for an oversized region flagged for
        * shrinking instead (`max_region_size`/`max_region_ratio`). */
       nodes: Record<string, number[][]>;
+    }
+  | {
+      kind: "invalid_teleport";
+      /** Keyed by source check id — each entry is one flagged teleport "group", expressed as
+       * [from, to] maze node-id pairs, one pair per teleport edge in the group. A single invalid
+       * teleport (`invalid_teleport`) is a group of size one; a proximity pair
+       * (`invalid_teleport_group`) is a group of size two — both share this payload shape. Keyed
+       * per check for the same reason as the `invalid_loop` variant's `edges`. */
+      groups: Record<string, [number, number][][]>;
     };
 
 export interface IssueDto {

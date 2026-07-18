@@ -77,6 +77,15 @@ pub enum IssuePayloadDto {
     RegionNeedsShrink {
         nodes: HashMap<String, Vec<Vec<u32>>>,
     },
+    /// Keyed by source check id — each inner Vec is one flagged teleport "group", expressed as
+    /// base-graph [from, to] maze node-id pairs, one pair per teleport edge in the group. A
+    /// single invalid teleport (`invalid_teleport`) is a group of size one; a proximity pair
+    /// (`invalid_teleport_group`) is a group of size two — see GitHub issue #195. Reused across
+    /// both kinds rather than getting its own variant each, mirroring `InvalidLoop`'s reuse
+    /// across `invalid_loop`/`invalid_loop_group`.
+    InvalidTeleport {
+        groups: HashMap<String, Vec<Vec<[u32; 2]>>>,
+    },
 }
 
 #[derive(Serialize)]

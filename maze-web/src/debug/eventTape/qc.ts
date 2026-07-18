@@ -51,12 +51,13 @@ export const QC_TAG = {
 
 export type RepairLimitKind = "MaxIterations" | "TimeBudget";
 
-/** Mirrors `IssuePayload` in `maze-core/src/quality_control/issue_payload.rs` — `None` for the 9
- *  of 11 `Issue` kinds with no structural edge/node payload (see that type's doc comment). */
+/** Mirrors `IssuePayload` in `maze-core/src/quality_control/issue_payload.rs` — `None` for the
+ *  `Issue` kinds with no structural edge/node payload (see that type's doc comment). */
 export type IssuePayload =
   | { kind: "None" }
   | { kind: "InvalidLoop"; edges: Map<string, [bigint, bigint][][]> }
-  | { kind: "RegionNeedsExpansion"; nodes: Map<string, bigint[][]> };
+  | { kind: "RegionNeedsExpansion"; nodes: Map<string, bigint[][]> }
+  | { kind: "InvalidTeleport"; groups: Map<string, [bigint, bigint][][]> };
 
 /** Mirrors `QcEvent` in `maze-core/src/quality_control/event.rs` — see that type's doc comment for
  *  the trace/mutating/declined split. `ruleId`/`checkId`/`issueKind` are the wire strings
@@ -197,6 +198,10 @@ function readIssuePayload(bytes: Uint8Array, offset: number): { value: IssuePayl
   if (tag === 2) {
     const { value: nodes, next } = readStrKeyedNodeLists(bytes, offset + 1);
     return { value: { kind: "RegionNeedsExpansion", nodes }, next };
+  }
+  if (tag === 4) {
+    const { value: groups, next } = readStrKeyedEdgePairs(bytes, offset + 1);
+    return { value: { kind: "InvalidTeleport", groups }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }

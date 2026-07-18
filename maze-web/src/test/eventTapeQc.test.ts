@@ -143,6 +143,21 @@ describe("decodeQcEvent", () => {
     });
   });
 
+  it("decodes CheckRan with IssuePayload::InvalidTeleport and an empty details map", () => {
+    // one entry: key "check1" -> one group -> one edge pair (1,2)
+    const groupsMap = concatBytes([
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
+    ]);
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_teleport"), new Uint8Array([4]), groupsMap, u32le(0)]);
+    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1",
+      issue: {
+        issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map([["check1", [[[1n, 2n]]]]]) },
+        details: new Map(),
+      },
+    });
+  });
+
   it("decodes IssuesMerged with IssuePayload::None and an empty details map", () => {
     const payload = concatBytes([strPayload("invalid_loop"), new Uint8Array([0]), u32le(0)]);
     expect(decodeQcEvent(QC_TAG.ISSUES_MERGED, payload)).toEqual({
@@ -765,6 +780,30 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
       { kind: "issue", issueKind: "region_needs_expansion", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Region expansion"] },
+    ]);
+  });
+
+  it("CheckRan with an InvalidTeleport payload carries a cycle-shaped highlight target, flattened across every contributing check", () => {
+    // A single flagged teleport (a group of size one) reuses the "cycle" target shape -- same
+    // rendering path as a real cycle, see `issueHighlightTarget`'s doc comment.
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map([["check1", [[[1n, 2n]]]]]) }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_teleport", target: { kind: "cycle", edges: [[1n, 2n]] }, reasons: ["Teleport validation"] },
+    ]);
+  });
+
+  it("an InvalidTeleport payload with no actual groups (empty map) resolves to a null highlight target, not an empty-array target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map() }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_teleport", target: null, reasons: ["Teleport validation"] },
     ]);
   });
 

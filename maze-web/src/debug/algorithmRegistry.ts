@@ -64,6 +64,12 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       const nodes = [...payload.nodes.values()].flat(2);
       return nodes.length > 0 ? { kind: "region", nodes } : null;
     }
+    case "InvalidTeleport": {
+      // Reuses the "cycle" shape — a teleport group's edges are highlighted exactly like a
+      // cycle's edges (see `IssueHighlightTarget`'s doc comment).
+      const edges = [...payload.groups.values()].flat(2);
+      return edges.length > 0 ? { kind: "cycle", edges } : null;
+    }
   }
 }
 

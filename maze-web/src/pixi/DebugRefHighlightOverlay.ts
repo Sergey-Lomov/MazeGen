@@ -7,6 +7,7 @@ import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
+import { touchedNodeIds } from "./renderers/edgeUtils";
 import type { EdgeHL } from "./renderers/types";
 import type { Pos } from "./tessellationGeometry";
 
@@ -80,6 +81,7 @@ export class DebugRefHighlightOverlay {
         const highlights = this.edgeHighlightsFor(ref.edges, posOf);
         this.edgeRenderer.render({ highlights });
         this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+        this.drawNodeCircles(touchedNodeIds(ref.edges), posOf);
         break;
       }
       case "region": {
@@ -108,6 +110,7 @@ export class DebugRefHighlightOverlay {
           const highlights = this.edgeHighlightsFor(ref.target.edges, posOf);
           this.edgeRenderer.render({ highlights });
           this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+          this.drawNodeCircles(touchedNodeIds(ref.target.edges), posOf);
         } else {
           this.edgeRenderer.render({ highlights: [] });
           const regionNodeIds = ref.target.nodes.map((id) => Number(id));
