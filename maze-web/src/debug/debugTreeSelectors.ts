@@ -93,35 +93,34 @@ export interface TreeRow {
   hasChildren: boolean;
 }
 
-/** First `debugStep` anywhere in `nodeIndex`'s subtree (document/DFS order), or `null` if it
- *  contains no mutating event — a real structural walk via `firstChild`/`nextSibling`, not an
- *  arena-index range scan. A plain "ordinary" scope's subtree *is* the contiguous arena-index
- *  range `[nodeIndex + 1, nextSibling-or-ancestor's-nextSibling)` (the arena's DFS-preorder
- *  linearization invariant), but a top-level source scope's real content is *not* contiguous with
- *  its own index — `merge_tapes` lays every top-level scope's wrapper node out first, before any
- *  source's actual content (`maze-core/src/event_log/mod.rs`), so an index-range scan starting at
- *  `nodeIndex + 1` for a top-level scope would only ever see the next sibling *scope wrapper*, not
- *  real content, and wrongly report no mutating events at all (GitHub issue #147's regression).
- *  Walking `firstChild`/`nextSibling` structurally instead is correct for every scope shape,
- *  top-level or not, without needing to special-case which shape a given `nodeIndex` is. */
+/** `debugStep` of `nodeIndex`'s subtree's first child (document/DFS order) — mutating or
+ *  trace-only alike, a trace-only child resolving to its nearest preceding mutating step just
+ *  like a leaf row does (GitHub issue #186: a scope's displayed step must always be its first
+ *  child's step, never skip ahead to the first *mutating* one) — or `null` if the subtree is
+ *  empty. A real structural walk via `firstChild`/`nextSibling`, not an arena-index range scan. A
+ *  plain "ordinary" scope's subtree *is* the contiguous arena-index range `[nodeIndex + 1,
+ *  nextSibling-or-ancestor's-nextSibling)` (the arena's DFS-preorder linearization invariant), but
+ *  a top-level source scope's real content is *not* contiguous with its own index — `merge_tapes`
+ *  lays every top-level scope's wrapper node out first, before any source's actual content
+ *  (`maze-core/src/event_log/mod.rs`), so an index-range scan starting at `nodeIndex + 1` for a
+ *  top-level scope would only ever see the next sibling *scope wrapper*, not real content, and
+ *  wrongly report no mutating events at all (GitHub issue #147's regression). Walking
+ *  `firstChild`/`nextSibling` structurally instead is correct for every scope shape, top-level or
+ *  not, without needing to special-case which shape a given `nodeIndex` is. */
 function firstStepInSubtree(tape: ParsedTape, stepIndex: StepIndex, nodeIndex: number): number | null {
   const record = nodeAt(tape, nodeIndex);
-  let child = record.firstChild;
-  while (child !== null) {
-    const step = stepIndex.mutatingNodeIndexToStep.get(child);
-    if (step !== undefined) return step;
-    const nested = firstStepInSubtree(tape, stepIndex, child);
-    if (nested !== null) return nested;
-    child = nodeAt(tape, child).nextSibling;
-  }
-  return null;
+  const child = record.firstChild;
+  if (child === null) return null;
+  const view = nodeView(tape, child);
+  if (view.payload().kind === "scope") return firstStepInSubtree(tape, stepIndex, child);
+  return stepIndex.mutatingNodeIndexToStep.get(child) ?? stepIndex.nearestStepByNodeIndex[child];
 }
 
 /** The step-column label for a row (left-hand step-number column): a mutating leaf event shows
  *  its own `debugStep`; a trace-only leaf shows the nearest preceding mutating step (GitHub issue
  *  #166 — the step already executed at the time this trace event was emitted), never `null`; a
- *  scope shows the step of the first mutating event anywhere in its subtree (in document/arena-
- *  index order), or `null` if it contains none. */
+ *  scope shows the step of its own first child (document/arena-index order), mutating or
+ *  trace-only alike (GitHub issue #186), or `null` if it has no children at all. */
 export function displayStepForRow(
   tape: ParsedTape,
   stepIndex: StepIndex,

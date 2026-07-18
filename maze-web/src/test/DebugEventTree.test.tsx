@@ -210,9 +210,10 @@ describe("DebugEventTree", () => {
   it("jumps to the step shown in the column, not the nearest-preceding step for the scope node itself", () => {
     // "step 2" (nodeIndex 7, per the merged fixture's layout) sits right after VertexPushed (step
     // 2, nodeIndex 6) in arena order, so the *nearest-preceding* step for node 7 itself would be
-    // 2. But the column displays "4" (1-based) for "step 2" — its first mutating descendant,
-    // VertexPopped, is step 3. Clicking must jump to 3, matching what's actually displayed, not
-    // the scope node's own nearest step.
+    // 2. The column displays "3" (1-based) for "step 2" — its first child, DeadEnd (trace-only),
+    // resolves to the nearest preceding mutating step, VertexPushed at step 2 (GitHub issue #186:
+    // a scope's step is its first child's step, mutating or not, not the first *mutating*
+    // descendant's). Clicking must jump to 2, matching what's actually displayed.
     const setDebugStep = vi.fn();
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
@@ -221,19 +222,18 @@ describe("DebugEventTree", () => {
     // each render their own step-col too — find "step 2"'s own column specifically rather than
     // assuming it's the second entry in document order.
     const secondStepCol = screen.getByText(m["debug.tree.step_scope"]({ index: 2 })).closest("div")!.querySelector('[data-testid="step-col"]')!;
-    expect(secondStepCol).toHaveTextContent("4");
+    expect(secondStepCol).toHaveTextContent("3");
     fireEvent.click(secondStepCol);
 
-    expect(setDebugStep).toHaveBeenCalledWith(3);
+    expect(setDebugStep).toHaveBeenCalledWith(2);
   });
 
-  it("scope shows the first mutating descendant's step; a trace-only leaf shows the nearest preceding mutating step (GitHub issue #166)", () => {
+  it("scope shows its first child's step, mutating or not; a trace-only leaf shows the nearest preceding mutating step (GitHub issues #166, #186)", () => {
     // "step 1" -> EdgeAdded (mutating, step 0), VertexVisited (mutating, step 1), VertexPushed
-    // (mutating, step 2): first mutating descendant is EdgeAdded at step 0 -> displayed as "1".
-    // "step 2" -> DeadEnd (trace-only), VertexPopped (mutating, step 3): first mutating
-    // descendant is VertexPopped at step 3 -> displayed as "4". DeadEnd itself is trace-only, so
-    // its own row shows the nearest preceding mutating step — VertexPushed, step 2 -> "3", not a
-    // dash — despite "step 2" showing a different number ("4").
+    // (mutating, step 2): first child is EdgeAdded itself, at step 0 -> displayed as "1".
+    // "step 2" -> DeadEnd (trace-only), VertexPopped (mutating, step 3): first child is DeadEnd,
+    // trace-only, resolving to the nearest preceding mutating step — VertexPushed, step 2 ->
+    // displayed as "3", the same number DeadEnd's own row shows.
     render(<DebugEventTree />);
     // The merged tree's auto-expanded "generation"/former-root wrapper rows (GitHub issue #169)
     // each render their own step-col too — find "step 1"/"step 2"'s own columns specifically
@@ -241,7 +241,7 @@ describe("DebugEventTree", () => {
     const stepOneCol = screen.getByText(m["debug.tree.step_scope"]({ index: 1 })).closest("div")!.querySelector('[data-testid="step-col"]');
     const stepTwoCol = screen.getByText(m["debug.tree.step_scope"]({ index: 2 })).closest("div")!.querySelector('[data-testid="step-col"]');
     expect(stepOneCol).toHaveTextContent("1");
-    expect(stepTwoCol).toHaveTextContent("4");
+    expect(stepTwoCol).toHaveTextContent("3");
 
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 2 })));
     const deadEndRow = screen.getByText(m["debug.tree.dead_end"]()).closest("div")!;
@@ -431,11 +431,14 @@ describe("DebugEventTree with a two-source (generation + QC) tape (GitHub issue 
     expect(screen.getByText(m["debug.tree.step_scope"]({ index: 1 }))).toBeInTheDocument();
   });
 
-  it("the QC top-level row's step is its first mutating descendant's global step, not a dash", () => {
+  it("the QC top-level row's step is its first child's global step, not a dash", () => {
     render(<DebugEventTree />);
     const qcRow = screen.getByText(m["debug.tree.source_scope.quality_control"]()).closest("div")!;
-    // QC's own first mutating event (BidirectionalEdgeAdded) is global step 1 (0-based) -> "2" (1-based).
-    expect(qcRow.querySelector('[data-testid="step-col"]')).toHaveTextContent("2");
+    // QC's first child, structurally, is IterationStarted — trace-only — which resolves to the
+    // nearest preceding mutating step: generation's own EdgeAdded, global step 0 (0-based) ->
+    // "1" (1-based), not BidirectionalEdgeAdded's step 1 (GitHub issue #186: a scope's step is
+    // its first child's step, mutating or not, not the first *mutating* descendant's).
+    expect(qcRow.querySelector('[data-testid="step-col"]')).toHaveTextContent("1");
   });
 
   it("resolves stage/rule scope labels through the live store's stages/rules, quoted", () => {

@@ -2,7 +2,23 @@
   "permissions": {
     "allow": [
       "Bash(mkdir -p \"d:/Development/MazeGen/.claude/hooks\" 2>/dev/null; ls \"d:/Development/MazeGen/.claude\")",
-      "PowerShell(if \\($?\\) { \"valid JSON\" })"
+      "PowerShell(if \\($?\\) { \"valid JSON\" })",
+      "Bash(xargs grep -l \"match.*IssueKind\\\\|IssueKind::TeleportGroupProximity\")",
+      "Bash(cargo build *)",
+      "Bash(cargo test *)",
+      "Bash(TRYBUILD=overwrite cargo test -p maze-core --test compile_fail_test)",
+      "Bash(powershell -Command \"./wasm-rebuild.ps1\")",
+      "Bash(npx vitest *)",
+      "Bash(gh project *)",
+      "mcp__code-index__set_project_path",
+      "mcp__code-index__build_deep_index",
+      "Bash(grep -n \"teleport_group_proximity\\\\` | \\\\|InvalidTeleportIssue\\\\` |region_needs_shrink\\\\` |Issue kind |^| \\\\`\" Specs/quality_control.md)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "mcp__code-index__search_code_advanced",
+      "mcp__code-index__find_files",
+      "Bash(./node_modules/.bin/vitest run *)",
+      "Bash(rm -rf \"C:/Users/user/AppData/Local/npm-cache/_npx/69c381f8ad94b576/node_modules/rolldown\")"
     ],
     "additionalDirectories": [
       "d:\\Development\\MazeGen\\.claude"

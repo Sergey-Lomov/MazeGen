@@ -182,22 +182,16 @@ export function DebugEventTree() {
     return result;
   }, [tape]);
 
-  // Auto-expanding each top-level source scope for a freshly-loaded tape keeps "step N"/"edge
-  // N"/... visible immediately instead of forcing a click just to see any content. Each source's
-  // own former-root merge artifact (GitHub issue #169's wrapping, GitHub issue #147's regression
-  // fix) never gets its own row (see `flattenVisibleRows`'s doc comment), so it needs no entry
-  // here — expanding the top-level scope alone already reveals its real children.
-  //
-  // Resets `expanded` to a fresh Set on every new tape (rather than adding on top of whatever was
-  // there before) — node indices are only meaningful within the tape that produced them, so
-  // carrying a previous tape's expanded-row indices into a new one is stale state, not a feature:
-  // a coincidentally-matching index in the new tape would silently inherit an expand/collapse
-  // decision the user never made on this run.
+  // Resets `expanded` to a fresh, empty Set on every new tape (rather than adding on top of
+  // whatever was there before) — node indices are only meaningful within the tape that produced
+  // them, so carrying a previous tape's expanded-row indices into a new one is stale state, not a
+  // feature: a coincidentally-matching index in the new tape would silently inherit an
+  // expand/collapse decision the user never made on this run.
   useLayoutEffect(() => {
     if (!tape) return;
-    setExpanded(() => new Set(topLevelSourceScopes(tape).map((scope) => scope.nodeIndex)));
+    setExpanded(() => new Set());
     // Only re-run when the tape identity itself changes (a fresh generate()) — expanding/
-    // collapsing individual rows afterward must not re-trigger this auto-expand.
+    // collapsing individual rows afterward must not re-trigger this reset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tape]);
   const stepIndex = useMemo(() => (tape ? buildStepIndex(tape, stepIndexSources) : null), [tape, stepIndexSources]);
