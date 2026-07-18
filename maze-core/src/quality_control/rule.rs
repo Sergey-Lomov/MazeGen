@@ -43,16 +43,24 @@ pub fn apply_commands<T: Tessellation>(
     let proposed = commands.len();
     let mut applied = 0;
     for cmd in commands {
-        // `RemoveEdge`/`RemoveTeleportWithReverse` carry only an opaque `EdgeId` — meaningless to
-        // web-side debug narration on its own (GitHub issue #171's follow-up fix: `bubbleLabel`
-        // used to mis-render it as a `NodeId`, crashing once the id exceeded the maze's own node
-        // count). Resolved to `(from, to)` here, *before* the edge is actually removed below —
-        // `graph.edge(id)` returns `None` once removed, so this must happen ahead of the `match`.
+        // `RemoveEdge`/`RemoveEdgeWithReverse`/`RemoveTeleportWithReverse` carry only an opaque
+        // `EdgeId` — meaningless to web-side debug narration on its own (GitHub issue #171's
+        // follow-up fix: `bubbleLabel` used to mis-render it as a `NodeId`, crashing once the id
+        // exceeded the maze's own node count). Resolved to `(from, to)` here, *before* the edge is
+        // actually removed below — `graph.edge(id)` returns `None` once removed, so this must
+        // happen ahead of the `match`.
         let edge_endpoints = match &cmd {
-            MutationCommand::RemoveEdge { id } | MutationCommand::RemoveTeleportWithReverse { id } =>
+            MutationCommand::RemoveEdge { id }
+            | MutationCommand::RemoveEdgeWithReverse { id }
+            | MutationCommand::RemoveTeleportWithReverse { id } =>
                 maze.graph.edge(*id).map(|e| (e.from, e.to)),
             _ => None,
         };
+        // `reverse_removed` is only meaningful for `RemoveEdgeWithReverse`/
+        // `RemoveTeleportWithReverse` (see those two `QcEvent` variants' own doc comments) — both
+        // return every `EdgeId` actually removed (one or two), so `len() > 1` means the reverse
+        // leg was genuinely there and got removed too, not just assumed from the command shape.
+        let mut reverse_removed = false;
         let ok = match cmd {
             MutationCommand::AddDirectedEdge { from, to } =>
                 crate::generation::try_add_directed_edge(&mut maze.graph, from, to, preset_state),
@@ -66,8 +74,16 @@ pub fn apply_commands<T: Tessellation>(
                 crate::generation::try_remove_edge_by_id(&mut maze.graph, id, preset_state),
             MutationCommand::RemoveEdgeBetween { from, to } =>
                 crate::generation::try_remove_edge(&mut maze.graph, from, to, preset_state),
-            MutationCommand::RemoveTeleportWithReverse { id } =>
-                !crate::generation::try_remove_teleport_with_reverse(&mut maze.graph, id, preset_state).is_empty(),
+            MutationCommand::RemoveEdgeWithReverse { id } => {
+                let removed = crate::generation::try_remove_edge_with_reverse(&mut maze.graph, id, preset_state);
+                reverse_removed = removed.len() > 1;
+                !removed.is_empty()
+            }
+            MutationCommand::RemoveTeleportWithReverse { id } => {
+                let removed = crate::generation::try_remove_teleport_with_reverse(&mut maze.graph, id, preset_state);
+                reverse_removed = removed.len() > 1;
+                !removed.is_empty()
+            }
             MutationCommand::SetStart(node) => {
                 if maze.meta.start.is_none() { maze.meta.start = Some(node); }
                 true
@@ -79,7 +95,7 @@ pub fn apply_commands<T: Tessellation>(
         };
         if ok { applied += 1; }
         if let Some(log) = event_log.as_mut() {
-            if let Some(event) = qc_event_for_command(&cmd, ok, edge_endpoints) {
+            if let Some(event) = qc_event_for_command(&cmd, ok, edge_endpoints, reverse_removed) {
                 log.emit(event);
             }
         }
@@ -89,13 +105,20 @@ pub fn apply_commands<T: Tessellation>(
 
 /// Builds the `QcEvent` mirroring `cmd` — the mutating variant when `applied`, the matching
 /// `*Declined` trace variant (same fields) otherwise. See `apply_commands`'s doc comment.
-/// `edge_endpoints` is `Some((from, to))` for `RemoveEdge`/`RemoveTeleportWithReverse` (resolved
-/// by the caller before the edge was removed — GitHub issue #171's follow-up fix), `None` for
-/// every other command (ignored). Returns `None` (nothing to emit) for those two specifically when
-/// `edge_endpoints` is `None` — the id was already gone by the time it was resolved — rather than
-/// fabricating a `(0, 0)` self-loop via `unwrap_or_default`: node id `0` is a real, valid id in this
-/// codebase, so a fabricated pair would be indistinguishable from a genuine edge.
-fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Option<(NodeId, NodeId)>) -> Option<QcEvent> {
+/// `edge_endpoints` is `Some((from, to))` for `RemoveEdge`/`RemoveEdgeWithReverse`/
+/// `RemoveTeleportWithReverse` (resolved by the caller before the edge was removed — GitHub issue
+/// #171's follow-up fix), `None` for every other command (ignored). Returns `None` (nothing to
+/// emit) for those three specifically when `edge_endpoints` is `None` — the id was already gone by
+/// the time it was resolved — rather than fabricating a `(0, 0)` self-loop via `unwrap_or_default`:
+/// node id `0` is a real, valid id in this codebase, so a fabricated pair would be
+/// indistinguishable from a genuine edge. `reverse_removed` (GitHub issue #185's follow-up fix) is
+/// only read for the two `*WithReverse` commands — `true` iff the reverse leg actually existed and
+/// was removed too, straight from `try_remove_edge_with_reverse`/`try_remove_teleport_with_reverse`'s
+/// own `Vec<EdgeId>` length, not assumed from the command's shape; lets web-side replay
+/// (`applyQc` in `qc.ts`) know whether to also clear the reverse `(to, from)` pair from its own
+/// accumulator instead of guessing and risking a phantom removed-edge entry for a direction that
+/// was never actually there.
+fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Option<(NodeId, NodeId)>, reverse_removed: bool) -> Option<QcEvent> {
     Some(match (cmd, applied) {
         (MutationCommand::AddDirectedEdge { from, to }, true) => QcEvent::DirectedEdgeAdded { from: *from, to: *to },
         (MutationCommand::AddDirectedEdge { from, to }, false) => QcEvent::DirectedEdgeDeclined { from: *from, to: *to },
@@ -109,8 +132,10 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Op
         (MutationCommand::RemoveEdge { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoveDeclined { from, to } }
         (MutationCommand::RemoveEdgeBetween { from, to }, true) => QcEvent::EdgeRemovedBetween { from: *from, to: *to },
         (MutationCommand::RemoveEdgeBetween { from, to }, false) => QcEvent::EdgeRemoveBetweenDeclined { from: *from, to: *to },
-        (MutationCommand::RemoveTeleportWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemovedWithReverse { from, to } }
-        (MutationCommand::RemoveTeleportWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemoveWithReverseDeclined { from, to } }
+        (MutationCommand::RemoveEdgeWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemovedWithReverse { from, to, reverse_removed } }
+        (MutationCommand::RemoveEdgeWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoveWithReverseDeclined { from, to, reverse_removed } }
+        (MutationCommand::RemoveTeleportWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemovedWithReverse { from, to, reverse_removed } }
+        (MutationCommand::RemoveTeleportWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemoveWithReverseDeclined { from, to, reverse_removed } }
         (MutationCommand::SetStart(node), true) => QcEvent::StartSet(*node),
         (MutationCommand::SetStart(node), false) => QcEvent::StartSetDeclined(*node),
         (MutationCommand::SetFinish(node), true) => QcEvent::FinishSet(*node),
@@ -140,6 +165,10 @@ fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &
             QcEvent::EdgeRemoveProposed { from, to }
         }
         MutationCommand::RemoveEdgeBetween { from, to } => QcEvent::EdgeRemoveBetweenProposed { from: *from, to: *to },
+        MutationCommand::RemoveEdgeWithReverse { id } => {
+            let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
+            QcEvent::EdgeRemoveWithReverseProposed { from, to }
+        }
         MutationCommand::RemoveTeleportWithReverse { id } => {
             let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
             QcEvent::TeleportRemoveWithReverseProposed { from, to }

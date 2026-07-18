@@ -43,6 +43,10 @@ export const QC_TAG = {
   FINISH_SET_PROPOSED: 33,
 
   PRESET_SEEDED: 34,
+
+  EDGE_REMOVED_WITH_REVERSE: 35,
+  EDGE_REMOVE_WITH_REVERSE_DECLINED: 36,
+  EDGE_REMOVE_WITH_REVERSE_PROPOSED: 37,
 } as const;
 
 export type RepairLimitKind = "MaxIterations" | "TimeBudget";
@@ -70,7 +74,8 @@ export type QcEvent =
   | { kind: "BidirectionalTeleportAdded"; a: bigint; b: bigint }
   | { kind: "EdgeRemoved"; from: bigint; to: bigint }
   | { kind: "EdgeRemovedBetween"; from: bigint; to: bigint }
-  | { kind: "TeleportRemovedWithReverse"; from: bigint; to: bigint }
+  | { kind: "EdgeRemovedWithReverse"; from: bigint; to: bigint; reverseRemoved: boolean }
+  | { kind: "TeleportRemovedWithReverse"; from: bigint; to: bigint; reverseRemoved: boolean }
   | { kind: "StartSet"; id: bigint }
   | { kind: "FinishSet"; id: bigint }
   | { kind: "DirectedEdgeDeclined"; from: bigint; to: bigint }
@@ -79,7 +84,8 @@ export type QcEvent =
   | { kind: "BidirectionalTeleportDeclined"; a: bigint; b: bigint }
   | { kind: "EdgeRemoveDeclined"; from: bigint; to: bigint }
   | { kind: "EdgeRemoveBetweenDeclined"; from: bigint; to: bigint }
-  | { kind: "TeleportRemoveWithReverseDeclined"; from: bigint; to: bigint }
+  | { kind: "EdgeRemoveWithReverseDeclined"; from: bigint; to: bigint; reverseRemoved: boolean }
+  | { kind: "TeleportRemoveWithReverseDeclined"; from: bigint; to: bigint; reverseRemoved: boolean }
   | { kind: "StartSetDeclined"; id: bigint }
   | { kind: "FinishSetDeclined"; id: bigint }
   | { kind: "DirectedEdgeProposed"; from: bigint; to: bigint }
@@ -88,6 +94,7 @@ export type QcEvent =
   | { kind: "BidirectionalTeleportProposed"; a: bigint; b: bigint }
   | { kind: "EdgeRemoveProposed"; from: bigint; to: bigint }
   | { kind: "EdgeRemoveBetweenProposed"; from: bigint; to: bigint }
+  | { kind: "EdgeRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "TeleportRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "StartSetProposed"; id: bigint }
   | { kind: "FinishSetProposed"; id: bigint }
@@ -264,12 +271,18 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
     case QC_TAG.EDGE_REMOVE_BETWEEN_DECLINED:
       expectLen(tag, bytes, 16);
       return { kind: "EdgeRemoveBetweenDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.EDGE_REMOVED_WITH_REVERSE:
+      expectLen(tag, bytes, 17);
+      return { kind: "EdgeRemovedWithReverse", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), reverseRemoved: bytes[16] !== 0 };
+    case QC_TAG.EDGE_REMOVE_WITH_REVERSE_DECLINED:
+      expectLen(tag, bytes, 17);
+      return { kind: "EdgeRemoveWithReverseDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), reverseRemoved: bytes[16] !== 0 };
     case QC_TAG.TELEPORT_REMOVED_WITH_REVERSE:
-      expectLen(tag, bytes, 16);
-      return { kind: "TeleportRemovedWithReverse", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+      expectLen(tag, bytes, 17);
+      return { kind: "TeleportRemovedWithReverse", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), reverseRemoved: bytes[16] !== 0 };
     case QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED:
-      expectLen(tag, bytes, 16);
-      return { kind: "TeleportRemoveWithReverseDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+      expectLen(tag, bytes, 17);
+      return { kind: "TeleportRemoveWithReverseDeclined", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), reverseRemoved: bytes[16] !== 0 };
     case QC_TAG.START_SET:
       expectLen(tag, bytes, 8);
       return { kind: "StartSet", id: readNodeId(bytes, 0) };
@@ -301,6 +314,9 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
     case QC_TAG.EDGE_REMOVE_BETWEEN_PROPOSED:
       expectLen(tag, bytes, 16);
       return { kind: "EdgeRemoveBetweenProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
+    case QC_TAG.EDGE_REMOVE_WITH_REVERSE_PROPOSED:
+      expectLen(tag, bytes, 16);
+      return { kind: "EdgeRemoveWithReverseProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
     case QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED:
       expectLen(tag, bytes, 16);
       return { kind: "TeleportRemoveWithReverseProposed", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
@@ -341,6 +357,7 @@ export function isMutatingQcEvent(event: QcEvent): boolean {
     event.kind === "BidirectionalTeleportAdded" ||
     event.kind === "EdgeRemoved" ||
     event.kind === "EdgeRemovedBetween" ||
+    event.kind === "EdgeRemovedWithReverse" ||
     event.kind === "TeleportRemovedWithReverse" ||
     event.kind === "StartSet" ||
     event.kind === "FinishSet" ||
@@ -398,7 +415,7 @@ export interface QcApplyResult {
  *  reported — `removedEdges` therefore only ever needs to reach into an *earlier* source's
  *  contribution (e.g. generation's own edge list), never cancel this same call's own `edges`.
  *
- *  `EdgeRemoved`/`TeleportRemovedWithReverse` carry the removed edge's `(from, to)` (GitHub issue
+ *  `EdgeRemoved`/`EdgeRemovedWithReverse`/`TeleportRemovedWithReverse` carry the removed edge's `(from, to)` (GitHub issue
  *  #171's follow-up fix — resolved on the Rust side from the graph immediately before removal,
  *  since the wire's own `EdgeId` alone is meaningless off-graph) and participate in the keyed
  *  accumulator exactly like `EdgeRemovedBetween`. */
@@ -466,8 +483,20 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
         break;
       case "EdgeRemovedBetween":
       case "EdgeRemoved":
-      case "TeleportRemovedWithReverse":
         remove(event.from, event.to);
+        break;
+      case "EdgeRemovedWithReverse":
+      case "TeleportRemovedWithReverse":
+        // Carries only the primary direction's `(from, to)` (GitHub issue #171's "primary id
+        // only" convention) — the reverse direction is always the same node pair swapped, so
+        // it's cleared from the accumulator too, but ONLY when `reverseRemoved` (GitHub issue
+        // #185's follow-up fix) confirms the reverse leg genuinely existed and was actually
+        // removed on the Rust side. Without gating on this flag, a one-way edge/teleport that
+        // degenerates this command to a single-direction removal would still unconditionally
+        // clear `(to, from)` here, fabricating a phantom removed-edge entry for a direction that
+        // was never real.
+        remove(event.from, event.to);
+        if (event.reverseRemoved) remove(event.to, event.from);
         break;
       case "StartSet":
         start = event.id;

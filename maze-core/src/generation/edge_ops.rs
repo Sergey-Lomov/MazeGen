@@ -257,6 +257,44 @@ pub(crate) fn try_remove_teleport_with_reverse(
     removed
 }
 
+/// try_remove_edge_with_reverse: like `try_remove_edge_by_id`, but for an edge that may be one
+/// direction of a two-way connection between the same pair of nodes — also removes the
+/// opposite-direction edge (`Graph::edge_between(edge.to, edge.from)`), if any, so a single
+/// bidirectional passage cut is one atomic mutation instead of two independently revalidated
+/// `RemoveEdge`s (GitHub issue #185). Unlike `try_remove_teleport_with_reverse`, the reverse
+/// lookup isn't kind-filtered — a bidirectional `Basic` passage is always two `Basic` edges (see
+/// `try_add_bidirectional_edge`), so kind-filtering isn't needed for that common case.
+///
+/// **Caveat**: `edge_between` returns an arbitrary edge of *any* kind between the pair (see its
+/// own doc comment on parallel edges) — this helper does not verify the reverse it finds is
+/// itself `Basic`. In the two current callers (`InvalidLoopRandomStrategy`/
+/// `InvalidLoopScoredStrategy`), this is a non-issue in practice: cycle edges are resolved via
+/// `resolve_to_edge_ids` (`graph/cycles.rs`) off the nav graph's tile paths, which are themselves
+/// kind-agnostic, so a `Teleport` edge sitting on a cycle's tile-hop is possible in principle,
+/// though not something either strategy's candidate selection specifically guards against or
+/// relies on being absent. A future caller reusing this helper on a pair known to mix kinds should
+/// not assume the reverse it removes is necessarily `Basic`.
+///
+/// Returns the set of `EdgeId`s actually removed (empty, one, or both directions) — mirrors
+/// `try_remove_teleport_with_reverse`'s return contract.
+pub(crate) fn try_remove_edge_with_reverse(
+    graph: &mut Graph,
+    id: crate::ids::EdgeId,
+    preset_state: &PresetState,
+) -> Vec<crate::ids::EdgeId> {
+    let reverse_id = graph.edge(id).and_then(|edge| graph.edge_between(edge.to, edge.from));
+    let mut removed = Vec::with_capacity(2);
+    if try_remove_edge_by_id(graph, id, preset_state) {
+        removed.push(id);
+    }
+    if let Some(reverse_id) = reverse_id {
+        if reverse_id != id && try_remove_edge_by_id(graph, reverse_id, preset_state) {
+            removed.push(reverse_id);
+        }
+    }
+    removed
+}
+
 /// Shared feasibility predicate for `try_add_directed_edge`/`try_add_directed_teleport` and their
 /// `cmd_*` counterparts (GitHub issue #118): the single `from -> to` direction must not be
 /// blocked by `preset_state`. See `bidirectional_edge_feasible`'s own doc comment for why this is

@@ -107,9 +107,10 @@ fn score(short_overlap: u32, other_overlap: u32, short_overlap_weight: f64, othe
     short_overlap as f64 * short_overlap_weight - other_overlap as f64 * other_overlap_weight
 }
 
-/// Returns the cut edge's id on success (also pushed, along with its reverse if any, onto
-/// `commands` as `MutationCommand::RemoveEdge`), so the caller can drop any other pending cycle
-/// that shares it (see `discard_cycles_with_edge`) — `None` means every candidate was protected.
+/// Returns the cut edge's id on success (also pushed onto `commands` as one
+/// `MutationCommand::RemoveEdgeWithReverse` when the cut edge's reverse direction also exists, or
+/// a plain `RemoveEdge` otherwise — GitHub issue #185), so the caller can drop any other pending
+/// cycle that shares it (see `discard_cycles_with_edge`) — `None` means every candidate was protected.
 /// Never mutates `maze` (GitHub issue #118, `Specs/repair.md`'s immutable-snapshot contract);
 /// `already_cut` stands in for what an earlier real mutation would have made observable.
 #[allow(clippy::too_many_arguments)]
@@ -152,11 +153,11 @@ fn apply_cut<T: Tessellation>(
             (edge.from, edge.to)
         };
         if !preset_state.preset_edges.contains(&(from, to)) {
-            commands.push(MutationCommand::RemoveEdge { id: cut });
-            if let Some(reverse_id) = maze.graph.edge_between(to, from) {
-                if reverse_id != cut && !already_cut.contains(&reverse_id) {
-                    commands.push(MutationCommand::RemoveEdge { id: reverse_id });
-                }
+            let reverse_id = maze.graph.edge_between(to, from);
+            match reverse_id {
+                Some(reverse_id) if reverse_id != cut && !already_cut.contains(&reverse_id) =>
+                    commands.push(MutationCommand::RemoveEdgeWithReverse { id: cut }),
+                _ => commands.push(MutationCommand::RemoveEdge { id: cut }),
             }
             return Some(cut);
         }

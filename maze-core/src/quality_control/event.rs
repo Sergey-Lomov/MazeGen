@@ -46,6 +46,10 @@ mod wire_tags {
     pub const FINISH_SET_PROPOSED: u16 = 33;
 
     pub const PRESET_SEEDED: u16 = 34;
+
+    pub const EDGE_REMOVED_WITH_REVERSE: u16 = 35;
+    pub const EDGE_REMOVE_WITH_REVERSE_DECLINED: u16 = 36;
+    pub const EDGE_REMOVE_WITH_REVERSE_PROPOSED: u16 = 37;
 }
 
 /// Narration-level events for the quality-control/repair pipeline (GitHub issue #147) — see
@@ -54,7 +58,7 @@ mod wire_tags {
 ///
 /// Trace events narrate the repair fixpoint loop's own decisions (iteration boundaries, which
 /// rule found what, dispatch outcomes). Mutating events are almost entirely a 1:1 mirror of
-/// `repair::MutationCommand`'s 9 variants — each command actually applied by `apply_commands`
+/// `repair::MutationCommand`'s 10 variants — each command actually applied by `apply_commands`
 /// (`quality_control::rule`) gets its own mutating variant here, and each command *declined* by
 /// `apply_commands`'s revalidation gets its own trace-only `*Declined` counterpart with the same
 /// fields (not one shared payload-less "declined" event) — so narration/tests can say exactly
@@ -96,7 +100,7 @@ pub enum QcEvent {
     /// exhausted (see `StageOutcome::LimitReached`).
     IterationLimitReached(RepairLimitKind),
 
-    // --- proposed: exact mirror of `repair::MutationCommand`'s 9 variants, emitted for every
+    // --- proposed: exact mirror of `repair::MutationCommand`'s 10 variants, emitted for every
     // command a strategy's `apply()` returned, in the `"strategy <id>"` scope, before any of them
     // is applied/revalidated — narrates what the strategy *asked for*, independent of whether
     // `apply_commands` (in the separate `"apply requests"` scope right after) actually honors it. ---
@@ -111,6 +115,10 @@ pub enum QcEvent {
     /// before this fix, crashing once the id exceeded the maze's own node count).
     EdgeRemoveProposed { from: NodeId, to: NodeId },
     EdgeRemoveBetweenProposed { from: NodeId, to: NodeId },
+    /// `from`/`to` of the *primary* `id` only (GitHub issue #185, mirrors `EdgeRemoveProposed`) —
+    /// the paired reverse-direction edge (if any) isn't narrated separately, same convention as
+    /// `TeleportRemoveWithReverseProposed`.
+    EdgeRemoveWithReverseProposed { from: NodeId, to: NodeId },
     /// `from`/`to` of the *primary* `id` only (GitHub issue #171's follow-up fix, mirrors
     /// `EdgeRemoveProposed`) — the paired reverse-direction teleport (if any) isn't narrated
     /// separately, same as before this fix.
@@ -118,7 +126,7 @@ pub enum QcEvent {
     StartSetProposed(NodeId),
     FinishSetProposed(NodeId),
 
-    // --- mutating: exact mirror of `repair::MutationCommand`'s 9 variants, emitted only for
+    // --- mutating: exact mirror of `repair::MutationCommand`'s 10 variants, emitted only for
     // commands `apply_commands` actually applied (its `ok == true` branch). ---
     DirectedEdgeAdded { from: NodeId, to: NodeId },
     BidirectionalEdgeAdded { a: NodeId, b: NodeId },
@@ -130,9 +138,20 @@ pub enum QcEvent {
     /// narration. See `EdgeRemoveProposed`'s doc comment for the crash this fixes.
     EdgeRemoved { from: NodeId, to: NodeId },
     EdgeRemovedBetween { from: NodeId, to: NodeId },
+    /// `from`/`to` of the *primary* `id` only — mirrors `EdgeRemoveWithReverseProposed`'s doc
+    /// comment. `reverse_removed` (GitHub issue #185's follow-up fix) is `true` iff the reverse
+    /// direction actually existed and was removed too — straight from
+    /// `try_remove_edge_with_reverse`'s own `Vec<EdgeId>` length (`> 1`), not assumed from the
+    /// command's shape. Without this, a replay consumer folding this event into a `(from,to)` +
+    /// `(to,from)` accumulator (e.g. web-side `applyQc`) would have no way to tell "both
+    /// directions removed" from "only the primary was, the reverse never existed" — and blindly
+    /// clearing `(to,from)` too would fabricate a phantom removed-edge entry when the reverse was
+    /// never real.
+    EdgeRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
     /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
-    /// comment.
-    TeleportRemovedWithReverse { from: NodeId, to: NodeId },
+    /// comment. `reverse_removed` — see `EdgeRemovedWithReverse`'s own doc comment, same
+    /// rationale, sourced from `try_remove_teleport_with_reverse`'s `Vec<EdgeId>` length instead.
+    TeleportRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
     StartSet(NodeId),
     FinishSet(NodeId),
     /// Mutating, but not a `MutationCommand` mirror (GitHub issue #173) — emitted at most once,
@@ -158,15 +177,24 @@ pub enum QcEvent {
     /// meaningless to web-side narration on its own.
     EdgeRemoveDeclined { from: NodeId, to: NodeId },
     EdgeRemoveBetweenDeclined { from: NodeId, to: NodeId },
+    /// `from`/`to` of the *primary* `id` only — mirrors `EdgeRemoveWithReverseProposed`'s doc
+    /// comment. `reverse_removed` is always `false` here — `apply_commands` only takes the
+    /// declined branch when `try_remove_edge_with_reverse` removed nothing at all (`ok == false`
+    /// means the returned `Vec<EdgeId>` was empty), so the reverse can never have been removed
+    /// either. Carried anyway (not omitted) so this variant has the exact same field shape as its
+    /// mutating mirror `EdgeRemovedWithReverse` — see that type's own doc comment for why the
+    /// field exists at all.
+    EdgeRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
     /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
-    /// comment.
-    TeleportRemoveWithReverseDeclined { from: NodeId, to: NodeId },
+    /// comment. `reverse_removed` — same "always `false`, carried for field-shape symmetry" note
+    /// as `EdgeRemoveWithReverseDeclined`'s own doc comment.
+    TeleportRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
     StartSetDeclined(NodeId),
     FinishSetDeclined(NodeId),
 }
 
 impl DebugEvent for QcEvent {
-    /// `true` for the 9 mutation-mirror variants plus `PresetSeeded` — these are the only
+    /// `true` for the 10 mutation-mirror variants plus `PresetSeeded` — these are the only
     /// `QcEvent`s that change the maze graph. Every `*Declined` variant is `false` alongside every
     /// trace variant: a declined command never touched the graph, only narrates that the
     /// strategy's proposal didn't survive revalidation.
@@ -179,6 +207,7 @@ impl DebugEvent for QcEvent {
                 | QcEvent::BidirectionalTeleportAdded { .. }
                 | QcEvent::EdgeRemoved { .. }
                 | QcEvent::EdgeRemovedBetween { .. }
+                | QcEvent::EdgeRemovedWithReverse { .. }
                 | QcEvent::TeleportRemovedWithReverse { .. }
                 | QcEvent::StartSet(_)
                 | QcEvent::FinishSet(_)
@@ -277,6 +306,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalTeleportAdded { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_ADDED,
             QcEvent::EdgeRemoved { .. } => wire_tags::EDGE_REMOVED,
             QcEvent::EdgeRemovedBetween { .. } => wire_tags::EDGE_REMOVED_BETWEEN,
+            QcEvent::EdgeRemovedWithReverse { .. } => wire_tags::EDGE_REMOVED_WITH_REVERSE,
             QcEvent::TeleportRemovedWithReverse { .. } => wire_tags::TELEPORT_REMOVED_WITH_REVERSE,
             QcEvent::StartSet(_) => wire_tags::START_SET,
             QcEvent::FinishSet(_) => wire_tags::FINISH_SET,
@@ -287,6 +317,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalTeleportDeclined { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_DECLINED,
             QcEvent::EdgeRemoveDeclined { .. } => wire_tags::EDGE_REMOVE_DECLINED,
             QcEvent::EdgeRemoveBetweenDeclined { .. } => wire_tags::EDGE_REMOVE_BETWEEN_DECLINED,
+            QcEvent::EdgeRemoveWithReverseDeclined { .. } => wire_tags::EDGE_REMOVE_WITH_REVERSE_DECLINED,
             QcEvent::TeleportRemoveWithReverseDeclined { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_DECLINED,
             QcEvent::StartSetDeclined(_) => wire_tags::START_SET_DECLINED,
             QcEvent::FinishSetDeclined(_) => wire_tags::FINISH_SET_DECLINED,
@@ -297,6 +328,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalTeleportProposed { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_PROPOSED,
             QcEvent::EdgeRemoveProposed { .. } => wire_tags::EDGE_REMOVE_PROPOSED,
             QcEvent::EdgeRemoveBetweenProposed { .. } => wire_tags::EDGE_REMOVE_BETWEEN_PROPOSED,
+            QcEvent::EdgeRemoveWithReverseProposed { .. } => wire_tags::EDGE_REMOVE_WITH_REVERSE_PROPOSED,
             QcEvent::TeleportRemoveWithReverseProposed { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_PROPOSED,
             QcEvent::StartSetProposed(_) => wire_tags::START_SET_PROPOSED,
             QcEvent::FinishSetProposed(_) => wire_tags::FINISH_SET_PROPOSED,
@@ -334,9 +366,20 @@ impl EncodeEventPayload for QcEvent {
             | QcEvent::DirectedTeleportAdded { from, to } | QcEvent::DirectedTeleportDeclined { from, to } | QcEvent::DirectedTeleportProposed { from, to }
             | QcEvent::EdgeRemovedBetween { from, to } | QcEvent::EdgeRemoveBetweenDeclined { from, to } | QcEvent::EdgeRemoveBetweenProposed { from, to }
             | QcEvent::EdgeRemoved { from, to } | QcEvent::EdgeRemoveDeclined { from, to } | QcEvent::EdgeRemoveProposed { from, to }
-            | QcEvent::TeleportRemovedWithReverse { from, to } | QcEvent::TeleportRemoveWithReverseDeclined { from, to } | QcEvent::TeleportRemoveWithReverseProposed { from, to } => {
+            | QcEvent::EdgeRemoveWithReverseProposed { from, to }
+            | QcEvent::TeleportRemoveWithReverseProposed { from, to } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
+            }
+            // `reverse_removed` (GitHub issue #185's follow-up fix) appended as one trailing byte
+            // after `from`/`to` — see `EdgeRemovedWithReverse`'s own doc comment for why it exists.
+            QcEvent::EdgeRemovedWithReverse { from, to, reverse_removed }
+            | QcEvent::EdgeRemoveWithReverseDeclined { from, to, reverse_removed }
+            | QcEvent::TeleportRemovedWithReverse { from, to, reverse_removed }
+            | QcEvent::TeleportRemoveWithReverseDeclined { from, to, reverse_removed } => {
+                write_node_id(out, *from);
+                write_node_id(out, *to);
+                out.push(if *reverse_removed { 1 } else { 0 });
             }
             QcEvent::BidirectionalEdgeAdded { a, b } | QcEvent::BidirectionalEdgeDeclined { a, b } | QcEvent::BidirectionalEdgeProposed { a, b }
             | QcEvent::BidirectionalTeleportAdded { a, b } | QcEvent::BidirectionalTeleportDeclined { a, b } | QcEvent::BidirectionalTeleportProposed { a, b } => {
@@ -373,7 +416,8 @@ mod tests {
         assert!(QcEvent::BidirectionalTeleportAdded { a: 1, b: 2 }.is_mutating());
         assert!(QcEvent::EdgeRemoved { from: 1, to: 2 }.is_mutating());
         assert!(QcEvent::EdgeRemovedBetween { from: 1, to: 2 }.is_mutating());
-        assert!(QcEvent::TeleportRemovedWithReverse { from: 1, to: 2 }.is_mutating());
+        assert!(QcEvent::EdgeRemovedWithReverse { from: 1, to: 2, reverse_removed: true }.is_mutating());
+        assert!(QcEvent::TeleportRemovedWithReverse { from: 1, to: 2, reverse_removed: true }.is_mutating());
         assert!(QcEvent::StartSet(1).is_mutating());
         assert!(QcEvent::FinishSet(1).is_mutating());
     }
@@ -402,7 +446,8 @@ mod tests {
         assert!(!QcEvent::BidirectionalTeleportDeclined { a: 1, b: 2 }.is_mutating());
         assert!(!QcEvent::EdgeRemoveDeclined { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::EdgeRemoveBetweenDeclined { from: 1, to: 2 }.is_mutating());
-        assert!(!QcEvent::TeleportRemoveWithReverseDeclined { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::EdgeRemoveWithReverseDeclined { from: 1, to: 2, reverse_removed: false }.is_mutating());
+        assert!(!QcEvent::TeleportRemoveWithReverseDeclined { from: 1, to: 2, reverse_removed: false }.is_mutating());
         assert!(!QcEvent::StartSetDeclined(1).is_mutating());
         assert!(!QcEvent::FinishSetDeclined(1).is_mutating());
     }
@@ -415,6 +460,7 @@ mod tests {
         assert!(!QcEvent::BidirectionalTeleportProposed { a: 1, b: 2 }.is_mutating());
         assert!(!QcEvent::EdgeRemoveProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::EdgeRemoveBetweenProposed { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::EdgeRemoveWithReverseProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::TeleportRemoveWithReverseProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::StartSetProposed(1).is_mutating());
         assert!(!QcEvent::FinishSetProposed(1).is_mutating());
@@ -436,7 +482,8 @@ mod tests {
             QcEvent::BidirectionalTeleportAdded { a: 0, b: 0 },
             QcEvent::EdgeRemoved { from: 0, to: 0 },
             QcEvent::EdgeRemovedBetween { from: 0, to: 0 },
-            QcEvent::TeleportRemovedWithReverse { from: 0, to: 0 },
+            QcEvent::EdgeRemovedWithReverse { from: 0, to: 0, reverse_removed: true },
+            QcEvent::TeleportRemovedWithReverse { from: 0, to: 0, reverse_removed: true },
             QcEvent::StartSet(0),
             QcEvent::FinishSet(0),
             QcEvent::DirectedEdgeDeclined { from: 0, to: 0 },
@@ -445,7 +492,8 @@ mod tests {
             QcEvent::BidirectionalTeleportDeclined { a: 0, b: 0 },
             QcEvent::EdgeRemoveDeclined { from: 0, to: 0 },
             QcEvent::EdgeRemoveBetweenDeclined { from: 0, to: 0 },
-            QcEvent::TeleportRemoveWithReverseDeclined { from: 0, to: 0 },
+            QcEvent::EdgeRemoveWithReverseDeclined { from: 0, to: 0, reverse_removed: false },
+            QcEvent::TeleportRemoveWithReverseDeclined { from: 0, to: 0, reverse_removed: false },
             QcEvent::StartSetDeclined(0),
             QcEvent::FinishSetDeclined(0),
             QcEvent::DirectedEdgeProposed { from: 0, to: 0 },
@@ -454,6 +502,7 @@ mod tests {
             QcEvent::BidirectionalTeleportProposed { a: 0, b: 0 },
             QcEvent::EdgeRemoveProposed { from: 0, to: 0 },
             QcEvent::EdgeRemoveBetweenProposed { from: 0, to: 0 },
+            QcEvent::EdgeRemoveWithReverseProposed { from: 0, to: 0 },
             QcEvent::TeleportRemoveWithReverseProposed { from: 0, to: 0 },
             QcEvent::StartSetProposed(0),
             QcEvent::FinishSetProposed(0),
@@ -471,6 +520,52 @@ mod tests {
     fn declined_variant_encodes_identically_to_its_mutating_mirror_except_the_tag() {
         let added = QcEvent::DirectedEdgeAdded { from: 7, to: 9 };
         let declined = QcEvent::DirectedEdgeDeclined { from: 7, to: 9 };
+        let mut added_bytes = Vec::new();
+        added.encode_payload(&mut added_bytes);
+        let mut declined_bytes = Vec::new();
+        declined.encode_payload(&mut declined_bytes);
+        assert_eq!(added_bytes, declined_bytes);
+        assert_ne!(added.type_id(), declined.type_id());
+    }
+
+    #[test]
+    fn edge_removed_with_reverse_encodes_from_to_then_reverse_removed_byte() {
+        let event = QcEvent::EdgeRemovedWithReverse { from: 5, to: 6, reverse_removed: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![5, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn edge_removed_with_reverse_encodes_reverse_removed_false_as_zero_byte() {
+        let event = QcEvent::EdgeRemovedWithReverse { from: 5, to: 6, reverse_removed: false };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes[16], 0);
+    }
+
+    /// `EdgeRemoveWithReverseDeclined` is always constructed with `reverse_removed: false` in
+    /// practice (see its own doc comment — a declined `RemoveEdgeWithReverse` means nothing was
+    /// removed at all), but this test pins the doc's "same field shape, same bytes except the tag"
+    /// claim at the wire level regardless of which `reverse_removed` value is passed, the same way
+    /// `declined_variant_encodes_identically_to_its_mutating_mirror_except_the_tag` does for the
+    /// plain `DirectedEdgeAdded`/`DirectedEdgeDeclined` pair above.
+    #[test]
+    fn edge_remove_with_reverse_declined_encodes_identically_to_its_mutating_mirror_except_the_tag() {
+        let added = QcEvent::EdgeRemovedWithReverse { from: 5, to: 6, reverse_removed: true };
+        let declined = QcEvent::EdgeRemoveWithReverseDeclined { from: 5, to: 6, reverse_removed: true };
+        let mut added_bytes = Vec::new();
+        added.encode_payload(&mut added_bytes);
+        let mut declined_bytes = Vec::new();
+        declined.encode_payload(&mut declined_bytes);
+        assert_eq!(added_bytes, declined_bytes);
+        assert_ne!(added.type_id(), declined.type_id());
+    }
+
+    #[test]
+    fn teleport_remove_with_reverse_declined_encodes_identically_to_its_mutating_mirror_except_the_tag() {
+        let added = QcEvent::TeleportRemovedWithReverse { from: 3, to: 4, reverse_removed: true };
+        let declined = QcEvent::TeleportRemoveWithReverseDeclined { from: 3, to: 4, reverse_removed: true };
         let mut added_bytes = Vec::new();
         added.encode_payload(&mut added_bytes);
         let mut declined_bytes = Vec::new();

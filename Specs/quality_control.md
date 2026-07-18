@@ -361,47 +361,70 @@ narrated by resolving the `"apply requests"` scope's own label from its children
 `*Declined` counts (see the "Scope shape" note above), not a summary event carrying
 `RepairResult`/`ApplyOutcome` fields directly.
 
-**Proposed events — one variant per `repair::MutationCommand` variant (9 total)**
+**Proposed events — one variant per `repair::MutationCommand` variant (10 total)**
 (`DirectedEdgeProposed`, `BidirectionalEdgeProposed`, `DirectedTeleportProposed`,
 `BidirectionalTeleportProposed`, `EdgeRemoveProposed`, `EdgeRemoveBetweenProposed`,
-`TeleportRemoveWithReverseProposed`, `StartSetProposed`, `FinishSetProposed`) — emitted into the
-`"strategy <id>"` scope for every command a strategy's `apply()` returned, before any of them has
-been revalidated or applied by `apply_commands`. Narrates what was *asked for*, independent of
-whether the separate `"apply requests"` scope right after actually honors it. Not a field-for-field
-mirror for all 9: `RemoveEdge`/`RemoveTeleportWithReverse` carry only an opaque `EdgeId`, meaningless
-to web-side narration on its own — `EdgeRemoveProposed`/`TeleportRemoveWithReverseProposed` instead
+`EdgeRemoveWithReverseProposed`, `TeleportRemoveWithReverseProposed`, `StartSetProposed`,
+`FinishSetProposed`) — emitted into the `"strategy <id>"` scope for every command a strategy's
+`apply()` returned, before any of them has been revalidated or applied by `apply_commands`.
+Narrates what was *asked for*, independent of whether the separate `"apply requests"` scope right
+after actually honors it. Not a field-for-field mirror for all 10:
+`RemoveEdge`/`RemoveEdgeWithReverse`/`RemoveTeleportWithReverse` carry only an opaque `EdgeId`,
+meaningless to web-side narration on its own —
+`EdgeRemoveProposed`/`EdgeRemoveWithReverseProposed`/`TeleportRemoveWithReverseProposed` instead
 carry the resolved `(from: NodeId, to: NodeId)` pair, read off the still-intact graph before
 anything is mutated (GitHub issue #171's follow-up fix). If resolution fails (stale id), no event
 is emitted for that command rather than fabricating a `(0, 0)` pair — node id `0` is a real, valid
 id, so a fabricated pair would be indistinguishable from a genuine edge.
 
-**Mutating events — one variant per `repair::MutationCommand` variant (9 total)**
+**Mutating events — one variant per `repair::MutationCommand` variant (10 total)**
 (`DirectedEdgeAdded`, `BidirectionalEdgeAdded`, `DirectedTeleportAdded`,
-`BidirectionalTeleportAdded`, `EdgeRemoved`, `EdgeRemovedBetween`, `TeleportRemovedWithReverse`,
-`StartSet`, `FinishSet`) — emitted by `apply_commands` (`quality_control/rule.rs`) for exactly the
-commands its own revalidation actually applied (`is_mutating()` is `true` for these nine and only
-these nine). Each also has a same-fields, trace-only `*Declined` counterpart
-(`DirectedEdgeDeclined`, etc.) emitted when revalidation rejects a proposed command — one dedicated
-variant per command kind rather than a single payload-less `CommandDeclined`, so narration/tests
-can say exactly which command failed revalidation, not just that some command did. A `*Declined`
-variant encodes to the exact same bytes as its mutating mirror except for the wire tag — see
-`quality_control/event.rs`'s own test. Same `EdgeId → (from, to)` resolution as the Proposed events
-above applies here too: `EdgeRemoved`/`EdgeRemoveDeclined`/`TeleportRemovedWithReverse`/
-`TeleportRemoveWithReverseDeclined` carry the edge's endpoints, resolved from the graph immediately
-before removal (`apply_commands` snapshots them ahead of its own mutating `match`, since
-`graph.edge(id)` returns `None` once the edge is gone); a resolution failure again means no event
-is emitted, never a fabricated `(0, 0)` pair. `apply_commands` emits every event itself, inline in its
-existing per-command loop (not returned to the caller for logging elsewhere) — it is the only place
-that knows both the command's real fields (already at hand from the `match`) and its actual
-revalidation outcome; a caller re-deriving that from `ApplyOutcome`'s aggregate counts couldn't
-tell *which* command in a multi-command batch was declined.
+`BidirectionalTeleportAdded`, `EdgeRemoved`, `EdgeRemovedBetween`, `EdgeRemovedWithReverse`,
+`TeleportRemovedWithReverse`, `StartSet`, `FinishSet`) — emitted by `apply_commands`
+(`quality_control/rule.rs`) for exactly the commands its own revalidation actually applied
+(`is_mutating()` is `true` for these ten and only these ten). Each also has a same-fields,
+trace-only `*Declined` counterpart (`DirectedEdgeDeclined`, etc.) emitted when revalidation rejects
+a proposed command — one dedicated variant per command kind rather than a single payload-less
+`CommandDeclined`, so narration/tests can say exactly which command failed revalidation, not just
+that some command did. A `*Declined` variant encodes to the exact same bytes as its mutating mirror
+except for the wire tag — see `quality_control/event.rs`'s own test. Same `EdgeId → (from, to)`
+resolution as the Proposed events above applies here too:
+`EdgeRemoved`/`EdgeRemoveDeclined`/`EdgeRemovedWithReverse`/`EdgeRemoveWithReverseDeclined`/
+`TeleportRemovedWithReverse`/`TeleportRemoveWithReverseDeclined` carry the edge's endpoints,
+resolved from the graph immediately before removal (`apply_commands` snapshots them ahead of its
+own mutating `match`, since `graph.edge(id)` returns `None` once the edge is gone); a resolution
+failure again means no event is emitted, never a fabricated `(0, 0)` pair. `apply_commands` emits
+every event itself, inline in its existing per-command loop (not returned to the caller for logging
+elsewhere) — it is the only place that knows both the command's real fields (already at hand from
+the `match`) and its actual revalidation outcome; a caller re-deriving that from `ApplyOutcome`'s
+aggregate counts couldn't tell *which* command in a multi-command batch was declined.
+
+**`reverse_removed` (GitHub issue #185's follow-up fix)** — `EdgeRemovedWithReverse`/
+`EdgeRemoveWithReverseDeclined`/`TeleportRemovedWithReverse`/`TeleportRemoveWithReverseDeclined`
+each carry an extra `reverse_removed: bool` field beyond `from`/`to`, sourced straight from
+`try_remove_edge_with_reverse`/`try_remove_teleport_with_reverse`'s own `Vec<EdgeId>` return length
+(`> 1` means the reverse leg genuinely existed and was removed too), not assumed from the
+command's shape. Without this, a replay consumer folding these events into a `(from,to)` +
+`(to,from)` keyed accumulator (web-side `applyQc`, `qc.ts`) would have no way to tell "both
+directions removed" from "only the primary was, because the reverse never existed" — a one-way
+edge/teleport that degenerates one of these commands to a single-direction removal would otherwise
+have its non-existent reverse blindly cleared too, fabricating a phantom removed-edge entry. On the
+`*Declined` variants this field is always `false` (a declined command means
+`try_remove_edge_with_reverse`/`try_remove_teleport_with_reverse` removed nothing at all, so the
+reverse can't have been removed either) — carried anyway so the field shape stays identical between
+a mutating variant and its own `*Declined` mirror, same "same bytes except the tag" property every
+other pair already has. Wire-encoded as one trailing byte after `from`/`to` (`0`/`1`), pushing these
+four variants' payload from 16 to 17 bytes — `Proposed`-shaped mirrors of these two commands
+(`EdgeRemoveWithReverseProposed`/`TeleportRemoveWithReverseProposed`) do **not** carry this field:
+proposal time is before revalidation, so whether the reverse will actually be removed isn't known
+yet, and nothing downstream consumes it at that stage.
 
 **No `DebugValueDelta`/`DebugMapDelta`/`DebugVertexDelta` impls** — QC has no natural analogue to a
 generation algorithm's "debug value" (RB's `recursion_stack`, Wilson's `current_walk`, etc.);
 deliberately out of scope, not a gap.
 
 **Wire tags** are assigned in `quality_control/event.rs`'s own `wire_tags` module, ordinary local
-tags in `1..=23` (well under the 255 a single source's local tag byte allows) — namespaced by
+tags in `1..=37` (well under the 255 a single source's local tag byte allows) — namespaced by
 source index only when `merge_tapes` folds this tape together with generation's, same mechanism
 every merged source already uses (`Specs/event_log.md`'s "#169" section).
 

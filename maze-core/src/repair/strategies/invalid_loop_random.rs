@@ -72,16 +72,17 @@ fn apply_cuts<T: Tessellation>(
                 (edge.from, edge.to)
             };
             if !preset_state.preset_edges.contains(&(from, to)) {
-                commands.push(MutationCommand::RemoveEdge { id: cut });
+                let reverse_id = maze.graph.edge_between(to, from);
+                match reverse_id {
+                    Some(reverse_id) if !already_cut.contains(&reverse_id) => {
+                        commands.push(MutationCommand::RemoveEdgeWithReverse { id: cut });
+                        already_cut.insert(reverse_id);
+                        discard_cycles_with_edge(&mut pending, &owners, reverse_id);
+                    }
+                    _ => commands.push(MutationCommand::RemoveEdge { id: cut }),
+                }
                 already_cut.insert(cut);
                 discard_cycles_with_edge(&mut pending, &owners, cut);
-                if let Some(reverse_id) = maze.graph.edge_between(to, from) {
-                    if !already_cut.contains(&reverse_id) {
-                        commands.push(MutationCommand::RemoveEdge { id: reverse_id });
-                        already_cut.insert(reverse_id);
-                    }
-                    discard_cycles_with_edge(&mut pending, &owners, reverse_id);
-                }
                 break;
             }
             // Protected after all (shouldn't happen given the upfront filter, but stay defensive) — retry with another edge.

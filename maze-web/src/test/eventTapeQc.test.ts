@@ -197,8 +197,16 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.EDGE_REMOVED_BETWEEN, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemovedBetween", from: 1n, to: 2n });
   });
 
-  it("decodes TeleportRemovedWithReverse (16 bytes — from/to, GitHub issue #171's follow-up fix)", () => {
-    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, concatBytes([u64le(3n), u64le(4n)]))).toEqual({ kind: "TeleportRemovedWithReverse", from: 3n, to: 4n });
+  it("decodes TeleportRemovedWithReverse (17 bytes — from/to of the primary id + reverseRemoved byte, GitHub issue #171's follow-up fix / #185's reverseRemoved fix)", () => {
+    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, concatBytes([u64le(3n), u64le(4n), new Uint8Array([1])]))).toEqual({ kind: "TeleportRemovedWithReverse", from: 3n, to: 4n, reverseRemoved: true });
+  });
+
+  it("decodes EdgeRemovedWithReverse (17 bytes — from/to of the primary id + reverseRemoved byte, GitHub issue #185)", () => {
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVED_WITH_REVERSE, concatBytes([u64le(5n), u64le(6n), new Uint8Array([1])]))).toEqual({ kind: "EdgeRemovedWithReverse", from: 5n, to: 6n, reverseRemoved: true });
+  });
+
+  it("decodes EdgeRemovedWithReverse with reverseRemoved false when only the primary direction existed", () => {
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVED_WITH_REVERSE, concatBytes([u64le(5n), u64le(6n), new Uint8Array([0])]))).toEqual({ kind: "EdgeRemovedWithReverse", from: 5n, to: 6n, reverseRemoved: false });
   });
 
   it("decodes StartSet (8 bytes)", () => {
@@ -216,7 +224,8 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportDeclined", a: 1n, b: 2n });
     expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_DECLINED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoveDeclined", from: 7n, to: 8n });
     expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_BETWEEN_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenDeclined", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED, concatBytes([u64le(3n), u64le(4n)]))).toEqual({ kind: "TeleportRemoveWithReverseDeclined", from: 3n, to: 4n });
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_WITH_REVERSE_DECLINED, concatBytes([u64le(5n), u64le(6n), new Uint8Array([0])]))).toEqual({ kind: "EdgeRemoveWithReverseDeclined", from: 5n, to: 6n, reverseRemoved: false });
+    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED, concatBytes([u64le(3n), u64le(4n), new Uint8Array([0])]))).toEqual({ kind: "TeleportRemoveWithReverseDeclined", from: 3n, to: 4n, reverseRemoved: false });
     expect(decodeQcEvent(QC_TAG.START_SET_DECLINED, u64le(1n))).toEqual({ kind: "StartSetDeclined", id: 1n });
     expect(decodeQcEvent(QC_TAG.FINISH_SET_DECLINED, u64le(2n))).toEqual({ kind: "FinishSetDeclined", id: 2n });
   });
@@ -228,6 +237,7 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportProposed", a: 1n, b: 2n });
     expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_PROPOSED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoveProposed", from: 7n, to: 8n });
     expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_BETWEEN_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenProposed", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_WITH_REVERSE_PROPOSED, concatBytes([u64le(5n), u64le(6n)]))).toEqual({ kind: "EdgeRemoveWithReverseProposed", from: 5n, to: 6n });
     expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED, concatBytes([u64le(3n), u64le(4n)]))).toEqual({ kind: "TeleportRemoveWithReverseProposed", from: 3n, to: 4n });
     expect(decodeQcEvent(QC_TAG.START_SET_PROPOSED, u64le(1n))).toEqual({ kind: "StartSetProposed", id: 1n });
     expect(decodeQcEvent(QC_TAG.FINISH_SET_PROPOSED, u64le(2n))).toEqual({ kind: "FinishSetProposed", id: 2n });
@@ -269,7 +279,8 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "BidirectionalTeleportAdded", a: 1n, b: 2n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "EdgeRemoved", from: 1n, to: 2n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "EdgeRemovedBetween", from: 1n, to: 2n })).toBe(true);
-    expect(isMutatingQcEvent({ kind: "TeleportRemovedWithReverse", from: 1n, to: 2n })).toBe(true);
+    expect(isMutatingQcEvent({ kind: "EdgeRemovedWithReverse", from: 1n, to: 2n, reverseRemoved: true })).toBe(true);
+    expect(isMutatingQcEvent({ kind: "TeleportRemovedWithReverse", from: 1n, to: 2n, reverseRemoved: true })).toBe(true);
     expect(isMutatingQcEvent({ kind: "StartSet", id: 1n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "FinishSet", id: 1n })).toBe(true);
 
@@ -283,7 +294,8 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "BidirectionalTeleportDeclined", a: 1n, b: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "EdgeRemoveDeclined", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "EdgeRemoveBetweenDeclined", from: 1n, to: 2n })).toBe(false);
-    expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseDeclined", from: 1n, to: 2n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "EdgeRemoveWithReverseDeclined", from: 1n, to: 2n, reverseRemoved: false })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseDeclined", from: 1n, to: 2n, reverseRemoved: false })).toBe(false);
     expect(isMutatingQcEvent({ kind: "StartSetDeclined", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "FinishSetDeclined", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "DirectedEdgeProposed", from: 1n, to: 2n })).toBe(false);
@@ -292,6 +304,7 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "BidirectionalTeleportProposed", a: 1n, b: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "EdgeRemoveProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "EdgeRemoveBetweenProposed", from: 1n, to: 2n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "EdgeRemoveWithReverseProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "StartSetProposed", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "FinishSetProposed", id: 1n })).toBe(false);
@@ -367,11 +380,46 @@ describe("mutatingQcEvents / applyQc", () => {
       { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
       { parent: 0, firstChild: null, nextSibling: 3, tag: QC_TAG.BIDIRECTIONAL_TELEPORT_ADDED, payloadBytes: concatBytes([u64le(3n), u64le(4n)]) },
       { parent: 0, firstChild: null, nextSibling: 4, tag: QC_TAG.EDGE_REMOVED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
-      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(3n), u64le(4n)]) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(3n), u64le(4n), new Uint8Array([1])]) },
     ]);
+    // TeleportRemovedWithReverse must remove BOTH directions of the two-way teleport, even
+    // though the wire event only names the primary (3,4) direction — the reverse (4,3) leg must
+    // not survive as a dangling one-way edge (GitHub issue #185's sibling bug: applyQc used to
+    // only clear the primary direction from its net accumulator).
     const result = applyQc(tape, 3, undefined, 0);
-    expect(result.edges).toEqual([{ from: 2n, to: 1n, kind: "basic" }, { from: 4n, to: 3n, kind: "teleport" }]);
+    expect(result.edges).toEqual([{ from: 2n, to: 1n, kind: "basic" }]);
     expect(result.removedEdges).toEqual([]);
+  });
+
+  it("EdgeRemovedWithReverse (GitHub issue #185) removes both directions of a bidirectional passage from the accumulator", () => {
+    // root (0) -> BidirectionalEdgeAdded(1,2) (1) -> EdgeRemovedWithReverse(1,2) (2)
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.EDGE_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(1n), u64le(2n), new Uint8Array([1])]) },
+    ]);
+    const result = applyQc(tape, 1, undefined, 0);
+    expect(result.edges).toEqual([]);
+  });
+
+  it("EdgeRemovedWithReverse with reverseRemoved=false does NOT clear the reverse direction — a one-way edge degenerating this command must not fabricate a phantom removed-edge entry (GitHub issue #185's follow-up fix)", () => {
+    // Mirrors buildQcTwoSourceTape's shape: (1,2) belongs to an earlier source (generation, node
+    // 3, outside QC's own scan window starting at node 5) — QC's own tape only ever sees the
+    // removal, so `(1,2)` is absent from QC's local `net` and the remove call has to actually
+    // reach into `removedFromEarlierSources`, exactly like a real cross-source replay would.
+    // (2,1) was never added anywhere in either source; if the fix regressed to unconditionally
+    // clearing the reverse too, it would fabricate a phantom `{ from: 2n, to: 1n }` entry here.
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: 4, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+      { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 2, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+      { parent: 0, firstChild: 5, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("quality_control") },
+      { parent: 4, firstChild: null, nextSibling: null, tag: QC_TAG.EDGE_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(1n), u64le(2n), new Uint8Array([0])]) },
+    ]);
+    const result = applyQc(tape, 0, undefined, 5);
+    expect(result.edges).toEqual([]);
+    expect(result.removedEdges).toEqual([{ from: 1n, to: 2n }]);
   });
 
   it("PresetSeeded applies every preset edge in one step, directed and bidirectional (GitHub issue #173)", () => {

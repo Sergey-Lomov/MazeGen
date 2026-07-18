@@ -147,11 +147,13 @@ fn event_log_emits_the_correct_mutating_variant_for_every_command_kind() {
     // get revalidation-dropped by) another command in the same batch -- this test's only concern
     // is that each command kind maps to its correct QcEvent variant, not revalidation itself
     // (see `stale_command_in_a_batch_is_dropped_without_blocking_the_rest` for that).
-    let (mut maze, nodes) = maze_n(9);
+    let (mut maze, nodes) = maze_n(11);
     let teleport_fwd = maze.graph.build_initial_edge(nodes[7], nodes[8], EdgeKind::Teleport);
     maze.graph.build_initial_edge(nodes[8], nodes[7], EdgeKind::Teleport); // reverse leg for RemoveTeleportWithReverse
     let removable_id = maze.graph.build_initial_edge(nodes[5], nodes[6], EdgeKind::Basic);
     maze.graph.build_initial_edge(nodes[3], nodes[4], EdgeKind::Basic); // for RemoveEdgeBetween
+    let bidir_fwd = maze.graph.build_initial_edge(nodes[9], nodes[10], EdgeKind::Basic);
+    maze.graph.build_initial_edge(nodes[10], nodes[9], EdgeKind::Basic); // reverse leg for RemoveEdgeWithReverse
 
     let commands = vec![
         MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] },
@@ -160,6 +162,7 @@ fn event_log_emits_the_correct_mutating_variant_for_every_command_kind() {
         MutationCommand::AddBidirectionalTeleport { a: nodes[0], b: nodes[3] },
         MutationCommand::RemoveEdge { id: removable_id },
         MutationCommand::RemoveEdgeBetween { from: nodes[3], to: nodes[4] },
+        MutationCommand::RemoveEdgeWithReverse { id: bidir_fwd },
         MutationCommand::RemoveTeleportWithReverse { id: teleport_fwd },
         MutationCommand::SetStart(nodes[0]),
         MutationCommand::SetFinish(nodes[8]),
@@ -171,22 +174,123 @@ fn event_log_emits_the_correct_mutating_variant_for_every_command_kind() {
     drop(scope);
     let tape = log.finish();
 
-    assert_eq!(outcome, ApplyOutcome { proposed: 9, applied: 9 }, "every command in this batch must apply cleanly");
+    assert_eq!(outcome, ApplyOutcome { proposed: 10, applied: 10 }, "every command in this batch must apply cleanly");
 
     let events: Vec<&QcEvent> = tape.iter().collect();
-    assert_eq!(events.len(), 9, "one QcEvent per command, in order");
+    assert_eq!(events.len(), 10, "one QcEvent per command, in order");
     assert!(matches!(events[0], QcEvent::DirectedEdgeAdded { .. }));
     assert!(matches!(events[1], QcEvent::BidirectionalEdgeAdded { .. }));
     assert!(matches!(events[2], QcEvent::DirectedTeleportAdded { .. }));
     assert!(matches!(events[3], QcEvent::BidirectionalTeleportAdded { .. }));
     assert!(matches!(events[4], QcEvent::EdgeRemoved { .. }));
     assert!(matches!(events[5], QcEvent::EdgeRemovedBetween { .. }));
-    assert!(matches!(events[6], QcEvent::TeleportRemovedWithReverse { .. }));
-    assert!(matches!(events[7], QcEvent::StartSet(_)));
-    assert!(matches!(events[8], QcEvent::FinishSet(_)));
+    // Both directions genuinely existed for both `WithReverse` commands, so `reverse_removed`
+    // (GitHub issue #185's follow-up fix) must be computed `true` here, not just assumed from the
+    // command's shape — this is the one place proving `rule.rs`'s `removed.len() > 1` computation
+    // actually reaches the emitted `QcEvent`, not just that the enum variant can be constructed.
+    assert!(matches!(events[6], QcEvent::EdgeRemovedWithReverse { reverse_removed: true, .. }),
+        "both directions of the bidirectional passage existed, reverse_removed must be true: {:?}", events[6]);
+    assert!(matches!(events[7], QcEvent::TeleportRemovedWithReverse { reverse_removed: true, .. }),
+        "both directions of the two-way teleport existed, reverse_removed must be true: {:?}", events[7]);
+    assert!(matches!(events[8], QcEvent::StartSet(_)));
+    assert!(matches!(events[9], QcEvent::FinishSet(_)));
     for event in &events {
         assert!(event.is_mutating(), "every emitted event here must be the mutating mirror, not *Declined: {event:?}");
     }
+}
+
+/// Gap in `event_log_emits_the_correct_mutating_variant_for_every_command_kind`: that test only
+/// proves `reverse_removed` is `true` when the reverse genuinely exists. This proves the opposite
+/// side of `rule.rs`'s `removed.len() > 1` computation — a `RemoveEdgeWithReverse` command cutting
+/// a one-way edge (no reverse direction ever built) must compute `reverse_removed: false`, not
+/// `true`. Without this, an off-by-one or a "simplify to `!removed.is_empty()`" regression in
+/// `rule.rs` would pass every other test in this file, since none of them exercise the one-way case
+/// through a real `apply_commands` call (GitHub issue #185's follow-up fix).
+#[test]
+fn remove_edge_with_reverse_computes_reverse_removed_false_when_only_one_direction_exists() {
+    let (mut maze, nodes) = maze_n(2);
+    let one_way = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    // Deliberately no (nodes[1], nodes[0]) edge -- this command must still succeed (primary
+    // direction alone is enough), but must report reverse_removed: false.
+
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdgeWithReverse { id: one_way }], Some(&mut scope));
+    drop(scope);
+    let tape = log.finish();
+
+    assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
+    assert!(maze.graph.edge(one_way).is_none());
+
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert_eq!(events.len(), 1);
+    assert!(matches!(events[0], QcEvent::EdgeRemovedWithReverse { reverse_removed: false, .. }),
+        "only the primary direction ever existed, reverse_removed must be false: {:?}", events[0]);
+}
+
+/// Mirrors `stale_command_in_a_batch_is_dropped_without_blocking_the_rest` for `RemoveEdgeWithReverse`
+/// specifically (GitHub issue #185's follow-up fix): a batch built against one immutable snapshot
+/// proposes cutting both directions of a bidirectional passage via two separate commands (as if two
+/// different strategies each independently decided to cut one direction) -- by the time the second
+/// command applies, the first has already removed the reverse leg it was also going to remove, so
+/// the second command's own primary `id` no longer resolves. This is the same "stale id" case
+/// `stale_edge_id_that_never_existed_emits_no_event_instead_of_fabricating_from_to` covers for
+/// `RemoveEdge`: revalidation must still reject it (not applied) and, since `edge_endpoints`
+/// resolution fails first, no event is emitted for the second command at all -- never a fabricated
+/// `EdgeRemoveWithReverseDeclined { reverse_removed: false, .. }` with made-up endpoints.
+#[test]
+fn remove_edge_with_reverse_second_command_targeting_an_already_removed_reverse_leg_emits_no_event() {
+    let (mut maze, nodes) = maze_n(2);
+    let fwd = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    let bwd = maze.graph.build_initial_edge(nodes[1], nodes[0], EdgeKind::Basic);
+
+    let commands = vec![
+        MutationCommand::RemoveEdgeWithReverse { id: fwd }, // removes both fwd and bwd
+        MutationCommand::RemoveEdgeWithReverse { id: bwd }, // bwd already gone -- primary itself now stale
+    ];
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope));
+    drop(scope);
+    let tape = log.finish();
+
+    assert_eq!(outcome, ApplyOutcome { proposed: 2, applied: 1 }, "second command's primary id is already gone by commit time");
+    assert!(maze.graph.edge(fwd).is_none());
+    assert!(maze.graph.edge(bwd).is_none());
+
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert_eq!(events.len(), 1, "second command's stale id fails endpoint resolution before revalidation -- no event, not a fabricated Declined");
+    assert!(matches!(events[0], QcEvent::EdgeRemovedWithReverse { reverse_removed: true, .. }),
+        "first command removes both directions: {:?}", events[0]);
+}
+
+/// Proves the `EdgeRemoveWithReverseDeclined` narration branch actually fires with correct
+/// endpoints when revalidation rejects a `RemoveEdgeWithReverse` command for a reason *other* than
+/// a stale id -- here, preset protection on the primary direction -- mirroring
+/// `event_log_emits_declined_when_revalidation_rejects_a_command`'s coverage for `RemoveEdgeBetween`.
+/// `reverse_removed` must be `false`: `try_remove_edge_with_reverse` never removed anything at all
+/// (GitHub issue #185's follow-up fix).
+#[test]
+fn remove_edge_with_reverse_emits_declined_when_preset_protection_rejects_it() {
+    let (mut maze, nodes) = maze_n(2);
+    let mut preset_state = PresetState::empty();
+    let id = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+    preset_state.preset_edges.insert((nodes[0], nodes[1]));
+
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    let outcome = apply_commands(&mut maze, &preset_state, vec![MutationCommand::RemoveEdgeWithReverse { id }], Some(&mut scope));
+    drop(scope);
+    let tape = log.finish();
+
+    assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 0 });
+    assert!(maze.graph.edge(id).is_some(), "preset-protected edge must survive");
+
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert_eq!(events.len(), 1);
+    assert!(matches!(events[0], QcEvent::EdgeRemoveWithReverseDeclined { reverse_removed: false, .. }),
+        "rejected command must emit its *Declined mirror with reverse_removed: false: {:?}", events[0]);
+    assert!(!events[0].is_mutating(), "*Declined must never be classified as mutating");
 }
 
 /// Proves the `*Declined` narration branch actually fires when `apply_commands`' own

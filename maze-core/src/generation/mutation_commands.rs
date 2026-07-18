@@ -79,6 +79,13 @@ pub(crate) fn cmd_remove_teleport_with_reverse(graph: &Graph, id: crate::ids::Ed
     vec![MutationCommand::RemoveTeleportWithReverse { id }]
 }
 
+#[allow(dead_code)]
+pub(crate) fn cmd_remove_edge_with_reverse(graph: &Graph, id: crate::ids::EdgeId, preset_state: &PresetState) -> Vec<MutationCommand> {
+    if !graph.can_remove_edge(id) { return vec![]; }
+    let _ = preset_state; // re-checked for real by try_remove_edge_with_reverse at apply time
+    vec![MutationCommand::RemoveEdgeWithReverse { id }]
+}
+
 /// Direct unit tests for the `cmd_*` `MutationCommand` builders and the feasibility predicates
 /// they share with their `try_*` mutating counterparts (GitHub issue #118, `Specs/repair.md`).
 /// These builders had no direct test coverage before — only exercised transitively (and only
@@ -253,6 +260,22 @@ mod cmd_builders_tests {
         let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Teleport);
         g.remove_initial_edge(id);
         assert!(cmd_remove_teleport_with_reverse(&g, id, &PresetState::empty()).is_empty());
+    }
+
+    #[test]
+    fn cmd_remove_edge_with_reverse_proposes_when_edge_exists() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let cmds = cmd_remove_edge_with_reverse(&g, id, &PresetState::empty());
+        assert_eq!(cmds, vec![MutationCommand::RemoveEdgeWithReverse { id }]);
+    }
+
+    #[test]
+    fn cmd_remove_edge_with_reverse_empty_when_id_stale() {
+        let (mut g, nodes) = graph_and_nodes(2);
+        let id = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.remove_initial_edge(id);
+        assert!(cmd_remove_edge_with_reverse(&g, id, &PresetState::empty()).is_empty());
     }
 
     /// Cross-checks a `cmd_*` builder's verdict against its `try_*` counterpart's actual result
