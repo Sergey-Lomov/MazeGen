@@ -70,7 +70,7 @@ export class DebugRefHighlightOverlay {
 
     switch (ref.kind) {
       case "edge": {
-        const highlights = this.edgeHighlightsFor([[ref.from, ref.to]], posOf);
+        const highlights = this.edgeHighlightsFor([[ref.from, ref.to]], posOf, [ref.bidirectional]);
         this.edgeRenderer.render({ highlights });
         this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         this.drawNodeCircles([ref.from, ref.to], posOf);
@@ -118,14 +118,22 @@ export class DebugRefHighlightOverlay {
     }
   }
 
-  private edgeHighlightsFor(edges: [bigint, bigint][], posOf: (id: bigint) => Pos | undefined): EdgeHL[] {
+  private edgeHighlightsFor(
+    edges: [bigint, bigint][],
+    posOf: (id: bigint) => Pos | undefined,
+    bidirectional?: (boolean | undefined)[],
+  ): EdgeHL[] {
     const highlights: EdgeHL[] = [];
-    for (const [from, to] of edges) {
+    edges.forEach(([from, to], i) => {
       const a = posOf(from);
       const b = posOf(to);
-      if (!a || !b) continue;
-      highlights.push({ from: [a.x, a.y], to: [b.x, b.y], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA });
-    }
+      if (!a || !b) return;
+      highlights.push({
+        from: [a.x, a.y], to: [b.x, b.y],
+        color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA,
+        bidirectional: bidirectional?.[i],
+      });
+    });
     return highlights;
   }
 

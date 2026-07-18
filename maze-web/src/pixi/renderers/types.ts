@@ -23,6 +23,9 @@ export type EdgeHL = {
   color: number;
   alpha: number;
   width: number;
+  /** When `false`, draws a direction arrow at the segment's midpoint pointing `from` -> `to`.
+   *  `undefined` (unknown directionality, e.g. cycle highlights) draws a plain line, same as `true`. */
+  bidirectional?: boolean;
 };
 
 export type MarkerData = { pos: [number, number]; color: number; radius: number };
