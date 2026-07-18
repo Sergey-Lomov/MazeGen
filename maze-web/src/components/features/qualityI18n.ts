@@ -131,8 +131,8 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     description: m["issue.invalid_teleport.description"] as MessageFn,
   },
   invalid_teleport_group: {
-    label: m["issue.teleport_group_proximity.label"] as MessageFn,
-    description: m["issue.teleport_group_proximity.description"] as MessageFn,
+    label: m["issue.invalid_teleport_group.label"] as MessageFn,
+    description: m["issue.invalid_teleport_group.description"] as MessageFn,
   },
 };
 
@@ -385,6 +385,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   protect_route: {
     label: m["param.protect_route.label"] as MessageFn,
     description: m["param.protect_route.description"] as MessageFn,
+  },
+  allow_reverse: {
+    label: m["param.allow_reverse.label"] as MessageFn,
+    description: m["param.allow_reverse.description"] as MessageFn,
   },
 };
 

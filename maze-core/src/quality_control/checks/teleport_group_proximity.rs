@@ -42,7 +42,11 @@ pub enum TeleportProximityEdge {
 /// endpoint is closer than `distance` — as soon as one problematic pair is found for a teleport,
 /// it's recorded and the scan moves to the next teleport (no need to enumerate every pair a
 /// teleport participates in). Each direction of a two-way teleport is its own independent element
-/// of this scan, same as every other per-teleport check from issue #74.
+/// of this scan, same as every other per-teleport check from issue #74 — **except** against its
+/// own opposite-direction counterpart (`Graph::teleport_reverse`), which is excluded from the
+/// candidate scan (GitHub issue #191): both directions belong to the same physical teleport, so
+/// they are never a legitimate "two teleports too close to each other" pair, however close the
+/// teleport's own entry/exit happen to sit.
 ///
 /// Multiple instances may be active at once (`allow_multiple_instances: true`, see the WASM
 /// Interface section in `Specs/quality_control.md`) — distinct `own_edge`/`other_edge`/`distance`
@@ -133,8 +137,13 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
                 continue;
             }
 
+            // The opposite-direction Teleport edge of the same physical two-way teleport is not
+            // a distinct teleport to be close to — it's the same entity, so it's excluded from
+            // the candidate scan alongside `own_id` itself (GitHub issue #191).
+            let own_reverse = maze.graph.teleport_reverse(own_id);
+
             for &(other_id, other_from, other_to) in &teleports {
-                if other_id == own_id {
+                if other_id == own_id || Some(other_id) == own_reverse {
                     continue;
                 }
                 let other_navs: Vec<NavNodeId> = endpoints_of(self.other_edge, other_from, other_to).into_iter()

@@ -11,21 +11,35 @@ use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use crate::graph::route_protection::is_teleport_route_protected;
 
-/// Records `id` (and its opposite-direction `Teleport` counterpart, if any) as resolved, mirroring
-/// what `try_remove_teleport_with_reverse`'s returned `Vec<EdgeId>` tracked under the old in-place
-/// contract — read-only here (GitHub issue #118, `Specs/repair.md`'s immutable-snapshot contract):
-/// a `Teleport` edge can never itself be preset-protected (only Basic edges can), so removal is
-/// always logically "successful" for the purpose of this bookkeeping regardless of whether the
-/// resulting `RemoveTeleportWithReverse` command later gets dropped on revalidation.
-fn mark_removed<T: Tessellation>(maze: &Maze<T>, id: EdgeId, removed: &mut std::collections::HashSet<EdgeId>) {
+/// Records `id` as resolved and, unless `allow_reverse` is set, its opposite-direction `Teleport`
+/// counterpart too — mirroring what `try_remove_teleport_with_reverse`'s returned `Vec<EdgeId>`
+/// tracked under the old in-place contract — read-only here (GitHub issue #118, `Specs/repair.md`'s
+/// immutable-snapshot contract): a `Teleport` edge can never itself be preset-protected (only
+/// Basic edges can), so removal is always logically "successful" for the purpose of this
+/// bookkeeping regardless of whether the resulting command later gets dropped on revalidation.
+fn mark_removed<T: Tessellation>(maze: &Maze<T>, id: EdgeId, allow_reverse: bool, removed: &mut std::collections::HashSet<EdgeId>) {
     removed.insert(id);
-    if let Some(reverse_id) = maze.graph.teleport_reverse(id) {
-        removed.insert(reverse_id);
+    if !allow_reverse {
+        if let Some(reverse_id) = maze.graph.teleport_reverse(id) {
+            removed.insert(reverse_id);
+        }
+    }
+}
+
+/// The command to remove `id` — `RemoveEdge` (flagged direction only) when `allow_reverse` is
+/// set, `RemoveTeleportWithReverse` (whole teleport) otherwise. See GitHub issue #190's identical
+/// choice on `RemoveTeleportStrategy`.
+fn remove_command(id: EdgeId, allow_reverse: bool) -> MutationCommand {
+    if allow_reverse {
+        MutationCommand::RemoveEdge { id }
+    } else {
+        MutationCommand::RemoveTeleportWithReverse { id }
     }
 }
 
 pub const PARAM_PRIORITY: &str = "priority";
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
+pub const PARAM_ALLOW_REVERSE: &str = "allow_reverse";
 
 pub const PRIORITY_RANDOM: &str = "random";
 pub const PRIORITY_PROBLEMATIC: &str = "problematic";
@@ -42,6 +56,11 @@ static PARAMS: &[StrategyParam] = &[
         id: PARAM_PROTECT_ROUTE,
         label: "Protect route teleports",
         kind: StrategyParamKind::Bool { default: true },
+    },
+    StrategyParam {
+        id: PARAM_ALLOW_REVERSE,
+        label: "Allow teleport to become one-way",
+        kind: StrategyParamKind::Bool { default: false },
     },
 ];
 
@@ -63,6 +82,12 @@ static PARAMS: &[StrategyParam] = &[
 /// (`try_remove_teleport_with_reverse`), so a two-way teleport is never left half-removed. Both
 /// ids returned by that call are recorded in `removed`, so a later pair referencing the reverse
 /// direction is correctly treated as already resolved.
+///
+/// `PARAM_ALLOW_REVERSE` (default `false`, GitHub issue #190's identical choice on
+/// `RemoveTeleportStrategy`): when `true`, only the flagged direction is removed (`RemoveEdge`),
+/// leaving its opposite direction (if any) intact — downgrading a two-way teleport to one-way
+/// instead of removing it entirely. Applies uniformly to both removal paths (`to_remove` and the
+/// `protect_route` `fallback`).
 pub struct TeleportGroupProximityStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportGroupProximityStrategy {
@@ -91,6 +116,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
             _ => PRIORITY_PROBLEMATIC,
         };
         let protect_route = matches!(params.get(PARAM_PROTECT_ROUTE), Some(StrategyParamValue::Bool(true)));
+        let allow_reverse = matches!(params.get(PARAM_ALLOW_REVERSE), Some(StrategyParamValue::Bool(true)));
 
         // Membership counts computed once up front, over the original (unresolved) pair set —
         // "belongs to more other problematic pairs" is a snapshot of the check's findings, not a
@@ -126,18 +152,19 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
                 // still considered resolved (see the strategy's own doc comment).
                 let fallback = if to_remove == a { b } else { a };
                 if !is_teleport_route_protected(maze, fallback) {
-                    // Also removes fallback's opposite-direction Teleport counterpart, if any —
-                    // both removed ids are recorded so a later pair referencing either one (e.g.
-                    // the reverse direction, close to some other teleport too) is skipped as
-                    // already resolved instead of attempting a no-op removal.
-                    commands.push(MutationCommand::RemoveTeleportWithReverse { id: fallback });
-                    mark_removed(maze, fallback, &mut removed);
+                    // Also removes fallback's opposite-direction Teleport counterpart, if any
+                    // (unless allow_reverse) — both removed ids are recorded so a later pair
+                    // referencing either one (e.g. the reverse direction, close to some other
+                    // teleport too) is skipped as already resolved instead of attempting a no-op
+                    // removal.
+                    commands.push(remove_command(fallback, allow_reverse));
+                    mark_removed(maze, fallback, allow_reverse, &mut removed);
                 }
                 continue;
             }
 
-            commands.push(MutationCommand::RemoveTeleportWithReverse { id: to_remove });
-            mark_removed(maze, to_remove, &mut removed);
+            commands.push(remove_command(to_remove, allow_reverse));
+            mark_removed(maze, to_remove, allow_reverse, &mut removed);
         }
 
         (RepairResult::Fixed { score: None }, commands)

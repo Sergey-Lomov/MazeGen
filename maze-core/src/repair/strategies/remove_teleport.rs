@@ -3,16 +3,26 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::InvalidTeleportIssue;
 use crate::generation::PresetState;
-use crate::repair::params::StrategyParams;
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 
-/// Handles `INVALID_TELEPORT` — see GitHub issue #74. The single, fixed fix strategy for every
-/// per-teleport validation check: remove each flagged teleport edge outright. No configurable
-/// parameters, no alternative strategy — unlike `INVALID_LOOP` (which has both a random and a
-/// scored cut strategy), a teleport is a single edge, not a cycle with multiple candidate edges
-/// to choose from, so there is nothing to pick between.
+pub const PARAM_ALLOW_REVERSE: &str = "allow_reverse";
+
+static PARAMS: &[StrategyParam] = &[
+    StrategyParam {
+        id: PARAM_ALLOW_REVERSE,
+        label: "Allow teleport to become one-way",
+        kind: StrategyParamKind::Bool { default: false },
+    },
+];
+
+/// Handles `INVALID_TELEPORT` — see GitHub issue #74 and #190. The fix strategy for every
+/// per-teleport validation check: removes each flagged teleport edge. Unlike `INVALID_LOOP`
+/// (which has both a random and a scored cut strategy), a teleport is a single edge, not a cycle
+/// with multiple candidate edges to choose from, so there is no strategy to pick between — only
+/// one configurable parameter, `allow_reverse`.
 ///
 /// Route protection (GitHub issue #78) lives entirely on the producing checks' side, not here:
 /// each per-teleport check has its own `protect_route` param and simply never includes a
@@ -20,26 +30,40 @@ use crate::repair::command::MutationCommand;
 /// this strategy shouldn't remove. This strategy stays a pure "remove everything flagged"
 /// executor, same as before #78.
 ///
-/// Removing a flagged edge also removes its opposite-direction `Teleport` counterpart, if any
-/// (`try_remove_teleport_with_reverse`) — a two-way teleport must never end up silently
-/// downgraded to one-way just because a check's edge selector (e.g. `EntryOnly`) only inspected
-/// one direction and flagged only that `EdgeId`.
+/// `allow_reverse` (default `false`, GitHub issue #190) controls what happens to a flagged
+/// direction's opposite-direction `Teleport` counterpart, if any:
+/// - `false` (default): removes the whole teleport, same as before #190 —
+///   `RemoveTeleportWithReverse` also removes the opposite direction, so a two-way teleport is
+///   never left silently downgraded to one-way just because a check's edge selector (e.g.
+///   `EntryOnly`) only inspected one direction and flagged only that `EdgeId`.
+/// - `true`: removes only the flagged direction (`RemoveEdge`), leaving the opposite direction
+///   (if any) intact — downgrading a two-way teleport to one-way instead of removing it
+///   entirely.
 pub struct RemoveTeleportStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidTeleportIssue> for RemoveTeleportStrategy {
     fn strategy_id(&self) -> &'static str { "remove_teleport" }
+
+    fn params(&self) -> &'static [StrategyParam] {
+        PARAMS
+    }
 
     fn apply(
         &self,
         issue: &InvalidTeleportIssue,
         _maze: &Maze<T>,
         _rng: &mut dyn RngCore,
-        _params: &StrategyParams,
+        params: &StrategyParams,
         _preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
+        let allow_reverse = matches!(params.get(PARAM_ALLOW_REVERSE), Some(StrategyParamValue::Bool(true)));
         let commands = issue.invalid.iter()
-            .map(|&id| MutationCommand::RemoveTeleportWithReverse { id })
+            .map(|&id| if allow_reverse {
+                MutationCommand::RemoveEdge { id }
+            } else {
+                MutationCommand::RemoveTeleportWithReverse { id }
+            })
             .collect();
         (RepairResult::Fixed { score: None }, commands)
     }
@@ -73,6 +97,14 @@ mod tests {
 
     fn no_params() -> StrategyParams {
         build_params(<RemoveTeleportStrategy as RepairStrategy<SquareTessellation, InvalidTeleportIssue>>::params(&RemoveTeleportStrategy), None)
+    }
+
+    fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
+        let mut map = std::collections::HashMap::new();
+        for &(k, v) in overrides {
+            map.insert(k.to_string(), v.to_string());
+        }
+        build_params(<RemoveTeleportStrategy as RepairStrategy<SquareTessellation, InvalidTeleportIssue>>::params(&RemoveTeleportStrategy), Some(&map))
     }
 
     #[test]
@@ -163,6 +195,47 @@ mod tests {
 
         assert!(maze.graph.edge(teleport_id).is_none());
         assert!(maze.graph.edge(reverse_basic_id).is_some(), "a reverse Basic edge must survive -- it is not a teleport reverse");
+    }
+
+    #[test]
+    fn apply_with_allow_reverse_removes_only_the_flagged_direction() {
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let forward_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        let backward_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let issue = InvalidTeleportIssue::new_from_check("test", vec![forward_id]);
+        let params = params_with(&[(PARAM_ALLOW_REVERSE, "true")]);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = apply_and_commit(&RemoveTeleportStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(forward_id).is_none(), "the flagged forward direction must be removed");
+        assert!(maze.graph.edge(backward_id).is_some(), "allow_reverse must leave the unflagged backward direction intact");
+    }
+
+    #[test]
+    fn apply_default_still_removes_the_reverse_direction() {
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let forward_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+        let backward_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let issue = InvalidTeleportIssue::new_from_check("test", vec![forward_id]);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = apply_and_commit(&RemoveTeleportStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.graph.edge(forward_id).is_none());
+        assert!(maze.graph.edge(backward_id).is_none(), "default (allow_reverse=false) must still remove the reverse direction");
     }
 
     #[test]

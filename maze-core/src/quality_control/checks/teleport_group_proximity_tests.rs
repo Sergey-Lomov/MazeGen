@@ -517,3 +517,27 @@ fn fires_for_both_directions_of_a_two_way_teleport_independently() {
     // entry, so it should not itself produce a pair under Entry/Entry.
     assert!(pairs.iter().any(|&(x, y)| (x == id_a && y == id_b) || (x == id_b && y == id_a)));
 }
+
+#[test]
+fn a_two_way_teleport_never_pairs_with_its_own_reverse_direction() {
+    // fwd and bwd are the two directions of one physical two-way teleport, entry/exit swapped --
+    // fwd's entry and bwd's entry are the *same* two nodes as fwd's own endpoints, so under a
+    // loose enough threshold they would look "close" to each other if not excluded. GitHub issue
+    // #191: the reverse direction must never be recorded as a problematic pair with `own_id`,
+    // regardless of distance.
+    let mut ids = IdGenerator::new();
+    let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
+    g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
+    let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    // A very high threshold: entry_a and entry_b of the pair are only 1 tile-hop apart via the
+    // teleport itself (0 -> 2 -> 0), so without the reverse exclusion this would fire.
+    check(1000.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(issues.is_empty(), "a two-way teleport's own reverse direction must never be reported as a problematic pair with itself");
+}

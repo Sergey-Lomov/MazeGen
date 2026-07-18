@@ -26,6 +26,17 @@ fn params_with_priority_and_protect(priority: &str, protect_route: bool) -> Stra
     )
 }
 
+fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
+    let mut map = HashMap::new();
+    for &(k, v) in overrides {
+        map.insert(k.to_string(), v.to_string());
+    }
+    crate::repair::params::build_params(
+        <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::params(&TeleportGroupProximityStrategy),
+        Some(&map),
+    )
+}
+
 fn maze_with_two_teleports() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let mut ids = IdGenerator::new();
     let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
@@ -330,6 +341,68 @@ fn protect_route_fallback_removal_also_removes_the_fallback_side_reverse() {
     assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive");
     assert!(maze.graph.edge(b_fwd).is_none(), "b_fwd must be removed as the fallback");
     assert!(maze.graph.edge(b_bwd).is_none(), "b_bwd must be removed too, as b_fwd's reverse counterpart");
+}
+
+#[test]
+fn allow_reverse_removes_only_the_flagged_direction_of_a_two_way_teleport() {
+    // a_fwd/a_bwd are the two directions of one physical two-way teleport, paired with b.
+    // "random" priority is forced to pick a_fwd. With allow_reverse=true, only a_fwd must be
+    // removed -- a_bwd must survive, downgrading the teleport to one-way instead of removing it.
+    let mut ids = IdGenerator::new();
+    let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let a_fwd = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+    let a_bwd = g.add_edge(nodes[1], nodes[0], EdgeKind::Teleport);
+    let id_b = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
+    let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+    let issue = InvalidTeleportGroupIssue::new_from_check("test", vec![(a_fwd, id_b)]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM), (PARAM_PROTECT_ROUTE, "false"), (PARAM_ALLOW_REVERSE, "true")]),
+        &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+    // Either a_fwd or b was removed ("random" priority) -- whichever it is, its reverse (if
+    // any) must survive under allow_reverse.
+    if maze.graph.edge(a_fwd).is_none() {
+        assert!(maze.graph.edge(a_bwd).is_some(), "allow_reverse must leave a_bwd intact when a_fwd is removed");
+        assert!(maze.graph.edge(id_b).is_some());
+    } else {
+        assert!(maze.graph.edge(a_bwd).is_some(), "a_bwd must survive: only a_fwd or b was targeted, never a_bwd");
+        assert!(maze.graph.edge(id_b).is_none());
+    }
+}
+
+#[test]
+fn allow_reverse_applies_to_the_protect_route_fallback_side_too() {
+    // a is route-critical; b is a two-way teleport (b_fwd, b_bwd), paired with a via b_fwd.
+    // protect_route falls back to removing b instead of a. With allow_reverse=true, only
+    // b_fwd (the flagged direction) must be removed -- b_bwd must survive.
+    let mut ids = IdGenerator::new();
+    let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let id_a = g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+    let b_fwd = g.add_edge(nodes[2], nodes[3], EdgeKind::Teleport);
+    let b_bwd = g.add_edge(nodes[3], nodes[2], EdgeKind::Teleport);
+    let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+    maze.meta.start = Some(nodes[0]);
+    maze.meta.finish = Some(nodes[1]);
+
+    let issue = InvalidTeleportGroupIssue::new_from_check("test", vec![(id_a, b_fwd)]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let result = apply_and_commit(&TeleportGroupProximityStrategy, &issue, &mut maze, &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM), (PARAM_PROTECT_ROUTE, "true"), (PARAM_ALLOW_REVERSE, "true")]),
+        &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+    assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive");
+    assert!(maze.graph.edge(b_fwd).is_none(), "b_fwd must be removed as the fallback");
+    assert!(maze.graph.edge(b_bwd).is_some(), "allow_reverse must leave b_bwd intact");
 }
 
 #[test]
