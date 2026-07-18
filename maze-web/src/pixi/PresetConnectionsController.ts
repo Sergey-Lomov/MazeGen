@@ -79,7 +79,7 @@ export class PresetConnectionsController extends BaseController {
     }
     this.renderer.updateTeleportPreview(null, 0, 0);
 
-    const edge = pickEdgeAtPosition(vpX, vpY, state.tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
+    const edge = pickEdgeAtPosition(vpX, vpY, state.tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     this.renderer.updateHover(edge);
 
     this.continueEdgeDrag(edge, (e) => {

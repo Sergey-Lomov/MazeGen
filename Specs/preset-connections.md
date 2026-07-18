@@ -292,7 +292,10 @@ Hit-test for click/hover:
 1. `screenToGrid` → cell under cursor
 2. Check the cell and all its neighbors as candidates
 3. For each candidate pair both in field, compute distance from pointer to the actual polygon edge segment (`getSharedEdgeSegment`)
-4. Accept the closest edge within `threshold = TILE_SIZE * 0.4` (or `TRI_TILE_SIZE * 0.4` for triangles)
+4. If `deadZone` is passed and the closest point on a segment falls within `EDGE_ENDPOINT_DEAD_ZONE_FRACTION` (0.2) of either endpoint, skip that segment — this stops the cursor from hair-triggering a perpendicular edge while it passes near a shared grid vertex during a drag (#188)
+5. Accept the closest remaining edge within `threshold = TILE_SIZE * 0.4` (or `TRI_TILE_SIZE * 0.4` for triangles)
+
+`deadZone` defaults to `false` and is passed `true` only from `onPointerMove` (hover + drag-continuation) in both `PresetConnectionsController` and `PostEditController`; `onPointerDown` (plain click) calls omit it, so a single click can still hit an edge whose nearest point is close to a vertex.
 
 Accepts an optional pre-built `cellSet` to avoid rebuilding on every pointer event (passed from `PresetConnectionsRenderer.getCachedCellSet()`).
 

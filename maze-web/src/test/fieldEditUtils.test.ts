@@ -1,4 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../wasm/wasmLoader", () => ({
+  getWasm: () => ({
+    // Square tessellation's cartesian projection is the identity — see squareGeometry.ts's doc
+    // comment on squareCenter.
+    cartesian_coords: (config: { points: [number, number][] }) => config.points,
+  }),
+}));
 import {
   canonicalize,
   edgeKey,
@@ -11,8 +19,11 @@ import {
   removeTeleport,
   moveTeleportEndpoint,
   presetTeleportEntryToState,
+  pickEdgeAtPosition,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/fieldEditUtils";
+import { makeProjection } from "../pixi/tessellationProjection";
+import { TILE_SIZE } from "../pixi/constants";
 
 // --- canonicalize ---
 
@@ -280,6 +291,42 @@ describe("moveTeleportEndpoint", () => {
     const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "to" }, [5, 5]);
     expect(result[0].to).toEqual([5, 5]);
     expect(result[0].from).toEqual([0, 0]);
+  });
+});
+
+// --- pickEdgeAtPosition — vertex dead zone (#188) ---
+
+describe("pickEdgeAtPosition", () => {
+  // 2x2 square field: cells (0,0), (1,0), (0,1), (1,1). Their shared corner (grid vertex)
+  // sits at viewport (TILE_SIZE, -TILE_SIZE), where the vertical edge between (0,0)/(1,0)
+  // meets the horizontal edge between (0,0)/(0,1).
+  const cfg = { type: "square" as const, width: 2, height: 2 };
+  const cells: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
+  const proj = makeProjection(cfg);
+  const vx = proj.gridToScreen(0, 0).x + TILE_SIZE / 2; // = TILE_SIZE, shared corner x
+  const vy = proj.gridToScreen(0, 0).y; // = -TILE_SIZE/2, midline of the vertical edge
+
+  it("point in the interior of a vertical edge — picks that edge", () => {
+    const edge = pickEdgeAtPosition(vx, vy, cfg, cells);
+    expect(edge?.key).toBe(edgeKey([0, 0], [1, 0]));
+  });
+
+  it("point right at the shared vertex, deadZone on — no edge picked", () => {
+    const cornerY = proj.gridToScreen(0, 0).y + TILE_SIZE / 2; // top of (0,0), the shared corner
+    const edge = pickEdgeAtPosition(vx, cornerY, cfg, cells, undefined, true);
+    expect(edge).toBeNull();
+  });
+
+  it("point just past the dead zone into the segment interior, deadZone on — picks the edge", () => {
+    const cornerY = proj.gridToScreen(0, 0).y + TILE_SIZE / 2;
+    const edge = pickEdgeAtPosition(vx, cornerY - TILE_SIZE * 0.3, cfg, cells, undefined, true);
+    expect(edge?.key).toBe(edgeKey([0, 0], [1, 0]));
+  });
+
+  it("point right at the shared vertex, deadZone off (default) — still picks the nearest edge", () => {
+    const cornerY = proj.gridToScreen(0, 0).y + TILE_SIZE / 2;
+    const edge = pickEdgeAtPosition(vx, cornerY, cfg, cells);
+    expect(edge?.key).toBe(edgeKey([0, 0], [1, 0]));
   });
 });
 

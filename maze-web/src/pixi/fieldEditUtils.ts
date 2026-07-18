@@ -176,20 +176,34 @@ export function computeInvalidTeleportIds(
   return invalid;
 }
 
-function distToSegmentSq(
+interface SegmentHit {
+  distSq: number;
+  /** Fraction along the segment (0 = v0, 1 = v1) of the closest point to the query position. */
+  t: number;
+}
+
+function closestPointOnSegment(
   px: number, py: number,
   ax: number, ay: number,
   bx: number, by: number,
-): number {
+): SegmentHit {
   const dx = bx - ax;
   const dy = by - ay;
   const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return (px - ax) * (px - ax) + (py - ay) * (py - ay);
+  if (lenSq === 0) return { distSq: (px - ax) * (px - ax) + (py - ay) * (py - ay), t: 0 };
   const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
   const cx = ax + t * dx;
   const cy = ay + t * dy;
-  return (px - cx) * (px - cx) + (py - cy) * (py - cy);
+  return { distSq: (px - cx) * (px - cx) + (py - cy) * (py - cy), t };
 }
+
+/** Fraction of a segment's length, at each end, treated as a dead zone: hover/drag hit-testing
+ * ignores the segment there so the cursor must clearly enter its interior before it registers.
+ * Without this, passing near a grid vertex while dragging along one edge would register a hit on
+ * a perpendicular edge meeting at that same vertex (#188). Only applied when `deadZone` is passed
+ * to `pickEdgeAtPosition` — a plain (non-drag) click must still be able to hit an edge whose
+ * nearest point is close to a vertex, so pointerdown call sites opt out. */
+const EDGE_ENDPOINT_DEAD_ZONE_FRACTION = 0.2;
 
 export function pickEdgeAtPosition(
   viewportX: number,
@@ -197,6 +211,7 @@ export function pickEdgeAtPosition(
   cfg: TessellationConfig,
   cells: [number, number][],
   cellSet?: Set<number>,
+  deadZone = false,
 ): FieldEdge | null {
   const proj = makeProjection(cfg);
   const cell = proj.screenToGrid(viewportX, viewportY);
@@ -232,7 +247,9 @@ export function pickEdgeAtPosition(
 
       const seg = getSharedEdgeSegment([cx, cy], [nx, ny], cfg);
       if (!seg) continue;
-      const distSq = distToSegmentSq(viewportX, viewportY, seg.v0.x, seg.v0.y, seg.v1.x, seg.v1.y);
+      const hit = closestPointOnSegment(viewportX, viewportY, seg.v0.x, seg.v0.y, seg.v1.x, seg.v1.y);
+      if (deadZone && (hit.t < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || hit.t > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION)) continue;
+      const distSq = hit.distSq;
       if (distSq < thresholdSq && distSq < bestDist) {
         bestDist = distSq;
         bestKey = key;

@@ -108,7 +108,7 @@ export class PostEditController extends BaseController {
     }
     this.renderer.updateTeleportPreview(null, 0, 0);
 
-    const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
+    const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     this.renderer.updateHover(edge);
 
     const nodeMap = this.getNodeMap(state.nodes);
