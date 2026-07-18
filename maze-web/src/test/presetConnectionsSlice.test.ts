@@ -58,12 +58,34 @@ describe("mazeStore preset connections", () => {
     expect(s.autoLockedNodes.has("0,0")).toBe(true);
   });
 
-  it("applyPresetConnectionsReset resets an existing entry to undefined", () => {
+  it("applyPresetConnectionsReset clears an existing entry when default is undefined", () => {
     useMazeStore.setState({
       presetConnections: new Map([["0,0-1,0", { from: [0, 0], to: [1, 0], state: "wall", source: "user" }]]),
     });
     useMazeStore.getState().applyPresetConnectionsReset("0,0-1,0");
-    expect(useMazeStore.getState().presetConnections.get("0,0-1,0")?.state).toBe("undefined");
+    expect(useMazeStore.getState().presetConnections.has("0,0-1,0")).toBe(false);
+  });
+
+  it("applyPresetConnectionsReset materializes the current default as a source:\"default\" entry", () => {
+    useMazeStore.setState({
+      defaultEdgeState: "wall",
+      presetConnections: new Map([["0,0-1,0", { from: [0, 0], to: [1, 0], state: "passage", source: "user" }]]),
+    });
+    useMazeStore.getState().applyPresetConnectionsReset("0,0-1,0");
+    expect(useMazeStore.getState().presetConnections.get("0,0-1,0")).toMatchObject({ state: "wall", source: "default" });
+  });
+
+  it("applyPresetConnectionsReset recomputes autoLockedNodes when the materialized default fully surrounds a cell", () => {
+    // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
+    useMazeStore.setState({
+      tessellationConfig: { type: "square", width: 2, height: 1 },
+      defaultEdgeState: "wall",
+      presetConnections: new Map([["-1,0-0,0", { from: [-1, 0], to: [0, 0], state: "undefined", source: "user" }]]),
+    });
+    useMazeStore.getState().applyPresetConnectionsReset("-1,0-0,0");
+    const s = useMazeStore.getState();
+    expect(s.autoLockedNodes.has("-1,0")).toBe(true);
+    expect(s.autoLockedNodes.has("0,0")).toBe(true);
   });
 
   it("applyPresetConnectionsReset is no-op for missing key", () => {

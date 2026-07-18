@@ -130,10 +130,16 @@ describe("applyTool — passage", () => {
 });
 
 describe("applyTool — reset", () => {
-  it("sets edge to undefined state with user source", () => {
+  it("clears the edge entirely when the default is undefined", () => {
     const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "reset");
-    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "undefined", source: "user" });
+    expect(result.has(edgeKey([0, 0], [1, 0]))).toBe(false);
+  });
+
+  it("materializes the current default as a source:\"default\" entry", () => {
+    const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
+    const result = applyTool(connections, fe(0, 0, 1, 0), "reset", "wall");
+    expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "wall", source: "default" });
   });
 });
 

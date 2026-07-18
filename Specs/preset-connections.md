@@ -24,10 +24,14 @@ Teleports are a separate concept — see "Preset teleports" below — not part o
 
 Each `PresetConnectionEntry` carries a `source: "user" | "default"` field:
 
-- `"user"` — set explicitly by the user via a tool (including the `reset` / `undefined` tool)
-- `"default"` — injected automatically by the active `defaultEdgeState`
+- `"user"` — set explicitly by the user via a tool
+- `"default"` — injected automatically by the active `defaultEdgeState`, including by the `reset` tool/RMB (see below)
 
-When the user applies the `reset` tool or RMB to any edge (regardless of `defaultEdgeState`), the edge is always set to `{ state: "undefined", source: "user" }`. This pins it as explicitly undecided, overriding the current default.
+Applying the `reset` tool or RMB clears the edge's explicit user override so it goes back to tracking the current default, instead of pinning it to `"undefined"`:
+- If `defaultEdgeState` is `"undefined"`, the entry is removed from the map entirely.
+- Otherwise, the entry is set to `{ state: defaultEdgeState, source: "default" }` — same as if no user override had ever been set. Because `source` is now `"default"`, a later `defaultEdgeState` change will recompute this entry along with every other default entry (see "Default edge state" below), so the edge keeps following the default going forward.
+
+There is no way to explicitly pin an edge to `"undefined"` when `defaultEdgeState` is not `"undefined"` — `reset` always means "go back to default," not "force undecided."
 
 ## Canonical edge key
 
@@ -152,7 +156,7 @@ When `defaultEdgeState` changes, `_applyDefaultEdgeState` is called:
 1. All existing `source: "default"` entries are removed.
 2. If new state is not `"undefined"`, default entries are added for all interior edges that have no `source: "user"` entry (including edges with `state: "undefined", source: "user"` — those are intentionally excluded from the default).
 
-Applying the `reset` tool or RMB always sets `{ state: "undefined", source: "user" }` regardless of `defaultEdgeState`. This explicitly pins the edge as undecided and prevents the default from applying to it.
+Applying the `reset` tool or RMB clears the edge's user override and re-materializes it as the current default (see "Entry source" above) — it does not pin the edge as explicitly undecided.
 
 Changing `defaultEdgeState` also triggers `_recomputeAutoLock` if auto-lock is enabled.
 
@@ -217,7 +221,7 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 |---|---|---|
 | `wall` | Edges | Sets edge to `wall` |
 | `passage` | Edges | Sets edge to `passage` |
-| `reset` | Edges | Sets edge to `{ state: "undefined", source: "user" }` — explicitly undecided, overrides default |
+| `reset` | Edges | Clears the edge's user override, re-materializing it as the current default (`{ state: "undefined" }`/deleted if `defaultEdgeState` is `"undefined"`) |
 | `one_way` | Edges | Cycles one-way direction |
 | `set_start` | Vertex | Sets `presetStart` to clicked cell (when no vertex element is under the cursor). See "Shared vertex editing mode" above for drag/right-click, which apply to all vertex elements regardless of active vertex tool. |
 | `set_finish` | Vertex | Sets `presetFinish` to clicked cell (when no vertex element is under the cursor). See "Shared vertex editing mode" above for drag/right-click, which apply to all vertex elements regardless of active vertex tool. |
@@ -228,7 +232,7 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `full_lock` | Generation | Locks node both in and out (`"both"`) |
 | `gen_source` | Generation | Toggles `presetGenSource` on clicked cell (click same cell to clear) |
 
-Right-click on an edge sets it to `{ state: "undefined", source: "user" }` regardless of `defaultEdgeState`, for any tool that falls through to edge picking (i.e. not `set_start`/`set_finish`/`gen_source`/lock/teleport tools, each of which gives right-click its own tool-specific meaning — see their rows above).
+Right-click on an edge clears its user override and re-materializes it as the current default (same as the `reset` tool — see "Entry source" above), for any tool that falls through to edge picking (i.e. not `set_start`/`set_finish`/`gen_source`/lock/teleport tools, each of which gives right-click its own tool-specific meaning — see their rows above).
 
 ## Node locking
 

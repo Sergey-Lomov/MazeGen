@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, resolveCells, edgeKey, canonicalize, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../pixi/fieldEditUtils";
+import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, resolveCells, edgeKey, canonicalize, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../pixi/fieldEditUtils";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";
@@ -28,7 +28,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool, presetTeleportPendingFrom: null }),
 
   applyPresetConnectionsTool: (key, from, to) => set((state) => {
-    const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool);
+    const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool, state.defaultEdgeState);
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
   }),
 
@@ -62,8 +62,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   applyPresetConnectionsReset: (key) => set((state) => {
     const existing = state.presetConnections.get(key);
     if (!existing) return {};
-    const presetConnections = new Map(state.presetConnections);
-    presetConnections.set(key, { from: existing.from, to: existing.to, state: "undefined", source: "user" });
+    const presetConnections = materializeReset(state.presetConnections, { key, from: existing.from, to: existing.to }, state.defaultEdgeState);
     return withRecomputedAutoLock(state, { presetConnections });
   }),
 

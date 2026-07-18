@@ -297,16 +297,35 @@ export function computeAutoLockedNodes(
   return result;
 }
 
+/**
+ * Clears an edge's explicit user override so it goes back to tracking the current default:
+ * deletes the entry if `defaultEdgeState` is `"undefined"`, otherwise materializes it as a
+ * `source: "default"` entry (so a later default change recomputes it like any other default edge).
+ */
+export function materializeReset(
+  connections: Map<string, PresetConnectionEntry>,
+  edge: FieldEdge,
+  defaultEdgeState: PresetConnectionClientState,
+): Map<string, PresetConnectionEntry> {
+  const next = new Map(connections);
+  if (defaultEdgeState === "undefined") {
+    next.delete(edge.key);
+  } else {
+    next.set(edge.key, { from: edge.from, to: edge.to, state: defaultEdgeState, source: "default" });
+  }
+  return next;
+}
+
 export function applyTool(
   connections: Map<string, PresetConnectionEntry>,
   edge: FieldEdge,
   tool: PresetConnectionTool,
+  defaultEdgeState: PresetConnectionClientState = "undefined",
 ): Map<string, PresetConnectionEntry> {
-  const next = new Map(connections);
   if (tool === "reset") {
-    next.set(edge.key, { from: edge.from, to: edge.to, state: "undefined", source: "user" });
-    return next;
+    return materializeReset(connections, edge, defaultEdgeState);
   }
+  const next = new Map(connections);
   if (tool === "one_way") {
     const current = connections.get(edge.key);
     if (current?.state === "one_way_forward") {
