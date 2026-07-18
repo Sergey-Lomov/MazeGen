@@ -444,19 +444,22 @@ function rootsComparedFullPayload(from: bigint, to: bigint, rootOfFrom: bigint, 
   return concatBytes([u64le(from), u64le(to), u64le(rootOfFrom), u64le(rootOfTo)]);
 }
 
-function presetUnionsAppliedPayload(pairs: [bigint, bigint][]): Uint8Array {
-  return concatBytes([u32le(pairs.length), ...pairs.flatMap(([a, b]) => [u64le(a), u64le(b)])]);
+function presetUnionsAppliedPayload(pairs: [bigint, bigint, "basic" | "teleport"][]): Uint8Array {
+  return concatBytes([
+    u32le(pairs.length),
+    ...pairs.flatMap(([a, b, kind]) => [u64le(a), u64le(b), new Uint8Array([kind === "teleport" ? 1 : 0])]),
+  ]);
 }
 
 // Tree shape used by several tests below:
 //   root (0)
-//     -> PresetUnionsApplied([(1,2)]) (1)
+//     -> PresetUnionsApplied([(1,2,basic)]) (1)
 //     -> "edge 1" scope (2) -> EdgeSelected(1,3) (3) -> RootsCompared(1,3) (4) -> EdgeAdded(1,3) (5) -> SetsMerged(1,3) (6)
 //     -> "edge 2" scope (7) -> EdgeSelected(3,1) (8) -> RootsCompared(1,1) (9) -> EdgeRejected (10)
 function buildKruskalTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-    { parent: 0, firstChild: null, nextSibling: 2, tag: KRUSKAL_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n]]) },
+    { parent: 0, firstChild: null, nextSibling: 2, tag: KRUSKAL_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "basic"]]) },
     { parent: 0, firstChild: 3, nextSibling: 7, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
     { parent: 2, firstChild: null, nextSibling: 4, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: rootsComparedPayload(1n, 3n) },
     { parent: 2, firstChild: null, nextSibling: 5, tag: KRUSKAL_TAG.ROOTS_COMPARED, payloadBytes: rootsComparedFullPayload(1n, 3n, 1n, 3n) },
@@ -508,8 +511,11 @@ describe("decodeKruskalEvent", () => {
   });
 
   it("decodes PresetUnionsApplied (variable-length)", () => {
-    expect(decodeKruskalEvent(KRUSKAL_TAG.PRESET_UNIONS_APPLIED, presetUnionsAppliedPayload([[1n, 2n], [4n, 5n]]))).toEqual({
-      kind: "PresetUnionsApplied", pairs: [[1n, 2n], [4n, 5n]],
+    expect(decodeKruskalEvent(
+      KRUSKAL_TAG.PRESET_UNIONS_APPLIED,
+      presetUnionsAppliedPayload([[1n, 2n, "basic"], [4n, 5n, "teleport"]]),
+    )).toEqual({
+      kind: "PresetUnionsApplied", pairs: [[1n, 2n, "basic"], [4n, 5n, "teleport"]],
     });
   });
 
@@ -547,8 +553,13 @@ describe("applyKruskal", () => {
     const tape = buildKruskalTape();
 
     const step0 = applyKruskal(tape, 0); // EdgeAdded(1,3)
-    expect(step0.edges).toEqual([{ from: 1n, to: 3n }, { from: 3n, to: 1n }]);
-    // dsuGroups starts from PresetUnionsApplied([(1,2)]) then EdgeAdded's own find(1)/find(3)
+    // PresetUnionsApplied([(1,2,basic)]) seeds edges with its own directed pair (GitHub issue
+    // #193) before EdgeAdded(1,3)'s own bidirectional contribution.
+    expect(step0.edges).toEqual([
+      { from: 1n, to: 2n, kind: "basic" },
+      { from: 1n, to: 3n }, { from: 3n, to: 1n },
+    ]);
+    // dsuGroups starts from PresetUnionsApplied([(1,2,basic)]) then EdgeAdded's own find(1)/find(3)
     // calls register both endpoints (no union yet from EdgeAdded alone).
     expect(step0.dsuGroups.get(1n)).toBe(1n);
     expect(step0.dsuGroups.get(2n)).toBe(1n);
@@ -567,6 +578,21 @@ describe("applyKruskal", () => {
   it("throws when targetStep is out of range", () => {
     const tape = buildKruskalTape();
     expect(() => applyKruskal(tape, 2)).toThrow(/out of range/);
+  });
+
+  it("GitHub issue #193: seeds a preset teleport's PresetUnionsApplied pair into edges with kind \"teleport\"", () => {
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: KRUSKAL_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "teleport"]]) },
+      { parent: 0, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
+      { parent: 2, firstChild: null, nextSibling: 4, tag: KRUSKAL_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
+      { parent: 2, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(3n, 4n) },
+    ]);
+    const result = applyKruskal(tape, 0);
+    expect(result.edges).toEqual([
+      { from: 1n, to: 2n, kind: "teleport" },
+      { from: 3n, to: 4n }, { from: 4n, to: 3n },
+    ]);
   });
 
   it("without any PresetUnionsApplied event, dsuGroups starts from singleton sets", () => {

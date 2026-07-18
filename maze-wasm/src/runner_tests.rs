@@ -281,6 +281,7 @@ mod build_generate_result_tests {
 mod merge_generation_and_qc_tapes_tests {
     use super::super::merge_generation_and_qc_tapes;
     use maze_core::event_log::{EncodedTape, EventedEventKind, EventLog, TapeSource};
+    use maze_core::graph::EdgeKind;
     use maze_core::quality_control::QcEvent;
 
     fn generation_tape_source() -> TapeSource {
@@ -291,7 +292,7 @@ mod merge_generation_and_qc_tapes_tests {
 
     fn qc_tape_with_one_event() -> EncodedTape {
         let mut log = EventLog::new();
-        log.emit(QcEvent::PresetSeeded { edges: vec![(0, 1, false)] });
+        log.emit(QcEvent::PresetSeeded { edges: vec![(0, 1, EdgeKind::Basic)] });
         log.finish().encode()
     }
 

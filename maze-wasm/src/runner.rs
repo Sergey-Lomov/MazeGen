@@ -147,8 +147,12 @@ pub fn run_generate<T: Tessellation + 'static>(
     // scrubbing a large preset setup costs a single step.
     if config.qc_experiment {
         if let Some(log) = qc_log.as_mut() {
-            let edges: Vec<(maze_core::ids::NodeId, maze_core::ids::NodeId, bool)> =
-                graph.edges().map(|e| (e.from, e.to, false)).collect();
+            // One tuple per actual directed graph edge, real `EdgeKind` included (GitHub issue
+            // #193's follow-up) — this used to hardcode `false`/no kind at all, so every preset
+            // edge (teleport or one-way) replayed in the debug view as a plain bidirectional
+            // passage regardless of what it actually was.
+            let edges: Vec<(maze_core::ids::NodeId, maze_core::ids::NodeId, maze_core::graph::EdgeKind)> =
+                graph.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
             if !edges.is_empty() {
                 log.emit(maze_core::quality_control::QcEvent::PresetSeeded { edges });
             }

@@ -1,5 +1,6 @@
-use maze_core::generation::{generate_maze, generate_kruskal, build_preset_state, KruskalEvent, PresetConnection, PresetConnectionState};
+use maze_core::generation::{generate_maze, generate_kruskal, build_preset_state, KruskalEvent, PresetConnection, PresetConnectionState, TeleportDirection};
 use maze_core::event_log::{DebugEvent, EncodeEventPayload, EventLog, TAG_SCOPE};
+use maze_core::graph::EdgeKind;
 use maze_core::validation::is_connected;
 use maze_core::space::SquarePoint;
 use super::helpers::*;
@@ -141,7 +142,11 @@ fn kruskal_preset_connection_emits_preset_unions_applied_before_the_main_loop() 
     assert_eq!(preset_unions.len(), 1, "exactly one PresetUnionsApplied event must be emitted");
     match preset_unions[0] {
         KruskalEvent::PresetUnionsApplied(pairs) => {
-            assert_eq!(pairs, &[(a.min(b), a.max(b))], "PresetUnionsApplied must carry the preset-connected pair");
+            // A Passage preset builds both directions on the graph, so both directed edges are
+            // carried here (BTreeSet-sorted by `from`, ascending).
+            let mut expected = vec![(a, b, EdgeKind::Basic), (b, a, EdgeKind::Basic)];
+            expected.sort();
+            assert_eq!(pairs, &expected, "PresetUnionsApplied must carry both directed preset edges with their EdgeKind");
         }
         _ => unreachable!(),
     }
@@ -157,6 +162,62 @@ fn kruskal_preset_connection_emits_preset_unions_applied_before_the_main_loop() 
             }
             _ => {}
         }
+    }
+}
+
+#[test]
+fn kruskal_preset_teleport_emits_preset_unions_applied_with_teleport_kind() {
+    // GitHub issue #193: a preset teleport pre-merged before generation starts must be
+    // distinguishable from a preset passage in PresetUnionsApplied's payload.
+    let (mut graph, field, _start) = build(3, 3);
+    let presets = vec![PresetConnection {
+        from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
+    }];
+    let preset_state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y });
+    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+
+    let mut log: EventLog<KruskalEvent> = EventLog::new();
+    generate_kruskal(&mut graph, &field, 1, &preset_state, Some(&mut log));
+    let tape = log.finish();
+
+    let preset_unions: Vec<&KruskalEvent> = tape.iter().filter(|e| matches!(e, KruskalEvent::PresetUnionsApplied(_))).collect();
+    assert_eq!(preset_unions.len(), 1, "exactly one PresetUnionsApplied event must be emitted");
+    match preset_unions[0] {
+        KruskalEvent::PresetUnionsApplied(pairs) => {
+            // TwoWay builds both directions on the graph, so both directed edges are carried here.
+            let mut expected = vec![(a, b, EdgeKind::Teleport), (b, a, EdgeKind::Teleport)];
+            expected.sort();
+            assert_eq!(pairs, &expected, "PresetUnionsApplied must carry both directed preset teleport edges with EdgeKind::Teleport");
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn kruskal_one_way_preset_teleport_emits_only_the_single_directed_edge() {
+    // GitHub issue #193: direction must not be canonicalized away — a one-way preset teleport
+    // exists as a single directed graph edge, and PresetUnionsApplied must reflect exactly that
+    // direction, not fabricate a reverse edge.
+    let (mut graph, field, _start) = build(3, 3);
+    let presets = vec![PresetConnection {
+        from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
+    }];
+    let preset_state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y });
+    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+
+    let mut log: EventLog<KruskalEvent> = EventLog::new();
+    generate_kruskal(&mut graph, &field, 1, &preset_state, Some(&mut log));
+    let tape = log.finish();
+
+    let preset_unions: Vec<&KruskalEvent> = tape.iter().filter(|e| matches!(e, KruskalEvent::PresetUnionsApplied(_))).collect();
+    assert_eq!(preset_unions.len(), 1, "exactly one PresetUnionsApplied event must be emitted");
+    match preset_unions[0] {
+        KruskalEvent::PresetUnionsApplied(pairs) => {
+            assert_eq!(pairs, &[(a, b, EdgeKind::Teleport)], "Forward-only preset teleport must carry exactly the a->b direction, no fabricated reverse");
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -339,20 +400,23 @@ fn kruskal_event_payload_round_trips_for_every_variant() {
     assert_eq!(u64le(&buf, 0), 13);
     assert_eq!(u64le(&buf, 8), 14);
 
-    // PresetUnionsApplied: u32 LE count + that many (NodeId, NodeId) pairs. `.type_id()` is
-    // asserted here specifically (unlike every other variant, whose tag is already exercised via
+    // PresetUnionsApplied: u32 LE count + that many (NodeId, NodeId, EdgeKind) triples, the
+    // trailing byte being the teleport flag (GitHub issue #193). `.type_id()` is asserted here
+    // specifically (unlike every other variant, whose tag is already exercised via
     // kruskal_event_type_ids_are_unique_and_nonzero's real generation run) because that test uses
     // empty_preset() — PresetUnionsApplied is never emitted by a preset-free run (see
     // kruskal_no_preset_connections_emits_no_preset_unions_applied), so its `type_id()` arm would
     // otherwise never execute under any test.
-    let event = KruskalEvent::PresetUnionsApplied(vec![(15, 16), (17, 18)]);
+    let event = KruskalEvent::PresetUnionsApplied(vec![(15, 16, EdgeKind::Basic), (17, 18, EdgeKind::Teleport)]);
     assert_eq!(event.type_id(), 6, "PresetUnionsApplied's wire tag must be PRESET_UNIONS_APPLIED (6)");
     let mut buf = Vec::new();
     event.encode_payload(&mut buf);
-    assert_eq!(buf.len(), 4 + 2 * 16);
+    assert_eq!(buf.len(), 4 + 2 * 17);
     assert_eq!(u32::from_le_bytes(buf[0..4].try_into().unwrap()), 2);
     assert_eq!(u64le(&buf, 4), 15);
     assert_eq!(u64le(&buf, 12), 16);
-    assert_eq!(u64le(&buf, 20), 17);
-    assert_eq!(u64le(&buf, 28), 18);
+    assert_eq!(buf[20], 0, "Basic must encode as byte 0");
+    assert_eq!(u64le(&buf, 21), 17);
+    assert_eq!(u64le(&buf, 29), 18);
+    assert_eq!(buf[37], 1, "Teleport must encode as byte 1");
 }

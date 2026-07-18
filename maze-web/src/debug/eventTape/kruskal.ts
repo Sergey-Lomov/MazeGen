@@ -21,7 +21,7 @@ export type KruskalEvent =
   | { kind: "EdgeRejected" }
   | { kind: "EdgeAdded"; from: bigint; to: bigint; bidirectional: boolean }
   | { kind: "SetsMerged"; rootA: bigint; rootB: bigint }
-  | { kind: "PresetUnionsApplied"; pairs: [bigint, bigint][] };
+  | { kind: "PresetUnionsApplied"; pairs: [bigint, bigint, "basic" | "teleport"][] };
 
 /** The merged set's new root after a `SetsMerged` event — mirrors
  *  `KruskalEvent::merged_root` in `maze-core/src/generation/kruskal.rs`. A function, not a field
@@ -79,13 +79,15 @@ export function decodeKruskalEvent(tag: number, bytes: Uint8Array): KruskalEvent
       }
       const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       const count = dv.getUint32(0, true);
-      const expected = 4 + count * 16;
+      const expected = 4 + count * 17;
       if (bytes.byteLength !== expected) {
-        throw new Error(`KruskalEvent: PresetUnionsApplied payload_len ${bytes.byteLength} does not match 4 + count*16 (count=${count}, expected ${expected})`);
+        throw new Error(`KruskalEvent: PresetUnionsApplied payload_len ${bytes.byteLength} does not match 4 + count*17 (count=${count}, expected ${expected})`);
       }
-      const pairs: [bigint, bigint][] = [];
+      const pairs: [bigint, bigint, "basic" | "teleport"][] = [];
       for (let i = 0; i < count; i++) {
-        pairs.push([readNodeId(bytes, 4 + i * 16), readNodeId(bytes, 4 + i * 16 + 8)]);
+        const base = 4 + i * 17;
+        const kind = bytes[base + 16] !== 0 ? "teleport" : "basic";
+        pairs.push([readNodeId(bytes, base), readNodeId(bytes, base + 8), kind]);
       }
       return { kind: "PresetUnionsApplied", pairs };
     }
@@ -176,7 +178,7 @@ class KruskalDsu {
  *  empty pairs list — see `KruskalEvent::PresetUnionsApplied`'s doc comment). A plain linear scan
  *  from the start, bounded by the position of the first scope node (so it never walks into
  *  per-edge event data), since this event is trace-only and not part of `mutatingKruskalEventsWithIndex`'s scan. */
-function findPresetUnions(tape: ParsedTape): [bigint, bigint][] {
+function findPresetUnions(tape: ParsedTape): [bigint, bigint, "basic" | "teleport"][] {
   for (let i = 0; i < tape.nodeCount; i++) {
     const record = nodeAt(tape, i);
     if (record.tag === TAG_SCOPE) {
@@ -216,7 +218,15 @@ export interface KruskalApplyResult {
  *  `applyRecursiveBacktracker`'s handling of the same field. `dsuGroups` starts from
  *  `PresetUnionsApplied`'s pairs (if any — see `findPresetUnions`), then folds in every `SetsMerged`
  *  up to `targetStep` via `KruskalDsu.union(rootA, rootB)`, mirroring the core's own
- *  `union_by_min` — so a replayed root always equals what the core actually computed. */
+ *  `union_by_min` — so a replayed root always equals what the core actually computed.
+ *
+ *  `PresetUnionsApplied`'s own pairs are also seeded into `edges` up front (GitHub issue #193),
+ *  each carrying its real `kind` (`"basic"`/`"teleport"`) — those preset connections were
+ *  pre-merged into the graph before generation started and produced no corresponding `EdgeAdded`
+ *  event, so without this they'd never appear in the reconstructed edge list at all (a preset
+ *  teleport rendered as entirely absent, not just as a plain passage). Only seeded once, from
+ *  `from` when resuming (never re-added on top of an already-seeded `from.edges`) or from the
+ *  tape when starting fresh. */
 export function applyKruskal(tape: ParsedTape, targetStep: number, from?: KruskalApplyResult, startIndex = 0, endIndex?: number): KruskalApplyResult {
   validateStepShape("targetStep", targetStep);
   if (from) {
@@ -239,13 +249,20 @@ export function applyKruskal(tape: ParsedTape, targetStep: number, from?: Kruska
   }
 
   const dsu = new KruskalDsu();
+  const edges = from ? [...from.edges] : [];
   if (from) {
     for (const [id, root] of from.dsuGroups) dsu.seed(id, root);
   } else {
-    for (const [a, b] of findPresetUnions(tape)) dsu.union(a, b);
+    for (const [a, b, kind] of findPresetUnions(tape)) {
+      dsu.union(a, b);
+      // One tuple per actual directed graph edge (kruskal.rs no longer canonicalizes direction —
+      // a two-way preset already yields both (a,b) and (b,a) as separate pairs; a one-way preset
+      // yields only the one direction that really exists), so push exactly one edge per pair here,
+      // never a fabricated reverse.
+      edges.push({ from: a, to: b, kind });
+    }
   }
 
-  const edges = from ? [...from.edges] : [];
   for (const { event } of events) {
     if (event.kind === "EdgeAdded") {
       edges.push({ from: event.from, to: event.to });

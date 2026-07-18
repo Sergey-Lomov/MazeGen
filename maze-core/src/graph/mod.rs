@@ -18,7 +18,7 @@ pub struct Node {
     pub id: NodeId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EdgeKind {
     Basic,
     Teleport,

@@ -58,10 +58,10 @@ function edgeAddedPayload(from: bigint, to: bigint, bidirectional = true): Uint8
   return concatBytes([u64le(from), u64le(to), new Uint8Array([bidirectional ? 1 : 0])]);
 }
 
-function presetSeededPayload(edges: [bigint, bigint, boolean][]): Uint8Array {
+function presetSeededPayload(edges: [bigint, bigint, "basic" | "teleport"][]): Uint8Array {
   return concatBytes([
     u32le(edges.length),
-    ...edges.map(([from, to, bidirectional]) => concatBytes([u64le(from), u64le(to), new Uint8Array([bidirectional ? 1 : 0])])),
+    ...edges.map(([from, to, kind]) => concatBytes([u64le(from), u64le(to), new Uint8Array([kind === "teleport" ? 1 : 0])])),
   ]);
 }
 
@@ -251,7 +251,7 @@ describe("decodeQcEvent", () => {
     expect(() => decodeQcEvent(QC_TAG.START_SET, new Uint8Array(3))).toThrow(/payload_len/);
   });
 
-  it("decodes PresetSeeded (count + per-edge from/to/bidirectional, GitHub issue #173)", () => {
+  it("decodes PresetSeeded (count + per-edge from/to/kind, GitHub issues #173/#193)", () => {
     const bytes = concatBytes([
       u32le(2),
       u64le(1n), u64le(2n), new Uint8Array([0]),
@@ -260,8 +260,8 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.PRESET_SEEDED, bytes)).toEqual({
       kind: "PresetSeeded",
       edges: [
-        { from: 1n, to: 2n, bidirectional: false },
-        { from: 3n, to: 4n, bidirectional: true },
+        { from: 1n, to: 2n, kind: "basic" },
+        { from: 3n, to: 4n, kind: "teleport" },
       ],
     });
   });
@@ -422,11 +422,11 @@ describe("mutatingQcEvents / applyQc", () => {
     expect(result.removedEdges).toEqual([{ from: 1n, to: 2n }]);
   });
 
-  it("PresetSeeded applies every preset edge in one step, directed and bidirectional (GitHub issue #173)", () => {
-    // root (0) -> PresetSeeded([(1,2,false), (3,4,true)]) (1) -> DirectedEdgeAdded(5,6) (2)
+  it("PresetSeeded applies every preset edge in one step, one entry per directed edge with its own kind (GitHub issues #173/#193)", () => {
+    // root (0) -> PresetSeeded([(1,2,basic), (3,4,teleport), (4,3,teleport)]) (1) -> DirectedEdgeAdded(5,6) (2)
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.PRESET_SEEDED, payloadBytes: presetSeededPayload([[1n, 2n, false], [3n, 4n, true]]) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.PRESET_SEEDED, payloadBytes: presetSeededPayload([[1n, 2n, "basic"], [3n, 4n, "teleport"], [4n, 3n, "teleport"]]) },
       { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.DIRECTED_EDGE_ADDED, payloadBytes: concatBytes([u64le(5n), u64le(6n)]) },
     ]);
 
@@ -434,15 +434,15 @@ describe("mutatingQcEvents / applyQc", () => {
     const afterSeed = applyQc(tape, 0, undefined, 0);
     expect(afterSeed.edges).toEqual([
       { from: 1n, to: 2n, kind: "basic" },
-      { from: 3n, to: 4n, kind: "basic" },
-      { from: 4n, to: 3n, kind: "basic" },
+      { from: 3n, to: 4n, kind: "teleport" },
+      { from: 4n, to: 3n, kind: "teleport" },
     ]);
 
     const afterNext = applyQc(tape, 1, undefined, 0);
     expect(afterNext.edges).toEqual([
       { from: 1n, to: 2n, kind: "basic" },
-      { from: 3n, to: 4n, kind: "basic" },
-      { from: 4n, to: 3n, kind: "basic" },
+      { from: 3n, to: 4n, kind: "teleport" },
+      { from: 4n, to: 3n, kind: "teleport" },
       { from: 5n, to: 6n, kind: "basic" },
     ]);
   });

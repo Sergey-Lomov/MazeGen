@@ -98,7 +98,7 @@ export type QcEvent =
   | { kind: "TeleportRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "StartSetProposed"; id: bigint }
   | { kind: "FinishSetProposed"; id: bigint }
-  | { kind: "PresetSeeded"; edges: { from: bigint; to: bigint; bidirectional: boolean }[] };
+  | { kind: "PresetSeeded"; edges: { from: bigint; to: bigint; kind: "basic" | "teleport" }[] };
 
 /** Reads the `HashMap<String, Vec<Vec<[u32; 2]>>>` wire shape `write_str_keyed_edge_pairs`
  *  produces (`IssuePayload::InvalidLoop`'s `edges`). */
@@ -330,13 +330,13 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
     case QC_TAG.PRESET_SEEDED: {
       const count = readU32(bytes, 0);
       expectLen(tag, bytes, 4 + count * 17);
-      const edges: { from: bigint; to: bigint; bidirectional: boolean }[] = [];
+      const edges: { from: bigint; to: bigint; kind: "basic" | "teleport" }[] = [];
       for (let i = 0; i < count; i++) {
         const offset = 4 + i * 17;
         edges.push({
           from: readNodeId(bytes, offset),
           to: readNodeId(bytes, offset + 8),
-          bidirectional: bytes[offset + 16] !== 0,
+          kind: bytes[offset + 16] !== 0 ? "teleport" : "basic",
         });
       }
       return { kind: "PresetSeeded", edges };
@@ -505,9 +505,11 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
         finish = event.id;
         break;
       case "PresetSeeded":
+        // One tuple per actual directed graph edge (GitHub issue #193's follow-up) — a
+        // bidirectional preset already yields two separate entries here, so no reverse is
+        // fabricated on top.
         for (const edge of event.edges) {
-          add(edge.from, edge.to, "basic");
-          if (edge.bidirectional) add(edge.to, edge.from, "basic");
+          add(edge.from, edge.to, edge.kind);
         }
         break;
       default:

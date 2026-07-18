@@ -875,7 +875,7 @@ pub enum KruskalEvent {
     EdgeRejected,
     EdgeAdded { from: NodeId, to: NodeId, bidirectional: bool },
     SetsMerged { root_a: NodeId, root_b: NodeId },
-    PresetUnionsApplied(Vec<(NodeId, NodeId)>),
+    PresetUnionsApplied(Vec<(NodeId, NodeId, EdgeKind)>),
 }
 ```
 
@@ -926,8 +926,11 @@ exists specifically to pin down, since a byte-offset/field-order mistake here si
 wrong narration rather than a crash (this happened once during development — a wire-tag-uniqueness
 test alone did not catch it, only a byte-level round-trip test did). `EdgeAdded` is two back-to-back
 `NodeId`s plus a 1-byte `bidirectional` flag (17 bytes). `EdgeRejected` carries no payload (0
-bytes). `EdgesShuffled`/`PresetUnionsApplied` (the variable-length variants) are a `u32` LE length
-prefix followed by that many `(NodeId, NodeId)` pairs.
+bytes). `EdgesShuffled` (variable-length) is a `u32` LE length prefix followed by that many
+`(NodeId, NodeId)` pairs; `PresetUnionsApplied` (also variable-length) is a `u32` LE length prefix
+followed by that many `(NodeId, NodeId, u8)` triples, the trailing byte being 1 for
+`EdgeKind::Teleport` and 0 for `EdgeKind::Basic` (GitHub issue #193) — mirrors `EdgeAdded`'s own
+trailing-flag-byte convention.
 
 ### `PresetUnionsApplied` — seeding replay's initial DSU state
 
@@ -937,11 +940,26 @@ generation) — but those unions happen before any event-log scope opens, so the
 per-pair `SetsMerged` a replay consumer could fold in to reconstruct the same starting state. Without
 `PresetUnionsApplied`, a from-scratch web replay would show every preset-connected node as its own
 singleton DSU group at step 0, when in reality they're already merged. Emitted once, as a single
-event directly under the root scope (before the first `"edge N"` scope) — a `Vec<(NodeId, NodeId)>`
-of the preset-connected pairs, analogous to `EdgesShuffled`'s shape. Not emitted at all (not even
-with an empty `pairs` list) when there are no preset connections, so a replay consumer doesn't have
-to special-case "empty" vs. "absent". Trace-only (`is_mutating()` is `false`) — it seeds replay's
-initial state rather than describing a step-by-step mutation.
+event directly under the root scope (before the first `"edge N"` scope) — a
+`Vec<(NodeId, NodeId, EdgeKind)>` of the preset-connected pairs, analogous to `EdgesShuffled`'s
+shape. Not emitted at all (not even with an empty `pairs` list) when there are no preset
+connections, so a replay consumer doesn't have to special-case "empty" vs. "absent". Trace-only
+(`is_mutating()` is `false`) — it seeds replay's initial state rather than describing a step-by-step
+mutation.
+
+**Real direction and `EdgeKind`, not canonicalized** (GitHub issue #193): each tuple is
+`graph.edges()`'s actual `(from, to, kind)` — never collapsed to `(min, max)` — since a one-way
+preset (basic or teleport) exists as a single directed graph edge at this point, and canonicalizing
+away its direction would misrepresent it as bidirectional once replayed. A bidirectional preset
+(`Passage`, or a `TwoWay` teleport) already exists as two separate directed edges on the graph, so
+it naturally yields two tuples here (one per direction) — no separate direction flag needed.
+Carrying `EdgeKind` is what lets the web replay distinguish a preset teleport from a preset passage
+at all: without it, both looked identical by the time `applyKruskal` reconstructed `edges`, and a
+preset teleport rendered as a plain passage in the debug view. `applyKruskal` (web side, see below)
+seeds these tuples directly into its own `edges` output (each carrying `kind: "basic" | "teleport"`)
+in addition to feeding `KruskalDsu` — before this fix, `PresetUnionsApplied`'s pairs fed only
+`dsuGroups`, so a preset-connected edge (of either kind) never appeared in the reconstructed maze
+view's edge list at all, not just with the wrong kind.
 
 ### Web-side DSU-groups replay
 
@@ -966,7 +984,8 @@ all — instead, `maze-web/src/debug/eventTape.ts` provides a parallel, Kruskal-
   `PresetUnionsApplied` event, if any, which always precedes the first `"edge N"` scope) then folds
   in every `SetsMerged` up to `targetStep`. `dsuGroups: Map<bigint, bigint>` maps every id the
   replay has seen to its current root — two ids sharing a value are in the same connected component
-  of the spanning tree built so far.
+  of the spanning tree built so far. Also seeds `edges` from the same `findPresetUnions` pairs (see
+  `PresetUnionsApplied`'s own section above, GitHub issue #193).
 - `selectDebugMazeView` (`maze-web/src/store/debugSelectors.ts`) dispatches on `arena.algorithmKind`
   between `applyRecursiveBacktracker` and `applyKruskal` (both checkpoint-resumable, #128);
   `DebugMazeView.dsuGroups: Map<number, number> | null` carries the joined (`NodeDto.id`-space)
@@ -1466,3 +1485,51 @@ children are, so only a genuine tree walk gives the right answer for every scope
 - A third top-level source, or any change to `merge_tapes`'s own node-layout/tag-namespacing
   mechanism — #147 only changes which callers reach `merge_tapes` and how many sources they hand
   it, never the function itself
+
+## QC-Only Mode: Preset Seeding (#173)
+
+`qc_experiment` mode (`GenerateConfig.qc_experiment`, `Specs/preset-connections.md`'s "Default edge
+state"/generation-config surface) skips the generation algorithm entirely — the whole point of the
+mode is letting QC/repair freely rework a hand-crafted preset setup, so there is no generation phase
+to instrument, and consequently no generation-phase event tape establishing the preset edges
+`build_preset_state` already wrote into the graph before QC/repair started. Without a dedicated
+event, the web replay engine's first reconstructed frame (`debugStep=0`) would show an empty graph
+even though the real graph QC/repair operates on already has these edges.
+
+`QcEvent::PresetSeeded { edges: Vec<(NodeId, NodeId, EdgeKind)> }` (`maze-core/src/quality_control/event.rs`)
+is the fix: emitted at most once, before QC/repair's first iteration, only in `qc_experiment` mode —
+`maze-wasm/src/runner.rs::run_generate` builds it directly from `graph.edges()` (real direction,
+real `EdgeKind`, no canonicalization — same discipline as Kruskal's `PresetUnionsApplied`, see that
+section above) right after `build_preset_state` runs, before handing the graph to `build_maze`.
+Carries every preset edge as one batch, not one event per edge, so scrubbing through a large preset
+setup costs a single step rather than one step per edge. Not emitted at all when there are no preset
+edges (`edges.is_empty()` short-circuits before the `log.emit` call). Mutating (`is_mutating()` is
+`true`, unlike Kruskal's `PresetUnionsApplied` which is trace-only) — unlike a pre-union DSU seed,
+this genuinely establishes reconstructable graph state a replay consumer must fold into `edges`.
+
+**Wire encoding**: a `u32` LE length prefix followed by that many `(NodeId, NodeId, u8)` triples —
+identical shape to Kruskal's `PresetUnionsApplied` (see that section's wire-encoding note above),
+the trailing byte being 1 for `EdgeKind::Teleport`, 0 for `EdgeKind::Basic`.
+
+**One tuple per actual directed graph edge, not a `bidirectional` flag** (GitHub issue #193): an
+earlier version of this event carried `Vec<(NodeId, NodeId, bool)>` with a `bidirectional` flag
+meant to mirror `BidirectionalEdgeAdded`'s semantics — but the emitter always hardcoded that flag to
+`false` and carried no `EdgeKind` at all, so every preset edge (one-way or two-way, teleport or
+passage) replayed in the debug view as a plain one-way passage regardless of what it actually was.
+Fixed by dropping the flag entirely and emitting one tuple per real directed edge instead: a
+bidirectional preset (`Passage`, or a `TwoWay` teleport) already exists as two separate directed
+graph edges, so it naturally yields two tuples — no separate direction flag needed.
+
+**Web-side folding** (`applyQc`, `maze-web/src/debug/eventTape/qc.ts`): `PresetSeeded`'s `case` folds
+every tuple directly into the running `from:to`-keyed `net` accumulator (`add(edge.from, edge.to,
+edge.kind)`) the same way any other add-mirroring `QcEvent` variant does — no special-casing beyond
+reading `kind` off the tuple instead of hardcoding `"basic"`.
+
+### Out of Scope (#173, beyond #147's own scope)
+
+- A generation-phase equivalent for non-`qc_experiment` runs — every other mode always has a real
+  generation-phase tape to seed replay's initial edges from (Contract A), so this event only ever
+  fires in `qc_experiment` mode
+- Preset node locks, markers (`preset_start`/`preset_finish`/`preset_gen_source`), or blocked-edge
+  state — `PresetSeeded` only carries graph edges, since those are the only preset state the debug
+  replay engine's `edges` output needs to reconstruct

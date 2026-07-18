@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use rand::{Rng, SeedableRng};
 use crate::random::MazeRng;
 use crate::ids::NodeId;
-use crate::graph::Graph;
+use crate::graph::{EdgeKind, Graph};
 use crate::space::{Field, Tessellation};
 use crate::dsu::Dsu;
 use crate::event_log::{DebugEvent, EncodeEventPayload, EventLog};
@@ -59,7 +59,10 @@ pub enum KruskalEvent {
     /// starts from the same initial state the algorithm itself did, rather than every node
     /// starting in its own singleton set. Trace-only: these unions already happened before any
     /// event-log scope opens, so there is no corresponding `SetsMerged` per pair to replay from.
-    PresetUnionsApplied(Vec<(NodeId, NodeId)>),
+    /// Carries each pair's `EdgeKind` (GitHub issue #193) — without it, a preset teleport and a
+    /// preset passage are indistinguishable by the time debug-mode rendering consumes this event,
+    /// making preset teleports invisible during debug playback.
+    PresetUnionsApplied(Vec<(NodeId, NodeId, EdgeKind)>),
 }
 
 impl DebugEvent for KruskalEvent {
@@ -92,8 +95,11 @@ impl KruskalEvent {
 /// `NodeId`s (16 bytes); `RootsCompared` is four back-to-back `NodeId`s, in order `from, to,
 /// root_of_from, root_of_to` (32 bytes); `EdgeAdded` is two back-to-back `NodeId`s plus a 1-byte
 /// `bidirectional` flag (17 bytes); `EdgeRejected` carries no payload (0 bytes — see its variant
-/// doc comment); `EdgesShuffled`/`PresetUnionsApplied` (the variable-length variants) are a `u32`
-/// LE length prefix followed by that many `(NodeId, NodeId)` pairs.
+/// doc comment); `EdgesShuffled` (variable-length) is a `u32` LE length prefix followed by that
+/// many `(NodeId, NodeId)` pairs; `PresetUnionsApplied` (also variable-length) is a `u32` LE
+/// length prefix followed by that many `(NodeId, NodeId, u8)` triples, the trailing byte being 1
+/// for `EdgeKind::Teleport` and 0 for `EdgeKind::Basic` (GitHub issue #193) — mirrors `EdgeAdded`'s
+/// own trailing-flag-byte convention.
 impl EncodeEventPayload for KruskalEvent {
     fn type_id(&self) -> u16 {
         match self {
@@ -138,9 +144,10 @@ impl EncodeEventPayload for KruskalEvent {
             }
             KruskalEvent::PresetUnionsApplied(pairs) => {
                 out.extend_from_slice(&(pairs.len() as u32).to_le_bytes());
-                for (a, b) in pairs {
+                for (a, b, kind) in pairs {
                     out.extend_from_slice(&a.to_le_bytes());
                     out.extend_from_slice(&b.to_le_bytes());
+                    out.push(if *kind == EdgeKind::Teleport { 1 } else { 0 });
                 }
             }
         }
@@ -186,12 +193,15 @@ pub fn generate<T: Tessellation>(
     let mut dsu = Dsu::new(node_index.len());
 
     // Pre-union nodes already connected by preset edges so Kruskal doesn't add duplicate edges.
-    let preset_edges: Vec<(NodeId, NodeId)> = graph.edges()
-        .map(|e| (e.from.min(e.to), e.from.max(e.to)))
+    // Kept in actual graph direction (not canonicalized to min/max) — a one-way preset (basic or
+    // teleport) exists as a single directed edge at this point, and collapsing direction here
+    // would misrepresent it as bidirectional once replayed for debug rendering (GitHub issue #193).
+    let preset_edges: Vec<(NodeId, NodeId, EdgeKind)> = graph.edges()
+        .map(|e| (e.from, e.to, e.kind.clone()))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    for (a, b) in &preset_edges {
+    for (a, b, _) in &preset_edges {
         dsu.union_by_min(node_index[a], node_index[b]);
     }
     if let Some(log) = event_log.as_deref_mut() {

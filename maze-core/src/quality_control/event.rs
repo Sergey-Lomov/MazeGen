@@ -1,4 +1,5 @@
 use crate::ids::NodeId;
+use crate::graph::EdgeKind;
 use crate::event_log::{DebugEvent, EncodeEventPayload};
 use super::issue::IssueKind;
 use super::issue_kinds::RepairLimitKind;
@@ -161,10 +162,16 @@ pub enum QcEvent {
     /// this, the web replay engine's first reconstructed frame would show an empty graph even
     /// though the real graph QC/repair operates on already has these edges. Carries every preset
     /// edge as one batch (not one event per edge) specifically so scrubbing through a large
-    /// preset setup costs one step, not one step per edge. `bidirectional` mirrors
-    /// `BidirectionalEdgeAdded`'s semantics (both directions), `false` mirrors
-    /// `DirectedEdgeAdded`'s (forward only).
-    PresetSeeded { edges: Vec<(NodeId, NodeId, bool)> },
+    /// preset setup costs one step, not one step per edge.
+    ///
+    /// One tuple per actual directed graph edge, carrying its real `EdgeKind` (GitHub issue #193's
+    /// follow-up: the original shape carried a `bidirectional: bool` flag that the emitter always
+    /// hardcoded to `false`, and dropped `EdgeKind` entirely — a preset teleport was indistinguishable
+    /// from a preset passage, and a two-way preset was misrepresented as one-way, in the web replay
+    /// engine's first reconstructed frame). A bidirectional preset (e.g. `Passage`, or a `TwoWay`
+    /// teleport) already exists as two separate directed graph edges, so it naturally yields two
+    /// entries here — no separate direction flag needed, mirrors `KruskalEvent::PresetUnionsApplied`.
+    PresetSeeded { edges: Vec<(NodeId, NodeId, EdgeKind)> },
 
     // --- trace: same fields as the matching mutating variant above, for a command
     // `apply_commands` proposed but whose revalidation rejected it (its `ok == false` branch). ---
@@ -393,10 +400,10 @@ impl EncodeEventPayload for QcEvent {
 
             QcEvent::PresetSeeded { edges } => {
                 out.extend_from_slice(&(edges.len() as u32).to_le_bytes());
-                for (from, to, bidirectional) in edges {
+                for (from, to, kind) in edges {
                     write_node_id(out, *from);
                     write_node_id(out, *to);
-                    out.push(if *bidirectional { 1 } else { 0 });
+                    out.push(if *kind == EdgeKind::Teleport { 1 } else { 0 });
                 }
             }
         }
@@ -424,7 +431,7 @@ mod tests {
 
     #[test]
     fn preset_seeded_is_mutating() {
-        assert!(QcEvent::PresetSeeded { edges: vec![(1, 2, false)] }.is_mutating());
+        assert!(QcEvent::PresetSeeded { edges: vec![(1, 2, EdgeKind::Basic)] }.is_mutating());
         assert!(QcEvent::PresetSeeded { edges: vec![] }.is_mutating());
     }
 
@@ -506,7 +513,7 @@ mod tests {
             QcEvent::TeleportRemoveWithReverseProposed { from: 0, to: 0 },
             QcEvent::StartSetProposed(0),
             QcEvent::FinishSetProposed(0),
-            QcEvent::PresetSeeded { edges: vec![(0, 0, false)] },
+            QcEvent::PresetSeeded { edges: vec![(0, 0, EdgeKind::Basic)] },
         ];
         let mut tags = HashSet::new();
         for event in &events {
@@ -575,8 +582,8 @@ mod tests {
     }
 
     #[test]
-    fn preset_seeded_encodes_count_then_from_to_bidirectional_per_edge() {
-        let event = QcEvent::PresetSeeded { edges: vec![(1, 2, false), (3, 4, true)] };
+    fn preset_seeded_encodes_count_then_from_to_kind_per_edge() {
+        let event = QcEvent::PresetSeeded { edges: vec![(1, 2, EdgeKind::Basic), (3, 4, EdgeKind::Teleport)] };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
 
@@ -584,10 +591,10 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 2);
         assert_eq!(u64::from_le_bytes(bytes[4..12].try_into().unwrap()), 1);
         assert_eq!(u64::from_le_bytes(bytes[12..20].try_into().unwrap()), 2);
-        assert_eq!(bytes[20], 0);
+        assert_eq!(bytes[20], 0, "Basic must encode as byte 0");
         assert_eq!(u64::from_le_bytes(bytes[21..29].try_into().unwrap()), 3);
         assert_eq!(u64::from_le_bytes(bytes[29..37].try_into().unwrap()), 4);
-        assert_eq!(bytes[37], 1);
+        assert_eq!(bytes[37], 1, "Teleport must encode as byte 1");
     }
 
     #[test]
