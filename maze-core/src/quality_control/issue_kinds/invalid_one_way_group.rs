@@ -1,120 +1,55 @@
-use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_ONE_WAY_GROUP};
+use crate::quality_control::issue::{Issue, IssueKind, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP};
+use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
+use crate::quality_control::issue_kinds::InvalidOneWayIssue;
+use crate::repair::{MutationCommand, removed_edge_ids};
 
-/// Canonical key for a group: its edge set, sorted — mirrors `canonical_cycle_key`'s role for
-/// cycles. Two groups covering the same edge set (any order) produce the same key.
-fn canonical_group_key(group: &[EdgeId]) -> Vec<EdgeId> {
-    let mut key = group.to_vec();
-    key.sort_unstable();
-    key
+/// Marker type selecting the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` instantiation for
+/// one-way groups — see GitHub issue #208. `InvalidOneWayGroupIssue`'s pre-#208 shape (a group:
+/// its edge set paired with how many of those edges still need fixing — always 1 for a proximity
+/// pair, an excess count for a super-hub/maze-wide check) is the reference instance
+/// `InvalidGroupIssue<K>` was extracted from; this marker is what wires it back to
+/// `INVALID_ONE_WAY_GROUP`/`INVALID_ONE_WAY` without reimplementing any of the generic type's
+/// logic. Never constructed — a zero-sized type used only at the type level.
+pub struct OneWayGroupKind;
+
+impl InvalidGroupIssueKind for OneWayGroupKind {
+    type Element = EdgeId;
+    const KIND: IssueKind = INVALID_ONE_WAY_GROUP;
+    const NESTED_KIND: IssueKind = INVALID_ONE_WAY;
+    const NESTED_SLOT_ID: &'static str = "fix_target";
+
+    fn nested_issue(source_check: &str, element: EdgeId) -> Box<dyn Issue> {
+        Box::new(InvalidOneWayIssue::new_from_check(source_check, vec![element]))
+    }
+
+    /// Mirrors `OneWayGroupSelectStrategy`'s pre-#208 `removed` set: every edge the nested
+    /// strategy's commands actually removed, plus `target` itself even when the nested strategy's
+    /// commands don't literally remove it (e.g. `OneWayToPassageStrategy` converts `target` into a
+    /// passage instead of removing it — `target` must still count as resolved).
+    fn resolved_elements(target: &EdgeId, nested_commands: &[MutationCommand]) -> Vec<EdgeId> {
+        removed_edge_ids(nested_commands).into_iter().chain(std::iter::once(*target)).collect()
+    }
 }
-
-/// One flagged group of one-way edges, paired with how many of its edges still need fixing —
-/// see GitHub issue #202. Distinct from the group's own edge set: a group's *size* is "every
-/// one-way edge implicated in this problem" (e.g. every one-way incident to an over-connected
-/// vertex, or the entire maze's one-way set for a count/ratio excess), while `to_remove` is "how
-/// many of those edges actually need to be resolved before the problem is gone" — for a
-/// proximity pair this is always 1 (fixing either edge in the pair breaks the pair), for a
-/// super-hub vertex it's the vertex's excess over the configured maximum, for a maze-wide count/
-/// ratio excess it's the excess itself. `OneWayGroupSelectStrategy` reads `to_remove` to know how
-/// many edges to pull out of the group before considering it resolved, instead of assuming
-/// exactly one fix always clears a group.
-pub type OneWayGroup = (Vec<EdgeId>, u32);
 
 /// Produced by any check that flags a set of one-way edges (`EdgeKind::Basic`, single direction)
 /// as jointly invalid — see GitHub issue #199. Distinct from `INVALID_ONE_WAY`: that kind flags a
 /// single one-way edge invalid on its own; this one flags a *relationship*/*aggregate* condition
 /// over two or more one-way edges, none of which is individually invalid. Mirrors
-/// `InvalidTeleportGroupIssue`'s role for teleports, but shaped as `groups: Vec<OneWayGroup>` (not
-/// a flat pair list) so a repair strategy can uniformly handle any group size — see `OneWayGroup`'s
-/// doc comment for what the paired count means. **Mandatory** for this kind:
+/// `InvalidTeleportGroupIssue`'s role for teleports, but shaped as `groups: Vec<(Vec<EdgeId>, u32)>`
+/// (not a flat pair list) so a repair strategy can uniformly handle any group size — see
+/// `InvalidGroupIssue`'s doc comment for what the paired count means. **Mandatory** for this kind:
 /// `OneWayGroupSelectStrategy`'s `problematic` priority needs group membership to score which edge
 /// to pick.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct InvalidOneWayGroupIssue {
-    meta: IssueMeta,
-    pub groups: Vec<OneWayGroup>,
-    /// Per-group check provenance, keyed by `canonical_group_key` — mirrors
-    /// `InvalidTeleportGroupIssue::invalid_sources`.
-    pub invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
-}
-
-impl InvalidOneWayGroupIssue {
-    pub fn new_from_check(source_check: &str, groups: Vec<OneWayGroup>) -> Self {
-        let invalid_sources = groups.iter().map(|(g, _)| (canonical_group_key(g), vec![source_check.to_string()])).collect();
-        Self { meta: IssueMeta::new_from_check(source_check), groups, invalid_sources }
-    }
-
-    pub fn with_detail(mut self, source_check: &str, key: &'static str, value: String) -> Self {
-        self.meta = self.meta.with_detail(source_check, key, value);
-        self
-    }
-}
-
-impl IssueKindConst for InvalidOneWayGroupIssue {
-    const KIND: IssueKind = INVALID_ONE_WAY_GROUP;
-}
-
-impl IssueRequirement for InvalidOneWayGroupIssue {
-    type Requirement = ();
-}
-
-impl Issue for InvalidOneWayGroupIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
-
-impl IssueMerge for InvalidOneWayGroupIssue {
-    /// A group's edge order carries no meaning — dedup by unordered identity so two checks
-    /// reporting the same edge set (any order) collapse to one entry instead of being kept as
-    /// duplicates. When both sides flag the same edge set with different `to_remove` counts, the
-    /// larger of the two wins (the more demanding requirement is the one that must actually be
-    /// satisfied for the group to be considered resolved). `invalid_sources` is unioned per
-    /// canonical group key regardless of which side's `to_remove` won, mirroring
-    /// `InvalidTeleportGroupIssue`'s merge — a check that didn't contribute the winning count is
-    /// still a valid source for the group.
-    fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
-
-        use std::collections::HashMap as Map;
-        let mut by_key: Map<Vec<EdgeId>, usize> = self.groups.iter().enumerate()
-            .map(|(i, (g, _))| (canonical_group_key(g), i))
-            .collect();
-        for (group, to_remove) in other.groups {
-            let key = canonical_group_key(&group);
-            match by_key.get(&key) {
-                Some(&i) => {
-                    if to_remove > self.groups[i].1 {
-                        self.groups[i].1 = to_remove;
-                    }
-                }
-                None => {
-                    by_key.insert(key, self.groups.len());
-                    self.groups.push((group, to_remove));
-                }
-            }
-        }
-
-        for (key, sources) in other.invalid_sources {
-            let entry = self.invalid_sources.entry(key).or_default();
-            for source in sources {
-                if !entry.contains(&source) {
-                    entry.push(source);
-                }
-            }
-        }
-    }
-}
+///
+/// GitHub issue #208: now a type alias onto the generic `InvalidGroupIssue<OneWayGroupKind>` — see
+/// `group_issue.rs` for the extracted shape/merge logic (identical behavior, same wire shape).
+pub type InvalidOneWayGroupIssue = InvalidGroupIssue<OneWayGroupKind>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::quality_control::issue::IssueMerge;
 
     #[test]
     fn merge_unions_disjoint_groups() {

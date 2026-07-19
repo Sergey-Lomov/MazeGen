@@ -982,9 +982,43 @@ Handles `INVALID_ONE_WAY` — see GitHub issue #198. The other of the two strate
 
 `invalid` on `InvalidOneWayIssue` is the producing check's result. An empty `invalid` is valid — nothing to remove, returns `Fixed` immediately. No configurable parameters.
 
+### GroupSelectStrategy / group_select_apply (GitHub issue #208)
+
+`quality_control::issue_kinds::group_issue::InvalidGroupIssue<K>`'s generic reusable select-strategy mechanics, extracted from `OneWayGroupSelectStrategy` (below), the reference instance. `repair::strategies::group_select::group_select_apply` is a plain generic function, not a `RepairStrategy` impl — every concrete group-select strategy (`OneWayGroupSelectStrategy` today, a future teleport/loop-group counterpart) stays an ordinary unit struct with its own `strategy_id`/`params`/`expected_nested`/`RepairStrategy<T, InvalidGroupIssue<K>>` impl, resolves its own nested slot from `nested: &[NestedStrategyConfig<T>]`, and calls `group_select_apply` from inside its own `apply()`:
+
+```rust
+pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
+    issue: &InvalidGroupIssue<K>,
+    maze: &Maze<T>,
+    rng: &mut dyn RngCore,
+    params: &StrategyParams,
+    preset_state: &PresetState,
+    nested: &NestedStrategyConfig<T>,
+    element_allowed: impl Fn(&K::Element) -> bool,
+) -> (RepairResult, Vec<MutationCommand>);
+```
+
+`nested` is already resolved by the caller (matched against its own slot id, `expected_nested()`'s `max: Some(1)` guaranteeing at most one match) — this function never looks slots up itself, just uses the single `NestedStrategyConfig` it's handed. `element_allowed` is a plain closure the caller builds from its own params before calling in (e.g. `OneWayGroupSelectStrategy` reads its own `PARAM_PROTECT_ROUTE` and closes over `is_edge_on_route`) — `group_select_apply` only ever calls it, never interprets what "allowed" means.
+
+**`priority`** (`PARAM_PRIORITY`, `group_select` module's own — `random` / `problematic`, default `problematic`): the global visiting order candidates are tried in (see "Resolution loop" below — this is not a per-group choice).
+- `random`: every candidate shuffled once, visited in that order.
+- `problematic`: every candidate shuffled first (so same-membership ties resolve randomly, not by incidental iteration order), then stably sorted by membership count descending — membership counts are computed once up front over the original unresolved group set (a static snapshot, not a running count that would favor whichever candidate is visited first, same rationale as `TeleportGroupProximityStrategy`'s own `problematic` priority). The element present in the most groups is tried first, globally across every group, not just within whichever group is scanned first.
+
+**Per-group `to_remove` budget (GitHub issue #202 follow-up)**: earlier revisions assumed one successful fix always resolved a group — true for a 2-edge proximity pair (`to_remove: 1`) but not for a super-hub vertex (needs its whole excess removed) or a maze-wide count/ratio excess (same, and often much larger than 1). Each group tracks its own remaining `to_remove` count; a single call keeps working until every group's budget is exhausted or no candidate is left to try, not just one element total, which is what lets a large group (e.g. an entire maze's excess one-way set) actually converge within a bounded number of `apply()` calls instead of needing one repair iteration per excess element.
+
+**Single global candidate pass, not one scan per group (GitHub issue #202 follow-up review)**: an earlier revision picked one edge per group per loop iteration, rescanning that group's own candidate list every time — for one very large group (the common case here) that was `O(to_remove * group_size)` in a single call, and it also meant `problematic`'s cross-group membership priority only ever applied within whichever group's turn it was, not globally. Instead, a reverse index (`element -> every group index that still lists it as a candidate`) is built once — `element_allowed` rejects never enter it at all — and its keys become one global candidate list, ordered per `priority` (see above) and visited exactly once.
+
+**Resolution loop**: for each candidate in visiting order, skip it if no group that lists it still has `to_remove > 0` (already fully resolved via other elements). Otherwise builds `K::nested_issue("group_select", target.clone())` and calls the nested strategy against it.
+- On success, `K::resolved_elements(&target, &nested_commands)` reads back every element the nested call actually resolved (which may be more than just the offered candidate) — those are dropped from the reverse index, and every group that still needed one of them has its `to_remove` decremented by one. A single shared element can therefore retire one unit of budget in several groups at once.
+- On failure, the candidate is dropped from the reverse index too, globally — the maze doesn't change within one call, so a failed candidate would fail identically on a second try from another group; there is nothing to gain by revisiting it.
+
+A group is resolved once its `to_remove` reaches zero. If the candidate pass runs out (every remaining candidate filtered out or already tried and failed) some groups may still have `to_remove > 0` left — they simply carry over to the next repair iteration's freshly-recomputed issue. Commands from every successful (and attempted) nested call are concatenated, in order.
+
+Returns `Fixed` if at least one nested call across the whole call succeeded, `Failed` only if every nested call failed (or there was no target to fix in any group) — same "at least one worked" bookkeeping as `InvalidLoopGroupSelectStrategy`.
+
 ### OneWayGroupSelectStrategy
 
-Handles `INVALID_ONE_WAY_GROUP` — see GitHub issue #199, generalized in #200 and #202. For each problematic group flagged by `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`/`OneWayGroupSuperHubCheck`/`MaxOneWayCountCheck`/`MaxOneWayRatioCheck` (`InvalidOneWayGroupIssue.groups: Vec<OneWayGroup>`, `OneWayGroup = (Vec<EdgeId>, u32)` — see `quality_control.md`'s `OneWayGroup` doc comment), picks edges to fix and delegates each actual fix to a nested `INVALID_ONE_WAY` strategy (`OneWayToPassageStrategy`/`OneWayToWallStrategy`, see GitHub issue #198) filling the `fix_target` slot — mirrors `TeleportGroupProximityStrategy`'s per-pair resolution shape but generalized to any group size and any per-group fix count, and mirrors `InvalidLoopGroupSelectStrategy`'s nested-delegation pattern for how the parent synthesizes an issue for the nested call.
+Handles `INVALID_ONE_WAY_GROUP` — see GitHub issue #199, generalized in #200 and #202. For each problematic group flagged by `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`/`OneWayGroupSuperHubCheck`/`MaxOneWayCountCheck`/`MaxOneWayRatioCheck` (`InvalidOneWayGroupIssue.groups: Vec<(Vec<EdgeId>, u32)>` — see `quality_control.md`'s `InvalidGroupIssue<K>` doc comment), picks edges to fix and delegates each actual fix to a nested `INVALID_ONE_WAY` strategy (`OneWayToPassageStrategy`/`OneWayToWallStrategy`, see GitHub issue #198) filling the `fix_target` slot — mirrors `TeleportGroupProximityStrategy`'s per-pair resolution shape but generalized to any group size and any per-group fix count, and mirrors `InvalidLoopGroupSelectStrategy`'s nested-delegation pattern for how the parent synthesizes an issue for the nested call.
 
 ```rust
 pub const SLOT_FIX_TARGET: &str = "fix_target";
@@ -992,23 +1026,9 @@ pub const SLOT_FIX_TARGET: &str = "fix_target";
 
 One nested slot, `fix_target`, expecting exactly one `INVALID_ONE_WAY`-handling strategy (`min: 1, max: Some(1)`).
 
-**`priority`** (`random` / `problematic`, default `problematic`): the global visiting order candidates are tried in (see "Resolution loop" below — this is not a per-group choice).
-- `random`: every candidate shuffled once, visited in that order.
-- `problematic`: every candidate shuffled first (so same-membership ties resolve randomly, not by incidental iteration order), then stably sorted by membership count descending — membership counts are computed once up front over the original unresolved group set (a static snapshot, not a running count that would favor whichever candidate is visited first, same rationale as `TeleportGroupProximityStrategy`'s own `problematic` priority). The edge present in the most groups is tried first, globally across every group, not just within whichever group is scanned first.
+GitHub issue #208: the candidate-pass/budget/nested-delegation mechanics are now `group_select_apply` (above) — this strategy's own remaining responsibility is `OneWayGroupKind` (the `InvalidGroupIssueKind` marker wiring `INVALID_ONE_WAY_GROUP`/`INVALID_ONE_WAY`/`fix_target` back to the generic shape), resolving `SLOT_FIX_TARGET` from `nested`, and `PARAM_PROTECT_ROUTE`.
 
-**`protect_route`** (default `true`): a candidate lying on the maze's current start→finish route (`is_edge_on_route`) is excluded from the candidate pool entirely, for every group, before the visiting order is even built.
-
-**Per-group `to_remove` budget (GitHub issue #202 follow-up)**: earlier revisions assumed one successful fix always resolved a group — true for a 2-edge proximity pair (`to_remove: 1`) but not for a super-hub vertex (needs its whole excess removed) or a maze-wide count/ratio excess (same, and often much larger than 1). Each group tracks its own remaining `to_remove` count; a single `apply()` call keeps working until every group's budget is exhausted or no candidate is left to try, not just one edge total, which is what lets a large group (e.g. an entire maze's excess one-way set) actually converge within a bounded number of `apply()` calls instead of needing one repair iteration per excess edge.
-
-**Single global candidate pass, not one scan per group (GitHub issue #202 follow-up review)**: an earlier revision picked one edge per group per loop iteration, rescanning that group's own candidate list every time — for one very large group (the common case here) that was `O(to_remove * group_size)` in a single `apply()` call, and it also meant `problematic`'s cross-group membership priority only ever applied within whichever group's turn it was, not globally. Instead, a reverse index (`edge -> every group index that still lists it as a candidate`) is built once, and its keys become one global candidate list, ordered per `priority` (see above) and visited exactly once.
-
-**Resolution loop**: for each candidate in visiting order, skip it if no group that lists it still has `to_remove > 0` (already fully resolved via other edges). Otherwise call the nested strategy against a synthesized `InvalidOneWayIssue::new_from_check("one_way_group_select", vec![target])`.
-- On success, the fixed edge (plus anything else the nested call's commands removed, via `removed_edge_ids`) is dropped from the reverse index — a physical edge fixed once is fixed everywhere it was a candidate — and every group that still needed one of those edges has its `to_remove` decremented by one. A single shared edge can therefore retire one unit of budget in several groups at once.
-- On failure, the edge is dropped from the reverse index too, globally — the maze doesn't change within one `apply()` call, so a failed edge would fail identically on a second try from another group; there is nothing to gain by revisiting it.
-
-A group is resolved once its `to_remove` reaches zero. If the candidate pass runs out (every remaining candidate route-protected or already tried and failed) some groups may still have `to_remove > 0` left — they simply carry over to the next repair iteration's freshly-recomputed issue. Commands from every successful (and attempted) nested call are concatenated, in order.
-
-Returns `Fixed` if at least one nested call across the whole `apply()` call succeeded, `Failed` only if every nested call failed (or there was no target to fix in any group) — same "at least one worked" bookkeeping as `InvalidLoopGroupSelectStrategy`.
+**`PARAM_PROTECT_ROUTE`** (default `true`): a candidate lying on the maze's current start→finish route (`is_edge_on_route`) is excluded from the candidate pool entirely, for every group, before the visiting order is even built — passed to `group_select_apply` as its `element_allowed` closure.
 
 ## Pipeline
 

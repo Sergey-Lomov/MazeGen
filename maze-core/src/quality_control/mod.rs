@@ -17,7 +17,8 @@ pub use issue_kinds::{
     InvalidLoopGroupIssue, InvalidLoopGroupRequirement,
     CycleAnalysisOverflowedIssue, RepairLimitReachedIssue, RepairLimitKind,
     ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue, InvalidTeleportIssue,
-    InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, MissingOneWaysIssue,
+    InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, OneWayGroupKind, MissingOneWaysIssue,
+    InvalidGroupIssue, InvalidGroupIssueKind,
 };
 pub use check::Check;
 pub use comparison::Comparison;
