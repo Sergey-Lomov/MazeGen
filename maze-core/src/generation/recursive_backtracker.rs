@@ -68,7 +68,7 @@ impl DebugEvent for RecursiveBacktrackerEvent {
 /// algorithm's own `unvisited`/`CandidatesComputed`), not the recursion/backtrack stack itself, so
 /// that name would have been misleading. Derived from the existing `VertexPushed`/`VertexPopped`
 /// mutating events rather than a separate event (see `DebugValueDelta`'s doc comment for why) —
-/// the pilot for issue #131.
+/// introduced for issue #131.
 const RECURSION_STACK: &str = "recursion_stack";
 
 /// Debug value: `"visited"` — every vertex the algorithm has marked visited so far. Derived from

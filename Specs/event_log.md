@@ -1,6 +1,6 @@
 # Debug Event Log
 
-Infrastructure for narration-level generation debug logging (GitHub issue #122, part of epic #121). Replaces the old full-snapshot `debug_steps` model with a tree of scopes and events. This spec covers the core tree structure and RAII builder API, the Recursive Backtracker pilot instrumentation (issue #123), and the WASM boundary's zero-copy binary transfer (issue #124).
+Infrastructure for narration-level generation debug logging (GitHub issue #122, part of epic #121). Replaces the old full-snapshot `debug_steps` model with a tree of scopes and events. This spec covers the core tree structure and RAII builder API, the Recursive Backtracker instrumentation (issue #123), and the WASM boundary's zero-copy binary transfer (issue #124).
 
 Module: `maze-core/src/event_log/`.
 
@@ -355,8 +355,9 @@ arrow — those rendered poorly in the bubble's monospace font). Per explicit us
 canvas highlight makes inline coordinates in prose redundant. The `debug.tree.*` paraglide
 messages lost their `{x}`/`{y}`/`{fx}`/... coordinate interpolations accordingly.
 
-Pilot scope mirrors #123 (Recursive Backtracker only): only `node`/`edge` tokens are actually
-emitted; `cycle`/`region` exist in the type only, for QC/repair narration landing later.
+Initial scope mirrors #123 (Recursive Backtracker only): only `node`/`edge` tokens are actually
+emitted; `cycle`/`region` exist in the type only, for QC/repair narration landing later (see #171
+below, which puts them to use).
 
 ### `DebugRefBubble` (`maze-web/src/components/DebugRefBubble.tsx`)
 
@@ -512,7 +513,7 @@ and `"visited"` — every vertex marked visited so far) that evolve over a run, 
 replay alongside the maze graph, and are exposed in the web UI as auto-derived toggles with
 persistent canvas highlighting. Replaces the `active_nodes`/`current_src` frontier overlay dropped
 in #126 (see that section's updated note) — this time generically, not hardcoded per algorithm.
-Pilot scope, matching #123's pilot algorithm: Recursive Backtracker's `"recursion_stack"`/`"visited"`
+Initial scope, matching #123's algorithm: Recursive Backtracker's `"recursion_stack"`/`"visited"`
 only; other algorithms and QC/repair debug values are out of scope.
 
 Named `"recursion_stack"`, not `"frontier"` — in graph-traversal terminology, frontier usually
@@ -637,7 +638,7 @@ entirely when the list is empty — e.g. any algorithm other than Recursive Back
 been a private local helper, into a shared component — the debug panel is now a second consumer,
 so a third hand-rolled copy would have been worse than extracting the existing one.
 
-Labels go through paraglide i18n, not the raw name — `debug.value.<name>` messages (pilot:
+Labels go through paraglide i18n, not the raw name — `debug.value.<name>` messages (e.g.
 `debug.value.recursion_stack`) in `messages/en.json`/`messages/ru.json`. Since a runtime string can't be
 turned into a message key automatically, `DebugPanel.tsx` keeps a small local
 `DEBUG_VALUE_LABELS: Record<string, () => string>` map from name to message lookup, falling back to
@@ -857,8 +858,8 @@ section above; it isn't a per-algorithm core concern at all anymore, RB's own we
 
 ## Kruskal Instrumentation (#146)
 
-Module: `maze-core/src/generation/kruskal.rs`. Second `EventLog` instrumentation after the Recursive
-Backtracker pilot (#123) — validates that the event-tree infrastructure generalizes past a single
+Module: `maze-core/src/generation/kruskal.rs`. Second `EventLog` instrumentation after Recursive
+Backtracker (#123) — validates that the event-tree infrastructure generalizes past a single
 algorithm, and (unlike #123's initial scope) ships an end-to-end web decoder/narration/canvas
 visualization in the same issue, since #161's type-erasure work removed the architectural blocker
 that would otherwise have forced deferring the web half to a follow-up.
