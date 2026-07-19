@@ -14,7 +14,9 @@ pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
 /// converting the cell deficit into a loop count via `avg_loop_length_estimate` — see GitHub
 /// issue #177 (originally merged with `MinLoopsCountCheck` into one `Mode`-switched check, split
 /// back out since the two measure genuinely different things: a field-coverage share vs. an
-/// absolute count).
+/// absolute count). `missing_cells` rounds up (ceil), not down, when converting the density-point
+/// deficit into a cell count — a target/deficit count must never under-report, or a genuine
+/// shortfall can round away to zero and the check goes silent (GitHub issue #207).
 pub struct MinLoopDensityCheck {
     pub instance_id: String,
     pub min_density: u32,
@@ -49,8 +51,8 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
             return;
         }
 
-        let missing_cells = (self.min_density - density) as usize * field_cells / 100;
-        let missing = div_ceil(missing_cells as u32, self.avg_loop_length_estimate.max(1));
+        let missing_cells = div_ceil((self.min_density - density) as usize * field_cells, 100);
+        let missing = div_ceil(missing_cells, self.avg_loop_length_estimate.max(1) as usize) as u32;
         if missing == 0 {
             return;
         }
@@ -60,7 +62,7 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
     }
 }
 
-fn div_ceil(a: u32, b: u32) -> u32 {
+fn div_ceil(a: usize, b: usize) -> usize {
     (a + b - 1) / b
 }
 
@@ -172,12 +174,15 @@ mod tests {
     }
 
     #[test]
-    fn silent_when_missing_count_rounds_to_zero() {
-        // 30% density, min_density 31 -> 1 missing point -> 0 missing cells (10*1/100=0) -> no issue.
+    fn missing_cells_rounds_up_instead_of_truncating() {
+        // 30% density, min_density 31 -> 1 missing point -> ceil(10*1/100) = 1 missing cell, not
+        // floor(10*1/100) = 0. A floor-based missing_cells would silently stay quiet here even
+        // though the field is genuinely short of the minimum density (see GitHub issue #207).
         let maze = maze_with_one_triangle_density();
         let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 31, avg_loop_length_estimate: 1 };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty());
+        assert_eq!(issues.len(), 1, "1 missing point must round up to 1 missing cell, not truncate to 0");
+        assert_eq!(issues[0].missing, 1);
     }
 }
