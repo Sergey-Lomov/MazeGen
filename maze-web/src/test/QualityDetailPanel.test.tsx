@@ -80,7 +80,7 @@ describe("QualityDetailPanel", () => {
       return <QualityDetailPanel selection={{ type: "strategy", ruleId: "g1", strategyId: "s1" }} vm={v} flushRef={flushRef} onSelect={onSelect} />;
     }
     render(<HarnessWithSelect vm={vm} />);
-    fireEvent.click(screen.getByText("Expand region with a passage"));
+    fireEvent.click(screen.getByText("Region expansion via passage"));
     expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] });
   });
 

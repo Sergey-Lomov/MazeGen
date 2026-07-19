@@ -6,6 +6,16 @@ import { parseTape, TAG_SCOPE, RB_TAG, NO_NODE, type ParsedTape } from "../debug
 import { adapterForKind } from "../debug/algorithmRegistry";
 import type { NodeDto } from "../wasm/types";
 
+// The step counter renders as three sibling nodes ("2", " / ", "3") inside one wrapper span, for a
+// fixed-width layout (see DebugPanel.tsx's `stepLabelHalf`) — RTL's default `getByText` won't match
+// the wrapper because the target text isn't a single text node, so match on `textContent` directly.
+function getByStepText(text: RegExp) {
+  return screen.getByText(
+    (_, element) => !!element && element.tagName === "SPAN" && text.test(element.textContent ?? ""),
+    { selector: "span" },
+  );
+}
+
 // --- Fixture encoder — same shape as DebugEventTree.test.tsx's buildTwoStepTape (this component
 // renders <DebugEventTree /> internally, which requires real "step N" scope nodes, not the flat
 // under-root layout storeTestHelpers.ts's encodeEdgeAddedTape produces). Duplicated locally per
@@ -174,21 +184,26 @@ describe("DebugPanel", () => {
   it("shows the current step (1-based) and total steps", () => {
     useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 1 });
     render(<DebugPanel />);
-    expect(screen.getByText(/2 \/ 3/)).toBeInTheDocument();
+    expect(getByStepText(/2 \/ 3/)).toBeInTheDocument();
   });
 
-  it("keeps the step counter at the same fixed width regardless of digit count, so the slider doesn't resize as steps grow", () => {
-    useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 1 });
+  it("keeps the step counter's half-width fixed as the current step's own digit count grows during scrubbing, so the ' / ' separator doesn't drift", () => {
+    // Both reads happen within the same arena (fixed total=1234, 4 digits) — only the current
+    // step's digit count changes (9 -> 1 digit, 999 -> 3 digits), which is what
+    // `stepLabelHalfWidth` (sized off `total`, not the current step) is meant to stay stable under.
+    useMazeStore.setState({ debugArena: manyStepArena(1234), debugStep: 8 });
     const { unmount } = render(<DebugPanel />);
-    const shortLabel = screen.getByText(/2 \/ 3/);
+    // The current-step half ("9") is its own span (see DebugPanel.tsx's `stepLabelHalf`), sized to
+    // the total's digit count — check its width directly rather than the "9 / 1234" wrapper, which
+    // has no width of its own.
+    const shortLabel = screen.getByText("9", { selector: "span" });
     const shortWidth = shortLabel.style.width;
     expect(shortWidth).not.toBe("");
     unmount();
 
-    // Same counter, but with a 4-digit total step count instead of a 1-digit one.
-    useMazeStore.setState({ debugArena: manyStepArena(1234), debugStep: 999 });
+    useMazeStore.setState({ debugArena: manyStepArena(1234), debugStep: 998 });
     render(<DebugPanel />);
-    const longLabel = screen.getByText(/1000 \/ 1234/);
+    const longLabel = screen.getByText("999", { selector: "span" });
     expect(longLabel.style.width).toBe(shortWidth);
   });
 

@@ -168,7 +168,7 @@ describe("RulesColumn", () => {
       nestedStrategies: [{ slotId: "slot_a", strategy: nestedStrategy, params: [], nested: [] }],
     }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
-    fireEvent.click(screen.getByText("Expand region with a passage"));
+    fireEvent.click(screen.getByText("Region expansion via passage"));
     expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] });
   });
 
@@ -185,7 +185,7 @@ describe("RulesColumn", () => {
       nestedStrategies: [{ slotId: "merge_target", strategy: nestedStrategy, params: [], nested: [] }],
     }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
-    fireEvent.click(screen.getByText("Expand region with a passage"));
+    fireEvent.click(screen.getByText("Region expansion via passage"));
     expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "merge_target", index: 0 }] });
   });
 

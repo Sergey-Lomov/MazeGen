@@ -165,6 +165,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Top-level source scopes ("Generation"/"Quality Control") start collapsed like any other scope
+// row (GitHub issue #186 — no longer auto-expanded on mount); every test that needs to see a
+// source's own content clicks this first.
+function expandGeneration() {
+  fireEvent.click(screen.getByText(m["debug.tree.source_scope.generation"]()));
+}
+
 describe("DebugEventTree", () => {
   beforeEach(() => {
     useMazeStore.setState({
@@ -173,17 +180,22 @@ describe("DebugEventTree", () => {
     });
   });
 
-  it("starts fully collapsed, showing only the two top-level step rows", () => {
+  it("starts fully collapsed, showing only the top-level source row", () => {
     render(<DebugEventTree />);
-    expect(screen.getByText(m["debug.tree.step_scope"]({ index: 1 }))).toBeInTheDocument();
-    expect(screen.getByText(m["debug.tree.step_scope"]({ index: 2 }))).toBeInTheDocument();
+    expect(screen.getByText(m["debug.tree.source_scope.generation"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["debug.tree.step_scope"]({ index: 1 }))).not.toBeInTheDocument();
     expect(screen.queryByText(/Passage added/)).not.toBeInTheDocument();
   });
 
-  it("clicking a step row's body reveals its children without changing debugStep", () => {
+  it("clicking the source row reveals the two top-level step rows, then a step row's body reveals its own children", () => {
     const setDebugStep = vi.fn();
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
+    expandGeneration();
+
+    expect(screen.getByText(m["debug.tree.step_scope"]({ index: 1 }))).toBeInTheDocument();
+    expect(screen.getByText(m["debug.tree.step_scope"]({ index: 2 }))).toBeInTheDocument();
+    expect(screen.queryByText(/Passage added/)).not.toBeInTheDocument();
 
     const firstStepRow = screen.getByText(m["debug.tree.step_scope"]({ index: 1 }));
     fireEvent.click(firstStepRow);
@@ -196,9 +208,10 @@ describe("DebugEventTree", () => {
     const setDebugStep = vi.fn();
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
+    expandGeneration();
 
-    // The merged tree's auto-expanded "generation"/former-root wrapper rows (GitHub issue #169)
-    // each render their own step-col too — find "step 1"'s own column specifically.
+    // The merged tree's auto-expanded former-root wrapper rows (GitHub issue #169) each render
+    // their own step-col too — find "step 1"'s own column specifically.
     const firstStepCol = screen.getByText(m["debug.tree.step_scope"]({ index: 1 })).closest("div")!.querySelector('[data-testid="step-col"]')!;
     fireEvent.click(firstStepCol);
 
@@ -217,10 +230,11 @@ describe("DebugEventTree", () => {
     const setDebugStep = vi.fn();
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
+    expandGeneration();
 
-    // The merged tree's auto-expanded "generation"/former-root wrapper rows (GitHub issue #169)
-    // each render their own step-col too — find "step 2"'s own column specifically rather than
-    // assuming it's the second entry in document order.
+    // The merged tree's auto-expanded former-root wrapper rows (GitHub issue #169) each render
+    // their own step-col too — find "step 2"'s own column specifically rather than assuming it's
+    // the second entry in document order.
     const secondStepCol = screen.getByText(m["debug.tree.step_scope"]({ index: 2 })).closest("div")!.querySelector('[data-testid="step-col"]')!;
     expect(secondStepCol).toHaveTextContent("3");
     fireEvent.click(secondStepCol);
@@ -235,9 +249,10 @@ describe("DebugEventTree", () => {
     // trace-only, resolving to the nearest preceding mutating step — VertexPushed, step 2 ->
     // displayed as "3", the same number DeadEnd's own row shows.
     render(<DebugEventTree />);
-    // The merged tree's auto-expanded "generation"/former-root wrapper rows (GitHub issue #169)
-    // each render their own step-col too — find "step 1"/"step 2"'s own columns specifically
-    // rather than assuming the first two entries in document order.
+    expandGeneration();
+    // The merged tree's auto-expanded former-root wrapper rows (GitHub issue #169) each render
+    // their own step-col too — find "step 1"/"step 2"'s own columns specifically rather than
+    // assuming the first two entries in document order.
     const stepOneCol = screen.getByText(m["debug.tree.step_scope"]({ index: 1 })).closest("div")!.querySelector('[data-testid="step-col"]');
     const stepTwoCol = screen.getByText(m["debug.tree.step_scope"]({ index: 2 })).closest("div")!.querySelector('[data-testid="step-col"]');
     expect(stepOneCol).toHaveTextContent("1");
@@ -252,6 +267,7 @@ describe("DebugEventTree", () => {
     const setDebugStep = vi.fn();
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
+    expandGeneration();
 
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 2 })));
     // DeadEnd is trace-only and has no children — clicking its row body (not the step-col) must
@@ -265,6 +281,7 @@ describe("DebugEventTree", () => {
     // Real store (no setDebugStep mock) — debugStep must actually change so the tree's own
     // highlight-by-debugStep fallback would kick in if the click override didn't win.
     render(<DebugEventTree />);
+    expandGeneration();
 
     // Expand "step 1" too, so VertexPushed's own row is present to assert against.
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
@@ -282,6 +299,7 @@ describe("DebugEventTree", () => {
 
   it("hovering a node/edge ref bubble sets hoveredDebugRef; leaving clears it", () => {
     render(<DebugEventTree />);
+    expandGeneration();
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
 
     const edgeBubble = screen.getByText("0:0 <-> 3:4");
@@ -296,6 +314,7 @@ describe("DebugEventTree", () => {
     const setDebugStep = vi.fn();
     useMazeStore.setState({ setDebugStep });
     render(<DebugEventTree />);
+    expandGeneration();
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
 
     const edgeBubble = screen.getByText("0:0 <-> 3:4");
@@ -325,6 +344,7 @@ describe("DebugEventTree", () => {
     // Suppress React's expected error-boundary console noise for this deliberate-throw case.
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<DebugEventTree />);
+    expandGeneration();
     const stepScopeRow = screen.getByText(m["debug.tree.step_scope"]({ index: 1 }));
     expect(() => fireEvent.click(stepScopeRow)).toThrow(/node id 99 not found/);
     consoleError.mockRestore();
@@ -341,6 +361,7 @@ describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
 
   it("labels a walk's two nested scopes as \"Route search\"/\"Route commit\", not numbered step scopes", () => {
     render(<DebugEventTree />);
+    expandGeneration();
 
     const walkRow = screen.getByText(m["debug.tree.walk_scope"]({ index: 1 }));
     fireEvent.click(walkRow);
@@ -352,6 +373,7 @@ describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
 
   it("\"search\" contains StepTaken, \"commit\" contains EdgeAdded/NodeVisited", () => {
     render(<DebugEventTree />);
+    expandGeneration();
     fireEvent.click(screen.getByText(m["debug.tree.walk_scope"]({ index: 1 })));
     fireEvent.click(screen.getByText(m["debug.tree.search_scope"]()));
     fireEvent.click(screen.getByText(m["debug.tree.commit_scope"]()));
@@ -367,6 +389,7 @@ describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
       debugStep: 0,
     });
     render(<DebugEventTree />);
+    expandGeneration();
     fireEvent.click(screen.getByText(m["debug.tree.walk_scope"]({ index: 1 })));
     fireEvent.click(screen.getByText(m["debug.tree.search_scope"]()));
 
@@ -425,9 +448,13 @@ describe("DebugEventTree with a two-source (generation + QC) tape (GitHub issue 
     render(<DebugEventTree />);
     expect(screen.getByText(m["debug.tree.source_scope.generation"]())).toBeInTheDocument();
     expect(screen.getByText(m["debug.tree.source_scope.quality_control"]())).toBeInTheDocument();
+    expect(screen.queryByText(m["debug.tree.step_scope"]({ index: 1 }))).not.toBeInTheDocument();
+
     // The generation source's own "step 1" scope must be a direct child of the "Generation" row,
-    // not wrapped in a spurious extra step row — "Generation" is already auto-expanded on mount
-    // (GitHub issue #169), so "step 1" is visible without any click, directly under it.
+    // not wrapped in a spurious extra step row (GitHub issue #169's former-root merge artifact is
+    // transparent) — "Generation" itself starts collapsed like any other scope row (GitHub issue
+    // #186), so "step 1" only appears once it's expanded.
+    fireEvent.click(screen.getByText(m["debug.tree.source_scope.generation"]()));
     expect(screen.getByText(m["debug.tree.step_scope"]({ index: 1 }))).toBeInTheDocument();
   });
 
@@ -443,8 +470,9 @@ describe("DebugEventTree with a two-source (generation + QC) tape (GitHub issue 
 
   it("resolves stage/rule scope labels through the live store's stages/rules, quoted", () => {
     render(<DebugEventTree />);
-    // Top-level source scopes ("Generation"/"Quality Control") are auto-expanded on mount, so
-    // "stage s1"'s row is already visible without clicking "Quality Control" first.
+    // Top-level source scopes ("Generation"/"Quality Control") start collapsed (GitHub issue
+    // #186) — expand "Quality Control" first so "stage s1"'s row becomes visible.
+    fireEvent.click(screen.getByText(m["debug.tree.source_scope.quality_control"]()));
     expect(screen.getByText('Stage "Waypoints"')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Stage "Waypoints"'));
     fireEvent.click(screen.getByText(m["debug.tree.qc.iteration_scope"]({ iteration: 1 })));

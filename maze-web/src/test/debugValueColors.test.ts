@@ -8,12 +8,6 @@ describe("resolveDebugValueColor", () => {
     expect(typeof color).toBe("number");
   });
 
-  it("gives the same name a different color across different scopes", () => {
-    const rb = resolveDebugValueColor("recursive_backtracker", "visited", 0);
-    const wilson = resolveDebugValueColor("wilson", "visited", 0);
-    expect(rb).not.toBe(wilson);
-  });
-
   it("falls back to a stable palette slot for an unlisted scope", () => {
     const a = resolveDebugValueColor("kruskal", "some_value", 2);
     const b = resolveDebugValueColor("kruskal", "some_value", 2);

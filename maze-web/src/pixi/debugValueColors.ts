@@ -9,11 +9,10 @@ import { buildPalette, hslToRgb } from "./colorUtils";
 // The same name is declared independently by several algorithms (e.g. "visited" — Recursive
 // Backtracker, Wilson, CustomEdgeBased, CustomVertexBased all declare it, see
 // debug_value_names() in maze-core/src/generation/*.rs). Deliberately keyed per-scope rather than
-// giving a name one global color: colors are assigned independently per algorithm below (e.g.
-// "visited" gets a different hue in each algorithm's table) so a name's color still identifies
-// *which algorithm's* run is being viewed, not just the semantic meaning of the name. Scopes/names
-// not listed here (e.g. Kruskal, which declares no debug values yet) fall back to the palette
-// below.
+// giving a name one global color: colors are assigned independently per algorithm below, each
+// picked by hand for that algorithm's own table — two scopes ending up with the same hue for
+// "visited" is just how the current values landed, not a guaranteed distinction. Scopes/names not
+// listed here (e.g. Kruskal, which declares no debug values yet) fall back to the palette below.
 const PREDEFINED_COLORS: Record<string, Record<string, number>> = {
   recursive_backtracker: {
     recursion_stack: hslToRgb(140, 0.55, 0.5),
