@@ -86,6 +86,15 @@ pub enum IssuePayloadDto {
     InvalidTeleport {
         groups: HashMap<String, Vec<Vec<[u32; 2]>>>,
     },
+    /// Keyed by source check id — each inner Vec is one flagged one-way "group", expressed as
+    /// base-graph [from, to] maze node-id pairs, one pair per one-way edge in the group. A
+    /// single invalid one-way (`invalid_one_way`) is a group of size one; a proximity/super-hub/
+    /// count-excess group (`invalid_one_way_group`) can be any size — see GitHub issue #205.
+    /// Reused across both kinds, mirroring `InvalidTeleport`'s reuse across
+    /// `invalid_teleport`/`invalid_teleport_group`.
+    InvalidOneWay {
+        groups: HashMap<String, Vec<Vec<[u32; 2]>>>,
+    },
 }
 
 #[derive(Serialize)]

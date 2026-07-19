@@ -114,6 +114,15 @@ export type IssuePayloadDto =
        * (`invalid_teleport_group`) is a group of size two — both share this payload shape. Keyed
        * per check for the same reason as the `invalid_loop` variant's `edges`. */
       groups: Record<string, [number, number][][]>;
+    }
+  | {
+      kind: "invalid_one_way";
+      /** Keyed by source check id — each entry is one flagged one-way "group", expressed as
+       * [from, to] maze node-id pairs, one pair per one-way edge in the group. A single invalid
+       * one-way (`invalid_one_way`) is a group of size one; a proximity/super-hub/count-excess
+       * group (`invalid_one_way_group`) can be any size — both share this payload shape. Keyed
+       * per check for the same reason as the `invalid_loop` variant's `edges`. */
+      groups: Record<string, [number, number][][]>;
     };
 
 export interface IssueDto {

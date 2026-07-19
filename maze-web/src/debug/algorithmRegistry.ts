@@ -71,6 +71,11 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       const edges = [...payload.groups.values()].flat(2);
       return edges.length > 0 ? { kind: "cycle", edges } : null;
     }
+    case "InvalidOneWay": {
+      // Reuses the "cycle" shape, same rationale as InvalidTeleport above.
+      const edges = [...payload.groups.values()].flat(2);
+      return edges.length > 0 ? { kind: "cycle", edges } : null;
+    }
   }
 }
 

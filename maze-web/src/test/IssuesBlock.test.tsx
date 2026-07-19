@@ -29,6 +29,16 @@ function invalidTeleportIssue(sourceCheck: string): IssueDto {
   };
 }
 
+function invalidOneWayIssue(sourceCheck: string): IssueDto {
+  return {
+    kind: "invalid_one_way",
+    payload: { kind: "invalid_one_way", groups: { [sourceCheck]: [[[3, 4]]] } },
+    source_checks: [sourceCheck],
+    source_check_types: { [sourceCheck]: sourceCheck },
+    details: {},
+  };
+}
+
 function regionNeedsExpansionIssue(sourceCheck: string): IssueDto {
   return {
     kind: "region_needs_expansion",
@@ -56,6 +66,17 @@ describe("IssueBubble", () => {
     render(<IssueBubble issue={issue} sourceCheck="teleport_duplicates_connection" />);
 
     const bubble = screen.getByText("Teleport validation");
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[3, 4]]);
+    fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
+  });
+
+  it("hovering an invalid_one_way bubble sets hoveredIssueLoopEdges (shared edge-highlight path) to this check's flattened groups; leaving clears it", () => {
+    const issue = invalidOneWayIssue("one_way_waypoint_distance");
+    render(<IssueBubble issue={issue} sourceCheck="one_way_waypoint_distance" />);
+
+    const bubble = screen.getByText("One-way validation");
     fireEvent.mouseEnter(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[3, 4]]);
     fireEvent.mouseLeave(bubble);

@@ -1,18 +1,19 @@
 use std::collections::HashMap;
 use crate::graph::{Graph, scc::ConnectedComponents};
 use super::issue::Issue;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue};
 
 /// Structural payload data for an `Issue`, resolved against the current `Graph`/`ConnectedComponents`
 /// — one shared source of truth for both `maze-wasm`'s JSON `IssuePayloadDto` (via a thin
 /// conversion, `maze-wasm/src/dto.rs`) and the narration-level QC event tape's binary
 /// `RuleChecked` payload (`quality_control::event`). Only `InvalidLoopIssue`/
 /// `InvalidLoopGroupIssue`/`RegionNeedsExpansionIssue`/`RegionNeedsShrinkIssue`/
-/// `InvalidTeleportIssue`/`InvalidTeleportGroupIssue` carry structural edge/node data today —
-/// every other concrete `Issue` type resolves to `None`, same as `build_analytics_snapshot`'s
-/// pre-existing behavior. `InvalidLoopGroupIssue` reuses the `InvalidLoop` payload variant
-/// (identical shape) rather than getting its own wire tag — `InvalidTeleportGroupIssue` reuses
-/// `InvalidTeleport` the same way.
+/// `InvalidTeleportIssue`/`InvalidTeleportGroupIssue`/`InvalidOneWayIssue`/
+/// `InvalidOneWayGroupIssue` carry structural edge/node data today — every other concrete `Issue`
+/// type resolves to `None`, same as `build_analytics_snapshot`'s pre-existing behavior.
+/// `InvalidLoopGroupIssue` reuses the `InvalidLoop` payload variant (identical shape) rather than
+/// getting its own wire tag — `InvalidTeleportGroupIssue` reuses `InvalidTeleport` the same way,
+/// and `InvalidOneWayGroupIssue` reuses `InvalidOneWay` the same way (see GitHub issue #205).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum IssuePayload {
     #[default]
@@ -35,6 +36,16 @@ pub enum IssuePayload {
     /// `InvalidLoop`'s reuse across `InvalidLoopIssue`/`InvalidLoopGroupIssue`. Mirrors
     /// `IssuePayloadDto::InvalidTeleport`.
     InvalidTeleport { groups: HashMap<String, Vec<Vec<[u32; 2]>>> },
+    /// Keyed by source check id — each inner `Vec` is one flagged one-way "group", expressed as
+    /// base-graph `[from, to]` maze node-id pairs, one pair per one-way edge in the group.
+    /// `InvalidOneWayIssue` (a single flagged one-way is a group of size one) and
+    /// `InvalidOneWayGroupIssue` (a proximity/super-hub/count-excess group of any size) both
+    /// resolve into this same shape — mirrors `InvalidTeleport`'s reuse across
+    /// `InvalidTeleportIssue`/`InvalidTeleportGroupIssue` — see GitHub issue #205. Mirrors
+    /// `IssuePayloadDto::InvalidOneWay`. Kept a distinct variant from `InvalidTeleport` (not
+    /// reused) so `payload.kind` still mirrors `IssueKind::as_str()` (`invalid_one_way` vs.
+    /// `invalid_teleport`), same rationale as every other variant here.
+    InvalidOneWay { groups: HashMap<String, Vec<Vec<[u32; 2]>>> },
 }
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
@@ -130,6 +141,44 @@ fn resolve_invalid_teleport_group_payload(pairs: &[(crate::ids::EdgeId, crate::i
     if groups.is_empty() { None } else { Some(IssuePayload::InvalidTeleport { groups }) }
 }
 
+/// Resolves a single flagged one-way edge into a one-edge group, keyed by the specific check(s)
+/// that flagged *that* edge — same per-edge attribution rationale as
+/// `resolve_invalid_teleport_payload`, shared by `InvalidOneWayIssue`'s resolve path below.
+fn resolve_invalid_one_way_payload(invalid: &[crate::ids::EdgeId], invalid_sources: &HashMap<crate::ids::EdgeId, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
+    let mut groups: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
+    for &eid in invalid {
+        let Some(edge) = graph.edge(eid) else { continue };
+        let (Ok(from), Ok(to)) = (u32::try_from(edge.from), u32::try_from(edge.to)) else { continue };
+        for source in invalid_sources.get(&eid).into_iter().flatten() {
+            groups.entry(source.clone()).or_default().push(vec![[from, to]]);
+        }
+    }
+    if groups.is_empty() { None } else { Some(IssuePayload::InvalidOneWay { groups }) }
+}
+
+/// Resolves every flagged one-way group's edge set into base-graph edge pairs, keyed by the
+/// specific check(s) that flagged *that* group (`invalid_sources`, canonical-group-key-keyed) —
+/// shared by `InvalidOneWayGroupIssue`'s resolve path below. Same per-group attribution rationale
+/// as `resolve_invalid_teleport_group_payload`; `to_remove` (the group's fix-count) carries no
+/// highlight meaning and is dropped here — every edge in the group is highlighted regardless.
+fn resolve_invalid_one_way_group_payload(groups: &[(Vec<crate::ids::EdgeId>, u32)], invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
+    let mut out: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
+    for (group, _to_remove) in groups {
+        let edge_pairs: Vec<[u32; 2]> = group.iter().filter_map(|&eid| {
+            let edge = graph.edge(eid)?;
+            let from = u32::try_from(edge.from).ok()?;
+            let to = u32::try_from(edge.to).ok()?;
+            Some([from, to])
+        }).collect();
+        let mut key = group.clone();
+        key.sort_unstable();
+        for source in invalid_sources.get(&key).into_iter().flatten() {
+            out.entry(source.clone()).or_default().push(edge_pairs.clone());
+        }
+    }
+    if out.is_empty() { None } else { Some(IssuePayload::InvalidOneWay { groups: out }) }
+}
+
 pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         if let Some(payload) = resolve_invalid_loop_payload(all, invalid, invalid_sources, graph) {
@@ -179,6 +228,18 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
 
     if let Some(InvalidTeleportGroupIssue { pairs, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportGroupIssue>() {
         if let Some(payload) = resolve_invalid_teleport_group_payload(pairs, invalid_sources, graph) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidOneWayIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidOneWayIssue>() {
+        if let Some(payload) = resolve_invalid_one_way_payload(invalid, invalid_sources, graph) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidOneWayGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidOneWayGroupIssue>() {
+        if let Some(payload) = resolve_invalid_one_way_group_payload(groups, invalid_sources, graph) {
             return payload;
         }
     }
@@ -444,5 +505,82 @@ mod tests {
         let payload = resolve_issue_payload(&issue, &graph, &scc);
         let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
         assert_eq!(groups["teleport_group_proximity"], vec![vec![[1, 2], [2, 3]]], "the pair with a stale edge id must be dropped, not panic");
+    }
+
+    fn one_way_graph() -> (Graph, crate::ids::EdgeId, crate::ids::EdgeId) {
+        use crate::graph::EdgeKind;
+        let mut graph = Graph::new();
+        graph.add_node(1);
+        graph.add_node(2);
+        graph.add_node(3);
+        let e1 = graph.add_edge(1, 2, EdgeKind::Basic);
+        let e2 = graph.add_edge(2, 3, EdgeKind::Basic);
+        (graph, e1, e2)
+    }
+
+    #[test]
+    fn invalid_one_way_issue_with_no_flagged_edges_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidOneWayIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve_issue_payload(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_one_way_issue_resolves_flagged_edge_as_one_element_group() {
+        let (graph, e1, _) = one_way_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidOneWayIssue::new_from_check("one_way_waypoint_distance", vec![e1]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups["one_way_waypoint_distance"], vec![vec![[1, 2]]]);
+    }
+
+    #[test]
+    fn invalid_one_way_issue_silently_skips_a_stale_edge_id_absent_from_the_graph() {
+        let (graph, e1, _) = one_way_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let stale_id = e1 + 1000;
+        let issue = InvalidOneWayIssue::new_from_check("one_way_waypoint_distance", vec![e1, stale_id]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
+        assert_eq!(groups["one_way_waypoint_distance"], vec![vec![[1, 2]]], "stale edge id must be dropped, not panic");
+    }
+
+    #[test]
+    fn invalid_one_way_group_issue_with_no_flagged_groups_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidOneWayGroupIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve_issue_payload(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_one_way_group_issue_resolves_flagged_group_edges() {
+        let (graph, e1, e2) = one_way_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidOneWayGroupIssue::new_from_check("one_way_group_graph_proximity", vec![(vec![e1, e2], 1)]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
+        assert_eq!(groups.len(), 1);
+        let group_edges = &groups["one_way_group_graph_proximity"];
+        assert_eq!(group_edges.len(), 1);
+        let mut pairs = group_edges[0].clone();
+        pairs.sort();
+        assert_eq!(pairs, vec![[1, 2], [2, 3]]);
+    }
+
+    #[test]
+    fn invalid_one_way_group_issue_silently_skips_a_group_with_a_stale_edge_id() {
+        let (graph, e1, e2) = one_way_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let stale_id = e2 + 1000;
+        let issue = InvalidOneWayGroupIssue::new_from_check("one_way_group_graph_proximity", vec![(vec![e1, stale_id], 1)]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
+        assert_eq!(groups["one_way_group_graph_proximity"], vec![vec![[1, 2]]], "the stale edge id must be dropped, not panic, leaving only the resolvable edge");
     }
 }

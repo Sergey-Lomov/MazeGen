@@ -58,7 +58,8 @@ export type IssuePayload =
   | { kind: "InvalidLoop"; edges: Map<string, [bigint, bigint][][]> }
   | { kind: "RegionNeedsExpansion"; nodes: Map<string, bigint[][]> }
   | { kind: "RegionNeedsShrink"; nodes: Map<string, bigint[][]> }
-  | { kind: "InvalidTeleport"; groups: Map<string, [bigint, bigint][][]> };
+  | { kind: "InvalidTeleport"; groups: Map<string, [bigint, bigint][][]> }
+  | { kind: "InvalidOneWay"; groups: Map<string, [bigint, bigint][][]> };
 
 /** Mirrors `QcEvent` in `maze-core/src/quality_control/event.rs` — see that type's doc comment for
  *  the trace/mutating/declined split. `ruleId`/`checkId`/`issueKind` are the wire strings
@@ -207,6 +208,10 @@ function readIssuePayload(bytes: Uint8Array, offset: number): { value: IssuePayl
   if (tag === 4) {
     const { value: groups, next } = readStrKeyedEdgePairs(bytes, offset + 1);
     return { value: { kind: "InvalidTeleport", groups }, next };
+  }
+  if (tag === 5) {
+    const { value: groups, next } = readStrKeyedEdgePairs(bytes, offset + 1);
+    return { value: { kind: "InvalidOneWay", groups }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }

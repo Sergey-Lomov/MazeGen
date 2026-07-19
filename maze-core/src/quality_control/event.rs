@@ -246,6 +246,10 @@ fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(4);
             write_str_keyed_edge_pairs(out, groups);
         }
+        IssuePayload::InvalidOneWay { groups } => {
+            out.push(5);
+            write_str_keyed_edge_pairs(out, groups);
+        }
     }
 }
 
