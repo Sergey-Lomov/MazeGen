@@ -115,6 +115,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.min_one_way_ratio.label"] as MessageFn,
     description: m["check.min_one_way_ratio.description"] as MessageFn,
   },
+  max_one_way_count: {
+    label: m["check.max_one_way_count.label"] as MessageFn,
+    description: m["check.max_one_way_count.description"] as MessageFn,
+  },
+  max_one_way_ratio: {
+    label: m["check.max_one_way_ratio.label"] as MessageFn,
+    description: m["check.max_one_way_ratio.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -461,6 +469,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   min_ratio: {
     label: m["param.min_ratio.label"] as MessageFn,
     description: m["param.min_ratio.description"] as MessageFn,
+  },
+  max_one_ways: {
+    label: m["param.max_one_ways.label"] as MessageFn,
+    description: m["param.max_one_ways.description"] as MessageFn,
+  },
+  max_ratio: {
+    label: m["param.max_ratio.label"] as MessageFn,
+    description: m["param.max_ratio.description"] as MessageFn,
   },
 };
 

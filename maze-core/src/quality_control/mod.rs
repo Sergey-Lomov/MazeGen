@@ -53,4 +53,6 @@ pub use checks::{
     OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
     MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT,
     MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT,
+    MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT,
+    MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
 };

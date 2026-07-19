@@ -10,28 +10,39 @@ fn canonical_group_key(group: &[EdgeId]) -> Vec<EdgeId> {
     key
 }
 
+/// One flagged group of one-way edges, paired with how many of its edges still need fixing —
+/// see GitHub issue #202. Distinct from the group's own edge set: a group's *size* is "every
+/// one-way edge implicated in this problem" (e.g. every one-way incident to an over-connected
+/// vertex, or the entire maze's one-way set for a count/ratio excess), while `to_remove` is "how
+/// many of those edges actually need to be resolved before the problem is gone" — for a
+/// proximity pair this is always 1 (fixing either edge in the pair breaks the pair), for a
+/// super-hub vertex it's the vertex's excess over the configured maximum, for a maze-wide count/
+/// ratio excess it's the excess itself. `OneWayGroupSelectStrategy` reads `to_remove` to know how
+/// many edges to pull out of the group before considering it resolved, instead of assuming
+/// exactly one fix always clears a group.
+pub type OneWayGroup = (Vec<EdgeId>, u32);
+
 /// Produced by any check that flags a set of one-way edges (`EdgeKind::Basic`, single direction)
-/// placed too close to each other — see GitHub issue #199. Distinct from `INVALID_ONE_WAY`:
-/// that kind flags a single one-way edge invalid on its own; this one flags a *relationship*
-/// between two or more one-way edges, none of which is individually invalid. Mirrors
-/// `InvalidTeleportGroupIssue`'s role for teleports, but shaped as `groups: Vec<Vec<EdgeId>>`
-/// (not a flat pair list) so a repair strategy can uniformly handle any group size — currently
-/// every producing check only ever emits 2-element groups (one problematic pair per scanned
-/// edge, same "stop at the first hit" rule `TeleportGroupProximityCheck` uses), but the strategy
-/// itself makes no such assumption. **Mandatory** for this kind: `OneWayGroupSelectStrategy`'s
-/// `problematic` priority needs group membership to score which edge to pick.
+/// as jointly invalid — see GitHub issue #199. Distinct from `INVALID_ONE_WAY`: that kind flags a
+/// single one-way edge invalid on its own; this one flags a *relationship*/*aggregate* condition
+/// over two or more one-way edges, none of which is individually invalid. Mirrors
+/// `InvalidTeleportGroupIssue`'s role for teleports, but shaped as `groups: Vec<OneWayGroup>` (not
+/// a flat pair list) so a repair strategy can uniformly handle any group size — see `OneWayGroup`'s
+/// doc comment for what the paired count means. **Mandatory** for this kind:
+/// `OneWayGroupSelectStrategy`'s `problematic` priority needs group membership to score which edge
+/// to pick.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct InvalidOneWayGroupIssue {
     meta: IssueMeta,
-    pub groups: Vec<Vec<EdgeId>>,
+    pub groups: Vec<OneWayGroup>,
     /// Per-group check provenance, keyed by `canonical_group_key` — mirrors
     /// `InvalidTeleportGroupIssue::invalid_sources`.
     pub invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
 }
 
 impl InvalidOneWayGroupIssue {
-    pub fn new_from_check(source_check: &str, groups: Vec<Vec<EdgeId>>) -> Self {
-        let invalid_sources = groups.iter().map(|g| (canonical_group_key(g), vec![source_check.to_string()])).collect();
+    pub fn new_from_check(source_check: &str, groups: Vec<OneWayGroup>) -> Self {
+        let invalid_sources = groups.iter().map(|(g, _)| (canonical_group_key(g), vec![source_check.to_string()])).collect();
         Self { meta: IssueMeta::new_from_check(source_check), groups, invalid_sources }
     }
 
@@ -59,20 +70,34 @@ impl Issue for InvalidOneWayGroupIssue {
 impl IssueMerge for InvalidOneWayGroupIssue {
     /// A group's edge order carries no meaning — dedup by unordered identity so two checks
     /// reporting the same edge set (any order) collapse to one entry instead of being kept as
-    /// duplicates. `invalid_sources` is unioned per canonical group key, mirroring
-    /// `InvalidTeleportGroupIssue`'s merge.
+    /// duplicates. When both sides flag the same edge set with different `to_remove` counts, the
+    /// larger of the two wins (the more demanding requirement is the one that must actually be
+    /// satisfied for the group to be considered resolved). `invalid_sources` is unioned per
+    /// canonical group key regardless of which side's `to_remove` won, mirroring
+    /// `InvalidTeleportGroupIssue`'s merge — a check that didn't contribute the winning count is
+    /// still a valid source for the group.
     fn merge(&mut self, other: Self) {
         for source in other.meta.source_checks() {
             self.meta.push_source(source);
         }
         self.meta.merge_details(other.meta.details().clone());
 
-        use std::collections::HashSet;
-        let mut seen: HashSet<Vec<EdgeId>> = self.groups.iter().map(|g| canonical_group_key(g)).collect();
-        for group in other.groups {
+        use std::collections::HashMap as Map;
+        let mut by_key: Map<Vec<EdgeId>, usize> = self.groups.iter().enumerate()
+            .map(|(i, (g, _))| (canonical_group_key(g), i))
+            .collect();
+        for (group, to_remove) in other.groups {
             let key = canonical_group_key(&group);
-            if seen.insert(key) {
-                self.groups.push(group);
+            match by_key.get(&key) {
+                Some(&i) => {
+                    if to_remove > self.groups[i].1 {
+                        self.groups[i].1 = to_remove;
+                    }
+                }
+                None => {
+                    by_key.insert(key, self.groups.len());
+                    self.groups.push((group, to_remove));
+                }
             }
         }
 
@@ -93,37 +118,55 @@ mod tests {
 
     #[test]
     fn merge_unions_disjoint_groups() {
-        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![vec![0, 1]]);
-        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![vec![2, 3]]);
+        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
         a.merge(b);
 
         assert_eq!(a.groups.len(), 2);
-        assert!(a.groups.contains(&vec![0, 1]));
-        assert!(a.groups.contains(&vec![2, 3]));
+        assert!(a.groups.contains(&(vec![0, 1], 1)));
+        assert!(a.groups.contains(&(vec![2, 3], 1)));
     }
 
     #[test]
     fn merge_deduplicates_identical_group() {
-        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![vec![0, 1]]);
-        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![vec![0, 1]]);
+        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
         a.merge(b);
 
-        assert_eq!(a.groups, vec![vec![0, 1]], "the same group flagged by both checks must not be duplicated");
+        assert_eq!(a.groups, vec![(vec![0, 1], 1)], "the same group flagged by both checks must not be duplicated");
     }
 
     #[test]
     fn merge_deduplicates_group_regardless_of_edge_order() {
-        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![vec![0, 1]]);
-        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![vec![1, 0]]);
+        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![1, 0], 1)]);
         a.merge(b);
 
         assert_eq!(a.groups.len(), 1, "(0,1) and (1,0) must collapse to a single group: {:?}", a.groups);
     }
 
     #[test]
+    fn merge_keeps_the_larger_to_remove_for_the_same_group() {
+        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 3)]);
+        a.merge(b);
+
+        assert_eq!(a.groups, vec![(vec![0, 1], 3)], "the larger to_remove must win");
+    }
+
+    #[test]
+    fn merge_keeps_the_larger_to_remove_regardless_of_merge_direction() {
+        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 3)]);
+        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
+        a.merge(b);
+
+        assert_eq!(a.groups, vec![(vec![0, 1], 3)], "the larger to_remove must win regardless of which side already had it");
+    }
+
+    #[test]
     fn merge_attributes_each_group_to_only_its_own_flagging_check() {
-        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![vec![0, 1]]);
-        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![vec![2, 3]]);
+        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![2, 3], 1)]);
         a.merge(b);
 
         assert_eq!(a.invalid_sources.get(&vec![0, 1]), Some(&vec!["rule_1:a".to_string()]));
@@ -132,12 +175,25 @@ mod tests {
 
     #[test]
     fn merge_invalid_sources_unions_check_ids_for_same_group() {
-        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![vec![0, 1]]);
-        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![vec![1, 0]]);
+        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 1)]);
+        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![1, 0], 2)]);
         a.merge(b);
 
         let sources = a.invalid_sources.get(&vec![0, 1]).expect("merged group must have recorded sources");
         assert_eq!(sources.len(), 2);
+        assert!(sources.contains(&"rule_1:a".to_string()));
+        assert!(sources.contains(&"rule_1:b".to_string()));
+    }
+
+    #[test]
+    fn merge_invalid_sources_unions_check_ids_even_when_one_side_does_not_win_to_remove() {
+        // The check that didn't contribute the winning to_remove is still a valid source.
+        let mut a = InvalidOneWayGroupIssue::new_from_check("rule_1:a", vec![(vec![0, 1], 5)]);
+        let b = InvalidOneWayGroupIssue::new_from_check("rule_1:b", vec![(vec![0, 1], 1)]);
+        a.merge(b);
+
+        assert_eq!(a.groups, vec![(vec![0, 1], 5)]);
+        let sources = a.invalid_sources.get(&vec![0, 1]).expect("merged group must have recorded sources");
         assert!(sources.contains(&"rule_1:a".to_string()));
         assert!(sources.contains(&"rule_1:b".to_string()));
     }

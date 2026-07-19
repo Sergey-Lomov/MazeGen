@@ -28,6 +28,8 @@ use maze_core::{
         OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT,
         MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT,
+        MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT,
+        MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
         Comparison,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
@@ -93,6 +95,8 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "one_way_group_super_hub"   => KindTag::InvalidOneWayGroup,
         "min_one_way_count"         => KindTag::MissingOneWays,
         "min_one_way_ratio"         => KindTag::MissingOneWays,
+        "max_one_way_count"         => KindTag::InvalidOneWayGroup,
+        "max_one_way_ratio"         => KindTag::InvalidOneWayGroup,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -445,6 +449,20 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT);
             Some(Box::new(OneWayGroupSuperHubCheck { instance_id, max_connections }))
+        }
+        "max_one_way_count" => {
+            let max_one_ways = instance.params.get("max_one_ways")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_ONE_WAY_COUNT_DEFAULT);
+            Some(Box::new(MaxOneWayCountCheck { instance_id, max_one_ways }))
+        }
+        "max_one_way_ratio" => {
+            let max_ratio = instance.params.get("max_ratio")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(MAX_ONE_WAY_RATIO_DEFAULT);
+            Some(Box::new(MaxOneWayRatioCheck { instance_id, max_ratio }))
         }
         _ => None,
     }

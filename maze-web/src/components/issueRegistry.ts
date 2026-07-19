@@ -112,6 +112,8 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   one_way_group_super_hub: (d) => d.max_connections !== undefined ? m["issue.invalid_one_way_group.one_way_group_super_hub_label"]({ max_connections: d.max_connections }) : undefined,
   min_one_way_count: (d) => d.missing !== undefined ? m["issue.missing_one_ways.min_one_way_count_label"]({ missing: d.missing }) : undefined,
   min_one_way_ratio: (d) => d.missing !== undefined ? m["issue.missing_one_ways.min_one_way_ratio_label"]({ missing: d.missing }) : undefined,
+  max_one_way_count: (d) => d.max_one_ways !== undefined ? m["issue.invalid_one_way_group.max_one_way_count_label"]({ max_one_ways: d.max_one_ways }) : undefined,
+  max_one_way_ratio: (d) => d.max_ratio !== undefined ? m["issue.invalid_one_way_group.max_one_way_ratio_label"]({ max_ratio: d.max_ratio }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

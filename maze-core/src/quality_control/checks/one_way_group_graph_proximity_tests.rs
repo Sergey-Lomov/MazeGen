@@ -41,12 +41,13 @@ fn fires_when_two_one_ways_closer_than_threshold() {
     // own=e2/other=e1 both fire, same "symmetric pair recorded from both sides" shape
     // `TeleportGroupProximityCheck` produces.
     assert_eq!(issues[0].groups.len(), 2);
-    for group in &issues[0].groups {
+    for (group, to_remove) in &issues[0].groups {
         let mut sorted = group.clone();
         sorted.sort_unstable();
         let mut expected = vec![e1, e2];
         expected.sort_unstable();
         assert_eq!(sorted, expected);
+        assert_eq!(*to_remove, 1, "fixing either edge in the pair resolves it");
     }
 }
 
@@ -75,11 +76,12 @@ fn shared_from_node_counts_as_distance_one_not_zero() {
     issues.clear();
     check(2.0, true).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1, "threshold 2.0 must fire -- offset distance 1 < 2");
-    let mut group = issues[0].groups[0].clone();
+    let (mut group, to_remove) = issues[0].groups[0].clone();
     group.sort_unstable();
     let mut expected = vec![e1, e2];
     expected.sort_unstable();
     assert_eq!(group, expected);
+    assert_eq!(to_remove, 1);
 }
 
 #[test]

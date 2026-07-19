@@ -21,9 +21,10 @@ pub const ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT: u32 = 3;
 /// from it or into it, so the count is not split or filtered by direction.
 ///
 /// One group per over-threshold vertex, containing every one-way edge incident to it (not just
-/// the excess) — mirrors `InvalidOneWayGroupIssue`'s doc comment: the strategy, not the check,
-/// decides which edges within a group are the ones actually fixed.
-/// `OneWayGroupSelectStrategy` (registered against `INVALID_ONE_WAY_GROUP`) already handles
+/// the excess) paired with the vertex's excess count as `to_remove` (GitHub issue #202) — see
+/// `InvalidOneWayGroupIssue`'s/`OneWayGroup`'s doc comments: the group carries every candidate
+/// edge, `to_remove` says how many of them actually need fixing, and the strategy decides which
+/// ones. `OneWayGroupSelectStrategy` (registered against `INVALID_ONE_WAY_GROUP`) already handles
 /// groups of any size and already applies its own `protect_route` exclusion when picking a
 /// candidate — this check carries no `protect_route` of its own, unlike the per-edge/per-pair
 /// one-way checks.
@@ -45,8 +46,12 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupSuperHubC
             by_vertex.entry(edge.to).or_default().push(edge.id);
         }
 
-        let groups: Vec<Vec<EdgeId>> = by_vertex.into_values()
+        let groups: Vec<(Vec<EdgeId>, u32)> = by_vertex.into_values()
             .filter(|edges| edges.len() as u32 > self.max_connections)
+            .map(|edges| {
+                let to_remove = edges.len() as u32 - self.max_connections;
+                (edges, to_remove)
+            })
             .collect();
 
         if groups.is_empty() {

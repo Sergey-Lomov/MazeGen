@@ -90,7 +90,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProx
         // hop farther now already crosses the threshold.
         let max_dist = (self.distance.ceil() as isize - 2).max(0) as usize;
         let mut dist_cache = DirectedDistanceCache::new(&nav, max_dist);
-        let mut groups: Vec<Vec<EdgeId>> = Vec::new();
+        let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
 
         for &(own_id, own_from, own_to) in &one_ways {
             let own_navs: Vec<NavNodeId> = [own_from, own_to].into_iter()
@@ -123,7 +123,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProx
                             && is_edge_on_route(maze, own_id)
                             && is_edge_on_route(maze, other_id);
                         if !both_route_protected {
-                            groups.push(vec![own_id, other_id]);
+                            // Fixing either edge in the pair breaks the pair -- one fix resolves it.
+                            groups.push((vec![own_id, other_id], 1));
                             break;
                         }
                     }

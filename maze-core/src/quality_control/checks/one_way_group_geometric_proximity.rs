@@ -53,7 +53,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
             return;
         }
 
-        let mut groups: Vec<Vec<crate::ids::EdgeId>> = Vec::new();
+        let mut groups: Vec<(Vec<crate::ids::EdgeId>, u32)> = Vec::new();
 
         for &(own_id, own_from, own_to) in &one_ways {
             for &(other_id, other_from, other_to) in &one_ways {
@@ -68,7 +68,8 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
                         && is_edge_on_route(maze, own_id)
                         && is_edge_on_route(maze, other_id);
                     if !both_route_protected {
-                        groups.push(vec![own_id, other_id]);
+                        // Fixing either edge in the pair breaks the pair -- one fix resolves it.
+                        groups.push((vec![own_id, other_id], 1));
                         break;
                     }
                 }

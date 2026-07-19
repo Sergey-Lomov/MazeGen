@@ -64,7 +64,7 @@ relates to the type-level `Issue` design (GitHub issue #113).
 
 `InvalidOneWay` mirrors `InvalidTeleport`'s role, but for a one-way passage edge (`EdgeKind::Basic`, single direction — the opposite direction between the same node pair does not exist) flagged invalid for a check-specific reason instead of a teleport — see GitHub issue #198, part of the one-way management epic (#92). Currently produced only by `OneWayWaypointDistanceCheck` (the one-way's distance to a waypoint compares against a configured threshold). Carries `InvalidOneWayIssue { invalid, invalid_sources, .. }` — same `EdgeId`-list shape as `InvalidTeleportIssue`, see that type's doc comment. Two repair strategies are registered against this kind — `OneWayToPassageStrategy` (completes the flagged edge into a full bidirectional passage) and `OneWayToWallStrategy` (removes the flagged edge entirely) — a rule picks exactly one, same as any other kind with more than one registered strategy.
 
-`InvalidOneWayGroup` mirrors `TeleportGroupProximity`'s role, but for one-way edges instead of teleports — see GitHub issue #199, part of the one-way management epic (#92). Where `InvalidOneWay` flags a single one-way edge invalid on its own, `InvalidOneWayGroup` flags a *relationship* between two or more one-way edges (none individually invalid). Produced by two checks sharing the same shape but different metrics — `OneWayGroupGeometricProximityCheck` (Euclidean distance) and `OneWayGroupGraphProximityCheck` (topological tile-hop distance) — kept as two distinct check types rather than one dual-metric check, mirroring how `TeleportGeometricLengthCheck`/`TeleportGraphDistanceCheck` stay separate per-teleport checks rather than merging. Carries `InvalidOneWayGroupIssue { groups, invalid_sources, .. }` — shaped as `groups: Vec<Vec<EdgeId>>` (not `TeleportGroupProximityIssue`'s flat pair list) so the repair strategy can uniformly handle any group size, even though every producing check today only ever emits 2-element groups (same "stop at the first hit" scan `TeleportGroupProximityCheck` uses). Repaired by `OneWayGroupProximityStrategy` (see `repair.md`).
+`InvalidOneWayGroup` mirrors `TeleportGroupProximity`'s role, but for one-way edges instead of teleports — see GitHub issue #199, generalized in #200 and #202, part of the one-way management epic (#92). Where `InvalidOneWay` flags a single one-way edge invalid on its own, `InvalidOneWayGroup` flags a *relationship*/*aggregate* condition over two or more one-way edges (none individually invalid). Produced by five checks sharing the same issue shape: `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck` (proximity pairs, Euclidean vs. topological distance — kept as two distinct check types rather than one dual-metric check, mirroring how `TeleportGeometricLengthCheck`/`TeleportGraphDistanceCheck` stay separate), `OneWayGroupSuperHubCheck` (per-vertex excess connection count), and `MaxOneWayCountCheck`/`MaxOneWayRatioCheck` (maze-wide count/ratio excess). Carries `InvalidOneWayGroupIssue { groups, invalid_sources, .. }`, shaped as `groups: Vec<OneWayGroup>` where `OneWayGroup = (Vec<EdgeId>, u32)` pairs each group's edge set with how many of its edges still need fixing (GitHub issue #202 follow-up — see this type's own doc comment below) — not `TeleportGroupProximityIssue`'s flat pair list, so the repair strategy can uniformly handle any group size and any per-group fix count. Repaired by `OneWayGroupSelectStrategy` (see `repair.md`).
 
 Always use the named constant — never use string literals or enum variants inline.
 
@@ -915,13 +915,56 @@ Flag a pair of one-way passage edges (`EdgeKind::Basic`, single direction) place
 
 One-way detection is the same single-direction `Basic`-edge filter `OneWayWaypointDistanceCheck` uses (`kind == Basic` with no `Basic`-kind reverse between the pair).
 
-For each one-way edge, scans every other one-way edge for the first one closer than `distance` — as soon as one problematic pair is found for an edge, it's recorded and the scan moves to the next edge (no need to enumerate every pair a one-way participates in). Because the scan runs independently per edge, a symmetric pair is typically recorded twice within one check call (once as `own=A, other=B`, once as `own=B, other=A`) — both entries land in `InvalidOneWayGroupIssue.groups` as separate 2-element groups; `OneWayGroupProximityStrategy` treats this the same way `TeleportGroupProximityStrategy` treats symmetric teleport pairs (resolving one group drops the other automatically once it shares the fixed edge).
+For each one-way edge, scans every other one-way edge for the first one closer than `distance` — as soon as one problematic pair is found for an edge, it's recorded and the scan moves to the next edge (no need to enumerate every pair a one-way participates in). Because the scan runs independently per edge, a symmetric pair is typically recorded twice within one check call (once as `own=A, other=B`, once as `own=B, other=A`) — both entries land in `InvalidOneWayGroupIssue.groups` as separate 2-element groups, each with `to_remove: 1` (fixing either edge in the pair breaks the pair); `OneWayGroupSelectStrategy` treats this the same way `TeleportGroupProximityStrategy` treats symmetric teleport pairs (resolving one group drops the other automatically once it shares the fixed edge).
 
 `protect_route` (GitHub issue #199, default `true`) — mirrors `TeleportGroupProximityCheck`'s own rule (issue #78): a pair is only excluded from being recorded when *both* one-way edges lie on the maze's current start→finish route (`graph::route_protection::is_edge_on_route`); if only one side sits on the route, the pair is still recorded, since the non-route side remains a legitimate repair candidate. Excluding a pair for being fully route-protected does not end the scan for the edge being scanned — a farther, non-protected candidate is still searched for.
 
-If any pairs are found, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", self.distance.to_string())` chained on. Multiple instances of either check may be active at once (`allow_multiple_instances: true`) — distinct `distance` thresholds are a legitimate simultaneous configuration, same rationale as `teleport_group_proximity`'s own multi-instance allowance.
+If any pairs are found, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, groups)` (each group paired with `to_remove: 1`, see `OneWayGroup` below) with `.with_detail(instance_id, "distance", self.distance.to_string())` chained on. Multiple instances of either check may be active at once (`allow_multiple_instances: true`) — distinct `distance` thresholds are a legitimate simultaneous configuration, same rationale as `teleport_group_proximity`'s own multi-instance allowance.
 
-`OneWayGroupProximityStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_ONE_WAY_GROUP`.
+`OneWayGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_ONE_WAY_GROUP`.
+
+#### InvalidOneWayGroupIssue / OneWayGroup
+
+```rust
+pub type OneWayGroup = (Vec<EdgeId>, u32);
+
+pub struct InvalidOneWayGroupIssue {
+    pub groups: Vec<OneWayGroup>,
+    pub invalid_sources: HashMap<Vec<EdgeId>, Vec<String>>,
+    // meta: IssueMeta
+}
+```
+
+`groups` pairs each flagged group's edge set with a `to_remove: u32` count — see GitHub issue #202 follow-up. A group's edge set is "every one-way edge implicated in this problem" (both edges of a proximity pair, every one-way incident to an over-connected super-hub vertex, or the maze's entire one-way set for a count/ratio excess); `to_remove` is "how many of those edges must actually be fixed before the problem is resolved" — 1 for a proximity pair (fixing either edge breaks the pair), a super-hub vertex's own excess over its configured maximum, or a count/ratio check's own excess over its configured maximum. Earlier revisions assumed every group needed exactly one fix; `to_remove` lets `OneWayGroupSelectStrategy` converge a large excess (e.g. a maze-wide count/ratio group) within one `apply()` call instead of needing one repair iteration per excess edge.
+
+`IssueMerge` dedups by unordered edge-set identity (`canonical_group_key`) same as before; when both sides flag the same edge set with different `to_remove`, the larger value wins (the more demanding requirement must be satisfied for the group to count as resolved) — `invalid_sources` still unions both sides' source checks regardless of which one's `to_remove` won.
+
+### MaxOneWayCountCheck / MaxOneWayRatioCheck
+
+```rust
+pub const MAX_ONE_WAY_COUNT_DEFAULT: u32 = 1_000;
+pub const MAX_ONE_WAY_RATIO_DEFAULT: u32 = 100;
+
+pub struct MaxOneWayCountCheck {
+    pub instance_id: String,
+    pub max_one_ways: u32,
+}
+
+pub struct MaxOneWayRatioCheck {
+    pub instance_id: String,
+    pub max_ratio: u32,
+}
+```
+
+Flag an excess of one-way passage edges (`EdgeKind::Basic`, single direction) — see GitHub issue #202, part of the one-way management epic (#92). Symmetric counterparts to `MinOneWayCountCheck`/`MinOneWayRatioCheck` (issue #201): same counting rule (raw count vs. `MinOneWayCountCheck`; count per 100 field cells via `maze.field.node_count()` vs. `MinOneWayRatioCheck`), just the excess side of the threshold rather than the deficit side. The excess case gets its own issue kind (`INVALID_ONE_WAY_GROUP`, not `MISSING_ONE_WAYS`) rather than reusing `MissingOneWaysIssue` via a comparison flip — removing an excess one-way is a different corrective action (convert to bidirectional/wall) from adding one, same rationale as `RegionNeedsExpansion`/`RegionNeedsShrink`.
+
+One-way detection is the same single-direction `Basic`-edge filter every other one-way check uses (`kind == Basic` with no `Basic`-kind reverse between the pair).
+
+Unlike `MinOneWayCountCheck`/`MinOneWayRatioCheck` (which report a numeric deficit in `MissingOneWaysIssue`), both checks here report every one-way edge in the maze as a single group in `InvalidOneWayGroupIssue.groups`, paired with the excess count as `to_remove` (GitHub issue #202 follow-up — see `OneWayGroup`'s doc comment above): the strategy, not the check, decides *which* edges within the group are the ones actually fixed, but the check itself says *how many*. For `MaxOneWayCountCheck`, `to_remove = count - max_one_ways`. For `MaxOneWayRatioCheck`, `to_remove = count - target_count`, where `target_count` is `max_ratio * field_cells / 100` **rounded to the nearest integer** (`(max_ratio * field_cells + 50) / 100` in integer arithmetic, `saturating_sub` guarding the rare small-field case where rounding pushes `target_count` above `count`) — round-to-nearest, not floor/ceil, so a fractional target (e.g. 4.3) resolves to the closest whole edge count (4) rather than always truncating down (GitHub issue #202 follow-up review: an earlier floor-based version under-reported `to_remove` by one whenever the fraction rounded up). `OneWayGroupSelectStrategy` (registered against `INVALID_ONE_WAY_GROUP`) already handles groups of any size and already applies its own `protect_route` exclusion when picking a candidate — neither check carries a `protect_route` param of its own, same as `OneWayGroupSuperHubCheck`.
+
+If the count/ratio is above the configured maximum, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, vec![(one_ways, to_remove)])` with `.with_detail(instance_id, "max_one_ways", ...)` / `.with_detail(instance_id, "max_ratio", ...)` chained on.
+
+`OneWayGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_ONE_WAY_GROUP`.
 
 ## WASM Interface
 
@@ -1135,6 +1178,10 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `teleport_graph_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `protect_route: Bool(default=true)` | no |
 | `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
 | `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
+| `min_one_way_count` | `missing_one_ways` | `min_one_ways: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_one_way_ratio` | `missing_one_ways` | `min_ratio: Integer(default=10, min=0, max=100)` | no |
+| `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)` | no |
+| `max_one_way_ratio` | `invalid_one_way_group` | `max_ratio: Integer(default=100, min=0, max=100)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

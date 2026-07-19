@@ -30,6 +30,8 @@ pub mod one_way_group_graph_proximity;
 pub mod one_way_group_super_hub;
 pub mod min_one_way_count;
 pub mod min_one_way_ratio;
+pub mod max_one_way_count;
+pub mod max_one_way_ratio;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -59,3 +61,5 @@ pub use one_way_group_graph_proximity::{OneWayGroupGraphProximityCheck, ONE_WAY_
 pub use one_way_group_super_hub::{OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT};
 pub use min_one_way_count::{MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT};
 pub use min_one_way_ratio::{MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT};
+pub use max_one_way_count::{MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT};
+pub use max_one_way_ratio::{MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT};

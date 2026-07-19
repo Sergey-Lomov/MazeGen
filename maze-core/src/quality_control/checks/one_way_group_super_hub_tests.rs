@@ -43,11 +43,12 @@ fn fires_when_vertex_outgoing_count_exceeds_max() {
     c.repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].groups.len(), 1);
-    let mut group = issues[0].groups[0].clone();
+    let (mut group, to_remove) = issues[0].groups[0].clone();
     group.sort_unstable();
     let mut expected = vec![e1, e2, e3];
     expected.sort_unstable();
     assert_eq!(group, expected, "group must contain every outgoing one-way at the flagged vertex, not just the excess");
+    assert_eq!(to_remove, 1, "3 incident one-ways over a max of 2 -- excess is 1");
 }
 
 #[test]
@@ -108,11 +109,12 @@ fn incoming_and_outgoing_one_ways_count_toward_the_same_vertex_total() {
     c.repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].groups.len(), 1);
-    let mut group = issues[0].groups[0].clone();
+    let (mut group, to_remove) = issues[0].groups[0].clone();
     group.sort_unstable();
     let mut expected = vec![e1, e2, e3];
     expected.sort_unstable();
     assert_eq!(group, expected, "incoming and outgoing one-ways must both count toward the same vertex, and the group must contain all of them");
+    assert_eq!(to_remove, 1, "3 incident one-ways over a max of 2 -- excess is 1");
 }
 
 #[test]
@@ -158,20 +160,22 @@ fn shared_edge_between_two_over_threshold_vertices_appears_in_both_groups() {
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].groups.len(), 2, "both vertex[1] and vertex[2] are independently over threshold and each contributes its own group");
 
-    let shared_in_group_count = issues[0].groups.iter().filter(|g| g.contains(&e_shared)).count();
+    let shared_in_group_count = issues[0].groups.iter().filter(|(g, _)| g.contains(&e_shared)).count();
     assert_eq!(shared_in_group_count, 2, "e_shared is incident to both flagged vertices, so it must appear in both groups");
 
-    let mut group_a = issues[0].groups.iter().find(|g| g.contains(&e_a)).unwrap().clone();
+    let (mut group_a, to_remove_a) = issues[0].groups.iter().find(|(g, _)| g.contains(&e_a)).unwrap().clone();
     group_a.sort_unstable();
     let mut expected_a = vec![e_shared, e_a];
     expected_a.sort_unstable();
     assert_eq!(group_a, expected_a);
+    assert_eq!(to_remove_a, 1, "2 incident one-ways over a max of 1 -- excess is 1");
 
-    let mut group_b = issues[0].groups.iter().find(|g| g.contains(&e_b)).unwrap().clone();
+    let (mut group_b, to_remove_b) = issues[0].groups.iter().find(|(g, _)| g.contains(&e_b)).unwrap().clone();
     group_b.sort_unstable();
     let mut expected_b = vec![e_shared, e_b];
     expected_b.sort_unstable();
     assert_eq!(group_b, expected_b);
+    assert_eq!(to_remove_b, 1, "2 incident one-ways over a max of 1 -- excess is 1");
 }
 
 #[test]
