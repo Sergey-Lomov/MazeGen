@@ -15,6 +15,8 @@ pub mod reduce_scc_count;
 pub mod remove_teleport;
 pub mod teleport_group_proximity;
 pub mod weighted_region_merge;
+pub mod one_way_to_passage;
+pub mod one_way_to_wall;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -31,6 +33,8 @@ pub use reduce_scc_count::ReduceSccCountStrategy;
 pub use remove_teleport::RemoveTeleportStrategy;
 pub use teleport_group_proximity::{TeleportGroupProximityStrategy, PARAM_PRIORITY, PRIORITY_RANDOM, PRIORITY_PROBLEMATIC};
 pub use weighted_region_merge::{WeightedRegionMergeStrategy, SLOT_MERGE_TARGET as WEIGHTED_REGION_MERGE_SLOT_MERGE_TARGET};
+pub use one_way_to_passage::OneWayToPassageStrategy;
+pub use one_way_to_wall::OneWayToWallStrategy;
 
 #[cfg(test)]
 pub(crate) mod test_utils {

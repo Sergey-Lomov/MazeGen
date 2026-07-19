@@ -62,6 +62,8 @@ relates to the type-level `Issue` design (GitHub issue #113).
 
 `TeleportGroupProximity` is a distinct kind from `InvalidTeleport`, not a reuse — see GitHub issue #75. Where `InvalidTeleport` flags a single teleport edge invalid on its own, `TeleportGroupProximity` flags a *relationship* between two teleport edges (neither individually invalid). Currently produced only by `TeleportGroupProximityCheck`. Carries `TeleportGroupProximityIssue { pairs, .. }` — see that type's doc comment. Repaired by `TeleportGroupProximityStrategy` (see `repair.md`).
 
+`InvalidOneWay` mirrors `InvalidTeleport`'s role, but for a one-way passage edge (`EdgeKind::Basic`, single direction — the opposite direction between the same node pair does not exist) flagged invalid for a check-specific reason instead of a teleport — see GitHub issue #198, part of the one-way management epic (#92). Currently produced only by `OneWayWaypointDistanceCheck` (the one-way's distance to a waypoint compares against a configured threshold). Carries `InvalidOneWayIssue { invalid, invalid_sources, .. }` — same `EdgeId`-list shape as `InvalidTeleportIssue`, see that type's doc comment. Two repair strategies are registered against this kind — `OneWayToPassageStrategy` (completes the flagged edge into a full bidirectional passage) and `OneWayToWallStrategy` (removes the flagged edge entirely) — a rule picks exactly one, same as any other kind with more than one registered strategy.
+
 Always use the named constant — never use string literals or enum variants inline.
 
 **Hard rule: `IssueKind` is a semantic category, not a producer id.** `InvalidLoop` means "this cycle is invalid for some check-specific reason" — it does not identify *which* check found it. Multiple checks (or multiple instances of the same check, e.g. two `LoopLengthCheck` instances with different `comparison`/`length`) can legitimately produce the same `IssueKind` for different underlying reasons; future checks may flag cycles invalid for still other reasons and reuse this same kind rather than inventing a new one per reason. Which check(s) actually contributed to a given `Issue` is tracked separately, in `Issue.source_checks` (below) — never by adding more `IssueKind` variants.
@@ -851,6 +853,34 @@ For these six checks: when `protect_route` is `true` (the default), a teleport e
 Route protection lives entirely on the producing check, never on `RemoveTeleportStrategy` (see `repair.md`) — the strategy stays a pure "remove everything flagged" executor with no route-awareness of its own, since a route-critical teleport is simply never placed in `invalid` to begin with.
 
 `TeleportGroupProximityStrategy` (see `repair.md`) is the registered `RepairStrategy` for `TELEPORT_GROUP_PROXIMITY`.
+
+### OneWayWaypointDistanceCheck
+
+```rust
+pub const ONE_WAY_WAYPOINT_DISTANCE_DEFAULT: u32 = 0;
+
+pub enum OneWayWaypoint { Start, Finish, Any }
+
+pub struct OneWayWaypointDistanceCheck {
+    pub instance_id: String,
+    pub distance: u32,
+    pub comparison: Comparison,
+    pub waypoint: OneWayWaypoint,
+    pub protect_route: bool,
+}
+```
+
+Flags a one-way passage edge (`EdgeKind::Basic`, single direction — the reverse direction between the same node pair does not exist) whose distance to a waypoint (start/finish) in progression space compares against a configured threshold — see GitHub issue #198. Multiple instances may be active at once (`allow_multiple_instances: true`), same rationale as `TeleportWaypointDistanceCheck`.
+
+Distance is logical (tile count via `maze.analysis.distance_from_start`/`distance_from_finish`, same shared distance maps `TeleportWaypointDistanceCheck` uses). Unlike `TeleportWaypointDistanceCheck`, there is no edge-role selector (`entry`/`exit`): a one-way edge is flagged if *either* of its two endpoints (`from` or `to`) compares against the threshold, taking the closer of the two (`min`) — there is no "entry"/"exit" distinction meaningful for a plain directed passage the way there is for a teleport jump. `waypoint` selects which waypoint(s) to measure against (`Start`/`Finish`/`Any`, `Any` taking the closer of the two waypoints), same shape as `TeleportWaypoint`. An endpoint unreachable from the relevant waypoint (absent from the distance map) is treated as having no defined distance and is never flagged for that waypoint, symmetric with `TeleportWaypointDistanceCheck`'s same rule. Silently skips (no issue) if the maze doesn't have the waypoint(s) this instance needs set — covered by `MissingEndpointsCheck`.
+
+One-way detection filters `maze.graph.edges()` to `EdgeKind::Basic` edges with no `Basic`-kind reverse between the same pair (`graph.edge_between_kind(to, from, &EdgeKind::Basic).is_none()`) — kind-filtered specifically because a `Basic` edge may run parallel to an opposite-direction `Teleport` edge between the same pair (`Graph::add_edge`'s kind-aware dedup permits this); the kind-agnostic `edge_between` would wrongly treat such a Teleport as the Basic edge's own reverse and mask a genuine one-way from detection.
+
+If any one-ways are flagged, fires `InvalidOneWayIssue::new_from_check("one_way_waypoint_distance", invalid)` with `.with_detail("one_way_waypoint_distance", "distance", self.distance.to_string())` chained on.
+
+`protect_route` (GitHub issue #198, default `true`) — a one-way edge lying on the maze's current start→finish route (`graph::route_protection::is_edge_on_route`, the same generic-over-`Tessellation` helper used to protect `Basic` route hops elsewhere) is never included in `invalid`, so the check never proposes repairing the only route through the maze. Unlike the per-teleport checks' `protect_route` (which additionally covers a two-way teleport's opposite direction via `teleport_reverse`), a one-way edge has no reverse by definition, so protection here is the plain single-edge `is_edge_on_route` check.
+
+`OneWayToPassageStrategy`/`OneWayToWallStrategy` (see `repair.md`) are the two registered `RepairStrategy` options for `INVALID_ONE_WAY` — a rule picks one.
 
 ## WASM Interface
 

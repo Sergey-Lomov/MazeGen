@@ -24,6 +24,7 @@ pub mod teleport_super_hub_avoidance;
 pub mod teleport_group_proximity;
 pub mod max_region_size;
 pub mod max_region_ratio;
+pub mod one_way_waypoint_distance;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -47,3 +48,4 @@ pub use teleport_geometric_length::{TeleportGeometricLengthCheck, TELEPORT_GEOME
 pub use teleport_graph_distance::{TeleportGraphDistanceCheck, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT_COMPARISON};
 pub use teleport_super_hub_avoidance::{TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT};
 pub use teleport_group_proximity::{TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT};
+pub use one_way_waypoint_distance::{OneWayWaypointDistanceCheck, OneWayWaypoint, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT_COMPARISON};

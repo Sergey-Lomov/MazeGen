@@ -22,11 +22,12 @@ use maze_core::{
         TeleportGraphDistanceCheck, TELEPORT_GRAPH_DISTANCE_DEFAULT,
         TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
+        OneWayWaypointDistanceCheck, OneWayWaypoint, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT,
         Comparison,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
-        InvalidTeleportIssue, InvalidTeleportGroupIssue,
+        InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue,
     },
     RegionClass,
 };
@@ -51,6 +52,7 @@ pub(crate) enum KindTag {
     MissingRegions,
     InvalidTeleport,
     InvalidTeleportGroup,
+    InvalidOneWay,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -77,6 +79,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "teleport_graph_distance"   => KindTag::InvalidTeleport,
         "teleport_super_hub_avoidance" => KindTag::InvalidTeleport,
         "teleport_group_proximity" => KindTag::InvalidTeleportGroup,
+        "one_way_waypoint_distance" => KindTag::InvalidOneWay,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -112,6 +115,14 @@ fn parse_teleport_hub_edge_selector(param: Option<&String>) -> TeleportHubEdgeSe
         Some("entry") => TeleportHubEdgeSelector::Entry,
         Some("exit") => TeleportHubEdgeSelector::Exit,
         _ => TeleportHubEdgeSelector::EntryOrExit,
+    }
+}
+
+fn parse_one_way_waypoint(param: Option<&String>) -> OneWayWaypoint {
+    match param.map(String::as_str) {
+        Some("start") => OneWayWaypoint::Start,
+        Some("finish") => OneWayWaypoint::Finish,
+        _ => OneWayWaypoint::Any,
     }
 }
 
@@ -357,6 +368,22 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
             let edge = parse_teleport_hub_edge_selector(instance.params.get("edge_hub"));
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge, protect_route }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_invalid_one_way_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidOneWayIssue>>> {
+    match instance.type_id.as_str() {
+        "one_way_waypoint_distance" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(ONE_WAY_WAYPOINT_DISTANCE_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
+            let waypoint = parse_one_way_waypoint(instance.params.get("waypoint"));
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Some(Box::new(OneWayWaypointDistanceCheck { instance_id, distance, comparison, waypoint, protect_route }))
         }
         _ => None,
     }

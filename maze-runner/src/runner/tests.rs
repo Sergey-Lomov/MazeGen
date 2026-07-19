@@ -330,6 +330,7 @@ mod build_strategy_tests {
         "invalid_loop_random", "invalid_loop_scored", "missing_loops_random",
         "expand_region_passage", "teleport_region_merge", "missing_regions", "reduce_scc_count",
         "weighted_region_merge", "remove_teleport", "teleport_group_proximity",
+        "one_way_to_passage", "one_way_to_wall",
     ];
 
     #[test]
@@ -357,6 +358,7 @@ mod build_check_tests {
         build_invalid_loop_check, build_invalid_loop_group_check, build_excessive_scc_count_check, build_region_needs_expansion_check,
         build_region_needs_shrink_check,
         build_missing_regions_check, build_invalid_teleport_check, build_teleport_group_proximity_check,
+        build_invalid_one_way_check,
     };
 
     // Same rationale as `build_strategy_tests::every_known_id_builds_a_strategy_whose_own_strategy_id_matches`
@@ -375,6 +377,7 @@ mod build_check_tests {
         "teleport_duplicates_connection", "teleport_waypoint_distance",
         "teleport_geometric_length", "teleport_graph_distance",
         "teleport_super_hub_avoidance", "teleport_group_proximity",
+        "one_way_waypoint_distance",
     ];
 
     /// Test-only dispatcher mirroring `build_rule_for!`'s own `KindTag` match, but returning just
@@ -400,6 +403,7 @@ mod build_check_tests {
         try_ctor!(build_missing_regions_check);
         try_ctor!(build_invalid_teleport_check);
         try_ctor!(build_teleport_group_proximity_check);
+        try_ctor!(build_invalid_one_way_check);
         None
     }
 

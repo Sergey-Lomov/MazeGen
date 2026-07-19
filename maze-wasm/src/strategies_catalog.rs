@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -157,6 +157,20 @@ pub fn available_strategies() -> JsValue {
             handles: INVALID_TELEPORT_GROUP.as_str(),
             params: strategy_params_dto(<TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::params(&TeleportGroupProximityStrategy)),
             experimental: <TeleportGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::is_experimental(&TeleportGroupProximityStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "one_way_to_passage",
+            handles: INVALID_ONE_WAY.as_str(),
+            params: strategy_params_dto(<OneWayToPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::params(&OneWayToPassageStrategy)),
+            experimental: <OneWayToPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::is_experimental(&OneWayToPassageStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "one_way_to_wall",
+            handles: INVALID_ONE_WAY.as_str(),
+            params: strategy_params_dto(<OneWayToWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::params(&OneWayToWallStrategy)),
+            experimental: <OneWayToWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::is_experimental(&OneWayToWallStrategy),
             nested_slots: vec![],
         },
         StrategyDescriptor {

@@ -15,6 +15,7 @@ pub enum IssueKind {
     MissingRegions,
     InvalidTeleport,
     InvalidTeleportGroup,
+    InvalidOneWay,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -88,6 +89,16 @@ pub const INVALID_TELEPORT: IssueKind = IssueKind::InvalidTeleport;
 /// a *relationship* between two teleport edges, neither of which is individually invalid. Carries
 /// `InvalidTeleportGroupIssue` — see that type's doc comment.
 pub const INVALID_TELEPORT_GROUP: IssueKind = IssueKind::InvalidTeleportGroup;
+/// A one-way passage edge (`EdgeKind::Basic`, single direction) is invalid for some check-specific
+/// reason — see GitHub issue #198 (part of the one-way management epic, issue #92). Currently
+/// produced by `OneWayWaypointDistanceCheck`. Mirrors `INVALID_TELEPORT`'s role for teleports: a
+/// semantic category, not tied to one specific reason — future per-one-way validation checks may
+/// flag one-way edges invalid for other reasons and reuse this same kind. Carries
+/// `InvalidOneWayIssue` — see that type's doc comment. Two repair strategies register against
+/// this kind — `OneWayToPassageStrategy` (converts to a full bidirectional passage) and
+/// `OneWayToWallStrategy` (removes the edge entirely) — a rule picks exactly one, same as every
+/// other kind with more than one registered strategy.
+pub const INVALID_ONE_WAY: IssueKind = IssueKind::InvalidOneWay;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -105,6 +116,7 @@ impl IssueKind {
             IssueKind::MissingRegions => "missing_regions",
             IssueKind::InvalidTeleport => "invalid_teleport",
             IssueKind::InvalidTeleportGroup => "invalid_teleport_group",
+            IssueKind::InvalidOneWay => "invalid_one_way",
         }
     }
 
@@ -131,6 +143,7 @@ impl IssueKind {
             "missing_regions" => Some(IssueKind::MissingRegions),
             "invalid_teleport" => Some(IssueKind::InvalidTeleport),
             "invalid_teleport_group" => Some(IssueKind::InvalidTeleportGroup),
+            "invalid_one_way" => Some(IssueKind::InvalidOneWay),
             _ => None,
         }
     }

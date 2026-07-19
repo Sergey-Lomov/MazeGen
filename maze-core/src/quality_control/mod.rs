@@ -9,7 +9,7 @@ pub mod stage;
 pub mod engine;
 pub mod checks;
 
-pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, INVALID_TELEPORT, INVALID_TELEPORT_GROUP};
+pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY};
 pub use issue_payload::{IssuePayload, resolve_issue_payload};
 pub use event::QcEvent;
 pub use issue_kinds::{
@@ -17,7 +17,7 @@ pub use issue_kinds::{
     InvalidLoopGroupIssue, InvalidLoopGroupRequirement,
     CycleAnalysisOverflowedIssue, RepairLimitReachedIssue, RepairLimitKind,
     ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue, InvalidTeleportIssue,
-    InvalidTeleportGroupIssue,
+    InvalidTeleportGroupIssue, InvalidOneWayIssue,
 };
 pub use check::Check;
 pub use comparison::Comparison;
@@ -47,4 +47,5 @@ pub use checks::{
     TeleportGraphDistanceCheck, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT_COMPARISON,
     TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
     TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
+    OneWayWaypointDistanceCheck, OneWayWaypoint, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT_COMPARISON,
 };

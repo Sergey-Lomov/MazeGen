@@ -91,6 +91,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.teleport_group_proximity.label"] as MessageFn,
     description: m["check.teleport_group_proximity.description"] as MessageFn,
   },
+  one_way_waypoint_distance: {
+    label: m["check.one_way_waypoint_distance.label"] as MessageFn,
+    description: m["check.one_way_waypoint_distance.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -137,6 +141,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   invalid_teleport_group: {
     label: m["issue.invalid_teleport_group.label"] as MessageFn,
     description: m["issue.invalid_teleport_group.description"] as MessageFn,
+  },
+  invalid_one_way: {
+    label: m["issue.invalid_one_way.label"] as MessageFn,
+    description: m["issue.invalid_one_way.description"] as MessageFn,
   },
 };
 
@@ -206,6 +214,14 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   weighted_region_merge: {
     label: m["strategy.weighted_region_merge.label"] as MessageFn,
     description: m["strategy.weighted_region_merge.description"] as MessageFn,
+  },
+  one_way_to_passage: {
+    label: m["strategy.one_way_to_passage.label"] as MessageFn,
+    description: m["strategy.one_way_to_passage.description"] as MessageFn,
+  },
+  one_way_to_wall: {
+    label: m["strategy.one_way_to_wall.label"] as MessageFn,
+    description: m["strategy.one_way_to_wall.description"] as MessageFn,
   },
 };
 

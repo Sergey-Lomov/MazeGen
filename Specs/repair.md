@@ -970,6 +970,18 @@ Handles `TELEPORT_GROUP_PROXIMITY` — see GitHub issue #75. Distinct from `Remo
 - Returns `Fixed { score: None }` regardless of how many pairs actually needed a removal.
 - **Why this strategy (not just its check) also needs `protect_route`**: unlike the per-edge checks (which simply drop a route-critical candidate from `invalid`), `TeleportGroupProximityCheck` only excludes a *pair* when *both* sides are route-critical (see `quality_control.md`) — a pair with exactly one route-critical side is still reported, because the non-route side remains a legitimate removal target. The strategy is what actually decides *which* side to spare in that mixed case.
 
+### OneWayToPassageStrategy
+
+Handles `INVALID_ONE_WAY` — see GitHub issue #198. One of two strategies registered against this kind; a rule picks exactly one. Converts every flagged one-way edge into a full bidirectional passage by adding the missing reverse direction: `MutationCommand::AddBidirectionalEdge { a: edge.from, b: edge.to }` per flagged `EdgeId`, resolved from `maze.graph.edge(id)` (a stale id from a prior command in the same batch is silently skipped via `filter_map`, same revalidate-and-drop contract every strategy relies on — see "Mutation-command contract" above). Completion-aware, like every `AddBidirectionalEdge` use — a no-op for whichever direction already exists, so this never duplicates the flagged edge itself.
+
+`invalid` on `InvalidOneWayIssue` is the producing check's result — there is no other channel to learn which edges to convert. An empty `invalid` is valid — nothing to convert, returns `Fixed` immediately. No configurable parameters.
+
+### OneWayToWallStrategy
+
+Handles `INVALID_ONE_WAY` — see GitHub issue #198. The other of the two strategies registered against this kind — see `OneWayToPassageStrategy` above for the "complete into a passage" alternative. Removes every flagged one-way edge entirely (full wall): `MutationCommand::RemoveEdge { id }` per flagged `EdgeId`. Preset protection is the ordinary `Basic`-edge rule `try_remove_edge_by_id` already enforces (checks `preset_state.preset_edges` for a `Basic` edge) — a preset-protected one-way survives removal, same as any other preset-protected `Basic` connection.
+
+`invalid` on `InvalidOneWayIssue` is the producing check's result. An empty `invalid` is valid — nothing to remove, returns `Fixed` immediately. No configurable parameters.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

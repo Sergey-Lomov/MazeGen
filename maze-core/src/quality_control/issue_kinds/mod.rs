@@ -17,6 +17,7 @@ mod region_needs_shrink;
 mod missing_regions;
 mod invalid_teleport;
 mod invalid_teleport_group;
+mod invalid_one_way;
 
 pub use missing_endpoints::MissingEndpointsIssue;
 pub use unreachable_finish::UnreachableFinishIssue;
@@ -31,6 +32,7 @@ pub use region_needs_shrink::RegionNeedsShrinkIssue;
 pub use missing_regions::MissingRegionsIssue;
 pub use invalid_teleport::InvalidTeleportIssue;
 pub use invalid_teleport_group::InvalidTeleportGroupIssue;
+pub use invalid_one_way::InvalidOneWayIssue;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and
