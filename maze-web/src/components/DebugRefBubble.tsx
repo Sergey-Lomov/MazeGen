@@ -33,7 +33,7 @@ export function DebugRefBubble({ target, label }: { target: HoveredDebugRef; lab
   return (
     <>
       <span
-        style={styles.bubble}
+        style={target.kind === "issue" ? styles.bubbleWrap : styles.bubble}
         onMouseEnter={hoverable ? () => setHoveredDebugRef(target) : undefined}
         onMouseLeave={hoverable ? () => setHoveredDebugRef(null) : undefined}
         onClick={(e) => {
@@ -85,6 +85,25 @@ const styles: Record<string, React.CSSProperties> = {
     color: ui.debug.refHighlight.text,
     cursor: "default",
     whiteSpace: "nowrap",
+  },
+  // Issue-kind bubbles carry a resolved display name (`resolveIssue(kind).label`), not a short
+  // coordinate — those can run long, so unlike the coordinate bubbles above this one wraps instead
+  // of overflowing the row (GitHub issue #204).
+  bubbleWrap: {
+    ...typography.body,
+    fontFamily: "Consolas, Menlo, Monaco, monospace",
+    display: "inline-flex",
+    alignItems: "center",
+    borderStyle: "solid",
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: "0 4px",
+    background: ui.debug.refHighlight.bg,
+    borderColor: ui.debug.refHighlight.text,
+    color: ui.debug.refHighlight.text,
+    cursor: "default",
+    whiteSpace: "normal",
+    wordBreak: "break-word" as const,
   },
   description: {
     margin: 0,
