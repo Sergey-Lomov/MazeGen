@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use crate::Maze;
+use crate::space::Tessellation;
 use crate::quality_control::issue::{Issue, IssueKind, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta};
 use crate::repair::MutationCommand;
 
@@ -48,7 +50,15 @@ pub trait InvalidGroupIssueKind: 'static {
     /// nested strategy's commands don't literally remove it, e.g. `OneWayToPassageStrategy`
     /// converting it into a passage instead of removing it). `GroupSelectStrategy<K>` uses this to
     /// know which groups just had one of their candidates resolved.
-    fn resolved_elements(target: &Self::Element, nested_commands: &[MutationCommand]) -> Vec<Self::Element>;
+    ///
+    /// `maze` is the **pre-mutation** snapshot `group_select_apply` was called against (same one
+    /// `nested.strategy.apply` just ran against) — read-only lookups only, e.g.
+    /// `TeleportGroupKind` resolving `target`'s reverse-direction counterpart via
+    /// `Graph::teleport_reverse` to also mark it resolved, since `removed_edge_ids` alone only
+    /// ever recognizes a `RemoveTeleportWithReverse` command's primary id, never the reverse id
+    /// it also removed (GitHub issue #171's known gap) — without this, a group referencing only
+    /// the reverse id would never have its budget retired and could offer up a redundant fix.
+    fn resolved_elements<T: Tessellation>(target: &Self::Element, nested_commands: &[MutationCommand], maze: &Maze<T>) -> Vec<Self::Element>;
 }
 
 /// Canonical key for a group: its elements, sorted — mirrors `canonical_cycle_key`'s role for
@@ -176,7 +186,7 @@ mod tests {
         fn nested_issue(source_check: &str, element: EdgeId) -> Box<dyn Issue> {
             Box::new(crate::quality_control::InvalidOneWayIssue::new_from_check(source_check, vec![element]))
         }
-        fn resolved_elements(target: &EdgeId, nested_commands: &[MutationCommand]) -> Vec<EdgeId> {
+        fn resolved_elements<T: Tessellation>(target: &EdgeId, nested_commands: &[MutationCommand], _maze: &Maze<T>) -> Vec<EdgeId> {
             crate::repair::removed_edge_ids(nested_commands).into_iter().chain(std::iter::once(*target)).collect()
         }
     }

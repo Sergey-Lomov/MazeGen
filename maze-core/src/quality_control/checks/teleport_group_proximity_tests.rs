@@ -10,6 +10,16 @@ fn check(distance: f64, own_edge: TeleportProximityEdge, other_edge: TeleportPro
     TeleportGroupProximityCheck { instance_id: TEST_ID.to_string(), distance, own_edge, other_edge, protect_route: true }
 }
 
+/// Flattens `issue.groups` (`Vec<(Vec<EdgeId>, u32)>`, each entry a two-element proximity pair)
+/// back into `(EdgeId, EdgeId)` pairs -- lets the rest of this file's assertions read the same
+/// way they did before GitHub issue #209 migrated the issue onto the generic group shape.
+fn pairs_of(issue: &InvalidTeleportGroupIssue) -> Vec<(EdgeId, EdgeId)> {
+    issue.groups.iter().map(|(g, _)| {
+        assert_eq!(g.len(), 2, "every teleport proximity group must have exactly two elements");
+        (g[0], g[1])
+    }).collect()
+}
+
 #[test]
 fn silent_with_fewer_than_two_teleports() {
     let mut ids = IdGenerator::new();
@@ -55,9 +65,9 @@ fn fires_when_entries_closer_than_threshold() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     assert_eq!(pairs.len(), 2, "both directions of the scan (a->b and b->a) each record their own pair entry");
-    for &(x, y) in pairs {
+    for &(x, y) in &pairs {
         assert!((x == id_a && y == id_b) || (x == id_b && y == id_a));
     }
 }
@@ -128,7 +138,7 @@ fn respects_directed_edges_reverse_still_counts_via_min() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b), "forward a->b (distance 2) must be caught even though b->a is unreachable");
 }
 
@@ -185,7 +195,7 @@ fn entry_vs_entry_selector_fires_only_on_the_close_pair() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
 }
 
@@ -196,7 +206,7 @@ fn entry_vs_exit_selector_fires_only_on_the_close_pair() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Exit).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
 }
 
@@ -207,7 +217,7 @@ fn exit_vs_entry_selector_fires_only_on_the_close_pair() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check(3.0, TeleportProximityEdge::Exit, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
 }
 
@@ -218,7 +228,7 @@ fn exit_vs_exit_selector_fires_only_on_the_close_pair() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check(3.0, TeleportProximityEdge::Exit, TeleportProximityEdge::Exit).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
 }
 
@@ -233,7 +243,7 @@ fn own_entry_or_exit_fires_regardless_of_which_own_end_is_close() {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check(3.0, TeleportProximityEdge::EntryOrExit, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "own=EntryOrExit must fire regardless of which own end is close");
-        let pairs = &issues[0].pairs;
+        let pairs = pairs_of(&issues[0]);
         assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
     }
 }
@@ -248,7 +258,7 @@ fn other_entry_or_exit_fires_regardless_of_which_other_end_is_close() {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check(3.0, TeleportProximityEdge::Entry, TeleportProximityEdge::EntryOrExit).repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
-        let pairs = &issues[0].pairs;
+        let pairs = pairs_of(&issues[0]);
         assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
     }
 }
@@ -261,7 +271,7 @@ fn both_entry_or_exit_fires_for_any_close_combination() {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check(3.0, TeleportProximityEdge::EntryOrExit, TeleportProximityEdge::EntryOrExit).repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
-        let pairs = &issues[0].pairs;
+        let pairs = pairs_of(&issues[0]);
         assert!(pairs.iter().any(|&(x, y)| x == id_a && y == id_b));
     }
 }
@@ -431,7 +441,7 @@ fn protect_route_skips_a_fully_protected_pair_and_still_finds_a_farther_unprotec
     check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
 
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     // The key assertion is the *direction* (a, c): if the skip incorrectly `break`s a's scan
     // right after seeing the protected (a, b) candidate, a's own scan records nothing at all
     // for `a` — the only way (a, c)/(c, a) could still appear would be from c's own
@@ -472,7 +482,7 @@ fn stops_at_first_problematic_pair_per_teleport() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     let a_pairs: Vec<_> = pairs.iter().filter(|&&(x, _)| x == id_a).collect();
     assert_eq!(a_pairs.len(), 1, "scanning from a's side must stop at the first problematic pair (b or c), not record both: {a_pairs:?}");
     let (_, matched) = a_pairs[0];
@@ -519,7 +529,7 @@ fn fires_for_both_directions_of_a_two_way_teleport_independently() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     check(5.0, TeleportProximityEdge::Entry, TeleportProximityEdge::Entry).repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1);
-    let pairs = &issues[0].pairs;
+    let pairs = pairs_of(&issues[0]);
     // The original forward id_a->id_b pair (and its symmetric b->a) must still be present;
     // the new reverse-direction teleport has its own entry (= a's old exit) far from b's
     // entry, so it should not itself produce a pair under Entry/Entry.

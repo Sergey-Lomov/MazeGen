@@ -27,7 +27,7 @@ impl InvalidGroupIssueKind for OneWayGroupKind {
     /// strategy's commands actually removed, plus `target` itself even when the nested strategy's
     /// commands don't literally remove it (e.g. `OneWayToPassageStrategy` converts `target` into a
     /// passage instead of removing it — `target` must still count as resolved).
-    fn resolved_elements(target: &EdgeId, nested_commands: &[MutationCommand]) -> Vec<EdgeId> {
+    fn resolved_elements<T: crate::space::Tessellation>(target: &EdgeId, nested_commands: &[MutationCommand], _maze: &crate::Maze<T>) -> Vec<EdgeId> {
         removed_edge_ids(nested_commands).into_iter().chain(std::iter::once(*target)).collect()
     }
 }

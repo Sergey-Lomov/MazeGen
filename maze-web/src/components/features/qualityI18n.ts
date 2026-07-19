@@ -243,9 +243,9 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.remove_teleport.label"] as MessageFn,
     description: m["strategy.remove_teleport.description"] as MessageFn,
   },
-  teleport_group_proximity: {
-    label: m["strategy.teleport_group_proximity.label"] as MessageFn,
-    description: m["strategy.teleport_group_proximity.description"] as MessageFn,
+  teleport_group_select: {
+    label: m["strategy.teleport_group_select.label"] as MessageFn,
+    description: m["strategy.teleport_group_select.description"] as MessageFn,
   },
   weighted_region_merge: {
     label: m["strategy.weighted_region_merge.label"] as MessageFn,

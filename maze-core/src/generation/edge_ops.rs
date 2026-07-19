@@ -237,7 +237,7 @@ pub(crate) fn try_remove_edge_by_id(
 /// (e.g. a per-teleport check using an `EntryOnly`-style selector that only inspects one end).
 ///
 /// Returns the set of `EdgeId`s actually removed (empty, one, or both directions) — callers that
-/// track pending pairs/candidates by `EdgeId` (e.g. `TeleportGroupProximityStrategy`) need this to
+/// track pending pairs/candidates by `EdgeId` (e.g. `TeleportGroupSelectStrategy`) need this to
 /// know the reverse was also consumed, not just whether the call "succeeded".
 pub(crate) fn try_remove_teleport_with_reverse(
     graph: &mut Graph,

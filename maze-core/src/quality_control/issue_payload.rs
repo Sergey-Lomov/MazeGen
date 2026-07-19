@@ -121,24 +121,28 @@ fn resolve_invalid_teleport_payload(invalid: &[crate::ids::EdgeId], invalid_sour
     if groups.is_empty() { None } else { Some(IssuePayload::InvalidTeleport { groups }) }
 }
 
-/// Resolves every flagged teleport pair into a two-edge group, keyed by the specific check(s)
-/// that flagged *that* pair (`invalid_sources`, canonical-key-keyed) — shared by
-/// `InvalidTeleportGroupIssue`'s resolve path below. Same per-pair attribution rationale as
-/// `resolve_invalid_teleport_payload` above.
-fn resolve_invalid_teleport_group_payload(pairs: &[(crate::ids::EdgeId, crate::ids::EdgeId)], invalid_sources: &HashMap<(crate::ids::EdgeId, crate::ids::EdgeId), Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
-    let mut groups: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
-    for &(a, b) in pairs {
-        let Some(edge_a) = graph.edge(a) else { continue };
-        let Some(edge_b) = graph.edge(b) else { continue };
-        let (Ok(a_from), Ok(a_to)) = (u32::try_from(edge_a.from), u32::try_from(edge_a.to)) else { continue };
-        let (Ok(b_from), Ok(b_to)) = (u32::try_from(edge_b.from), u32::try_from(edge_b.to)) else { continue };
-        let pair = vec![[a_from, a_to], [b_from, b_to]];
-        let key = if a <= b { (a, b) } else { (b, a) };
+/// Resolves every flagged teleport group's edge set into base-graph edge pairs, keyed by the
+/// specific check(s) that flagged *that* group (`invalid_sources`, canonical-group-key-keyed) —
+/// shared by `InvalidTeleportGroupIssue`'s resolve path below. Same per-group attribution
+/// rationale as `resolve_invalid_one_way_group_payload`; `to_remove` (the group's fix-count)
+/// carries no highlight meaning and is dropped here — every edge in the group is highlighted
+/// regardless.
+fn resolve_invalid_teleport_group_payload(groups: &[(Vec<crate::ids::EdgeId>, u32)], invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
+    let mut out: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
+    for (group, _to_remove) in groups {
+        let edge_pairs: Vec<[u32; 2]> = group.iter().filter_map(|&eid| {
+            let edge = graph.edge(eid)?;
+            let from = u32::try_from(edge.from).ok()?;
+            let to = u32::try_from(edge.to).ok()?;
+            Some([from, to])
+        }).collect();
+        let mut key = group.clone();
+        key.sort_unstable();
         for source in invalid_sources.get(&key).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(pair.clone());
+            out.entry(source.clone()).or_default().push(edge_pairs.clone());
         }
     }
-    if groups.is_empty() { None } else { Some(IssuePayload::InvalidTeleport { groups }) }
+    if out.is_empty() { None } else { Some(IssuePayload::InvalidTeleport { groups: out }) }
 }
 
 /// Resolves a single flagged one-way edge into a one-edge group, keyed by the specific check(s)
@@ -226,8 +230,8 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
         }
     }
 
-    if let Some(InvalidTeleportGroupIssue { pairs, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportGroupIssue>() {
-        if let Some(payload) = resolve_invalid_teleport_group_payload(pairs, invalid_sources, graph) {
+    if let Some(InvalidTeleportGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportGroupIssue>() {
+        if let Some(payload) = resolve_invalid_teleport_group_payload(groups, invalid_sources, graph) {
             return payload;
         }
     }
@@ -455,7 +459,7 @@ mod tests {
     fn invalid_teleport_group_issue_resolves_flagged_pair_as_two_element_group() {
         let (graph, e1, e2) = teleport_graph();
         let (_, scc) = empty_graph_and_scc();
-        let issue = InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", vec![(e1, e2)]);
+        let issue = InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", vec![(vec![e1, e2], 1)]);
 
         let payload = resolve_issue_payload(&issue, &graph, &scc);
         let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
@@ -496,15 +500,15 @@ mod tests {
     }
 
     #[test]
-    fn invalid_teleport_group_issue_silently_skips_a_pair_with_a_stale_edge_id() {
-        let (graph, e1, e2) = teleport_graph();
+    fn invalid_teleport_group_issue_silently_skips_a_group_with_a_stale_edge_id() {
+        let (graph, e1, _) = teleport_graph();
         let (_, scc) = empty_graph_and_scc();
-        let stale_id = e2 + 1000;
-        let issue = InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", vec![(e1, e2), (e1, stale_id)]);
+        let stale_id = e1 + 1000;
+        let issue = InvalidTeleportGroupIssue::new_from_check("teleport_group_proximity", vec![(vec![e1, stale_id], 1)]);
 
         let payload = resolve_issue_payload(&issue, &graph, &scc);
         let IssuePayload::InvalidTeleport { groups } = payload else { panic!("expected InvalidTeleport, got {payload:?}") };
-        assert_eq!(groups["teleport_group_proximity"], vec![vec![[1, 2], [2, 3]]], "the pair with a stale edge id must be dropped, not panic");
+        assert_eq!(groups["teleport_group_proximity"], vec![vec![[1, 2]]], "the stale edge id must be dropped, not panic, leaving only the resolvable edge");
     }
 
     fn one_way_graph() -> (Graph, crate::ids::EdgeId, crate::ids::EdgeId) {

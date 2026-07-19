@@ -19,11 +19,12 @@ pub static PRIORITY_OPTIONS: &[&str] = &[PRIORITY_RANDOM, PRIORITY_PROBLEMATIC];
 /// Shared `apply()` mechanics for `InvalidGroupIssue<K>` — see GitHub issue #208. Extracted from
 /// `OneWayGroupSelectStrategy`, the canonical instance of this shape (see that module for the full
 /// walkthrough this doc comment summarizes). A plain generic function, not a `RepairStrategy`
-/// impl: every concrete group-select strategy (`OneWayGroupSelectStrategy` today, a future
-/// teleport/loop-group counterpart) stays an ordinary unit struct with its own `strategy_id`/
-/// `params`/`expected_nested`/`RepairStrategy` impl, calling this function from inside its own
-/// `apply()` — the same shape every other strategy in this crate already has, just with the
-/// per-candidate-pass mechanics factored out instead of copy-pasted per instantiation.
+/// impl: every concrete group-select strategy (`OneWayGroupSelectStrategy`,
+/// `TeleportGroupSelectStrategy` — see GitHub issue #209 — today) stays an ordinary unit struct
+/// with its own `strategy_id`/`params`/`expected_nested`/`RepairStrategy` impl, calling this
+/// function from inside its own `apply()` — the same shape every other strategy in this crate
+/// already has, just with the per-candidate-pass mechanics factored out instead of copy-pasted
+/// per instantiation.
 ///
 /// **Per-group `to_remove` budget**: a group is only dropped once its own `to_remove` budget
 /// reaches zero, and each call works through every group's budget, not just one element total —
@@ -54,6 +55,21 @@ pub static PRIORITY_OPTIONS: &[&str] = &[PRIORITY_RANDOM, PRIORITY_PROBLEMATIC];
 /// (every remaining candidate filtered out, or already tried and failed) some groups may still
 /// have `to_remove > 0` left — they simply carry over to the next repair iteration's fresh issue.
 ///
+/// **Wholly-protected groups auto-resolve, but only count toward the overall result if some
+/// *other* group actually got fixed.** A group none of whose elements pass `element_allowed`
+/// (e.g. every side of a proximity pair is route-critical) never enters `groups_by_element` at
+/// all, so the normal candidate pass could never touch it — its own `to_remove` is zeroed out up
+/// front instead of being left to carry over forever, since it isn't a real problem to fix: every
+/// element implicated in it is individually protected from removal, so there is nothing left to
+/// act on. This alone does **not** make the overall call `Fixed` — the result is still governed
+/// entirely by `any_succeeded` below (at least one nested call actually returned `Fixed`). If
+/// *every* group in the issue is wholly-protected, the call returns `Failed`, same as before this
+/// auto-resolve existed — mirroring `TeleportGroupSelectStrategy`'s pre-#209 "both sides
+/// route-protected — leave the pair untouched" case, which likewise reported nothing to do. A
+/// mixed issue (one wholly-protected group, one resolvable group) still returns `Fixed`, from the
+/// resolvable group's own genuine progress — the wholly-protected group just doesn't drag the
+/// call down or get offered candidates that can never succeed.
+///
 /// `element_allowed` mirrors what `OneWayGroupSelectStrategy`'s own `PARAM_PROTECT_ROUTE` filter
 /// did before this extraction — the caller decides what "allowed" means for its own `K`
 /// (`OneWayGroupSelectStrategy` excludes route-protected edges when its own param is set), this
@@ -77,7 +93,7 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
     };
 
     // Membership counts computed once up front, over the original (unresolved) group set — a
-    // static snapshot, same rationale as `TeleportGroupProximityStrategy`'s own.
+    // static snapshot, same rationale as `TeleportGroupSelectStrategy`'s own.
     let mut membership: HashMap<K::Element, usize> = HashMap::new();
     for (group, _) in &issue.groups {
         for id in group {
@@ -98,11 +114,21 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
     // resolved element.
     let mut groups_by_element: HashMap<K::Element, Vec<usize>> = HashMap::new();
     for (i, (group, _)) in issue.groups.iter().enumerate() {
+        let mut any_allowed = false;
         for id in group {
             if !element_allowed(id) {
                 continue;
             }
+            any_allowed = true;
             groups_by_element.entry(id.clone()).or_default().push(i);
+        }
+        // A group with no allowed candidate at all (e.g. every side route-protected) can never
+        // be resolved through the normal candidate pass -- it isn't a real problem to fix, since
+        // every one of its elements is individually protected from removal, so it's treated as
+        // already-resolved instead of carrying `to_remove > 0` forever and re-flagging on every
+        // future QC iteration.
+        if !any_allowed {
+            remaining[i] = 0;
         }
     }
 
@@ -138,7 +164,7 @@ pub fn group_select_apply<T: Tessellation, K: InvalidGroupIssueKind>(
 
         if matches!(nested_result, RepairResult::Fixed { .. }) {
             any_succeeded = true;
-            let resolved = K::resolved_elements(&target, &nested_commands);
+            let resolved = K::resolved_elements(&target, &nested_commands, maze);
             // Every group that still needed one of the resolved elements retires one unit of
             // budget -- a shared element can retire budget in several groups from a single fix.
             for id in &resolved {

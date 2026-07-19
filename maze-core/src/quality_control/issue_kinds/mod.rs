@@ -35,7 +35,7 @@ pub use region_needs_expansion::RegionNeedsExpansionIssue;
 pub use region_needs_shrink::RegionNeedsShrinkIssue;
 pub use missing_regions::MissingRegionsIssue;
 pub use invalid_teleport::InvalidTeleportIssue;
-pub use invalid_teleport_group::InvalidTeleportGroupIssue;
+pub use invalid_teleport_group::{InvalidTeleportGroupIssue, TeleportGroupKind};
 pub use invalid_one_way::InvalidOneWayIssue;
 pub use invalid_one_way_group::{InvalidOneWayGroupIssue, OneWayGroupKind};
 pub use missing_one_ways::MissingOneWaysIssue;

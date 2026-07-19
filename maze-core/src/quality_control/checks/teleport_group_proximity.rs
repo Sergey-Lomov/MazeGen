@@ -62,7 +62,7 @@ pub struct TeleportGroupProximityCheck {
     /// GitHub issue #78, default `true`: a pair is only excluded when *both* teleports are
     /// route-critical (`is_teleport_route_protected`) — if only one side of the pair sits on the
     /// route, the pair is still recorded, since the non-route side remains a legitimate removal
-    /// candidate for `TeleportGroupProximityStrategy` to act on.
+    /// candidate for `TeleportGroupSelectStrategy` to act on.
     pub protect_route: bool,
 }
 
@@ -156,7 +156,9 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
         // below regardless of its exact distance.
         let max_dist = (self.distance.ceil() as isize - 1).max(0) as usize;
         let mut dist_cache = DirectedDistanceCache::new(&nav, max_dist);
-        let mut pairs: Vec<(EdgeId, EdgeId)> = Vec::new();
+        // One two-element group per problematic pair, always paired with `to_remove = 1`
+        // (removing either side resolves it) — see GitHub issue #209.
+        let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
 
         for &(own_id, own_from, own_to) in &teleports {
             let own_navs: Vec<NavNodeId> = endpoints_of(self.own_edge, own_from, own_to).into_iter()
@@ -201,7 +203,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
                         // scan for `own_id` — a farther, non-protected candidate may still exist
                         // and would otherwise never be recorded.
                         if !both_route_protected {
-                            pairs.push((own_id, other_id));
+                            groups.push((vec![own_id, other_id], 1));
                             break;
                         }
                     }
@@ -209,10 +211,10 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
             }
         }
 
-        if pairs.is_empty() {
+        if groups.is_empty() {
             return;
         }
-        let issue = InvalidTeleportGroupIssue::new_from_check(&self.instance_id, pairs)
+        let issue = InvalidTeleportGroupIssue::new_from_check(&self.instance_id, groups)
             .with_detail(&self.instance_id, "distance", self.distance.to_string());
         issues.push(issue);
     }

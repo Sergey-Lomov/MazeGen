@@ -29,7 +29,7 @@ pub fn is_edge_on_route<T: Tessellation>(maze: &Maze<T>, edge_id: EdgeId) -> boo
 ///
 /// Used by every per-teleport `Check` (GitHub issue #78's `protect_route` param) to decide
 /// whether a teleport is even eligible to be flagged in the first place — protection lives on
-/// the producing check, not on `RemoveTeleportStrategy`/`TeleportGroupProximityStrategy` (the
+/// the producing check, not on `RemoveTeleportStrategy`/`TeleportGroupSelectStrategy` (the
 /// group-proximity strategy is the one exception, using this to redirect *which* side of an
 /// already-flagged pair gets removed).
 pub fn is_teleport_route_protected<T: Tessellation>(maze: &Maze<T>, edge_id: EdgeId) -> bool {

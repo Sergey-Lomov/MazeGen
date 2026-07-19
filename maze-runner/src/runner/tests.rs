@@ -329,7 +329,7 @@ mod build_strategy_tests {
         "random_endpoints", "farthest_endpoints", "scored_endpoints",
         "invalid_loop_random", "invalid_loop_scored", "missing_loops_random",
         "expand_region_passage", "teleport_region_merge", "missing_regions", "reduce_scc_count",
-        "weighted_region_merge", "remove_teleport", "teleport_group_proximity",
+        "weighted_region_merge", "remove_teleport", "teleport_group_select",
         "one_way_to_passage", "one_way_to_wall",
     ];
 
