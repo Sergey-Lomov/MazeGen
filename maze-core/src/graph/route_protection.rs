@@ -41,3 +41,95 @@ pub fn is_teleport_route_protected<T: Tessellation>(maze: &Maze<T>, edge_id: Edg
         None => false,
     }
 }
+
+/// If `a`/`b` are adjacent on the maze's current start->finish route (in either order), returns
+/// `Some((from, to))` naming the direction the route actually walks the pair in — `route.path` is
+/// ordered start->finish (see `RouteInfo::path`'s doc comment), so the hop direction is read
+/// directly off consecutive `path` entries rather than inferred. Returns `None` if the pair isn't
+/// a route hop at all, or no route currently exists.
+///
+/// Used by a strategy that must downgrade a route-critical passage to a one-way without severing
+/// the route — the removed direction must be the *other* one, never the route's own direction
+/// (`MissingOneWaysFromPassageStrategy`, GitHub issue #201's follow-up).
+pub fn route_direction<T: Tessellation>(maze: &Maze<T>, a: NodeId, b: NodeId) -> Option<(NodeId, NodeId)> {
+    let route = maze.analysis.route_info(&maze.graph, &maze.meta)?;
+    route.path.windows(2).find_map(|w| {
+        let (from, to) = (w[0], w[1]);
+        if (from, to) == (a, b) || (from, to) == (b, a) {
+            Some((from, to))
+        } else {
+            None
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{Graph, EdgeKind};
+    use crate::meta::MazeMeta;
+    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::IdGenerator;
+
+    /// 1x3 corridor: n0 -> n1 -> n2, start = n0, finish = n2.
+    fn maze_with_corridor_route() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        let (n0, n1, n2) = (p(0), p(1), p(2));
+        g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
+        g.add_bidirectional_edge(n1, n2, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta = MazeMeta { start: Some(n0), finish: Some(n2), route_score: None };
+        (maze, n0, n1, n2)
+    }
+
+    #[test]
+    fn route_direction_returns_the_routes_own_order_regardless_of_argument_order() {
+        let (maze, n0, n1, _) = maze_with_corridor_route();
+        assert_eq!(route_direction(&maze, n0, n1), Some((n0, n1)), "args already in route order");
+        assert_eq!(route_direction(&maze, n1, n0), Some((n0, n1)), "args reversed from route order must still resolve to the route's own (from, to)");
+    }
+
+    #[test]
+    fn route_direction_resolves_every_hop_on_a_multi_hop_route() {
+        let (maze, n0, n1, n2) = maze_with_corridor_route();
+        assert_eq!(route_direction(&maze, n0, n1), Some((n0, n1)));
+        assert_eq!(route_direction(&maze, n1, n2), Some((n1, n2)));
+    }
+
+    #[test]
+    fn route_direction_is_none_for_a_pair_not_on_the_route() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(2, 2), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+        let (n0, n1) = (p(0, 0), p(1, 0));
+        let (n2, n3) = (p(0, 1), p(1, 1));
+        g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
+        g.add_bidirectional_edge(n2, n3, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta = MazeMeta { start: Some(n0), finish: Some(n1), route_score: None };
+
+        // n2/n3 form a disconnected side passage, never touched by the n0->n1 route.
+        assert_eq!(route_direction(&maze, n2, n3), None);
+    }
+
+    #[test]
+    fn route_direction_is_none_when_no_route_exists() {
+        let (maze, n0, n1, _) = maze_with_corridor_route();
+        let mut maze = maze;
+        maze.meta.finish = None;
+        assert_eq!(route_direction(&maze, n0, n1), None, "no finish set -> no route -> None");
+    }
+
+    #[test]
+    fn route_direction_is_none_for_non_adjacent_route_nodes() {
+        // n0 and n2 are both on the route but not consecutive hop endpoints (n1 sits between).
+        let (maze, n0, _, n2) = maze_with_corridor_route();
+        assert_eq!(route_direction(&maze, n0, n2), None);
+    }
+}

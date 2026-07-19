@@ -24,6 +24,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_teleport_group: () => ({ label: m["issue.invalid_teleport_group.label"](), description: m["issue.invalid_teleport_group.description"](), severity: "warning" }),
   invalid_one_way: () => ({ label: m["issue.invalid_one_way.label"](), description: m["issue.invalid_one_way.description"](), severity: "warning" }),
   invalid_one_way_group: () => ({ label: m["issue.invalid_one_way_group.label"](), description: m["issue.invalid_one_way_group.description"](), severity: "warning" }),
+  missing_one_ways: () => ({ label: m["issue.missing_one_ways.label"](), description: m["issue.missing_one_ways.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -109,6 +110,8 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   one_way_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
   one_way_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
   one_way_group_super_hub: (d) => d.max_connections !== undefined ? m["issue.invalid_one_way_group.one_way_group_super_hub_label"]({ max_connections: d.max_connections }) : undefined,
+  min_one_way_count: (d) => d.missing !== undefined ? m["issue.missing_one_ways.min_one_way_count_label"]({ missing: d.missing }) : undefined,
+  min_one_way_ratio: (d) => d.missing !== undefined ? m["issue.missing_one_ways.min_one_way_ratio_label"]({ missing: d.missing }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

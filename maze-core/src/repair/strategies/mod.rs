@@ -18,6 +18,9 @@ pub mod weighted_region_merge;
 pub mod one_way_to_passage;
 pub mod one_way_to_wall;
 pub mod one_way_group_select;
+mod missing_one_ways_shared;
+pub mod missing_one_ways_from_passage;
+pub mod missing_one_ways_from_wall;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -37,6 +40,8 @@ pub use weighted_region_merge::{WeightedRegionMergeStrategy, SLOT_MERGE_TARGET a
 pub use one_way_to_passage::OneWayToPassageStrategy;
 pub use one_way_to_wall::OneWayToWallStrategy;
 pub use one_way_group_select::{OneWayGroupSelectStrategy, PARAM_PRIORITY as ONE_WAY_GROUP_SELECT_PARAM_PRIORITY, PRIORITY_RANDOM as ONE_WAY_GROUP_SELECT_PRIORITY_RANDOM, PRIORITY_PROBLEMATIC as ONE_WAY_GROUP_SELECT_PRIORITY_PROBLEMATIC, SLOT_FIX_TARGET as ONE_WAY_GROUP_SELECT_SLOT_FIX_TARGET};
+pub use missing_one_ways_from_passage::MissingOneWaysFromPassageStrategy;
+pub use missing_one_ways_from_wall::MissingOneWaysFromWallStrategy;
 
 #[cfg(test)]
 pub(crate) mod test_utils {

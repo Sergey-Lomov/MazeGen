@@ -107,6 +107,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.one_way_group_super_hub.label"] as MessageFn,
     description: m["check.one_way_group_super_hub.description"] as MessageFn,
   },
+  min_one_way_count: {
+    label: m["check.min_one_way_count.label"] as MessageFn,
+    description: m["check.min_one_way_count.description"] as MessageFn,
+  },
+  min_one_way_ratio: {
+    label: m["check.min_one_way_ratio.label"] as MessageFn,
+    description: m["check.min_one_way_ratio.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -161,6 +169,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   invalid_one_way_group: {
     label: m["issue.invalid_one_way_group.label"] as MessageFn,
     description: m["issue.invalid_one_way_group.description"] as MessageFn,
+  },
+  missing_one_ways: {
+    label: m["issue.missing_one_ways.label"] as MessageFn,
+    description: m["issue.missing_one_ways.description"] as MessageFn,
   },
 };
 
@@ -242,6 +254,14 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   one_way_group_select: {
     label: m["strategy.one_way_group_select.label"] as MessageFn,
     description: m["strategy.one_way_group_select.description"] as MessageFn,
+  },
+  missing_one_ways_from_passage: {
+    label: m["strategy.missing_one_ways_from_passage.label"] as MessageFn,
+    description: m["strategy.missing_one_ways_from_passage.description"] as MessageFn,
+  },
+  missing_one_ways_from_wall: {
+    label: m["strategy.missing_one_ways_from_wall.label"] as MessageFn,
+    description: m["strategy.missing_one_ways_from_wall.description"] as MessageFn,
   },
 };
 
@@ -433,6 +453,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   allow_reverse: {
     label: m["param.allow_reverse.label"] as MessageFn,
     description: m["param.allow_reverse.description"] as MessageFn,
+  },
+  min_one_ways: {
+    label: m["param.min_one_ways.label"] as MessageFn,
+    description: m["param.min_one_ways.description"] as MessageFn,
+  },
+  min_ratio: {
+    label: m["param.min_ratio.label"] as MessageFn,
+    description: m["param.min_ratio.description"] as MessageFn,
   },
 };
 

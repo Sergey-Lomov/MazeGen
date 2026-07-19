@@ -10,6 +10,7 @@ use maze_core::{
         ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
         RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy,
         OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy,
+        MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy,
     },
     quality_control::IssueRequirement,
 };
@@ -43,6 +44,8 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str) -> Result<Box<dyn
         "one_way_to_passage"   => Box::new(OneWayToPassageStrategy),
         "one_way_to_wall"      => Box::new(OneWayToWallStrategy),
         "one_way_group_select" => Box::new(OneWayGroupSelectStrategy),
+        "missing_one_ways_from_passage" => Box::new(MissingOneWaysFromPassageStrategy),
+        "missing_one_ways_from_wall" => Box::new(MissingOneWaysFromWallStrategy),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }

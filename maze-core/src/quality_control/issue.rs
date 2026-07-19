@@ -17,6 +17,7 @@ pub enum IssueKind {
     InvalidTeleportGroup,
     InvalidOneWay,
     InvalidOneWayGroup,
+    MissingOneWays,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -107,6 +108,12 @@ pub const INVALID_ONE_WAY: IssueKind = IssueKind::InvalidOneWay;
 /// individually invalid. Mirrors `INVALID_TELEPORT_GROUP`'s split from `INVALID_TELEPORT`.
 /// Carries `InvalidOneWayGroupIssue` — see that type's doc comment.
 pub const INVALID_ONE_WAY_GROUP: IssueKind = IssueKind::InvalidOneWayGroup;
+/// The maze has fewer one-way passage edges (`EdgeKind::Basic`, single direction) than some check
+/// requires (currently `MinOneWayCountCheck`/`MinOneWayRatioCheck`) — see GitHub issue #201, part
+/// of the one-way management epic (#92). Mirrors `MISSING_LOOPS`'s role for loops: a
+/// missing-count condition rather than a specific-edge one. Carries `MissingOneWaysIssue {
+/// missing }` — see that type's doc comment.
+pub const MISSING_ONE_WAYS: IssueKind = IssueKind::MissingOneWays;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -126,6 +133,7 @@ impl IssueKind {
             IssueKind::InvalidTeleportGroup => "invalid_teleport_group",
             IssueKind::InvalidOneWay => "invalid_one_way",
             IssueKind::InvalidOneWayGroup => "invalid_one_way_group",
+            IssueKind::MissingOneWays => "missing_one_ways",
         }
     }
 
@@ -154,6 +162,7 @@ impl IssueKind {
             "invalid_teleport_group" => Some(IssueKind::InvalidTeleportGroup),
             "invalid_one_way" => Some(IssueKind::InvalidOneWay),
             "invalid_one_way_group" => Some(IssueKind::InvalidOneWayGroup),
+            "missing_one_ways" => Some(IssueKind::MissingOneWays),
             _ => None,
         }
     }

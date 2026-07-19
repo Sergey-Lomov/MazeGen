@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -186,6 +186,20 @@ pub fn available_strategies() -> JsValue {
             params: strategy_params_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&WeightedRegionMergeStrategy)),
             experimental: <WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&WeightedRegionMergeStrategy),
             nested_slots: nested_slots_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::expected_nested(&WeightedRegionMergeStrategy)),
+        },
+        StrategyDescriptor {
+            id: "missing_one_ways_from_passage",
+            handles: MISSING_ONE_WAYS.as_str(),
+            params: strategy_params_dto(<MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromPassageStrategy)),
+            experimental: <MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&MissingOneWaysFromPassageStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "missing_one_ways_from_wall",
+            handles: MISSING_ONE_WAYS.as_str(),
+            params: strategy_params_dto(<MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromWallStrategy)),
+            experimental: <MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&MissingOneWaysFromWallStrategy),
+            nested_slots: vec![],
         },
     ];
     strategies.serialize(&serde_wasm_bindgen::Serializer::json_compatible()).unwrap()

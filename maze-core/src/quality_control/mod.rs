@@ -9,7 +9,7 @@ pub mod stage;
 pub mod engine;
 pub mod checks;
 
-pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP};
+pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS};
 pub use issue_payload::{IssuePayload, resolve_issue_payload};
 pub use event::QcEvent;
 pub use issue_kinds::{
@@ -17,7 +17,7 @@ pub use issue_kinds::{
     InvalidLoopGroupIssue, InvalidLoopGroupRequirement,
     CycleAnalysisOverflowedIssue, RepairLimitReachedIssue, RepairLimitKind,
     ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue, InvalidTeleportIssue,
-    InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
+    InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, MissingOneWaysIssue,
 };
 pub use check::Check;
 pub use comparison::Comparison;
@@ -51,4 +51,6 @@ pub use checks::{
     OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
     OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
     OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
+    MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT,
+    MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT,
 };

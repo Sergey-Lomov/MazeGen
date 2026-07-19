@@ -26,11 +26,14 @@ use maze_core::{
         OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
         OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
+        MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT,
+        MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT,
         Comparison,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
+        MissingOneWaysIssue,
     },
     RegionClass,
 };
@@ -57,6 +60,7 @@ pub(crate) enum KindTag {
     InvalidTeleportGroup,
     InvalidOneWay,
     InvalidOneWayGroup,
+    MissingOneWays,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -87,6 +91,8 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "one_way_group_geometric_proximity" => KindTag::InvalidOneWayGroup,
         "one_way_group_graph_proximity" => KindTag::InvalidOneWayGroup,
         "one_way_group_super_hub"   => KindTag::InvalidOneWayGroup,
+        "min_one_way_count"         => KindTag::MissingOneWays,
+        "min_one_way_ratio"         => KindTag::MissingOneWays,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -439,6 +445,26 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT);
             Some(Box::new(OneWayGroupSuperHubCheck { instance_id, max_connections }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_missing_one_ways_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingOneWaysIssue>>> {
+    match instance.type_id.as_str() {
+        "min_one_way_count" => {
+            let min_one_ways = instance.params.get("min_one_ways")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MIN_ONE_WAY_COUNT_DEFAULT);
+            Some(Box::new(MinOneWayCountCheck { instance_id, min_one_ways }))
+        }
+        "min_one_way_ratio" => {
+            let min_ratio = instance.params.get("min_ratio")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(MIN_ONE_WAY_RATIO_DEFAULT);
+            Some(Box::new(MinOneWayRatioCheck { instance_id, min_ratio }))
         }
         _ => None,
     }
