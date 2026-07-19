@@ -88,7 +88,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   // Issue-kind bubbles carry a resolved display name (`resolveIssue(kind).label`), not a short
   // coordinate — those can run long, so unlike the coordinate bubbles above this one wraps instead
-  // of overflowing the row (GitHub issue #204).
+  // of overflowing the row (GitHub issue #204). Red (`ui.debug.issueHighlight`, GitHub issue
+  // #203), not `refHighlight`'s cyan, so an issue reads as visually distinct at a glance.
   bubbleWrap: {
     ...typography.body,
     fontFamily: "Consolas, Menlo, Monaco, monospace",
@@ -98,9 +99,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderWidth: 1,
     borderRadius: radius.lg,
     padding: "0 4px",
-    background: ui.debug.refHighlight.bg,
-    borderColor: ui.debug.refHighlight.text,
-    color: ui.debug.refHighlight.text,
+    background: ui.debug.issueHighlight.bg,
+    borderColor: ui.debug.issueHighlight.text,
+    color: ui.debug.issueHighlight.text,
     cursor: "default",
     whiteSpace: "normal",
     wordBreak: "break-word" as const,

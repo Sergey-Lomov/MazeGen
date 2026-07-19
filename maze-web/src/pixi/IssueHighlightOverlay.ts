@@ -6,8 +6,9 @@ import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
+import { canvas } from "./colorTokens";
 
-const HIGHLIGHT_COLOR = 0xff4444;
+const HIGHLIGHT_COLOR = canvas.debug.issueHighlight;
 const HIGHLIGHT_WIDTH = 3;
 const HIGHLIGHT_ALPHA = 0.9;
 

@@ -65,5 +65,8 @@ export const canvas = {
     active: hexToNumber(base.debugActive),
     currentSrc: hexToNumber(base.debugCurrentSrc),
     refHighlight: hexToNumber(base.debugRefHighlight),
+    // Issue-kind ref highlight (GitHub issue #203) — red instead of `refHighlight`'s cyan,
+    // matching Analytics' own issue-highlight red (`IssueHighlightOverlay`'s `base.error`).
+    issueHighlight: hexToNumber(base.error),
   },
 } as const;

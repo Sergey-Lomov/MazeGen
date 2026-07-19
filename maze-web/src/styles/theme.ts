@@ -59,6 +59,13 @@ export const ui = {
       bg: base.infoBg,
       text: base.info,
     },
+    // Issue-kind ref bubbles (GitHub issue #203) — red instead of `refHighlight`'s cyan, so an
+    // issue reads as visually distinct from a plain node/edge/cycle/region reference at a glance.
+    // Same bg/text pairing convention as `refHighlight` above, using the app's semantic error red.
+    issueHighlight: {
+      bg: base.errorBg,
+      text: base.error,
+    },
   },
 } as const;
 

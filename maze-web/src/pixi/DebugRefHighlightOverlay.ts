@@ -25,7 +25,9 @@ export interface DebugRefHighlightData {
  *  ownership rule (`maze-web/CLAUDE.md`): must not share `IssueHighlightOverlay`'s instance even
  *  though the drawing logic overlaps, so it holds its own instances of the shared
  *  `EdgeHighlightRenderer`/`RegionHighlightRenderer` classes instead. Uses a distinct accent
- *  color (`canvas.debug.refHighlight`) from Analytics' issue-highlight red (`0xff4444`).
+ *  color (`canvas.debug.refHighlight`) for plain node/edge/cycle/region refs; an `issue`-kind ref
+ *  (GitHub issue #203) instead uses `canvas.debug.issueHighlight`, matching Analytics'
+ *  `IssueHighlightOverlay`'s issue-highlight red so an issue reads the same way in both views.
  *
  *  `edge` and `cycle` both render via `edgeHighlightRenderer` (one segment vs. several — same
  *  primitive), `region` via `regionHighlightRenderer`, `node` via this class's own small
@@ -103,18 +105,18 @@ export class DebugRefHighlightOverlay {
         // highlight, same as the no-`ref` branch above.
         if (!ref.target) {
           this.edgeRenderer.render({ highlights: [] });
-          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
           break;
         }
         if (ref.target.kind === "cycle") {
-          const highlights = this.edgeHighlightsFor(ref.target.edges, posOf);
+          const highlights = this.edgeHighlightsFor(ref.target.edges, posOf, undefined, canvas.debug.issueHighlight);
           this.edgeRenderer.render({ highlights });
-          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
-          this.drawNodeCircles(touchedNodeIds(ref.target.edges), posOf);
+          this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+          this.drawNodeCircles(touchedNodeIds(ref.target.edges), posOf, canvas.debug.issueHighlight);
         } else {
           this.edgeRenderer.render({ highlights: [] });
           const regionNodeIds = ref.target.nodes.map((id) => Number(id));
-          this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+          this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         }
         break;
       }
@@ -125,6 +127,7 @@ export class DebugRefHighlightOverlay {
     edges: [bigint, bigint][],
     posOf: (id: bigint) => Pos | undefined,
     bidirectional?: (boolean | undefined)[],
+    color: number = canvas.debug.refHighlight,
   ): EdgeHL[] {
     const highlights: EdgeHL[] = [];
     edges.forEach(([from, to], i) => {
@@ -133,19 +136,19 @@ export class DebugRefHighlightOverlay {
       if (!a || !b) return;
       highlights.push({
         from: [a.x, a.y], to: [b.x, b.y],
-        color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA,
+        color, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA,
         bidirectional: bidirectional?.[i],
       });
     });
     return highlights;
   }
 
-  private drawNodeCircles(ids: bigint[], posOf: (id: bigint) => Pos | undefined): void {
+  private drawNodeCircles(ids: bigint[], posOf: (id: bigint) => Pos | undefined, color: number = canvas.debug.refHighlight): void {
     for (const id of ids) {
       const pos = posOf(id);
       if (!pos) continue;
       this.nodeGraphics.circle(pos.x, pos.y, NODE_RADIUS);
-      this.nodeGraphics.fill({ color: canvas.debug.refHighlight, alpha: HIGHLIGHT_ALPHA });
+      this.nodeGraphics.fill({ color, alpha: HIGHLIGHT_ALPHA });
     }
   }
 
