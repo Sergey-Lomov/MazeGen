@@ -27,6 +27,7 @@ pub mod max_region_ratio;
 pub mod one_way_waypoint_distance;
 pub mod one_way_group_geometric_proximity;
 pub mod one_way_group_graph_proximity;
+pub mod one_way_group_super_hub;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -53,3 +54,4 @@ pub use teleport_group_proximity::{TeleportGroupProximityCheck, TeleportProximit
 pub use one_way_waypoint_distance::{OneWayWaypointDistanceCheck, OneWayWaypoint, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT_COMPARISON};
 pub use one_way_group_geometric_proximity::{OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT};
 pub use one_way_group_graph_proximity::{OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT};
+pub use one_way_group_super_hub::{OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT};

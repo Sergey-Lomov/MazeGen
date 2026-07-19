@@ -108,6 +108,7 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   one_way_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_one_way.one_way_waypoint_distance_label"]({ distance: d.distance }) : undefined,
   one_way_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
   one_way_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
+  one_way_group_super_hub: (d) => d.max_connections !== undefined ? m["issue.invalid_one_way_group.one_way_group_super_hub_label"]({ max_connections: d.max_connections }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

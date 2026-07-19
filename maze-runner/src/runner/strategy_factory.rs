@@ -9,7 +9,7 @@ use maze_core::{
         InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy,
         ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
         RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy,
-        OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupProximityStrategy,
+        OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy,
     },
     quality_control::IssueRequirement,
 };
@@ -42,7 +42,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str) -> Result<Box<dyn
         "teleport_group_proximity" => Box::new(TeleportGroupProximityStrategy),
         "one_way_to_passage"   => Box::new(OneWayToPassageStrategy),
         "one_way_to_wall"      => Box::new(OneWayToWallStrategy),
-        "one_way_group_proximity" => Box::new(OneWayGroupProximityStrategy),
+        "one_way_group_select" => Box::new(OneWayGroupSelectStrategy),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }

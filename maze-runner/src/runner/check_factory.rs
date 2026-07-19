@@ -25,6 +25,7 @@ use maze_core::{
         OneWayWaypointDistanceCheck, OneWayWaypoint, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT,
         OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
         OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
+        OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         Comparison,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
@@ -85,6 +86,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "one_way_waypoint_distance" => KindTag::InvalidOneWay,
         "one_way_group_geometric_proximity" => KindTag::InvalidOneWayGroup,
         "one_way_group_graph_proximity" => KindTag::InvalidOneWayGroup,
+        "one_way_group_super_hub"   => KindTag::InvalidOneWayGroup,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -430,6 +432,13 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
                 .unwrap_or(ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT);
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(OneWayGroupGraphProximityCheck { instance_id, distance, protect_route }))
+        }
+        "one_way_group_super_hub" => {
+            let max_connections = instance.params.get("max_connections")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT);
+            Some(Box::new(OneWayGroupSuperHubCheck { instance_id, max_connections }))
         }
         _ => None,
     }

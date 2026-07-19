@@ -17,7 +17,7 @@ pub mod teleport_group_proximity;
 pub mod weighted_region_merge;
 pub mod one_way_to_passage;
 pub mod one_way_to_wall;
-pub mod one_way_group_proximity;
+pub mod one_way_group_select;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -36,7 +36,7 @@ pub use teleport_group_proximity::{TeleportGroupProximityStrategy, PARAM_PRIORIT
 pub use weighted_region_merge::{WeightedRegionMergeStrategy, SLOT_MERGE_TARGET as WEIGHTED_REGION_MERGE_SLOT_MERGE_TARGET};
 pub use one_way_to_passage::OneWayToPassageStrategy;
 pub use one_way_to_wall::OneWayToWallStrategy;
-pub use one_way_group_proximity::{OneWayGroupProximityStrategy, PARAM_PRIORITY as ONE_WAY_GROUP_PROXIMITY_PARAM_PRIORITY, PRIORITY_RANDOM as ONE_WAY_GROUP_PROXIMITY_PRIORITY_RANDOM, PRIORITY_PROBLEMATIC as ONE_WAY_GROUP_PROXIMITY_PRIORITY_PROBLEMATIC, SLOT_FIX_TARGET as ONE_WAY_GROUP_PROXIMITY_SLOT_FIX_TARGET};
+pub use one_way_group_select::{OneWayGroupSelectStrategy, PARAM_PRIORITY as ONE_WAY_GROUP_SELECT_PARAM_PRIORITY, PRIORITY_RANDOM as ONE_WAY_GROUP_SELECT_PRIORITY_RANDOM, PRIORITY_PROBLEMATIC as ONE_WAY_GROUP_SELECT_PRIORITY_PROBLEMATIC, SLOT_FIX_TARGET as ONE_WAY_GROUP_SELECT_SLOT_FIX_TARGET};
 
 #[cfg(test)]
 pub(crate) mod test_utils {

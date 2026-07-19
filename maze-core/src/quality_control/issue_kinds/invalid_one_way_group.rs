@@ -18,7 +18,7 @@ fn canonical_group_key(group: &[EdgeId]) -> Vec<EdgeId> {
 /// (not a flat pair list) so a repair strategy can uniformly handle any group size — currently
 /// every producing check only ever emits 2-element groups (one problematic pair per scanned
 /// edge, same "stop at the first hit" rule `TeleportGroupProximityCheck` uses), but the strategy
-/// itself makes no such assumption. **Mandatory** for this kind: `OneWayGroupProximityStrategy`'s
+/// itself makes no such assumption. **Mandatory** for this kind: `OneWayGroupSelectStrategy`'s
 /// `problematic` priority needs group membership to score which edge to pick.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct InvalidOneWayGroupIssue {

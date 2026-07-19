@@ -103,6 +103,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.one_way_group_graph_proximity.label"] as MessageFn,
     description: m["check.one_way_group_graph_proximity.description"] as MessageFn,
   },
+  one_way_group_super_hub: {
+    label: m["check.one_way_group_super_hub.label"] as MessageFn,
+    description: m["check.one_way_group_super_hub.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -235,9 +239,9 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.one_way_to_wall.label"] as MessageFn,
     description: m["strategy.one_way_to_wall.description"] as MessageFn,
   },
-  one_way_group_proximity: {
-    label: m["strategy.one_way_group_proximity.label"] as MessageFn,
-    description: m["strategy.one_way_group_proximity.description"] as MessageFn,
+  one_way_group_select: {
+    label: m["strategy.one_way_group_select.label"] as MessageFn,
+    description: m["strategy.one_way_group_select.description"] as MessageFn,
   },
 };
 

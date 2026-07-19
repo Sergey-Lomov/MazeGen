@@ -41,9 +41,12 @@ static NESTED_SLOTS: &[NestedSlot] = &[
     NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_ONE_WAY, min: 1, max: Some(1) },
 ];
 
-/// Handles `INVALID_ONE_WAY_GROUP` — see GitHub issue #199. For each problematic group flagged by
-/// `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`, picks one one-way edge
-/// to fix and delegates the actual fix to a nested `INVALID_ONE_WAY` strategy filling the
+/// Handles `INVALID_ONE_WAY_GROUP` — see GitHub issue #199, generalized in #200. Not tied to any
+/// one producing check: `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`
+/// (proximity pairs) and `OneWayGroupSuperHubCheck` (per-vertex excess count) all emit the same
+/// `groups: Vec<Vec<EdgeId>>` shape, and this strategy handles any of them uniformly — hence
+/// "select", not "proximity", in the name. For each problematic group, picks one one-way edge to
+/// fix and delegates the actual fix to a nested `INVALID_ONE_WAY` strategy filling the
 /// `fix_target` slot. Mirrors `TeleportGroupProximityStrategy`'s per-pair resolution, generalized
 /// to any group size (`issue.groups: Vec<Vec<EdgeId>>`, not a flat pair list).
 ///
@@ -61,10 +64,10 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// edge is dropped from the remaining group list — mirrors `TeleportGroupProximityStrategy`'s
 /// `removed` bookkeeping: a group already resolved by an earlier pick in the same `apply()` call
 /// is skipped rather than acted on a second time.
-pub struct OneWayGroupProximityStrategy;
+pub struct OneWayGroupSelectStrategy;
 
-impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroupProximityStrategy {
-    fn strategy_id(&self) -> &'static str { "one_way_group_proximity" }
+impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroupSelectStrategy {
+    fn strategy_id(&self) -> &'static str { "one_way_group_select" }
 
     fn params(&self) -> &'static [StrategyParam] {
         PARAMS
@@ -90,7 +93,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroup
         let matching: Vec<&NestedStrategyConfig<T>> =
             nested.iter().filter(|n| n.slot.slot_id == SLOT_FIX_TARGET).collect();
         debug_assert!(matching.len() <= 1,
-            "OneWayGroupProximityStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_FIX_TARGET}\" should prevent more than one nested strategy filling it");
+            "OneWayGroupSelectStrategy: expected_nested()'s max: Some(1) for slot \"{SLOT_FIX_TARGET}\" should prevent more than one nested strategy filling it");
         let Some(&fix_target) = matching.first() else {
             return (RepairResult::Failed, vec![]);
         };
@@ -130,7 +133,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroup
                 continue;
             };
 
-            let synthetic = InvalidOneWayIssue::new_from_check("one_way_group_proximity", vec![target]);
+            let synthetic = InvalidOneWayIssue::new_from_check("one_way_group_select", vec![target]);
             let (nested_result, nested_commands) = fix_target.strategy.apply(
                 &synthetic as &dyn crate::quality_control::Issue, maze, rng, &nested_params, preset_state, &fix_target.nested,
             );
@@ -172,8 +175,8 @@ fn pick<'a>(candidates: &'a [EdgeId], priority: &str, membership: &HashMap<EdgeI
     }
 }
 
-crate::impl_erased_repair_strategy!(OneWayGroupProximityStrategy, InvalidOneWayGroupIssue);
+crate::impl_erased_repair_strategy!(OneWayGroupSelectStrategy, InvalidOneWayGroupIssue);
 
 #[cfg(test)]
-#[path = "one_way_group_proximity_tests.rs"]
+#[path = "one_way_group_select_tests.rs"]
 mod tests;

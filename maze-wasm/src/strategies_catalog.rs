@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
     quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupProximityStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -174,11 +174,11 @@ pub fn available_strategies() -> JsValue {
             nested_slots: vec![],
         },
         StrategyDescriptor {
-            id: "one_way_group_proximity",
+            id: "one_way_group_select",
             handles: INVALID_ONE_WAY_GROUP.as_str(),
-            params: strategy_params_dto(<OneWayGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::params(&OneWayGroupProximityStrategy)),
-            experimental: <OneWayGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::is_experimental(&OneWayGroupProximityStrategy),
-            nested_slots: nested_slots_dto(<OneWayGroupProximityStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::expected_nested(&OneWayGroupProximityStrategy)),
+            params: strategy_params_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::params(&OneWayGroupSelectStrategy)),
+            experimental: <OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::is_experimental(&OneWayGroupSelectStrategy),
+            nested_slots: nested_slots_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::expected_nested(&OneWayGroupSelectStrategy)),
         },
         StrategyDescriptor {
             id: "weighted_region_merge",
