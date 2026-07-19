@@ -23,6 +23,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_teleport: () => ({ label: m["issue.invalid_teleport.label"](), description: m["issue.invalid_teleport.description"](), severity: "warning" }),
   invalid_teleport_group: () => ({ label: m["issue.invalid_teleport_group.label"](), description: m["issue.invalid_teleport_group.description"](), severity: "warning" }),
   invalid_one_way: () => ({ label: m["issue.invalid_one_way.label"](), description: m["issue.invalid_one_way.description"](), severity: "warning" }),
+  invalid_one_way_group: () => ({ label: m["issue.invalid_one_way_group.label"](), description: m["issue.invalid_one_way_group.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -105,6 +106,8 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   teleport_super_hub_avoidance: (d) => d.max_connections !== undefined ? m["issue.invalid_teleport.teleport_super_hub_avoidance_label"]({ max_connections: d.max_connections }) : undefined,
   invalid_teleport_group: (d) => d.distance !== undefined ? m["issue.invalid_teleport_group.teleport_group_proximity_label"]({ distance: d.distance }) : undefined,
   one_way_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_one_way.one_way_waypoint_distance_label"]({ distance: d.distance }) : undefined,
+  one_way_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
+  one_way_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

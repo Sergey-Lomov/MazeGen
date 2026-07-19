@@ -982,6 +982,26 @@ Handles `INVALID_ONE_WAY` — see GitHub issue #198. The other of the two strate
 
 `invalid` on `InvalidOneWayIssue` is the producing check's result. An empty `invalid` is valid — nothing to remove, returns `Fixed` immediately. No configurable parameters.
 
+### OneWayGroupProximityStrategy
+
+Handles `INVALID_ONE_WAY_GROUP` — see GitHub issue #199. For each problematic group flagged by `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck` (`InvalidOneWayGroupIssue.groups: Vec<Vec<EdgeId>>`), picks one one-way edge to fix and delegates the actual fix to a nested `INVALID_ONE_WAY` strategy (`OneWayToPassageStrategy`/`OneWayToWallStrategy`, see GitHub issue #198) filling the `fix_target` slot — mirrors `TeleportGroupProximityStrategy`'s per-pair resolution shape but generalized to any group size, and mirrors `InvalidLoopGroupSelectStrategy`'s nested-delegation pattern for how the parent synthesizes an issue for the nested call.
+
+```rust
+pub const SLOT_FIX_TARGET: &str = "fix_target";
+```
+
+One nested slot, `fix_target`, expecting exactly one `INVALID_ONE_WAY`-handling strategy (`min: 1, max: Some(1)`).
+
+**`priority`** (`random` / `problematic`, default `problematic`): which edge in a group gets fixed.
+- `random` picks uniformly among the group's (post-`protect_route`-filtering) candidates.
+- `problematic` picks the edge present in the most *other* groups — membership counts are computed once up front over the original unresolved group set (a static snapshot, not a running count that would favor whichever group is processed first, same rationale as `TeleportGroupProximityStrategy`'s own `problematic` priority); ties broken randomly.
+
+**`protect_route`** (default `true`): a candidate lying on the maze's current start→finish route (`is_edge_on_route`) is excluded from being picked for a group. If every edge in a group is route-protected, the group is left untouched — still counted toward `any_succeeded`'s bookkeeping the same way a resolved group is (no command emitted for it, but it doesn't itself fail the batch).
+
+**Resolution loop**: iterates `issue.groups` in order. A group is skipped if any of its edges was already `resolved` by an earlier pick in the same `apply()` call (mirrors `TeleportGroupProximityStrategy`'s `removed` bookkeeping and `InvalidLoopGroupSelectStrategy`'s pending-queue drop). For the picked edge, synthesizes `InvalidOneWayIssue::new_from_check("one_way_group_proximity", vec![target])` and calls the nested strategy's `apply()` against it. Every edge the nested call reports removing (`removed_edge_ids`), plus the picked edge itself, are added to `resolved` — so a later group sharing either one is skipped rather than acted on a second time. Commands from every successful (and attempted) nested call are concatenated, in order.
+
+Returns `Fixed` if at least one nested call in the batch succeeded, `Failed` only if every nested call failed (or there was no target to fix in any group) — same "at least one worked" bookkeeping as `InvalidLoopGroupSelectStrategy`.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

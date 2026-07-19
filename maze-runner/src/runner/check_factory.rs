@@ -23,11 +23,13 @@ use maze_core::{
         TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
         OneWayWaypointDistanceCheck, OneWayWaypoint, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT,
+        OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
+        OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         Comparison,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
-        InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue,
+        InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
     },
     RegionClass,
 };
@@ -53,6 +55,7 @@ pub(crate) enum KindTag {
     InvalidTeleport,
     InvalidTeleportGroup,
     InvalidOneWay,
+    InvalidOneWayGroup,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -80,6 +83,8 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "teleport_super_hub_avoidance" => KindTag::InvalidTeleport,
         "teleport_group_proximity" => KindTag::InvalidTeleportGroup,
         "one_way_waypoint_distance" => KindTag::InvalidOneWay,
+        "one_way_group_geometric_proximity" => KindTag::InvalidOneWayGroup,
+        "one_way_group_graph_proximity" => KindTag::InvalidOneWayGroup,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -401,6 +406,30 @@ pub(crate) fn build_teleport_group_proximity_check<T: Tessellation>(instance: &C
             let other_edge = parse_teleport_proximity_edge(instance.params.get("other_edge"));
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge, protect_route }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidOneWayGroupIssue>>> {
+    match instance.type_id.as_str() {
+        "one_way_group_geometric_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT);
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Some(Box::new(OneWayGroupGeometricProximityCheck { instance_id, distance, protect_route }))
+        }
+        "one_way_group_graph_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT);
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Some(Box::new(OneWayGroupGraphProximityCheck { instance_id, distance, protect_route }))
         }
         _ => None,
     }

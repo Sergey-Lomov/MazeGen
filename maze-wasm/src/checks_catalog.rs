@@ -1,7 +1,7 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
-    quality_control::{IssueKind, Comparison, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOPS_COUNT_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT},
+    quality_control::{IssueKind, Comparison, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOPS_COUNT_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, INVALID_ONE_WAY_GROUP, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT},
     RegionClass,
 };
 
@@ -255,6 +255,38 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: true,
         },
         CheckDescriptor {
+            id: "one_way_group_geometric_proximity",
+            label: "One-way group geometric proximity",
+            description: "Fires if a pair of one-way passage edges sit geometrically closer to each other than the required minimum distance.",
+            issue_kinds: vec![kind_str(INVALID_ONE_WAY_GROUP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "distance",
+                    label: "Distance threshold",
+                    kind: ParamKindDto::Float { default: ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                },
+                protect_route_param(),
+            ],
+            // Multiple instances with different distance thresholds are a legitimate simultaneous
+            // configuration -- same rationale as teleport_group_proximity's allow_multiple_instances.
+            allow_multiple_instances: true,
+        },
+        CheckDescriptor {
+            id: "one_way_group_graph_proximity",
+            label: "One-way group graph proximity",
+            description: "Fires if a pair of one-way passage edges sit topologically closer to each other than the required minimum distance.",
+            issue_kinds: vec![kind_str(INVALID_ONE_WAY_GROUP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "distance",
+                    label: "Distance threshold",
+                    kind: ParamKindDto::Float { default: ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                },
+                protect_route_param(),
+            ],
+            allow_multiple_instances: true,
+        },
+        CheckDescriptor {
             id: "min_loops_count",
             label: "Minimum loop count",
             description: "Fires if the maze has fewer independent loops than the required minimum.",
@@ -490,7 +522,7 @@ mod tests {
         allowing_sorted.sort();
         assert_eq!(
             allowing_sorted,
-            vec!["one_way_waypoint_distance", "teleport_group_proximity", "teleport_waypoint_distance"],
+            vec!["one_way_group_geometric_proximity", "one_way_group_graph_proximity", "one_way_waypoint_distance", "teleport_group_proximity", "teleport_waypoint_distance"],
             "unexpected set of checks allowing multiple instances: {allowing:?}"
         );
     }

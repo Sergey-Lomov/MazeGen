@@ -16,6 +16,7 @@ pub enum IssueKind {
     InvalidTeleport,
     InvalidTeleportGroup,
     InvalidOneWay,
+    InvalidOneWayGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -99,6 +100,13 @@ pub const INVALID_TELEPORT_GROUP: IssueKind = IssueKind::InvalidTeleportGroup;
 /// `OneWayToWallStrategy` (removes the edge entirely) — a rule picks exactly one, same as every
 /// other kind with more than one registered strategy.
 pub const INVALID_ONE_WAY: IssueKind = IssueKind::InvalidOneWay;
+/// A set of one-way passage edges (`EdgeKind::Basic`, single direction) sit topologically or
+/// geometrically closer than a check's configured minimum distance — see GitHub issue #199.
+/// Distinct from `INVALID_ONE_WAY`: that kind flags a single one-way edge invalid on its own;
+/// this one flags a *relationship* between two or more one-way edges, none of which is
+/// individually invalid. Mirrors `INVALID_TELEPORT_GROUP`'s split from `INVALID_TELEPORT`.
+/// Carries `InvalidOneWayGroupIssue` — see that type's doc comment.
+pub const INVALID_ONE_WAY_GROUP: IssueKind = IssueKind::InvalidOneWayGroup;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -117,6 +125,7 @@ impl IssueKind {
             IssueKind::InvalidTeleport => "invalid_teleport",
             IssueKind::InvalidTeleportGroup => "invalid_teleport_group",
             IssueKind::InvalidOneWay => "invalid_one_way",
+            IssueKind::InvalidOneWayGroup => "invalid_one_way_group",
         }
     }
 
@@ -144,6 +153,7 @@ impl IssueKind {
             "invalid_teleport" => Some(IssueKind::InvalidTeleport),
             "invalid_teleport_group" => Some(IssueKind::InvalidTeleportGroup),
             "invalid_one_way" => Some(IssueKind::InvalidOneWay),
+            "invalid_one_way_group" => Some(IssueKind::InvalidOneWayGroup),
             _ => None,
         }
     }

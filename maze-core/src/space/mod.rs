@@ -39,6 +39,20 @@ pub trait Tessellation {
     /// `squareCenter`/`hexCenter`/`triCenter`, which each apply their own scale/offset/rotation on
     /// top) must check the specific impl's doc comment rather than assume one is like another.
     fn cartesian(point: Self::Point) -> (f64, f64);
+
+    /// Canonical Cartesian position of the edge between `from` and `to`, same coordinate
+    /// convention/scale as `cartesian` — used for geometric distance *between edges* (as opposed
+    /// to between nodes), since a one-way passage renders visually on the tile border it crosses,
+    /// not at either endpoint node. Default impl is the midpoint of the two endpoints'
+    /// `cartesian` positions, correct for every current tessellation (square/hex/tri all place an
+    /// edge crossing squarely between its two nodes) — a future tessellation whose edges don't
+    /// sit at the node midpoint (e.g. an off-center border) overrides this method instead of
+    /// `geometric_edge_distance`'s callers each reimplementing the correction themselves.
+    fn edge_position(from: Self::Point, to: Self::Point) -> (f64, f64) {
+        let (fx, fy) = Self::cartesian(from);
+        let (tx, ty) = Self::cartesian(to);
+        ((fx + tx) / 2.0, (fy + ty) / 2.0)
+    }
 }
 
 /// Euclidean distance (in unit tile scale) between two points of the same tessellation, via
@@ -48,6 +62,17 @@ pub trait Tessellation {
 pub fn geometric_distance<T: Tessellation>(a: T::Point, b: T::Point) -> f64 {
     let (ax, ay) = T::cartesian(a);
     let (bx, by) = T::cartesian(b);
+    ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
+}
+
+/// Euclidean distance (in unit tile scale) between two *edges*, each identified by its
+/// `from`/`to` endpoint pair, via `Tessellation::edge_position`. Distinct from
+/// `geometric_distance` (node-to-node): an edge's visual position is its border crossing, not
+/// either endpoint node, so measuring edge proximity via node distance would systematically
+/// underestimate how far apart two edges actually render.
+pub fn geometric_edge_distance<T: Tessellation>(a_from: T::Point, a_to: T::Point, b_from: T::Point, b_to: T::Point) -> f64 {
+    let (ax, ay) = T::edge_position(a_from, a_to);
+    let (bx, by) = T::edge_position(b_from, b_to);
     ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
 }
 
@@ -257,5 +282,105 @@ mod geometric_distance_tests {
         let adjacent = geometric_distance::<TriTessellation>(origin, TriPoint { col: 1, row: 0 });
         let farther = geometric_distance::<TriTessellation>(origin, TriPoint { col: 5, row: 5 });
         assert!(farther > adjacent);
+    }
+}
+
+#[cfg(test)]
+mod edge_position_tests {
+    use super::*;
+    use crate::space::SquarePoint;
+
+    #[test]
+    fn square_edge_position_is_the_midpoint_of_its_endpoints() {
+        let pos = SquareTessellation::edge_position(SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 });
+        assert!((pos.0 - 0.5).abs() < 1e-9);
+        assert!((pos.1 - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn edge_position_is_symmetric_in_from_to() {
+        let a = SquarePoint { x: 2, y: 3 };
+        let b = SquarePoint { x: 5, y: 1 };
+        let ab = SquareTessellation::edge_position(a, b);
+        let ba = SquareTessellation::edge_position(b, a);
+        assert!((ab.0 - ba.0).abs() < 1e-9);
+        assert!((ab.1 - ba.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn geometric_edge_distance_between_two_edges_sharing_a_node_is_half_a_tile_apart_on_a_straight_line() {
+        // 0->1 and 1->2, collinear on the x-axis: edge midpoints are (0.5,0) and (1.5,0).
+        let d = geometric_edge_distance::<SquareTessellation>(
+            SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
+            SquarePoint { x: 1, y: 0 }, SquarePoint { x: 2, y: 0 },
+        );
+        assert!((d - 1.0).abs() < 1e-9, "distance was {d}, expected 1.0");
+    }
+
+    #[test]
+    fn geometric_edge_distance_between_disjoint_parallel_edges() {
+        // 0->1 on row y=0, 0->1 on row y=1: midpoints (0.5,0) and (0.5,1).
+        let d = geometric_edge_distance::<SquareTessellation>(
+            SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
+            SquarePoint { x: 0, y: 1 }, SquarePoint { x: 1, y: 1 },
+        );
+        assert!((d - 1.0).abs() < 1e-9, "distance was {d}, expected 1.0");
+    }
+
+    #[test]
+    fn geometric_edge_distance_to_self_is_zero() {
+        let d = geometric_edge_distance::<SquareTessellation>(
+            SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
+            SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
+        );
+        assert_eq!(d, 0.0);
+    }
+
+    #[test]
+    fn hex_edge_position_is_the_midpoint_of_its_endpoints() {
+        // Same neighbor pair `geometric_distance_tests::hex_adjacent_cells_are_at_center_to_center_distance`
+        // uses (distance sqrt(3) apart) -- the edge position must be exactly halfway between them.
+        let a = HexPoint { q: 0, r: 0 };
+        let b = HexPoint { q: 1, r: 0 };
+        let (ax, ay) = HexTessellation::cartesian(a);
+        let (bx, by) = HexTessellation::cartesian(b);
+        let pos = HexTessellation::edge_position(a, b);
+        assert!((pos.0 - (ax + bx) / 2.0).abs() < 1e-9);
+        assert!((pos.1 - (ay + by) / 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn tri_edge_position_is_the_midpoint_of_its_endpoints() {
+        let a = TriPoint { col: 0, row: 0 };
+        let b = TriPoint { col: 1, row: 0 };
+        let (ax, ay) = TriTessellation::cartesian(a);
+        let (bx, by) = TriTessellation::cartesian(b);
+        let pos = TriTessellation::edge_position(a, b);
+        assert!((pos.0 - (ax + bx) / 2.0).abs() < 1e-9);
+        assert!((pos.1 - (ay + by) / 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn geometric_edge_distance_between_two_hex_edges_sharing_a_node() {
+        // Center (0,0)-E->(1,0) and (1,0)-E->(2,0): both edges' midpoints sit at their own
+        // from/to average -- distance between the two midpoints must be half the node-to-node
+        // hex distance (sqrt(3)), same "half a tile apart on a straight line" shape the square
+        // test above verifies.
+        let n0 = HexPoint { q: 0, r: 0 };
+        let n1 = HexPoint { q: 1, r: 0 };
+        let n2 = HexPoint { q: 2, r: 0 };
+        let d = geometric_edge_distance::<HexTessellation>(n0, n1, n1, n2);
+        let node_distance = geometric_distance::<HexTessellation>(n0, n2);
+        assert!((d - node_distance / 2.0).abs() < 1e-9, "distance was {d}, expected {}", node_distance / 2.0);
+    }
+
+    #[test]
+    fn geometric_edge_distance_between_two_tri_edges_sharing_a_node() {
+        let n0 = TriPoint { col: 0, row: 0 };
+        let n1 = TriPoint { col: 1, row: 0 };
+        let n2 = TriPoint { col: 2, row: 0 };
+        let d = geometric_edge_distance::<TriTessellation>(n0, n1, n1, n2);
+        let node_distance = geometric_distance::<TriTessellation>(n0, n2);
+        assert!((d - node_distance / 2.0).abs() < 1e-9, "distance was {d}, expected {}", node_distance / 2.0);
     }
 }

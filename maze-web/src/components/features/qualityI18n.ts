@@ -95,6 +95,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.one_way_waypoint_distance.label"] as MessageFn,
     description: m["check.one_way_waypoint_distance.description"] as MessageFn,
   },
+  one_way_group_geometric_proximity: {
+    label: m["check.one_way_group_geometric_proximity.label"] as MessageFn,
+    description: m["check.one_way_group_geometric_proximity.description"] as MessageFn,
+  },
+  one_way_group_graph_proximity: {
+    label: m["check.one_way_group_graph_proximity.label"] as MessageFn,
+    description: m["check.one_way_group_graph_proximity.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -145,6 +153,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   invalid_one_way: {
     label: m["issue.invalid_one_way.label"] as MessageFn,
     description: m["issue.invalid_one_way.description"] as MessageFn,
+  },
+  invalid_one_way_group: {
+    label: m["issue.invalid_one_way_group.label"] as MessageFn,
+    description: m["issue.invalid_one_way_group.description"] as MessageFn,
   },
 };
 
@@ -222,6 +234,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   one_way_to_wall: {
     label: m["strategy.one_way_to_wall.label"] as MessageFn,
     description: m["strategy.one_way_to_wall.description"] as MessageFn,
+  },
+  one_way_group_proximity: {
+    label: m["strategy.one_way_group_proximity.label"] as MessageFn,
+    description: m["strategy.one_way_group_proximity.description"] as MessageFn,
   },
 };
 
