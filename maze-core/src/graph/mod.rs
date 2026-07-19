@@ -6,6 +6,7 @@ pub mod routing;
 pub mod graph_analytics;
 pub mod region_class;
 pub mod route_protection;
+pub mod bisect;
 pub(crate) mod pathfinding;
 pub(crate) mod cycles;
 pub(crate) mod distance_map;

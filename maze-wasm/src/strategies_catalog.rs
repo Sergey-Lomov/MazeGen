@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupProximityStrategy, WeightedRegionMergeStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -122,6 +122,13 @@ pub fn available_strategies() -> JsValue {
             handles: REGION_NEEDS_EXPANSION.as_str(),
             params: strategy_params_dto(<TeleportRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&TeleportRegionMergeStrategy)),
             experimental: <TeleportRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&TeleportRegionMergeStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "region_shrink_split",
+            handles: REGION_NEEDS_SHRINK.as_str(),
+            params: strategy_params_dto(<RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::params(&RegionShrinkSplitStrategy)),
+            experimental: <RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::is_experimental(&RegionShrinkSplitStrategy),
             nested_slots: vec![],
         },
         StrategyDescriptor {

@@ -9,6 +9,7 @@ pub mod invalid_loop_group_select;
 pub mod missing_loops_random;
 pub mod expand_region_passage;
 pub mod teleport_region_merge;
+pub mod region_shrink_split;
 pub mod missing_regions;
 pub mod reduce_scc_count;
 pub mod remove_teleport;
@@ -24,6 +25,7 @@ pub use invalid_loop_group_select::{InvalidLoopGroupSelectStrategy, PARAM_SELECT
 pub use missing_loops_random::MissingLoopsRandomStrategy;
 pub use expand_region_passage::ExpandRegionPassageStrategy;
 pub use teleport_region_merge::TeleportRegionMergeStrategy;
+pub use region_shrink_split::RegionShrinkSplitStrategy;
 pub use missing_regions::MissingRegionsStrategy;
 pub use reduce_scc_count::ReduceSccCountStrategy;
 pub use remove_teleport::RemoveTeleportStrategy;

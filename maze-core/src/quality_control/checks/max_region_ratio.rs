@@ -6,7 +6,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::{Issue, RegionNeedsShrinkIssue};
 use super::region_shrink_check_core::{find_oversized_regions, build_issue};
 
-pub const MAX_REGION_RATIO_DEFAULT: u32 = 75;
+pub const MAX_REGION_RATIO_DEFAULT: u32 = 100;
 
 /// Counterpart to `MaxRegionSizeCheck` using a relative threshold instead of an absolute tile
 /// count — see GitHub issue #177, mirrors `MinRegionRatioCheck`'s relationship to

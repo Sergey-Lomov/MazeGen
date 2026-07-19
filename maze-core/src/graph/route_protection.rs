@@ -6,7 +6,11 @@ use crate::space::Tessellation;
 /// True if `edge_id` is one of the hops on the maze's current start->finish route (per
 /// `MazeAnalysis::route_info`, reusing its cache rather than recomputing the path). `false` when
 /// either endpoint is unset, the edge no longer exists, or no route currently connects them.
-fn is_edge_on_route<T: Tessellation>(maze: &Maze<T>, edge_id: EdgeId) -> bool {
+///
+/// `pub`, not just an internal step of `is_teleport_route_protected`: any strategy protecting
+/// route hops from a non-teleport mutation (e.g. `RegionShrinkSplitStrategy`'s split-edge
+/// selection, which must never sever the critical path) needs the same check for `Basic` edges.
+pub fn is_edge_on_route<T: Tessellation>(maze: &Maze<T>, edge_id: EdgeId) -> bool {
     let Some(edge) = maze.graph.edge(edge_id) else { return false; };
     let Some(route) = maze.analysis.route_info(&maze.graph, &maze.meta) else { return false; };
 

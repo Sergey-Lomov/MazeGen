@@ -183,6 +183,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.teleport_region_merge.label"] as MessageFn,
     description: m["strategy.teleport_region_merge.description"] as MessageFn,
   },
+  region_shrink_split: {
+    label: m["strategy.region_shrink_split.label"] as MessageFn,
+    description: m["strategy.region_shrink_split.description"] as MessageFn,
+  },
   missing_regions: {
     label: m["strategy.missing_regions.label"] as MessageFn,
     description: m["strategy.missing_regions.description"] as MessageFn,

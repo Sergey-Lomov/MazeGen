@@ -60,7 +60,8 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       const edges = [...payload.edges.values()].flat(2);
       return edges.length > 0 ? { kind: "cycle", edges } : null;
     }
-    case "RegionNeedsExpansion": {
+    case "RegionNeedsExpansion":
+    case "RegionNeedsShrink": {
       const nodes = [...payload.nodes.values()].flat(2);
       return nodes.length > 0 ? { kind: "region", nodes } : null;
     }

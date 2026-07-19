@@ -143,6 +143,21 @@ describe("decodeQcEvent", () => {
     });
   });
 
+  it("decodes CheckRan with IssuePayload::RegionNeedsShrink and an empty details map", () => {
+    // one entry: key "check1" -> one region -> one node (5)
+    const nodesMap = concatBytes([
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5),
+    ]);
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("region_needs_shrink"), new Uint8Array([3]), nodesMap, u32le(0)]);
+    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1",
+      issue: {
+        issueKind: "region_needs_shrink", payload: { kind: "RegionNeedsShrink", nodes: new Map([["check1", [[5n]]]]) },
+        details: new Map(),
+      },
+    });
+  });
+
   it("decodes CheckRan with IssuePayload::InvalidTeleport and an empty details map", () => {
     // one entry: key "check1" -> one group -> one edge pair (1,2)
     const groupsMap = concatBytes([
@@ -780,6 +795,17 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
       { kind: "issue", issueKind: "region_needs_expansion", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Region expansion"] },
+    ]);
+  });
+
+  it("CheckRan with a RegionNeedsShrink payload carries a region highlight target, flattened across every contributing check", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "region_needs_shrink", payload: { kind: "RegionNeedsShrink", nodes: new Map([["check1", [[5n, 6n]]]]) }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "region_needs_shrink", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Region split"] },
     ]);
   });
 

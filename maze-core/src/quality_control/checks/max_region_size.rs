@@ -6,7 +6,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::{Issue, RegionNeedsShrinkIssue};
 use super::region_shrink_check_core::{find_oversized_regions, build_issue};
 
-pub const MAX_REGION_SIZE_DEFAULT: u32 = 1_000_000;
+pub const MAX_REGION_SIZE_DEFAULT: u32 = 1_000;
 
 /// Flags SCC regions with more tiles than a configured absolute maximum — see GitHub issue #177.
 /// Symmetric counterpart to `MinRegionSizeCheck`, but flags `REGION_NEEDS_SHRINK` (a distinct

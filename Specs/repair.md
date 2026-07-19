@@ -771,7 +771,107 @@ No configurable parameters of its own — weights live per nested candidate (bel
 - If no candidate fills the slot after filtering: returns `Failed`.
 - Otherwise wraps each filtered candidate in a `WeightedCandidate` (config + resolved weight) and delegates to `dispatch_weighted` with the **original, unmodified** `issue` — one weighted pick decides the merge mechanism for the whole `invalid` batch at once; the chosen nested strategy's own `apply()` is responsible for merging as many regions in the batch as it can (see "Known limitation, not solved here" under "Weighted nested dispatch" above for why this isn't split per-region).
 
-**No `REGION_NEEDS_SHRINK` strategy yet** — see GitHub issue #181 (follow-up to issue #177). `MaxRegionSizeCheck`/`MaxRegionRatioCheck` (`quality_control.md`) produce `RegionNeedsShrinkIssue`, but no `RepairStrategy<T, RegionNeedsShrinkIssue>` is registered — an active rule using these checks with a configured strategy will fail to build (same "unknown strategy" rejection any mismatched-kind config gets), and a rule with `strategy: None` simply never auto-fixes the flagged regions. Splitting a strongly-connected region into two is non-trivial (which internal edges to cut to produce a valid split) and needs its own design pass.
+### graph::bisect (shared, not a strategy)
+
+`maze-core/src/graph/bisect.rs` — general-purpose helpers for splitting a node set into two
+balanced, connectivity-respecting halves, factored out for `RegionShrinkSplitStrategy` (below) but
+deliberately not repair-specific (lives under `graph`, not `repair`) so any future caller needing
+the same "group nodes that must stay together, then find a far-apart pair across groups" logic can
+reuse it without depending on the `repair` module.
+
+- `group_by_unremovable_edges(graph, nodes, is_unremovable) -> HashMap<NodeId, Vec<NodeId>>` —
+  union-find (`crate::dsu::Dsu`) over `nodes`: two nodes end up in the same group iff connected
+  through a chain of edges (either direction, present in `graph`) the caller-supplied
+  `is_unremovable` predicate flags. A group of size 1 just means that node has no unremovable edge
+  to another node in `nodes`. Keyed by each group's own lowest `NodeId` member — deterministic,
+  independent of `Dsu`'s internal root choice.
+- `farthest_pair_across_groups(graph, groups) -> Option<(NodeId, NodeId)>` — finds two nodes from
+  *different* groups that are far apart by hop-count over `graph`'s underlying undirected adjacency
+  (both edge directions treated as adjacency), via the standard double-BFS diameter heuristic: BFS
+  from an arbitrary node to find its farthest node, then BFS from *that* node's farthest node to find
+  its own farthest node outside its own group. Approximate (not exact all-pairs distance, which
+  would be quadratic). `None` if `groups` has fewer than 2 keys.
+
+### RegionShrinkSplitStrategy
+
+Handles `REGION_NEEDS_SHRINK` — see GitHub issue #184 (follow-up to issue #181, which left this
+kind with no strategy at all — `MaxRegionSizeCheck`/`MaxRegionRatioCheck`, `quality_control.md`,
+produce `RegionNeedsShrinkIssue` but nothing consumed it). Splits an oversized SCC region into two
+regions, as close to equal size as possible, by cutting the edges that end up crossing a computed
+boundary between two grown halves.
+
+`invalid` on `RegionNeedsShrinkIssue` (which `maze.analysis.scc(&maze.graph).components` indices
+are oversized) is the producing check's result — there is no other channel to learn it, same
+contract as `ExpandRegionPassageStrategy`'s own `invalid`.
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `protect_route` | Bool | `true` | Never cut a connection that lies on the maze's current start-finish route |
+
+**Algorithm**, per flagged region (processed independently — a region already merged away or
+otherwise gone by the time a later one in the same batch is processed isn't possible for a split,
+unlike the expansion strategies' merge-away bookkeeping, so no equivalent skip logic is needed
+here):
+
+1. **Group the region's nodes** by every edge that must never be cut — `graph::bisect::group_by_
+   unremovable_edges`, with `is_unremovable` flagging an edge as unremovable if it's a preset
+   (Basic) connection (`preset_state.preset_edges`) **or** — only when `protect_route` is enabled —
+   a hop on the maze's current start->finish route (`graph::route_protection::is_edge_on_route`,
+   made `pub` for this caller — previously only `is_teleport_route_protected` was exposed, which is
+   `Teleport`-specific). Two nodes joined by such an edge (directly or transitively through a chain
+   of them) can never end up on opposite sides of the split — grouping them up front means the
+   growth step (next) never has to negotiate a conflict over an uncuttable edge, since it only ever
+   moves whole groups. With `protect_route` disabled, only preset connections stay ungroupable, so
+   a region whose only internal connectivity is the critical path becomes splittable (at the cost
+   of possibly severing that route — the next QC pass's endpoint strategies pick up the pieces, same
+   fixpoint-loop posture as every other accepted-imprecision case in this file).
+2. If the whole region collapsed into a single group: `Failed` for this region — nothing left to
+   split (e.g. every internal edge is preset-protected, or the region's only internal connectivity
+   *is* the critical path).
+3. **Pick two seed nodes from different groups**, as far apart as possible —
+   `graph::bisect::farthest_pair_across_groups`. Seeds are chosen from the *post-grouping* result,
+   not before grouping, so the seed pair is guaranteed resolvable to two distinct groups even when
+   the true diameter endpoints of the raw region happen to have collapsed into the same group.
+4. **Grow two sides from those seeds**, one whole group at a time, via `grow_balanced_sides`: a
+   multi-source BFS over the region's group-contraction graph (each unremovable-edges group is one
+   contracted vertex; two groups are adjacent if any edge, either direction, connects a member of
+   one to a member of the other). At each step, whichever side currently has fewer total nodes
+   claims the next reachable group from its own frontier (ties favor the side already being grown,
+   i.e. side "a" checked first via `size_a <= size_b`); if that side's frontier is exhausted, the
+   other side's frontier is tried instead before giving up. A region that turns out not to be
+   fully group-connected (shouldn't happen for a real SCC region, since it's strongly connected by
+   definition) falls back to assigning any leftover group to whichever side is currently smaller.
+5. **Cut set**: every edge (in either direction) between a node ending up on side "a" and a node on
+   side "b" — safe to cut by construction, since any edge that had to stay together was already
+   folded into one group in step 1 and step 4 never splits a group across sides. If the boundary
+   turns out empty (defensive — shouldn't happen once two seeds from different groups were grown
+   into two non-empty sides), the region isn't split (`None` from `split_region`, region skipped).
+6. Each surviving cut pair resolves to a real `EdgeId` via `Graph::edge_between` (against the
+   still-unmutated snapshot `apply()` was given — never fails to resolve within this loop) and is
+   cut via `MutationCommand::RemoveEdgeWithReverse` — one command per direction found, so a
+   bidirectional passage crossing the boundary is removed as the same atomic "cut this passage"
+   unit `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy` use for cycle-cutting (GitHub issue
+   #185), not two independently revalidated single-direction removals. **Redundant commands are
+   still possible**: a boundary passage crossing in both directions produces two
+   `RemoveEdgeWithReverse` commands (one per direction), each of which already removes the other's
+   target — the second is not filtered out here, but is silently dropped later by
+   `apply_commands`'s own revalidate-and-drop step (against the real, by-then-mutated `Maze`), the
+   same safety net every other multi-command strategy in this file relies on.
+
+Returns `Fixed` if at least one flagged region was successfully split; `Failed` if none were (every
+flagged region collapsed to a single unremovable-edges group).
+
+**Does not guarantee the two halves land in `[max_region_size / 2, ...]` bounds, or that the split
+resolves the issue in one pass** — `grow_balanced_sides`' balance-greedy assignment tends toward
+roughly equal sizes but has no hard balance guarantee (a region with a lopsided group-contraction
+graph, e.g. one giant unremovable-edges group plus many singletons, can still end up split
+unevenly). Same accepted imprecision class as `ExpandRegionPassageStrategy`'s own "regions can
+merge into each other" note — the pipeline's fixpoint loop (`build_maze`, up to
+`MAX_REPAIR_ITERATIONS`) re-runs `MaxRegionSizeCheck`/`MaxRegionRatioCheck` and dispatches this
+strategy again on whatever remains oversized, rather than this strategy needing to fully converge
+in one `apply()` call.
 
 ### MissingRegionsStrategy
 
