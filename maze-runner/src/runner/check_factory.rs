@@ -19,6 +19,7 @@ use maze_core::{
         TeleportDuplicatesConnectionCheck,
         TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
         TeleportGeometricLengthCheck, TELEPORT_GEOMETRIC_LENGTH_DEFAULT,
+        TeleportGraphDistanceCheck, TELEPORT_GRAPH_DISTANCE_DEFAULT,
         TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
         Comparison,
@@ -73,6 +74,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "teleport_duplicates_connection" => KindTag::InvalidTeleport,
         "teleport_waypoint_distance" => KindTag::InvalidTeleport,
         "teleport_geometric_length" => KindTag::InvalidTeleport,
+        "teleport_graph_distance"   => KindTag::InvalidTeleport,
         "teleport_super_hub_avoidance" => KindTag::InvalidTeleport,
         "teleport_group_proximity" => KindTag::InvalidTeleportGroup,
         other => panic!("unknown check type_id: {other}"),
@@ -337,6 +339,15 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportGeometricLengthCheck { instance_id, comparison, length, protect_route }))
+        }
+        "teleport_graph_distance" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(TELEPORT_GRAPH_DISTANCE_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Some(Box::new(TeleportGraphDistanceCheck { instance_id, comparison, distance, protect_route }))
         }
         "teleport_super_hub_avoidance" => {
             let max_connections = instance.params.get("max_connections")

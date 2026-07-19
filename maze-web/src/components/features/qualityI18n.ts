@@ -79,6 +79,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.teleport_geometric_length.label"] as MessageFn,
     description: m["check.teleport_geometric_length.description"] as MessageFn,
   },
+  teleport_graph_distance: {
+    label: m["check.teleport_graph_distance.label"] as MessageFn,
+    description: m["check.teleport_graph_distance.description"] as MessageFn,
+  },
   teleport_super_hub_avoidance: {
     label: m["check.teleport_super_hub_avoidance.label"] as MessageFn,
     description: m["check.teleport_super_hub_avoidance.description"] as MessageFn,

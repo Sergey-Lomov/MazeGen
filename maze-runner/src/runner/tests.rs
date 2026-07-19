@@ -373,7 +373,7 @@ mod build_check_tests {
         "max_loop_density", "max_loops_count", "scc_count", "min_region_size", "min_region_ratio",
         "max_region_size", "max_region_ratio", "min_region_count",
         "teleport_duplicates_connection", "teleport_waypoint_distance",
-        "teleport_geometric_length",
+        "teleport_geometric_length", "teleport_graph_distance",
         "teleport_super_hub_avoidance", "teleport_group_proximity",
     ];
 

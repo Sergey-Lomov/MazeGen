@@ -100,6 +100,7 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   },
   teleport_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_waypoint_distance_label"]({ distance: d.distance }) : undefined,
   teleport_geometric_length: (d) => d.length !== undefined ? m["issue.invalid_teleport.teleport_geometric_length_label"]({ length: d.length }) : undefined,
+  teleport_graph_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_graph_distance_label"]({ distance: d.distance }) : undefined,
   teleport_super_hub_avoidance: (d) => d.max_connections !== undefined ? m["issue.invalid_teleport.teleport_super_hub_avoidance_label"]({ max_connections: d.max_connections }) : undefined,
   invalid_teleport_group: (d) => d.distance !== undefined ? m["issue.invalid_teleport_group.teleport_group_proximity_label"]({ distance: d.distance }) : undefined,
 };

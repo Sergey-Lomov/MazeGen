@@ -753,6 +753,29 @@ If any teleports are flagged, fires `InvalidTeleportIssue::new_from_check("telep
 
 `protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
 
+### TeleportGraphDistanceCheck
+
+```rust
+pub const TELEPORT_GRAPH_DISTANCE_DEFAULT: u32 = 0;
+
+pub struct TeleportGraphDistanceCheck {
+    pub instance_id: String,
+    pub comparison: Comparison,
+    pub distance: u32,
+    pub protect_route: bool,
+}
+```
+
+`check_type_id() == "teleport_graph_distance"` — see GitHub issue #191. Mirrors `TeleportGeometricLengthCheck`'s shape (`comparison` + threshold, `protect_route`), but flags a teleport edge whose logical (graph/tile-hop) distance between its entry and exit compares against `distance`, instead of Euclidean distance. A teleport can be geometrically short (adjacent tiles) yet logically very far apart (or unreachable without it), and vice versa — only the geometric case was previously covered.
+
+Distance is computed via the same nav-graph Dijkstra infrastructure `TeleportWaypointDistanceCheck`/`TeleportGroupProximityCheck` use (`graph::distance_map::compute_distance_map_filtered_bounded`), but as a **single directed forward pass** (entry -> exit) — unlike those two checks, which reduce `min(forward, reverse)` because either direction is equally meaningful for their own questions (a waypoint distance, a proximity relation). Here the question is inherently directional: "can a pedestrian walk from entry to exit without this edge" — a reverse-direction path (exit -> entry) says nothing about that. This matters concretely for a two-way teleport (two independent `EdgeId`s, entry->exit and exit->entry): the opposite-direction edge trivially connects exit -> entry in one hop, but including a reverse pass would let that hop masquerade as evidence of an entry -> exit path, wrongly reporting distance `1` for a teleport pair with no other connection at all. The Dijkstra pass excludes exactly the teleport edge being measured itself — "as if the teleport edge itself were absent" per the issue — **not** every teleport hop in the graph, unlike `TeleportGroupProximityCheck`'s exclusion: this check cares whether *some other* teleport can substitute as a shortcut is irrelevant here, only whether a pedestrian (or other-teleport-assisted) path exists without this specific edge. The exclusion is kind-aware, same rule as `TeleportGroupProximityCheck::is_not_teleport_hop`: a one-hop nav-edge with `path == [from, to]` is only excluded when no `Basic` edge also exists between the pair (`graph.edge_between_kind(from, to, Basic)`) — a `Basic` edge may run parallel to the teleport in the same direction between the same pair (`Graph::add_edge`'s kind-aware dedup builds one one-hop `NavEdge` per physical edge in that case, not one shared `NavEdge`), and matching on `path` alone would wrongly exclude that genuine pedestrian passage too.
+
+An endpoint pair with no defined path between them (absent from the distance map once the teleport edge is excluded) is treated the same way `TeleportWaypointDistanceCheck` treats unreachable nodes — never flagged for that reason alone, regardless of `comparison`.
+
+If any teleports are flagged, fires `InvalidTeleportIssue::new_from_check("teleport_graph_distance", invalid)` with `.with_detail("teleport_graph_distance", "distance", self.distance.to_string())` chained on. Can be active alongside any other `INVALID_TELEPORT`-producing check — all merge into one issue per the dedup rule in `repair.md`'s "Pipeline" section.
+
+`protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
+
 ### TeleportSuperHubAvoidanceCheck
 
 ```rust
@@ -821,9 +844,9 @@ Multiple instances may be active at once (`allow_multiple_instances: true`) — 
 
 ### `protect_route`: route protection for per-teleport checks
 
-`TeleportDuplicatesConnectionCheck`, `TeleportWaypointDistanceCheck`, `TeleportGeometricLengthCheck`, and `TeleportSuperHubAvoidanceCheck` all share the same `protect_route` rule (GitHub issue #78) — `TeleportGroupProximityCheck`'s own variant is described above, since it works on pairs rather than single edges.
+`TeleportDuplicatesConnectionCheck`, `TeleportWaypointDistanceCheck`, `TeleportGeometricLengthCheck`, `TeleportGraphDistanceCheck`, and `TeleportSuperHubAvoidanceCheck` all share the same `protect_route` rule (GitHub issue #78) — `TeleportGroupProximityCheck`'s own variant is described above, since it works on pairs rather than single edges.
 
-For these five checks: when `protect_route` is `true` (the default), a teleport edge that would otherwise be flagged is excluded from `invalid` if `graph::route_protection::is_teleport_route_protected(maze, edge_id)` reports it lies on the maze's current start→finish route (`maze.analysis.route_info(&maze.graph, &maze.meta)`, reusing that cache rather than recomputing the path). For a two-way teleport (two independent `EdgeId`s in the base `Graph` — no `reverse_edge` link like `NavEdge` has), protection covers both directions: if either direction is itself a route hop, both are excluded, so `protect_route` never silently downgrades a two-way teleport to one-way. Setting `protect_route` to `false` reproduces the pre-#78 behavior exactly (every teleport meeting the check's own criterion is flagged, regardless of route).
+For these six checks: when `protect_route` is `true` (the default), a teleport edge that would otherwise be flagged is excluded from `invalid` if `graph::route_protection::is_teleport_route_protected(maze, edge_id)` reports it lies on the maze's current start→finish route (`maze.analysis.route_info(&maze.graph, &maze.meta)`, reusing that cache rather than recomputing the path). For a two-way teleport (two independent `EdgeId`s in the base `Graph` — no `reverse_edge` link like `NavEdge` has), protection covers both directions: if either direction is itself a route hop, both are excluded, so `protect_route` never silently downgrades a two-way teleport to one-way. Setting `protect_route` to `false` reproduces the pre-#78 behavior exactly (every teleport meeting the check's own criterion is flagged, regardless of route).
 
 Route protection lives entirely on the producing check, never on `RemoveTeleportStrategy` (see `repair.md`) — the strategy stays a pure "remove everything flagged" executor with no route-awareness of its own, since a route-critical teleport is simply never placed in `invalid` to begin with.
 
@@ -1038,6 +1061,7 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `teleport_duplicates_connection` | `invalid_teleport` | `protect_route: Bool(default=true)` | no |
 | `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
 | `teleport_geometric_length` | `invalid_teleport` | `length: Float(default=0.0, min=0.0, max=1_000_000.0)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `protect_route: Bool(default=true)` | no |
+| `teleport_graph_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `protect_route: Bool(default=true)` | no |
 | `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
 | `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
 

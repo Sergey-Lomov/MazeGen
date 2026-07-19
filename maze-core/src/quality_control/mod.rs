@@ -44,6 +44,7 @@ pub use checks::{
     TeleportDuplicatesConnectionCheck,
     TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT_COMPARISON,
     TeleportGeometricLengthCheck, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT_COMPARISON,
+    TeleportGraphDistanceCheck, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT_COMPARISON,
     TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
     TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
 };
