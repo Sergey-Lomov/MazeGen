@@ -139,6 +139,18 @@ impl Graph {
             })
     }
 
+    /// Like `outgoing_neighbors`, but yields the full `Edge` (kind included) rather than just the
+    /// target `NodeId` — one entry per `EdgeId`, not deduped by target, so a parallel `Basic` +
+    /// `Teleport` pair between the same nodes yields two distinct entries. Used where the specific
+    /// edge's `kind` matters, not just which nodes are connected (GitHub issue #197).
+    pub(crate) fn outgoing_edges(&self, node: NodeId) -> impl Iterator<Item = &Edge> + '_ {
+        self.outgoing
+            .get(&node)
+            .into_iter()
+            .flat_map(|ids| ids.iter())
+            .filter_map(move |&eid| self.edges[eid].as_ref())
+    }
+
     pub fn incoming_neighbors(&self, node: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         self.incoming
             .get(&node)

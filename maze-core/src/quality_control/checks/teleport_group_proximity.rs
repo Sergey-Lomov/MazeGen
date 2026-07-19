@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::{EdgeKind, Graph};
+use crate::graph::EdgeKind;
 use crate::graph::distance_map::{compute_distance_map_filtered_bounded, min_optional_distance, DistanceDirection};
 use crate::graph::nav::{NavEdge, NavNodeId};
 use crate::graph::route_protection::is_teleport_route_protected;
@@ -97,7 +97,6 @@ fn endpoints_of(edge: TeleportProximityEdge, from: crate::ids::NodeId, to: crate
 /// once it's gone far enough rather than always walking the entire reachable nav-graph.
 struct DirectedDistanceCache<'a> {
     nav: &'a crate::graph::nav::NavGraph,
-    graph: &'a Graph,
     /// Largest tile-hop distance the check can ever act on — see `distance_bound` — passed to
     /// each Dijkstra pass so it stops expanding once it's gone far enough (GitHub issue #196):
     /// the check only ever needs "is anything within `distance`", so traversing the full
@@ -108,28 +107,15 @@ struct DirectedDistanceCache<'a> {
 }
 
 impl<'a> DirectedDistanceCache<'a> {
-    fn new(nav: &'a crate::graph::nav::NavGraph, graph: &'a Graph, max_dist: usize) -> Self {
-        Self { nav, graph, max_dist, forward: HashMap::new(), reverse: HashMap::new() }
+    fn new(nav: &'a crate::graph::nav::NavGraph, max_dist: usize) -> Self {
+        Self { nav, max_dist, forward: HashMap::new(), reverse: HashMap::new() }
     }
 
-    /// A nav-edge is traversable unless it's a single-hop transition (`path.len() == 2`) that can
-    /// *only* be a `Teleport` ride — a corridor-compressed nav-edge is always `Basic` hops end to
-    /// end (teleport endpoints are never corridor-compressed, see `graph::nav::build`'s
-    /// `is_corridor_node`), so only the direct one-hop case can possibly be a teleport ride.
-    ///
-    /// A `Basic` and a `Teleport` edge may coexist in the same direction between the same pair
-    /// (`Graph::add_edge`'s kind-aware dedup) — `graph.outgoing_neighbors` doesn't dedupe by
-    /// target, so nav-graph construction (`dfs_from_junction`) builds one one-hop `NavEdge` per
-    /// physical edge in that case, not one shared `NavEdge`. Checking only "does *a* Teleport edge
-    /// exist between these nodes" would wrongly exclude the Basic-backed `NavEdge` too, hiding a
-    /// genuine pedestrian passage. Excluding only when no `Basic` edge also exists between the
-    /// pair keeps that passage traversable while still blocking the teleport-only case.
-    fn is_not_teleport_hop(graph: &Graph, edge: &NavEdge) -> bool {
-        if edge.path.len() != 2 {
-            return true;
-        }
-        graph.edge_between_kind(edge.path[0], edge.path[1], &EdgeKind::Basic).is_some()
-            || graph.edge_between_kind(edge.path[0], edge.path[1], &EdgeKind::Teleport).is_none()
+    /// A nav-edge is traversable unless it's teleport-backed (`NavEdge::is_teleport`) — see that
+    /// field's doc for why this is unambiguous even when a `Basic` edge coexists in the same
+    /// direction between the same pair (GitHub issue #197).
+    fn is_not_teleport_hop(edge: &NavEdge) -> bool {
+        !edge.is_teleport
     }
 
     /// min(forward, reverse) tile-hop distance between two nav-nodes — the graph stays
@@ -139,13 +125,12 @@ impl<'a> DirectedDistanceCache<'a> {
         if a == b {
             return Some(0);
         }
-        let graph = self.graph;
         let max_dist = self.max_dist;
         let fwd = self.forward.entry(a)
-            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Forward, |e| Self::is_not_teleport_hop(graph, e), max_dist))
+            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Forward, |e| Self::is_not_teleport_hop(e), max_dist))
             .get(&b).copied();
         let rev = self.reverse.entry(a)
-            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Reverse, |e| Self::is_not_teleport_hop(graph, e), max_dist))
+            .or_insert_with(|| compute_distance_map_filtered_bounded(self.nav, a, DistanceDirection::Reverse, |e| Self::is_not_teleport_hop(e), max_dist))
             .get(&b).copied();
         min_optional_distance(fwd, rev)
     }
@@ -170,7 +155,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportGroupIssue> for TeleportGroupProxi
         // full reachable nav-graph, since a hit farther than this can never pass the `<` check
         // below regardless of its exact distance.
         let max_dist = (self.distance.ceil() as isize - 1).max(0) as usize;
-        let mut dist_cache = DirectedDistanceCache::new(&nav, &maze.graph, max_dist);
+        let mut dist_cache = DirectedDistanceCache::new(&nav, max_dist);
         let mut pairs: Vec<(EdgeId, EdgeId)> = Vec::new();
 
         for &(own_id, own_from, own_to) in &teleports {

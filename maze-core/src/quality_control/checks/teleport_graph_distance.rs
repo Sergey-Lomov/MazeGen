@@ -1,6 +1,6 @@
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::{EdgeKind, Graph};
+use crate::graph::EdgeKind;
 use crate::graph::distance_map::{compute_distance_map_filtered_bounded, DistanceDirection};
 use crate::graph::nav::NavEdge;
 use crate::graph::route_protection::is_teleport_route_protected;
@@ -40,22 +40,10 @@ pub struct TeleportGraphDistanceCheck {
 /// itself — the distance is computed "as if the teleport edge itself were absent" (GitHub issue
 /// #191), so only that specific edge is excluded, not every teleport hop in the graph (unlike
 /// `TeleportGroupProximityCheck`, which excludes all teleport hops since it measures purely
-/// pedestrian proximity).
-///
-/// A `Basic` edge may coexist in the same direction between the same pair (`Graph::add_edge`'s
-/// kind-aware dedup) — nav-graph construction then builds one one-hop `NavEdge` per physical edge,
-/// not one shared `NavEdge` (`graph.outgoing_neighbors` doesn't dedupe by target), so a Basic-backed
-/// and a Teleport-backed `NavEdge` can both have `path == [from, to]`. Matching on `path` alone
-/// (as `TeleportGroupProximityCheck` briefly considered and rejected — see its own
-/// `is_not_teleport_hop`) would exclude the Basic-backed one too, hiding a genuine pedestrian
-/// passage and wrongly reporting the pair unreachable. Excluding only when no `Basic` edge also
-/// exists between the pair keeps that passage traversable while still blocking the teleport-only
-/// case, same rule `TeleportGroupProximityCheck::is_not_teleport_hop` uses.
-fn is_not_this_teleport(graph: &Graph, edge: &NavEdge, from: crate::ids::NodeId, to: crate::ids::NodeId) -> bool {
-    if edge.path.len() != 2 || edge.path[0] != from || edge.path[1] != to {
-        return true;
-    }
-    graph.edge_between_kind(from, to, &EdgeKind::Basic).is_some()
+/// pedestrian proximity). `NavEdge::is_teleport` (GitHub issue #197) already disambiguates this
+/// from a coexisting Basic-backed `NavEdge` over the same `path`, so no `Graph` lookup is needed.
+fn is_not_this_teleport(edge: &NavEdge, from: crate::ids::NodeId, to: crate::ids::NodeId) -> bool {
+    !(edge.is_teleport && edge.path[0] == from && edge.path[1] == to)
 }
 
 impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGraphDistanceCheck {
@@ -70,7 +58,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGraphDistanceCh
                 let (Some(from_nav), Some(to_nav)) = (nav.nav_node_for(t.from), nav.nav_node_for(t.to)) else {
                     return false;
                 };
-                let filter = |edge: &NavEdge| is_not_this_teleport(&maze.graph, edge, t.from, t.to);
+                let filter = |edge: &NavEdge| is_not_this_teleport(edge, t.from, t.to);
                 compute_distance_map_filtered_bounded(&nav, from_nav, DistanceDirection::Forward, filter, usize::MAX)
                     .get(&to_nav).copied()
                     .is_some_and(|d| self.comparison.compare(d as u32, self.distance))

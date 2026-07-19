@@ -171,6 +171,38 @@ fn reverse_edge_none_for_one_way_corridor() {
     }
 }
 
+// GitHub issue #197: with a Basic and a Teleport edge coexisting in the same direction between
+// the same pair, in both directions (1->2 Basic + Teleport, 2->1 Basic + Teleport), construction
+// builds 4 one-hop NavEdges all sharing path [1,2] or [2,1]. link_reverse_edges must pair each
+// edge with the reverse of the *same* kind — keying by path alone (pre-fix behavior) would let
+// one direction's Basic/Teleport insert overwrite the other's slot in path_to_idx, risking a
+// Basic edge's reverse_edge pointing at an unrelated Teleport edge or vice versa.
+#[test]
+fn reverse_edge_links_same_kind_only_for_parallel_basic_and_teleport_edges() {
+    let mut g = Graph::new();
+    for id in [1u64, 2] { g.add_node(id); }
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Teleport);
+    g.add_edge(2, 1, EdgeKind::Basic);
+    g.add_edge(2, 1, EdgeKind::Teleport);
+
+    let nav = build_nav_graph(&g);
+    let edges: Vec<&NavEdge> = nav.edges().collect();
+    assert_eq!(edges.len(), 4, "expected one NavEdge per physical graph edge");
+
+    for e in &edges {
+        let rev_idx = e.reverse_edge.expect("every edge here has a same-kind counterpart in the opposite direction");
+        let rev = nav.edge_by_idx(rev_idx);
+        assert_eq!(rev.is_teleport, e.is_teleport, "reverse_edge must link edges of the same is_teleport kind");
+        assert_eq!(rev.path, e.path.iter().copied().rev().collect::<Vec<_>>(), "reverse edge path must be reversed");
+    }
+
+    let teleport_count = edges.iter().filter(|e| e.is_teleport).count();
+    let basic_count = edges.iter().filter(|e| !e.is_teleport).count();
+    assert_eq!(teleport_count, 2, "expected 2 teleport-backed one-hop edges (one per direction)");
+    assert_eq!(basic_count, 2, "expected 2 basic-backed one-hop edges (one per direction)");
+}
+
 // outgoing_edges/incoming_edges/edge_by_idx must return the correct edges for a junction
 // with multiple distinct corridors.
 #[test]

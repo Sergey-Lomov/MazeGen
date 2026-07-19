@@ -171,10 +171,18 @@ fn enqueue_junction(
 
 /// Build a nav edge from `junction` toward `next`: if `next` is a corridor node, walk the
 /// full corridor to find the terminal junction; otherwise `next` is itself the terminal.
+///
+/// `first_kind` is the `EdgeKind` of the specific `junction -> next` graph edge this call is
+/// processing — required (rather than re-derived via `Graph::edge_between_kind`) because a
+/// `Basic` and a `Teleport` edge may coexist in the same direction between the same pair
+/// (`Graph::add_edge`'s kind-aware dedup): `graph.outgoing_edges` yields one entry per `EdgeId`,
+/// not deduped by target, so `dfs_from_junction` calls this once per physical edge in that case,
+/// and only the caller knows which physical edge a given call corresponds to (GitHub issue #197).
 fn process_outgoing(
     graph: &Graph,
     junction: NodeId,
     next: NodeId,
+    first_kind: EdgeKind,
     nav: &mut NavGraph,
     remaining: &mut HashSet<NodeId>,
     visited_junctions: &mut HashSet<NodeId>,
@@ -182,12 +190,14 @@ fn process_outgoing(
     pinned: &HashSet<NodeId>,
     teleport_endpoints: &HashSet<NodeId>,
 ) {
-    let (path, terminal) = if is_corridor_node(graph, next, pinned, teleport_endpoints) {
+    let (path, terminal, is_teleport) = if is_corridor_node(graph, next, pinned, teleport_endpoints) {
         let mut visited_corridor: HashSet<NodeId> = HashSet::new();
         visited_corridor.insert(junction);
-        walk_corridor(graph, junction, next, &mut visited_corridor, pinned, teleport_endpoints)
+        let (path, terminal) = walk_corridor(graph, junction, next, &mut visited_corridor, pinned, teleport_endpoints);
+        // Corridor-interior hops are always Basic (teleport endpoints are never corridor nodes).
+        (path, terminal, false)
     } else {
-        (vec![junction, next], next)
+        (vec![junction, next], next, first_kind == EdgeKind::Teleport)
     };
 
     for &n in &path[1..] {
@@ -196,7 +206,7 @@ fn process_outgoing(
 
     let from_nav = nav.add_node(junction);
     let to_nav   = nav.add_node(terminal);
-    nav.add_edge(from_nav, to_nav, path);
+    nav.add_edge(from_nav, to_nav, path, is_teleport);
 
     enqueue_junction(terminal, visited_junctions, junction_stack);
 }
@@ -220,8 +230,11 @@ fn dfs_from_junction(
         remaining.remove(&junction);
         nav.add_node(junction);
 
-        for next in graph.outgoing_neighbors(junction).collect::<Vec<_>>() {
-            process_outgoing(graph, junction, next, nav, remaining, visited_junctions, &mut junction_stack, pinned, teleport_endpoints);
+        let outgoing: Vec<(NodeId, EdgeKind)> = graph.outgoing_edges(junction)
+            .map(|e| (e.to, e.kind.clone()))
+            .collect();
+        for (next, kind) in outgoing {
+            process_outgoing(graph, junction, next, kind, nav, remaining, visited_junctions, &mut junction_stack, pinned, teleport_endpoints);
         }
     }
 }
@@ -308,7 +321,9 @@ fn build_ring(
 
     for first_step in graph.outgoing_neighbors(anchor).collect::<Vec<_>>() {
         if let Some(path) = walk_ring_direction(graph, anchor, first_step, remaining) {
-            nav.add_edge(nav_id, nav_id, path);
+            // A ring consists entirely of corridor nodes (teleport endpoints are never corridor
+            // nodes, so never part of a ring), so its hops are always Basic.
+            nav.add_edge(nav_id, nav_id, path, false);
         }
     }
 }

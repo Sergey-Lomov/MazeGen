@@ -40,6 +40,11 @@ pub struct NavEdge {
     pub to: NavNodeId,
     /// Maze NodeIds from source to target, inclusive of both endpoints, in traversal order.
     pub path: Vec<NodeId>,
+    /// Index of the reverse edge (same corridor, opposite direction), if it exists.
+    pub reverse_edge: Option<usize>,
+    /// True if this is a single-hop (`path.len() == 2`) edge backed by a `Teleport`-kind graph
+    /// edge between `path[0]` and `path[1]`.
+    pub is_teleport: bool,
 }
 ```
 
@@ -47,6 +52,12 @@ pub struct NavEdge {
 - `path[last]` is the maze node of the target `NavNode`.
 - Intermediate entries are the passage nodes absorbed into this edge.
 - For a bidirectional passage `A⇄X⇄B`, two edges are produced: `A→B` with path `[A, X, B]` and `B→A` with path `[B, X, A]`.
+- `reverse_edge` is populated post-construction by `link_reverse_edges`, keyed on `(path, is_teleport)` — see "Reverse edge linking" below.
+- `is_teleport` (GitHub issue #197): only a single-hop edge can be teleport-backed — passage nodes are never teleport endpoints (see above), so a multi-hop `path` is always `Basic` hops end to end. A `Basic` edge may coexist in the same direction between the same pair as a `Teleport` edge (`Graph::add_edge`'s kind-aware dedup); construction then builds two distinct one-hop `NavEdge`s sharing the same `path`, disambiguated by this flag. Set at construction time from the specific graph `EdgeId` being processed — not re-derived via `Graph::edge_between_kind(path[0], path[1], ..)` afterward, which would be ambiguous between the two coexisting kinds.
+
+### Reverse edge linking
+
+After construction, `link_reverse_edges` scans all edges and links each to its reverse (same corridor, opposite direction) via `reverse_edge`, where a reverse exists. Two edges are reverses of each other when one's `path` is the exact reverse of the other's **and** both have the same `is_teleport` value — keying on `path` alone would risk linking a `Basic` edge's `reverse_edge` to an unrelated `Teleport` edge (or vice versa) when both a `Basic` and a `Teleport` one-hop edge exist in each direction between the same node pair.
 
 ### NavGraph
 

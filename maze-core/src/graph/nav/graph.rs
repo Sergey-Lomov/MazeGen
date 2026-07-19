@@ -22,6 +22,17 @@ pub struct NavEdge {
     pub path: Vec<NodeId>,
     /// Index of the reverse edge (same corridor, opposite direction), if it exists.
     pub reverse_edge: Option<usize>,
+    /// True if this is a single-hop (`path.len() == 2`) edge backed by a `Teleport`-kind graph
+    /// edge between `path[0]` and `path[1]`. Corridor-compressed edges (`path.len() > 2`) are
+    /// never teleport-backed: teleport endpoints are always forced to be nav nodes and never
+    /// compressed into a corridor's interior (see `graph::nav::build::is_corridor_node`), so a
+    /// multi-hop path is always `Basic` hops end to end. A `Basic` edge may coexist in the same
+    /// direction between the same pair as a `Teleport` edge (`Graph::add_edge`'s kind-aware
+    /// dedup), so this flag distinguishes the two one-hop `NavEdge`s that construction builds in
+    /// that case, instead of callers re-deriving it via `Graph::edge_between_kind(path[0],
+    /// path[1], ..)`, which is kind-ambiguous relative to the base graph without also checking the
+    /// other kind. See GitHub issue #197.
+    pub is_teleport: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -61,13 +72,13 @@ impl NavGraph {
         id
     }
 
-    pub(super) fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>) {
+    pub(super) fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>, is_teleport: bool) {
         let edge_idx = self.edges.len();
         // Index all interior corridor nodes to the destination nav node.
         for &corridor_node in path[1..path.len().saturating_sub(1)].iter() {
             self.corridor_index.entry(corridor_node).or_insert(to_nav);
         }
-        self.edges.push(NavEdge { from: from_nav, to: to_nav, path, reverse_edge: None });
+        self.edges.push(NavEdge { from: from_nav, to: to_nav, path, reverse_edge: None, is_teleport });
         self.outgoing[from_nav].push(edge_idx);
         self.incoming[to_nav].push(edge_idx);
     }
@@ -94,16 +105,22 @@ impl NavGraph {
         &self.edges[idx]
     }
 
-    /// For each edge, find its reverse (same path reversed) and link them via `reverse_edge`.
+    /// For each edge, find its reverse (same path reversed, same `is_teleport` kind) and link
+    /// them via `reverse_edge`. Keyed on `(path, is_teleport)`, not `path` alone — a `Basic` and
+    /// a `Teleport` one-hop `NavEdge` can share the same `path` in each direction (parallel edges
+    /// between the same node pair, see `NavEdge::is_teleport`), and keying by `path` alone would
+    /// let one direction's insert overwrite the other's slot, risking linking a `Basic` edge's
+    /// `reverse_edge` to an unrelated `Teleport` edge (or vice versa) instead of its true
+    /// same-kind reverse. GitHub issue #197.
     pub(super) fn link_reverse_edges(&mut self) {
-        let mut path_to_idx: HashMap<Vec<NodeId>, usize> = HashMap::new();
+        let mut path_to_idx: HashMap<(Vec<NodeId>, bool), usize> = HashMap::new();
         for (i, edge) in self.edges.iter().enumerate() {
-            path_to_idx.insert(edge.path.clone(), i);
+            path_to_idx.insert((edge.path.clone(), edge.is_teleport), i);
         }
         for i in 0..self.edges.len() {
             if self.edges[i].reverse_edge.is_some() { continue; }
             let rev_path: Vec<NodeId> = self.edges[i].path.iter().rev().copied().collect();
-            if let Some(&j) = path_to_idx.get(&rev_path) {
+            if let Some(&j) = path_to_idx.get(&(rev_path, self.edges[i].is_teleport)) {
                 if i != j {
                     self.edges[i].reverse_edge = Some(j);
                     self.edges[j].reverse_edge = Some(i);

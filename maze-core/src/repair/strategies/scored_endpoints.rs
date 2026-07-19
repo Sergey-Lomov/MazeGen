@@ -2,8 +2,6 @@
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use crate::ids::NodeId;
-use crate::graph::{Graph, EdgeKind};
 use crate::graph::nav::{NavGraph, NavNodeId, NavEdge};
 use crate::graph::pathfinding::{dijkstra_with_prev, build_outgoing_index};
 use crate::quality_control::MissingEndpointsIssue;
@@ -75,7 +73,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
             return (RepairResult::Failed, vec![]);
         }
 
-        let ctx = ScoredPathContext::build(nav, &maze.graph);
+        let ctx = ScoredPathContext::build(nav);
         let weights = ScoreWeights { path_weight, junction_weight, oneway_weight, teleport_weight };
 
         // Resolve whichever endpoint is already set to its NavNodeId, fixing it as the
@@ -128,11 +126,11 @@ struct ScoredPathContext<'a> {
 }
 
 impl<'a> ScoredPathContext<'a> {
-    fn build(nav: &'a NavGraph, graph: &Graph) -> Self {
+    fn build(nav: &'a NavGraph) -> Self {
         let edges: Vec<&'a NavEdge> = nav.edges().collect();
         let junction_flags = junction_flags(nav);
         let oneway_flags   = oneway_flags(&edges);
-        let teleport_flags = teleport_flags(&edges, graph);
+        let teleport_flags = teleport_flags(&edges);
         let outgoing_by_node = build_outgoing_index(nav, &edges);
         Self { edges, junction_flags, oneway_flags, teleport_flags, outgoing_by_node }
     }
@@ -197,18 +195,11 @@ fn oneway_flags(edges: &[&NavEdge]) -> Vec<bool> {
     edges.iter().map(|e| !pairs.contains(&(e.to, e.from))).collect()
 }
 
-/// Flags each NavEdge whose corridor `path` crosses at least one `Teleport` edge in the
-/// underlying maze graph. A NavEdge's `path` is a sequence of maze NodeIds; each consecutive
-/// pair is a single hop, so a hop is a teleport crossing if any `Teleport`-kind edge connects it.
-fn teleport_flags(edges: &[&NavEdge], graph: &Graph) -> Vec<bool> {
-    let teleport_hops: HashSet<(NodeId, NodeId)> = graph.edges()
-        .filter(|e| e.kind == EdgeKind::Teleport)
-        .map(|e| (e.from, e.to))
-        .collect();
-
-    edges.iter().map(|e| {
-        e.path.windows(2).any(|w| teleport_hops.contains(&(w[0], w[1])))
-    }).collect()
+/// Flags each NavEdge that is itself teleport-backed (`NavEdge::is_teleport`, GitHub issue #197).
+/// A corridor-compressed NavEdge is always Basic hops end to end (teleport endpoints are never
+/// compressed into a corridor's interior), so this is equivalent to "path crosses a Teleport edge".
+fn teleport_flags(edges: &[&NavEdge]) -> Vec<bool> {
+    edges.iter().map(|e| e.is_teleport).collect()
 }
 
 fn score_path(

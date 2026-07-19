@@ -206,8 +206,8 @@ fn score_path_adds_teleport_count_times_weight() {
     // so with path/junction/oneway weights zeroed the only contribution is teleport_weight
     // times how many of the two path edges are flagged as teleport.
     let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None },
-        NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None },
+        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: true },
+        NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None, is_teleport: false },
     ];
     let edges: Vec<&NavEdge> = edges_owned.iter().collect();
     let junction_flags = vec![false, false, false];
