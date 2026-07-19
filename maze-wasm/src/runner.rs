@@ -159,6 +159,25 @@ pub fn run_generate<T: Tessellation + 'static>(
         }
     }
 
+    // Seed QC's own event log with the preset start/finish `build_maze` is about to write straight
+    // into `maze.meta` (`pipeline.rs`'s `maze.meta.start/finish = preset_start/preset_finish`) —
+    // that assignment never goes through a `RepairCommand`/`MutationCommand::SetStart`/`SetFinish`,
+    // so no `StartSet`/`FinishSet` event exists for the web replay engine to reconstruct from
+    // otherwise (GitHub issue #192). Reuses the same `StartSet`/`FinishSet` wire tags an endpoint
+    // repair strategy's own `SetStart`/`SetFinish` command produces — the web side already folds
+    // both into `DebugMazeView.start`/`finish` (`debugSelectors.ts`'s `qcContribution`) with no
+    // further changes needed. Emitted only when the preset actually resolved to a node id — an
+    // absent preset must leave the replay's start/finish at `null`, same as `build_maze` leaving
+    // `maze.meta.start`/`finish` at `None`.
+    if let Some(log) = qc_log.as_mut() {
+        if let Some(id) = preset_start {
+            log.emit(maze_core::quality_control::QcEvent::StartSet(id));
+        }
+        if let Some(id) = preset_finish {
+            log.emit(maze_core::quality_control::QcEvent::FinishSet(id));
+        }
+    }
+
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
     let limits = build_repair_limits(config).map_err(|e| JsValue::from_str(&e))?;
     let (mut maze, issues, mut timing) = build_maze(
