@@ -18,9 +18,13 @@ interface Props {
   onClose: () => void;
 }
 
+// "min,max" for interval params -- mirrors maze-core's `parse_param` Interval encoding
+// (repair/params.rs).
 function defaultValue(p: ParamDescriptor): string {
   const k = p.kind;
-  return k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
+  if (k.type === "bool") return k.default ? "true" : "false";
+  if (k.type === "interval") return `${k.default_min},${k.default_max}`;
+  return String(k.default);
 }
 
 export function NewRuleStrategyDialog({ kind, onBack, onConfirm, onClose }: Props) {

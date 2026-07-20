@@ -133,6 +133,94 @@ fn build_params_enum_invalid_falls_back_to_default() {
     assert!(matches!(&result["mode"], StrategyParamValue::Enum(v) if v == "a"));
 }
 
+// --- Interval ---
+
+#[test]
+fn build_params_defaults_interval_when_no_overrides() {
+    static PARAMS: &[StrategyParam] = &[
+        StrategyParam { id: "range", label: "range", kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 8.0, min: 0.0, max: 100.0 } },
+    ];
+    let result = build_params(PARAMS, None);
+    assert_eq!(result["range"].as_interval(), Some((2.0, 8.0)));
+}
+
+#[test]
+fn build_params_applies_valid_interval_override() {
+    static PARAMS: &[StrategyParam] = &[
+        StrategyParam { id: "range", label: "range", kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 8.0, min: 0.0, max: 100.0 } },
+    ];
+    let mut overrides = HashMap::new();
+    overrides.insert("range".to_string(), "10,20".to_string());
+    let result = build_params(PARAMS, Some(&overrides));
+    assert_eq!(result["range"].as_interval(), Some((10.0, 20.0)));
+}
+
+#[test]
+fn build_params_interval_override_tolerates_surrounding_whitespace() {
+    static PARAMS: &[StrategyParam] = &[
+        StrategyParam { id: "range", label: "range", kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 8.0, min: 0.0, max: 100.0 } },
+    ];
+    let mut overrides = HashMap::new();
+    overrides.insert("range".to_string(), " 10 , 20 ".to_string());
+    let result = build_params(PARAMS, Some(&overrides));
+    assert_eq!(result["range"].as_interval(), Some((10.0, 20.0)));
+}
+
+#[test]
+fn build_params_clamps_interval_endpoints_to_bounds() {
+    static PARAMS: &[StrategyParam] = &[
+        StrategyParam { id: "range", label: "range", kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 8.0, min: 0.0, max: 100.0 } },
+    ];
+    let mut overrides = HashMap::new();
+    overrides.insert("range".to_string(), "-50,999".to_string());
+    let result = build_params(PARAMS, Some(&overrides));
+    assert_eq!(result["range"].as_interval(), Some((0.0, 100.0)));
+}
+
+#[test]
+fn build_params_rejects_interval_with_min_above_max() {
+    static PARAMS: &[StrategyParam] = &[
+        StrategyParam { id: "range", label: "range", kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 8.0, min: 0.0, max: 100.0 } },
+    ];
+    let mut overrides = HashMap::new();
+    overrides.insert("range".to_string(), "20,10".to_string());
+    let result = build_params(PARAMS, Some(&overrides));
+    assert_eq!(result["range"].as_interval(), Some((2.0, 8.0)), "lo > hi must fall back to the default, not swap or clamp into a degenerate range");
+}
+
+#[test]
+fn build_params_rejects_interval_missing_comma() {
+    static PARAMS: &[StrategyParam] = &[
+        StrategyParam { id: "range", label: "range", kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 8.0, min: 0.0, max: 100.0 } },
+    ];
+    let mut overrides = HashMap::new();
+    overrides.insert("range".to_string(), "10".to_string());
+    let result = build_params(PARAMS, Some(&overrides));
+    assert_eq!(result["range"].as_interval(), Some((2.0, 8.0)));
+}
+
+#[test]
+fn build_params_rejects_interval_with_non_numeric_endpoint() {
+    static PARAMS: &[StrategyParam] = &[
+        StrategyParam { id: "range", label: "range", kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 8.0, min: 0.0, max: 100.0 } },
+    ];
+    let mut overrides = HashMap::new();
+    overrides.insert("range".to_string(), "abc,20".to_string());
+    let result = build_params(PARAMS, Some(&overrides));
+    assert_eq!(result["range"].as_interval(), Some((2.0, 8.0)));
+}
+
+#[test]
+fn build_params_rejects_interval_with_nan_endpoint() {
+    static PARAMS: &[StrategyParam] = &[
+        StrategyParam { id: "range", label: "range", kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 8.0, min: 0.0, max: 100.0 } },
+    ];
+    let mut overrides = HashMap::new();
+    overrides.insert("range".to_string(), "NaN,20".to_string());
+    let result = build_params(PARAMS, Some(&overrides));
+    assert_eq!(result["range"].as_interval(), Some((2.0, 8.0)));
+}
+
 // --- unknown override key is ignored ---
 
 #[test]

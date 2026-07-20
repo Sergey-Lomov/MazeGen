@@ -11,6 +11,11 @@ pub enum StrategyParamKind {
     Float { default: f64, min: f64, max: f64 },
     Bool { default: bool },
     Enum { options: &'static [&'static str], default: &'static str },
+    /// A `[min, max]` range, e.g. a desired distance band — see `MissingTeleportsStrategy`'s
+    /// `PARAM_DESIRED_LENGTH` (GitHub issue #212). `default_min`/`default_max` bound the same
+    /// range the UI slider starts at; `min`/`max` bound what a config override may set either
+    /// endpoint to.
+    Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
 }
 
 /// Runtime value for a strategy parameter.
@@ -19,11 +24,16 @@ pub enum StrategyParamValue {
     Float(f64),
     Bool(bool),
     Enum(String),
+    Interval(f64, f64),
 }
 
 impl StrategyParamValue {
     pub fn as_float(&self) -> Option<f64> {
         if let Self::Float(v) = self { Some(*v) } else { None }
+    }
+
+    pub fn as_interval(&self) -> Option<(f64, f64)> {
+        if let Self::Interval(lo, hi) = self { Some((*lo, *hi)) } else { None }
     }
 }
 
@@ -52,6 +62,7 @@ fn default_value(kind: &StrategyParamKind) -> StrategyParamValue {
         StrategyParamKind::Float { default, .. } => StrategyParamValue::Float(*default),
         StrategyParamKind::Bool { default } => StrategyParamValue::Bool(*default),
         StrategyParamKind::Enum { default, .. } => StrategyParamValue::Enum(default.to_string()),
+        StrategyParamKind::Interval { default_min, default_max, .. } => StrategyParamValue::Interval(*default_min, *default_max),
     }
 }
 
@@ -71,6 +82,17 @@ fn parse_param(raw: &str, kind: &StrategyParamKind) -> Option<StrategyParamValue
             } else {
                 None
             }
+        }
+        // "min,max" — same two-number encoding a config override would round-trip from the UI's
+        // own interval slider serialization.
+        StrategyParamKind::Interval { min, max, .. } => {
+            let (lo_raw, hi_raw) = raw.split_once(',')?;
+            let lo = lo_raw.trim().parse::<f64>().ok().filter(|v| v.is_finite())?;
+            let hi = hi_raw.trim().parse::<f64>().ok().filter(|v| v.is_finite())?;
+            if lo > hi {
+                return None;
+            }
+            Some(StrategyParamValue::Interval(lo.clamp(*min, *max), hi.clamp(*min, *max)))
         }
     }
 }

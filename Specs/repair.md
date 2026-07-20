@@ -29,12 +29,17 @@ pub enum StrategyParamKind {
     Float { default: f64, min: f64, max: f64 },
     Bool { default: bool },
     Enum { options: &'static [&'static str], default: &'static str },
+    // A [min, max] range, e.g. a desired distance band (MissingTeleportsStrategy's
+    // desired_length, GitHub issue #212). default_min/default_max seed the UI slider's own
+    // starting range; min/max bound what a config override may set either endpoint to.
+    Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
 }
 
 pub enum StrategyParamValue {
     Float(f64),
     Bool(bool),
     Enum(String),
+    Interval(f64, f64),
 }
 
 pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
@@ -44,6 +49,7 @@ pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
 - Float: parsed with `str::parse::<f64>`, clamped to `[min, max]`; NaN/infinite/unparseable → default.
 - Bool: `"true"` / `"1"` → `true`, `"false"` / `"0"` → `false`; anything else → default.
 - Enum: accepted only if the value is in `options`; otherwise → default.
+- Interval: raw string is `"min,max"` (matches the web UI's own two-input serialization); each half parsed with `str::parse::<f64>` and clamped to `[min, max]` independently; a non-finite endpoint, a missing comma, or a parsed `lo > hi` all fall back to the whole param's default (`default_min`, `default_max`) — never silently swapped or clamped into a degenerate range.
 - Keys in `overrides` that don't match any descriptor are ignored.
 
 ### RepairStrategy trait
@@ -973,6 +979,33 @@ One nested slot, `fix_target`, expecting exactly one `INVALID_TELEPORT`-handling
 **Wholly-protected pairs and the `Fixed`/`Failed` result.** Per `group_select_apply`'s own contract (see below), a pair with no allowed candidate at all doesn't make the overall call `Fixed` by itself — the result is governed entirely by whether *some* nested call across the whole issue actually succeeded. **Behavior change from pre-#209**: previously, a wholly-protected pair was left untouched but still reported `Fixed` (repeatedly, on every future QC iteration, since the check re-detects the same pair from an unchanged maze). Now, if *every* pair in the issue is wholly-protected, the strategy returns `Failed` instead — this permanently skips the rule for the rest of the current repair stage's fixpoint loop (`Stage::check_and_dispatch`'s `failed` set), rather than silently re-"resolving" a no-op every iteration until the repair budget runs out. A *mixed* issue (one wholly-protected pair alongside at least one genuinely fixable pair) is still `Fixed`, from the fixable pair's own progress — the wholly-protected pair is simply left alone, not touched, and doesn't drag the result down.
 
 **Reverse-direction bookkeeping (GitHub issue #171's known gap).** `TeleportGroupSelectStrategy`'s own `element_invalidated` closure (GitHub issue #210 — see `group_select_apply`'s own section above for the general hook) reads a removed edge's opposite-direction `Teleport` counterpart directly from the (pre-mutation) `maze` snapshot via `Graph::teleport_reverse`, in addition to whatever `removed_edge_ids(nested_commands)` reports — needed because `removed_edge_ids` only ever recognizes a `RemoveTeleportWithReverse` command's *primary* id, never the reverse id it also removed. Without this, a pair referencing only the just-removed teleport's reverse direction would never have its own budget retired, and could still offer that (already-gone) reverse id up to the nested strategy for a redundant no-op fix.
+
+### MissingTeleportsStrategy
+
+Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole computed target count of teleport edges in one `apply()` call — mirrors `MissingLoopsRandomStrategy`'s `reserve_percent` target-count approach, not `MissingOneWaysFromWall`/`PassageStrategy`'s one-fix-per-call shape. `target = ceil(missing * (1 + reserve_percent / 100))`.
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `entry_pick` | Enum (`random`, `farthest_from_random`) | `random` | How a teleport's entry node is chosen — `farthest_from_random` hops from a random node to the farthest node forward-reachable from it (`farthest_reachable::farthest_from`, over the corridor-compressed `NavGraph`), same helper `FarthestEndpointsStrategy` uses. |
+| `unreachable_priority` | Float (0–100) | `1.0` | Chance (%) of preferring an exit currently unreachable from entry over one in the desired interval — see the three-set fallback below. |
+| `desired_length` | Interval | `0..1000` | Tile-hop distance band (plain BFS over the raw `Graph`, **not** the `NavGraph`) an exit should fall within, measured from entry. |
+| `allow_out_of_interval` | Bool | `true` | If neither the desired-interval set nor the unreachable set yields a candidate, allow falling back to a reachable exit outside the interval instead of failing this entry. |
+| `one_way_chance` | Float (0–100) | `50.0` | Chance the reverse edge is *not* added, leaving the teleport one-directional. |
+| `attempts_limit` | Float (rounded to `usize`, min `1`) | `3.0` | How many entry candidates to try, per teleport slot, before giving up on that one slot and moving to the next (whatever was added so far still stands). |
+| `reserve_percent` | Float | `50.0` | Mirrors `MissingLoopsRandomStrategy`'s own param — target count is `ceil(missing * (1 + reserve_percent/100))`, not the strict `missing` value. |
+
+**Entry/exit selection.** For each teleport slot, an entry node is picked per `entry_pick`, then a plain forward BFS (`bfs_distances`, tile-hops, not the `NavGraph`) partitions every other feasible node into three disjoint sets:
+1. reachable, outside `[desired_min, desired_max]`
+2. reachable, inside `[desired_min, desired_max]`
+3. unreachable from entry entirely (e.g. a separate strongly-connected component upstream of entry)
+
+`unreachable_priority` rolls which of sets 2/3 is tried first; the roll's loser is tried if the winner is empty; if both are empty, set 1 is tried only when `allow_out_of_interval` is set — otherwise this entry attempt fails outright. A candidate is feasible if it isn't `entry` itself, has no existing edge from `entry`, wasn't already proposed earlier this `apply()` call, and is `directed_edge_feasible` under `preset_state`. The teleport is always oriented `entry -> exit`, regardless of which set `exit` came from — this is what lets the strategy bridge across SCCs (set 3): even an exit currently unreachable from entry becomes reachable the instant this very teleport lands.
+
+**Reverse-direction feasibility.** `one_way_chance` decides whether the reverse (`exit -> entry`) is also requested, but that request is only honored if `directed_edge_feasible(preset_state, exit, entry)` holds — otherwise the strategy falls back to a directed-only `AddDirectedTeleport`, rather than proposing an `AddBidirectionalTeleport` whose reverse leg `preset_state` would block, which `apply_commands` would then drop as a whole (see the mutation-command contract above) without the strategy's own `added` count reflecting the loss.
+
+**Retry/termination.** Failed entries are evicted from a pool shared across the whole `apply()` call (`pool.swap_remove`), so no node is ever retried as an entry twice in the same call — this guarantees termination. `attempts_limit` bounds how many entries a single teleport slot may burn through before that slot gives up (not the whole call): the outer loop simply moves on to the next slot with the same (now smaller) pool. `apply()` returns `Failed` only if zero teleports were added by the time the pool is exhausted or the target count is reached; otherwise `Fixed { score: None }` with however many were actually added, which may be fewer than `target` if the pool runs dry first.
 
 ### OneWayToPassageStrategy
 

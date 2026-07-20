@@ -7,9 +7,13 @@ import { ui, radius, typography, disabled } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
 
+// "min,max" for interval params -- mirrors maze-core's `parse_param` Interval encoding
+// (repair/params.rs).
 function defaultValue(p: ParamDescriptor): string {
   const k = p.kind;
-  return k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
+  if (k.type === "bool") return k.default ? "true" : "false";
+  if (k.type === "interval") return `${k.default_min},${k.default_max}`;
+  return String(k.default);
 }
 
 /** A check type offered as a candidate to add into a rule — this is a `CheckDescriptor`

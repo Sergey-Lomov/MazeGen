@@ -84,5 +84,7 @@ function buildValues(params: ParamDescriptor[], storeValues: Record<string, stri
 function getDefaultValue(p: ParamDescriptor): string {
   const k = p.kind;
   if (k.type === "bool") return k.default ? "true" : "false";
+  // "min,max" -- mirrors maze-core's `parse_param` Interval encoding (repair/params.rs).
+  if (k.type === "interval") return `${k.default_min},${k.default_max}`;
   return String(k.default);
 }

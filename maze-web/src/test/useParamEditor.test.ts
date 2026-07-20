@@ -6,6 +6,7 @@ import type { ParamDescriptor } from "../wasm/types";
 const params: ParamDescriptor[] = [
   { id: "p1", label: "P1", kind: { type: "float", default: 1, min: 0, max: 10 } },
   { id: "p2", label: "P2", kind: { type: "bool", default: false } },
+  { id: "p3", label: "P3", kind: { type: "interval", default_min: 2, default_max: 8, min: 0, max: 100 } },
 ];
 
 beforeEach(() => {
@@ -22,7 +23,16 @@ describe("useParamEditor", () => {
     const { result } = renderHook(() =>
       useParamEditor({ entityId: "e1", params, storeValues: { p1: "5" }, onCommit: vi.fn() })
     );
-    expect(result.current.values).toEqual({ p1: "5", p2: "false" });
+    // p3 (interval) has no storeValues entry, so it must fall back to its own
+    // "default_min,default_max" encoding -- mirrors maze-core's parse_param Interval format.
+    expect(result.current.values).toEqual({ p1: "5", p2: "false", p3: "2,8" });
+  });
+
+  it("interval param default falls back to \"default_min,default_max\", not the storeValues override when present", () => {
+    const { result } = renderHook(() =>
+      useParamEditor({ entityId: "e1", params, storeValues: { p3: "10,20" }, onCommit: vi.fn() })
+    );
+    expect(result.current.values.p3).toBe("10,20");
   });
 
   it("updates local value immediately on change", () => {

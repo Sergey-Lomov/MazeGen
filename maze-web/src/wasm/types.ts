@@ -193,7 +193,8 @@ export type ParamKind =
   | { type: "float"; default: number; min: number; max: number }
   | { type: "integer"; default: number; min: number; max: number }
   | { type: "bool"; default: boolean }
-  | { type: "enum"; options: string[]; default: string };
+  | { type: "enum"; options: string[]; default: string }
+  | { type: "interval"; default_min: number; default_max: number; min: number; max: number };
 
 export interface ParamDescriptor {
   id: string;

@@ -1,4 +1,5 @@
 pub mod random_endpoints;
+pub(crate) mod farthest_reachable;
 pub mod farthest_endpoints;
 pub mod scored_endpoints;
 mod cycle_cut_set;
@@ -22,6 +23,7 @@ pub mod one_way_group_select;
 mod missing_one_ways_shared;
 pub mod missing_one_ways_from_passage;
 pub mod missing_one_ways_from_wall;
+pub mod missing_teleports;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -46,6 +48,7 @@ pub use one_way_group_select::{OneWayGroupSelectStrategy, PARAM_PROTECT_ROUTE as
 pub use group_select::{PARAM_PRIORITY as ONE_WAY_GROUP_SELECT_PARAM_PRIORITY, PRIORITY_RANDOM as ONE_WAY_GROUP_SELECT_PRIORITY_RANDOM, PRIORITY_PROBLEMATIC as ONE_WAY_GROUP_SELECT_PRIORITY_PROBLEMATIC};
 pub use missing_one_ways_from_passage::MissingOneWaysFromPassageStrategy;
 pub use missing_one_ways_from_wall::MissingOneWaysFromWallStrategy;
+pub use missing_teleports::{MissingTeleportsStrategy, PARAM_ENTRY_PICK as MISSING_TELEPORTS_PARAM_ENTRY_PICK, PARAM_DESIRED_LENGTH as MISSING_TELEPORTS_PARAM_DESIRED_LENGTH, ENTRY_RANDOM as MISSING_TELEPORTS_ENTRY_RANDOM, ENTRY_FARTHEST_FROM_RANDOM as MISSING_TELEPORTS_ENTRY_FARTHEST_FROM_RANDOM};
 
 #[cfg(test)]
 pub(crate) mod test_utils {

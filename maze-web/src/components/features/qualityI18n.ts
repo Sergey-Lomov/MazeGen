@@ -283,6 +283,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_one_ways_from_wall.label"] as MessageFn,
     description: m["strategy.missing_one_ways_from_wall.description"] as MessageFn,
   },
+  missing_teleports: {
+    label: m["strategy.missing_teleports.label"] as MessageFn,
+    description: m["strategy.missing_teleports.description"] as MessageFn,
+  },
 };
 
 export const paramI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -498,6 +502,30 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.min_teleport_ratio.label"] as MessageFn,
     description: m["param.min_teleport_ratio.description"] as MessageFn,
   },
+  entry_pick: {
+    label: m["param.entry_pick.label"] as MessageFn,
+    description: m["param.entry_pick.description"] as MessageFn,
+  },
+  unreachable_priority: {
+    label: m["param.unreachable_priority.label"] as MessageFn,
+    description: m["param.unreachable_priority.description"] as MessageFn,
+  },
+  desired_length: {
+    label: m["param.desired_length.label"] as MessageFn,
+    description: m["param.desired_length.description"] as MessageFn,
+  },
+  allow_out_of_interval: {
+    label: m["param.allow_out_of_interval.label"] as MessageFn,
+    description: m["param.allow_out_of_interval.description"] as MessageFn,
+  },
+  one_way_chance: {
+    label: m["param.one_way_chance.label"] as MessageFn,
+    description: m["param.one_way_chance.description"] as MessageFn,
+  },
+  attempts_limit: {
+    label: m["param.attempts_limit.label"] as MessageFn,
+    description: m["param.attempts_limit.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -553,6 +581,8 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "comparison.le": m["param.comparison.option.le"] as MessageFn,
   "comparison.ge": m["param.comparison.option.ge"] as MessageFn,
   "comparison.eq": m["param.comparison.option.eq"] as MessageFn,
+  "entry_pick.random": m["param.entry_pick.option.random"] as MessageFn,
+  "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -595,6 +625,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "other_edge.entry_or_exit": m["param.other_edge.option.entry_or_exit.explanation"] as MessageFn,
   "priority.random": m["param.priority.option.random.explanation"] as MessageFn,
   "priority.problematic": m["param.priority.option.problematic.explanation"] as MessageFn,
+  "entry_pick.random": m["param.entry_pick.option.random.explanation"] as MessageFn,
+  "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -47,6 +47,8 @@ fn param_kind_dto(kind: &maze_core::repair::StrategyParamKind) -> ParamKindDto {
             ParamKindDto::Bool { default: *default },
         maze_core::repair::StrategyParamKind::Enum { options, default } =>
             ParamKindDto::Enum { options: options.to_vec(), default },
+        maze_core::repair::StrategyParamKind::Interval { default_min, default_max, min, max } =>
+            ParamKindDto::Interval { default_min: *default_min, default_max: *default_max, min: *min, max: *max },
     }
 }
 
@@ -199,6 +201,13 @@ pub fn available_strategies() -> JsValue {
             handles: MISSING_ONE_WAYS.as_str(),
             params: strategy_params_dto(<MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromWallStrategy)),
             experimental: <MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&MissingOneWaysFromWallStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "missing_teleports",
+            handles: MISSING_TELEPORTS.as_str(),
+            params: strategy_params_dto(<MissingTeleportsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::params(&MissingTeleportsStrategy)),
+            experimental: <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::is_experimental(&MissingTeleportsStrategy),
             nested_slots: vec![],
         },
     ];

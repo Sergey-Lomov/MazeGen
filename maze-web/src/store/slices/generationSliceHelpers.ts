@@ -25,12 +25,16 @@ export function isTypeAlreadyActive(rules: QcRuleState[], typeId: string): boole
 
 export function defaultParamsFor(descriptor: { params: CheckDescriptor["params"] }): Record<string, string> {
   return Object.fromEntries(
-    descriptor.params.map((p) => {
-      const k = p.kind;
-      const def = k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
-      return [p.id, def];
-    })
+    descriptor.params.map((p) => [p.id, defaultParamValue(p.kind)])
   );
+}
+
+// "min,max" for interval params -- mirrors maze-core's `parse_param` Interval encoding
+// (repair/params.rs).
+function defaultParamValue(k: CheckDescriptor["params"][number]["kind"]): string {
+  if (k.type === "bool") return k.default ? "true" : "false";
+  if (k.type === "interval") return `${k.default_min},${k.default_max}`;
+  return String(k.default);
 }
 
 // Auto-fills every mandatory nested slot (`min >= 1`) of `strategyId` with the first available

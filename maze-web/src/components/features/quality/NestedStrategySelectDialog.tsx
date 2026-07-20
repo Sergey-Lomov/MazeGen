@@ -154,7 +154,10 @@ function DraftStrategyParamPanel({ strategyId, params, draftValues, onChange }: 
   function getValue(p: ParamDescriptor): string {
     if (draftValues[p.id] !== undefined) return draftValues[p.id];
     const k = p.kind;
-    return k.type === "bool" ? (k.default ? "true" : "false") : String(k.default);
+    if (k.type === "bool") return k.default ? "true" : "false";
+    // "min,max" -- mirrors maze-core's `parse_param` Interval encoding (repair/params.rs).
+    if (k.type === "interval") return `${k.default_min},${k.default_max}`;
+    return String(k.default);
   }
 
   return (

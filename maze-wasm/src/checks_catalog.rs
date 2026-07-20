@@ -19,6 +19,7 @@ pub enum ParamKindDto {
     Integer { default: i64, min: i64, max: i64 },
     Bool { default: bool },
     Enum { options: Vec<&'static str>, default: &'static str },
+    Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
 }
 
 #[derive(Serialize)]
