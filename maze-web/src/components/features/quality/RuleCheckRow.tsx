@@ -1,6 +1,7 @@
 import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
 import { ParamFields } from "../ParamFields";
+import { Switch } from "../../Switch";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { X } from "lucide-react";
@@ -26,6 +27,7 @@ interface Props {
 // so checks and strategy read as the same kind of thing rather than checks needing an extra click.
 export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onHoverChange }: Props) {
   const setCheckParam = useMazeStore((s) => s.setCheckParam);
+  const toggleCheckDisabled = useMazeStore((s) => s.toggleCheckDisabled);
   const storeValues = useMazeStore((s) => s.rules.find((r) => r.id === check.ruleId)?.checks.find((c) => c.localId === check.localId)?.params ?? EMPTY_PARAMS);
 
   const { values, onChange, flushRef } = useParamEditor({
@@ -36,7 +38,7 @@ export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onH
   });
 
   return (
-    <div>
+    <div style={check.disabled ? styles.ruleCheckRowDisabled : undefined}>
       <div
         style={{
           ...styles.ruleCheckRow,
@@ -51,6 +53,13 @@ export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onH
         onMouseLeave={() => onHoverChange(false)}
       >
         <span style={styles.cardLabel}>{check.label}</span>
+        <div
+          style={styles.toggleWrap}
+          title={check.disabled ? m["quality.enable_check"]() : m["quality.disable_check"]()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Switch checked={!check.disabled} onChange={() => { flushRef.current(); toggleCheckDisabled(check.ruleId, check.localId); }} />
+        </div>
         <button
           className="hoverable"
           style={styles.removeBtn}
@@ -66,7 +75,7 @@ export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onH
       </div>
       {check.params.length > 0 && (
         <div style={styles.ruleStrategyParams}>
-          <ParamFields params={check.params} values={values} onChange={onChange} />
+          <ParamFields params={check.params} values={values} onChange={onChange} disabled={check.disabled} />
         </div>
       )}
     </div>

@@ -480,6 +480,8 @@
   "quality.select_strategy": "Выбрать стратегию",
   "quality.disable_rule": "Отключить правило",
   "quality.enable_rule": "Включить правило",
+  "quality.disable_check": "Отключить проверку",
+  "quality.enable_check": "Включить проверку",
   "quality.rename_rule": "Переименовать правило",
   "quality.remove_rule": "Удалить правило",
   "quality.move_rule_up": "Переместить правило выше",

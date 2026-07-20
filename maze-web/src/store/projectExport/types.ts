@@ -47,6 +47,7 @@ export interface ProjectFileCheckInstance {
   localId: number;
   typeId: string;
   params: Record<string, string>;
+  disabled: boolean;
 }
 
 /** Mirrors `NestedStrategyState` — see its doc comment in storeTypes.ts. Recursive. */

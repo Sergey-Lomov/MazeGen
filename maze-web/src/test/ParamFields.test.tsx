@@ -45,6 +45,18 @@ const plainFloatParam: ParamDescriptor = {
   kind: { type: "float", default: 50, min: 0, max: 500 },
 };
 
+const boolParam: ParamDescriptor = {
+  id: "protect_route",
+  label: "Protect route",
+  kind: { type: "bool", default: true },
+};
+
+const enumParam: ParamDescriptor = {
+  id: "region_class",
+  label: "Region class",
+  kind: { type: "enum", default: "trap", options: ["trap", "alternative"] },
+};
+
 describe("ParamFields", () => {
   describe("interval param", () => {
     it("renders the min/max halves of a \"min,max\" value in two separate number inputs", () => {
@@ -132,5 +144,46 @@ describe("ParamFields", () => {
   it("renders nothing for an empty params list", () => {
     const { container } = render(<ParamFields params={[]} values={{}} onChange={vi.fn()} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  describe("disabled prop", () => {
+    it("leaves every control enabled when disabled is unset (default)", () => {
+      render(<ParamFields params={[plainFloatParam, boolParam, enumParam]} values={{ reserve_percent: "50", protect_route: "true", region_class: "trap" }} onChange={vi.fn()} />);
+      expect(screen.getByRole("spinbutton")).not.toBeDisabled();
+      expect(screen.getByRole("checkbox")).not.toBeDisabled();
+      expect(screen.getByRole("combobox")).not.toBeDisabled();
+    });
+
+    it("disables the plain number input for a float/integer param", () => {
+      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} disabled />);
+      expect(screen.getByRole("spinbutton")).toBeDisabled();
+    });
+
+    it("disables both halves of an interval param", () => {
+      render(<ParamFields params={[intervalParam]} values={{ desired_length: "3,10" }} onChange={vi.fn()} disabled />);
+      const inputs = screen.getAllByRole("spinbutton");
+      expect(inputs[0]).toBeDisabled();
+      expect(inputs[1]).toBeDisabled();
+    });
+
+    it("disables the percent-slider range input", () => {
+      render(<ParamFields params={[percentSliderParam]} values={{ unreachable_priority: "37" }} onChange={vi.fn()} disabled />);
+      expect(screen.getByRole("slider")).toBeDisabled();
+    });
+
+    it("disables the Switch control for a bool param", () => {
+      render(<ParamFields params={[boolParam]} values={{ protect_route: "true" }} onChange={vi.fn()} disabled />);
+      expect(screen.getByRole("checkbox")).toBeDisabled();
+    });
+
+    it("disables the select control for an enum param", () => {
+      render(<ParamFields params={[enumParam]} values={{ region_class: "trap" }} onChange={vi.fn()} disabled />);
+      expect(screen.getByRole("combobox")).toBeDisabled();
+    });
+
+    it("a disabled control still shows its current value, just not editable", () => {
+      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} disabled />);
+      expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("50");
+    });
   });
 });

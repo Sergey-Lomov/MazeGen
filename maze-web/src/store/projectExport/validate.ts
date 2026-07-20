@@ -263,12 +263,15 @@ function validatePresetConnectionEntry(v: unknown, path: string): PresetConnecti
   };
 }
 
-function validateCheckInstance(v: unknown, path: string): { localId: number; typeId: string; params: Record<string, string> } {
+// `disabled` defaults to `false` for project files saved before the per-check toggle existed —
+// same pattern as `ruleDisabled`'s default in `validateQcRule` below.
+function validateCheckInstance(v: unknown, path: string): { localId: number; typeId: string; params: Record<string, string>; disabled: boolean } {
   const obj = assertObject(v, path);
   return {
     localId: assertNumber(obj.localId, `${path}.localId`),
     typeId: assertString(obj.typeId, `${path}.typeId`),
     params: assertStringRecord(obj.params ?? {}, `${path}.params`),
+    disabled: typeof obj.disabled === "boolean" ? obj.disabled : false,
   };
 }
 

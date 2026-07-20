@@ -80,7 +80,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
         const kind = resolveCheckKind(descriptor);
         const candidates = strategies.filter((s) => s.handles === kind);
         const match = candidates.find((s) => s.id === "scored_endpoints") ?? candidates[0];
-        return newRule(kind, [{ localId: 0, typeId: checkId, params: defaultParamsFor(descriptor) }], match?.id ?? null, false, strategies);
+        return newRule(kind, [{ localId: 0, typeId: checkId, params: defaultParamsFor(descriptor), disabled: false }], match?.id ?? null, false, strategies);
       });
       const knownIds = new Set(checks.map((c) => c.id));
       set((state) => {
@@ -205,13 +205,13 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     const targetRule = ruleId ? state.rules.find((g) => g.id === ruleId && g.kind === checkKind) : undefined;
     if (targetRule) {
       const rules = state.rules.map((g) => g.id === ruleId
-        ? { ...g, checks: [...g.checks, { localId: g.nextLocalCheckId, typeId, params }], nextLocalCheckId: g.nextLocalCheckId + 1 }
+        ? { ...g, checks: [...g.checks, { localId: g.nextLocalCheckId, typeId, params, disabled: false }], nextLocalCheckId: g.nextLocalCheckId + 1 }
         : g);
       return { rules, debugStale: debugStaleOf(state) };
     }
     // New singleton rule — goes into the last stage (a fresh one is created if `stages` is
     // currently empty — see `appendRuleToStage`).
-    const rule = newRule(checkKind, [{ localId: 0, typeId, params }], null, false, state.availableStrategies);
+    const rule = newRule(checkKind, [{ localId: 0, typeId, params, disabled: false }], null, false, state.availableStrategies);
     const stages = appendRuleToStage(state.stages, rule.id);
     return { rules: [...state.rules, rule], stages, debugStale: debugStaleOf(state) };
   }),
@@ -232,6 +232,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       localId: i,
       typeId: descriptor.id,
       params: initialCheckParams?.[descriptor.id] ?? defaultParamsFor(descriptor),
+      disabled: false,
     }));
     const strategyParams = { ...state.strategyParams };
     if (strategyId && !strategyParams[strategyId]) {
@@ -261,6 +262,13 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   setCheckParam: (ruleId, localId, paramId, value) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
       ? { ...g, checks: g.checks.map((c) => c.localId === localId ? { ...c, params: { ...c.params, [paramId]: value } } : c) }
+      : g),
+    debugStale: debugStaleOf(state),
+  })),
+
+  toggleCheckDisabled: (ruleId, localId) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId
+      ? { ...g, checks: g.checks.map((c) => c.localId === localId ? { ...c, disabled: !c.disabled } : c) }
       : g),
     debugStale: debugStaleOf(state),
   })),

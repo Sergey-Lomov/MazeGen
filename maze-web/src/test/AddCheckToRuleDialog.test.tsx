@@ -39,7 +39,7 @@ describe("AddCheckToRuleDialog", () => {
 
   it("activates the selected check directly into the target rule on Add", () => {
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
       availableChecks: [
         { id: "existing", label: "Existing", description: "", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
         { id: "c2", label: "Check Two", description: "Second check.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
@@ -50,20 +50,20 @@ describe("AddCheckToRuleDialog", () => {
     fireEvent.click(screen.getByText("Check Two"));
     fireEvent.click(screen.getByText("Add"));
     expect(useMazeStore.getState().rules[0].checks).toEqual([
-      { localId: 0, typeId: "existing", params: {} },
-      { localId: 1, typeId: "c2", params: {} },
+      { localId: 0, typeId: "existing", params: {}, disabled: false },
+      { localId: 1, typeId: "c2", params: {}, disabled: false },
     ]);
     expect(onClose).toHaveBeenCalled();
   });
 
   it("Cancel closes without modifying the store", () => {
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     });
     const onClose = vi.fn();
     render(<AddCheckToRuleDialog ruleId="g1" kind="invalid_loop" candidates={candidates} onClose={onClose} />);
     fireEvent.click(screen.getByText("Cancel"));
     expect(onClose).toHaveBeenCalled();
-    expect(useMazeStore.getState().rules[0].checks).toEqual([{ localId: 0, typeId: "existing", params: {} }]);
+    expect(useMazeStore.getState().rules[0].checks).toEqual([{ localId: 0, typeId: "existing", params: {}, disabled: false }]);
   });
 });

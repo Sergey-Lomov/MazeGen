@@ -244,6 +244,9 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   ruleCheckRowHover: {
     background: ui.bg.hover,
   },
+  ruleCheckRowDisabled: {
+    opacity: 0.5,
+  },
   ruleAddCheckRow: {
     ...typography.body,
     display: "flex",

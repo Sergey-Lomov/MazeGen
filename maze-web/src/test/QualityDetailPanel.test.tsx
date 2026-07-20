@@ -15,6 +15,7 @@ const check: CheckVM = {
   label: "Check One",
   description: "Check One description",
   params: [],
+  disabled: false,
 };
 
 function makeVm(overrides: Partial<QualityViewModel> = {}): QualityViewModel {

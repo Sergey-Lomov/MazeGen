@@ -470,6 +470,8 @@
   "quality.select_strategy": "Select strategy",
   "quality.disable_rule": "Disable rule",
   "quality.enable_rule": "Enable rule",
+  "quality.disable_check": "Disable check",
+  "quality.enable_check": "Enable check",
   "quality.rename_rule": "Rename rule",
   "quality.remove_rule": "Remove rule",
   "quality.move_rule_up": "Move rule up",

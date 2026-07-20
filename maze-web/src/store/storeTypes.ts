@@ -67,6 +67,12 @@ export interface CheckInstance {
   localId: number;
   typeId: string;
   params: Record<string, string>;
+  /** Per-check toggle — when true, this check is excluded entirely from the next `generate()`
+   * call (not sent to core at all), as if it were never selected, mirroring `QcRuleState.ruleDisabled`
+   * at check granularity. A disabled check still counts toward `isTypeAlreadyActive`'s single-instance
+   * gating, so a user can't stack duplicate instances of a type limited to one active instance by
+   * disabling the existing one first — re-enabling it is a toggle away instead of an add. */
+  disabled: boolean;
 }
 
 /** Hard cap on nested-strategy tree depth, shared by every function that recurses over
@@ -527,6 +533,9 @@ export interface GenerationActions {
   ) => void;
   removeCheck: (ruleId: string, localId: number) => void;
   setCheckParam: (ruleId: string, localId: number, paramId: string, value: string) => void;
+  /** Flips the check's `disabled` (see `CheckInstance`'s doc comment) — the check is excluded
+   * entirely from generation while disabled, still counts toward single-instance-type gating. */
+  toggleCheckDisabled: (ruleId: string, localId: number) => void;
   /** Moves the check at `(ruleId, localId)` out of its current rule, into a fresh singleton rule
    * of its own — its params move with it (no separate lookup, they're already part of the
    * `CheckInstance`). */

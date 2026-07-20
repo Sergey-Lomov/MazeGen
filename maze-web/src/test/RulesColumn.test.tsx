@@ -54,8 +54,8 @@ const strategyWithParams: StrategyVM = {
   experimental: false,
   nestedSlots: [],
 };
-const checkA: CheckVM = { id: "g1:0", ruleId: "g1", localId: 0, typeId: "c1", label: "Check One", description: "", params: [] };
-const checkB: CheckVM = { id: "g1:1", ruleId: "g1", localId: 1, typeId: "c2", label: "Check Two", description: "", params: [] };
+const checkA: CheckVM = { id: "g1:0", ruleId: "g1", localId: 0, typeId: "c1", label: "Check One", description: "", params: [], disabled: false };
+const checkB: CheckVM = { id: "g1:1", ruleId: "g1", localId: 1, typeId: "c2", label: "Check Two", description: "", params: [], disabled: false };
 const checkWithParams: CheckVM = {
   id: "g1:0",
   ruleId: "g1",
@@ -64,13 +64,14 @@ const checkWithParams: CheckVM = {
   label: "Check One",
   description: "",
   params: [{ id: "threshold", label: "Threshold", kind: { type: "float", default: 1, min: 0, max: 10 } }],
+  disabled: false,
 };
 
 // Default backing rule for checkA/checkB (ruleId "g1", localIds 0/1) — RuleCheckRow looks up its
 // own check's params from `store.rules` by (ruleId, localId), so any `slots` fixture referencing
 // checkA/checkB needs a matching store rule present, even when the test only cares about props.
 function defaultRules() {
-  return [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }, { localId: 1, typeId: "c2", params: {} }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }];
+  return [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }];
 }
 
 beforeEach(() => {
@@ -142,7 +143,7 @@ describe("RulesColumn", () => {
   });
 
   it("removing a check clears its selection, calls store removeCheck, and leaves the empty rule in place", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     // LiveSlots (not RulesColumn directly) — `producedBy` must track the store within the same
@@ -244,7 +245,7 @@ describe("RulesColumn", () => {
   it("renders check params inline and commits changes to the store", () => {
     vi.useFakeTimers();
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkWithParams], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
@@ -263,7 +264,7 @@ describe("RulesColumn", () => {
     // checkB (localId 1) stays in the rule throughout, so it's the one that proves the flush
     // actually committed rather than being silently dropped by the unrelated removal.
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }, { localId: 1, typeId: "c2", params: {} }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     });
     const checkBWithParams: CheckVM = { ...checkWithParams, id: "g1:1", localId: 1, typeId: "c2", label: "Check Two" };
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkWithParams, checkBWithParams], nestedStrategies: [] }];
@@ -283,7 +284,7 @@ describe("RulesColumn", () => {
   it("flushes a pending check-param edit before changing selection, instead of dropping it", () => {
     vi.useFakeTimers();
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     });
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkWithParams], nestedStrategies: [] }];
@@ -298,7 +299,7 @@ describe("RulesColumn", () => {
   it("flushes a pending strategy-param edit before opening the strategy edit dialog", () => {
     vi.useFakeTimers();
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s2", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s2", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
       strategyParams: {},
     });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: strategyWithParams, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
@@ -321,19 +322,19 @@ describe("RulesColumn", () => {
   });
 
   it("toggles strategy disabled state via the strategy-panel toggle, keeping selection intact", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
-    // Three switches now: stage-level disabled (first), card-level ruleDisabled (second), and
-    // strategy-only disabled (third).
-    fireEvent.click(screen.getAllByRole("checkbox")[2]);
+    // Four switches now: stage-level disabled (first), card-level ruleDisabled (second),
+    // per-check disabled (third, one member check), and strategy-only disabled (fourth).
+    fireEvent.click(screen.getAllByRole("checkbox")[3]);
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.disabled).toBe(true);
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.ruleDisabled).toBe(false);
     expect(screen.getByText("Strategy One")).toBeInTheDocument();
   });
 
   it("toggles ruleDisabled via the card-level toggle, independent from the strategy toggle", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
@@ -341,9 +342,24 @@ describe("RulesColumn", () => {
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.disabled).toBe(false);
   });
 
+  it("toggles a check's own disabled via its row toggle, independent from ruleDisabled/strategy disabled", () => {
+    useMazeStore.setState({
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+    });
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA, checkB], nestedStrategies: [] }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    // stage (0), ruleDisabled (1), checkA's own toggle (2), checkB's own toggle (3), strategy (4).
+    fireEvent.click(screen.getAllByRole("checkbox")[2]);
+    const g = useMazeStore.getState().rules.find((g) => g.id === "g1")!;
+    expect(g.checks.find((c) => c.localId === 0)?.disabled).toBe(true);
+    expect(g.checks.find((c) => c.localId === 1)?.disabled).toBe(false);
+    expect(g.ruleDisabled).toBe(false);
+    expect(g.disabled).toBe(false);
+  });
+
   it("renders strategy params inline and commits changes to the store", () => {
     vi.useFakeTimers();
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s2", disabled: false, ruleDisabled: false, nestedStrategies: [] }], strategyParams: {} });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s2", disabled: false, ruleDisabled: false, nestedStrategies: [] }], strategyParams: {} });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: strategyWithParams, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     const input = screen.getByDisplayValue("1") as HTMLInputElement;
@@ -356,7 +372,8 @@ describe("RulesColumn", () => {
   it("renders the stage toggle and card-level toggle (not a strategy toggle) when rule has no strategy", () => {
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
-    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+    // stage toggle + card-level ruleDisabled toggle + one per-check toggle (checkA), no strategy toggle.
+    expect(screen.getAllByRole("checkbox")).toHaveLength(3);
   });
 
   it("shows empty hint when no rules", () => {
@@ -451,7 +468,7 @@ describe("RulesColumn", () => {
         { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
         { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
       ],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     });
     const slots: StrategySlotVM[] = [
       { ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] },
@@ -467,7 +484,7 @@ describe("RulesColumn", () => {
         { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
         { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
       ],
-      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     });
     const slots: StrategySlotVM[] = [
       { ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] },
@@ -477,12 +494,12 @@ describe("RulesColumn", () => {
     fireEvent.click(screen.getByText("Check Two"));
     fireEvent.click(screen.getByText("Add"));
     expect(useMazeStore.getState().rules).toEqual([
-      { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }, { localId: 1, typeId: "c2", params: {} }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] },
+      { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }, { localId: 1, typeId: "c2", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] },
     ]);
   });
 
   it("shows an alert instead of an empty picker when no candidate checks are available", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getByText("+ Add check"));
@@ -490,7 +507,7 @@ describe("RulesColumn", () => {
   });
 
   it("toggles ruleDisabled and visually dims the card title row", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getAllByRole("checkbox")[1]);
@@ -498,7 +515,7 @@ describe("RulesColumn", () => {
   });
 
   it("renames a rule via the edit button's inline input, committed on Enter", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getByTitle("Rename rule"));
@@ -509,7 +526,7 @@ describe("RulesColumn", () => {
   });
 
   it("removes a rule via the X button after confirming, clearing strategy selection for it", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     // LiveSlots, see comment in "removing a check..." above — removing the whole rule needs the
@@ -522,7 +539,7 @@ describe("RulesColumn", () => {
   });
 
   it("cancelling the remove-rule confirmation leaves the rule intact", () => {
-    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {} }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], nestedStrategies: [] }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
     fireEvent.click(screen.getByTitle("Remove rule"));

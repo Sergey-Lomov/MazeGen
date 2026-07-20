@@ -45,6 +45,8 @@ export interface CheckVM {
   label: string;
   description: string;
   params: ParamDescriptor[];
+  /** Per-check toggle — see `CheckInstance.disabled`'s doc comment in storeTypes.ts. */
+  disabled: boolean;
 }
 
 export interface StrategySlotVM {
@@ -163,6 +165,7 @@ export function useQualityViewModel(): QualityViewModel {
             label: resolveCheckLabel(descriptor.id, descriptor.label),
             description: resolveCheckDescription(descriptor.id, descriptor.description),
             params: localizeParams(descriptor.params),
+            disabled: check.disabled,
           };
         })
         .filter((c): c is CheckVM => c !== undefined);

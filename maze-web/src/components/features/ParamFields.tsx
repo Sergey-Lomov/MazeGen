@@ -44,6 +44,10 @@ interface Props {
    * detail view (e.g. QualityDetailPanel, AddCheckToRuleDialog) should set this — compact
    * views (rule cards, feature cards) must not. */
   getDescription?: (p: ParamDescriptor) => string | undefined;
+  /** Renders every control non-interactive (native `disabled`) — e.g. a rule-card check row
+   * whose check is toggled off (`CheckInstance.disabled`). Values are still shown, just not
+   * editable, until the check is re-enabled. */
+  disabled?: boolean;
 }
 
 const SELECT_HORIZONTAL_CHROME = 4 + 18 + 2; // padding-left + padding-right + border
@@ -66,7 +70,7 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
   return Math.min(desired, Math.max(softCap, hardCap));
 }
 
-export function ParamFields({ params, values, getValue, onChange, getDescription }: Props) {
+export function ParamFields({ params, values, getValue, onChange, getDescription, disabled }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -116,6 +120,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                     max={p.kind.max}
                     step={1}
                     value={get(p)}
+                    disabled={disabled}
                     onChange={(e) => onChange(p.id, e.target.value)}
                   />
                   <span style={styles.percentSliderValue}>{Math.round(Number(get(p)))}%</span>
@@ -129,6 +134,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   min={p.kind.min}
                   max={p.kind.max}
                   step={p.kind.type === "integer" ? 1 : 0.1}
+                  disabled={disabled}
                   onChange={(e) => onChange(p.id, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                 />
@@ -146,6 +152,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                           value={lo}
                           min={kind.min}
                           max={kind.max}
+                          disabled={disabled}
                           onChange={(e) => onChange(p.id, `${e.target.value},${hi}`)}
                           onBlur={(e) => {
                             // Clamp on blur, not on every keystroke -- an onChange clamp would
@@ -176,6 +183,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                           value={hi}
                           min={kind.min}
                           max={kind.max}
+                          disabled={disabled}
                           onChange={(e) => onChange(p.id, `${lo},${e.target.value}`)}
                           onBlur={(e) => {
                             // Same rationale as the min input's own onBlur clamp above, including
@@ -201,6 +209,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 <span style={styles.switchWrap} onClick={(e) => e.stopPropagation()}>
                   <Switch
                     checked={get(p) === "true"}
+                    disabled={disabled}
                     onChange={(checked) => onChange(p.id, checked ? "true" : "false")}
                   />
                 </span>
@@ -209,6 +218,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 <select
                   style={{ ...styles.select, width: enumSelectWidth(p, containerWidth) }}
                   value={get(p)}
+                  disabled={disabled}
                   onChange={(e) => onChange(p.id, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                 >

@@ -76,8 +76,9 @@ function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: {
     strategy = { id: g.strategyId, params, ...(nested.length > 0 ? { nested } : {}) };
   }
   // Order preserved from `QcRuleState.checks` — no resorting, so serialization/test
-  // determinism doesn't depend on Map/object iteration order at this layer.
-  const checks = g.checks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params }));
+  // determinism doesn't depend on Map/object iteration order at this layer. A `disabled` check
+  // (see `CheckInstance.disabled`'s doc comment) is omitted entirely, as if never selected.
+  const checks = g.checks.filter((c) => !c.disabled).map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params }));
   return { id: g.id, checks, strategy };
 }
 
@@ -102,7 +103,12 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
       name: s.name,
       rules: s.ruleIds
         .map((id) => ruleById.get(id))
-        .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled)
+        // A rule with zero *effective* checks (every member disabled, or the rule left with no
+        // members at all — see `QcRuleState.checks`'s "can become empty" doc comment) is omitted
+        // the same way a `ruleDisabled` rule is: core's `build_qc_and_repair` rejects an empty
+        // `checks` array outright ("rule <id> has no checks"), so it must never cross the wasm
+        // boundary with one.
+        .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled && g.checks.some((c) => !c.disabled))
         .map((g) => ruleToConfig(state, g)),
     }));
   const activeTessellation = activeTessellationOf(state);
