@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, EXCESSIVE_SCC_COUNT};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, EXCESSIVE_SCC_COUNT};
 
 /// Produced by `SccCountCheck` (paired with `EXCESSIVE_SCC_COUNT`) — mandatory for this kind:
 /// `max_scc_count` is the configured threshold the check compared against, needed by
@@ -34,25 +34,50 @@ impl IssueRequirement for ExcessiveSccCountIssue {
     type Requirement = ();
 }
 
-impl Issue for ExcessiveSccCountIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(ExcessiveSccCountIssue);
 
 impl IssueMerge for ExcessiveSccCountIssue {
-    /// In practice there is normally exactly one active `scc_count` instance (see
-    /// `Specs/quality_control.md`), so two differing thresholds reaching this merge would be a
-    /// caller configuration conflict, not a case this merge can meaningfully resolve — same
-    /// debug-only signal as the pre-#113 `merge_issue`'s analogous conflict.
+    /// `max_scc_count` is the threshold the repair strategy targets (`current_scc_count -
+    /// max_scc_count` regions to merge). When two checks disagree, taking the stricter (smaller)
+    /// threshold widens that gap so the repair satisfies both checks rather than under-fixing
+    /// the stricter one.
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
-        debug_assert_eq!(self.max_scc_count, other.max_scc_count,
-            "ExcessiveSccCountIssue::merge: two instances disagree on max_scc_count ({} vs {})",
-            self.max_scc_count, other.max_scc_count);
+        self.meta.merge_from(other.meta);
+        self.max_scc_count = self.max_scc_count.min(other.max_scc_count);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::quality_control::issue::Issue;
+
+    #[test]
+    fn merge_takes_the_smaller_threshold_when_self_is_larger() {
+        let mut a = ExcessiveSccCountIssue::new_from_check("scc_count_1", 8);
+        let b = ExcessiveSccCountIssue::new_from_check("scc_count_2", 5);
+        a.merge(b);
+        assert_eq!(a.max_scc_count, 5, "the stricter (smaller) threshold must win, not silently keep self");
+    }
+
+    #[test]
+    fn merge_takes_the_smaller_threshold_when_self_is_smaller() {
+        let mut a = ExcessiveSccCountIssue::new_from_check("scc_count_1", 5);
+        let b = ExcessiveSccCountIssue::new_from_check("scc_count_2", 8);
+        a.merge(b);
+        assert_eq!(a.max_scc_count, 5);
+    }
+
+    #[test]
+    fn merge_unions_source_checks_and_details() {
+        let mut a = ExcessiveSccCountIssue::new_from_check("scc_count_1", 8)
+            .with_detail("scc_count_1", "max_scc_count", "8".to_string());
+        let b = ExcessiveSccCountIssue::new_from_check("scc_count_2", 5)
+            .with_detail("scc_count_2", "max_scc_count", "5".to_string());
+        a.merge(b);
+
+        assert_eq!(a.source_checks(), vec!["scc_count_1".to_string(), "scc_count_2".to_string()]);
+        assert_eq!(a.details().get("scc_count_1").and_then(|kv| kv.get("max_scc_count")), Some(&"8".to_string()));
+        assert_eq!(a.details().get("scc_count_2").and_then(|kv| kv.get("max_scc_count")), Some(&"5".to_string()));
     }
 }

@@ -111,10 +111,7 @@ impl<K: InvalidGroupIssueKind> IssueMerge for InvalidGroupIssue<K> {
     /// contribute the winning count is still a valid source for the group. Mirrors
     /// `InvalidOneWayGroupIssue::merge` exactly.
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
+        self.meta.merge_from(other.meta);
 
         let mut by_key: HashMap<Vec<K::Element>, usize> = self.groups.iter().enumerate()
             .map(|(i, (g, _))| (canonical_group_key(g), i))

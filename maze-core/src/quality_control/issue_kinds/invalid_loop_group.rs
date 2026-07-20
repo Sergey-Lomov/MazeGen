@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_LOOP_GROUP};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_LOOP_GROUP};
 use super::canonical_cycle_key;
 
 /// Produced by any check that flags cycles as part of a group-level decision across every loop on
@@ -57,12 +57,7 @@ impl IssueRequirement for InvalidLoopGroupIssue {
     type Requirement = InvalidLoopGroupRequirement;
 }
 
-impl Issue for InvalidLoopGroupIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(InvalidLoopGroupIssue);
 
 impl IssueMerge for InvalidLoopGroupIssue {
     /// Dedups `invalid`/`valid` independently by `canonical_cycle_key`, unlike
@@ -71,10 +66,7 @@ impl IssueMerge for InvalidLoopGroupIssue {
     /// flagged invalid by one side and valid by the other is kept invalid (the stricter side
     /// wins), since a repair strategy must break it if any source flagged it.
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
+        self.meta.merge_from(other.meta);
 
         let mut invalid_keys: std::collections::HashSet<Vec<EdgeId>> = self.invalid.iter().map(|c| canonical_cycle_key(c)).collect();
         for cycle in other.invalid {
@@ -87,14 +79,11 @@ impl IssueMerge for InvalidLoopGroupIssue {
         let mut valid_keys: std::collections::HashSet<Vec<EdgeId>> = self.valid.iter().map(|c| canonical_cycle_key(c)).collect();
         for cycle in other.valid {
             let key = canonical_cycle_key(&cycle);
-            if invalid_keys.contains(&key) {
-                continue;
-            }
             if valid_keys.insert(key) {
                 self.valid.push(cycle);
             }
         }
-        // Drop any of self's own valid cycles that the merge just promoted to invalid.
+        // Drop any valid cycle (from either side) that ended up flagged invalid by the other side.
         self.valid.retain(|cycle| !invalid_keys.contains(&canonical_cycle_key(cycle)));
 
         for (key, sources) in other.invalid_sources {

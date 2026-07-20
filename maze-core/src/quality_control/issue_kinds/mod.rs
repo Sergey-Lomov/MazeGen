@@ -2,7 +2,7 @@
 //! GitHub issue #113. Each type carries its own data fields directly (no shared `IssueData`
 //! enum) plus a `meta: IssueMeta` for the common `source_checks`/`details` bookkeeping.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod missing_endpoints;
 mod unreachable_finish;
@@ -135,4 +135,36 @@ pub(crate) fn merge_cycle_sets(
 
     *self_all = merged_all;
     *self_invalid = merged_invalid;
+}
+
+/// Shared merge algorithm for the `invalid: Vec<Id>` / `invalid_sources: HashMap<Id, Vec<String>>`
+/// shape common to every `Issue` type that flags a flat, already-stably-identified set with no
+/// remapping needed (unlike cycle indices, which need `merge_cycle_sets`'s normalize→dedup→remap):
+/// `RegionNeedsExpansionIssue`/`RegionNeedsShrinkIssue` (`Id = usize`, indices into
+/// `maze.analysis.scc(&maze.graph).components` — stable because both sides read the same cache
+/// entry for one QC pass) and `InvalidOneWayIssue`/`InvalidTeleportIssue` (`Id = EdgeId`, already
+/// stable identity). Dedups `other_invalid` both against `self_invalid`'s existing contents and
+/// against itself (`seen.insert` inside the loop, not just checked before it) — a naive
+/// `.filter(|id| !seen.contains(id))` would miss a duplicate `Id` appearing twice within
+/// `other_invalid` itself, since `seen` would never observe the first occurrence.
+pub(crate) fn merge_id_sets<Id: Copy + Eq + std::hash::Hash>(
+    self_invalid: &mut Vec<Id>,
+    self_invalid_sources: &mut HashMap<Id, Vec<String>>,
+    other_invalid: Vec<Id>,
+    other_invalid_sources: HashMap<Id, Vec<String>>,
+) {
+    let mut seen: HashSet<Id> = self_invalid.iter().copied().collect();
+    for id in other_invalid {
+        if seen.insert(id) {
+            self_invalid.push(id);
+        }
+    }
+    for (key, sources) in other_invalid_sources {
+        let entry = self_invalid_sources.entry(key).or_default();
+        for source in sources {
+            if !entry.contains(&source) {
+                entry.push(source);
+            }
+        }
+    }
 }

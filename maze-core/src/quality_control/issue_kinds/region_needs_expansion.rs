@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REGION_NEEDS_EXPANSION};
+use std::collections::HashMap;
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REGION_NEEDS_EXPANSION};
 
 /// Produced by any check that flags an SCC region as needing expansion for a check-specific
 /// reason (currently `MinRegionSizeCheck`/`MinRegionRatioCheck`; future checks may flag a region
@@ -43,37 +43,15 @@ impl IssueRequirement for RegionNeedsExpansionIssue {
     type Requirement = ();
 }
 
-impl Issue for RegionNeedsExpansionIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(RegionNeedsExpansionIssue);
 
 impl IssueMerge for RegionNeedsExpansionIssue {
     /// Unlike `InvalidLoopIssue`, no index remapping is needed: both sides' indices are into the
     /// same `maze.analysis.scc(&maze.graph)` cache entry for this QC pass, so a given component
     /// index means the same region on both sides.
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
-
-        let seen: HashSet<usize> = self.invalid.iter().copied().collect();
-        for idx in other.invalid {
-            if !seen.contains(&idx) && !self.invalid.contains(&idx) {
-                self.invalid.push(idx);
-            }
-        }
-        for (key, sources) in other.invalid_sources {
-            let entry = self.invalid_sources.entry(key).or_default();
-            for source in sources {
-                if !entry.contains(&source) {
-                    entry.push(source);
-                }
-            }
-        }
+        self.meta.merge_from(other.meta);
+        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
     }
 }
 

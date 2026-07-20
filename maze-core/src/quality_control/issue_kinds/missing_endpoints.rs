@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS};
 
 /// The maze has no start and/or no finish set — see `MISSING_ENDPOINTS`'s doc comment. Carries
 /// no data beyond `IssueMeta`.
@@ -26,19 +26,11 @@ impl IssueRequirement for MissingEndpointsIssue {
     type Requirement = ();
 }
 
-impl Issue for MissingEndpointsIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(MissingEndpointsIssue);
 
 impl IssueMerge for MissingEndpointsIssue {
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
+        self.meta.merge_from(other.meta);
     }
 }
 

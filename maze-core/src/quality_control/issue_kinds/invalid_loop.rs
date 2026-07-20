@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_LOOP};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_LOOP};
+#[cfg(test)]
+use crate::quality_control::issue::Issue;
 use super::canonical_cycle_key;
 
 /// Produced by any check that flags cycles invalid for a check-specific reason (currently
@@ -78,21 +80,13 @@ impl IssueRequirement for InvalidLoopIssue {
     type Requirement = InvalidLoopRequirement;
 }
 
-impl Issue for InvalidLoopIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(InvalidLoopIssue);
 
 impl IssueMerge for InvalidLoopIssue {
     /// Delegates to `merge_cycle_sets` — see that function's doc comment for the normalize →
     /// dedup → remap algorithm shared with `InvalidLoopGroupIssue`.
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
+        self.meta.merge_from(other.meta);
         super::merge_cycle_sets(
             "InvalidLoopIssue",
             &mut self.all, &mut self.invalid, &mut self.invalid_sources,

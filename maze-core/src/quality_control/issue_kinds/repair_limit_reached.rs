@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REPAIR_LIMIT_REACHED};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, REPAIR_LIMIT_REACHED};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepairLimitKind {
@@ -38,22 +38,12 @@ impl IssueRequirement for RepairLimitReachedIssue {
     type Requirement = ();
 }
 
-impl Issue for RepairLimitReachedIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(RepairLimitReachedIssue);
 
 impl IssueMerge for RepairLimitReachedIssue {
     /// Never actually merged in practice — `build_maze` pushes this at most once per `run_full`
-    /// call, outside any `Rule`.
+    /// call, outside any `Rule`, so `self.limit`/`other.limit` never legitimately disagree here.
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
-        debug_assert_eq!(self.limit, other.limit,
-            "RepairLimitReachedIssue::merge: two instances disagree on limit — no merge rule defined for differing values");
+        self.meta.merge_from(other.meta);
     }
 }

@@ -1,4 +1,4 @@
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, CYCLE_ANALYSIS_OVERFLOWED};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, CYCLE_ANALYSIS_OVERFLOWED};
 
 /// Raised directly by `build_analytics_snapshot` when cycle enumeration overflows — see
 /// `CYCLE_ANALYSIS_OVERFLOWED`'s doc comment. Not produced by any `Check<T, I>`, so it's always
@@ -22,18 +22,10 @@ impl IssueRequirement for CycleAnalysisOverflowedIssue {
     type Requirement = ();
 }
 
-impl Issue for CycleAnalysisOverflowedIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(CycleAnalysisOverflowedIssue);
 
 impl IssueMerge for CycleAnalysisOverflowedIssue {
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
+        self.meta.merge_from(other.meta);
     }
 }

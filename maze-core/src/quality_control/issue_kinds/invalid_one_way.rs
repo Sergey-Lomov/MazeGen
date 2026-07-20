@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_ONE_WAY};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_ONE_WAY};
 
 /// Produced by any check that flags a one-way passage edge (`EdgeKind::Basic`, single direction)
 /// invalid for a check-specific reason — currently `OneWayWaypointDistanceCheck`. See GitHub issue
@@ -36,33 +36,14 @@ impl IssueRequirement for InvalidOneWayIssue {
     type Requirement = ();
 }
 
-impl Issue for InvalidOneWayIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(InvalidOneWayIssue);
 
 impl IssueMerge for InvalidOneWayIssue {
     /// A one-way edge is a single edge, not a cycle of edges — same dedup-union merge as
     /// `InvalidTeleportIssue`.
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
-
-        let seen: HashSet<EdgeId> = self.invalid.iter().copied().collect();
-        self.invalid.extend(other.invalid.into_iter().filter(|id| !seen.contains(id)));
-
-        for (id, sources) in other.invalid_sources {
-            let entry = self.invalid_sources.entry(id).or_default();
-            for source in sources {
-                if !entry.contains(&source) {
-                    entry.push(source);
-                }
-            }
-        }
+        self.meta.merge_from(other.meta);
+        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
     }
 }
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::graph::region_class::RegionClass;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_REGIONS};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_REGIONS};
 
 /// Produced by `MinRegionCountCheck` (paired with `MISSING_REGIONS`) — carries the region balance
 /// per `RegionClass` (`Specs/repair.md`'s "Region Balance" data model): `-N` means the maze is
@@ -35,36 +35,22 @@ impl IssueRequirement for MissingRegionsIssue {
     type Requirement = ();
 }
 
-impl Issue for MissingRegionsIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(MissingRegionsIssue);
 
 impl IssueMerge for MissingRegionsIssue {
     /// A single `MinRegionCountCheck` instance now reports every off-target class's balance in
     /// one issue, so this merge rarely runs in practice, but stays defined for the rare case of
-    /// two instances active at once. Two entries for the same class take the value **further
-    /// from zero** (the stricter demand/surplus): for a shared shortfall (`-N`) that's the more
-    /// negative value; a shortfall and a surplus on the same class in the same pass is a
-    /// configuration conflict between instances, not something this merge can resolve —
-    /// `debug_assert!` against it rather than silently picking one side.
+    /// two instances active at once. Two entries for the same class take the plain `min`: between
+    /// two shortfalls (`-N`) that's the larger shortfall (more negative); between a shortfall and
+    /// a surplus (`+N`) the shortfall always wins ("must add" is a hard requirement, "has spare"
+    /// is merely opportunistic); between two surpluses that's the smaller surplus (the safer,
+    /// less optimistic spendable amount).
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
+        self.meta.merge_from(other.meta);
 
         for (class, balance) in other.balance_by_class {
             self.balance_by_class.entry(class)
-                .and_modify(|b| {
-                    debug_assert!(
-                        (*b < 0) == (balance < 0),
-                        "MissingRegionsIssue::merge: class {class:?} has conflicting-sign balances ({b} vs {balance}) from two instances in one rule"
-                    );
-                    *b = if b.abs() >= balance.abs() { *b } else { balance };
-                })
+                .and_modify(|b| *b = (*b).min(balance))
                 .or_insert(balance);
         }
     }
@@ -88,12 +74,36 @@ mod tests {
     }
 
     #[test]
-    fn merge_takes_stricter_for_same_class() {
+    fn merge_takes_the_larger_shortfall_for_same_class() {
         let mut a = issue("min_region_count_1", RegionClass::Trap, -2);
         let b = issue("min_region_count_2", RegionClass::Trap, -5);
         a.merge(b);
 
         assert_eq!(a.balance_by_class, HashMap::from([(RegionClass::Trap, -5)]),
             "same-class shortfalls describe one underlying demand — take the stricter (further from zero), not the sum");
+    }
+
+    #[test]
+    fn merge_takes_the_smaller_surplus_for_same_class() {
+        let mut a = issue("min_region_count_1", RegionClass::Trap, 5);
+        let b = issue("min_region_count_2", RegionClass::Trap, 2);
+        a.merge(b);
+
+        assert_eq!(a.balance_by_class, HashMap::from([(RegionClass::Trap, 2)]),
+            "the smaller surplus is the safer, less optimistic spendable amount");
+    }
+
+    #[test]
+    fn merge_shortfall_always_wins_over_surplus_regardless_of_side() {
+        let mut a = issue("min_region_count_1", RegionClass::Trap, -3);
+        let b = issue("min_region_count_2", RegionClass::Trap, 2);
+        a.merge(b.clone());
+        assert_eq!(a.balance_by_class, HashMap::from([(RegionClass::Trap, -3)]),
+            "must-add shortfall cannot be overridden by a has-spare surplus");
+
+        let mut c = issue("min_region_count_2", RegionClass::Trap, 2);
+        c.merge(issue("min_region_count_1", RegionClass::Trap, -3));
+        assert_eq!(c.balance_by_class, HashMap::from([(RegionClass::Trap, -3)]),
+            "shortfall wins regardless of which side it came from");
     }
 }

@@ -263,6 +263,15 @@ impl IssueMeta {
     pub(crate) fn merge_details(&mut self, incoming: HashMap<String, HashMap<&'static str, String>>) {
         self.details.extend(incoming);
     }
+
+    /// Unions `other`'s source checks and details into `self` — the meta-only half of every
+    /// `IssueMerge::merge` impl; each impl still merges its own data fields on top of this.
+    pub(crate) fn merge_from(&mut self, other: IssueMeta) {
+        for source in other.source_checks() {
+            self.push_source(source);
+        }
+        self.merge_details(other.details);
+    }
 }
 
 /// A concrete quality-control issue type — one `impl` per `IssueKind` variant (see
@@ -295,6 +304,22 @@ pub trait Issue: std::any::Any {
     fn details(&self) -> &HashMap<String, HashMap<&'static str, String>> {
         self.meta().details()
     }
+}
+
+/// Generates the identical `Issue` impl every concrete issue type needs — `kind()`/`meta()`/
+/// `meta_mut()`/`as_any()` all just delegate to `Self::KIND` and the type's own `meta` field.
+/// Requires the struct to name its `IssueMeta` field `meta` and already have `IssueKindConst`
+/// implemented (for `Self::KIND`).
+#[macro_export]
+macro_rules! impl_issue {
+    ($ty:ty) => {
+        impl $crate::quality_control::issue::Issue for $ty {
+            fn kind(&self) -> $crate::quality_control::issue::IssueKind { Self::KIND }
+            fn meta(&self) -> &$crate::quality_control::issue::IssueMeta { &self.meta }
+            fn meta_mut(&mut self) -> &mut $crate::quality_control::issue::IssueMeta { &mut self.meta }
+            fn as_any(&self) -> &dyn std::any::Any { self }
+        }
+    };
 }
 
 /// The compile-time `IssueKind` for a concrete `Issue` type — split out from `Issue` itself

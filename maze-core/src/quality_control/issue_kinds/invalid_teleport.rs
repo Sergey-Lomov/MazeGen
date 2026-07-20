@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_TELEPORT};
+use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_TELEPORT};
 
 /// Produced by any check that flags a teleport edge (`EdgeKind::Teleport`) invalid for a
 /// check-specific reason — currently `TeleportDuplicatesConnectionCheck`,
@@ -46,12 +46,7 @@ impl IssueRequirement for InvalidTeleportIssue {
     type Requirement = ();
 }
 
-impl Issue for InvalidTeleportIssue {
-    fn kind(&self) -> IssueKind { Self::KIND }
-    fn meta(&self) -> &IssueMeta { &self.meta }
-    fn meta_mut(&mut self) -> &mut IssueMeta { &mut self.meta }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-}
+crate::impl_issue!(InvalidTeleportIssue);
 
 impl IssueMerge for InvalidTeleportIssue {
     /// A teleport is a single edge, not a cycle of edges — unlike `InvalidLoopIssue` there is no
@@ -60,22 +55,8 @@ impl IssueMerge for InvalidTeleportIssue {
     /// identity), deduplicating per-check-id within each edge's source list, mirroring
     /// `InvalidLoopIssue`'s `invalid_sources` merge.
     fn merge(&mut self, other: Self) {
-        for source in other.meta.source_checks() {
-            self.meta.push_source(source);
-        }
-        self.meta.merge_details(other.meta.details().clone());
-
-        let seen: HashSet<EdgeId> = self.invalid.iter().copied().collect();
-        self.invalid.extend(other.invalid.into_iter().filter(|id| !seen.contains(id)));
-
-        for (id, sources) in other.invalid_sources {
-            let entry = self.invalid_sources.entry(id).or_default();
-            for source in sources {
-                if !entry.contains(&source) {
-                    entry.push(source);
-                }
-            }
-        }
+        self.meta.merge_from(other.meta);
+        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
     }
 }
 
