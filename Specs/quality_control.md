@@ -442,7 +442,7 @@ every merged source already uses (`Specs/event_log.md`'s "#169" section).
 
 ### MissingEndpointsCheck
 
-Produces `MissingEndpointsIssue::new_from_check("missing_endpoints")` if either `maze.meta.start` or `maze.meta.finish` is `None`.
+Produces `MissingEndpointsIssue::new_from_check(instance_id, missing_start, missing_finish)` — `missing_start`/`missing_finish` set from `maze.meta.start`/`maze.meta.finish` being `None` — if either is missing. The issue itself is the source of truth for *which* endpoint(s) are absent; every registered `RepairStrategy` (`ScoredEndpointsStrategy`, `FarthestEndpointsStrategy`, `RandomEndpointsStrategy`) branches on `issue.missing_start`/`issue.missing_finish`, not on re-reading `maze.meta` directly — see GitHub issue #215. `IssueMerge::merge` ORs the flags from multiple contributing checks (`missing_start = a.missing_start || b.missing_start`, same for `missing_finish`), same union rule every other boolean-flag-bearing merge in this file uses.
 
 ### UnreachableFinishCheck
 

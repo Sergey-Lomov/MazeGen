@@ -169,7 +169,7 @@ fn no_strategy_rule_with_always_found_issue_does_not_block_convergence() {
 
         fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            issues.push(MissingEndpointsIssue::new_from_check("always_issue_logging_only"));
+            issues.push(MissingEndpointsIssue::new_from_check("always_issue_logging_only", true, true));
         }
     }
 
@@ -233,7 +233,7 @@ impl Check<SquareTessellation, MissingEndpointsIssue> for NeverConvergingCheck {
     fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
         let n = self.counter.fetch_add(1, Ordering::SeqCst);
         issues.push(
-            MissingEndpointsIssue::new_from_check("missing_endpoints")
+            MissingEndpointsIssue::new_from_check("missing_endpoints", true, true)
                 .with_detail("missing_endpoints", "tick", n.to_string()),
         );
     }
@@ -632,7 +632,7 @@ fn stage_2_rule_does_not_dispatch_until_stage_1_resolves() {
             // test can observe whether stage 2 ever dispatches before stage 1 is done — the
             // real gate is `calls_before_endpoints_set` above, not this check's own logic.
             if maze.meta.start.is_none() || maze.meta.finish.is_none() {
-                issues.push(MissingEndpointsIssue::new_from_check("stage2_check"));
+                issues.push(MissingEndpointsIssue::new_from_check("stage2_check", true, true));
             }
         }
     }
@@ -688,7 +688,7 @@ fn failed_rule_in_stage_1_does_not_block_stage_2() {
         fn check_type_id(&self) -> &'static str { "always_finish_unreachable_check" }
 
         fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
-            issues.push(MissingEndpointsIssue::new_from_check("unreachable_finish"));
+            issues.push(MissingEndpointsIssue::new_from_check("unreachable_finish", true, true));
         }
     }
 
@@ -728,7 +728,7 @@ fn failed_rule_in_middle_stage_does_not_block_last_stage() {
         fn check_type_id(&self) -> &'static str { "always_stage2_issue_check" }
 
         fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
-            issues.push(MissingEndpointsIssue::new_from_check("stage2_check"));
+            issues.push(MissingEndpointsIssue::new_from_check("stage2_check", true, true));
         }
     }
     struct AlwaysStage3IssueCheck;
@@ -736,7 +736,7 @@ fn failed_rule_in_middle_stage_does_not_block_last_stage() {
         fn check_type_id(&self) -> &'static str { "always_stage3_issue_check" }
 
         fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
-            issues.push(MissingEndpointsIssue::new_from_check("stage3_check"));
+            issues.push(MissingEndpointsIssue::new_from_check("stage3_check", true, true));
         }
     }
     let stage_3_calls = Arc::new(AtomicUsize::new(0));
@@ -807,7 +807,7 @@ fn shared_repair_limit_stops_mid_stage_2_and_final_qc_still_runs() {
         fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             let n = self.counter.fetch_add(1, Ordering::SeqCst);
             issues.push(
-                MissingEndpointsIssue::new_from_check("unreachable_finish")
+                MissingEndpointsIssue::new_from_check("unreachable_finish", true, true)
                     .with_detail("unreachable_finish", "tick", n.to_string()),
             );
         }
@@ -877,7 +877,7 @@ fn stage_with_only_no_strategy_rules_is_skipped_instantly_between_dispatchable_s
 
         fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             if maze.meta.start.is_some() && maze.meta.finish.is_some() {
-                issues.push(MissingEndpointsIssue::new_from_check("stage3_check"));
+                issues.push(MissingEndpointsIssue::new_from_check("stage3_check", true, true));
             }
         }
     }
@@ -952,7 +952,7 @@ fn no_strategy_rule_checks_run_every_iteration_not_just_final_report() {
         fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             let n = self.counter.fetch_add(1, Ordering::SeqCst);
             issues.push(
-                MissingEndpointsIssue::new_from_check("always_missing_endpoints")
+                MissingEndpointsIssue::new_from_check("always_missing_endpoints", true, true)
                     .with_detail("always_missing_endpoints", "tick", n.to_string()),
             );
         }
@@ -1010,7 +1010,7 @@ fn pipeline_terminates_via_repair_limits_when_content_keeps_changing_but_nothing
         fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
             let n = self.counter.fetch_add(1, Ordering::SeqCst);
             issues.push(
-                MissingEndpointsIssue::new_from_check("ticking_check")
+                MissingEndpointsIssue::new_from_check("ticking_check", true, true)
                     .with_detail("ticking_check", "tick", n.to_string()),
             );
         }

@@ -50,14 +50,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
 
     fn apply(
         &self,
-        _issue: &MissingEndpointsIssue,
+        issue: &MissingEndpointsIssue,
         maze: &Maze<T>,
         _rng: &mut dyn RngCore,
         params: &StrategyParams,
         _preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if maze.meta.start.is_some() && maze.meta.finish.is_some() {
+        if !issue.missing_start && !issue.missing_finish {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -78,21 +78,21 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
 
         // Resolve whichever endpoint is already set to its NavNodeId, fixing it as the
         // corresponding best_pair bound; the other stays None (searched over all nav-nodes).
-        // At most one of start/finish is set on entry to this branch of `apply` (the
-        // both-already-set case returns early above).
-        let fixed_start = match maze.meta.start {
-            Some(start) => match nav.nav_node_for(start) {
+        let fixed_start = if issue.missing_start {
+            None
+        } else {
+            match maze.meta.start.and_then(|start| nav.nav_node_for(start)) {
                 Some(id) => Some(id),
                 None => return (RepairResult::Failed, vec![]),
-            },
-            None => None,
+            }
         };
-        let fixed_finish = match maze.meta.finish {
-            Some(finish) => match nav.nav_node_for(finish) {
+        let fixed_finish = if issue.missing_finish {
+            None
+        } else {
+            match maze.meta.finish.and_then(|finish| nav.nav_node_for(finish)) {
                 Some(id) => Some(id),
                 None => return (RepairResult::Failed, vec![]),
-            },
-            None => None,
+            }
         };
 
         let Some((s, f, achieved_score)) = ctx.best_pair(nav, fixed_start, fixed_finish, &weights) else {
@@ -100,8 +100,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
         };
 
         let mut commands = Vec::new();
-        if maze.meta.start.is_none() { commands.push(MutationCommand::SetStart(nav.nodes[s].node_id)); }
-        if maze.meta.finish.is_none() { commands.push(MutationCommand::SetFinish(nav.nodes[f].node_id)); }
+        if issue.missing_start { commands.push(MutationCommand::SetStart(nav.nodes[s].node_id)); }
+        if issue.missing_finish { commands.push(MutationCommand::SetFinish(nav.nodes[f].node_id)); }
 
         (RepairResult::Fixed { score: Some(achieved_score) }, commands)
     }

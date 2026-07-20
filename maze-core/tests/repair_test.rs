@@ -62,7 +62,7 @@ fn apply_and_commit<T: maze_core::space::Tessellation, I: maze_core::quality_con
 fn random_endpoints_sets_both_when_neither_set() {
     let (mut maze, _) = make_connected_maze(3);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", true, true);
     let result = apply_and_commit(&RandomEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     assert!(maze.meta.start.is_some());
@@ -75,7 +75,7 @@ fn random_endpoints_sets_finish_when_only_start_set() {
     let (mut maze, ordered) = make_connected_maze(3);
     maze.meta.start = Some(ordered[0]);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", false, true);
     let result = apply_and_commit(&RandomEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     assert_eq!(maze.meta.start, Some(ordered[0]));
@@ -88,7 +88,7 @@ fn random_endpoints_sets_start_reachable_to_finish() {
     let (mut maze, ordered) = make_connected_maze(3);
     maze.meta.finish = Some(ordered[2]);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", true, false);
     let result = apply_and_commit(&RandomEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     assert!(maze.meta.start.is_some());
@@ -101,7 +101,7 @@ fn random_endpoints_idempotent_when_both_set() {
     maze.meta.start = Some(ordered[0]);
     maze.meta.finish = Some(ordered[2]);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", false, false);
     let result = apply_and_commit(&RandomEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     assert_eq!(maze.meta.start, Some(ordered[0]));
@@ -115,7 +115,7 @@ fn random_endpoints_empty_graph_returns_failed() {
     let graph = Graph::new();
     let mut maze = Maze::new(field, graph);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", true, true);
     let result = apply_and_commit(&RandomEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }
@@ -126,7 +126,7 @@ fn random_endpoints_isolated_start_returns_failed() {
     let start = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
     maze.meta.start = Some(start);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", false, true);
     let result = apply_and_commit(&RandomEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
     assert!(maze.meta.finish.is_none());
@@ -138,7 +138,7 @@ fn random_endpoints_isolated_start_returns_failed() {
 fn farthest_endpoints_sets_both_when_neither_set() {
     let (mut maze, _) = make_connected_maze(5);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", true, true);
     let result = apply_and_commit(&FarthestEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     assert!(maze.meta.start.is_some());
@@ -151,7 +151,7 @@ fn farthest_endpoints_sets_finish_when_only_start_set() {
     let (mut maze, ordered) = make_connected_maze(5);
     maze.meta.start = Some(ordered[0]);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", false, true);
     let result = apply_and_commit(&FarthestEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     assert_eq!(maze.meta.start, Some(ordered[0]));
@@ -164,7 +164,7 @@ fn farthest_endpoints_sets_start_when_only_finish_set() {
     let (mut maze, ordered) = make_connected_maze(5);
     maze.meta.finish = Some(ordered[4]);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", true, false);
     let result = apply_and_commit(&FarthestEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     assert!(maze.meta.start.is_some());
@@ -177,7 +177,7 @@ fn farthest_endpoints_idempotent_when_both_set() {
     maze.meta.start = Some(ordered[0]);
     maze.meta.finish = Some(ordered[4]);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", false, false);
     let result = apply_and_commit(&FarthestEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     assert_eq!(maze.meta.start, Some(ordered[0]));
@@ -189,7 +189,7 @@ fn farthest_endpoints_deterministic() {
     let run = || {
         let (mut maze, _) = make_connected_maze(5);
         let mut rng = MazeRng::seed_from_u64(99);
-        let issue = MissingEndpointsIssue::default();
+        let issue = MissingEndpointsIssue::new_from_check("test", true, true);
         apply_and_commit(&FarthestEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         (maze.meta.start, maze.meta.finish)
     };
@@ -215,7 +215,7 @@ fn farthest_endpoints_disconnected_graph_stays_in_same_component() {
     let (mut maze, ordered) = make_disconnected_maze();
     maze.meta.start = Some(ordered[0]);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", false, true);
     let result = apply_and_commit(&FarthestEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: _ }));
     let finish = maze.meta.finish.expect("finish must be set");
@@ -228,7 +228,7 @@ fn farthest_endpoints_disconnected_graph_stays_in_same_component() {
 fn farthest_endpoints_isolated_nav_node_returns_failed() {
     let mut maze = make_maze(1, 1);
     let mut rng = make_rng();
-    let issue = MissingEndpointsIssue::default();
+    let issue = MissingEndpointsIssue::new_from_check("test", true, true);
     let result = apply_and_commit(&FarthestEndpointsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }

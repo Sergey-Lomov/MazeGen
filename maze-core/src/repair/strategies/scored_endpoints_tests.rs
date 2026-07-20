@@ -37,14 +37,16 @@ fn make_connected_maze(n_cols: usize) -> (Maze<SquareTessellation>, Vec<crate::i
 
 fn rng() -> MazeRng { MazeRng::seed_from_u64(7) }
 
-fn issue() -> MissingEndpointsIssue { MissingEndpointsIssue::default() }
+fn issue(missing_start: bool, missing_finish: bool) -> MissingEndpointsIssue {
+    MissingEndpointsIssue::new_from_check("test", missing_start, missing_finish)
+}
 
 #[test]
 fn apply_fixed_immediately_when_both_already_set() {
     let (mut maze, nodes) = make_connected_maze(3);
     maze.meta.start = Some(nodes[0]);
     maze.meta.finish = Some(nodes[2]);
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(false, false), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -53,14 +55,14 @@ fn apply_fails_on_single_isolated_node_no_reachable_pair() {
     // A single node has a nav node but no second node to pair with -- `best_pair` must
     // find no valid (s, f) pair (every candidate requires f != s and a finite distance).
     let mut maze = make_maze(1, 1);
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }
 
 #[test]
 fn apply_picks_best_pair_when_neither_endpoint_set() {
     let (mut maze, nodes) = make_connected_maze(5);
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
@@ -75,7 +77,7 @@ fn apply_picks_best_pair_when_neither_endpoint_set() {
 fn apply_fixes_finish_when_only_start_set() {
     let (mut maze, nodes) = make_connected_maze(5);
     maze.meta.start = Some(nodes[0]);
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(false, true), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
     assert_eq!(maze.meta.start, Some(nodes[0]));
     assert_eq!(maze.meta.finish, Some(nodes[4]), "farthest/highest-scoring node on a straight corridor is the opposite end");
@@ -85,7 +87,7 @@ fn apply_fixes_finish_when_only_start_set() {
 fn apply_fixes_start_when_only_finish_set() {
     let (mut maze, nodes) = make_connected_maze(5);
     maze.meta.finish = Some(nodes[4]);
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, false), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
     assert_eq!(maze.meta.finish, Some(nodes[4]));
     assert_eq!(maze.meta.start, Some(nodes[0]));
@@ -97,7 +99,7 @@ fn apply_fails_when_fixed_start_node_not_in_nav_graph() {
     // start set to a node id that doesn't exist in the graph at all.
     let _ = nodes;
     maze.meta.start = Some(999_999);
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(false, true), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }
 
@@ -108,7 +110,7 @@ fn apply_fails_when_disconnected_and_start_cannot_reach_anything() {
     let mut maze = make_maze(2, 1);
     let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
     maze.meta.start = Some(a);
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(false, true), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }
 
@@ -140,7 +142,7 @@ fn apply_prefers_junction_path_when_junction_weight_dominates() {
         Some(&overrides),
     );
 
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
     // With path/one-way weight zeroed, any pair whose route never crosses the junction
     // scores exactly 0 -- the winning pair must have a strictly positive score, which
@@ -184,7 +186,7 @@ fn apply_prefers_teleport_path_when_teleport_weight_dominates() {
         Some(&overrides),
     );
 
-    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
     // With every other weight zeroed, only a route crossing the teleport scores
     // positively -- the winning pair must have a strictly positive score.
@@ -229,11 +231,11 @@ fn score_path_adds_teleport_count_times_weight() {
 fn apply_is_deterministic_for_fixed_seed() {
     let (mut maze_a, _) = make_connected_maze(5);
     let mut rng_a = MazeRng::seed_from_u64(123);
-    apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze_a, &mut rng_a, &default_params(), &PresetState::empty(), &[]);
+    apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze_a, &mut rng_a, &default_params(), &PresetState::empty(), &[]);
 
     let (mut maze_b, _) = make_connected_maze(5);
     let mut rng_b = MazeRng::seed_from_u64(123);
-    apply_and_commit(&ScoredEndpointsStrategy, &issue(), &mut maze_b, &mut rng_b, &default_params(), &PresetState::empty(), &[]);
+    apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze_b, &mut rng_b, &default_params(), &PresetState::empty(), &[]);
 
     assert_eq!(maze_a.meta.start, maze_b.meta.start);
     assert_eq!(maze_a.meta.finish, maze_b.meta.finish);

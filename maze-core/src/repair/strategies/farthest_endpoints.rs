@@ -17,8 +17,8 @@ pub struct FarthestEndpointsStrategy;
 impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for FarthestEndpointsStrategy {
     fn strategy_id(&self) -> &'static str { "farthest_endpoints" }
 
-    fn apply(&self, _issue: &MissingEndpointsIssue, maze: &Maze<T>, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>]) -> (RepairResult, Vec<MutationCommand>) {
-        if maze.meta.start.is_some() && maze.meta.finish.is_some() {
+    fn apply(&self, issue: &MissingEndpointsIssue, maze: &Maze<T>, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>]) -> (RepairResult, Vec<MutationCommand>) {
+        if !issue.missing_start && !issue.missing_finish {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -29,8 +29,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for FarthestEndpo
             return (RepairResult::Failed, vec![]);
         }
 
-        let commands = match (maze.meta.start, maze.meta.finish) {
-            (None, None) => {
+        let commands = match (issue.missing_start, issue.missing_finish) {
+            (true, true) => {
                 let random_idx = rng.random_range(0..nav.nodes.len());
                 let random_node = nav.nodes[random_idx].node_id;
                 let random_nav = nav.nav_node_for(random_node).unwrap();
@@ -52,7 +52,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for FarthestEndpo
 
                 vec![MutationCommand::SetStart(start_node), MutationCommand::SetFinish(finish_node)]
             }
-            (Some(start), None) => {
+            (false, true) => {
+                let start = maze.meta.start.expect("missing_start is false");
                 let start_nav = match nav.nav_node_for(start) {
                     Some(id) => id,
                     None => return (RepairResult::Failed, vec![]),
@@ -63,7 +64,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for FarthestEndpo
                 }
                 vec![MutationCommand::SetFinish(finish_node)]
             }
-            (None, Some(finish)) => {
+            (true, false) => {
+                let finish = maze.meta.finish.expect("missing_finish is false");
                 let finish_nav = match nav.nav_node_for(finish) {
                     Some(id) => id,
                     None => return (RepairResult::Failed, vec![]),
@@ -75,7 +77,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for FarthestEndpo
                 }
                 vec![MutationCommand::SetStart(start_node)]
             }
-            (Some(_), Some(_)) => unreachable!(),
+            (false, false) => unreachable!(),
         };
 
         (RepairResult::Fixed { score: None }, commands)
@@ -111,7 +113,9 @@ mod tests {
     use crate::space::{SquareTessellation, square_rect, Field};
     use crate::repair::strategies::test_utils::apply_and_commit_default as apply_and_commit;
 
-    fn issue() -> MissingEndpointsIssue { MissingEndpointsIssue::default() }
+    fn issue(missing_start: bool, missing_finish: bool) -> MissingEndpointsIssue {
+        MissingEndpointsIssue::new_from_check("test", missing_start, missing_finish)
+    }
 
     /// Directed line 0->1->2->3->4 (each hop one-way) -- a straightforward chain where "farthest"
     /// is unambiguous in each direction.
@@ -145,7 +149,7 @@ mod tests {
         maze.meta.start = Some(nodes[0]);
         maze.meta.finish = Some(nodes[2]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(false, false), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
     }
 
@@ -156,7 +160,7 @@ mod tests {
         let g = Graph::new(); // no nodes registered -- empty nav graph
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(true, true), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -164,7 +168,7 @@ mod tests {
     fn neither_set_places_endpoints_at_the_two_ends_of_a_bidirectional_line() {
         let (mut maze, nodes) = bidirectional_line_maze(5);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(true, true), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let (start, finish) = (maze.meta.start.unwrap(), maze.meta.finish.unwrap());
         assert!((start == nodes[0] && finish == nodes[4]) || (start == nodes[4] && finish == nodes[0]),
@@ -181,7 +185,7 @@ mod tests {
             Maze::<SquareTessellation>::new(field, g)
         };
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(true, true), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -190,7 +194,7 @@ mod tests {
         let (mut maze, nodes) = directed_line_maze(5);
         maze.meta.start = Some(nodes[0]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(false, true), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.meta.start, Some(nodes[0]));
         assert_eq!(maze.meta.finish, Some(nodes[4]), "farthest forward-reachable node on a directed chain is the last one");
@@ -208,7 +212,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.start = Some(nodes[0]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(false, true), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -217,7 +221,7 @@ mod tests {
         let (mut maze, nodes) = directed_line_maze(5);
         maze.meta.finish = Some(nodes[4]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(true, false), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.meta.finish, Some(nodes[4]));
         assert_eq!(maze.meta.start, Some(nodes[0]), "farthest node able to reach finish on a directed chain is the first one");
@@ -236,7 +240,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.finish = Some(nodes[1]);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(true, false), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -245,7 +249,7 @@ mod tests {
         let (mut maze, _) = bidirectional_line_maze(3);
         maze.meta.start = Some(999_999);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(false, true), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -254,7 +258,7 @@ mod tests {
         let (mut maze, _) = bidirectional_line_maze(3);
         maze.meta.finish = Some(999_999);
         let mut rng = MazeRng::seed_from_u64(1);
-        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze, &mut rng, &PresetState::empty());
+        let result = apply_and_commit(&FarthestEndpointsStrategy, &issue(true, false), &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Failed));
     }
 
@@ -262,11 +266,11 @@ mod tests {
     fn apply_is_deterministic_for_fixed_seed() {
         let (mut maze_a, _) = bidirectional_line_maze(6);
         let mut rng_a = MazeRng::seed_from_u64(42);
-        apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze_a, &mut rng_a, &PresetState::empty());
+        apply_and_commit(&FarthestEndpointsStrategy, &issue(true, true), &mut maze_a, &mut rng_a, &PresetState::empty());
 
         let (mut maze_b, _) = bidirectional_line_maze(6);
         let mut rng_b = MazeRng::seed_from_u64(42);
-        apply_and_commit(&FarthestEndpointsStrategy, &issue(), &mut maze_b, &mut rng_b, &PresetState::empty());
+        apply_and_commit(&FarthestEndpointsStrategy, &issue(true, true), &mut maze_b, &mut rng_b, &PresetState::empty());
 
         assert_eq!(maze_a.meta.start, maze_b.meta.start);
         assert_eq!(maze_a.meta.finish, maze_b.meta.finish);

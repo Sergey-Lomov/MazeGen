@@ -31,9 +31,11 @@ impl<T: maze_core::space::Tessellation> Check<T, MissingEndpointsIssue> for Miss
     fn check_type_id(&self) -> &'static str { "missing_endpoints" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
-        if maze.meta.start.is_none() || maze.meta.finish.is_none() {
+        let missing_start = maze.meta.start.is_none();
+        let missing_finish = maze.meta.finish.is_none();
+        if missing_start || missing_finish {
             issues.push(
-                MissingEndpointsIssue::new_from_check(&self.instance_id)
+                MissingEndpointsIssue::new_from_check(&self.instance_id, missing_start, missing_finish)
                     .with_detail(&self.instance_id, "reason", self.reason.to_string()),
             );
         }

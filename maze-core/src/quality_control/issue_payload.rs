@@ -265,7 +265,7 @@ mod tests {
     fn missing_endpoints_issue_resolves_to_none() {
         use crate::quality_control::MissingEndpointsIssue;
         let (graph, scc) = empty_graph_and_scc();
-        let issue = MissingEndpointsIssue::new_from_check("check");
+        let issue = MissingEndpointsIssue::new_from_check("check", true, true);
         assert_eq!(resolve_issue_payload(&issue, &graph, &scc), IssuePayload::None);
     }
 
