@@ -18,10 +18,26 @@
       "mcp__code-index__search_code_advanced",
       "mcp__code-index__find_files",
       "Bash(./node_modules/.bin/vitest run *)",
-      "Bash(rm -rf \"C:/Users/user/AppData/Local/npm-cache/_npx/69c381f8ad94b576/node_modules/rolldown\")"
+      "Bash(rm -rf \"C:/Users/user/AppData/Local/npm-cache/_npx/69c381f8ad94b576/node_modules/rolldown\")",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)"
     ],
     "additionalDirectories": [
       "d:\\Development\\MazeGen\\.claude"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -Command \"cd d:\\Development\\MazeGen; $changed = git status --porcelain=v1 | ForEach-Object { $_.Substring(3) }; if ($changed -match '^(maze-core|maze-wasm)/') { & './wasm-rebuild.ps1' }\"",
+            "timeout": 120,
+            "statusMessage": "Checking if wasm rebuild needed..."
+          }
+        ]
+      }
     ]
   }
 }
