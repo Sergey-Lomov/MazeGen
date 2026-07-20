@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
-import { resolveIssueLabel, resolveIssueDescription } from "./qualityI18n";
+import { resolveIssueLabel, resolveIssueDescription, resolveIssueSection, resolveIssueShortLabel } from "./qualityI18n";
 import { ui, radius, typography, disabled } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -10,21 +10,41 @@ interface Props {
   onClose: () => void;
 }
 
+/** Fixed display order for issue kinds in `IssueSelectDialog`: groups kinds into sections
+ * (Waypoints, One-ways, Teleports, Loops, Regions), each internally ordered add → validate →
+ * validate groups. `ItemSelectDialog` groups by contiguous `section` runs, so this order is
+ * what makes each section's items land together. Kinds absent here sort after all of these. */
+const ISSUE_KIND_ORDER = [
+  "missing_endpoints", "unreachable_finish",
+  "missing_one_ways", "invalid_one_way", "invalid_one_way_group",
+  "missing_teleports", "invalid_teleport", "invalid_teleport_group",
+  "missing_loops", "invalid_loop", "invalid_loop_group",
+  "missing_regions", "region_needs_expansion", "region_needs_shrink", "excessive_scc_count",
+];
+
 /** Step 1 of "Add new rule": pick the issue kind first, narrowing the check list shown in
  * step 2 (CheckSelectDialog with a `kind` filter) to checks of that kind. */
 export function IssueSelectDialog({ onSelect, onClose }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
 
-  const kinds = Array.from(new Set(availableChecks.map((c) => c.issue_kinds[0])));
+  const kinds = Array.from(new Set(availableChecks.map((c) => c.issue_kinds[0]))).sort((a, b) => {
+    const ia = ISSUE_KIND_ORDER.indexOf(a);
+    const ib = ISSUE_KIND_ORDER.indexOf(b);
+    return (ia === -1 ? ISSUE_KIND_ORDER.length : ia) - (ib === -1 ? ISSUE_KIND_ORDER.length : ib);
+  });
   const [selectedKind, setSelectedKind] = useState<string>(kinds[0] ?? "");
 
   const items = kinds.map((kind) => ({
     id: kind,
-    label: resolveIssueLabel(kind),
+    label: resolveIssueShortLabel(kind),
+    section: resolveIssueSection(kind),
   }));
 
   const rightPanel = selectedKind ? (
-    <div style={styles.description}>{resolveIssueDescription(selectedKind)}</div>
+    <>
+      <div style={styles.label}>{resolveIssueLabel(selectedKind)}</div>
+      <div style={styles.description}>{resolveIssueDescription(selectedKind)}</div>
+    </>
   ) : (
     <div style={styles.empty}>{m["check.not_selected"]()}</div>
   );
@@ -57,6 +77,10 @@ export function IssueSelectDialog({ onSelect, onClose }: Props) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  label: {
+    ...typography.body,
+    marginTop: 8,
+  },
   description: {
     ...typography.body,
     lineHeight: 1.6,

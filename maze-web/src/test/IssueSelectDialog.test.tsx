@@ -14,16 +14,17 @@ beforeEach(() => {
 });
 
 describe("IssueSelectDialog", () => {
-  it("lists distinct issue kinds, not one per check", () => {
+  it("lists distinct issue kinds, not one per check, under section headers", () => {
     render(<IssueSelectDialog onSelect={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getAllByText("Add loops")).toHaveLength(1);
-    expect(screen.getAllByText("Loop validation")).toHaveLength(1);
+    expect(screen.getByText("Loops")).toBeInTheDocument();
+    expect(screen.getAllByText("Add")).toHaveLength(1);
+    expect(screen.getAllByText("Validate")).toHaveLength(1);
   });
 
   it("calls onSelect with the chosen kind, not the store", () => {
     const onSelect = vi.fn();
     render(<IssueSelectDialog onSelect={onSelect} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Loop validation"));
+    fireEvent.click(screen.getByText("Validate"));
     fireEvent.click(screen.getByText("Select"));
     expect(onSelect).toHaveBeenCalledWith("invalid_loop");
   });

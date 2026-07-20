@@ -196,6 +196,46 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   },
 };
 
+/** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
+ * which stay unchanged everywhere else (analytics bubble, RulesColumn, dialog titles, ...). */
+export const issueSectionI18n: Record<string, MessageFn> = {
+  missing_endpoints: m["issue_select.section.waypoints"] as MessageFn,
+  unreachable_finish: m["issue_select.section.waypoints"] as MessageFn,
+  missing_one_ways: m["issue_select.section.one_ways"] as MessageFn,
+  invalid_one_way: m["issue_select.section.one_ways"] as MessageFn,
+  invalid_one_way_group: m["issue_select.section.one_ways"] as MessageFn,
+  missing_teleports: m["issue_select.section.teleports"] as MessageFn,
+  invalid_teleport: m["issue_select.section.teleports"] as MessageFn,
+  invalid_teleport_group: m["issue_select.section.teleports"] as MessageFn,
+  missing_loops: m["issue_select.section.loops"] as MessageFn,
+  invalid_loop: m["issue_select.section.loops"] as MessageFn,
+  invalid_loop_group: m["issue_select.section.loops"] as MessageFn,
+  missing_regions: m["issue_select.section.regions"] as MessageFn,
+  region_needs_expansion: m["issue_select.section.regions"] as MessageFn,
+  region_needs_shrink: m["issue_select.section.regions"] as MessageFn,
+  excessive_scc_count: m["issue_select.section.regions"] as MessageFn,
+};
+
+/** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
+ * distinct from `issueI18n`'s full labels, which stay unchanged everywhere else. */
+export const issueShortLabelI18n: Record<string, MessageFn> = {
+  missing_endpoints: m["issue_select.short_label.add"] as MessageFn,
+  unreachable_finish: m["issue_select.short_label.validate"] as MessageFn,
+  missing_one_ways: m["issue_select.short_label.add"] as MessageFn,
+  invalid_one_way: m["issue_select.short_label.validate"] as MessageFn,
+  invalid_one_way_group: m["issue_select.short_label.validate_groups"] as MessageFn,
+  missing_teleports: m["issue_select.short_label.add"] as MessageFn,
+  invalid_teleport: m["issue_select.short_label.validate"] as MessageFn,
+  invalid_teleport_group: m["issue_select.short_label.validate_groups"] as MessageFn,
+  missing_loops: m["issue_select.short_label.add"] as MessageFn,
+  invalid_loop: m["issue_select.short_label.validate"] as MessageFn,
+  invalid_loop_group: m["issue_select.short_label.validate_groups"] as MessageFn,
+  missing_regions: m["issue_select.short_label.add"] as MessageFn,
+  region_needs_expansion: m["issue_select.short_label.expansion"] as MessageFn,
+  region_needs_shrink: m["issue_select.short_label.shrink"] as MessageFn,
+  excessive_scc_count: m["issue_select.short_label.validate_groups"] as MessageFn,
+};
+
 export const NO_FIX_STRATEGY_ID = "no_fix";
 
 export const strategyI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -643,6 +683,18 @@ export function resolveIssueLabel(kind: string): string {
 
 export function resolveIssueDescription(kind: string): string {
   return issueI18n[kind]?.description() ?? "";
+}
+
+/** Section header for `kind` in `IssueSelectDialog`. Falls back to `kind` itself for an
+ * unmapped kind, mirroring `resolveIssueLabel`'s fallback. */
+export function resolveIssueSection(kind: string): string {
+  return issueSectionI18n[kind]?.() ?? kind;
+}
+
+/** Short, section-relative label for `kind` in `IssueSelectDialog` (e.g. "Add", "Validate") —
+ * distinct from `resolveIssueLabel`'s full label used everywhere else. */
+export function resolveIssueShortLabel(kind: string): string {
+  return issueShortLabelI18n[kind]?.() ?? resolveIssueLabel(kind);
 }
 
 export function resolveStrategyLabel(id: string): string {

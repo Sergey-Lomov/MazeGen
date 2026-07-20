@@ -9,6 +9,9 @@ interface Item {
   disabled?: boolean;
   /** Shows a warning icon after the label (e.g. an experimental strategy). */
   warning?: boolean;
+  /** Groups this item under a section header, in first-seen order. Items without a
+   * section render as today, ungrouped and unindented. */
+  section?: string;
 }
 
 interface Props {
@@ -22,25 +25,40 @@ interface Props {
 }
 
 export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPanel, footer, onClose }: Props) {
+  const sections = groupBySection(items);
+
+  const renderItem = (item: Item) => (
+    <button
+      key={item.id}
+      className={item.disabled ? undefined : item.id === selectedId ? "hoverable-selected" : "hoverable"}
+      style={{
+        ...styles.item,
+        ...(item.section ? styles.itemIndented : {}),
+        ...(item.id === selectedId ? styles.itemSelected : {}),
+        ...(item.disabled ? styles.itemDisabled : {}),
+      }}
+      disabled={item.disabled}
+      onClick={() => onSelectId(item.id)}
+    >
+      <span style={styles.itemLabel}>{item.label}</span>
+      {item.warning && <WarningIcon />}
+    </button>
+  );
+
   const body = (
     <div style={styles.content}>
       <div style={styles.leftCol}>
-        {items.map((item) => (
-          <button
-            key={item.id}
-            className={item.disabled ? undefined : item.id === selectedId ? "hoverable-tint" : "hoverable"}
-            style={{
-              ...styles.item,
-              ...(item.id === selectedId ? styles.itemSelected : {}),
-              ...(item.disabled ? styles.itemDisabled : {}),
-            }}
-            disabled={item.disabled}
-            onClick={() => onSelectId(item.id)}
-          >
-            <span style={styles.itemLabel}>{item.label}</span>
-            {item.warning && <WarningIcon />}
-          </button>
-        ))}
+        {sections.map((section, i) =>
+          section.name === null ? (
+            section.items.map(renderItem)
+          ) : (
+            <div key={section.name}>
+              {i > 0 && <div style={styles.divider} />}
+              <div style={styles.sectionHeader}>{section.name}</div>
+              {section.items.map(renderItem)}
+            </div>
+          )
+        )}
       </div>
       <div style={styles.rightCol}>
         <div style={styles.rightPanel}>{rightPanel}</div>
@@ -50,6 +68,22 @@ export function ItemSelectDialog({ title, items, selectedId, onSelectId, rightPa
   );
 
   return <Modal title={title} size="complex" rawBody={body} onClose={onClose} />;
+}
+
+/** Splits items into contiguous runs by `section`, in first-seen order. An item with no
+ * `section` is its own ungrouped run (`name: null`), preserving today's flat rendering. */
+function groupBySection(items: Item[]): { name: string | null; items: Item[] }[] {
+  const sections: { name: string | null; items: Item[] }[] = [];
+  for (const item of items) {
+    const name = item.section ?? null;
+    const last = sections[sections.length - 1];
+    if (last && last.name === name && name !== null) {
+      last.items.push(item);
+    } else {
+      sections.push({ name, items: [item] });
+    }
+  }
+  return sections;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -74,7 +108,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "none",
     border: "none",
     textAlign: "left" as const,
-    padding: `6px ${dialogSpacing.paddingX}px`,
+    padding: `3px ${dialogSpacing.paddingX}px`,
     color: ui.text.secondary,
     cursor: "default",
     width: "100%",
@@ -92,6 +126,18 @@ const styles: Record<string, React.CSSProperties> = {
   },
   itemLabel: {
     flex: 1,
+  },
+  itemIndented: {
+    paddingLeft: dialogSpacing.paddingX + 12,
+  },
+  sectionHeader: {
+    ...typography.body,
+    marginTop: 8,
+    padding: `0 ${dialogSpacing.paddingX}px`,
+  },
+  divider: {
+    borderTop: `1px solid ${ui.border.default}`,
+    margin: `4px ${dialogSpacing.paddingX}px 0`,
   },
   rightCol: {
     flex: 1,
