@@ -864,6 +864,33 @@ Route protection lives entirely on the producing check, never on `RemoveTeleport
 
 `TeleportGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `TELEPORT_GROUP_PROXIMITY` — since GitHub issue #209, a thin teleport-specific wrapper around the shared `group_select_apply` mechanics, delegating each candidate's actual removal to a nested `RemoveTeleportStrategy`.
 
+### MinTeleportCountCheck / MinTeleportRatioCheck
+
+```rust
+pub const MIN_TELEPORT_COUNT_DEFAULT: u32 = 1;
+pub const MIN_TELEPORT_RATIO_DEFAULT: u32 = 10;
+
+pub struct MinTeleportCountCheck {
+    pub instance_id: String,
+    pub min_teleports: u32,
+}
+
+pub struct MinTeleportRatioCheck {
+    pub instance_id: String,
+    pub min_teleport_ratio: u32,
+}
+```
+
+Flag a deficit of teleports — see GitHub issue #211. Mirrors `MinOneWayCountCheck`/`MinOneWayRatioCheck`'s role for one-ways: `MinTeleportCountCheck` compares a count against `min_teleports`; `MinTeleportRatioCheck` compares the count per 100 field cells (via `maze.field.node_count()`) against `min_teleport_ratio`. Both checks count via the shared `count_distinct_teleports` helper (`quality_control::checks::teleport_count_core`) rather than a plain `maze.graph.edges().filter(kind == Teleport).count()`.
+
+**Counting must dedup bidirectional teleport pairs (GitHub issue #211).** Unlike a one-way passage — which is filtered by excluding a `Basic`-kind reverse, since a bidirectional `Basic` pair is genuinely not a one-way — `EdgeKind::Teleport` has no equivalent "reverse cancels it out" rule to filter by: a bidirectional teleport is built as two independent `Teleport`-kind edges (`A->B` plus a parallel `B->A`; see `maze-wasm/src/analytics.rs`'s `build_graph_from_post_edit_edges` doc comment), and both directions are one logical portal, not two. `count_distinct_teleports` dedups by the unordered node pair (`min(from,to), max(from,to)` as the `HashSet` key) so a bidirectional teleport counts once, the same as a one-way teleport.
+
+Same cross-multiplied-comparison rule as `MinOneWayRatioCheck`: `MinTeleportRatioCheck` compares `count * 100` against `min_teleport_ratio * field_cells` directly rather than computing an intermediate `count * 100 / field_cells` ratio first, avoiding the floor-rounding gap where a true ratio just short of the minimum could otherwise silently pass.
+
+Both checks report a numeric deficit via `MissingTeleportsIssue { missing }` (`MISSING_TELEPORTS` `IssueKind`), mirroring `MissingOneWaysIssue`'s shape exactly: `MinTeleportCountCheck`'s `missing = min_teleports.saturating_sub(count)`; `MinTeleportRatioCheck`'s `missing = (min_teleport_ratio * field_cells).div_ceil(100).saturating_sub(count)`. `MissingTeleportsIssue::merge` takes the larger of the two sides' `missing` values, same rationale as `MissingOneWaysIssue::merge`.
+
+**No repair strategy is registered for `MISSING_TELEPORTS` yet** — deliberately out of scope for issue #211 (unlike a one-way edge, which just needs a wall/passage pair to flip, "add a teleport" needs a decision on endpoint placement and direction left for separate follow-up work).
+
 ### OneWayWaypointDistanceCheck
 
 ```rust
@@ -944,6 +971,33 @@ pub struct InvalidOneWayGroupIssue {
 `groups` pairs each flagged group's edge set with a `to_remove: u32` count — see GitHub issue #202 follow-up. A group's edge set is "every one-way edge implicated in this problem" (both edges of a proximity pair, every one-way incident to an over-connected super-hub vertex, or the maze's entire one-way set for a count/ratio excess); `to_remove` is "how many of those edges must actually be fixed before the problem is resolved" — 1 for a proximity pair (fixing either edge breaks the pair), a super-hub vertex's own excess over its configured maximum, or a count/ratio check's own excess over its configured maximum. Earlier revisions assumed every group needed exactly one fix; `to_remove` lets `OneWayGroupSelectStrategy` converge a large excess (e.g. a maze-wide count/ratio group) within one `apply()` call instead of needing one repair iteration per excess edge.
 
 `IssueMerge` dedups by unordered edge-set identity (`canonical_group_key`) same as before; when both sides flag the same edge set with different `to_remove`, the larger value wins (the more demanding requirement must be satisfied for the group to count as resolved) — `invalid_sources` still unions both sides' source checks regardless of which one's `to_remove` won.
+
+### MinOneWayCountCheck / MinOneWayRatioCheck
+
+```rust
+pub const MIN_ONE_WAY_COUNT_DEFAULT: u32 = 1;
+pub const MIN_ONE_WAY_RATIO_DEFAULT: u32 = 10;
+
+pub struct MinOneWayCountCheck {
+    pub instance_id: String,
+    pub min_one_ways: u32,
+}
+
+pub struct MinOneWayRatioCheck {
+    pub instance_id: String,
+    pub min_ratio: u32,
+}
+```
+
+Flag a deficit of one-way passage edges (`EdgeKind::Basic`, single direction) — see GitHub issue #201, part of the one-way management epic (#92). `MinOneWayCountCheck` compares the raw count against `min_one_ways`; `MinOneWayRatioCheck` compares the count per 100 field cells (via `maze.field.node_count()`) against `min_ratio`. One-way detection is the same single-direction `Basic`-edge filter every other one-way check uses (`kind == Basic` with no `Basic`-kind reverse between the pair) — a bidirectional passage is never mistaken for a one-way even though each direction is itself `EdgeKind::Basic`.
+
+Both checks compare `count * 100` against `min_ratio * field_cells` (or, for `MinOneWayCountCheck`, just `count` against `min_one_ways`) without computing an intermediate `count * 100 / field_cells` ratio first — the intermediate division floors, which can silently pass a ratio that's genuinely short of the minimum (e.g. a true 29.9% floors to 29%, comparing fine against a minimum it doesn't actually meet). Comparing the cross-multiplied products instead is exact, no rounding involved.
+
+Unlike `MaxOneWayCountCheck`/`MaxOneWayRatioCheck` (which report every one-way edge as a single group with an excess `to_remove` count), both checks here report a numeric deficit: `MissingOneWaysIssue { missing }`, produced via `MissingOneWaysIssue::new_from_check(instance_id, missing).with_detail(instance_id, "missing", missing.to_string())`. `MissingOneWaysIssue` carries `MISSING_ONE_WAYS`, a distinct `IssueKind` from `INVALID_ONE_WAY_GROUP` — adding a missing one-way is a different corrective action from removing an excess one, same rationale as `RegionNeedsExpansion`/`RegionNeedsShrink`. For `MinOneWayCountCheck`, `missing = min_one_ways.saturating_sub(count)`. For `MinOneWayRatioCheck`, `missing` is the smallest count such that `(count + missing) * 100 >= min_ratio * field_cells` — computed as `(min_ratio * field_cells).div_ceil(100).saturating_sub(count)`, rounding the required count up (never down) so a genuine shortfall never rounds away to zero.
+
+`MissingOneWaysIssue::merge` takes the larger of the two sides' `missing` values — `min_one_way_count`/`min_one_way_ratio` are independent checks that can both be active in the same rule and legitimately disagree on how many one-ways are missing; a repair strategy must fix at least the largest reported deficit.
+
+`MissingOneWaysFromPassageStrategy`/`MissingOneWaysFromWallStrategy` (see `repair.md`) are the two registered `RepairStrategy` options for `MISSING_ONE_WAYS` — a rule picks one.
 
 ### MaxOneWayCountCheck / MaxOneWayRatioCheck
 
@@ -1184,6 +1238,8 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `teleport_graph_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `protect_route: Bool(default=true)` | no |
 | `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
 | `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `protect_route: Bool(default=true)` | no |
+| `min_teleport_count` | `missing_teleports` | `min_teleports: Integer(default=1, min=1, max=1_000_000)` | no |
+| `min_teleport_ratio` | `missing_teleports` | `min_teleport_ratio: Integer(default=10, min=0, max=100)` | no |
 | `min_one_way_count` | `missing_one_ways` | `min_one_ways: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_one_way_ratio` | `missing_one_ways` | `min_ratio: Integer(default=10, min=0, max=100)` | no |
 | `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)` | no |

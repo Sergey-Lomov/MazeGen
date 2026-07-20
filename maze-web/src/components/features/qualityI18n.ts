@@ -123,6 +123,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.max_one_way_ratio.label"] as MessageFn,
     description: m["check.max_one_way_ratio.description"] as MessageFn,
   },
+  min_teleport_count: {
+    label: m["check.min_teleport_count.label"] as MessageFn,
+    description: m["check.min_teleport_count.description"] as MessageFn,
+  },
+  min_teleport_ratio: {
+    label: m["check.min_teleport_ratio.label"] as MessageFn,
+    description: m["check.min_teleport_ratio.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -181,6 +189,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   missing_one_ways: {
     label: m["issue.missing_one_ways.label"] as MessageFn,
     description: m["issue.missing_one_ways.description"] as MessageFn,
+  },
+  missing_teleports: {
+    label: m["issue.missing_teleports.label"] as MessageFn,
+    description: m["issue.missing_teleports.description"] as MessageFn,
   },
 };
 
@@ -477,6 +489,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   max_ratio: {
     label: m["param.max_ratio.label"] as MessageFn,
     description: m["param.max_ratio.description"] as MessageFn,
+  },
+  min_teleports: {
+    label: m["param.min_teleports.label"] as MessageFn,
+    description: m["param.min_teleports.description"] as MessageFn,
+  },
+  min_teleport_ratio: {
+    label: m["param.min_teleport_ratio.label"] as MessageFn,
+    description: m["param.min_teleport_ratio.description"] as MessageFn,
   },
 };
 

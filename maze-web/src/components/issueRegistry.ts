@@ -25,6 +25,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_one_way: () => ({ label: m["issue.invalid_one_way.label"](), description: m["issue.invalid_one_way.description"](), severity: "warning" }),
   invalid_one_way_group: () => ({ label: m["issue.invalid_one_way_group.label"](), description: m["issue.invalid_one_way_group.description"](), severity: "warning" }),
   missing_one_ways: () => ({ label: m["issue.missing_one_ways.label"](), description: m["issue.missing_one_ways.description"](), severity: "warning" }),
+  missing_teleports: () => ({ label: m["issue.missing_teleports.label"](), description: m["issue.missing_teleports.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -36,8 +37,9 @@ export function resolveIssue(kind: string): IssueInfo {
 /// which check actually produced it -- "Loop shorter than 5 tiles" vs "Loop longer than 100
 /// tiles" -- instead of a generic "Invalid loop" for both. A check id absent here falls back
 /// to the kind's generic label (`resolveIssue`).
-const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string | undefined> = {
+export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string | undefined> = {
   min_loops_count: (d) => d.missing !== undefined ? m["issue.missing_loops.min_loops_count_label"]({ missing: d.missing }) : undefined,
+  min_loop_density: (d) => d.missing !== undefined ? m["issue.missing_loops.min_loop_density_label"]({ missing: d.missing }) : undefined,
   loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.loop_length_label"]({ threshold: d.threshold }) : undefined,
   external_escape_diversity: (d) => d.min_distinct_exits !== undefined ? m["issue.invalid_loop.external_escape_diversity_label"]({ min_distinct_exits: d.min_distinct_exits }) : undefined,
   loop_distance_from_start: (d) => d.min_distance_from_start !== undefined ? m["issue.invalid_loop.loop_distance_from_start_label"]({ min_distance_from_start: d.min_distance_from_start }) : undefined,
@@ -105,7 +107,7 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   teleport_geometric_length: (d) => d.length !== undefined ? m["issue.invalid_teleport.teleport_geometric_length_label"]({ length: d.length }) : undefined,
   teleport_graph_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_graph_distance_label"]({ distance: d.distance }) : undefined,
   teleport_super_hub_avoidance: (d) => d.max_connections !== undefined ? m["issue.invalid_teleport.teleport_super_hub_avoidance_label"]({ max_connections: d.max_connections }) : undefined,
-  invalid_teleport_group: (d) => d.distance !== undefined ? m["issue.invalid_teleport_group.teleport_group_proximity_label"]({ distance: d.distance }) : undefined,
+  teleport_group_proximity: (d) => d.distance !== undefined ? m["issue.invalid_teleport_group.teleport_group_proximity_label"]({ distance: d.distance }) : undefined,
   one_way_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_one_way.one_way_waypoint_distance_label"]({ distance: d.distance }) : undefined,
   one_way_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
   one_way_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
@@ -114,6 +116,8 @@ const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string 
   min_one_way_ratio: (d) => d.missing !== undefined ? m["issue.missing_one_ways.min_one_way_ratio_label"]({ missing: d.missing }) : undefined,
   max_one_way_count: (d) => d.max_one_ways !== undefined ? m["issue.invalid_one_way_group.max_one_way_count_label"]({ max_one_ways: d.max_one_ways }) : undefined,
   max_one_way_ratio: (d) => d.max_ratio !== undefined ? m["issue.invalid_one_way_group.max_one_way_ratio_label"]({ max_ratio: d.max_ratio }) : undefined,
+  min_teleport_count: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_count_label"]({ missing: d.missing }) : undefined,
+  min_teleport_ratio: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_ratio_label"]({ missing: d.missing }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

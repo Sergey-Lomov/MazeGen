@@ -108,3 +108,25 @@ fn does_not_count_bidirectional_passage_as_one_way() {
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert!(issues.is_empty(), "bidirectional passage must not count toward the ratio");
 }
+
+#[test]
+fn does_not_floor_the_true_ratio_before_comparing() {
+    // 1000 field cells, 309 one-ways -> true ratio is 30.9%, which the old
+    // `count * 100 / field_cells` intermediate would floor to 30 -- silently staying quiet
+    // against a maximum of 30 even though 30.9% genuinely exceeds it.
+    // 309*100 = 30900 > 30*1000 = 30000, so this must fire.
+    let mut ids = IdGenerator::new();
+    let field = Field::new(square_rect(1000, 1), &mut ids).unwrap();
+    let mut g = Graph::new();
+    field.build_nodes(&mut g);
+    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for i in 0..309 {
+        g.add_edge(p(i), p(i + 1), EdgeKind::Basic);
+    }
+    let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 30 };
+    let mut issues = Vec::new();
+    check.repair_check(&maze, &mut issues, &mut rng(), ());
+    assert_eq!(issues.len(), 1, "30.9% must not silently pass a 30% maximum via floor rounding");
+}

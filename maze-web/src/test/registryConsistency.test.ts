@@ -3,7 +3,25 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
 import { checkI18n, strategyI18n, paramI18n, paramOptionI18n, paramOptionExplanationI18n } from "../components/features/qualityI18n";
-import { resolveIssue } from "../components/issueRegistry";
+import { resolveIssue, DETAIL_LABELS } from "../components/issueRegistry";
+
+// Every check whose maze-core implementation calls `.with_detail(...)` (grep for
+// `with_detail(&self.instance_id` / `with_detail(instance_id` across
+// maze-core/src/quality_control/checks/*.rs) needs a DETAIL_LABELS entry — otherwise
+// `resolveIssueSourceLabel` silently falls back to the generic issue-kind label and only a
+// runtime `console.error` (never seen in CI) flags the gap. Kept as an explicit list, not
+// derived from the wasm catalog, because a check's *param* ids don't reliably predict its
+// *detail* keys (e.g. `min_region_count` has no single-value param but does have a detail).
+const CHECK_IDS_WITH_WITH_DETAIL_CALLS = [
+  "min_loops_count", "min_loop_density", "loop_length", "external_escape_diversity",
+  "loop_distance_from_start", "loop_distance_from_finish", "max_loop_density", "max_loops_count",
+  "scc_count", "min_region_size", "min_region_ratio", "max_region_size", "max_region_ratio",
+  "min_region_count", "teleport_waypoint_distance", "teleport_geometric_length",
+  "teleport_graph_distance", "teleport_super_hub_avoidance", "teleport_group_proximity",
+  "one_way_waypoint_distance", "one_way_group_geometric_proximity", "one_way_group_graph_proximity",
+  "one_way_group_super_hub", "min_one_way_count", "min_one_way_ratio", "max_one_way_count",
+  "max_one_way_ratio", "min_teleport_count", "min_teleport_ratio",
+];
 
 // `src/wasm/pkg/` is gitignored build output produced by `wasm-rebuild.ps1` — absent on a
 // fresh checkout until that script has been run at least once. Skip rather than fail so this
@@ -40,6 +58,16 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
         expect(paramI18n[param.id].label().length).toBeGreaterThan(0);
         expect(paramI18n[param.id].description().length).toBeGreaterThan(0);
       }
+    }
+  });
+
+  it("every check with a maze-core with_detail call has a DETAIL_LABELS entry", () => {
+    const wasmCheckIds = new Set(checks.map((c) => c.id));
+    for (const typeId of CHECK_IDS_WITH_WITH_DETAIL_CALLS) {
+      // Guards against this list itself drifting from the live wasm catalog (e.g. a check
+      // renamed on the Rust side without updating this list).
+      expect(wasmCheckIds.has(typeId), `"${typeId}" is not a registered wasm check id`).toBe(true);
+      expect(DETAIL_LABELS[typeId], `missing DETAIL_LABELS entry for "${typeId}"`).toBeDefined();
     }
   });
 

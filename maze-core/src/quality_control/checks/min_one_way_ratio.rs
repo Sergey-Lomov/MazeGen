@@ -14,6 +14,13 @@ pub const MIN_ONE_WAY_RATIO_DEFAULT: u32 = 10;
 /// `maze.field.node_count()`) — same normalization `MinLoopDensityCheck`/`MaxLoopDensityCheck` use
 /// for their own density metric, so this check's threshold means "one-ways per 100 cells", not
 /// "percent of all passages".
+///
+/// Compares `count * 100` against `min_ratio * field_cells` directly instead of computing an
+/// intermediate `count * 100 / field_cells` ratio — the intermediate division floors, which can
+/// wrongly pass a ratio that's actually just short of the minimum (e.g. a true 29.9% floors to
+/// 29%, comparing fine against a minimum of 30% it doesn't actually meet). Comparing the
+/// cross-multiplied products is exact, no rounding involved. (Follow-up fix alongside GitHub
+/// issue #211's `MinTeleportRatioCheck`, which shares this exact bug via copy-paste.)
 pub struct MinOneWayRatioCheck {
     pub instance_id: String,
     pub min_ratio: u32,
@@ -23,7 +30,7 @@ impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayRatioCheck {
     fn check_type_id(&self) -> &'static str { "min_one_way_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingOneWaysIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.node_count();
+        let field_cells = maze.field.node_count() as u64;
         if field_cells == 0 {
             return;
         }
@@ -32,26 +39,22 @@ impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayRatioCheck {
         let count = maze.graph.edges()
             .filter(|e| e.kind == EdgeKind::Basic)
             .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
-            .count();
+            .count() as u64;
+        let min_ratio = self.min_ratio as u64;
 
-        let ratio = (count * 100 / field_cells) as u32;
-        if ratio >= self.min_ratio {
+        if count * 100 >= min_ratio * field_cells {
             return;
         }
 
-        let missing_ratio = self.min_ratio - ratio;
-        let missing = div_ceil(missing_ratio as usize * field_cells, 100) as u32;
-        if missing == 0 {
-            return;
-        }
+        // Smallest `missing` such that (count + missing) * 100 >= min_ratio * field_cells.
+        // Always > 0 here: the gate above already ruled out count * 100 >= required, so
+        // required.div_ceil(100) is always strictly greater than count.
+        let required = min_ratio * field_cells;
+        let missing = required.div_ceil(100).saturating_sub(count) as u32;
         let issue = MissingOneWaysIssue::new_from_check(&self.instance_id, missing)
             .with_detail(&self.instance_id, "missing", missing.to_string());
         issues.push(issue);
     }
-}
-
-fn div_ceil(a: usize, b: usize) -> usize {
-    (a + b - 1) / b
 }
 
 #[cfg(test)]
@@ -127,5 +130,28 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "bidirectional passage must not count toward the ratio");
+    }
+
+    #[test]
+    fn does_not_floor_the_true_ratio_before_comparing() {
+        // 1000 field cells, 299 one-ways -> true ratio is 29.9%, which the old
+        // `count * 100 / field_cells` intermediate would floor to 29 -- silently passing a
+        // minimum of 29 even though 29.9% genuinely doesn't meet a 30% minimum's neighborhood.
+        // 299*100 = 29900 < 30*1000 = 30000, so this must still fire.
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(1000, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for i in 0..299 {
+            g.add_edge(p(i), p(i + 1), EdgeKind::Basic);
+        }
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 30 };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1, "29.9% must not silently pass a 30% minimum via floor rounding");
+        assert_eq!(issues[0].missing, 1);
     }
 }

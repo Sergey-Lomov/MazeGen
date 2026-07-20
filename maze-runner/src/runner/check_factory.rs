@@ -30,12 +30,14 @@ use maze_core::{
         MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT,
         MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT,
         MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
+        MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
+        MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
         Comparison,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
-        MissingOneWaysIssue,
+        MissingOneWaysIssue, MissingTeleportsIssue,
     },
     RegionClass,
 };
@@ -63,6 +65,7 @@ pub(crate) enum KindTag {
     InvalidOneWay,
     InvalidOneWayGroup,
     MissingOneWays,
+    MissingTeleports,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -97,6 +100,8 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "min_one_way_ratio"         => KindTag::MissingOneWays,
         "max_one_way_count"         => KindTag::InvalidOneWayGroup,
         "max_one_way_ratio"         => KindTag::InvalidOneWayGroup,
+        "min_teleport_count"        => KindTag::MissingTeleports,
+        "min_teleport_ratio"        => KindTag::MissingTeleports,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -483,6 +488,26 @@ pub(crate) fn build_missing_one_ways_check<T: Tessellation>(instance: &CheckInst
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MIN_ONE_WAY_RATIO_DEFAULT);
             Some(Box::new(MinOneWayRatioCheck { instance_id, min_ratio }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_missing_teleports_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingTeleportsIssue>>> {
+    match instance.type_id.as_str() {
+        "min_teleport_count" => {
+            let min_teleports = instance.params.get("min_teleports")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MIN_TELEPORT_COUNT_DEFAULT);
+            Some(Box::new(MinTeleportCountCheck { instance_id, min_teleports }))
+        }
+        "min_teleport_ratio" => {
+            let min_teleport_ratio = instance.params.get("min_teleport_ratio")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(MIN_TELEPORT_RATIO_DEFAULT);
+            Some(Box::new(MinTeleportRatioCheck { instance_id, min_teleport_ratio }))
         }
         _ => None,
     }

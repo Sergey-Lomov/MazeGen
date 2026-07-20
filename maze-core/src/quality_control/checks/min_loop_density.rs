@@ -51,8 +51,8 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
             return;
         }
 
-        let missing_cells = div_ceil((self.min_density - density) as usize * field_cells, 100);
-        let missing = div_ceil(missing_cells, self.avg_loop_length_estimate.max(1) as usize) as u32;
+        let missing_cells = ((self.min_density - density) as usize * field_cells).div_ceil(100);
+        let missing = missing_cells.div_ceil(self.avg_loop_length_estimate.max(1) as usize) as u32;
         if missing == 0 {
             return;
         }
@@ -60,10 +60,6 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
             .with_detail(&self.instance_id, "missing", missing.to_string());
         issues.push(issue);
     }
-}
-
-fn div_ceil(a: usize, b: usize) -> usize {
-    (a + b - 1) / b
 }
 
 #[cfg(test)]

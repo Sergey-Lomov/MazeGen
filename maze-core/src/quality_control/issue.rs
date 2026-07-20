@@ -18,6 +18,7 @@ pub enum IssueKind {
     InvalidOneWay,
     InvalidOneWayGroup,
     MissingOneWays,
+    MissingTeleports,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -114,6 +115,12 @@ pub const INVALID_ONE_WAY_GROUP: IssueKind = IssueKind::InvalidOneWayGroup;
 /// missing-count condition rather than a specific-edge one. Carries `MissingOneWaysIssue {
 /// missing }` — see that type's doc comment.
 pub const MISSING_ONE_WAYS: IssueKind = IssueKind::MissingOneWays;
+/// The maze has fewer teleport edges (`EdgeKind::Teleport`) than some check requires (currently
+/// `MinTeleportCountCheck`/`MinTeleportRatioCheck`) — see GitHub issue #211. Mirrors
+/// `MISSING_ONE_WAYS`'s role for one-ways: a missing-count condition rather than a specific-edge
+/// one. Carries `MissingTeleportsIssue { missing }` — see that type's doc comment. No repair
+/// strategy registered yet for this kind (deliberately out of scope for #211).
+pub const MISSING_TELEPORTS: IssueKind = IssueKind::MissingTeleports;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -134,6 +141,7 @@ impl IssueKind {
             IssueKind::InvalidOneWay => "invalid_one_way",
             IssueKind::InvalidOneWayGroup => "invalid_one_way_group",
             IssueKind::MissingOneWays => "missing_one_ways",
+            IssueKind::MissingTeleports => "missing_teleports",
         }
     }
 
@@ -163,6 +171,7 @@ impl IssueKind {
             "invalid_one_way" => Some(IssueKind::InvalidOneWay),
             "invalid_one_way_group" => Some(IssueKind::InvalidOneWayGroup),
             "missing_one_ways" => Some(IssueKind::MissingOneWays),
+            "missing_teleports" => Some(IssueKind::MissingTeleports),
             _ => None,
         }
     }

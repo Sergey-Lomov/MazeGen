@@ -32,6 +32,9 @@ pub mod min_one_way_count;
 pub mod min_one_way_ratio;
 pub mod max_one_way_count;
 pub mod max_one_way_ratio;
+mod teleport_count_core;
+pub mod min_teleport_count;
+pub mod min_teleport_ratio;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -63,3 +66,5 @@ pub use min_one_way_count::{MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT};
 pub use min_one_way_ratio::{MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT};
 pub use max_one_way_count::{MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT};
 pub use max_one_way_ratio::{MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT};
+pub use min_teleport_count::{MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT};
+pub use min_teleport_ratio::{MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT};
