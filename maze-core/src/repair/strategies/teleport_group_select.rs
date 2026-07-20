@@ -52,8 +52,9 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// candidate pass, per-group `to_remove` budget, nested delegation, wholly-protected-group
 /// auto-resolve). This strategy's own remaining responsibility is exactly what's specific to
 /// teleports: `PARAM_PROTECT_ROUTE` (excluding route-critical teleports from the candidate pool,
-/// via `is_teleport_route_protected`) and resolving `SLOT_FIX_TARGET`/`INVALID_TELEPORT`
-/// (`RemoveTeleportStrategy`) from `nested`.
+/// via `is_teleport_route_protected`), resolving `SLOT_FIX_TARGET`/`INVALID_TELEPORT`
+/// (`RemoveTeleportStrategy`) from `nested`, and (GitHub issue #210) supplying
+/// `build_nested_issue`/`element_invalidated`/`order_by_priority(params)` to `group_select_apply`.
 ///
 /// `PARAM_PROTECT_ROUTE` (see GitHub issue #78, default `true`): a teleport lying on the maze's
 /// current start->finish route (`is_teleport_route_protected`) is excluded from the candidate
@@ -109,8 +110,20 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
 
         let protect_route = matches!(params.get(PARAM_PROTECT_ROUTE), Some(StrategyParamValue::Bool(true)));
         let element_allowed = |edge: &EdgeId| !protect_route || !is_teleport_route_protected(maze, *edge);
+        let build_nested_issue = |source_check: &str, target: &EdgeId, _others: &[EdgeId]| -> Box<dyn crate::quality_control::Issue> {
+            Box::new(InvalidTeleportIssue::new_from_check(source_check, vec![*target]))
+        };
+        // Mirrors `TeleportGroupKind`'s old `resolved_elements`: an edge counts as invalidated if
+        // the nested call actually removed it, or if it's the opposite-direction `Teleport`
+        // counterpart (read from `maze`, the pre-mutation snapshot) of any edge the call removed
+        // -- `removed_edge_ids` alone never recognizes a `RemoveTeleportWithReverse` command's
+        // reverse id (GitHub issue #171's known gap).
+        let element_invalidated = |edge: &EdgeId, nested_commands: &[MutationCommand], maze: &Maze<T>| {
+            let removed = crate::repair::removed_edge_ids(nested_commands);
+            removed.contains(edge) || removed.iter().any(|&id| maze.graph.teleport_reverse(id) == Some(*edge))
+        };
 
-        group_select_apply::<T, TeleportGroupKind>(issue, maze, rng, params, preset_state, fix_target, element_allowed)
+        group_select_apply::<T, TeleportGroupKind>(issue, maze, rng, preset_state, fix_target, element_allowed, build_nested_issue, element_invalidated, crate::repair::strategies::group_select::order_by_priority(params))
     }
 }
 

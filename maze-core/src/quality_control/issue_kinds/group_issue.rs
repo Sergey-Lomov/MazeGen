@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use crate::Maze;
-use crate::space::Tessellation;
 use crate::quality_control::issue::{Issue, IssueKind, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta};
-use crate::repair::MutationCommand;
 
 /// What distinguishes one `InvalidGroupIssue<K>` instantiation from another — see GitHub issue
 /// #208. `K` is a zero-sized marker type (never constructed), used only to give
@@ -13,52 +10,29 @@ use crate::repair::MutationCommand;
 /// being its own struct.
 ///
 /// `Element` is the type of one item inside a group — `EdgeId` for a group of edges (the shape
-/// `InvalidOneWayGroupIssue` already used), or e.g. `Vec<EdgeId>` for a future group of cycles.
-/// `Element: Ord + Hash` is what `canonical_group_key` (below) and `GroupSelectStrategy<K>`'s own
-/// reverse candidate index need to produce a stable, order-independent key from a group's contents
-/// and to index candidates by identity — for an element type that itself needs canonicalizing
-/// before it's meaningfully comparable (e.g. a cycle's own edge order not mattering), the caller
-/// constructing groups is responsible for canonicalizing each element before it enters a group,
-/// the same way `canonical_cycle_key` already does for `InvalidLoopIssue`/`InvalidLoopGroupIssue`.
+/// `InvalidOneWayGroupIssue` already used). `Element: Ord + Hash` is what `canonical_group_key`
+/// (below) and `group_select_apply`'s own reverse candidate index need to produce a stable,
+/// order-independent key from a group's contents and to index candidates by identity — for an
+/// element type that itself needs canonicalizing before it's meaningfully comparable, the caller
+/// constructing groups is responsible for canonicalizing each element before it enters a group.
 ///
-/// `NESTED_KIND`/`NESTED_SLOT_ID`/`nested_issue`/`resolved_elements` describe the single-element
-/// nested-strategy slot `GroupSelectStrategy<K>` (see `repair::strategies::group_select`)
-/// delegates each candidate's actual fix to, mirroring `OneWayGroupSelectStrategy`'s own
-/// `SLOT_FIX_TARGET`/`INVALID_ONE_WAY` nested pattern — see that module's doc comment for the full
-/// dispatch algorithm.
+/// GitHub issue #210: `nested_issue`/`resolved_elements` used to live here as trait methods, one
+/// impl per `K`. Moved to `group_select_apply`'s own `build_nested_issue`/`element_invalidated`
+/// closure parameters instead — building the nested `Issue` and deciding when a candidate is
+/// invalidated is the calling *strategy*'s responsibility (it alone has the full picture: what
+/// other candidates are still live, what the nested strategy's contract actually needs), not
+/// something a marker type describing the issue's *shape* should own. `InvalidGroupIssueKind` is
+/// now pure data: the element type and the nested dispatch target's identity.
 pub trait InvalidGroupIssueKind: 'static {
     type Element: Clone + Ord + std::hash::Hash + std::fmt::Debug;
 
     const KIND: IssueKind;
-    /// The `IssueKind` `GroupSelectStrategy<Self>` expects its nested strategy to handle.
+    /// The `IssueKind` `group_select_apply`'s caller expects its nested strategy to handle.
     const NESTED_KIND: IssueKind;
-    /// Slot id for the nested strategy `GroupSelectStrategy<Self>` delegates a single candidate's
-    /// fix to — see `NestedSlot::slot_id`'s doc comment for why this is part of the strategy's
-    /// public configuration API and must never be renamed casually once shipped.
+    /// Slot id for the nested strategy the calling strategy delegates a single candidate's fix
+    /// to — see `NestedSlot::slot_id`'s doc comment for why this is part of the strategy's public
+    /// configuration API and must never be renamed casually once shipped.
     const NESTED_SLOT_ID: &'static str;
-
-    /// Builds the synthetic single-element `Issue` passed to the nested strategy for one
-    /// candidate — e.g. `InvalidOneWayIssue::new_from_check(source_check, vec![edge])` for
-    /// `OneWayGroupKind`. `source_check` is an opaque routing id (mirrors every other
-    /// `new_from_check` caller), not user-facing text.
-    fn nested_issue(source_check: &str, element: Self::Element) -> Box<dyn Issue>;
-
-    /// Reads back every group-candidate `Element` that a successful nested call actually resolved,
-    /// from the commands it returned plus the `target` element that was offered to it — e.g. for
-    /// `OneWayGroupKind`, `removed_edge_ids(nested_commands)` plus `target` itself (mirrors
-    /// `OneWayGroupSelectStrategy`'s own `removed` set, which must include `target` even when the
-    /// nested strategy's commands don't literally remove it, e.g. `OneWayToPassageStrategy`
-    /// converting it into a passage instead of removing it). `GroupSelectStrategy<K>` uses this to
-    /// know which groups just had one of their candidates resolved.
-    ///
-    /// `maze` is the **pre-mutation** snapshot `group_select_apply` was called against (same one
-    /// `nested.strategy.apply` just ran against) — read-only lookups only, e.g.
-    /// `TeleportGroupKind` resolving `target`'s reverse-direction counterpart via
-    /// `Graph::teleport_reverse` to also mark it resolved, since `removed_edge_ids` alone only
-    /// ever recognizes a `RemoveTeleportWithReverse` command's primary id, never the reverse id
-    /// it also removed (GitHub issue #171's known gap) — without this, a group referencing only
-    /// the reverse id would never have its budget retired and could offer up a redundant fix.
-    fn resolved_elements<T: Tessellation>(target: &Self::Element, nested_commands: &[MutationCommand], maze: &Maze<T>) -> Vec<Self::Element>;
 }
 
 /// Canonical key for a group: its elements, sorted — mirrors `canonical_cycle_key`'s role for
@@ -183,12 +157,6 @@ mod tests {
         const KIND: IssueKind = INVALID_ONE_WAY_GROUP;
         const NESTED_KIND: IssueKind = crate::quality_control::issue::INVALID_ONE_WAY;
         const NESTED_SLOT_ID: &'static str = "test_fix_target";
-        fn nested_issue(source_check: &str, element: EdgeId) -> Box<dyn Issue> {
-            Box::new(crate::quality_control::InvalidOneWayIssue::new_from_check(source_check, vec![element]))
-        }
-        fn resolved_elements<T: Tessellation>(target: &EdgeId, nested_commands: &[MutationCommand], _maze: &Maze<T>) -> Vec<EdgeId> {
-            crate::repair::removed_edge_ids(nested_commands).into_iter().chain(std::iter::once(*target)).collect()
-        }
     }
     type TestIssue = InvalidGroupIssue<TestGroupKind>;
 

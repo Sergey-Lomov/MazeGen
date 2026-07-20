@@ -48,7 +48,9 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// priority, single global candidate pass, per-group `to_remove` budget, nested delegation). This
 /// strategy's own remaining responsibility is exactly what's specific to one-ways:
 /// `PARAM_PROTECT_ROUTE` (excluding route-critical edges from the candidate pool, via
-/// `is_edge_on_route`) and resolving `SLOT_FIX_TARGET`/`INVALID_ONE_WAY` from `nested`.
+/// `is_edge_on_route`), resolving `SLOT_FIX_TARGET`/`INVALID_ONE_WAY` from `nested`, and (GitHub
+/// issue #210) supplying `build_nested_issue`/`element_invalidated`/`order_by_priority(params)` to
+/// `group_select_apply`.
 ///
 /// `PARAM_PROTECT_ROUTE` (default `true`): a candidate lying on the maze's current start->finish
 /// route (`is_edge_on_route`) is excluded from the candidate pool up front, for every group.
@@ -87,8 +89,14 @@ impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroup
 
         let protect_route = matches!(params.get(PARAM_PROTECT_ROUTE), Some(StrategyParamValue::Bool(true)));
         let element_allowed = |edge: &EdgeId| !protect_route || !is_edge_on_route(maze, *edge);
+        let build_nested_issue = |source_check: &str, target: &EdgeId, _others: &[EdgeId]| -> Box<dyn crate::quality_control::Issue> {
+            Box::new(InvalidOneWayIssue::new_from_check(source_check, vec![*target]))
+        };
+        let element_invalidated = |edge: &EdgeId, nested_commands: &[MutationCommand], _maze: &Maze<T>| {
+            crate::repair::removed_edge_ids(nested_commands).contains(edge)
+        };
 
-        group_select_apply::<T, OneWayGroupKind>(issue, maze, rng, params, preset_state, fix_target, element_allowed)
+        group_select_apply::<T, OneWayGroupKind>(issue, maze, rng, preset_state, fix_target, element_allowed, build_nested_issue, element_invalidated, crate::repair::strategies::group_select::order_by_priority(params))
     }
 }
 

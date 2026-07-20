@@ -1,8 +1,6 @@
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKind, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP};
+use crate::quality_control::issue::{IssueKind, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
-use crate::quality_control::issue_kinds::InvalidOneWayIssue;
-use crate::repair::{MutationCommand, removed_edge_ids};
 
 /// Marker type selecting the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` instantiation for
 /// one-way groups — see GitHub issue #208. `InvalidOneWayGroupIssue`'s pre-#208 shape (a group:
@@ -11,6 +9,10 @@ use crate::repair::{MutationCommand, removed_edge_ids};
 /// `InvalidGroupIssue<K>` was extracted from; this marker is what wires it back to
 /// `INVALID_ONE_WAY_GROUP`/`INVALID_ONE_WAY` without reimplementing any of the generic type's
 /// logic. Never constructed — a zero-sized type used only at the type level.
+///
+/// GitHub issue #210: the nested-issue-building/candidate-invalidation logic that used to live
+/// here as trait methods now lives in `OneWayGroupSelectStrategy::apply`'s own closures passed to
+/// `group_select_apply` — see that strategy's doc comment.
 pub struct OneWayGroupKind;
 
 impl InvalidGroupIssueKind for OneWayGroupKind {
@@ -18,18 +20,6 @@ impl InvalidGroupIssueKind for OneWayGroupKind {
     const KIND: IssueKind = INVALID_ONE_WAY_GROUP;
     const NESTED_KIND: IssueKind = INVALID_ONE_WAY;
     const NESTED_SLOT_ID: &'static str = "fix_target";
-
-    fn nested_issue(source_check: &str, element: EdgeId) -> Box<dyn Issue> {
-        Box::new(InvalidOneWayIssue::new_from_check(source_check, vec![element]))
-    }
-
-    /// Mirrors `OneWayGroupSelectStrategy`'s pre-#208 `removed` set: every edge the nested
-    /// strategy's commands actually removed, plus `target` itself even when the nested strategy's
-    /// commands don't literally remove it (e.g. `OneWayToPassageStrategy` converts `target` into a
-    /// passage instead of removing it — `target` must still count as resolved).
-    fn resolved_elements<T: crate::space::Tessellation>(target: &EdgeId, nested_commands: &[MutationCommand], _maze: &crate::Maze<T>) -> Vec<EdgeId> {
-        removed_edge_ids(nested_commands).into_iter().chain(std::iter::once(*target)).collect()
-    }
 }
 
 /// Produced by any check that flags a set of one-way edges (`EdgeKind::Basic`, single direction)

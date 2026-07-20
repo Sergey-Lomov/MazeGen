@@ -1,8 +1,6 @@
 use crate::ids::EdgeId;
-use crate::quality_control::issue::{Issue, IssueKind, INVALID_TELEPORT, INVALID_TELEPORT_GROUP};
+use crate::quality_control::issue::{IssueKind, INVALID_TELEPORT, INVALID_TELEPORT_GROUP};
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
-use crate::quality_control::issue_kinds::InvalidTeleportIssue;
-use crate::repair::{MutationCommand, removed_edge_ids};
 
 /// Marker type selecting the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` instantiation for
 /// teleport proximity pairs — see GitHub issue #209 (generalizing the abstraction extracted in
@@ -10,6 +8,10 @@ use crate::repair::{MutationCommand, removed_edge_ids};
 /// is now expressed as the generic `groups: Vec<(Vec<EdgeId>, u32)>` shape instead, one two-element
 /// group per pair, always paired with `to_remove = 1` (removing either side of the pair resolves
 /// it). Never constructed — a zero-sized type used only at the type level.
+///
+/// GitHub issue #210: the nested-issue-building/candidate-invalidation logic that used to live
+/// here as trait methods now lives in `TeleportGroupSelectStrategy::apply`'s own closures passed
+/// to `group_select_apply` — see that strategy's doc comment.
 pub struct TeleportGroupKind;
 
 impl InvalidGroupIssueKind for TeleportGroupKind {
@@ -17,26 +19,6 @@ impl InvalidGroupIssueKind for TeleportGroupKind {
     const KIND: IssueKind = INVALID_TELEPORT_GROUP;
     const NESTED_KIND: IssueKind = INVALID_TELEPORT;
     const NESTED_SLOT_ID: &'static str = "fix_target";
-
-    fn nested_issue(source_check: &str, element: EdgeId) -> Box<dyn Issue> {
-        Box::new(InvalidTeleportIssue::new_from_check(source_check, vec![element]))
-    }
-
-    /// Mirrors `TeleportGroupSelectStrategy`'s pre-#209 `mark_removed` helper: every edge the
-    /// nested strategy's commands actually removed, plus `target` itself, plus `target`'s
-    /// opposite-direction `Teleport` counterpart (if any) read directly from `maze` — needed
-    /// because `removed_edge_ids` only ever recognizes a `RemoveTeleportWithReverse` command's
-    /// primary id, never the reverse id it also removed (GitHub issue #171's known gap). Without
-    /// this, a group referencing only the reverse direction of a just-removed two-way teleport
-    /// would never have its budget retired, and could still offer up a redundant (and by then
-    /// no-op) fix for an edge that's already gone.
-    fn resolved_elements<T: crate::space::Tessellation>(target: &EdgeId, nested_commands: &[MutationCommand], maze: &crate::Maze<T>) -> Vec<EdgeId> {
-        let reverse = maze.graph.teleport_reverse(*target);
-        removed_edge_ids(nested_commands).into_iter()
-            .chain(std::iter::once(*target))
-            .chain(reverse)
-            .collect()
-    }
 }
 
 /// Produced by any check that flags a pair of teleport edges as topologically too close to each
