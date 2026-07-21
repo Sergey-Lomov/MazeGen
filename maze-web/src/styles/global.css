@@ -87,7 +87,15 @@ input[type="number"]::-webkit-inner-spin-button {
 /* Hover highlight for clickable controls that have no cursor change to signal interactivity
    (see GitHub issue #97). Variants match the background family each button style already uses:
    neutral surfaces (input/none/transparent bg), the accent-blue primary button, and the
-   error-red destructive button. */
+   error-red destructive button.
+
+   Base `background: transparent` lives here, not as an inline style on the element — an inline
+   `background` always wins over a CSS class regardless of selector specificity, which would
+   permanently block `:hover` below from ever taking effect. */
+.hoverable {
+  background: transparent;
+}
+
 .hoverable:hover {
   background: #2d2d2d;
 }

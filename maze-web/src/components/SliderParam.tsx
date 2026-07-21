@@ -1,5 +1,5 @@
 import React from "react";
-import { typography, muted, disabled } from "../styles/theme";
+import { typography, muted, disabled, spacing } from "../styles/theme";
 
 interface Props {
   label: string;
@@ -32,7 +32,7 @@ const styles: Record<string, React.CSSProperties> = {
   row: {
     display: "flex",
     flexDirection: "column",
-    gap: 5,
+    gap: spacing.itemGap,
   },
   header: {
     display: "flex",

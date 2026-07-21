@@ -1,5 +1,5 @@
 import React from "react";
-import { ui, typography, disabled } from "../styles/theme";
+import { ui, typography, disabled, spacing, inset } from "../styles/theme";
 
 export type FeatureStatus = "unavailable" | "set" | "warning" | "critical";
 
@@ -87,9 +87,8 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     display: "flex",
     alignItems: "flex-start",
-    gap: 10,
-    padding: "10px 12px",
-    background: "transparent",
+    gap: spacing.rowGap,
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     border: "none",
     textAlign: "left",
   },
@@ -99,11 +98,12 @@ const styles: Record<string, React.CSSProperties> = {
   headerDisabled: {
     cursor: "default",
     opacity: 0.5,
+    background: "transparent",
   },
   headerText: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
+    gap: spacing.elementsGap,
     flex: 1,
     minWidth: 0,
   },
@@ -111,7 +111,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 6,
+    gap: spacing.itemGap,
   },
   title: {
     ...typography.title,
@@ -123,6 +123,6 @@ const styles: Record<string, React.CSSProperties> = {
     ...typography.caption,
   },
   body: {
-    padding: "0 12px 12px",
+    padding: `0 ${inset.panelInsetX}px ${inset.panelInsetX}px`,
   },
 };

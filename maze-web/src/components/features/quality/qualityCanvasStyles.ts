@@ -1,5 +1,6 @@
 import React from "react";
-import { ui, radius, typography, muted, disabled } from "../../../styles/theme";
+import { ui, radius, typography, muted, disabled, spacing, inset } from "../../../styles/theme";
+import { sharedStyles } from "../../../styles/shared";
 
 export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   root: {
@@ -30,7 +31,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.tertiary,
     cursor: "default",
-    padding: "8px 0",
+    padding: `${inset.buttonInsetY}px 0`,
     borderRadius: radius.md,
     textAlign: "center" as const,
   },
@@ -40,25 +41,25 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.tertiary,
     cursor: "default",
-    padding: "8px 0",
+    padding: `${inset.buttonInsetY}px 0`,
     borderRadius: radius.md,
     textAlign: "center" as const,
     width: "100%",
-    marginTop: 8,
+    marginTop: spacing.groupGap,
   },
   columnBody: {
     flex: 1,
     overflowY: "auto" as const,
-    padding: "8px",
+    padding: spacing.groupGap,
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    gap: spacing.itemGap,
   },
   stageSection: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    marginTop: 4,
+    gap: spacing.itemGap,
+    marginTop: spacing.itemGap,
   },
   stageSectionDisabled: {
     opacity: 0.5,
@@ -66,7 +67,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   stageHeader: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: spacing.itemGap,
     padding: "6px 2px",
   },
   stageHeaderText: {
@@ -82,15 +83,15 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     borderRadius: radius.sm,
-    padding: "1px 4px",
+    padding: sharedStyles.inputSm.padding,
     flex: 1,
     minWidth: 0,
   },
   stageToolbar: {
     display: "flex",
     alignItems: "center",
-    gap: 2,
-    padding: "2px 2px 4px",
+    gap: spacing.elementsGap,
+    padding: `${spacing.elementsGap}px ${spacing.elementsGap}px ${spacing.itemGap}px`,
   },
   stageToolbarBtn: {
     background: "none",
@@ -111,14 +112,14 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   stageCards: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    gap: spacing.itemGap,
     paddingLeft: 14,
     borderLeft: `2px solid ${ui.border.default}`,
     marginLeft: 4,
   },
   stageEmptyHint: {
     ...disabled(typography.caption),
-    padding: "2px 2px 4px",
+    padding: `${spacing.elementsGap}px ${spacing.elementsGap}px ${spacing.itemGap}px`,
   },
   cardLabel: {
     ...typography.body,
@@ -149,7 +150,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     background: "none",
     border: "none",
     color: ui.text.tertiary,
-    padding: "0 2px",
+    padding: `0 ${inset.iconButtonInset}px`,
     cursor: "default",
     lineHeight: 1,
     flexShrink: 0,
@@ -186,7 +187,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   ruleCardTitle: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: spacing.itemGap,
     padding: "7px 6px 7px 10px",
     borderBottom: `1px solid ${ui.border.default}`,
   },
@@ -208,14 +209,14 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     borderRadius: radius.sm,
-    padding: "1px 4px",
+    padding: sharedStyles.inputSm.padding,
     flex: 1,
     minWidth: 0,
   },
   ruleCardTools: {
     display: "flex",
     alignItems: "center",
-    gap: 2,
+    gap: spacing.elementsGap,
     flexShrink: 0,
   },
   ruleCardBody: {
@@ -227,13 +228,13 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     flex: 1,
     minWidth: 0,
-    padding: "6px 0",
+    padding: `${spacing.itemGap}px 0`,
   },
   ruleCheckRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    padding: "0 10px",
+    gap: spacing.groupGap,
+    padding: `0 ${inset.panelInsetX}px`,
     cursor: "default",
     userSelect: "none" as const,
     minHeight: 28,
@@ -251,8 +252,8 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     ...typography.body,
     display: "flex",
     alignItems: "center",
-    gap: 6,
-    padding: "0 10px",
+    gap: spacing.itemGap,
+    padding: `0 ${inset.panelInsetX}px`,
     cursor: "default",
     userSelect: "none" as const,
     minHeight: 28,
@@ -268,14 +269,14 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     flex: 1,
     minWidth: 0,
-    padding: "6px 0",
+    padding: `${spacing.itemGap}px 0`,
   },
   ruleStrategyHeader: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.groupGap,
     minHeight: 28,
-    padding: "0 10px",
+    padding: `0 ${inset.panelInsetX}px`,
   },
   ruleStrategyHeaderSelected: {
     background: ui.bg.panelAlt,
@@ -286,8 +287,9 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   ruleStrategyParams: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    padding: "0 10px 0 18px",
+    gap: spacing.groupGap,
+    padding: `0 ${inset.panelInsetX}px`,
+    marginLeft: spacing.groupGap,
     opacity: 0.85,
   },
   divider: {
@@ -299,15 +301,15 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     flex: "0 0 28%",
     display: "flex",
     flexDirection: "column",
-    gap: 8,
-    padding: "10px 14px",
+    gap: spacing.groupGap,
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     overflowY: "auto" as const,
     minWidth: 0,
     borderLeft: `1px solid ${ui.border.default}`,
   },
   detailEmpty: {
     ...disabled(typography.caption),
-    marginTop: 8,
+    marginTop: spacing.groupGap,
   },
   detailTitle: {
     ...typography.title,
@@ -320,16 +322,16 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     ...typography.caption,
     textTransform: "uppercase" as const,
     letterSpacing: 0.5,
-    marginTop: 4,
+    marginTop: spacing.itemGap,
   },
   detailListItem: {
     ...muted(typography.body),
-    padding: "2px 0",
+    padding: `${spacing.elementsGap}px 0`,
   },
   detailDivider: {
     borderTop: `1px solid ${ui.border.default}`,
-    marginTop: 2,
-    marginBottom: 2,
+    marginTop: spacing.elementsGap,
+    marginBottom: spacing.elementsGap,
   },
 };
 
@@ -337,8 +339,8 @@ export function cardStyle(selected: boolean): React.CSSProperties {
   return {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    padding: "0 10px",
+    gap: spacing.groupGap,
+    padding: `0 ${inset.panelInsetX}px`,
     background: ui.bg.panel,
     borderRadius: radius.md,
     border: `1px solid ${selected ? ui.state.selected : ui.border.default}`,

@@ -7,7 +7,8 @@ import { ParamFields } from "../ParamFields";
 import { WarningIcon } from "../../WarningIcon";
 import { NestedStrategySelectDialog } from "./NestedStrategySelectDialog";
 import * as m from "~/paraglide/messages";
-import { ui, typography } from "../../../styles/theme";
+import { ui, typography, spacing, indent, inset } from "../../../styles/theme";
+import { Inline } from "../../Layout";
 import { resolveStrategyLabel } from "../qualityI18n";
 import type { NestedStrategyVM, NestedSlotVM } from "../useQualityViewModel";
 import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot, type NestedStrategyState, type PathSegment, type QcRuleState } from "../../../store/storeTypes";
@@ -99,10 +100,10 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
     // rather than blending into the next one.
     <div style={styles.entriesGap}>
       {entries.length === 0 && (
-        <div style={styles.row}>
+        <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
           <label style={styles.label}>{m["quality.nested_strategy.label"]()}</label>
           <span style={styles.placeholder}>{m["quality.nested_strategy.placeholder"]()}</span>
-        </div>
+        </Inline>
       )}
       {entries.map((entry, index) => (
         <NestedStrategyEntryRow
@@ -123,7 +124,7 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
         />
       ))}
       {!atCapacity && (
-        <div style={styles.row}>
+        <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
           <button
             className="hoverable"
             style={styles.addBtn}
@@ -131,7 +132,7 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
           >
             + {m["quality.nested_strategy.add"]()}
           </button>
-        </div>
+        </Inline>
       )}
     </div>
   );
@@ -181,9 +182,9 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
   });
 
   return (
-    <div style={{ ...styles.entryStack, marginLeft: depth * 12 }}>
+    <div style={{ ...styles.entryStack, marginLeft: depth * indent.tree }}>
       {showWeight && (
-        <div style={styles.weightRowInner}>
+        <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
           <label style={styles.weightLabel}>{m["quality.nested_strategy.weight_label"]()}</label>
           <input
             type="text"
@@ -203,13 +204,13 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
               <X size={18} color={ui.text.tertiary} />
             </button>
           )}
-        </div>
+        </Inline>
       )}
       {/* A thin vertical line down the left, from just below the weight row to the bottom of
           this entry's whole block (name + params + further-nested slots), ties the weight
           visually to exactly what it's weighing — only drawn when the weight row itself is
           shown. Separate from the weight row itself so the line starts under it, not beside it. */}
-      <div style={{ ...styles.entryStack, ...(showWeight ? styles.entryStackWithWeight : {}), marginLeft: showWeight ? 12 : 0 }}>
+      <div style={{ ...styles.entryStack, ...(showWeight ? styles.entryStackWithWeight : {}), marginLeft: showWeight ? indent.tree : 0 }}>
         {/* Hover/selected highlight and the click-to-select target span the whole strategy
             block — name row, its params, and any further-nested slots — not just the name row
             itself, so the highlighted area matches what clicking anywhere in it actually
@@ -227,7 +228,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
             onSelect({ type: "nested_strategy", ruleId, path });
           }}
         >
-          <div style={styles.row}>
+          <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
             <label style={styles.label}>{m["quality.nested_strategy.label"]()}</label>
             <span style={styles.strategyName}>
               {resolveStrategyLabel(node.strategy.id)}
@@ -244,18 +245,18 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
                 <X size={18} color={ui.text.tertiary} />
               </button>
             )}
-          </div>
+          </Inline>
           {node.params.length > 0 && (
             // No `stopPropagation` wrapper here — `ParamFields` itself stops propagation only on
             // its actual controls (input/select/switch), so empty space around them (labels,
             // gaps) still falls through to this block's own click-to-select handler above.
-            <div style={{ ...styles.indented, marginLeft: 12 }}>
+            <div style={{ ...styles.indented, marginLeft: indent.tree }}>
               <ParamFields params={node.params} values={values} onChange={onChange} />
             </div>
           )}
         </div>
         {depth < MAX_NESTED_STRATEGY_DEPTH && node.strategy.nestedSlots.map((childSlotDesc) => (
-          <div key={childSlotDesc.slotId} style={{ ...styles.indented, marginLeft: 12 }}>
+          <div key={childSlotDesc.slotId} style={{ ...styles.indented, marginLeft: indent.tree }}>
             <NestedStrategyPanel
               ruleId={ruleId}
               path={[...path, { slotId: childSlotDesc.slotId, index: 0 }]}
@@ -282,23 +283,6 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
 }
 
 const styles = {
-  row: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    borderRadius: 3,
-  },
-  // Weight row's fields (input/%/remove) sit right after the "Weight" label, not pushed to the
-  // far right by `row`'s `space-between` — there's nothing else to balance them against on this
-  // row, unlike the strategy-name row where the name itself fills the remaining width.
-  weightRowInner: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 10,
-    borderRadius: 3,
-  },
   // Wraps the strategy-name row + its params + further-nested slots as one hover/click/selected
   // target, so pointing anywhere in the block (not just the name) highlights and selects it.
   // `padding: 4px` + `margin: -4px` grows the visible hover/selected highlight 4px past the
@@ -307,7 +291,7 @@ const styles = {
   strategyBlock: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 8,
+    gap: spacing.groupGap,
     borderRadius: 3,
     cursor: "default",
     padding: 4,
@@ -335,34 +319,34 @@ const styles = {
     ...typography.body,
     color: ui.text.tertiary,
   },
-  // `gap: 8` mirrors `qualityCanvasStyles`'s standard param-to-param spacing — used for a
+  // `groupGap` mirrors `qualityCanvasStyles`'s standard param-to-param spacing — used for a
   // strategy's own params block and for further-nested-slot wrappers.
   indented: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 8,
+    gap: spacing.groupGap,
   },
-  // Same `gap: 8` as `indented` — kept as its own token since it separates one entry's weight
+  // Same `groupGap` as `indented` — kept as its own token since it separates one entry's weight
   // row from its strategy block specifically.
   entryStack: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 8,
+    gap: spacing.groupGap,
   },
   // Thin vertical line down the left, from the weight row to the bottom of this entry's whole
   // block — visually ties the weight to exactly what it's weighing. Only applied when the
   // weight row itself is shown (`entryStack` alone otherwise).
   entryStackWithWeight: {
     borderLeft: `1px solid ${ui.border.default}`,
-    paddingLeft: 8,
+    paddingLeft: spacing.groupGap,
   },
   // Wraps a slot's sibling entries (weight row + strategy block + further-nested slots, each
-  // itself using `indented`'s `gap: 8`) with a wider gap — each entry reads as its own group
+  // itself using `indented`'s `groupGap`) with a wider gap — each entry reads as its own group
   // rather than blending into the next one.
   entriesGap: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 16,
+    gap: spacing.sectionGap,
   },
   // Mirrors `qualityCanvasStyles.cardLabel` — the strategy name is free text, not a fixed-size
   // control, so it must be allowed to take the space a dropdown box couldn't.
@@ -382,7 +366,7 @@ const styles = {
     background: "none",
     border: "none",
     color: ui.text.tertiary,
-    padding: "0 2px",
+    padding: `0 ${inset.iconButtonInset}px`,
     cursor: "default",
     lineHeight: 1,
     flexShrink: 0,
@@ -420,7 +404,7 @@ const styles = {
     border: "none",
     color: ui.text.tertiary,
     cursor: "default",
-    padding: "2px 0",
+    padding: `${spacing.elementsGap}px 0`,
     textAlign: "left" as const,
   },
 };

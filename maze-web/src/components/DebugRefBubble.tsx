@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ui, typography, radius, muted } from "../styles/theme";
+import { ui, typography, radius, muted, spacing } from "../styles/theme";
 import { useMazeStore } from "../store/mazeStore";
 import { Modal } from "./Modal";
 import * as m from "~/paraglide/messages";
@@ -79,7 +79,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderStyle: "solid",
     borderWidth: 1,
     borderRadius: radius.lg,
-    padding: "0 4px",
+    padding: `0 ${spacing.itemGap}px`,
     background: ui.debug.refHighlight.bg,
     borderColor: ui.debug.refHighlight.text,
     color: ui.debug.refHighlight.text,
@@ -98,7 +98,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderStyle: "solid",
     borderWidth: 1,
     borderRadius: radius.lg,
-    padding: "0 4px",
+    padding: `0 ${spacing.itemGap}px`,
     background: ui.debug.issueHighlight.bg,
     borderColor: ui.debug.issueHighlight.text,
     color: ui.debug.issueHighlight.text,
@@ -112,7 +112,7 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5,
   },
   reasonsList: {
-    margin: "4px 0 0",
+    margin: `${spacing.itemGap}px 0 0`,
     paddingLeft: 20,
   },
 };

@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../../pixi/fieldEditUtils";
 import { buttonStyle } from "../../styles/shared";
-import { ui, typography, muted } from "../../styles/theme";
+import { ui, typography, muted, spacing } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
+import { Stack, Grid } from "../Layout";
+import { StatusTag } from "../StatusTag";
 import * as m from "~/paraglide/messages";
 
 function getEdgeTools(): [PresetConnectionTool, string][] {
@@ -112,9 +113,9 @@ export function PresetConnectionsFeature() {
   const hasInvalid = invalidCount > 0;
 
   return (
-    <div style={styles.root}>
+    <Stack gap="groupGap">
       <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
-      <div style={styles.toolGrid}>
+      <Grid templateColumns="1fr 1fr" gap="itemGap">
         {getEdgeTools().map(([t, label]) => (
           <button
             key={t}
@@ -125,10 +126,10 @@ export function PresetConnectionsFeature() {
             {label}
           </button>
         ))}
-      </div>
+      </Grid>
 
       <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
-      <div style={styles.vertexToolGrid}>
+      <Stack gap="itemGap">
         {getVertexTools().map(([t, label]) => (
           <button
             key={t}
@@ -139,7 +140,7 @@ export function PresetConnectionsFeature() {
             {label}
           </button>
         ))}
-        <div style={styles.startFinishRow}>
+        <Grid templateColumns="1fr 1fr" gap="itemGap">
           {getStartFinishTools().map(([t, label]) => (
             <button
               key={t}
@@ -150,11 +151,11 @@ export function PresetConnectionsFeature() {
               {label}
             </button>
           ))}
-        </div>
-      </div>
+        </Grid>
+      </Stack>
 
       <span style={styles.sectionLabel}>{m["preset.generation_tools"]()}</span>
-      <div style={styles.generationToolGrid}>
+      <Grid templateColumns="1fr 1fr" gap="itemGap">
         {getGenerationTools().map(([t, label]) => (
           <button
             key={t}
@@ -165,10 +166,10 @@ export function PresetConnectionsFeature() {
             {label}
           </button>
         ))}
-      </div>
+      </Grid>
 
       <span style={styles.sectionLabel}>{m["preset.default_edge"]()}</span>
-      <div style={styles.triGrid}>
+      <Grid templateColumns="1fr 1fr 1fr" gap="itemGap">
         {(["undefined", "wall", "passage"] as const).map((s) => (
           <button
             key={s}
@@ -179,7 +180,7 @@ export function PresetConnectionsFeature() {
             {m[`preset.default_${s}` as "preset.default_undefined" | "preset.default_wall" | "preset.default_passage"]()}
           </button>
         ))}
-      </div>
+      </Grid>
 
       <div style={styles.autoLockRow}>
         <div style={styles.autoLockLeft}>
@@ -196,45 +197,40 @@ export function PresetConnectionsFeature() {
       </div>
 
       {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish || presetGenSource || presetTeleports.length > 0 || presetTeleportPendingFrom) && (
-        <div style={styles.statusBlock}>
+        <Stack gap="itemGap">
           {presetTeleportPendingFrom && (
-            <div style={styles.statusBubble}>
-              <span>{m["preset.teleport_pending"]()}: {presetTeleportPendingFrom[0]},{presetTeleportPendingFrom[1]}</span>
-              <button className="hoverable" style={styles.clearTag} onClick={() => setPresetTeleportPendingFrom(null)}><X size={16} /></button>
-            </div>
+            <StatusTag onClear={() => setPresetTeleportPendingFrom(null)}>
+              {m["preset.teleport_pending"]()}: {presetTeleportPendingFrom[0]},{presetTeleportPendingFrom[1]}
+            </StatusTag>
           )}
           {presetTeleports.length > 0 && (
-            <div style={styles.statusBubble}>
-              <span>{presetTeleports.length === 1
+            <StatusTag>
+              {presetTeleports.length === 1
                 ? m["preset.teleports_count"]({ count: presetTeleports.length })
-                : m["preset.teleports_count_plural"]({ count: presetTeleports.length })}</span>
-            </div>
+                : m["preset.teleports_count_plural"]({ count: presetTeleports.length })}
+            </StatusTag>
           )}
           {lockedNodes.size > 0 && (
-            <div style={styles.statusBubble}>
-              <span>{lockedNodes.size === 1
+            <StatusTag onClear={clearLockedNodes} clearLabel={m["common.clear_all"]()}>
+              {lockedNodes.size === 1
                 ? m["preset.nodes_locked"]({ count: lockedNodes.size })
-                : m["preset.nodes_locked_plural"]({ count: lockedNodes.size })}</span>
-              <button className="hoverable" style={styles.clearTag} onClick={clearLockedNodes}>{m["common.clear_all"]()}</button>
-            </div>
+                : m["preset.nodes_locked_plural"]({ count: lockedNodes.size })}
+            </StatusTag>
           )}
           {presetStart && (
-            <div style={styles.statusBubble}>
-              <span>{m["preset.start"]()}: {presetStart[0]},{presetStart[1]}</span>
-              <button className="hoverable" style={styles.clearTag} onClick={() => setPresetStart(null)}><X size={16} /></button>
-            </div>
+            <StatusTag onClear={() => setPresetStart(null)}>
+              {m["preset.start"]()}: {presetStart[0]},{presetStart[1]}
+            </StatusTag>
           )}
           {presetFinish && (
-            <div style={styles.statusBubble}>
-              <span>{m["preset.finish"]()}: {presetFinish[0]},{presetFinish[1]}</span>
-              <button className="hoverable" style={styles.clearTag} onClick={() => setPresetFinish(null)}><X size={16} /></button>
-            </div>
+            <StatusTag onClear={() => setPresetFinish(null)}>
+              {m["preset.finish"]()}: {presetFinish[0]},{presetFinish[1]}
+            </StatusTag>
           )}
           {presetGenSource && (
-            <div style={styles.statusBubble}>
-              <span>{m["preset.gen_source"]()}: {presetGenSource[0]},{presetGenSource[1]}</span>
-              <button className="hoverable" style={styles.clearTag} onClick={() => setPresetGenSource(null)}><X size={16} /></button>
-            </div>
+            <StatusTag onClear={() => setPresetGenSource(null)}>
+              {m["preset.gen_source"]()}: {presetGenSource[0]},{presetGenSource[1]}
+            </StatusTag>
           )}
           {isolatedNodes.length > 0 && (
             <div
@@ -248,7 +244,7 @@ export function PresetConnectionsFeature() {
                 : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
             </div>
           )}
-        </div>
+        </Stack>
       )}
 
       {hasInvalid && (
@@ -276,35 +272,15 @@ export function PresetConnectionsFeature() {
           onCancel={() => setConfirmReset(false)}
         />
       )}
-    </div>
+    </Stack>
   );
 }
 
 
 const styles: Record<string, React.CSSProperties> = {
-  root: { display: "flex", flexDirection: "column", gap: 8 },
   sectionLabel: {
     ...typography.body,
-    marginTop: 8,
-  },
-  toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  vertexToolGrid: { display: "grid", gridTemplateColumns: "1fr", gap: 4 },
-  startFinishRow: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  generationToolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  triGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 },
-  statusBlock: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-  statusBubble: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    ...typography.caption,
-    background: ui.bg.input,
-    borderRadius: 4,
-    padding: "6px 8px",
+    marginTop: spacing.groupGap,
   },
   warningBubble: {
     ...typography.body,
@@ -323,7 +299,7 @@ const styles: Record<string, React.CSSProperties> = {
   autoLockLeft: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: spacing.itemGap,
   },
   autoLockLabel: {
     ...muted(typography.body),
@@ -342,14 +318,5 @@ const styles: Record<string, React.CSSProperties> = {
   },
   originLabel: {
     ...muted(typography.body),
-  },
-  clearTag: {
-    ...muted(typography.icon),
-    background: "none",
-    border: "none",
-    cursor: "default",
-    padding: "0 0 0 4px",
-    lineHeight: 1,
-    display: "flex",
   },
 };

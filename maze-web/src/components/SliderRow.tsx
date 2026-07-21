@@ -1,5 +1,5 @@
 import { sharedStyles } from "../styles/shared";
-import { typography } from "../styles/theme";
+import { typography, spacing } from "../styles/theme";
 
 interface Props {
   label: string;
@@ -10,7 +10,7 @@ interface Props {
 
 export function SliderRow({ label, value, onChange, description }: Props) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: spacing.elementsGap }}>
       <div style={sharedStyles.sliderRow}>
         <span style={sharedStyles.sliderRowLabel}>{label}</span>
         <input

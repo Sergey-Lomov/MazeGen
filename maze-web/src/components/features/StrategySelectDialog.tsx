@@ -5,7 +5,8 @@ import { WarningBubble } from "../WarningBubble";
 import { ParamFields } from "./ParamFields";
 import { useParamEditor } from "./useParamEditor";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, NO_FIX_STRATEGY_ID } from "./qualityI18n";
-import { ui, radius, typography } from "../../styles/theme";
+import { ui, radius, typography, spacing, inset } from "../../styles/theme";
+import { Inline } from "../Layout";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../wasm/types";
 
@@ -63,9 +64,9 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
           )}
           {requiredNestedSlots.map((slot) => (
             <div key={slot.slot_id} style={styles.field}>
-              <div style={styles.row}>
+              <Inline gap="rowGap" justify="space-between">
                 <label style={styles.label}>{m["quality.nested_strategy.label"]()}</label>
-              </div>
+              </Inline>
               {resolveNestedSlotDescription(slot.slot_id) && (
                 <div style={styles.fieldDescription}>{resolveNestedSlotDescription(slot.slot_id)}</div>
               )}
@@ -127,12 +128,6 @@ const styles: Record<string, React.CSSProperties> = {
     ...typography.body,
     lineHeight: 1.6,
   },
-  row: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color).
   label: {
     ...typography.message,
@@ -143,33 +138,33 @@ const styles: Record<string, React.CSSProperties> = {
   field: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
+    gap: spacing.elementsGap,
   },
   fieldDescription: {
     ...typography.caption,
     lineHeight: 1.4,
   },
   nestedWarning: {
-    marginTop: 4,
+    marginTop: spacing.itemGap,
   },
-  // `gap: 16` matches `ParamFields`'s own inter-param gap (when descriptions are shown) — the
+  // `sectionGap` matches `ParamFields`'s own inter-param gap (when descriptions are shown) — the
   // nested-slot row below renders as a sibling of `StrategyParamPanel`'s `ParamFields`, not
   // inside it, so this section's own gap is what separates the last param from that row.
   paramsSection: {
     display: "flex",
     flexDirection: "column",
-    gap: 16,
+    gap: spacing.sectionGap,
   },
   paramsSeparator: {
     borderTop: `1px solid ${ui.border.default}`,
-    marginBottom: 4,
+    marginBottom: spacing.itemGap,
   },
   btnPrimary: {
     ...typography.control,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 12px",
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },
@@ -178,7 +173,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
-    padding: "5px 12px",
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },

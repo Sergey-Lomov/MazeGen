@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
+import { spacing, inset } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { selectTessellationWouldLoseData } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
@@ -103,13 +104,13 @@ const styles: Record<string, React.CSSProperties> = {
   root: {
     display: "flex",
     flexDirection: "column",
-    gap: 8,
+    gap: spacing.groupGap,
   },
   label: sharedStyles.fieldLabel,
   select: sharedStyles.select,
   confirmBtn: {
-    marginTop: 4,
+    marginTop: spacing.itemGap,
     ...buttonStyle("primary"),
-    padding: "6px 0",
+    padding: `${inset.buttonInsetY}px 0`,
   },
 };

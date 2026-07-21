@@ -75,6 +75,42 @@ export const radius = {
   lg: 6,
 } as const;
 
+// Vertical/horizontal gap inside a flex/grid container. Named by structural role, not size.
+//
+// Boundary rule (spacing vs inset vs control size):
+//   - spacing = distance BETWEEN sibling elements (gap, marginTop/Bottom between blocks)
+//   - inset   = padding INSIDE a single component's own border
+//   - control size (width/height of icons, switches, inputs) is a separate system, not spacing
+export const spacing = {
+  elementsGap: 2, // micro-gap between tightly-related elements: label→value pairs, tool button clusters
+  itemGap: 4,     // element within a list/grid: toggle rows, chip rows, grid cells (most common value)
+  rowGap: 8,      // horizontal gap inside a single label/control row (same value as groupGap, distinct role)
+  groupGap: 8,    // block within a section
+  sectionGap: 16, // independent sub-section / param-with-description spacing
+} as const;
+
+export const inset = {
+  // Dialog/modal action-button family (footer Confirm/Cancel/OK-style buttons).
+  buttonInsetX: 12,
+  buttonInsetY: 5,
+  // Toolbar/inline button family — sharedStyles.btn*/buttonStyle()/GenerationFeature.btnGenerate
+  // and friends. Square padding (X and Y equal).
+  toolButtonInset: 4,
+  // Icon-only button family (edit/clear glyph, no label) — GenerationFeature.editBtn,
+  // NestedStrategyPanel.editBtn, qualityCanvasStyles.editBtn, PostEditFeature.clearTag.
+  // Horizontal only; these buttons size to their icon's own line-height vertically.
+  iconButtonInset: 2,
+  // Top-level panel/card padding — FeatureCard header, FeaturesPanel footer, DebugPanel rows.
+  panelInsetX: 12,
+  panelInsetY: 10,
+} as const;
+
+// Hierarchical tree indent — not a spacing scale, kept in its own namespace on purpose
+// (mixing indent into spacing invites nonsense like `paddingLeft: sectionGap`).
+export const indent = {
+  tree: 12, // NestedStrategyPanel: depth * indent.tree
+} as const;
+
 export const font = {
   xs: 11,
   sm: 12,

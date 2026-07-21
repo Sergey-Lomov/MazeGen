@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { resolveIssueLabel, resolveIssueDescription, resolveIssueSection, resolveIssueShortLabel } from "./qualityI18n";
-import { ui, radius, typography, disabled } from "../../styles/theme";
+import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -79,7 +79,7 @@ export function IssueSelectDialog({ onSelect, onClose }: Props) {
 const styles: Record<string, React.CSSProperties> = {
   label: {
     ...typography.body,
-    marginTop: 8,
+    marginTop: spacing.groupGap,
   },
   description: {
     ...typography.body,
@@ -93,7 +93,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 12px",
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },
@@ -102,7 +102,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
-    padding: "5px 12px",
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },

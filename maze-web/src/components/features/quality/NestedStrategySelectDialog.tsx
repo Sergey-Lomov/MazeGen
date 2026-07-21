@@ -5,7 +5,7 @@ import { WarningBubble } from "../../WarningBubble";
 import { ParamFields } from "../ParamFields";
 import { useParamEditor } from "../useParamEditor";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription } from "../qualityI18n";
-import { ui, radius, typography } from "../../../styles/theme";
+import { ui, radius, typography, spacing, inset } from "../../../styles/theme";
 import * as m from "~/paraglide/messages";
 import type { ParamDescriptor } from "../../../wasm/types";
 import { entriesForSlot, type NestedStrategyState, type PathSegment, type QcRuleState } from "../../../store/storeTypes";
@@ -198,18 +198,18 @@ const styles: Record<string, React.CSSProperties> = {
   paramsSection: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    gap: spacing.itemGap,
   },
   paramsSeparator: {
     borderTop: `1px solid ${ui.border.default}`,
-    marginBottom: 4,
+    marginBottom: spacing.itemGap,
   },
   btnPrimary: {
     ...typography.control,
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 12px",
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },
@@ -218,7 +218,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
-    padding: "5px 12px",
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },

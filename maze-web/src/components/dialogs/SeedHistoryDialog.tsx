@@ -1,7 +1,7 @@
 import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
-import { ui, dialogSpacing, typography, muted } from "../../styles/theme";
+import { ui, dialogSpacing, typography, muted, spacing } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -63,7 +63,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.groupGap,
   },
   itemSelected: {
     background: ui.accent.base,

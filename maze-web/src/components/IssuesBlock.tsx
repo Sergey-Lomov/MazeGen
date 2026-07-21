@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ui, typography, muted } from "../styles/theme";
+import { ui, typography, muted, spacing } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
@@ -122,13 +122,13 @@ const issueStyles: Record<string, React.CSSProperties> = {
   block: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    gap: spacing.itemGap,
   },
   bubble: {
     ...embeddedNotificationStyle,
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: spacing.itemGap,
   },
   bubbleClickable: {
     cursor: "default",
@@ -143,6 +143,6 @@ const issueStyles: Record<string, React.CSSProperties> = {
   divider: {
     borderTop: `1px solid`,
     borderColor: ui.border.default,
-    margin: "4px 0",
+    margin: `${spacing.itemGap}px 0`,
   },
 };

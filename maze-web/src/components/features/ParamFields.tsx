@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { ParamDescriptor } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
-import { typography, font } from "../../styles/theme";
+import { typography, font, spacing } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
 import { Switch } from "../Switch";
+import { Inline } from "../Layout";
 
 const OPTION_WIDTH_BUFFER = 10;
 const SELECT_MAX_WIDTH_RATIO = 0.4;
@@ -99,12 +100,12 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
   }
 
   return (
-    <div ref={containerRef} style={{ ...styles.fieldsWrap, gap: getDescription ? 16 : 4 }}>
+    <div ref={containerRef} style={{ ...styles.fieldsWrap, gap: getDescription ? spacing.sectionGap : spacing.itemGap }}>
       {params.map((p) => {
         const description = getDescription?.(p);
         return (
           <div key={p.id} style={styles.field}>
-            <div style={styles.row}>
+            <Inline gap="rowGap" justify="space-between">
               <label style={styles.label}>{p.label}</label>
               {/* Each control stops its own click from bubbling — not the whole row/field — so a
                   container that turns clicks into a "select this" action elsewhere (e.g.
@@ -227,7 +228,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   ))}
                 </select>
               )}
-            </div>
+            </Inline>
             {description && <div style={styles.description}>{description}</div>}
             {description && p.kind.type === "enum" && (
               <ul style={styles.optionList}>
@@ -235,7 +236,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   const explanation = resolveParamOptionExplanation(p.id, opt);
                   if (!explanation) return null;
                   return (
-                    <li key={opt} style={styles.optionListItem}>
+                    <li key={opt}>
                       <strong>{resolveParamOptionLabel(p.id, opt)}</strong> — {explanation}
                     </li>
                   );
@@ -257,13 +258,7 @@ const styles: Record<string, React.CSSProperties> = {
   field: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
-  },
-  row: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
+    gap: spacing.elementsGap,
   },
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color) —
   // see theme.ts's own guidance against composing fontSize/color ad hoc.
@@ -276,13 +271,10 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.4,
   },
   optionList: {
-    margin: "2px 0 0",
+    margin: `${spacing.elementsGap}px 0 0`,
     paddingLeft: 16,
     ...typography.caption,
     lineHeight: 1.4,
-  },
-  optionListItem: {
-    marginBottom: 2,
   },
   input: {
     ...sharedStyles.inputSm,
@@ -305,7 +297,7 @@ const styles: Record<string, React.CSSProperties> = {
   intervalWrap: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: spacing.itemGap,
     flexShrink: 0,
   },
   intervalSeparator: {
@@ -314,7 +306,7 @@ const styles: Record<string, React.CSSProperties> = {
   percentSliderWrap: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.groupGap,
     flex: 1,
     justifyContent: "flex-end",
   },

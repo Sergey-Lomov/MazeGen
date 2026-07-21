@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
-import { ui, radius, typography, muted } from "../styles/theme";
+import { ui, radius, typography, muted, inset, spacing } from "../styles/theme";
+import { sharedStyles } from "../styles/shared";
 import { StepSlider } from "./StepSlider";
 import { DebugEventTree } from "./DebugEventTree";
 import { ToggleRow } from "./ToggleRow";
@@ -127,13 +128,13 @@ export function DebugPanel() {
       )}
       <div style={styles.controls}>
         {/* Step buttons */}
-        <button className="hoverable" style={styles.iconBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>❮</button>
-        <button className="hoverable" style={styles.iconBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>❯</button>
+        <button className="hoverable" style={styles.toolbarBtn} disabled={atStart} onClick={() => { setPlaying(false); setDebugStep(debugStep - 1); }} title={m["debug.prev_step"]()}>❮</button>
+        <button className="hoverable" style={styles.toolbarBtn} disabled={atEnd}   onClick={() => { setPlaying(false); setDebugStep(debugStep + 1); }} title={m["debug.next_step"]()}>❯</button>
 
         {/* Autoplay */}
         <button
           className="hoverable"
-          style={styles.playBtn}
+          style={styles.toolbarBtn}
           onClick={() => setPlaying(p => !p)}
           title={playing ? m["debug.stop"]() : m["debug.play"]()}
         >
@@ -223,8 +224,8 @@ const styles: Record<string, React.CSSProperties> = {
   controls: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    padding: "7px 16px",
+    gap: spacing.rowGap,
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     background: ui.bg.panelAlt,
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
@@ -232,44 +233,26 @@ const styles: Record<string, React.CSSProperties> = {
   stepRow: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    padding: "7px 16px",
+    gap: spacing.rowGap,
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
   debugValuesRow: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 6,
-    padding: "7px 16px",
+    gap: spacing.itemGap,
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
-  iconBtn: {
+  toolbarBtn: {
     ...typography.control,
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
     cursor: "default",
-    padding: "0 10px",
-    flexShrink: 0,
-    height: 28,
-    boxSizing: "border-box" as const,
-    borderRadius: radius.sm,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    lineHeight: 1,
-    appearance: "none" as const,
-    paddingBottom: 2,
-  },
-  playBtn: {
-    ...typography.control,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.secondary,
-    cursor: "default",
-    padding: "0 12px",
+    padding: `0 ${inset.panelInsetX}px`,
     flexShrink: 0,
     height: 28,
     boxSizing: "border-box" as const,
@@ -286,7 +269,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     color: ui.text.secondary,
-    padding: "0 6px",
+    padding: sharedStyles.input.padding,
     width: 60,
     height: 28,
     boxSizing: "border-box" as const,
@@ -319,7 +302,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     color: ui.text.tertiary,
     cursor: "default",
-    padding: "0 2px",
+    padding: `0 ${inset.iconButtonInset}px`,
     flexShrink: 0,
     lineHeight: 1,
     marginLeft: "auto",
@@ -328,7 +311,7 @@ const styles: Record<string, React.CSSProperties> = {
     ...typography.body,
     background: ui.bg.error,
     color: ui.text.error,
-    padding: "4px 12px",
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     flexShrink: 0,
   },
 };

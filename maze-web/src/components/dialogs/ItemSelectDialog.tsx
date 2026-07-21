@@ -1,7 +1,7 @@
 import React from "react";
 import { Modal } from "../Modal";
 import { WarningIcon } from "../WarningIcon";
-import { ui, dialogSpacing, typography } from "../../styles/theme";
+import { ui, dialogSpacing, typography, spacing, indent } from "../../styles/theme";
 
 interface Item {
   id: string;
@@ -98,10 +98,10 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     borderRight: `1px solid ${ui.border.default}`,
     overflowY: "auto" as const,
-    padding: "8px 0",
+    padding: `${spacing.itemGap}px 0`,
     display: "flex",
     flexDirection: "column",
-    gap: 1,
+    gap: spacing.elementsGap,
   },
   item: {
     ...typography.control,
@@ -114,7 +114,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.groupGap,
   },
   itemSelected: {
     background: ui.accent.base,
@@ -128,16 +128,16 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
   },
   itemIndented: {
-    paddingLeft: dialogSpacing.paddingX + 12,
+    paddingLeft: dialogSpacing.paddingX + indent.tree,
   },
   sectionHeader: {
     ...typography.body,
-    marginTop: 8,
+    marginTop: spacing.groupGap,
     padding: `0 ${dialogSpacing.paddingX}px`,
   },
   divider: {
     borderTop: `1px solid ${ui.border.default}`,
-    margin: `4px ${dialogSpacing.paddingX}px 0`,
+    margin: `${spacing.itemGap}px ${dialogSpacing.paddingX}px 0`,
   },
   rightCol: {
     flex: 1,
@@ -152,12 +152,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: `${dialogSpacing.bodyPadding}px ${dialogSpacing.paddingX}px`,
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: spacing.groupGap,
   },
   footer: {
     display: "flex",
     justifyContent: "flex-end",
-    gap: 6,
+    gap: spacing.groupGap,
     padding: `${dialogSpacing.paddingY}px ${dialogSpacing.paddingX}px`,
     borderTop: `1px solid ${ui.border.default}`,
     flexShrink: 0,

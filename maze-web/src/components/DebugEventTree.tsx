@@ -11,14 +11,14 @@ import { adapterForNode, type Token, type BaseAlgorithmAdapter, type ScopeTitleL
 import type { EventedEventKind } from "../wasm/mazeService";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { resolveIssue } from "./issueRegistry";
-import { ui, typography, muted } from "../styles/theme";
+import { ui, typography, muted, spacing, indent } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
 const ROW_MIN_HEIGHT = 26;
-const INDENT_PX = 16;
+const INDENT_PX = indent.tree;
 const STEP_COL_WIDTH = 34;
-const ROW_BODY_PADDING_LEFT = 8;
-const ROW_BODY_PADDING_RIGHT = 8;
+const ROW_BODY_PADDING_LEFT = spacing.rowGap;
+const ROW_BODY_PADDING_RIGHT = spacing.rowGap;
 const DISCLOSURE_WIDTH = 14;
 const TEXT_GAP = 4;
 // typography.body: fontSize 14px — average glyph width for a proportional sans-serif font is
@@ -318,7 +318,7 @@ export function DebugEventTree() {
               >
                 {displayStep !== null ? displayStep + 1 : "—"}
               </span>
-              <span style={{ ...styles.rowBody, paddingLeft: 8 + row.depth * INDENT_PX }}>
+              <span style={{ ...styles.rowBody, paddingLeft: ROW_BODY_PADDING_LEFT + row.depth * INDENT_PX }}>
                 {row.hasChildren ? (
                   <span style={styles.disclosure}>
                     {isExpanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
@@ -357,7 +357,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     cursor: "default",
-    paddingRight: 8,
+    paddingRight: spacing.rowGap,
   },
   stepCol: {
     ...muted(typography.body),
@@ -372,7 +372,7 @@ const styles: Record<string, React.CSSProperties> = {
   rowBody: {
     display: "flex",
     alignItems: "flex-start",
-    gap: 4,
+    gap: spacing.itemGap,
     flex: 1,
     minWidth: 0,
     padding: `${(ROW_MIN_HEIGHT - 16) / 2}px 0`,

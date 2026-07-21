@@ -5,6 +5,7 @@ import { NestedStrategyPanel, findRawNested } from "./NestedStrategyPanel";
 import { resolveStrategyDescription } from "../qualityI18n";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
+import { spacing } from "../../../styles/theme";
 import { entriesForSlot, type PathSegment } from "../../../store/storeTypes";
 import type { useQualityViewModel, NestedStrategyVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
@@ -92,7 +93,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
           // Same visual gap as between two params in `ParamFields` (`gap: 16` when descriptions
           // are shown) — `detailPanel`'s own `gap: 8` between direct children already accounts
           // for half of it, so only 8px more is added here, not a divider.
-          <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: spacing.sectionGap, marginTop: spacing.groupGap }}>
             {strategy.nestedSlots.map((slotDesc) => (
               <NestedStrategyPanel
                 key={slotDesc.slotId}
@@ -132,7 +133,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
         flushRef={flushRef}
       >
         {node.strategy.nestedSlots.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: spacing.sectionGap, marginTop: spacing.groupGap }}>
             {node.strategy.nestedSlots.map((childSlotDesc) => (
               <NestedStrategyPanel
                 key={childSlotDesc.slotId}

@@ -1,6 +1,6 @@
 import React from "react";
 import { Modal } from "./Modal";
-import { ui, radius, dialogSpacing, typography } from "../styles/theme";
+import { ui, radius, dialogSpacing, typography, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -36,7 +36,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 12px",
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },

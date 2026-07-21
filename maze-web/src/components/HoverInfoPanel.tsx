@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import type { MazeScene } from "../pixi/MazeScene";
 import type { HoverInfo } from "../pixi/hoverTypes";
-import { ui, typography, muted } from "../styles/theme";
+import { ui, typography, muted, inset } from "../styles/theme";
 
 interface HoverInfoPanelProps {
   scene: MazeScene | null;
@@ -27,7 +27,7 @@ const styles: Record<string, React.CSSProperties> = {
   bar: {
     display: "flex",
     alignItems: "center",
-    padding: "0 12px",
+    padding: `0 ${inset.panelInsetX}px`,
     background: ui.bg.panelAlt,
     borderTop: `1px solid ${ui.border.default}`,
     flexShrink: 0,

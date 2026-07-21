@@ -5,7 +5,7 @@ import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSe
 import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
 import { ConfirmModal } from "../ConfirmModal";
 import { sharedStyles } from "../../styles/shared";
-import { ui, radius, typography, muted } from "../../styles/theme";
+import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
 import { Switch } from "../Switch";
 import { SliderParam } from "../SliderParam";
@@ -74,7 +74,7 @@ export function GenerationFeature({ canGenerate }: Props) {
       {/* Seed block */}
       <div style={styles.algorithmBlock}>
         <span style={styles.sectionCaption}>{m["generation.seed_section"]()}</span>
-        <div style={{ ...styles.row, paddingLeft: 8, gap: 4 }}>
+        <div style={{ ...styles.row, paddingLeft: indent.tree, gap: spacing.itemGap }}>
           <span style={styles.algorithmLabel}>{m["generation.seed_value"]()}</span>
           <input
             type="number"
@@ -114,7 +114,7 @@ export function GenerationFeature({ canGenerate }: Props) {
             <History size={16} color={ui.text.tertiary} />
           </button>
         </div>
-        <div style={{ ...styles.row, paddingLeft: 8 }}>
+        <div style={{ ...styles.row, paddingLeft: indent.tree }}>
           <span style={styles.algorithmLabel}>{m["generation.random"]()}</span>
           <div style={styles.switchRight}>
             <Switch checked={randomSeed} onChange={setRandomSeed} />
@@ -126,7 +126,7 @@ export function GenerationFeature({ canGenerate }: Props) {
       {/* Algorithm block */}
       <div style={styles.algorithmBlock}>
         <span style={styles.sectionCaption}>{m["generation.algorithm"]()}</span>
-        <div style={{ ...styles.row, paddingLeft: 8 }}>
+        <div style={{ ...styles.row, paddingLeft: indent.tree }}>
           <span style={styles.algorithmLabel}>{getAlgorithmLabel(method)}</span>
           <button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
         </div>
@@ -154,7 +154,7 @@ export function GenerationFeature({ canGenerate }: Props) {
       {/* Elements block */}
       <div style={styles.algorithmBlock}>
         <span style={styles.sectionCaption}>{m["generation.elements"]()}</span>
-        <div style={{ ...styles.paramValues, paddingLeft: 8 }}>
+        <div style={{ ...styles.paramValues, paddingLeft: indent.tree }}>
           {isCanonical ? (
             <WarningBubble message={m["generation.canonical_elements_warning"]({ qualityTitle: m["quality.title"]() })} severity="info" />
           ) : (
@@ -222,12 +222,12 @@ const styles: Record<string, React.CSSProperties> = {
   root: {
     display: "flex",
     flexDirection: "column",
-    gap: 8,
+    gap: spacing.groupGap,
   },
   row: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.groupGap,
   },
   switchLabel: {
     ...muted(typography.body),
@@ -239,11 +239,11 @@ const styles: Record<string, React.CSSProperties> = {
   algorithmBlock: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    gap: spacing.itemGap,
   },
   sectionCaption: {
     ...typography.body,
-    marginTop: 8,
+    marginTop: spacing.groupGap,
   },
   algorithmLabel: {
     flex: 1,
@@ -254,7 +254,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "none",
     border: "none",
     color: ui.text.tertiary,
-    padding: "0 2px",
+    padding: `0 ${inset.iconButtonInset}px`,
     cursor: "default",
     lineHeight: 1,
     flexShrink: 0,
@@ -278,14 +278,14 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "default",
   },
   paramValues: {
-    paddingLeft: 16,
+    paddingLeft: indent.tree * 2,
     display: "flex",
     flexDirection: "column",
-    gap: 8,
+    gap: spacing.groupGap,
   },
   divider: {
     borderTop: `1px solid ${ui.border.default}`,
-    margin: "2px 0",
+    margin: `${spacing.elementsGap}px 0`,
   },
   statusError: {
     ...typography.body,
@@ -293,7 +293,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnRow: {
     display: "flex",
-    gap: 6,
+    gap: spacing.itemGap,
   },
   btnGenerate: {
     ...typography.control,
@@ -301,7 +301,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 4px",
+    padding: inset.toolButtonInset,
     cursor: "default",
     borderRadius: radius.sm,
   },

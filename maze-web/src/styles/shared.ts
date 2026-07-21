@@ -1,5 +1,5 @@
 import type React from "react";
-import { ui, font, radius, typography } from "./theme";
+import { ui, font, radius, typography, spacing, inset } from "./theme";
 
 const selectArrow = {
   appearance: "none",
@@ -52,7 +52,7 @@ export const sharedStyles = {
   fieldLabel: {
     display: "flex",
     flexDirection: "column",
-    gap: 3,
+    gap: spacing.elementsGap,
     ...typography.caption,
   } satisfies React.CSSProperties,
 
@@ -67,7 +67,7 @@ export const sharedStyles = {
     background: ui.accent.base,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 4px",
+    padding: inset.toolButtonInset,
     cursor: "default",
     borderRadius: radius.sm,
   } satisfies React.CSSProperties,
@@ -78,7 +78,7 @@ export const sharedStyles = {
     background: ui.border.strong,
     border: "none",
     color: ui.text.inverse,
-    padding: "5px 4px",
+    padding: inset.toolButtonInset,
     cursor: "default",
     borderRadius: radius.sm,
   } satisfies React.CSSProperties,
@@ -87,7 +87,7 @@ export const sharedStyles = {
   toggleBtn: {
     ...typography.control,
     flex: 1,
-    padding: "4px 4px",
+    padding: inset.toolButtonInset,
     border: `1px solid ${ui.border.strong}`,
     background: ui.bg.input,
     color: ui.text.tertiary,
@@ -122,8 +122,8 @@ export const sharedStyles = {
   sliderRow: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
+    gap: spacing.itemGap,
+    marginBottom: spacing.itemGap,
   } satisfies React.CSSProperties,
 
   sliderRowLabel: {
@@ -165,7 +165,7 @@ export const sharedStyles = {
   // Panel title
   panelTitle: {
     ...typography.title,
-    marginBottom: 4,
+    marginBottom: spacing.itemGap,
   } satisfies React.CSSProperties,
 } as const;
 
@@ -179,7 +179,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
         background: ui.accent.base,
         border: "none",
         color: ui.text.inverse,
-        padding: "5px 4px",
+        padding: inset.toolButtonInset,
         cursor: "default",
         borderRadius: radius.sm,
       };
@@ -187,7 +187,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
       return {
         ...typography.control,
         flex: 1,
-        padding: "4px 4px",
+        padding: inset.toolButtonInset,
         border: `1px solid ${ui.border.strong}`,
         background: ui.bg.input,
         color: ui.text.tertiary,
@@ -198,7 +198,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
       return {
         ...typography.control,
         flex: 1,
-        padding: "4px 4px",
+        padding: inset.toolButtonInset,
         border: `1px solid ${ui.accent.base}`,
         background: ui.accent.base,
         color: ui.text.inverse,
@@ -208,7 +208,7 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
     case "destructive":
       return {
         ...typography.control,
-        padding: "4px 4px",
+        padding: inset.toolButtonInset,
         border: `1px solid ${ui.text.error}`,
         background: ui.bg.input,
         color: ui.text.error,

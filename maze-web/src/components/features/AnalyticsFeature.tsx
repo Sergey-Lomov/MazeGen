@@ -2,7 +2,7 @@ import React from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import { ui, typography, muted, disabled } from "../../styles/theme";
+import { ui, typography, muted, disabled, spacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
@@ -257,19 +257,19 @@ export function AnalyticsFeature() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  root: { display: "flex", flexDirection: "column", gap: 6 },
-  sectionHeaderRow: { display: "flex", alignItems: "center", gap: 4, cursor: "default", borderRadius: 3 },
-  statBlock: { display: "flex", flexDirection: "column", gap: 3 },
-  statRow: { display: "flex", alignItems: "center", gap: 6 },
+  root: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  sectionHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3 },
+  statBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  statRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
   statLabel: { flex: 1, ...muted(typography.body) },
   statCount: { ...typography.caption, minWidth: 32, textAlign: "right" },
   statPct: { ...disabled(typography.body), minWidth: 44, textAlign: "right" },
-  timingSubheader: { ...disabled(typography.body), marginTop: 4 },
-  scoreRow: { display: "flex", alignItems: "center", gap: 6 },
-  divider: { borderTop: `1px solid ${ui.border.default}`, margin: "4px 0" },
-  toggleBlock: { display: "flex", flexDirection: "column", gap: 6 },
-  legendRow: { display: "flex", alignItems: "flex-start", gap: 8 },
-  legendSwatch: { width: 14, height: 14, borderRadius: 3, marginTop: 2, flexShrink: 0 },
+  timingSubheader: { ...disabled(typography.body), marginTop: spacing.itemGap },
+  scoreRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
+  divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
+  toggleBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  legendRow: { display: "flex", alignItems: "center", gap: spacing.groupGap },
+  legendSwatch: { width: 14, height: 14, borderRadius: 3, flexShrink: 0 },
   legendLabel: { ...typography.body, fontWeight: "bold" as const },
   legendDesc: { ...muted(typography.body) },
 };

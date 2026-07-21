@@ -3,9 +3,10 @@ import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
-import { typography, muted } from "../../styles/theme";
+import { typography, muted, spacing } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
+import { Stack, Inline, Grid } from "../Layout";
 import * as m from "~/paraglide/messages";
 
 interface SizeParamProps {
@@ -172,8 +173,8 @@ export function FieldSetupFeature() {
   };
 
   return (
-    <div style={styles.root}>
-      <div style={styles.toggleRow}>
+    <Stack gap="groupGap">
+      <Inline gap="itemGap">
         <button
           className={isCustom ? "hoverable" : "hoverable-accent"}
           style={buttonStyle(isCustom ? "toggle" : "toggle-active")}
@@ -188,7 +189,7 @@ export function FieldSetupFeature() {
         >
           {m["field.custom"]()}
         </button>
-      </div>
+      </Inline>
       {!isCustom && (
         <>
           {renderShapeSelect()}
@@ -198,7 +199,7 @@ export function FieldSetupFeature() {
       {isCustom && (
         <>
           <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
-          <div style={styles.primitiveGrid}>
+          <Grid templateColumns="1fr 1fr" gap="itemGap">
           {primitivesForKind(tessellationKind).map(([p, label]) => (
             <button
               key={p}
@@ -209,14 +210,14 @@ export function FieldSetupFeature() {
               {label}
             </button>
           ))}
-          </div>
+          </Grid>
           <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_origin"]()}</span>
             <Switch checked={showFieldOrigin} onChange={setShowFieldOrigin} />
           </div>
           <button
             className="hoverable-danger"
-            style={{ ...buttonStyle("destructive"), width: "100%", marginTop: 4 }}
+            style={{ ...buttonStyle("destructive"), width: "100%", marginTop: spacing.itemGap }}
             onClick={handleClearField}
           >
             {m["field.clear"]()}
@@ -230,7 +231,7 @@ export function FieldSetupFeature() {
           onCancel={() => setConfirmPending(null)}
         />
       )}
-    </div>
+    </Stack>
   );
 }
 
@@ -303,13 +304,10 @@ function configSizeLabel(cfg: TessellationConfig): string {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  root: { display: "flex", flexDirection: "column", gap: 8 },
-  toggleRow: { display: "flex", gap: 4 },
   label: sharedStyles.fieldLabel,
   select: sharedStyles.select,
   input: sharedStyles.input,
-  sectionLabel: { ...typography.body, marginTop: 8 },
-  primitiveGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
+  sectionLabel: { ...typography.body, marginTop: spacing.groupGap },
   originRow: { display: "flex", alignItems: "center", justifyContent: "space-between", ...muted(typography.body) },
   originLabel: { ...muted(typography.body) },
 };

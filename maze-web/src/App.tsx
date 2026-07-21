@@ -6,7 +6,7 @@ import { QualityCanvas } from "./components/features/QualityCanvas";
 import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
 import { useMazeStore } from "./store/mazeStore";
-import { ui, typography, disabled } from "./styles/theme";
+import { ui, typography, disabled, inset } from "./styles/theme";
 import { canvas } from "./pixi/colorTokens";
 import { useLocale } from "./i18n/useLocale";
 import * as m from "~/paraglide/messages";
@@ -54,7 +54,6 @@ export function App() {
   return (
     <div style={styles.root}>
       <div style={styles.panel}>
-        {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
         <FeaturesPanel onRefit={() => sceneRef.current?.refit()} />
       </div>
       <div style={styles.canvasColumn}>
@@ -63,6 +62,7 @@ export function App() {
         {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}
       </div>
       {generationOpen && debugMode && debugArena && <DebugPanel />}
+      {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
     </div>
   );
 }
@@ -80,5 +80,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   canvasColumn: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
   canvas: { flex: 1, overflow: "hidden" },
-  loading: { padding: 12, ...disabled(typography.body) },
+  loading: {
+    position: "fixed",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: ui.bg.app,
+    padding: inset.panelInsetX,
+    ...disabled(typography.body),
+  },
 };

@@ -1,12 +1,13 @@
 ﻿import { useState, useMemo } from "react";
-import { X } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { buttonStyle } from "../../styles/shared";
-import { ui, typography, muted } from "../../styles/theme";
+import { typography, muted, spacing } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import { IssuesBlock } from "../IssuesBlock";
+import { Stack, Inline, Grid } from "../Layout";
+import { StatusTag } from "../StatusTag";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
@@ -61,10 +62,10 @@ export function PostEditFeature() {
   const hasEdges = postEditDraftEdges !== null;
 
   return (
-    <div style={styles.root}>
+    <Stack gap="groupGap">
       {postEditAnalytics && <IssuesBlock issues={postEditAnalytics.issues} />}
       <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
-      <div style={styles.toolGrid}>
+      <Grid templateColumns="1fr 1fr" gap="itemGap">
         {getEdgeTools().map(([t, label]) => (
           <button
             key={t}
@@ -75,9 +76,9 @@ export function PostEditFeature() {
             {label}
           </button>
         ))}
-      </div>
+      </Grid>
       <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
-      <div style={styles.vertexToolGrid}>
+      <Stack gap="itemGap">
         {getTeleportTools().map(([t, label]) => (
           <button
             key={t}
@@ -88,7 +89,7 @@ export function PostEditFeature() {
             {label}
           </button>
         ))}
-        <div style={styles.startFinishRow}>
+        <Grid templateColumns="1fr 1fr" gap="itemGap">
           {getVertexTools().map(([t, label]) => (
             <button
               key={t}
@@ -99,43 +100,40 @@ export function PostEditFeature() {
               {label}
             </button>
           ))}
-        </div>
-      </div>
+        </Grid>
+      </Stack>
 
       {(startNode || finishNode || pendingFromNode || postEditDraftTeleports.length > 0) && (
-        <div style={styles.statusBlock}>
+        <Stack gap="itemGap">
           {startNode && (
-            <div style={styles.statusBubble}>
-              <span>{m["preset.start"]()}: {startNode.x},{startNode.y}</span>
-              <button className="hoverable" style={styles.clearTag} onClick={() => clearPostEditEndpoint("start")}><X size={16} /></button>
-            </div>
+            <StatusTag onClear={() => clearPostEditEndpoint("start")}>
+              {m["preset.start"]()}: {startNode.x},{startNode.y}
+            </StatusTag>
           )}
           {finishNode && (
-            <div style={styles.statusBubble}>
-              <span>{m["preset.finish"]()}: {finishNode.x},{finishNode.y}</span>
-              <button className="hoverable" style={styles.clearTag} onClick={() => clearPostEditEndpoint("finish")}><X size={16} /></button>
-            </div>
+            <StatusTag onClear={() => clearPostEditEndpoint("finish")}>
+              {m["preset.finish"]()}: {finishNode.x},{finishNode.y}
+            </StatusTag>
           )}
           {pendingFromNode && (
-            <div style={styles.statusBubble}>
-              <span>{m["preset.teleport_pending"]()}: {pendingFromNode.x},{pendingFromNode.y}</span>
-              <button className="hoverable" style={styles.clearTag} onClick={() => setPostEditTeleportPendingFrom(null)}><X size={16} /></button>
-            </div>
+            <StatusTag onClear={() => setPostEditTeleportPendingFrom(null)}>
+              {m["preset.teleport_pending"]()}: {pendingFromNode.x},{pendingFromNode.y}
+            </StatusTag>
           )}
           {postEditDraftTeleports.length > 0 && (
-            <div style={styles.statusBubble}>
-              <span>{postEditDraftTeleports.length === 1
+            <StatusTag>
+              {postEditDraftTeleports.length === 1
                 ? m["preset.teleports_count"]({ count: postEditDraftTeleports.length })
-                : m["preset.teleports_count_plural"]({ count: postEditDraftTeleports.length })}</span>
-            </div>
+                : m["preset.teleports_count_plural"]({ count: postEditDraftTeleports.length })}
+            </StatusTag>
           )}
-        </div>
+        </Stack>
       )}
 
-      <div style={styles.autoConfirmRow}>
+      <Inline gap="groupGap" justify="space-between">
         <span style={styles.autoConfirmLabel}>{m["post_edit.auto_confirm"]()}</span>
         <Switch checked={autoConfirm} onChange={setAutoConfirm} />
-      </div>
+      </Inline>
       <span style={styles.hint}>{m["post_edit.auto_confirm_hint"]()}</span>
 
       <button
@@ -162,24 +160,14 @@ export function PostEditFeature() {
           onCancel={() => setConfirmReset(false)}
         />
       )}
-    </div>
+    </Stack>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  root: { display: "flex", flexDirection: "column", gap: 8 },
   sectionLabel: {
     ...typography.body,
-    marginTop: 8,
-  },
-  toolGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  vertexToolGrid: { display: "grid", gridTemplateColumns: "1fr", gap: 4 },
-  startFinishRow: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 },
-  autoConfirmRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    ...typography.caption,
+    marginTop: spacing.groupGap,
   },
   autoConfirmLabel: {
     ...muted(typography.body),
@@ -187,28 +175,5 @@ const styles: Record<string, React.CSSProperties> = {
   hint: {
     ...typography.caption,
     marginTop: -4,
-  },
-  statusBlock: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-  statusBubble: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    ...typography.caption,
-    background: ui.bg.input,
-    borderRadius: 4,
-    padding: "6px 8px",
-  },
-  clearTag: {
-    ...muted(typography.icon),
-    background: "none",
-    border: "none",
-    cursor: "default",
-    padding: "0 2px",
-    lineHeight: 1,
-    display: "flex",
   },
 };

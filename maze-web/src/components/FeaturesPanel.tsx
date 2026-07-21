@@ -19,7 +19,7 @@ import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../pixi/fieldEditUtils";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
-import { ui } from "../styles/theme";
+import { ui, spacing, inset } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import * as m from "~/paraglide/messages";
 
@@ -353,13 +353,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "8px 10px",
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     borderTop: `1px solid ${ui.border.default}`,
     flexShrink: 0,
   },
   footerRight: {
     display: "flex",
-    gap: 4,
+    gap: spacing.itemGap,
     alignItems: "center",
   },
 };
