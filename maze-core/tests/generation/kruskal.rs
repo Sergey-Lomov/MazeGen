@@ -131,8 +131,8 @@ fn kruskal_preset_connection_emits_preset_unions_applied_before_the_main_loop() 
     let (mut graph, field, _start) = build(3, 3);
     let presets = vec![PresetConnection { from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage }];
     let preset_state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y });
-    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+    let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
 
     let mut log: EventLog<KruskalEvent> = EventLog::new();
     generate_kruskal(&mut graph, &field, 1, &preset_state, Some(&mut log));
@@ -174,8 +174,8 @@ fn kruskal_preset_teleport_emits_preset_unions_applied_with_teleport_kind() {
         from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
     }];
     let preset_state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y });
-    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+    let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    let b = field.nodes_at(SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
 
     let mut log: EventLog<KruskalEvent> = EventLog::new();
     generate_kruskal(&mut graph, &field, 1, &preset_state, Some(&mut log));
@@ -204,8 +204,8 @@ fn kruskal_one_way_preset_teleport_emits_only_the_single_directed_edge() {
         from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
     }];
     let preset_state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y });
-    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+    let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    let b = field.nodes_at(SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
 
     let mut log: EventLog<KruskalEvent> = EventLog::new();
     generate_kruskal(&mut graph, &field, 1, &preset_state, Some(&mut log));

@@ -24,7 +24,7 @@ fn make_maze(n_cols: usize, n_rows: usize) -> Maze<SquareTessellation> {
 fn make_connected_maze(n_cols: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut maze = make_maze(n_cols, 1);
     let ordered: Vec<NodeId> = (0..n_cols)
-        .map(|x| maze.field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
+        .map(|x| maze.field.nodes_at(SquarePoint { x: x as i32, y: 0 }).first().copied().unwrap())
         .collect();
     for i in 0..ordered.len() - 1 {
         maze.graph.build_initial_bidirectional_edge(ordered[i], ordered[i + 1], EdgeKind::Basic);
@@ -123,7 +123,7 @@ fn random_endpoints_empty_graph_returns_failed() {
 #[test]
 fn random_endpoints_isolated_start_returns_failed() {
     let mut maze = make_maze(3, 1);
-    let start = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = maze.field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     maze.meta.start = Some(start);
     let mut rng = make_rng();
     let issue = MissingEndpointsIssue::new_from_check("test", false, true);
@@ -203,7 +203,7 @@ fn farthest_endpoints_deterministic() {
 fn make_disconnected_maze() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut maze = make_maze(4, 1);
     let ordered: Vec<NodeId> = (0..4)
-        .map(|x| maze.field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
+        .map(|x| maze.field.nodes_at(SquarePoint { x: x as i32, y: 0 }).first().copied().unwrap())
         .collect();
     maze.graph.build_initial_bidirectional_edge(ordered[0], ordered[1], EdgeKind::Basic);
     maze.graph.build_initial_bidirectional_edge(ordered[2], ordered[3], EdgeKind::Basic);

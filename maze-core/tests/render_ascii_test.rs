@@ -12,7 +12,7 @@ fn make_maze(width: usize, height: usize) -> (Maze<SquareTessellation>, Vec<Vec<
     field.build_nodes(&mut graph);
     let nodes: Vec<Vec<NodeId>> = (0..height)
         .map(|y| (0..width)
-            .map(|x| field.node_at(SquarePoint { x: x as i32, y: y as i32 }).unwrap())
+            .map(|x| field.nodes_at(SquarePoint { x: x as i32, y: y as i32 }).first().copied().unwrap())
             .collect())
         .collect();
     let maze = Maze::new(field, graph);

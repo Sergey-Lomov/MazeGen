@@ -11,7 +11,7 @@ fn main() {
     let seed = 3u64;
     let mut ids = IdGenerator::new();
     let field = Field::new(square_rect(10, 10), &mut ids).unwrap();
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     generate_maze(&mut graph, &field, seed, start, GenerationConfig::default(), &PresetState::empty());

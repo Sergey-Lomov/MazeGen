@@ -108,7 +108,8 @@ pub fn run_generate<T: Tessellation + 'static>(
     field.build_nodes(&mut graph);
 
     let start_id = field
-        .node_at(start)
+        .nodes_at(start)
+        .first().copied()
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
     let gen_config = build_generation_config(config);
@@ -127,10 +128,10 @@ pub fn run_generate<T: Tessellation + 'static>(
 
     let preset_start = config.preset_start
         .and_then(|[sx, sy]| point_at_xy(&field, &point_to_xy, sx, sy))
-        .and_then(|p| field.node_at(p));
+        .and_then(|p| field.nodes_at(p).first().copied());
     let preset_finish = config.preset_finish
         .and_then(|[fx, fy]| point_at_xy(&field, &point_to_xy, fx, fy))
-        .and_then(|p| field.node_at(p));
+        .and_then(|p| field.nodes_at(p).first().copied());
 
     // QC/repair gets its own `EventLog<QcEvent>` when `debug_events` is on and either generation
     // itself produced a forwardable source to anchor against, or `qc_experiment` mode is active —

@@ -7,7 +7,7 @@ pub fn build(width: usize, height: usize) -> (Graph, Field<SquareTessellation>, 
     let field = Field::new(square_rect(width, height), &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     (graph, field, start)
 }
 

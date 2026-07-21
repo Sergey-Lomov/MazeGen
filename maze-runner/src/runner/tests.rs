@@ -457,7 +457,7 @@ mod build_check_tests {
         let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        let p = |x: i32| field.nodes_at(SquarePoint { x, y: 0 }).first().copied().unwrap();
         g.build_initial_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.build_initial_edge(p(0), p(2), EdgeKind::Teleport);
         g.build_initial_edge(p(1), p(3), EdgeKind::Teleport);

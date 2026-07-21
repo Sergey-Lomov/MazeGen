@@ -15,6 +15,12 @@ pub trait Tessellation {
     type Point: Copy + Eq + Hash;
     type Face: Copy + PartialEq + 'static;
 
+    /// Moves from `point` through `face` to the adjacent point.
+    ///
+    /// Invariant: for a fixed `point`, `step(point, f1)` and `step(point, f2)` never coincide for
+    /// `f1 != f2` — every future `Tessellation` impl must uphold this (all three current ones
+    /// already do). `Field::neighbors` relies on it to guarantee it never visits the same
+    /// neighboring point twice while iterating `faces()`.
     fn step(point: Self::Point, face: Self::Face) -> Self::Point;
     fn faces() -> &'static [Self::Face];
     fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
@@ -76,8 +82,14 @@ pub fn geometric_edge_distance<T: Tessellation>(a_from: T::Point, a_to: T::Point
     ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
 }
 
+/// A tile's point resolves to one *or more* `NodeId`s (see GitHub issue #219, epic #218) — most
+/// points hold exactly one (the `Vec` stays a single-element allocation), but a point can be
+/// split into several independent routing passages via `add_node_at`. `Field` itself has no
+/// notion of "groups" or which faces belong to which node — it only tracks the node set per
+/// point; deciding which of a point's several nodes should connect to what is entirely up to the
+/// caller (generation algorithms, QC/repair strategies).
 pub struct Field<T: Tessellation> {
-    point_to_node: HashMap<T::Point, NodeId>,
+    point_to_nodes: HashMap<T::Point, Vec<NodeId>>,
     node_to_point: HashMap<NodeId, T::Point>,
 }
 
@@ -89,7 +101,7 @@ pub struct Field<T: Tessellation> {
 impl<T: Tessellation> Clone for Field<T> {
     fn clone(&self) -> Self {
         Self {
-            point_to_node: self.point_to_node.clone(),
+            point_to_nodes: self.point_to_nodes.clone(),
             node_to_point: self.node_to_point.clone(),
         }
     }
@@ -100,23 +112,59 @@ impl<T: Tessellation> Field<T> {
         points: impl IntoIterator<Item = T::Point>,
         ids: &mut IdGenerator,
     ) -> Result<Self, &'static str> {
-        let mut point_to_node = HashMap::new();
+        let mut point_to_nodes = HashMap::new();
         let mut node_to_point = HashMap::new();
         for point in points {
             let id = ids.next_id();
-            point_to_node.insert(point, id);
+            point_to_nodes.insert(point, vec![id]);
             node_to_point.insert(id, point);
         }
-        if point_to_node.is_empty() {
+        if point_to_nodes.is_empty() {
             return Err("field is empty");
         }
-        Ok(Self { point_to_node, node_to_point })
+        Ok(Self { point_to_nodes, node_to_point })
     }
 
     pub fn node_count(&self) -> usize {
-        self.point_to_node.len()
+        self.node_to_point.len()
     }
 
+    /// Adds another `NodeId` to an already-existing point — see GitHub issue #219. The point
+    /// must already be in the field (panics otherwise): `Field`'s point set/shape is fixed at
+    /// construction (`all_points`/field bounds — used by `render_ascii`, region-size QC checks —
+    /// rely on it never growing), so this only splits an existing tile into more passages, it
+    /// never grows the map with a new one. The new node is not automatically connected to
+    /// anything — not the point's other node(s) (no implicit edge between them), not any
+    /// neighboring point — the caller decides what graph edges (if any) to add via the usual
+    /// `Graph`/`MutationCommand` API. Not limited in how many times it may be called for the same
+    /// point.
+    ///
+    /// This only updates `Field` — if `Graph::build_nodes` has already run, the new node won't
+    /// exist in the `Graph` until something also calls `graph.add_node` for it. In production code
+    /// that's `Maze::add_node_at`, which does both atomically.
+    pub fn add_node_at(&mut self, point: T::Point, ids: &mut IdGenerator) -> NodeId {
+        let nodes = self.point_to_nodes.get_mut(&point)
+            .unwrap_or_else(|| panic!("add_node_at: point not in field"));
+        let id = ids.next_id();
+        nodes.push(id);
+        self.node_to_point.insert(id, point);
+        id
+    }
+
+    /// All `NodeId`s resolving to `point`, in stable creation order (the point's original node
+    /// first, each subsequent `add_node_at` appended after) — not `NodeId` order, not `HashMap`
+    /// iteration order. Empty slice if the point isn't in the field. No allocation — borrows from
+    /// the field's internal storage.
+    pub fn nodes_at(&self, point: T::Point) -> &[NodeId] {
+        self.point_to_nodes.get(&point).map_or(&[], |v| v.as_slice())
+    }
+
+    /// `Field` has no notion of which faces belong to which of a point's several nodes (see
+    /// `add_node_at`) — this returns every node of every neighboring point (via `nodes_at`) for
+    /// each face, not just "the" neighbor. For an unsplit point (the common case) this is
+    /// identical to today's one-node-per-face behavior. Two different nodes of the same
+    /// multi-node point therefore see an identical neighbor list — `Field` only exposes geometric
+    /// candidates; deciding which candidate to actually connect is the caller's job.
     pub fn neighbors(&self, node: NodeId) -> Vec<NodeId> {
         let point = match self.node_to_point.get(&node) {
             Some(p) => *p,
@@ -124,15 +172,11 @@ impl<T: Tessellation> Field<T> {
         };
         T::faces()
             .iter()
-            .filter_map(|&face| {
+            .flat_map(|&face| {
                 let neighbor_point = T::step(point, face);
-                self.point_to_node.get(&neighbor_point).copied()
+                self.nodes_at(neighbor_point).iter().copied()
             })
             .collect()
-    }
-
-    pub fn node_at(&self, point: T::Point) -> Option<NodeId> {
-        self.point_to_node.get(&point).copied()
     }
 
     pub fn point_of(&self, node: NodeId) -> Option<T::Point> {
@@ -166,7 +210,27 @@ impl<T: Tessellation> Field<T> {
     }
 
     pub fn contains(&self, point: T::Point) -> bool {
-        self.point_to_node.contains_key(&point)
+        self.point_to_nodes.contains_key(&point)
+    }
+
+    /// Every `NodeId` currently in the field — used by `IdGenerator::resume_after` to compute a
+    /// safe next ID when a `Maze` is constructed from an already-populated `Field` (GitHub issue
+    /// #219): without this, an `IdGenerator` created fresh after construction would risk
+    /// colliding with IDs the field already holds.
+    pub(crate) fn all_node_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.node_to_point.keys().copied()
+    }
+}
+
+/// Test-only helper — literally delegates to `nodes_at` and takes the first (by `nodes_at`'s
+/// stable creation order) node. Does not exist in the production build — production code must
+/// explicitly decide which of a point's nodes it wants, via `nodes_at`. Kept so the ~400+ existing
+/// `node_at`-based unit tests (all built before split points existed, so they only ever exercise
+/// unsplit points) don't need mechanical rewrites.
+#[cfg(test)]
+impl<T: Tessellation> Field<T> {
+    pub fn node_at(&self, point: T::Point) -> Option<NodeId> {
+        self.nodes_at(point).first().copied()
     }
 }
 

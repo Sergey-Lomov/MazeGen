@@ -25,7 +25,7 @@ pub(super) fn pick_random_pairs<T: Tessellation>(
     target: u32,
     mut try_pair: impl FnMut(NodeId, NodeId, &mut dyn RngCore) -> bool,
 ) -> u32 {
-    let mut pool: Vec<NodeId> = maze.field.all_points().filter_map(|p| maze.field.node_at(p)).collect();
+    let mut pool: Vec<NodeId> = maze.field.all_points().flat_map(|p| maze.field.nodes_at(p).iter().copied()).collect();
     let mut found: u32 = 0;
 
     while found < target && !pool.is_empty() {

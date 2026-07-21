@@ -74,7 +74,7 @@ fn run_generate_typed<T: Tessellation + 'static>(
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
 
-    let start_id = field.node_at(start)
+    let start_id = field.nodes_at(start).first().copied()
         .ok_or_else(|| "start node not found".to_string())?;
 
     let preset_state = build_preset_state(
@@ -94,10 +94,10 @@ fn run_generate_typed<T: Tessellation + 'static>(
     let qc_engine = build_qc_and_repair::<T>(config)?;
     let limits = build_repair_limits(config)?;
     let preset_start = config.preset_start.and_then(|[sx, sy]| {
-        field.all_points().find(|&p| to_xy(p) == (sx, sy)).and_then(|p| field.node_at(p))
+        field.all_points().find(|&p| to_xy(p) == (sx, sy)).and_then(|p| field.nodes_at(p).first().copied())
     });
     let preset_finish = config.preset_finish.and_then(|[fx, fy]| {
-        field.all_points().find(|&p| to_xy(p) == (fx, fy)).and_then(|p| field.node_at(p))
+        field.all_points().find(|&p| to_xy(p) == (fx, fy)).and_then(|p| field.nodes_at(p).first().copied())
     });
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
     let mut qc_log = config.debug_events.then(EventLog::new);

@@ -41,18 +41,18 @@ fn tri_rect_node_count() {
 #[test]
 fn interior_triangle_has_three_neighbors() {
     let field = make_rect_field(4, 3);
-    let node = field.node_at(TriPoint { col: 2, row: 1 }).unwrap();
+    let node = field.nodes_at(TriPoint { col: 2, row: 1 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 3);
 }
 
 #[test]
 fn corner_triangle_has_correct_neighbor_count() {
     let field = make_rect_field(4, 3);
-    let node = field.node_at(TriPoint { col: 0, row: 0 }).unwrap();
+    let node = field.nodes_at(TriPoint { col: 0, row: 0 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 1);
-    let node = field.node_at(TriPoint { col: 1, row: 0 }).unwrap();
+    let node = field.nodes_at(TriPoint { col: 1, row: 0 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 3);
-    let node = field.node_at(TriPoint { col: 0, row: 1 }).unwrap();
+    let node = field.nodes_at(TriPoint { col: 0, row: 1 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 2);
 }
 
@@ -79,7 +79,7 @@ fn tri_triangle_node_count_n1() {
 fn tri_triangle_apex_has_no_neighbors() {
     // N=1: shift=1, apex at (1,0). All neighbours out of bounds.
     let field = make_triangle_field(1);
-    let node = field.node_at(TriPoint { col: 1, row: 0 }).unwrap();
+    let node = field.nodes_at(TriPoint { col: 1, row: 0 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 0);
 }
 
@@ -87,7 +87,7 @@ fn tri_triangle_apex_has_no_neighbors() {
 fn tri_triangle_interior_has_three_neighbors() {
     // N=4: shift=0, indent(2)=1, cols [1..5]. Point (3,2): parity=1 → down.
     let field = make_triangle_field(4);
-    let node = field.node_at(TriPoint { col: 3, row: 2 }).unwrap();
+    let node = field.nodes_at(TriPoint { col: 3, row: 2 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 3);
 }
 

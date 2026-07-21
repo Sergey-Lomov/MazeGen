@@ -32,7 +32,7 @@ pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
             } else {
                 let point_a = SquarePoint { x: x as i32, y: y as i32 };
                 let point_b = SquarePoint { x: x as i32, y: y as i32 - 1 };
-                match (maze.field.node_at(point_a), maze.field.node_at(point_b)) {
+                match (maze.field.nodes_at(point_a).first().copied(), maze.field.nodes_at(point_b).first().copied()) {
                     (Some(a), Some(b)) => {
                         let ab = maze.graph.edge_between(a, b).is_some();
                         let ba = maze.graph.edge_between(b, a).is_some();
@@ -60,7 +60,7 @@ pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
             } else {
                 let point_a = SquarePoint { x: x as i32, y: y as i32 };
                 let point_b = SquarePoint { x: x as i32 - 1, y: y as i32 };
-                match (maze.field.node_at(point_a), maze.field.node_at(point_b)) {
+                match (maze.field.nodes_at(point_a).first().copied(), maze.field.nodes_at(point_b).first().copied()) {
                     (Some(a), Some(b)) => {
                         let ab = maze.graph.edge_between(a, b).is_some();
                         let ba = maze.graph.edge_between(b, a).is_some();

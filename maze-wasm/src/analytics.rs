@@ -370,13 +370,13 @@ mod tests {
         field.build_nodes(&mut g);
         for y in 0..SIDE {
             for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
+                let here = field.nodes_at(SquarePoint { x, y }).first().copied().unwrap();
                 if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
+                    let right = field.nodes_at(SquarePoint { x: x + 1, y }).first().copied().unwrap();
                     g.build_initial_bidirectional_edge(here, right, EdgeKind::Basic);
                 }
                 if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
+                    let up = field.nodes_at(SquarePoint { x, y: y + 1 }).first().copied().unwrap();
                     g.build_initial_bidirectional_edge(here, up, EdgeKind::Basic);
                 }
             }
@@ -395,8 +395,8 @@ mod tests {
         let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -412,8 +412,8 @@ mod tests {
         let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // Neither start nor finish set.
@@ -429,9 +429,9 @@ mod tests {
         let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-        let c = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        let c = field.nodes_at(SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         g.build_initial_bidirectional_edge(b, c, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);

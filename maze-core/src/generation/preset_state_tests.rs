@@ -1,6 +1,7 @@
 use super::*;
 use super::super::test_utils::*;
 use crate::space::SquarePoint;
+use crate::IdGenerator;
 
 fn node_at(field: &Field<crate::space::SquareTessellation>, x: i32, y: i32) -> NodeId {
     field.node_at(SquarePoint { x, y }).unwrap()
@@ -47,6 +48,20 @@ fn build_preset_state_one_way_forward_blocks_reverse_only() {
     assert!(graph.edge_between(a, b).is_some());
     assert!(graph.edge_between(b, a).is_none());
     assert!(state.blocked.contains(&(b, a)));
+}
+
+#[test]
+fn build_preset_state_one_way_backward_blocks_forward_only() {
+    let (field, mut graph) = make_field_and_graph(3, 3);
+    let presets = vec![PresetConnection {
+        from: (0, 0), to: (1, 0), state: PresetConnectionState::OneWayBackward,
+    }];
+    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y });
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    assert!(graph.edge_between(b, a).is_some());
+    assert!(graph.edge_between(a, b).is_none());
+    assert!(state.blocked.contains(&(a, b)));
 }
 
 #[test]
@@ -137,4 +152,45 @@ fn for_repair_returns_self_unchanged_when_not_qc_experiment() {
     let repair_state = state.for_repair(false);
     assert!(repair_state.locked_in.contains(&a));
     assert!(repair_state.locked_out.contains(&a));
+}
+
+/// GitHub issue #219 — a locked node's point may resolve to more than one NodeId.
+#[test]
+fn locked_node_on_a_multi_node_point_locks_every_node_at_that_point() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let point = SquarePoint { x: 0, y: 0 };
+    let original = field.nodes_at(point)[0];
+    let added = field.add_node_at(point, &mut ids);
+    graph.add_node(added);
+
+    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::Both }];
+    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y });
+
+    assert!(state.locked_in.contains(&original));
+    assert!(state.locked_out.contains(&original));
+    assert!(state.locked_in.contains(&added));
+    assert!(state.locked_out.contains(&added));
+}
+
+/// GitHub issue #219 — `Field` has no notion of face-to-node ownership, so a preset connection
+/// on a multi-node point resolves to the first (creation-order) node, same as an unsplit point's
+/// only node.
+#[test]
+fn preset_connection_on_a_multi_node_point_resolves_to_the_first_node() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let point = SquarePoint { x: 0, y: 0 };
+    let original = field.nodes_at(point)[0];
+    let added = field.add_node_at(point, &mut ids);
+    graph.add_node(added);
+
+    let presets = vec![PresetConnection {
+        from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage,
+    }];
+    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y });
+
+    let b = node_at(&field, 1, 0);
+    assert!(graph.edge_between(original, b).is_some());
+    assert!(graph.edge_between(added, b).is_none());
 }

@@ -239,32 +239,52 @@ pub struct Maze<T: Tessellation> {
     pub graph: Graph,
     pub meta: MazeMeta,
     pub analysis: MazeAnalysis,
+    /// Sole source of new `NodeId`s for this maze's lifetime — see GitHub issue #219. Built via
+    /// `IdGenerator::resume_after` in `new`, never accepted as a parameter: a caller can't
+    /// accidentally supply a fresh, incompatible generator that would collide with IDs `field`
+    /// already holds.
+    ids: IdGenerator,
 }
 
 impl<T: Tessellation> Maze<T> {
     pub fn new(field: Field<T>, graph: Graph) -> Self {
+        let ids = IdGenerator::resume_after(&field);
         Self {
             field,
             graph,
             meta: MazeMeta::empty(),
             analysis: MazeAnalysis::default(),
+            ids,
         }
+    }
+
+    /// Adds another `NodeId` to `point` and registers it in `graph` in the same call (GitHub
+    /// issue #219) — the only correct way to add a node to an already-built maze; a raw
+    /// `field.add_node_at` without a paired `graph.add_node` would leave `Graph` unaware of the
+    /// new node.
+    pub fn add_node_at(&mut self, point: T::Point) -> NodeId {
+        let node = self.field.add_node_at(point, &mut self.ids);
+        self.graph.add_node(node);
+        node
     }
 
     /// An independent working copy for a `RepairStrategy` that needs to mutate-and-inspect
     /// intermediate state before committing to a final `MutationCommand` list (GitHub issue #118,
     /// `Specs/repair.md`) — currently only `MissingRegionsStrategy`'s reuse/growth attempts. Fresh
     /// `MazeAnalysis` cache (never cloned — it would otherwise carry stale cache entries keyed
-    /// against a graph version this copy has already diverged from); `field`/`graph`/`meta` are
-    /// cloned so mutating the draft never touches `self`. Never applied automatically — a
-    /// strategy that mutates a draft must go through `DraftMaze` (see `repair::draft`) to get a
-    /// `Vec<MutationCommand>` back out of it.
+    /// against a graph version this copy has already diverged from); `field`/`graph`/`meta`/`ids`
+    /// are cloned so mutating the draft never touches `self`. `ids` is cloned directly (not
+    /// rebuilt via `resume_after`) so a draft's `add_node_at` can never collide with an ID `self`
+    /// has already handed out but that isn't reflected in `field` yet. Never applied automatically
+    /// — a strategy that mutates a draft must go through `DraftMaze` (see `repair::draft`) to get
+    /// a `Vec<MutationCommand>` back out of it.
     pub fn draft(&self) -> Maze<T> {
         Maze {
             field: self.field.clone(),
             graph: self.graph.clone(),
             meta: self.meta.clone(),
             analysis: MazeAnalysis::default(),
+            ids: self.ids.clone(),
         }
     }
 }
@@ -339,6 +359,44 @@ mod draft_tests {
         let nav = draft.analysis.nav_graph(&draft.graph, &draft.meta);
         assert!(nav.nav_node_for(nodes[1]).is_some(),
             "draft's fresh analysis cache must reflect the draft's own graph, not stale/inherited state");
+    }
+}
+
+/// GitHub issue #219 — `Maze` owns an `IdGenerator` built via `resume_after`, so `add_node_at`
+/// never collides with a NodeId the field already held at construction time.
+#[cfg(test)]
+mod add_node_at_tests {
+    use super::*;
+    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+
+    #[test]
+    fn add_node_at_yields_an_id_not_colliding_with_any_existing_node() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let existing: Vec<ids::NodeId> = field.all_points()
+            .flat_map(|p| field.nodes_at(p).to_vec())
+            .collect();
+
+        let mut maze = Maze::new(field, g);
+        let added = maze.add_node_at(SquarePoint { x: 1, y: 1 });
+
+        assert!(!existing.contains(&added));
+    }
+
+    #[test]
+    fn add_node_at_registers_the_new_node_in_the_graph() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(2, 2), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+
+        let mut maze = Maze::new(field, g);
+        let added = maze.add_node_at(SquarePoint { x: 0, y: 0 });
+
+        assert!(maze.graph.nodes().any(|n| n.id == added));
+        assert!(maze.field.nodes_at(SquarePoint { x: 0, y: 0 }).contains(&added));
     }
 }
 

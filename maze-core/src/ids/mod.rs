@@ -1,6 +1,9 @@
+use crate::space::{Field, Tessellation};
+
 pub type NodeId = u64;
 pub type EdgeId = usize;
 
+#[derive(Clone)]
 pub struct IdGenerator {
     next: u64,
 }
@@ -14,6 +17,16 @@ impl IdGenerator {
         let id = self.next;
         self.next += 1;
         id
+    }
+
+    /// Builds a generator guaranteed not to collide with any `NodeId` already present in `field`
+    /// — one past the maximum existing ID (or `Self::new()` if the field is somehow empty). See
+    /// GitHub issue #219: `Maze::new` uses this instead of accepting an `IdGenerator` as a
+    /// parameter, so there is no way for a caller to accidentally pass in a fresh, incompatible
+    /// generator that would collide with IDs the field already holds.
+    pub(crate) fn resume_after<T: Tessellation>(field: &Field<T>) -> Self {
+        let next = field.all_node_ids().max().map_or(0, |max| max + 1);
+        Self { next }
     }
 }
 

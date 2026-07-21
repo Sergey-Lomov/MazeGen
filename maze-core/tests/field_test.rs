@@ -9,35 +9,35 @@ fn make_field(width: usize, height: usize) -> Field<SquareTessellation> {
 #[test]
 fn corner_node_has_two_neighbors() {
     let field = make_field(4, 4);
-    let node = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let node = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 2);
 }
 
 #[test]
 fn edge_node_has_three_neighbors() {
     let field = make_field(4, 4);
-    let node = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+    let node = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 3);
 }
 
 #[test]
 fn interior_node_has_four_neighbors() {
     let field = make_field(4, 4);
-    let node = field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
+    let node = field.nodes_at(SquarePoint { x: 1, y: 1 }).first().copied().unwrap();
     assert_eq!(field.neighbors(node).len(), 4);
 }
 
 #[test]
 fn node_at_unknown_point_is_none() {
     let field = make_field(4, 4);
-    assert!(field.node_at(SquarePoint { x: 10, y: 10 }).is_none());
+    assert!(field.nodes_at(SquarePoint { x: 10, y: 10 }).first().copied().is_none());
 }
 
 #[test]
 fn point_of_round_trip() {
     let field = make_field(4, 4);
     let point = SquarePoint { x: 2, y: 3 };
-    let node = field.node_at(point).unwrap();
+    let node = field.nodes_at(point).first().copied().unwrap();
     assert_eq!(field.point_of(node), Some(point));
 }
 

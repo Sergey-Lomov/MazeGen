@@ -56,7 +56,7 @@ fn connected_chain_missing_endpoints() -> (Maze<SquareTessellation>, Vec<NodeId>
     field.build_nodes(&mut graph);
     let mut maze = Maze::new(field, graph);
     let ordered: Vec<NodeId> = (0..3)
-        .map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap())
+        .map(|x| maze.field.nodes_at(SquarePoint { x, y: 0 }).first().copied().unwrap())
         .collect();
     for i in 0..ordered.len() - 1 {
         maze.graph.build_initial_bidirectional_edge(ordered[i], ordered[i + 1], EdgeKind::Basic);

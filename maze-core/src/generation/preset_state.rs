@@ -55,8 +55,13 @@ pub fn build_preset_state<T: Tessellation>(
     for preset in preset_connections {
         let from_pt = xy_to_point(preset.from.0, preset.from.1);
         let to_pt   = xy_to_point(preset.to.0,   preset.to.1);
-        let Some(from_id) = field.node_at(from_pt) else { continue; };
-        let Some(to_id)   = field.node_at(to_pt)   else { continue; };
+        // `Field` has no notion of which of a multi-node point's several nodes belongs to which
+        // face (GitHub issue #219 — face/group ownership is deliberately not tracked at all), so
+        // there's no face-aware resolution possible here; this takes the first node, same as an
+        // unsplit point's only node today. An explicit per-node choice for presets on split tiles
+        // is #221 (editor UI) territory, once presets can target a specific node.
+        let Some(from_id) = field.nodes_at(from_pt).first().copied() else { continue; };
+        let Some(to_id)   = field.nodes_at(to_pt).first().copied()   else { continue; };
 
         match preset.state {
             PresetConnectionState::Wall => {
@@ -112,11 +117,14 @@ pub fn build_preset_state<T: Tessellation>(
 
     for lock in locked_nodes {
         let pt = xy_to_point(lock.point.0, lock.point.1);
-        let Some(id) = field.node_at(pt) else { continue; };
-        match lock.kind {
-            NodeLockKind::In   => { locked_in.insert(id); }
-            NodeLockKind::Out  => { locked_out.insert(id); }
-            NodeLockKind::Both => { locked_in.insert(id); locked_out.insert(id); }
+        // Locks every node of the point (GitHub issue #219) — "no incoming/outgoing edges at this
+        // point" naturally extends to all of a split point's routing passages.
+        for &id in field.nodes_at(pt) {
+            match lock.kind {
+                NodeLockKind::In   => { locked_in.insert(id); }
+                NodeLockKind::Out  => { locked_out.insert(id); }
+                NodeLockKind::Both => { locked_in.insert(id); locked_out.insert(id); }
+            }
         }
     }
 
