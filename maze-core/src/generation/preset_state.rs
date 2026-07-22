@@ -2,7 +2,9 @@ use std::collections::{BTreeSet, HashSet};
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
+use crate::event_log::EventLog;
 use super::{PresetConnection, PresetConnectionState, TeleportDirection, LockedNode, NodeLockKind};
+use super::preset_setup_event::{emit, PresetSetupEvent};
 
 /// Resolved preset constraints in NodeId space, ready for use by generation algorithms.
 pub struct PresetState {
@@ -39,12 +41,18 @@ impl PresetState {
 }
 
 /// Build PresetState and apply Passage/OneWay edges to the graph before generation.
+///
+/// `log`, when given, receives one [`PresetSetupEvent`] per preset connection that actually
+/// establishes an edge (`Wall` blocks a pair without adding anything, so it emits nothing) —
+/// narration for the "preset setup" debug-tape source (GitHub issue #225), built inline here since
+/// this is the only place that still has each connection's resolved `from`/`to`/direction.
 pub fn build_preset_state<T: Tessellation>(
     graph: &mut Graph,
     field: &Field<T>,
     preset_connections: &[PresetConnection],
     locked_nodes: &[LockedNode],
     xy_to_point: impl Fn(i32, i32) -> T::Point,
+    mut log: Option<&mut EventLog<PresetSetupEvent>>,
 ) -> PresetState {
     let mut blocked:          HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut locked_out:       HashSet<NodeId> = HashSet::new();
@@ -75,6 +83,9 @@ pub fn build_preset_state<T: Tessellation>(
                 preset_connected.insert(to_id);
                 preset_edges.insert((from_id, to_id));
                 preset_edges.insert((to_id, from_id));
+                if let Some(log) = log.as_deref_mut() {
+                    emit(log, PresetSetupEvent::PassageEstablished { from: from_id, to: to_id });
+                }
             }
             PresetConnectionState::OneWayForward => {
                 graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
@@ -82,6 +93,9 @@ pub fn build_preset_state<T: Tessellation>(
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
                 preset_edges.insert((from_id, to_id));
+                if let Some(log) = log.as_deref_mut() {
+                    emit(log, PresetSetupEvent::OneWayEstablished { from: from_id, to: to_id });
+                }
             }
             PresetConnectionState::OneWayBackward => {
                 graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
@@ -89,22 +103,34 @@ pub fn build_preset_state<T: Tessellation>(
                 preset_connected.insert(from_id);
                 preset_connected.insert(to_id);
                 preset_edges.insert((to_id, from_id));
+                if let Some(log) = log.as_deref_mut() {
+                    emit(log, PresetSetupEvent::OneWayEstablished { from: to_id, to: from_id });
+                }
             }
             PresetConnectionState::Teleport(direction) => {
                 match direction {
                     TeleportDirection::Forward => {
                         graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
                         preset_edges.insert((from_id, to_id));
+                        if let Some(log) = log.as_deref_mut() {
+                            emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: false });
+                        }
                     }
                     TeleportDirection::Backward => {
                         graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
                         preset_edges.insert((to_id, from_id));
+                        if let Some(log) = log.as_deref_mut() {
+                            emit(log, PresetSetupEvent::TeleportEstablished { from: to_id, to: from_id, two_way: false });
+                        }
                     }
                     TeleportDirection::TwoWay => {
                         graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
                         graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
                         preset_edges.insert((from_id, to_id));
                         preset_edges.insert((to_id, from_id));
+                        if let Some(log) = log.as_deref_mut() {
+                            emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: true });
+                        }
                     }
                 }
                 // Not added to `preset_connected` — that set exists only to short-circuit the

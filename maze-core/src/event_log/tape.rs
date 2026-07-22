@@ -110,6 +110,13 @@ impl<E> EventLog<E> {
     pub fn finish(self) -> DebugTape<E> {
         DebugTape { nodes: self.nodes }
     }
+
+    /// True when nothing has been `emit`/`enter`-ed yet — just the root scope. Lets a caller that
+    /// built a log speculatively (e.g. only when `debug_events` is on) tell "no events happened"
+    /// apart from "instrumentation was off", without inspecting the arena's internals itself.
+    pub fn is_empty(&self) -> bool {
+        self.nodes.len() == 1
+    }
 }
 
 impl<E> Default for EventLog<E> {

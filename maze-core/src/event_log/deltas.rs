@@ -77,6 +77,7 @@ pub enum DebugVertexOp<Id> {
 /// tag rather than re-matching on the generation algorithm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventedEventKind {
+    PresetSetup,
     RecursiveBacktracker,
     Kruskal,
     Wilson,

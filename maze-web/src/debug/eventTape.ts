@@ -22,6 +22,7 @@ export * from "./eventTape/tree";
 export * from "./eventTape/scan";
 export * from "./eventTape/applyShared";
 export * from "./eventTape/checkpoints";
+export * from "./eventTape/presetSetup";
 export * from "./eventTape/recursiveBacktracker";
 export * from "./eventTape/kruskal";
 export * from "./eventTape/wilson";

@@ -1,11 +1,11 @@
 ﻿import { describe, it, expect } from "vitest";
 import {
-  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG,
-  mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex, mutatingWilsonEventsWithIndex, mutatingEdgeBasedEventsWithIndex, mutatingVertexBasedEventsWithIndex,
-  applyRecursiveBacktracker, applyKruskal, applyWilson, applyEdgeBased, applyVertexBased,
-  decodeRecursiveBacktrackerEvent, decodeKruskalEvent, decodeWilsonEvent, decodeEdgeBasedEvent, decodeVertexBasedEvent,
-  isMutatingRbEvent, isMutatingKruskalEvent, isMutatingWilsonEvent, isMutatingEdgeBasedEvent, isMutatingVertexBasedEvent,
-  mutatingRbEvents, mutatingKruskalEvents, mutatingWilsonEvents, mutatingEdgeBasedEvents, mutatingVertexBasedEvents,
+  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, PRESET_SETUP_TAG,
+  mutatingRbEventsWithIndex, mutatingKruskalEventsWithIndex, mutatingWilsonEventsWithIndex, mutatingEdgeBasedEventsWithIndex, mutatingVertexBasedEventsWithIndex, mutatingPresetSetupEventsWithIndex,
+  applyRecursiveBacktracker, applyKruskal, applyWilson, applyEdgeBased, applyVertexBased, applyPresetSetup,
+  decodeRecursiveBacktrackerEvent, decodeKruskalEvent, decodeWilsonEvent, decodeEdgeBasedEvent, decodeVertexBasedEvent, decodePresetSetupEvent,
+  isMutatingRbEvent, isMutatingKruskalEvent, isMutatingWilsonEvent, isMutatingEdgeBasedEvent, isMutatingVertexBasedEvent, isMutatingPresetSetupEvent,
+  mutatingRbEvents, mutatingKruskalEvents, mutatingWilsonEvents, mutatingEdgeBasedEvents, mutatingVertexBasedEvents, mutatingPresetSetupEvents,
   type ParsedTape,
 } from "../debug/eventTape";
 import { adapterFor } from "../debug/algorithmRegistry";
@@ -111,6 +111,81 @@ function buildWilsonTape(): ParsedTape {
     { parent: 1, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(5n) },
   ]);
 }
+
+function passagePayload(from: bigint, to: bigint): Uint8Array {
+  const bytes = new Uint8Array(16);
+  bytes.set(u64le(from), 0);
+  bytes.set(u64le(to), 8);
+  return bytes;
+}
+
+function buildPresetSetupTape(): ParsedTape {
+  return buildFixture([
+    { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+    { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("preset_setup") },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: PRESET_SETUP_TAG.PASSAGE_ESTABLISHED, payloadBytes: passagePayload(1n, 2n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: PRESET_SETUP_TAG.ONE_WAY_ESTABLISHED, payloadBytes: passagePayload(3n, 4n) },
+  ]);
+}
+
+describe("adapterFor(\"preset_setup\")", () => {
+  const tape = buildPresetSetupTape();
+  const adapter = adapterFor("preset_setup");
+
+  it("mutatingNodeIndices matches mutatingPresetSetupEventsWithIndex", () => {
+    expect(adapter.mutatingNodeIndices(tape)).toEqual(mutatingPresetSetupEventsWithIndex(tape).map((e) => e.nodeIndex));
+  });
+
+  it("apply matches applyPresetSetup", () => {
+    expect(adapter.apply(tape, 1, undefined, 0)).toEqual(applyPresetSetup(tape, 1, undefined, 0));
+  });
+
+  it("resolveMetadata's totalSteps matches mutatingPresetSetupEvents(tape).length", () => {
+    expect(adapter.resolveMetadata(tape).totalSteps).toBe(mutatingPresetSetupEvents(tape).length);
+    expect(adapter.resolveMetadata(tape).checkpointFroms).toEqual([]);
+  });
+
+  it("decodeEvent/isMutatingEvent match the direct functions", () => {
+    const decoded = adapter.decodeEvent(PRESET_SETUP_TAG.PASSAGE_ESTABLISHED, passagePayload(1n, 2n));
+    expect(decoded).toEqual(decodePresetSetupEvent(PRESET_SETUP_TAG.PASSAGE_ESTABLISHED, passagePayload(1n, 2n)));
+    expect(adapter.isMutatingEvent(decoded)).toBe(isMutatingPresetSetupEvent(decoded));
+  });
+
+  it("scopeLabel is the identity function (this source never opens a nested scope)", () => {
+    expect(adapter.scopeLabel("preset_setup", [])).toBe("preset_setup");
+  });
+
+  it("narrationTokensFor renders an edge token per event kind, with the right bidirectional flag", () => {
+    const passage = adapter.narrationTokensFor({ kind: "PassageEstablished", from: 1n, to: 2n });
+    expect(passage).toEqual([
+      { kind: "text", text: expect.any(String) },
+      { kind: "edge", from: 1n, to: 2n, bidirectional: true },
+    ]);
+
+    const oneWay = adapter.narrationTokensFor({ kind: "OneWayEstablished", from: 3n, to: 4n });
+    expect(oneWay).toEqual([
+      { kind: "text", text: expect.any(String) },
+      { kind: "edge", from: 3n, to: 4n, bidirectional: false },
+    ]);
+
+    const teleportOneWay = adapter.narrationTokensFor({ kind: "TeleportEstablished", from: 5n, to: 6n, twoWay: false });
+    expect(teleportOneWay).toEqual([
+      { kind: "text", text: expect.any(String) },
+      { kind: "edge", from: 5n, to: 6n, bidirectional: false },
+    ]);
+
+    const teleportTwoWay = adapter.narrationTokensFor({ kind: "TeleportEstablished", from: 5n, to: 6n, twoWay: true });
+    expect(teleportTwoWay).toEqual([
+      { kind: "text", text: expect.any(String) },
+      { kind: "edge", from: 5n, to: 6n, bidirectional: true },
+    ]);
+
+    // Every event kind gets distinct narration text (guards against a copy-paste that reuses one
+    // message key for two different connection kinds).
+    const texts = [passage[0], oneWay[0], teleportOneWay[0]].map((t) => (t.kind === "text" ? t.text : ""));
+    expect(new Set(texts).size).toBe(texts.length);
+  });
+});
 
 describe("adapterFor(\"recursive_backtracker\")", () => {
   const tape = buildRbTape();
@@ -304,6 +379,7 @@ describe("adapterFor(\"vertex_based\")", () => {
 
 describe("adapterFor — one adapter instance per kind, stable identity", () => {
   it("returns the same adapter instance across repeated calls for each kind", () => {
+    expect(adapterFor("preset_setup")).toBe(adapterFor("preset_setup"));
     expect(adapterFor("recursive_backtracker")).toBe(adapterFor("recursive_backtracker"));
     expect(adapterFor("kruskal")).toBe(adapterFor("kruskal"));
     expect(adapterFor("wilson")).toBe(adapterFor("wilson"));

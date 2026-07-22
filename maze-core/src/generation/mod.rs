@@ -6,11 +6,13 @@ pub(crate) mod kruskal;
 pub(crate) mod recursive_backtracker;
 pub(crate) mod edge_based;
 mod preset_state;
+mod preset_setup_event;
 mod types;
 mod edge_ops;
 mod mutation_commands;
 
 pub use preset_state::{PresetState, build_preset_state};
+pub use preset_setup_event::{PresetSetupEvent, PRESET_SETUP_SCOPE_NAME};
 pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names};
 pub use kruskal::{generate as generate_kruskal, KruskalEvent};
 pub use wilson::{generate as generate_wilson, WilsonEvent, debug_value_names as wilson_debug_value_names};

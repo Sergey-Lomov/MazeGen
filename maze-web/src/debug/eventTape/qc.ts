@@ -42,8 +42,6 @@ export const QC_TAG = {
   START_SET_PROPOSED: 32,
   FINISH_SET_PROPOSED: 33,
 
-  PRESET_SEEDED: 34,
-
   EDGE_REMOVED_WITH_REVERSE: 35,
   EDGE_REMOVE_WITH_REVERSE_DECLINED: 36,
   EDGE_REMOVE_WITH_REVERSE_PROPOSED: 37,
@@ -100,8 +98,7 @@ export type QcEvent =
   | { kind: "EdgeRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "TeleportRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "StartSetProposed"; id: bigint }
-  | { kind: "FinishSetProposed"; id: bigint }
-  | { kind: "PresetSeeded"; edges: { from: bigint; to: bigint; kind: "basic" | "teleport" }[] };
+  | { kind: "FinishSetProposed"; id: bigint };
 
 /** Reads the `HashMap<String, Vec<Vec<[u32; 2]>>>` wire shape `write_str_keyed_edge_pairs`
  *  produces (`IssuePayload::InvalidLoop`'s `edges`). */
@@ -342,28 +339,14 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       expectLen(tag, bytes, 8);
       return { kind: "FinishSetProposed", id: readNodeId(bytes, 0) };
 
-    case QC_TAG.PRESET_SEEDED: {
-      const count = readU32(bytes, 0);
-      expectLen(tag, bytes, 4 + count * 17);
-      const edges: { from: bigint; to: bigint; kind: "basic" | "teleport" }[] = [];
-      for (let i = 0; i < count; i++) {
-        const offset = 4 + i * 17;
-        edges.push({
-          from: readNodeId(bytes, offset),
-          to: readNodeId(bytes, offset + 8),
-          kind: bytes[offset + 16] !== 0 ? "teleport" : "basic",
-        });
-      }
-      return { kind: "PresetSeeded", edges };
-    }
     default:
       throw new Error(`QcEvent: unknown wire tag ${tag}`);
   }
 }
 
 /** Mirrors `DebugEvent::is_mutating`'s split for `QcEvent` in
- *  `maze-core/src/quality_control/event.rs` — `true` for the 9 mutation-mirror variants plus
- *  `PresetSeeded`; every `*Declined` variant and every trace variant is `false`. */
+ *  `maze-core/src/quality_control/event.rs` — `true` for the 9 mutation-mirror variants; every
+ *  `*Declined` variant and every trace variant is `false`. */
 export function isMutatingQcEvent(event: QcEvent): boolean {
   return (
     event.kind === "DirectedEdgeAdded" ||
@@ -375,8 +358,7 @@ export function isMutatingQcEvent(event: QcEvent): boolean {
     event.kind === "EdgeRemovedWithReverse" ||
     event.kind === "TeleportRemovedWithReverse" ||
     event.kind === "StartSet" ||
-    event.kind === "FinishSet" ||
-    event.kind === "PresetSeeded"
+    event.kind === "FinishSet"
   );
 }
 
@@ -518,14 +500,6 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
         break;
       case "FinishSet":
         finish = event.id;
-        break;
-      case "PresetSeeded":
-        // One tuple per actual directed graph edge (GitHub issue #193's follow-up) — a
-        // bidirectional preset already yields two separate entries here, so no reverse is
-        // fabricated on top.
-        for (const edge of event.edges) {
-          add(edge.from, edge.to, edge.kind);
-        }
         break;
       default:
         break;

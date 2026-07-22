@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, RB_TAG, WILSON_TAG, KRUSKAL_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
+import { parseTape, RB_TAG, WILSON_TAG, KRUSKAL_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, PRESET_SETUP_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugArenaHandle } from "../store/storeTypes";
 import type { NodeDto } from "../wasm/types";
@@ -79,6 +79,39 @@ function buildKruskalArenaTape(): ParsedTape {
   const records: { nextSibling: number | null; tag: number; bytes: Uint8Array }[] = [
     { nextSibling: 1, tag: KRUSKAL_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
     { nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, bytes: concatBytes([u64le(1n), u64le(2n)]) },
+  ];
+  const payloadChunks = records.map((r) => r.bytes);
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const chunk of payloadChunks) {
+    offsets.push(cursor);
+    cursor += chunk.byteLength;
+  }
+  const payload = concatBytes(payloadChunks);
+  const nodeTable = new Uint8Array(records.length * 22);
+  const dv = new DataView(nodeTable.buffer);
+  records.forEach((r, i) => {
+    const base = i * 22;
+    dv.setUint32(base + 0, NO_NODE, true);
+    dv.setUint32(base + 4, NO_NODE, true);
+    dv.setUint32(base + 8, r.nextSibling ?? NO_NODE, true);
+    dv.setUint16(base + 12, r.tag, true);
+    dv.setUint32(base + 14, offsets[i], true);
+    dv.setUint32(base + 18, r.bytes.byteLength, true);
+  });
+  return parseTape(nodeTable, payload);
+}
+
+/** preset_setup fixture, flat under root, same shape as buildKruskalArenaTape — one
+ *  PassageEstablished(1,2) then one OneWayEstablished(3,4). Covers selectDebugMazeView's
+ *  "preset_setup" branch (presetSetupContribution), which had zero coverage. */
+function buildPresetSetupArenaTape(): ParsedTape {
+  function passagePayload(from: bigint, to: bigint): Uint8Array {
+    return concatBytes([u64le(from), u64le(to)]);
+  }
+  const records: { nextSibling: number | null; tag: number; bytes: Uint8Array }[] = [
+    { nextSibling: 1, tag: PRESET_SETUP_TAG.PASSAGE_ESTABLISHED, bytes: passagePayload(1n, 2n) },
+    { nextSibling: null, tag: PRESET_SETUP_TAG.ONE_WAY_ESTABLISHED, bytes: passagePayload(3n, 4n) },
   ];
   const payloadChunks = records.map((r) => r.bytes);
   const offsets: number[] = [];
@@ -410,6 +443,31 @@ describe("selectDebugMazeView", () => {
     ]);
     expect(view?.dsuGroups).toEqual(new Map([[1, 1], [2, 1]]));
     expect(view?.debugValues.size).toBe(0);
+    expect(view?.debugMaps.size).toBe(0);
+    expect(view?.debugVertices.size).toBe(0);
+  });
+
+  // --- Preset setup dispatch (GitHub issue #225) ---
+
+  it("dispatches preset_setup arenas to applyPresetSetup, populating only edges (no debug values/dsuGroups/start/finish)", () => {
+    const tape = buildPresetSetupArenaTape();
+    const arena: DebugArenaHandle = {
+      tape, algorithmKind: "preset_setup",
+      sources: [{ scopeName: "preset_setup", kind: "preset_setup", nodeIndex: 0, startStep: 0, endStep: 2, checkpointFroms: [] }],
+      nodes, totalSteps: 2, debugValueNames: [],
+    };
+
+    // targetStep 1 = PassageEstablished(1,2) (bidirectional), then OneWayEstablished(3,4) (one direction only).
+    const view = selectDebugMazeView(arena, 1);
+    expect(view?.edges).toEqual([
+      { from: 1, to: 2, kind: "basic" },
+      { from: 2, to: 1, kind: "basic" },
+      { from: 3, to: 4, kind: "basic" },
+    ]);
+    expect(view?.start).toBeNull();
+    expect(view?.finish).toBeNull();
+    expect(view?.debugValues.size).toBe(0);
+    expect(view?.dsuGroups).toBeNull();
     expect(view?.debugMaps.size).toBe(0);
     expect(view?.debugVertices.size).toBe(0);
   });

@@ -14,8 +14,9 @@
 
 import {
   type ParsedTape, type ApplyFrom, type NodeView,
-  type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent, type QcEvent, type IssuePayload,
-  type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult, type QcApplyResult,
+  type PresetSetupEvent, type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent, type QcEvent, type IssuePayload,
+  type PresetSetupApplyResult, type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult, type QcApplyResult,
+  decodePresetSetupEvent, isMutatingPresetSetupEvent, mutatingPresetSetupEventsWithIndex, applyPresetSetup,
   decodeRecursiveBacktrackerEvent, isMutatingRbEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
   decodeKruskalEvent, isMutatingKruskalEvent, mutatingKruskalEventsWithIndex, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEventsWithIndex, applyWilson,
@@ -176,8 +177,11 @@ export interface ScopeTitleLookup {
  *  call's result resumes the underlying scan right after it instead of replaying from the start.
  *  `resolveDebugArenaMetadata` (`eventTape.ts`) is the generic caller that builds/consumes these
  *  snapshots without knowing what's actually inside a given `TResult`. */
+export interface PresetSetupAdapter extends BaseAlgorithmAdapter<PresetSetupEvent, PresetSetupApplyResult> {
+  apply(tape: ParsedTape, targetStep: number, from: PresetSetupApplyResult | undefined, startNodeIndex: number, endIndex?: number): PresetSetupApplyResult;
+}
 export interface RbAdapter extends BaseAlgorithmAdapter<RecursiveBacktrackerEvent, ApplyResult> {
-  apply(tape: ParsedTape, targetStep: number, from?: ApplyFrom, endIndex?: number): ApplyResult;
+  apply(tape: ParsedTape, targetStep: number, from?: ApplyFrom, startIndex?: number, endIndex?: number): ApplyResult;
 }
 export interface KruskalAdapter extends BaseAlgorithmAdapter<KruskalEvent, KruskalApplyResult> {
   apply(tape: ParsedTape, targetStep: number, from?: KruskalApplyResult, startIndex?: number, endIndex?: number): KruskalApplyResult;
@@ -209,6 +213,40 @@ function numberedScopeIndex(scopeName: string): number {
   return match ? Number(match[1]) : 0;
 }
 
+/** Preset setup's events (GitHub issue #225) — see `PresetSetupEvent`'s own doc comment for why
+ *  this is a standalone, algorithm-agnostic source rather than an event duplicated into every
+ *  instrumented algorithm's own event enum. One narration per connection kind, mirroring
+ *  `build_preset_state`'s own three cases (`Wall` blocks a pair without adding anything, so it
+ *  emits nothing here). */
+function narrationTokensForPresetSetup(event: PresetSetupEvent): Token[] {
+  switch (event.kind) {
+    case "PassageEstablished":
+      return [{ kind: "text", text: m["debug.tree.passage_established"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
+    case "OneWayEstablished":
+      return [{ kind: "text", text: m["debug.tree.one_way_established"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "TeleportEstablished":
+      return [{ kind: "text", text: m["debug.tree.teleport_established"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.twoWay }];
+  }
+}
+
+const PRESET_SETUP_ADAPTER: PresetSetupAdapter = {
+  mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingPresetSetupEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
+  resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decodePresetSetupEvent, isMutatingPresetSetupEvent, s, e),
+    (step, previous) => applyPresetSetup(tape, step, previous, startIndex, endIndex),
+    startIndex, endIndex,
+  ),
+  decodeEvent: decodePresetSetupEvent,
+  isMutatingEvent: isMutatingPresetSetupEvent,
+  narrationTokensFor: narrationTokensForPresetSetup,
+  // This source never opens a nested scope (its events sit directly under its own top-level
+  // scope, as flat siblings) — scopeLabel is never actually called for it, but every adapter
+  // carries one for interface parity.
+  scopeLabel: (name) => name,
+  apply: (tape, targetStep, from, startNodeIndex = 0, endIndex) => applyPresetSetup(tape, targetStep, from, startNodeIndex, endIndex),
+};
+
 function narrationTokensForRb(event: RecursiveBacktrackerEvent): Token[] {
   switch (event.kind) {
     case "VertexSelected": return [{ kind: "text", text: m["debug.tree.vertex_selected"]() + " " }, { kind: "node", id: event.id }];
@@ -228,7 +266,7 @@ const RB_ADAPTER: RbAdapter = {
   resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
     tape,
     (t, s, e) => countMutatingEvents(t, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, s, e),
-    (step, previous) => applyRecursiveBacktracker(tape, step, previous, endIndex),
+    (step, previous) => applyRecursiveBacktracker(tape, step, previous, startIndex, endIndex),
     startIndex, endIndex,
   ),
   decodeEvent: decodeRecursiveBacktrackerEvent,
@@ -707,11 +745,6 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.start_set_proposed"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSetProposed":
       return [{ kind: "text", text: m["debug.tree.qc.finish_set_proposed"]() + " " }, { kind: "node", id: event.id }];
-    case "PresetSeeded":
-      return [
-        { kind: "text", text: m["debug.tree.qc.preset_seeded"]() + " " },
-        { kind: "cycle", edges: event.edges.map((e) => [e.from, e.to] as [bigint, bigint]) },
-      ];
   }
 }
 
@@ -781,7 +814,7 @@ const QC_ADAPTER: QcAdapter = {
   apply: applyQc,
 };
 
-export type AnyAdapter = RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedAdapter | VertexBasedAdapter | QcAdapter;
+export type AnyAdapter = PresetSetupAdapter | RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedAdapter | VertexBasedAdapter | QcAdapter;
 
 /** Non-overloaded dispatch, shared by `adapterFor`'s per-kind overloads below and by any caller
  *  (e.g. `adapterForNode`, `generateConfigBuilder.ts`) that only has a plain `EventedEventKind`
@@ -789,6 +822,7 @@ export type AnyAdapter = RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedA
  *  `adapterFor`. */
 export function adapterForKind(kind: EventedEventKind): AnyAdapter {
   switch (kind) {
+    case "preset_setup": return PRESET_SETUP_ADAPTER;
     case "recursive_backtracker": return RB_ADAPTER;
     case "kruskal": return KRUSKAL_ADAPTER;
     case "wilson": return WILSON_ADAPTER;
@@ -798,6 +832,7 @@ export function adapterForKind(kind: EventedEventKind): AnyAdapter {
   }
 }
 
+export function adapterFor(kind: "preset_setup"): PresetSetupAdapter;
 export function adapterFor(kind: "recursive_backtracker"): RbAdapter;
 export function adapterFor(kind: "kruskal"): KruskalAdapter;
 export function adapterFor(kind: "wilson"): WilsonAdapter;

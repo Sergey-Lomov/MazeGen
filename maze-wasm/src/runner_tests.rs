@@ -3,6 +3,11 @@ mod is_web_decodable_tests {
     use maze_core::event_log::EventedEventKind;
 
     #[test]
+    fn preset_setup_is_web_decodable() {
+        assert!(is_web_decodable(Some(EventedEventKind::PresetSetup)));
+    }
+
+    #[test]
     fn recursive_backtracker_is_web_decodable() {
         assert!(is_web_decodable(Some(EventedEventKind::RecursiveBacktracker)));
     }
@@ -48,7 +53,7 @@ mod run_initial_generation_tests {
         let field = Field::<SquareTessellation>::new(points, &mut ids).unwrap();
         let mut graph = Graph::new();
         field.build_nodes(&mut graph);
-        let preset_state = build_preset_state(&mut graph, &field, &[], &[], |x, y| SquarePoint { x, y });
+        let preset_state = build_preset_state(&mut graph, &field, &[], &[], |x, y| SquarePoint { x, y }, None);
         (graph, field, preset_state)
     }
 
@@ -278,10 +283,9 @@ mod build_generate_result_tests {
     }
 }
 
-mod merge_generation_and_qc_tapes_tests {
-    use super::super::merge_generation_and_qc_tapes;
+mod merge_debug_sources_tests {
+    use super::super::merge_debug_sources;
     use maze_core::event_log::{EncodedTape, EventedEventKind, EventLog, TapeSource};
-    use maze_core::graph::EdgeKind;
     use maze_core::quality_control::QcEvent;
 
     fn generation_tape_source() -> TapeSource {
@@ -290,9 +294,15 @@ mod merge_generation_and_qc_tapes_tests {
         TapeSource { scope_name: "generation", tape: log.finish().encode() }
     }
 
+    fn preset_setup_tape_source() -> TapeSource {
+        let mut log = EventLog::new();
+        log.emit(maze_core::generation::PresetSetupEvent::PassageEstablished { from: 0, to: 1 });
+        TapeSource { scope_name: maze_core::generation::PRESET_SETUP_SCOPE_NAME, tape: log.finish().encode() }
+    }
+
     fn qc_tape_with_one_event() -> EncodedTape {
         let mut log = EventLog::new();
-        log.emit(QcEvent::PresetSeeded { edges: vec![(0, 1, EdgeKind::Basic)] });
+        log.emit(QcEvent::StartSet(0));
         log.finish().encode()
     }
 
@@ -301,27 +311,27 @@ mod merge_generation_and_qc_tapes_tests {
     }
 
     #[test]
-    fn no_generation_no_qc_yields_no_tape() {
-        let (tape, names, sources) = merge_generation_and_qc_tapes(None, None, Vec::new(), None);
+    fn nothing_present_yields_no_tape() {
+        let (tape, names, sources) = merge_debug_sources(None, None, None, Vec::new(), None);
         assert!(tape.is_none());
         assert!(names.is_empty());
         assert!(sources.is_empty());
     }
 
     #[test]
-    fn qc_only_no_generation_source_still_yields_a_tape_with_just_the_quality_control_scope() {
+    fn qc_only_no_other_source_still_yields_a_tape_with_just_the_quality_control_scope() {
         // GitHub issue #173: qc_experiment mode never has a generation_source, but QC/repair's own
-        // tape (e.g. a PresetSeeded event) must still surface, not be dropped.
-        let (tape, names, sources) = merge_generation_and_qc_tapes(None, None, Vec::new(), Some(qc_tape_with_one_event()));
+        // tape must still surface, not be dropped.
+        let (tape, names, sources) = merge_debug_sources(None, None, None, Vec::new(), Some(qc_tape_with_one_event()));
         assert!(tape.is_some(), "a standalone QC tape must still produce a merged tape");
         assert_eq!(sources, vec![("quality_control", EventedEventKind::QualityControl)]);
-        assert!(names.is_empty(), "PresetSeeded declares no debug values");
+        assert!(names.is_empty());
     }
 
     #[test]
     fn generation_only_no_qc_tape_yields_just_the_generation_scope() {
-        let (tape, _names, sources) = merge_generation_and_qc_tapes(
-            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), None,
+        let (tape, _names, sources) = merge_debug_sources(
+            None, Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), None,
         );
         assert!(tape.is_some());
         assert_eq!(sources, vec![("generation", EventedEventKind::RecursiveBacktracker)]);
@@ -329,8 +339,8 @@ mod merge_generation_and_qc_tapes_tests {
 
     #[test]
     fn generation_plus_qc_yields_both_scopes_in_order() {
-        let (tape, _names, sources) = merge_generation_and_qc_tapes(
-            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), Some(qc_tape_with_one_event()),
+        let (tape, _names, sources) = merge_debug_sources(
+            None, Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), Some(qc_tape_with_one_event()),
         );
         assert!(tape.is_some());
         assert_eq!(sources, vec![
@@ -341,8 +351,8 @@ mod merge_generation_and_qc_tapes_tests {
 
     #[test]
     fn generation_with_a_missing_qc_tape_omits_the_quality_control_scope() {
-        let (tape, _names, sources) = merge_generation_and_qc_tapes(
-            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), None,
+        let (tape, _names, sources) = merge_debug_sources(
+            None, Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), None,
         );
         assert!(tape.is_some());
         assert_eq!(sources.len(), 1, "no quality_control scope when qc_tape is None");
@@ -355,8 +365,8 @@ mod merge_generation_and_qc_tapes_tests {
         // presence/absence of a scope) is what keeps an empty QC contribution from adding visible
         // steps to totalSteps; the scope itself existing is harmless and lets narration show
         // "quality control did nothing" rather than silently omitting the phase.
-        let (tape, _names, sources) = merge_generation_and_qc_tapes(
-            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), Some(empty_qc_tape()),
+        let (tape, _names, sources) = merge_debug_sources(
+            None, Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker), Vec::new(), Some(empty_qc_tape()),
         );
         assert!(tape.is_some());
         assert_eq!(sources, vec![
@@ -369,12 +379,42 @@ mod merge_generation_and_qc_tapes_tests {
     fn qc_only_with_an_empty_qc_tape_still_yields_a_zero_step_quality_control_scope() {
         // GitHub issue #173: qc_experiment mode on a graph with no preset connections and no
         // repair mutations (e.g. an empty field where no strategy can act) — QC's tape is empty,
-        // but with no generation_source it's the only thing there is to show, so it must still
-        // surface as a (zero-step) scope rather than yield no debug arena at all.
-        let (tape, names, sources) = merge_generation_and_qc_tapes(None, None, Vec::new(), Some(empty_qc_tape()));
+        // but with no other source it's the only thing there is to show, so it must still surface
+        // as a (zero-step) scope rather than yield no debug arena at all.
+        let (tape, names, sources) = merge_debug_sources(None, None, None, Vec::new(), Some(empty_qc_tape()));
         assert!(tape.is_some(), "an empty QC tape must still produce a merged tape when it's the only source");
         assert_eq!(sources, vec![("quality_control", EventedEventKind::QualityControl)]);
         assert!(names.is_empty());
+    }
+
+    #[test]
+    fn preset_setup_always_comes_first_when_present() {
+        // GitHub issue #225: preset setup, generation, and QC can each independently be present;
+        // when all three are, preset setup must lead.
+        let (tape, _names, sources) = merge_debug_sources(
+            Some(preset_setup_tape_source()),
+            Some(generation_tape_source()), Some(EventedEventKind::RecursiveBacktracker),
+            Vec::new(), Some(qc_tape_with_one_event()),
+        );
+        assert!(tape.is_some());
+        assert_eq!(sources, vec![
+            (maze_core::generation::PRESET_SETUP_SCOPE_NAME, EventedEventKind::PresetSetup),
+            ("generation", EventedEventKind::RecursiveBacktracker),
+            ("quality_control", EventedEventKind::QualityControl),
+        ]);
+    }
+
+    #[test]
+    fn preset_setup_plus_qc_only_qc_experiment_still_leads_with_preset_setup() {
+        // qc_experiment mode skips generation but still has preset edges and a QC tape.
+        let (tape, _names, sources) = merge_debug_sources(
+            Some(preset_setup_tape_source()), None, None, Vec::new(), Some(qc_tape_with_one_event()),
+        );
+        assert!(tape.is_some());
+        assert_eq!(sources, vec![
+            (maze_core::generation::PRESET_SETUP_SCOPE_NAME, EventedEventKind::PresetSetup),
+            ("quality_control", EventedEventKind::QualityControl),
+        ]);
     }
 }
 

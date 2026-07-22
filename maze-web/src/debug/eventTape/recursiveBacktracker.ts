@@ -165,7 +165,7 @@ export interface ApplyResult {
  *  A bidirectional `EdgeAdded` (GitHub issue #135) contributes both `{from, to}` and `{to, from}`
  *  to `edges` — RB always opens passages in both directions, and the event now carries that fact
  *  explicitly rather than this module assuming it. */
-export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, from?: ApplyFrom, endIndex?: number): ApplyResult {
+export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, from?: ApplyFrom, startIndex = 0, endIndex?: number): ApplyResult {
   validateStepShape("targetStep", targetStep);
   if (from) {
     validateStepShape("from.step", from.step);
@@ -191,7 +191,7 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
     }
   }
 
-  const scanStart = from ? from.nodeIndex + 1 : 0;
+  const scanStart = from ? from.nodeIndex + 1 : startIndex;
   const needed = targetStep - (from?.step ?? -1);
   const newEvents = mutatingRbEventsWithIndex(tape, needed, scanStart, endIndex);
   if (newEvents.length < needed) {

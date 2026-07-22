@@ -93,6 +93,7 @@ function rowTokensFor<E>(adapter: BaseAlgorithmAdapter<E>, tape: ParsedTape, row
  *  *same* adapter instance, so whichever concrete `E` the runtime adapter actually uses stays
  *  internally consistent regardless of what the static type parameter says. */
 const SOURCE_SCOPE_LABEL: Record<EventedEventKind, () => string> = {
+  preset_setup: () => m["debug.tree.source_scope.preset_setup"](),
   recursive_backtracker: () => m["debug.tree.source_scope.generation"](),
   kruskal: () => m["debug.tree.source_scope.generation"](),
   wilson: () => m["debug.tree.source_scope.generation"](),

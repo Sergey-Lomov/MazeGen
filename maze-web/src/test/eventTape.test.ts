@@ -379,7 +379,7 @@ function resolveRbMetadata(tape: ParsedTape, startIndex = 0, endIndex = tape.nod
   return resolveDebugArenaMetadata<ApplyResult>(
     tape,
     (t, s, e) => countMutatingEvents(t, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, s, e),
-    (step, previous) => applyRecursiveBacktracker(tape, step, previous, endIndex),
+    (step, previous) => applyRecursiveBacktracker(tape, step, previous, startIndex, endIndex),
     startIndex, endIndex,
   );
 }

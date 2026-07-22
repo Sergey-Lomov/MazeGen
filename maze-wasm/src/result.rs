@@ -20,6 +20,7 @@ fn kind_wire_str(kind: maze_core::event_log::DebugValueKind) -> &'static str {
 /// `debug_value_names`/`debug_value_kinds` already cross the boundary as plain values.
 fn event_kind_wire_str(kind: maze_core::event_log::EventedEventKind) -> &'static str {
     match kind {
+        maze_core::event_log::EventedEventKind::PresetSetup => "preset_setup",
         maze_core::event_log::EventedEventKind::RecursiveBacktracker => "recursive_backtracker",
         maze_core::event_log::EventedEventKind::Kruskal => "kruskal",
         maze_core::event_log::EventedEventKind::Wilson => "wilson",

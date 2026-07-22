@@ -1487,50 +1487,78 @@ children are, so only a genuine tree walk gives the right answer for every scope
   mechanism — #147 only changes which callers reach `merge_tapes` and how many sources they hand
   it, never the function itself
 
-## QC-Only Mode: Preset Seeding (#173)
+## Preset Setup Source (#225)
 
-`qc_experiment` mode (`GenerateConfig.qc_experiment`, `Specs/preset-connections.md`'s "Default edge
-state"/generation-config surface) skips the generation algorithm entirely — the whole point of the
-mode is letting QC/repair freely rework a hand-crafted preset setup, so there is no generation phase
-to instrument, and consequently no generation-phase event tape establishing the preset edges
-`build_preset_state` already wrote into the graph before QC/repair started. Without a dedicated
-event, the web replay engine's first reconstructed frame (`debugStep=0`) would show an empty graph
-even though the real graph QC/repair operates on already has these edges.
+Preset connections (`build_preset_state`, `maze-core/src/generation/preset_state.rs`) establish
+graph edges before any generation algorithm runs — narrating them was originally handled two
+different, inconsistent ways: not at all in the normal (non-`qc_experiment`) path (a preset
+teleport pair is never geometrically adjacent, so no generation algorithm's own `EdgeAdded`-style
+event ever covers it), and via `QcEvent::PresetSeeded` in `qc_experiment` mode only (that mode skips
+generation entirely, so QC/repair's own tape was the only place left to seed replay's initial edges
+from). This issue replaces both with one independent, algorithm-agnostic top-level source that
+always narrates every preset connection that establishes an edge, regardless of which generation
+algorithm runs afterward or whether `qc_experiment` is active — the same duplication concern that
+motivated #169/#147's "one architecture, not per-algorithm" approach, applied to preset seeding.
 
-`QcEvent::PresetSeeded { edges: Vec<(NodeId, NodeId, EdgeKind)> }` (`maze-core/src/quality_control/event.rs`)
-is the fix: emitted at most once, before QC/repair's first iteration, only in `qc_experiment` mode —
-`maze-wasm/src/runner.rs::run_generate` builds it directly from `graph.edges()` (real direction,
-real `EdgeKind`, no canonicalization — same discipline as Kruskal's `PresetUnionsApplied`, see that
-section above) right after `build_preset_state` runs, before handing the graph to `build_maze`.
-Carries every preset edge as one batch, not one event per edge, so scrubbing through a large preset
-setup costs a single step rather than one step per edge. Not emitted at all when there are no preset
-edges (`edges.is_empty()` short-circuits before the `log.emit` call). Mutating (`is_mutating()` is
-`true`, unlike Kruskal's `PresetUnionsApplied` which is trace-only) — unlike a pre-union DSU seed,
-this genuinely establishes reconstructable graph state a replay consumer must fold into `edges`.
+`PresetSetupEvent` (`maze-core/src/generation/preset_setup_event.rs`) is emitted inline by
+`build_preset_state` itself — the only place that still has each `PresetConnection`'s resolved
+`from`/`to` node ids and its exact `PresetConnectionState`/`TeleportDirection`, so no post-hoc
+reconstruction from `graph.edges()` is needed (unlike the removed `PresetSeeded`, which rebuilt its
+payload from the graph after the fact and could not distinguish a passage from a one-way passage,
+or a one-way teleport from a two-way one, once both directions existed as plain directed edges).
+`build_preset_state` takes an `Option<&mut EventLog<PresetSetupEvent>>` — `None` in every native/
+test call site and in `maze-runner` (native-only, no debug tape concept at all), `Some` only when
+`maze-wasm/src/runner.rs::run_generate` has `debug_events` on.
 
-**Wire encoding**: a `u32` LE length prefix followed by that many `(NodeId, NodeId, u8)` triples —
-identical shape to Kruskal's `PresetUnionsApplied` (see that section's wire-encoding note above),
-the trailing byte being 1 for `EdgeKind::Teleport`, 0 for `EdgeKind::Basic`.
+Three event kinds, one per `PresetConnectionState` outcome that actually establishes an edge
+(`Wall` blocks a pair without adding anything, so it emits nothing):
 
-**One tuple per actual directed graph edge, not a `bidirectional` flag** (GitHub issue #193): an
-earlier version of this event carried `Vec<(NodeId, NodeId, bool)>` with a `bidirectional` flag
-meant to mirror `BidirectionalEdgeAdded`'s semantics — but the emitter always hardcoded that flag to
-`false` and carried no `EdgeKind` at all, so every preset edge (one-way or two-way, teleport or
-passage) replayed in the debug view as a plain one-way passage regardless of what it actually was.
-Fixed by dropping the flag entirely and emitting one tuple per real directed edge instead: a
-bidirectional preset (`Passage`, or a `TwoWay` teleport) already exists as two separate directed
-graph edges, so it naturally yields two tuples — no separate direction flag needed.
+- `PassageEstablished { from, to }` — a bidirectional `Passage` preset; `from`/`to` are the
+  preset's own point order (both directions exist in the graph either way).
+- `OneWayEstablished { from, to }` — a `OneWayForward`/`OneWayBackward` preset, `from`/`to` already
+  resolved to the actual direction the passage allows (`OneWayBackward` swaps the preset's own
+  `from`/`to` to match `graph.build_initial_edge(to_id, from_id, ...)`).
+- `TeleportEstablished { from, to, two_way }` — a `Teleport` preset; `two_way` distinguishes a
+  `TeleportDirection::TwoWay` pair (one event covers both directed graph edges) from a one-way
+  `Forward`/`Backward` teleport (`Backward` swaps `from`/`to` the same way `OneWayBackward` does).
 
-**Web-side folding** (`applyQc`, `maze-web/src/debug/eventTape/qc.ts`): `PresetSeeded`'s `case` folds
-every tuple directly into the running `from:to`-keyed `net` accumulator (`add(edge.from, edge.to,
-edge.kind)`) the same way any other add-mirroring `QcEvent` variant does — no special-casing beyond
-reading `kind` off the tuple instead of hardcoding `"basic"`.
+Every variant is mutating (`is_mutating()` is always `true`) — each one is a preset edge the graph
+already carries before generation starts, and every replay consumer's first reconstructed frame
+must show it. Unlike the old `PresetSeeded`, there is no single "one event per run" batching — one
+`PresetSetupEvent` per preset connection, emitted as flat siblings directly under the source's own
+top-level scope (no nested per-connection scope). This costs one step per preset connection rather
+than one step total, but keeps checkpointing generic: `resolveDebugArenaMetadata` (#128) snapshots
+this source exactly like every other, so a preset-heavy field still gets `CHECKPOINT_INTERVAL`-
+spaced snapshots rather than a hand-rolled "batch into one step" workaround.
 
-### Out of Scope (#173, beyond #147's own scope)
+Always the first source when present (before `generation` and `quality_control`) — built and
+finished in `maze-wasm/src/runner.rs::run_generate` before `run_initial_generation` is even called,
+independent of `qc_experiment`. `merge_debug_sources` (`runner.rs`) pushes it first into both
+`sources_meta` and `tape_sources` whenever the log is non-empty (`EventLog::is_empty()`, `maze-core/
+src/event_log/tape.rs` — true when nothing but the root scope was written, letting a preset-free
+run add no empty top-level scope, mirroring the old `PresetSeeded`'s "absent, not empty"
+convention). `EventedEventKind::PresetSetup` tags it across the WASM boundary; `"preset_setup"` is
+its wire string (`event_kind_wire_str`, `maze-wasm/src/result.rs`) and its `scope_name`
+(`PRESET_SETUP_SCOPE_NAME`).
 
-- A generation-phase equivalent for non-`qc_experiment` runs — every other mode always has a real
-  generation-phase tape to seed replay's initial edges from (Contract A), so this event only ever
-  fires in `qc_experiment` mode
+**Wire encoding**: `PassageEstablished`/`OneWayEstablished` are 16 bytes (`from`/`to` as two
+`NodeId`s); `TeleportEstablished` is 17 bytes (`from`/`to` plus a trailing `two_way` byte, 1 or 0).
+
+**Web side** (`maze-web/src/debug/eventTape/presetSetup.ts`): `decodePresetSetupEvent`/
+`isMutatingPresetSetupEvent`/`applyPresetSetup` follow the same shape as every other algorithm's own
+decode/apply pair, registered as `PRESET_SETUP_ADAPTER` in `algorithmRegistry.ts` (`adapterFor
+("preset_setup")`) and dispatched via `presetSetupContribution` in `debugSelectors.ts` — a
+minimal contribution carrying only `edges` (no debug values, no `dsuGroups`, no `start`/`finish`,
+since this source declares none of those). `applyPresetSetup` expands a `PassageEstablished` or a
+two-way `TeleportEstablished` into both directed edges (`{from,to}` and `{to,from}`), mirroring how
+`applyRecursiveBacktracker` expands a bidirectional `EdgeAdded` — a `OneWayEstablished` or a
+one-way `TeleportEstablished` contributes only its own direction.
+
+### Out of Scope (#225, beyond #147's/#169's own scope)
+
 - Preset node locks, markers (`preset_start`/`preset_finish`/`preset_gen_source`), or blocked-edge
-  state — `PresetSeeded` only carries graph edges, since those are the only preset state the debug
+  state — this source only narrates graph edges, since those are the only preset state the debug
   replay engine's `edges` output needs to reconstruct
+- Migrating Kruskal's own `PresetUnionsApplied` (trace-only DSU seeding, see that section above) to
+  this source — the two serve different purposes (DSU pre-union state vs. reconstructable graph
+  edges) and remain independent

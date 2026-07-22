@@ -60,8 +60,9 @@ fn run_initial_generation<T: Tessellation>(
 }
 
 /// Which [`maze_core::event_log::EventedEventKind`]s the web replay engine (`maze-web/src/debug/
-/// eventTape.ts`) can decode today — Recursive Backtracker's, Kruskal's (GitHub issue #146),
-/// Wilson's (#145) and `CustomEdgeBased`'s (#144) wire tags. Must stay in sync by hand with the
+/// eventTape.ts`) can decode today — the preset setup source's (GitHub issue #225), Recursive
+/// Backtracker's, Kruskal's (GitHub issue #146), Wilson's (#145) and `CustomEdgeBased`'s (#144)
+/// wire tags. Must stay in sync by hand with the
 /// keys registered in `maze-web/src/debug/algorithmRegistry.ts`'s `adapterFor` (GitHub issue
 /// #163) — that registry is the web-side source of truth for which kinds have a decoder/apply/
 /// narration adapter; no codegen ties the two together across the WASM boundary, so extend both
@@ -69,7 +70,8 @@ fn run_initial_generation<T: Tessellation>(
 fn is_web_decodable(kind: Option<maze_core::event_log::EventedEventKind>) -> bool {
     matches!(
         kind,
-        Some(maze_core::event_log::EventedEventKind::RecursiveBacktracker)
+        Some(maze_core::event_log::EventedEventKind::PresetSetup)
+            | Some(maze_core::event_log::EventedEventKind::RecursiveBacktracker)
             | Some(maze_core::event_log::EventedEventKind::Kruskal)
             | Some(maze_core::event_log::EventedEventKind::Wilson)
             | Some(maze_core::event_log::EventedEventKind::EdgeBased)
@@ -113,12 +115,27 @@ pub fn run_generate<T: Tessellation + 'static>(
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
     let gen_config = build_generation_config(config);
+    // The "preset setup" source (GitHub issue #225) — one event per preset connection that
+    // actually establishes an edge, narrated inline by `build_preset_state` itself (it's the only
+    // place that still has each connection's resolved from/to/direction) rather than reconstructed
+    // from the graph afterward. Independent of which algorithm runs or whether `qc_experiment`
+    // skips generation entirely. Always the first source when present — see `merge_debug_sources`
+    // below.
+    let mut preset_setup_log = config.debug_events.then(maze_core::event_log::EventLog::new);
     let preset_state = build_preset_state(
         &mut graph, &field,
         &gen_config.preset_connections,
         &gen_config.locked_nodes,
         |x, y| point_at_xy(&field, &point_to_xy, x, y).unwrap_or(start),
+        preset_setup_log.as_mut(),
     );
+    let preset_setup_source = preset_setup_log
+        .filter(|log| !log.is_empty())
+        .map(|log| maze_core::event_log::TapeSource {
+            scope_name: maze_core::generation::PRESET_SETUP_SCOPE_NAME,
+            tape: log.finish().encode(),
+        });
+
     let (generation_source, generation_kind, generation_debug_value_names, initial_build_ms) = run_initial_generation(
         &mut graph, &field, seed, start_id, gen_config, &preset_state, config.qc_experiment, config.debug_events,
     );
@@ -133,32 +150,14 @@ pub fn run_generate<T: Tessellation + 'static>(
         .and_then(|[fx, fy]| point_at_xy(&field, &point_to_xy, fx, fy))
         .and_then(|p| field.nodes_at(p).first().copied());
 
-    // QC/repair gets its own `EventLog<QcEvent>` when `debug_events` is on and either generation
-    // itself produced a forwardable source to anchor against, or `qc_experiment` mode is active —
-    // in that mode generation never runs by design (see `run_initial_generation`'s doc comment),
-    // so QC/repair's own tape is the only thing there is to debug, and stands on its own as the
-    // sole top-level scope (GitHub issue #173).
-    let mut qc_log = (config.debug_events && (generation_source.is_some() || config.qc_experiment))
+    // QC/repair gets its own `EventLog<QcEvent>` when `debug_events` is on and there is at least
+    // one other source to anchor against (generation, or the preset setup source) or
+    // `qc_experiment` mode is active — in that mode generation never runs by design (see
+    // `run_initial_generation`'s doc comment), so QC/repair's own tape is the only per-run thing
+    // left to debug, standing on its own (alongside preset setup, if any) as a top-level scope
+    // (GitHub issue #173).
+    let mut qc_log = (config.debug_events && (generation_source.is_some() || preset_setup_source.is_some() || config.qc_experiment))
         .then(maze_core::event_log::EventLog::new);
-
-    // Seed QC's own event log with the preset edges `build_preset_state` already wrote into
-    // `graph` above, before handing it to `build_maze` — only in `qc_experiment` mode, where
-    // there's no generation-phase tape to establish them (see `QcEvent::PresetSeeded`'s doc
-    // comment, GitHub issue #173). One event carries every edge, not one event per edge, so
-    // scrubbing a large preset setup costs a single step.
-    if config.qc_experiment {
-        if let Some(log) = qc_log.as_mut() {
-            // One tuple per actual directed graph edge, real `EdgeKind` included (GitHub issue
-            // #193's follow-up) — this used to hardcode `false`/no kind at all, so every preset
-            // edge (teleport or one-way) replayed in the debug view as a plain bidirectional
-            // passage regardless of what it actually was.
-            let edges: Vec<(maze_core::ids::NodeId, maze_core::ids::NodeId, maze_core::graph::EdgeKind)> =
-                graph.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
-            if !edges.is_empty() {
-                log.emit(maze_core::quality_control::QcEvent::PresetSeeded { edges });
-            }
-        }
-    }
 
     // Seed QC's own event log with the preset start/finish `build_maze` is about to write straight
     // into `maze.meta` (`pipeline.rs`'s `maze.meta.start/finish = preset_start/preset_finish`) —
@@ -196,27 +195,30 @@ pub fn run_generate<T: Tessellation + 'static>(
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let qc_tape = qc_log.map(|log| log.finish().encode());
-    let (debug_tape, debug_value_names, sources) = merge_generation_and_qc_tapes(
-        generation_source, generation_kind, generation_debug_value_names, qc_tape,
+    let (debug_tape, debug_value_names, sources) = merge_debug_sources(
+        preset_setup_source, generation_source, generation_kind, generation_debug_value_names, qc_tape,
     );
 
     Ok(build_generate_result(snapshot_js, debug_tape, debug_value_names, sources))
 }
 
-/// Single `merge_tapes` call for the whole pipeline (GitHub issue #147/#169) — folds generation's
-/// and QC's independently-produced sources into one merged arena, in execution order (generation
-/// always finishes before QC/repair starts). QC's tape is included whenever `qc_log` existed at
-/// all (i.e. `debug_events` was on and QC ran) — even a tape with zero mutating events still
-/// becomes a (zero-step) "quality_control" scope, since a `DebugTape`'s encoded `node_table` is
-/// never actually empty (the log's own root scope node is always present).
+/// Single `merge_tapes` call for the whole pipeline (GitHub issue #147/#169, extended by #225's
+/// "preset setup" source) — folds preset setup's, generation's, and QC's independently-produced
+/// sources into one merged arena, in execution order (preset setup always happens first, then
+/// generation, then QC/repair). QC's tape is included whenever `qc_log` existed at all (i.e.
+/// `debug_events` was on and QC ran) — even a tape with zero mutating events still becomes a
+/// (zero-step) "quality_control" scope, since a `DebugTape`'s encoded `node_table` is never
+/// actually empty (the log's own root scope node is always present).
 ///
-/// `qc_experiment` mode (GitHub issue #173) never has a `generation_source` (generation is
-/// skipped entirely) — QC/repair's tape stands alone as the only top-level scope in that case, so
-/// a `qc_experiment` run with zero repair mutations (e.g. an empty field with no preset
-/// connections, where no strategy can act on an edgeless graph) still surfaces a debug arena
-/// rather than none at all. Split out of `run_generate` (mirrors `build_generate_result`'s own
-/// doc comment on why) so this matching logic is testable natively without a WASM runtime.
-fn merge_generation_and_qc_tapes(
+/// Every source is independently optional: preset setup is absent for a preset-free run;
+/// `qc_experiment` mode (GitHub issue #173) never has a generation source (generation is skipped
+/// entirely by design); QC/repair's own log only exists when at least one other source anchors it
+/// or `qc_experiment` is active. `sources` (and the merged tape's top-level scopes) always list
+/// whichever ones are present in this fixed order — no combination of present/absent sources
+/// reorders them. Split out of `run_generate` (mirrors `build_generate_result`'s own doc comment
+/// on why) so this matching logic is testable natively without a WASM runtime.
+fn merge_debug_sources(
+    preset_setup_source: Option<maze_core::event_log::TapeSource>,
     generation_source: Option<maze_core::event_log::TapeSource>,
     generation_kind: Option<maze_core::event_log::EventedEventKind>,
     generation_debug_value_names: Vec<(String, maze_core::event_log::DebugValueKind)>,
@@ -228,35 +230,37 @@ fn merge_generation_and_qc_tapes(
 ) {
     let qc_source = qc_tape.map(|tape| maze_core::event_log::TapeSource { scope_name: "quality_control", tape });
 
-    match (generation_source, qc_source) {
-        (Some(generation_source), qc_source) => {
-            let mut sources_meta = vec![(generation_source.scope_name, generation_kind.expect("generation_source implies generation_kind"))];
-            let mut tape_sources = vec![generation_source];
-            let mut debug_value_name_sources = vec![("generation", generation_debug_value_names)];
+    let mut sources_meta: Vec<(&'static str, maze_core::event_log::EventedEventKind)> = Vec::new();
+    let mut tape_sources: Vec<maze_core::event_log::TapeSource> = Vec::new();
+    let mut debug_value_name_sources: Vec<(&'static str, Vec<(String, maze_core::event_log::DebugValueKind)>)> = Vec::new();
 
-            if let Some(qc_source) = qc_source {
-                sources_meta.push(("quality_control", maze_core::event_log::EventedEventKind::QualityControl));
-                tape_sources.push(qc_source);
-                debug_value_name_sources.push(("quality_control", Vec::new()));
-            }
-
-            let merged_tape = maze_core::event_log::merge_tapes(tape_sources);
-            let debug_value_name_sources: Vec<(&'static str, Vec<(&str, maze_core::event_log::DebugValueKind)>)> = debug_value_name_sources
-                .iter()
-                .map(|(scope_name, names)| (*scope_name, names.iter().map(|(name, kind)| (name.as_str(), *kind)).collect()))
-                .collect();
-            let debug_value_names = maze_core::generation::qualify_debug_value_names(&debug_value_name_sources);
-            (Some(merged_tape), debug_value_names, sources_meta)
-        }
-        (None, Some(qc_source)) => {
-            let sources_meta = vec![("quality_control", maze_core::event_log::EventedEventKind::QualityControl)];
-            let merged_tape = maze_core::event_log::merge_tapes(vec![qc_source]);
-            let debug_value_name_sources: Vec<(&'static str, Vec<(&str, maze_core::event_log::DebugValueKind)>)> = vec![("quality_control", Vec::new())];
-            let debug_value_names = maze_core::generation::qualify_debug_value_names(&debug_value_name_sources);
-            (Some(merged_tape), debug_value_names, sources_meta)
-        }
-        (None, None) => (None, Vec::new(), Vec::new()),
+    if let Some(preset_setup_source) = preset_setup_source {
+        sources_meta.push((preset_setup_source.scope_name, maze_core::event_log::EventedEventKind::PresetSetup));
+        tape_sources.push(preset_setup_source);
+        debug_value_name_sources.push(("preset_setup", Vec::new()));
     }
+    if let Some(generation_source) = generation_source {
+        sources_meta.push((generation_source.scope_name, generation_kind.expect("generation_source implies generation_kind")));
+        tape_sources.push(generation_source);
+        debug_value_name_sources.push(("generation", generation_debug_value_names));
+    }
+    if let Some(qc_source) = qc_source {
+        sources_meta.push(("quality_control", maze_core::event_log::EventedEventKind::QualityControl));
+        tape_sources.push(qc_source);
+        debug_value_name_sources.push(("quality_control", Vec::new()));
+    }
+
+    if tape_sources.is_empty() {
+        return (None, Vec::new(), Vec::new());
+    }
+
+    let merged_tape = maze_core::event_log::merge_tapes(tape_sources);
+    let debug_value_name_sources: Vec<(&'static str, Vec<(&str, maze_core::event_log::DebugValueKind)>)> = debug_value_name_sources
+        .iter()
+        .map(|(scope_name, names)| (*scope_name, names.iter().map(|(name, kind)| (name.as_str(), *kind)).collect()))
+        .collect();
+    let debug_value_names = maze_core::generation::qualify_debug_value_names(&debug_value_name_sources);
+    (Some(merged_tape), debug_value_names, sources_meta)
 }
 
 /// Assembles the final `GenerateResult` from the encoded debug tape buffers — split out of

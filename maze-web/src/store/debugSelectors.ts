@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { DebugArenaHandle } from "./storeTypes";
 import { nearestCheckpointFromAtOrBefore, sourceContentStart } from "../debug/eventTape";
-import type { ApplyFrom, KruskalApplyResult, WilsonApplyResult, EdgeBasedApplyResult, VertexBasedApplyResult, QcApplyResult } from "../debug/eventTape";
+import type { ApplyFrom, PresetSetupApplyResult, KruskalApplyResult, WilsonApplyResult, EdgeBasedApplyResult, VertexBasedApplyResult, QcApplyResult } from "../debug/eventTape";
 import { adapterFor } from "../debug/algorithmRegistry";
 
 export interface DebugMazeView {
@@ -121,11 +121,23 @@ function generationContribution(arena: DebugArenaHandle, source: DebugArenaHandl
     contribution.debugValues = result.debugValues;
   } else {
     const from = nearestCheckpointFromAtOrBefore<ApplyFrom>(source.checkpointFroms, localStep) ?? undefined;
-    const result = adapterFor("recursive_backtracker").apply(arena.tape, localStep, from, endIndex);
+    const result = adapterFor("recursive_backtracker").apply(arena.tape, localStep, from, startIndex, endIndex);
     contribution.edges = result.edges;
     contribution.debugValues = result.debugValues;
   }
   return qualifyContribution(contribution, source.scopeName, qualify);
+}
+
+/** Builds the "preset setup" source's contribution (GitHub issue #225) — the preset edges
+ *  (Passage/OneWay/Teleport) already in the graph before generation started, algorithm-agnostic
+ *  and always the first source when present. Simplest possible contribution: just `edges`, no
+ *  debug values/dsuGroups/start/finish — this source declares none of those. */
+function presetSetupContribution(arena: DebugArenaHandle, source: DebugArenaHandle["sources"][number], startNodeIndex: number, localStep: number): DebugMazeViewContribution {
+  const from = nearestCheckpointFromAtOrBefore<PresetSetupApplyResult>(source.checkpointFroms, localStep) ?? undefined;
+  const result = adapterFor("preset_setup").apply(arena.tape, localStep, from, startNodeIndex);
+  const contribution = emptyContribution();
+  contribution.edges = result.edges;
+  return contribution;
 }
 
 /** Builds QC's contribution (GitHub issue #147) — `applyQc` already returns an add/remove patch
@@ -240,8 +252,8 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
       : arena.tape.nodeCount;
     const qualify = arena.sources.length > 1;
     contributions.push(
-      source.kind === "quality_control"
-        ? qcContribution(arena, source, startIndex, localStep)
+      source.kind === "quality_control" ? qcContribution(arena, source, startIndex, localStep)
+        : source.kind === "preset_setup" ? presetSetupContribution(arena, source, startIndex, localStep)
         : generationContribution(arena, source, localStep, startIndex, endIndex, qualify),
     );
   }
