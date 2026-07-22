@@ -19,7 +19,7 @@ fn wilson_visits_all_nodes() {
 fn wilson_traverses_preset_teleport_into_visited() {
     // GitHub issue #226: a preset teleport bridging two otherwise-disconnected halves must be
     // followed by the algorithm, not treated as a dead end.
-    let (mut graph, field, start, preset_state, node_count) = build_with_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, node_count, _, _) = build_with_preset_teleport_bridge();
     generate_wilson(&mut graph, &field, 42, start, &preset_state, None);
     assert_perfect_maze(&graph, node_count);
 }

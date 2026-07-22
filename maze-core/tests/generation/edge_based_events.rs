@@ -151,9 +151,7 @@ fn edge_based_event_log_mutating_edges_match_graph_edges() {
 /// the one `build_preset_state` already planted).
 #[test]
 fn edge_based_event_log_preset_teleport_dst_emits_preset_skipped_not_edge_added() {
-    let (mut graph, field, start, preset_state, _node_count) = build_with_preset_teleport_bridge();
-    let teleport_src = *preset_state.preset_teleports.keys().next().unwrap();
-    let teleport_dst = preset_state.preset_teleports[&teleport_src][0];
+    let (mut graph, field, start, preset_state, _node_count, teleport_src, teleport_dst) = build_with_preset_teleport_bridge();
     let params = EdgeBasedParams::default();
     let elements = no_one_way_elements();
     let mut log: EventLog<EdgeBasedEvent> = EventLog::new();

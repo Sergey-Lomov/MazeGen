@@ -154,7 +154,7 @@ fn vertex_based_event_log_mutating_edges_match_graph_edges() {
 /// edge was just added on top of the one `build_preset_state` already planted).
 #[test]
 fn vertex_based_event_log_preset_teleport_dst_emits_preset_neighbor_visited_not_edge_added() {
-    let (mut graph, field, start, preset_state, _node_count) = build_with_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, _node_count, _, _) = build_with_preset_teleport_bridge();
     let teleport_src = *preset_state.preset_teleports.keys().next().unwrap();
     let teleport_dst = preset_state.preset_teleports[&teleport_src][0];
     let params = GenerationParams::default();

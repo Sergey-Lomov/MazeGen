@@ -19,8 +19,8 @@ pub fn empty_preset() -> PresetState { PresetState::empty() }
 /// does for a `PresetConnectionState::Teleport(TwoWay)` entry — see `Specs/preset-connections.md`).
 /// Regression fixture for GitHub issue #226: every generation algorithm must treat a preset
 /// teleport as a traversable extra neighbor, not a dead end. Returns
-/// `(graph, field, start, preset_state, node_count)`.
-pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>, NodeId, PresetState, usize) {
+/// `(graph, field, start, preset_state, node_count, teleport_a, teleport_b)`.
+pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>, NodeId, PresetState, usize, NodeId, NodeId) {
     let (mut graph, field, start) = build(4, 1);
     let node_count = graph.nodes().count();
     let a = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
@@ -35,7 +35,7 @@ pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>,
     preset_state.preset_teleports.entry(a).or_default().push(b);
     preset_state.preset_teleports.entry(b).or_default().push(a);
 
-    (graph, field, start, preset_state, node_count)
+    (graph, field, start, preset_state, node_count, a, b)
 }
 
 /// One-way counterpart of `build_with_preset_teleport_bridge`: same 1x4 layout and walled-off

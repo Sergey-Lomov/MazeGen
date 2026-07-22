@@ -24,7 +24,7 @@ fn different_seed_different_maze() {
 fn traverses_preset_teleport_into_visited() {
     // GitHub issue #226: a preset teleport bridging two otherwise-disconnected halves must be
     // followed by the algorithm, not treated as a dead end.
-    let (mut graph, field, start, preset_state, _node_count) = build_with_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, _node_count, _, _) = build_with_preset_teleport_bridge();
     generate_maze(&mut graph, &field, 42, start, default_config(), &preset_state);
     assert!(is_connected(&graph, start));
 }

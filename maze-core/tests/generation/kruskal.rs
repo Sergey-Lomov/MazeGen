@@ -19,7 +19,7 @@ fn kruskal_traverses_preset_teleport_into_visited() {
     // followed by the algorithm, not treated as a dead end. Kruskal was already correct (it
     // pre-unions every existing graph edge, including preset teleports, into the DSU before its
     // main loop) — this pins that down as a regression guard.
-    let (mut graph, field, start, preset_state, _node_count) = build_with_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, _node_count, _, _) = build_with_preset_teleport_bridge();
     generate_kruskal(&mut graph, &field, 42, &preset_state, None);
     assert!(is_connected(&graph, start));
 }
