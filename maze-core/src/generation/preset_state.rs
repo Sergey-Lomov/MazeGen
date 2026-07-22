@@ -71,84 +71,85 @@ pub fn build_preset_state<T: Tessellation>(
     for preset in preset_connections {
         let from_pt = xy_to_point(preset.from.0, preset.from.1);
         let to_pt   = xy_to_point(preset.to.0,   preset.to.1);
-        // `Field` has no notion of which of a multi-node point's several nodes belongs to which
-        // face (GitHub issue #219 — face/group ownership is deliberately not tracked at all), so
-        // there's no face-aware resolution possible here; this takes the first node, same as an
-        // unsplit point's only node today. An explicit per-node choice for presets on split tiles
-        // is #221 (editor UI) territory, once presets can target a specific node.
-        let Some(from_id) = field.nodes_at(from_pt).first().copied() else { continue; };
-        let Some(to_id)   = field.nodes_at(to_pt).first().copied()   else { continue; };
-
-        match preset.state {
-            PresetConnectionState::Wall => {
-                blocked.insert((from_id, to_id));
-                blocked.insert((to_id, from_id));
-            }
-            PresetConnectionState::Passage => {
-                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
-                graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
-                preset_connected.insert(from_id);
-                preset_connected.insert(to_id);
-                preset_edges.insert((from_id, to_id));
-                preset_edges.insert((to_id, from_id));
-                if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::PassageEstablished { from: from_id, to: to_id });
-                }
-            }
-            PresetConnectionState::OneWayForward => {
-                graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
-                blocked.insert((to_id, from_id));
-                preset_connected.insert(from_id);
-                preset_connected.insert(to_id);
-                preset_edges.insert((from_id, to_id));
-                if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::OneWayEstablished { from: from_id, to: to_id });
-                }
-            }
-            PresetConnectionState::OneWayBackward => {
-                graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
-                blocked.insert((from_id, to_id));
-                preset_connected.insert(from_id);
-                preset_connected.insert(to_id);
-                preset_edges.insert((to_id, from_id));
-                if let Some(log) = log.as_deref_mut() {
-                    emit(log, PresetSetupEvent::OneWayEstablished { from: to_id, to: from_id });
-                }
-            }
-            PresetConnectionState::Teleport(direction) => {
-                match direction {
-                    TeleportDirection::Forward => {
-                        graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
-                        preset_edges.insert((from_id, to_id));
-                        preset_teleports.entry(from_id).or_default().push(to_id);
-                        if let Some(log) = log.as_deref_mut() {
-                            emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: false });
-                        }
+        // A point may resolve to several NodeIds (GitHub issue #219, routing-group split —
+        // GitHub issue #220). `Field` tracks no group/face ownership, so a preset connection
+        // between two points applies to every (from_id, to_id) pair across both points' nodes,
+        // rather than collapsing to just the first node of each point.
+        for &from_id in field.nodes_at(from_pt) {
+            for &to_id in field.nodes_at(to_pt) {
+                match preset.state {
+                    PresetConnectionState::Wall => {
+                        blocked.insert((from_id, to_id));
+                        blocked.insert((to_id, from_id));
                     }
-                    TeleportDirection::Backward => {
-                        graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
-                        preset_edges.insert((to_id, from_id));
-                        preset_teleports.entry(to_id).or_default().push(from_id);
-                        if let Some(log) = log.as_deref_mut() {
-                            emit(log, PresetSetupEvent::TeleportEstablished { from: to_id, to: from_id, two_way: false });
-                        }
-                    }
-                    TeleportDirection::TwoWay => {
-                        graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
-                        graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
+                    PresetConnectionState::Passage => {
+                        graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
+                        graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
+                        preset_connected.insert(from_id);
+                        preset_connected.insert(to_id);
                         preset_edges.insert((from_id, to_id));
                         preset_edges.insert((to_id, from_id));
-                        preset_teleports.entry(from_id).or_default().push(to_id);
-                        preset_teleports.entry(to_id).or_default().push(from_id);
                         if let Some(log) = log.as_deref_mut() {
-                            emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: true });
+                            emit(log, PresetSetupEvent::PassageEstablished { from: from_id, to: to_id });
                         }
                     }
+                    PresetConnectionState::OneWayForward => {
+                        graph.build_initial_edge(from_id, to_id, EdgeKind::Basic);
+                        blocked.insert((to_id, from_id));
+                        preset_connected.insert(from_id);
+                        preset_connected.insert(to_id);
+                        preset_edges.insert((from_id, to_id));
+                        if let Some(log) = log.as_deref_mut() {
+                            emit(log, PresetSetupEvent::OneWayEstablished { from: from_id, to: to_id });
+                        }
+                    }
+                    PresetConnectionState::OneWayBackward => {
+                        graph.build_initial_edge(to_id, from_id, EdgeKind::Basic);
+                        blocked.insert((from_id, to_id));
+                        preset_connected.insert(from_id);
+                        preset_connected.insert(to_id);
+                        preset_edges.insert((to_id, from_id));
+                        if let Some(log) = log.as_deref_mut() {
+                            emit(log, PresetSetupEvent::OneWayEstablished { from: to_id, to: from_id });
+                        }
+                    }
+                    PresetConnectionState::Teleport(direction) => {
+                        match direction {
+                            TeleportDirection::Forward => {
+                                graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
+                                preset_edges.insert((from_id, to_id));
+                                preset_teleports.entry(from_id).or_default().push(to_id);
+                                if let Some(log) = log.as_deref_mut() {
+                                    emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: false });
+                                }
+                            }
+                            TeleportDirection::Backward => {
+                                graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
+                                preset_edges.insert((to_id, from_id));
+                                preset_teleports.entry(to_id).or_default().push(from_id);
+                                if let Some(log) = log.as_deref_mut() {
+                                    emit(log, PresetSetupEvent::TeleportEstablished { from: to_id, to: from_id, two_way: false });
+                                }
+                            }
+                            TeleportDirection::TwoWay => {
+                                graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
+                                graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
+                                preset_edges.insert((from_id, to_id));
+                                preset_edges.insert((to_id, from_id));
+                                preset_teleports.entry(from_id).or_default().push(to_id);
+                                preset_teleports.entry(to_id).or_default().push(from_id);
+                                if let Some(log) = log.as_deref_mut() {
+                                    emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: true });
+                                }
+                            }
+                        }
+                        // Not added to `preset_connected` — that set exists only to short-circuit
+                        // the geometric-adjacency generation loop for adjacent preset pairs (see
+                        // edge_based.rs). A teleport pair is not geometrically adjacent, so the
+                        // endpoints must still go through normal generation for their regular
+                        // connectivity.
+                    }
                 }
-                // Not added to `preset_connected` — that set exists only to short-circuit the
-                // geometric-adjacency generation loop for adjacent preset pairs (see
-                // edge_based.rs). A teleport pair is not geometrically adjacent, so the endpoints
-                // must still go through normal generation to get their regular connectivity.
             }
         }
     }

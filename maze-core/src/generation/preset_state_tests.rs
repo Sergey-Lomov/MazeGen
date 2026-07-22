@@ -301,11 +301,11 @@ fn locked_node_on_a_multi_node_point_locks_every_node_at_that_point() {
     assert!(state.locked_out.contains(&added));
 }
 
-/// GitHub issue #219 — `Field` has no notion of face-to-node ownership, so a preset connection
-/// on a multi-node point resolves to the first (creation-order) node, same as an unsplit point's
-/// only node.
+/// GitHub issue #220 — a preset connection on a multi-node point applies to every node at that
+/// point, not just the first (creation-order) one. `Field` has no face/group ownership (GitHub
+/// issue #219), so there's no way to pick "the right" node — every node participates.
 #[test]
-fn preset_connection_on_a_multi_node_point_resolves_to_the_first_node() {
+fn preset_connection_on_a_multi_node_point_connects_every_node_at_that_point() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
     let point = SquarePoint { x: 0, y: 0 };
@@ -316,9 +316,42 @@ fn preset_connection_on_a_multi_node_point_resolves_to_the_first_node() {
     let presets = vec![PresetConnection {
         from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage,
     }];
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
 
     let b = node_at(&field, 1, 0);
     assert!(graph.edge_between(original, b).is_some());
-    assert!(graph.edge_between(added, b).is_none());
+    assert!(graph.edge_between(b, original).is_some());
+    assert!(graph.edge_between(added, b).is_some());
+    assert!(graph.edge_between(b, added).is_some());
+    assert!(state.preset_connected.contains(&original));
+    assert!(state.preset_connected.contains(&added));
+    assert!(state.preset_connected.contains(&b));
+}
+
+/// GitHub issue #220 — when both endpoints of a preset connection are multi-node points, every
+/// (from_id, to_id) combination gets the edge, not just the first node of each side.
+#[test]
+fn preset_connection_between_two_multi_node_points_connects_every_combination() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let from_point = SquarePoint { x: 0, y: 0 };
+    let to_point = SquarePoint { x: 1, y: 0 };
+    let from_original = field.nodes_at(from_point)[0];
+    let from_added = field.add_node_at(from_point, &mut ids);
+    graph.add_node(from_added);
+    let to_original = field.nodes_at(to_point)[0];
+    let to_added = field.add_node_at(to_point, &mut ids);
+    graph.add_node(to_added);
+
+    let presets = vec![PresetConnection {
+        from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage,
+    }];
+    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+
+    for &f in &[from_original, from_added] {
+        for &t in &[to_original, to_added] {
+            assert!(graph.edge_between(f, t).is_some());
+            assert!(graph.edge_between(t, f).is_some());
+        }
+    }
 }
