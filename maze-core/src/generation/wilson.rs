@@ -250,9 +250,13 @@ pub fn generate<T: Tessellation>(
             // shorten its borrow to its last use.
             let mut search_scope = walk_scope.as_mut().map(|g| g.enter("search"));
             loop {
+                let teleport_dsts = preset_state.preset_teleports.get(&current).map(Vec::as_slice).unwrap_or(&[]);
+                // Preset-teleport destinations already have their edge in the graph —
+                // traversable regardless of `can_connect` (see GitHub issue #226).
                 let neighbors: Vec<NodeId> = field.neighbors(current)
                     .into_iter()
                     .filter(|&n| can_connect(current, n, preset_state))
+                    .chain(teleport_dsts.iter().copied())
                     .collect();
 
                 let dead_end = if neighbors.is_empty() {
@@ -292,7 +296,11 @@ pub fn generate<T: Tessellation>(
             let mut node = walk_start;
             while !visited.contains(&node) {
                 let Some(&dst) = next.get(&node) else { break; };
-                try_add_bidirectional_edge(graph, node, dst, preset_state);
+                // A preset-teleport step already has its edge in the graph — skip adding it again.
+                let is_preset_teleport = preset_state.preset_teleports.get(&node).is_some_and(|dsts| dsts.contains(&dst));
+                if !is_preset_teleport {
+                    try_add_bidirectional_edge(graph, node, dst, preset_state);
+                }
                 visited.insert(node);
                 if let Some(g) = commit_scope.as_mut() {
                     g.emit(WilsonEvent::EdgeAdded { from: node, to: dst, bidirectional: true });

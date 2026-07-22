@@ -149,6 +149,31 @@ fn vertex_based_event_log_mutating_edges_match_graph_edges() {
     }
 }
 
+/// GitHub issue #226: a preset teleport's destination must be narrated via
+/// `PresetNeighborVisited` (the existing-edge path), not `EdgeAdded` (which would imply a new
+/// edge was just added on top of the one `build_preset_state` already planted).
+#[test]
+fn vertex_based_event_log_preset_teleport_dst_emits_preset_neighbor_visited_not_edge_added() {
+    let (mut graph, field, start, preset_state, _node_count) = build_with_preset_teleport_bridge();
+    let teleport_src = *preset_state.preset_teleports.keys().next().unwrap();
+    let teleport_dst = preset_state.preset_teleports[&teleport_src][0];
+    let params = GenerationParams::default();
+    let elements = no_one_way_elements();
+    let mut log: EventLog<VertexBasedEvent> = EventLog::new();
+    generate_vertex_based(&mut graph, &field, 42, start, &params, &elements, &preset_state, Some(&mut log));
+    let tape = log.finish();
+
+    let saw_preset_neighbor_visited = tape.iter().any(|e| matches!(
+        e, VertexBasedEvent::PresetNeighborVisited { src, dst } if *src == teleport_src && *dst == teleport_dst
+    ));
+    assert!(saw_preset_neighbor_visited, "expected PresetNeighborVisited for the preset-teleport pair");
+
+    let saw_edge_added_for_teleport_pair = tape.iter().any(|e| matches!(
+        e, VertexBasedEvent::EdgeAdded { src, dst, .. } if *src == teleport_src && *dst == teleport_dst
+    ));
+    assert!(!saw_edge_added_for_teleport_pair, "a preset-teleport pair's edge already exists — must not emit a duplicate EdgeAdded");
+}
+
 /// Regression-style coverage for the direction-detection helper (mirrors GitHub issue #144's
 /// direction-mismatch fix in `edge_based`): with `one_way_chance = 1.0`, the coin flip reverses
 /// roughly half of all one-way edges — every edge-add event's `(src, dst)` must track the

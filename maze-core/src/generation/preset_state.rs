@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
@@ -18,6 +18,12 @@ pub struct PresetState {
     pub preset_connected: BTreeSet<NodeId>,
     /// Directed edges established by preset Passage/OneWay connections — must not be removed by repair.
     pub preset_edges: HashSet<(NodeId, NodeId)>,
+    /// Outgoing preset-Teleport destinations per source node — unlike `preset_connected`, a
+    /// teleport pair isn't geometrically adjacent, so algorithms can't discover it via
+    /// `field.neighbors`. Every generation algorithm must treat these as traversable extra
+    /// neighbors of their source node (GitHub issue #226) so a preset teleport is followed into
+    /// the algorithm's own visited/reachability tracking exactly like a dynamically-added one.
+    pub preset_teleports: HashMap<NodeId, Vec<NodeId>>,
 }
 
 impl PresetState {
@@ -28,6 +34,7 @@ impl PresetState {
             locked_in:       HashSet::new(),
             preset_connected: BTreeSet::new(),
             preset_edges:    HashSet::new(),
+            preset_teleports: HashMap::new(),
         }
     }
 
@@ -59,6 +66,7 @@ pub fn build_preset_state<T: Tessellation>(
     let mut locked_in:        HashSet<NodeId> = HashSet::new();
     let mut preset_connected: BTreeSet<NodeId> = BTreeSet::new();
     let mut preset_edges: HashSet<(NodeId, NodeId)> = HashSet::new();
+    let mut preset_teleports: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
     for preset in preset_connections {
         let from_pt = xy_to_point(preset.from.0, preset.from.1);
@@ -112,6 +120,7 @@ pub fn build_preset_state<T: Tessellation>(
                     TeleportDirection::Forward => {
                         graph.build_initial_edge(from_id, to_id, EdgeKind::Teleport);
                         preset_edges.insert((from_id, to_id));
+                        preset_teleports.entry(from_id).or_default().push(to_id);
                         if let Some(log) = log.as_deref_mut() {
                             emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: false });
                         }
@@ -119,6 +128,7 @@ pub fn build_preset_state<T: Tessellation>(
                     TeleportDirection::Backward => {
                         graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
                         preset_edges.insert((to_id, from_id));
+                        preset_teleports.entry(to_id).or_default().push(from_id);
                         if let Some(log) = log.as_deref_mut() {
                             emit(log, PresetSetupEvent::TeleportEstablished { from: to_id, to: from_id, two_way: false });
                         }
@@ -128,6 +138,8 @@ pub fn build_preset_state<T: Tessellation>(
                         graph.build_initial_edge(to_id, from_id, EdgeKind::Teleport);
                         preset_edges.insert((from_id, to_id));
                         preset_edges.insert((to_id, from_id));
+                        preset_teleports.entry(from_id).or_default().push(to_id);
+                        preset_teleports.entry(to_id).or_default().push(from_id);
                         if let Some(log) = log.as_deref_mut() {
                             emit(log, PresetSetupEvent::TeleportEstablished { from: from_id, to: to_id, two_way: true });
                         }
@@ -154,7 +166,7 @@ pub fn build_preset_state<T: Tessellation>(
         }
     }
 
-    PresetState { blocked, locked_out, locked_in, preset_connected, preset_edges }
+    PresetState { blocked, locked_out, locked_in, preset_connected, preset_edges, preset_teleports }
 }
 
 #[cfg(test)]

@@ -664,15 +664,18 @@ fn step_from_frontier<T: Tessellation>(
     }
 
     // free_regular: unvisited, non-frontier, non-preset neighbors — become frontier/reserve.
-    // free_preset: preset-connected neighbors not yet visited — connect to them but skip frontier.
+    // free_preset: preset-connected neighbors (geometric or teleport) not yet visited — connect to
+    // them but skip frontier's own edge-adding step (their edge already exists in the graph).
     let preset_connected = &preset_state.preset_connected;
+    let teleport_dsts = preset_state.preset_teleports.get(&src).map(Vec::as_slice).unwrap_or(&[]);
     let all_free: Vec<NodeId> = field.neighbors(src)
         .into_iter()
+        .chain(teleport_dsts.iter().copied())
         .filter(|&n| !state.visited.contains(&n) && !state.in_frontier.contains(&n)
-            && (preset_connected.contains(&src) && preset_connected.contains(&n) || can_connect(src, n, preset_state)))
+            && (preset_connected.contains(&src) && preset_connected.contains(&n) || teleport_dsts.contains(&n) || can_connect(src, n, preset_state)))
         .collect();
     let (free_preset, free_regular): (Vec<NodeId>, Vec<NodeId>) =
-        all_free.into_iter().partition(|n| preset_connected.contains(n));
+        all_free.into_iter().partition(|n| preset_connected.contains(n) || teleport_dsts.contains(n));
 
     let (cyclic_dst, teleport_spent_on_cycle) =
         roll_cyclic_edge(graph, field, params, preset_state, state, src, teleport_hit, scope.as_deref_mut());

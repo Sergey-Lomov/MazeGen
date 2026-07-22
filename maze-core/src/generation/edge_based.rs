@@ -519,7 +519,8 @@ pub fn generate<T: Tessellation>(
             // `dst` being `preset_connected` says nothing about the specific src-dst pair (it's
             // any Unseen node in the whole graph, not a geometric neighbor of `src`), so no edge
             // exists yet and skipping would silently drop the teleport.
-            if !preset_connected.contains(&dst) {
+            let dst_is_preset_teleport = preset_state.preset_teleports.get(&src).is_some_and(|dsts| dsts.contains(&dst));
+            if !preset_connected.contains(&dst) && !dst_is_preset_teleport {
                 let added = add_edge_and_detect_direction(graph, src, dst, |g| try_add_edge(g, src, dst, elements, preset_state, &mut rng));
                 if let Some(g) = step_scope.as_mut() {
                     g.emit(match added {
@@ -652,8 +653,16 @@ fn build_candidate_pool<T: Tessellation>(
     field: &Field<T>,
 ) -> Vec<NodeId> {
     if use_geometric_pool {
+        // Preset-teleport destinations of `src` are traversable extra neighbors (GitHub issue
+        // #226) — their edge already exists in the graph regardless of this step's teleport roll,
+        // so they join the geometric pool unconditionally (only gated on Unseen, not
+        // `can_connect` — that governs adding a *new* edge, which doesn't apply here).
+        let teleport_dsts = preset_state.preset_teleports.get(&src).map(Vec::as_slice).unwrap_or(&[]);
+        let reachable_teleport_dsts = teleport_dsts.iter().copied()
+            .filter(|n| nodes.get(n).map_or(false, |e| e.state == NodeState::Unseen));
         field.neighbors(src).into_iter()
             .filter(|&n| is_reachable_unseen_neighbor(src, n, nodes, preset_connected, preset_state))
+            .chain(reachable_teleport_dsts)
             .collect()
     } else {
         // Teleport candidate pool: every Unseen node in the graph, not just geometric neighbors
@@ -736,7 +745,11 @@ fn try_add_cyclic_edge<T: Tessellation>(
 
 /// dst-choice weight: directionality only makes sense for the geometric pool (it needs
 /// `field.is_straight`, which is meaningless for a non-adjacent teleport candidate) — the
-/// teleport pool (`!use_geometric_pool`) uses branching alone.
+/// teleport pool (`!use_geometric_pool`) uses branching alone. The geometric pool itself can still
+/// contain a non-adjacent candidate (a preset-teleport destination of `src`, GitHub issue #226) —
+/// `field.is_straight` safely returns `false` for it (its `via`/`to` aren't geometrically adjacent,
+/// so `Field::face_between` returns `None`), so it simply never gets the directionality bonus,
+/// exactly as intended for a teleport jump.
 fn dst_weights<T: Tessellation>(
     src: NodeId,
     candidates: &[NodeId],
@@ -771,8 +784,11 @@ fn is_src_exhausted<T: Tessellation>(
     preset_state: &PresetState,
     field: &Field<T>,
 ) -> bool {
-    field.neighbors(src).into_iter()
-        .all(|n| !is_reachable_unseen_neighbor(src, n, nodes, preset_connected, preset_state))
+    let teleport_dsts = preset_state.preset_teleports.get(&src).map(Vec::as_slice).unwrap_or(&[]);
+    let no_reachable_teleport_dst = teleport_dsts.iter()
+        .all(|n| nodes.get(n).map_or(true, |e| e.state != NodeState::Unseen));
+    no_reachable_teleport_dst
+        && field.neighbors(src).into_iter().all(|n| !is_reachable_unseen_neighbor(src, n, nodes, preset_connected, preset_state))
 }
 
 /// How `choose_src` arrived at its result — carries the narration-relevant detail

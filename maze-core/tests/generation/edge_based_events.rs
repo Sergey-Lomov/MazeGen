@@ -146,6 +146,31 @@ fn edge_based_event_log_mutating_edges_match_graph_edges() {
     }
 }
 
+/// GitHub issue #226: a preset teleport's destination must be narrated via `PresetSkipped` (the
+/// existing-edge path), not `EdgeAdded` (which would imply a new edge was just added on top of
+/// the one `build_preset_state` already planted).
+#[test]
+fn edge_based_event_log_preset_teleport_dst_emits_preset_skipped_not_edge_added() {
+    let (mut graph, field, start, preset_state, _node_count) = build_with_preset_teleport_bridge();
+    let teleport_src = *preset_state.preset_teleports.keys().next().unwrap();
+    let teleport_dst = preset_state.preset_teleports[&teleport_src][0];
+    let params = EdgeBasedParams::default();
+    let elements = no_one_way_elements();
+    let mut log: EventLog<EdgeBasedEvent> = EventLog::new();
+    generate_edge_based(&mut graph, &field, 42, start, &params, &elements, &preset_state, Some(&mut log));
+    let tape = log.finish();
+
+    let saw_preset_skipped = tape.iter().any(|e| matches!(
+        e, EdgeBasedEvent::PresetSkipped { src, dst } if *src == teleport_src && *dst == teleport_dst
+    ));
+    assert!(saw_preset_skipped, "expected PresetSkipped for the preset-teleport pair");
+
+    let saw_edge_added_for_teleport_pair = tape.iter().any(|e| matches!(
+        e, EdgeBasedEvent::EdgeAdded { src, dst, .. } if *src == teleport_src && *dst == teleport_dst
+    ));
+    assert!(!saw_edge_added_for_teleport_pair, "a preset-teleport pair's edge already exists — must not emit a duplicate EdgeAdded");
+}
+
 /// Regression test for GitHub issue #144's direction-mismatch bug: with `one_way_chance = 1.0`,
 /// `add_edge_kind`'s coin flip reverses roughly half of all one-way edges (adds `dst->src` instead
 /// of `src->dst`) — `EdgeAdded`'s `(src, dst)` must track that actual direction on every event,

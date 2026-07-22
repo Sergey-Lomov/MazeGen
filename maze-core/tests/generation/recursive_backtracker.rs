@@ -1,5 +1,6 @@
-use maze_core::generation::{generate_maze, generate_maze_with_events, generate_recursive_backtracker, recursive_backtracker_debug_value_names, GenerationAlgorithm, GenerationConfig, GenerationParams, RecursiveBacktrackerEvent};
+use maze_core::generation::{generate_maze, generate_maze_with_events, generate_recursive_backtracker, recursive_backtracker_debug_value_names, GenerationAlgorithm, GenerationConfig, RecursiveBacktrackerEvent};
 use maze_core::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog, EventedEventKind, NodePayload, NO_NODE, TAG_SCOPE};
+use maze_core::validation::is_connected;
 use super::helpers::*;
 
 #[test]
@@ -12,6 +13,25 @@ fn recursive_backtracker_visits_all_nodes() {
         ..GenerationConfig::default()
     }, &empty_preset());
     assert_perfect_maze(&graph, node_count);
+}
+
+#[test]
+fn recursive_backtracker_traverses_preset_teleport_into_visited() {
+    // GitHub issue #226: a preset teleport bridging two otherwise-disconnected halves must be
+    // followed by the algorithm, not treated as a dead end.
+    let (mut graph, field, start, preset_state, node_count) = build_with_preset_teleport_bridge();
+    generate_recursive_backtracker(&mut graph, &field, 42, start, &preset_state, None);
+    assert_perfect_maze(&graph, node_count);
+}
+
+#[test]
+fn recursive_backtracker_traverses_one_way_preset_teleport_into_visited() {
+    // GitHub issue #226: a one-way preset teleport must also be traversed, not just the two-way
+    // case. Only a single directed teleport edge exists (not two), so the resulting graph isn't a
+    // plain 2*(n-1) perfect maze — checking connectivity is the right level of assertion here.
+    let (mut graph, field, start, preset_state, _node_count) = build_with_one_way_preset_teleport_bridge();
+    generate_recursive_backtracker(&mut graph, &field, 42, start, &preset_state, None);
+    assert!(is_connected(&graph, start));
 }
 
 #[test]

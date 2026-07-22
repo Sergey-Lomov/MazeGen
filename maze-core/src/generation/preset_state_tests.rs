@@ -147,6 +147,8 @@ fn build_preset_state_teleport_forward_adds_single_directed_teleport_edge() {
     assert!(state.preset_edges.contains(&(a, b)));
     assert!(!state.preset_connected.contains(&a));
     assert!(!state.preset_connected.contains(&b));
+    assert_eq!(state.preset_teleports.get(&a), Some(&vec![b]));
+    assert!(state.preset_teleports.get(&b).is_none());
 }
 
 #[test]
@@ -176,6 +178,8 @@ fn build_preset_state_teleport_backward_adds_single_directed_teleport_edge() {
     let ba = graph.edge_between(b, a).expect("backward teleport edge missing");
     assert_eq!(graph.edge(ba).unwrap().kind, EdgeKind::Teleport);
     assert!(state.preset_edges.contains(&(b, a)));
+    assert_eq!(state.preset_teleports.get(&b), Some(&vec![a]));
+    assert!(state.preset_teleports.get(&a).is_none());
 }
 
 /// Guards the from/to swap at `preset_state.rs`'s `TeleportDirection::Backward` arm, same concern
@@ -207,6 +211,8 @@ fn build_preset_state_teleport_two_way_adds_both_directed_teleport_edges() {
     assert!(graph.edge_between(b, a).is_some());
     assert!(state.preset_edges.contains(&(a, b)));
     assert!(state.preset_edges.contains(&(b, a)));
+    assert_eq!(state.preset_teleports.get(&a), Some(&vec![b]));
+    assert_eq!(state.preset_teleports.get(&b), Some(&vec![a]));
 }
 
 #[test]

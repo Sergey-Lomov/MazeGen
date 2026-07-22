@@ -14,6 +14,25 @@ fn kruskal_visits_all_nodes() {
 }
 
 #[test]
+fn kruskal_traverses_preset_teleport_into_visited() {
+    // GitHub issue #226: a preset teleport bridging two otherwise-disconnected halves must be
+    // followed by the algorithm, not treated as a dead end. Kruskal was already correct (it
+    // pre-unions every existing graph edge, including preset teleports, into the DSU before its
+    // main loop) — this pins that down as a regression guard.
+    let (mut graph, field, start, preset_state, _node_count) = build_with_preset_teleport_bridge();
+    generate_kruskal(&mut graph, &field, 42, &preset_state, None);
+    assert!(is_connected(&graph, start));
+}
+
+#[test]
+fn kruskal_traverses_one_way_preset_teleport_into_visited() {
+    // GitHub issue #226: a one-way preset teleport must also be traversed, not just the two-way case.
+    let (mut graph, field, start, preset_state, _node_count) = build_with_one_way_preset_teleport_bridge();
+    generate_kruskal(&mut graph, &field, 42, &preset_state, None);
+    assert!(is_connected(&graph, start));
+}
+
+#[test]
 fn kruskal_is_connected() {
     for seed in [1, 42, 99, 1234, 9999] {
         let (mut graph, field, start) = build(10, 10);

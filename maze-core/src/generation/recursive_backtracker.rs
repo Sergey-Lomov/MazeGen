@@ -165,11 +165,16 @@ pub fn generate<T: Tessellation>(
         let mut step_guard = event_log.as_deref_mut().map(|log| log.enter_numbered("step"));
         if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexSelected(current)); }
 
+        let teleport_dsts = preset_state.preset_teleports.get(&current).map(Vec::as_slice).unwrap_or(&[]);
         let unvisited: Vec<NodeId> = field
             .neighbors(current)
             .into_iter()
             .filter(|&n| !visited.contains(&n)
                 && (preset_connected.contains(&current) && preset_connected.contains(&n) || can_connect(current, n, preset_state)))
+            // Preset-teleport destinations already have their edge in the graph — traversable
+            // regardless of `can_connect` (that check governs whether a *new* edge may be added,
+            // which doesn't apply here — see GitHub issue #226).
+            .chain(teleport_dsts.iter().copied().filter(|n| !visited.contains(n)))
             .collect();
         if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::CandidatesComputed(unvisited.clone())); }
 
@@ -180,8 +185,8 @@ pub fn generate<T: Tessellation>(
         } else {
             let chosen = unvisited[rng.random_range(0..unvisited.len())];
             if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::CandidateChosen(chosen)); }
-            // Preset nodes already have their edge in the graph — skip adding it again.
-            if !preset_connected.contains(&chosen) {
+            // Preset nodes (adjacency or teleport) already have their edge in the graph — skip adding it again.
+            if !preset_connected.contains(&chosen) && !teleport_dsts.contains(&chosen) {
                 try_add_bidirectional_edge(graph, current, chosen, preset_state);
                 if let Some(g) = step_guard.as_mut() {
                     g.emit(RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen, bidirectional: true });

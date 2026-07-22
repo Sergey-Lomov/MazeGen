@@ -13,6 +13,23 @@ fn edge_based_same_seed_same_maze() {
 }
 
 #[test]
+fn edge_based_traverses_preset_teleport_into_visited() {
+    // GitHub issue #226: a preset teleport bridging two otherwise-disconnected halves must be
+    // followed by the algorithm, not treated as a dead end.
+    let (mut graph, field, start, preset_state, _node_count) = build_with_preset_teleport_bridge();
+    generate_maze(&mut graph, &field, 42, start, edge_based_config(EdgeBasedParams::default()), &preset_state);
+    assert!(is_connected(&graph, start));
+}
+
+#[test]
+fn edge_based_traverses_one_way_preset_teleport_into_visited() {
+    // GitHub issue #226: a one-way preset teleport must also be traversed, not just the two-way case.
+    let (mut graph, field, start, preset_state, _node_count) = build_with_one_way_preset_teleport_bridge();
+    generate_maze(&mut graph, &field, 42, start, edge_based_config(EdgeBasedParams::default()), &preset_state);
+    assert!(is_connected(&graph, start));
+}
+
+#[test]
 fn edge_based_is_connected() {
     for seed in [1, 42, 99, 1234, 9999] {
         let (mut graph, field, start) = build(10, 10);
