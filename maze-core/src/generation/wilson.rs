@@ -216,6 +216,19 @@ pub fn generate<T: Tessellation>(
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut rng = MazeRng::seed_from_u64(seed);
 
+    // Reverse index of `preset_teleports`: for a one-way preset teleport `src -> dst`, `dst` has
+    // no forward path back through it, so a walk that enters `dst`'s side first could never reach
+    // `visited` at all (GitHub issue #228). The teleport edge already exists in the graph
+    // regardless of which direction the walk uses it to search, so it's safe to let the walk step
+    // `dst -> src` here too — only the *search* direction is relaxed; `is_preset_teleport` below
+    // still recognizes this pair and skips re-adding the edge.
+    let mut teleport_srcs: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    for (&src, dsts) in &preset_state.preset_teleports {
+        for &dst in dsts {
+            teleport_srcs.entry(dst).or_default().push(src);
+        }
+    }
+
     // Preset-connected nodes are a zero-state snapshot, not a narrated algorithm step — silent,
     // like everywhere else in this codebase.
     for &pc in &preset_state.preset_connected {
@@ -251,12 +264,16 @@ pub fn generate<T: Tessellation>(
             let mut search_scope = walk_scope.as_mut().map(|g| g.enter("search"));
             loop {
                 let teleport_dsts = preset_state.preset_teleports.get(&current).map(Vec::as_slice).unwrap_or(&[]);
+                let teleport_reverse_srcs = teleport_srcs.get(&current).map(Vec::as_slice).unwrap_or(&[]);
                 // Preset-teleport destinations already have their edge in the graph —
-                // traversable regardless of `can_connect` (see GitHub issue #226).
+                // traversable regardless of `can_connect` (see GitHub issue #226). The reverse of a
+                // one-way preset teleport is also traversable for search purposes, so a walk can
+                // still reach `visited` from the "wrong" side (see `teleport_srcs` above, #228).
                 let neighbors: Vec<NodeId> = field.neighbors(current)
                     .into_iter()
                     .filter(|&n| can_connect(current, n, preset_state))
                     .chain(teleport_dsts.iter().copied())
+                    .chain(teleport_reverse_srcs.iter().copied())
                     .collect();
 
                 let dead_end = if neighbors.is_empty() {
@@ -296,8 +313,11 @@ pub fn generate<T: Tessellation>(
             let mut node = walk_start;
             while !visited.contains(&node) {
                 let Some(&dst) = next.get(&node) else { break; };
-                // A preset-teleport step already has its edge in the graph — skip adding it again.
-                let is_preset_teleport = preset_state.preset_teleports.get(&node).is_some_and(|dsts| dsts.contains(&dst));
+                // A preset-teleport step already has its edge in the graph — skip adding it again,
+                // whether the walk used it forward (`node -> dst`) or, for a one-way teleport,
+                // backward through the reverse side (`dst -> node`, see `teleport_srcs` above).
+                let is_preset_teleport = preset_state.preset_teleports.get(&node).is_some_and(|dsts| dsts.contains(&dst))
+                    || preset_state.preset_teleports.get(&dst).is_some_and(|dsts| dsts.contains(&node));
                 if !is_preset_teleport {
                     try_add_bidirectional_edge(graph, node, dst, preset_state);
                 }
