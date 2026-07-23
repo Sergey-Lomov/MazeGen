@@ -8,6 +8,7 @@ export const canvas = {
     selected: hexToNumber(base.nodeSelected),
     start: hexToNumber(base.nodeStart),
     finish: hexToNumber(base.nodeFinish),
+    split: hexToNumber(base.nodeSplit),
   },
 
   edge: {

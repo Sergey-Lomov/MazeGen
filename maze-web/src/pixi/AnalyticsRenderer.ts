@@ -10,6 +10,7 @@ import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { postEditEdgesToDto } from "./selectors/mazeSelectors";
+import { resolveEndpoint, buildSplitNodeResolver } from "./postEditEndpoint";
 import type { Viewport } from "./renderers/types";
 
 export class AnalyticsRenderer {
@@ -117,7 +118,8 @@ export class AnalyticsRenderer {
         state.postEditAnalytics !== prev.postEditAnalytics ||
         state.postEditEdges !== prev.postEditEdges ||
         state.postEditTeleportEdges !== prev.postEditTeleportEdges ||
-        state.postEditMeta !== prev.postEditMeta;
+        state.postEditMeta !== prev.postEditMeta ||
+        state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints;
 
       if (visibilityChanged || dataChanged) {
         this.syncAll(state);
@@ -137,9 +139,22 @@ export class AnalyticsRenderer {
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
     const navEdges   = postEditAnalytics?.navEdges   ?? state.navEdges;
     const routeInfo  = postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo;
-    const edges  = [...postEditEdgesToDto(state.postEditEdges), ...state.postEditTeleportEdges];
-    const start  = state.postEditMeta != null ? state.postEditMeta.start : state.start;
-    const finish = state.postEditMeta != null ? state.postEditMeta.finish : state.finish;
+    // Resolves `split` endpoints from the *confirmed* node snapshot (`state.nodes`) — this
+    // renderer only ever shows confirmed post-edit state, never the draft, so a resolver built
+    // once per sync is enough (no need to track draft-vs-confirmed split points separately here).
+    const pointNodeMap = new Map<string, number[]>();
+    for (const nd of nodes) {
+      const k = `${nd.x},${nd.y}`;
+      const list = pointNodeMap.get(k);
+      if (list) list.push(nd.id); else pointNodeMap.set(k, [nd.id]);
+    }
+    const resolveSplit = buildSplitNodeResolver(pointNodeMap, state.postEditDraftSplitPoints);
+
+    const edges  = [...postEditEdgesToDto(state.postEditEdges, resolveSplit), ...state.postEditTeleportEdges];
+    const startEp  = state.postEditMeta != null ? state.postEditMeta.start : (state.start !== null ? { kind: "node" as const, id: state.start } : null);
+    const finishEp = state.postEditMeta != null ? state.postEditMeta.finish : (state.finish !== null ? { kind: "node" as const, id: state.finish } : null);
+    const start  = startEp !== null ? resolveEndpoint(startEp, resolveSplit) ?? null : null;
+    const finish = finishEp !== null ? resolveEndpoint(finishEp, resolveSplit) ?? null : null;
 
     // Maze overlay (grid + floor + walls + markers)
     const showMaze = analyticsOpen && showMazeOverlay && nodes.length > 0;

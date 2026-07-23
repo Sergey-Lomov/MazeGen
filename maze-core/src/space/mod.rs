@@ -151,6 +151,35 @@ impl<T: Tessellation> Field<T> {
         id
     }
 
+    /// Removes `node` from `point` (GitHub issue #221) — the inverse of `add_node_at`. Panics if
+    /// `node` isn't currently one of `point`'s nodes, or if it's `point`'s *first* (original)
+    /// node — a point's original node is never removable, only nodes added via `add_node_at` are.
+    ///
+    /// **Intended for stateful contexts where a single `Maze` is mutated step by step within one
+    /// call** — e.g. a future repair strategy driven by `MutationCommand::RemoveNode` (see
+    /// `Specs/repair.md`'s mutation-command contract). It is **not** used by the WASM/PostEdit
+    /// flow (`maze-wasm/src/analytics.rs`), which rebuilds the graph from scratch on every call
+    /// and addresses extra nodes by a stable per-point `slot_id`, never by position — there a
+    /// node either exists (its `slot_id` is present) or doesn't, so there's never an "remove from
+    /// an already-live set" step this method could serve (see GitHub issue #221's plan, the
+    /// slot_id section). This method exists as groundwork for the repair path above, with no
+    /// caller yet in this codebase.
+    ///
+    /// Removal shifts the *position* of `point`'s remaining nodes in the internal `Vec` (not
+    /// their `NodeId` — those never change) — a caller holding an index into `nodes_at`'s slice
+    /// rather than a `NodeId` must account for the shift.
+    pub fn remove_node_at(&mut self, point: T::Point, node: NodeId) {
+        let nodes = self.point_to_nodes.get_mut(&point)
+            .unwrap_or_else(|| panic!("remove_node_at: point not in field"));
+        let idx = nodes.iter().position(|&id| id == node)
+            .unwrap_or_else(|| panic!("remove_node_at: node does not belong to point"));
+        if idx == 0 {
+            panic!("remove_node_at: cannot remove a point's original node");
+        }
+        nodes.remove(idx);
+        self.node_to_point.remove(&node);
+    }
+
     /// All `NodeId`s resolving to `point`, in stable creation order (the point's original node
     /// first, each subsequent `add_node_at` appended after) — not `NodeId` order, not `HashMap`
     /// iteration order. Empty slice if the point isn't in the field. No allocation — borrows from
@@ -260,6 +289,65 @@ mod field_clone_tests {
         for point in field.all_points() {
             assert_eq!(field.node_at(point), cloned.node_at(point));
         }
+    }
+}
+
+#[cfg(test)]
+mod remove_node_at_tests {
+    use super::*;
+    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+
+    #[test]
+    fn removes_the_node_from_the_point_and_from_lookup() {
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 0, y: 0 };
+        let extra = field.add_node_at(p, &mut ids);
+
+        field.remove_node_at(p, extra);
+
+        assert!(!field.nodes_at(p).contains(&extra));
+        assert_eq!(field.point_of(extra), None);
+    }
+
+    #[test]
+    fn removing_a_middle_slot_does_not_change_the_id_of_the_remaining_nodes() {
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 0, y: 0 };
+        let s1 = field.add_node_at(p, &mut ids);
+        let s2 = field.add_node_at(p, &mut ids);
+        let s3 = field.add_node_at(p, &mut ids);
+
+        field.remove_node_at(p, s2);
+
+        let remaining = field.nodes_at(p);
+        assert!(remaining.contains(&s1));
+        assert!(remaining.contains(&s3));
+        assert!(!remaining.contains(&s2));
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot remove a point's original node")]
+    fn panics_when_removing_the_original_node() {
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 0, y: 0 };
+        let original = field.node_at(p).unwrap();
+
+        field.remove_node_at(p, original);
+    }
+
+    #[test]
+    #[should_panic(expected = "node does not belong to point")]
+    fn panics_when_node_belongs_to_a_different_point() {
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let p0 = SquarePoint { x: 0, y: 0 };
+        let p1 = SquarePoint { x: 1, y: 0 };
+        let extra_at_p1 = field.add_node_at(p1, &mut ids);
+
+        field.remove_node_at(p0, extra_at_p1);
     }
 }
 

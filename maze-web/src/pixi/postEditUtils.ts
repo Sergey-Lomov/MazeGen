@@ -3,16 +3,21 @@ import type { PostEditEdge, PostEditTool, PostEditTeleportEntry, PostEditTelepor
 import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { type PostEditEndpoint, nodeEndpoint, edgeKey, resolveEndpoint } from "./postEditEndpoint";
 
+/** Built from a freshly confirmed WASM snapshot — every id here is an already-real node, never a
+ * not-yet-confirmed split node, so entries are always plain `node` endpoints. */
 export function buildPostEditDraftEdgesFromGenerated(edges: EdgeDto[]): Record<string, PostEditEdge> {
   const basicEdges = edges.filter(e => e.kind !== "teleport");
   const edgeSet = new Set(basicEdges.map(e => `${e.from}-${e.to}`));
   const result: Record<string, PostEditEdge> = {};
   for (const e of basicEdges) {
     const hasReverse = edgeSet.has(`${e.to}-${e.from}`);
-    result[`${e.from}-${e.to}`] = {
-      from: e.from,
-      to: e.to,
+    const from = nodeEndpoint(e.from);
+    const to = nodeEndpoint(e.to);
+    result[edgeKey(from, to)] = {
+      from,
+      to,
       kind: hasReverse ? "basic" : "one_way_forward",
     };
   }
@@ -41,8 +46,8 @@ export function extractPostEditTeleports(edges: EdgeDto[]): { teleports: PostEdi
     const reverseExists = byPair.has(`${e.to}->${e.from}`);
     teleports.push({
       id: nextId,
-      from: e.from,
-      to: e.to,
+      from: nodeEndpoint(e.from),
+      to: nodeEndpoint(e.to),
       direction: reverseExists ? "two_way" : "forward",
     });
     nextId++;
@@ -53,17 +58,29 @@ export function extractPostEditTeleports(edges: EdgeDto[]): { teleports: PostEdi
 
 /** Converts editable teleport entries to the EdgeDto[] shape used by WASM calls and renderers.
  * A "backward" entry's actual passage direction runs to→from (mirrors
- * PresetConnectionState::TeleportBackward); "two_way" expands to both directions. */
-export function postEditTeleportsToDto(teleports: PostEditTeleportEntry[]): EdgeDto[] {
+ * PresetConnectionState::TeleportBackward); "two_way" expands to both directions.
+ *
+ * `resolveSplit` resolves a `split` endpoint to a real node id, built by the caller from the
+ * latest confirmed snapshot (see `PostEditController`'s node map). An entry with an unresolved
+ * endpoint (a split node added but not yet confirmed — see `postEditEndpoint.ts`'s doc comment)
+ * is silently dropped — nothing to draw/send yet, the same "not ready" pattern already used when
+ * `nodeById` has no match for a plain id. */
+export function postEditTeleportsToDto(
+  teleports: PostEditTeleportEntry[],
+  resolveSplit: (point: [number, number], slotId: number) => number | undefined,
+): EdgeDto[] {
   const result: EdgeDto[] = [];
   for (const t of teleports) {
+    const from = resolveEndpoint(t.from, resolveSplit);
+    const to = resolveEndpoint(t.to, resolveSplit);
+    if (from === undefined || to === undefined) continue;
     if (t.direction === "two_way") {
-      result.push({ from: t.from, to: t.to, kind: "teleport" });
-      result.push({ from: t.to, to: t.from, kind: "teleport" });
+      result.push({ from, to, kind: "teleport" });
+      result.push({ from: to, to: from, kind: "teleport" });
     } else if (t.direction === "backward") {
-      result.push({ from: t.to, to: t.from, kind: "teleport" });
+      result.push({ from: to, to: from, kind: "teleport" });
     } else {
-      result.push({ from: t.from, to: t.to, kind: "teleport" });
+      result.push({ from, to, kind: "teleport" });
     }
   }
   return result;
@@ -86,24 +103,29 @@ export function removePostEditTeleport(teleports: PostEditTeleportEntry[], id: n
 export function movePostEditTeleportEndpoint(
   teleports: PostEditTeleportEntry[],
   hit: PostEditTeleportEndpointHit,
-  nodeId: number,
+  endpoint: PostEditEndpoint,
 ): PostEditTeleportEntry[] {
   return teleports.map(t => {
     if (t.id !== hit.id) return t;
-    return { ...t, [hit.end]: nodeId };
+    return { ...t, [hit.end]: endpoint };
   });
 }
 
 const TELEPORT_ENDPOINT_HIT_RADIUS = TILE_SIZE * 0.3;
 
 /** Hit-tests post-edit teleport endpoints by node id → screen position (via nodeById), unlike
- * PresetConnectionsController's cell-coordinate based pickTeleportEndpointAt. */
+ * PresetConnectionsController's cell-coordinate based pickTeleportEndpointAt.
+ *
+ * `resolveSplit` resolves a `split` endpoint to a real node id (see `postEditTeleportsToDto`'s doc
+ * comment) — an entry whose endpoint doesn't resolve yet is skipped for hit-testing, same as one
+ * whose (already resolved) id has no match in `nodeById`. */
 export function pickPostEditTeleportEndpointAt(
   viewportX: number,
   viewportY: number,
   cfg: TessellationConfig,
   teleports: PostEditTeleportEntry[],
   nodeById: Map<number, NodeDto>,
+  resolveSplit: (point: [number, number], slotId: number) => number | undefined,
 ): PostEditTeleportEndpointHit | null {
   const proj = makeProjection(cfg);
   const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
@@ -111,7 +133,8 @@ export function pickPostEditTeleportEndpointAt(
   let bestDistSq = Infinity;
   for (const t of teleports) {
     for (const end of ["from", "to"] as const) {
-      const nodeId = end === "from" ? t.from : t.to;
+      const nodeId = resolveEndpoint(end === "from" ? t.from : t.to, resolveSplit);
+      if (nodeId === undefined) continue;
       const node = nodeById.get(nodeId);
       if (!node) continue;
       const { x: px, y: py } = proj.gridToScreen(node.x, node.y);
@@ -127,43 +150,49 @@ export function pickPostEditTeleportEndpointAt(
   return best;
 }
 
+/** `from`/`to` are always plain node endpoints here — the caller (`PostEditController`) resolves
+ * a cell-edge click to the currently active real node before calling this, since edge tools apply
+ * to a specific, already-resolved node (there's nothing to "wall off" for a node that doesn't
+ * exist yet). `edgeKeyStr` is the pre-built `edgeKey(from, to)` string. */
 export function applyPostEditEdgeTool(
   edges: Record<string, PostEditEdge>,
   tool: PostEditTool,
-  edgeKey: string,
-  from: number,
-  to: number,
+  edgeKeyStr: string,
+  from: PostEditEndpoint,
+  to: PostEditEndpoint,
   originalEdges: EdgeDto[],
 ): Record<string, PostEditEdge> {
   const next = { ...edges };
-  const bwdKey = `${to}-${from}`;
+  const bwdKey = edgeKey(to, from);
+  const fromId = from.kind === "node" ? from.id : undefined;
+  const toId = to.kind === "node" ? to.id : undefined;
 
   if (tool === "reset") {
-    const origAB = originalEdges.some(e => e.from === from && e.to === to);
-    const origBA = originalEdges.some(e => e.from === to && e.to === from);
-    delete next[edgeKey];
+    const origAB = originalEdges.some(e => e.from === fromId && e.to === toId);
+    const origBA = originalEdges.some(e => e.from === toId && e.to === fromId);
+    delete next[edgeKeyStr];
     delete next[bwdKey];
     if (origAB && origBA) {
-      next[edgeKey] = { from, to, kind: "basic" };
+      next[edgeKeyStr] = { from, to, kind: "basic" };
       next[bwdKey] = { from: to, to: from, kind: "basic" };
     } else if (origAB) {
-      next[edgeKey] = { from, to, kind: "one_way_forward" };
+      next[edgeKeyStr] = { from, to, kind: "one_way_forward" };
     } else if (origBA) {
       next[bwdKey] = { from: to, to: from, kind: "one_way_forward" };
     }
   } else if (tool === "wall") {
-    delete next[edgeKey];
+    delete next[edgeKeyStr];
     delete next[bwdKey];
   } else if (tool === "passage") {
-    next[edgeKey] = { from, to, kind: "basic" };
+    next[edgeKeyStr] = { from, to, kind: "basic" };
     next[bwdKey] = { from: to, to: from, kind: "basic" };
   } else if (tool === "one_way") {
-    if (next[edgeKey] !== undefined) {
-      delete next[edgeKey];
+    if (next[edgeKeyStr] !== undefined) {
+      delete next[edgeKeyStr];
       next[bwdKey] = { from: to, to: from, kind: "one_way_backward" };
     } else {
       delete next[bwdKey];
-      next[edgeKey] = { from, to, kind: "one_way_forward" };
+      next[edgeKeyStr] = { from, to, kind: "one_way_forward" };
     }
   }
 

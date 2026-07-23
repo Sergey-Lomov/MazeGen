@@ -7,6 +7,9 @@ export interface ProjectFilePostEdit {
   edges: [string, PostEditEdge][];
   meta: PostEditMeta | null;
   teleports: PostEditTeleportEntry[];
+  /** slotIds of each split point's extra nodes, keyed by "x,y" (GitHub issue #221). Without this,
+   * saving/reloading a project would silently lose every manually created split point. */
+  splitPoints: Record<string, number[]>;
 }
 
 export interface ProjectFileAnalytics {

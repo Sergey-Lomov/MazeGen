@@ -326,9 +326,16 @@ export interface GenerateConfig {
 
 export type PostEditEdgeKind = "basic" | "one_way" | "teleport";
 
+/** Mirrors Rust's `PostEditEndpointDto` — either a plain existing node id, or a reference to one
+ * of a split point's extra nodes by its stable `slotId` (GitHub issue #221). WASM resolves `split`
+ * endpoints itself via `split_points`, applied before edges in the same call. */
+export type PostEditEndpointWasmDto =
+  | { kind: "node"; id: number }
+  | { kind: "split"; point: [number, number]; slot_id: number };
+
 export interface PostEditEdgeWasmDto {
-  from: number;
-  to: number;
+  from: PostEditEndpointWasmDto;
+  to: PostEditEndpointWasmDto;
   /** Direction already normalized: from→to is the actual passage/teleport direction. "teleport"
    * adds only that one direction — a two-way teleport is sent as two separate entries. */
   kind: PostEditEdgeKind;
@@ -340,6 +347,14 @@ export interface ComputeAnalyticsConfig {
   nodes: ReadonlyArray<[number, number]>;
   /** Passage edges only (walls = absence of edge). */
   edges: PostEditEdgeWasmDto[];
+  /** Extra nodes to add to split points before edges are resolved — each entry is one
+   * `(point, slotId)` pair (GitHub issue #221). Applied via `Maze::add_node_at` in a deterministic
+   * `(point, slotId)`-sorted order on the Rust side — this array's own order doesn't matter. */
+  split_points?: [[number, number], number][];
+  /** Plain resolved node id — NOT a `PostEditEndpointWasmDto`. `Maze::meta.start`/`.finish` in
+   * `maze-core` are always `Option<NodeId>`; the frontend resolves `PostEditEndpoint` to a
+   * concrete id (or `null` if it doesn't resolve yet) before building this config — see
+   * `confirmPostEdit` in `postEditSlice.ts`. */
   start: number | null;
   finish: number | null;
   checks: CheckInstanceConfig[];

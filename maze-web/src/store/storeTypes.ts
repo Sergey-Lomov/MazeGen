@@ -3,31 +3,34 @@ import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventT
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
+import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
-export type PostEditTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way";
+export type PostEditTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "manage_split_nodes";
 
 export interface PostEditEdge {
-  from: number;
-  to: number;
+  from: PostEditEndpoint;
+  to: PostEditEndpoint;
   kind: PostEditEdgeKind;
 }
 
+/** `start`/`finish` are `PostEditEndpoint`, not a bare `number` — see `postEditEndpoint.ts`'s doc
+ * comment for why a split node's raw `NodeId` isn't safe to keep across confirms. */
 export interface PostEditMeta {
-  start: number | null;
-  finish: number | null;
+  start: PostEditEndpoint | null;
+  finish: PostEditEndpoint | null;
 }
 
 export type PostEditTeleportDirection = "forward" | "backward" | "two_way";
 
-/** A post-edit teleport link, edited by node id (unlike PresetTeleportEntry, which edits by cell
- * coordinates on the pre-generation field). Converted to EdgeDto[] at the WASM-call/render
- * boundary via `postEditTeleportsToDto`. */
+/** A post-edit teleport link, edited by node/split endpoint (unlike PresetTeleportEntry, which
+ * edits by cell coordinates on the pre-generation field). Converted to EdgeDto[] at the
+ * WASM-call/render boundary via `postEditTeleportsToDto`. */
 export interface PostEditTeleportEntry {
   id: number;
-  from: number;
-  to: number;
+  from: PostEditEndpoint;
+  to: PostEditEndpoint;
   direction: PostEditTeleportDirection;
 }
 
@@ -666,6 +669,24 @@ export interface PostEditState {
   _nextPostEditTeleportId: number;
   /** Working copy — updated on endpoint changes. Read by PostEditRenderer. */
   postEditDraftMeta: PostEditMeta | null;
+  /** slotIds of a split point's extra nodes (beyond the point's original node), keyed by "x,y".
+   * Absent/empty for an unsplit point (GitHub issue #221). Each slotId is unique only within its
+   * own point (not globally — `PostEditEndpoint`'s `split` variant already addresses point+slotId
+   * together, so per-point uniqueness is enough, see `addSplitNode` in postEditSlice.ts, which
+   * mints the next slotId as the max of the point's existing slotIds + 1 rather than keeping a
+   * separate counter) and is never reused while it still exists — same stable-identity principle
+   * already used for `PostEditTeleportEntry.id`, just with its own per-point counter instead of a
+   * global one. Re-applied via `Maze::add_node_at` (one call per slotId, in a deterministic order)
+   * on every confirmPostEdit. */
+  postEditDraftSplitPoints: Record<string, number[]>;
+  /** Which of a point's nodes is currently "active" for edge-tool clicks on its faces, keyed by
+   * "x,y". No entry means the point's original node. */
+  postEditActiveSplitNode: Record<string, PostEditEndpoint>;
+  /** The point currently selected for the "Manage split nodes" dialog — the single source of
+   * truth for which point is being managed. Set by a right-click on any cell while an edge tool is
+   * active, cleared by an ordinary click elsewhere, closing the dialog, or leaving the post-edit
+   * card. Not hover — doesn't change on mere cursor movement. */
+  postEditFocusedPoint: [number, number] | null;
   /** Confirmed snapshot of postEditDraftEdges. Read by AnalyticsRenderer. */
   postEditEdges: Record<string, PostEditEdge> | null;
   /** Confirmed snapshot of postEditDraftTeleportEdges. Read by AnalyticsRenderer. */
@@ -686,16 +707,21 @@ export interface PostEditState {
 export interface PostEditActions {
   setPostEditAutoConfirm: (v: boolean) => void;
   setPostEditTool: (tool: PostEditTool) => void;
-  applyPostEditTool: (edgeKey: string, from: number, to: number) => void;
-  setPostEditEndpoint: (kind: "start" | "finish", nodeId: number) => void;
+  applyPostEditTool: (edgeKey: string, from: PostEditEndpoint, to: PostEditEndpoint) => void;
+  setPostEditEndpoint: (kind: "start" | "finish", endpoint: PostEditEndpoint) => void;
   clearPostEditEndpoint: (kind: "start" | "finish") => void;
   setPostEditTeleportPendingFrom: (nodeId: number | null) => void;
-  addPostEditTeleport: (from: number, to: number, direction: PostEditTeleportDirection) => void;
+  addPostEditTeleport: (from: PostEditEndpoint, to: PostEditEndpoint, direction: PostEditTeleportDirection) => void;
   cyclePostEditTeleportDirection: (id: number) => void;
   removePostEditTeleport: (id: number) => void;
-  movePostEditTeleportEndpoint: (id: number, end: "from" | "to", nodeId: number) => void;
+  movePostEditTeleportEndpoint: (id: number, end: "from" | "to", endpoint: PostEditEndpoint) => void;
   confirmPostEdit: () => Promise<void>;
   resetPostEdit: () => void;
+  addSplitNode: (point: [number, number]) => void;
+  removeSplitNode: (point: [number, number], slotId: number) => void;
+  cycleActiveSplitNode: (point: [number, number]) => void;
+  setActiveSplitNode: (point: [number, number], endpoint: PostEditEndpoint) => void;
+  setPostEditFocusedPoint: (point: [number, number] | null) => void;
 }
 
 export interface RootActions {

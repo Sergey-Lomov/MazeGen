@@ -114,6 +114,9 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       postEditTeleportPendingFrom: null,
       _nextPostEditTeleportId: 1,
       postEditDraftMeta: null,
+      postEditDraftSplitPoints: {},
+      postEditActiveSplitNode: {},
+      postEditFocusedPoint: null,
       postEditEdges: null,
       postEditTeleportEdges: [],
       postEditMeta: null,
@@ -171,6 +174,12 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         _nextPostEditTeleportId: file.postEdit.teleports.length === 0
           ? 1
           : Math.max(...file.postEdit.teleports.map((t) => t.id)) + 1,
+        // Defaults to {} for project files saved before split points existed (GitHub issue #221).
+        // No separate slotId counter to restore — addSplitNode computes the next slotId on the
+        // fly from the max of each point's existing slotIds (see postEditSlice.ts).
+        postEditDraftSplitPoints: file.postEdit.splitPoints ?? {},
+        // Ephemeral UI selection, never persisted — always starts fresh on load.
+        postEditActiveSplitNode: {},
         postEditEdges: null,
         postEditMeta: null,
         postEditAnalytics: null,

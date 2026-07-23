@@ -268,6 +268,27 @@ impl<T: Tessellation> Maze<T> {
         node
     }
 
+    /// Removes `node` from `point`, clearing every edge incident to it (both directions) first
+    /// — the atomic graph+field counterpart of `add_node_at` (GitHub issue #221). No caller in
+    /// this codebase yet — see `Field::remove_node_at`'s doc comment for why (groundwork for a
+    /// future repair `MutationCommand::RemoveNode`, not used by the WASM/PostEdit flow).
+    ///
+    /// `Graph` itself gains no `remove_node` here — whether a "dead" `Node` entry should linger
+    /// in `graph.nodes` after its edges are gone, or whether `Graph` needs a real removal API
+    /// mirroring its existing `Vec<Option<Edge>>` tombstone pattern, is a real question but one
+    /// deliberately left open for whichever issue introduces the first actual caller of this
+    /// method (`MutationCommand::RemoveNode` or similar) to decide with a concrete use case in
+    /// hand.
+    pub fn remove_node_at(&mut self, point: T::Point, node: NodeId) {
+        let incident: Vec<ids::EdgeId> = self.graph.outgoing_edges(node).map(|e| e.id)
+            .chain(self.graph.edges().filter(|e| e.to == node).map(|e| e.id))
+            .collect();
+        for id in incident {
+            self.graph.remove_initial_edge(id);
+        }
+        self.field.remove_node_at(point, node);
+    }
+
     /// An independent working copy for a `RepairStrategy` that needs to mutate-and-inspect
     /// intermediate state before committing to a final `MutationCommand` list (GitHub issue #118,
     /// `Specs/repair.md`) — currently only `MissingRegionsStrategy`'s reuse/growth attempts. Fresh
@@ -397,6 +418,71 @@ mod add_node_at_tests {
 
         assert!(maze.graph.nodes().any(|n| n.id == added));
         assert!(maze.field.nodes_at(SquarePoint { x: 0, y: 0 }).contains(&added));
+    }
+}
+
+/// GitHub issue #221 — `Maze::remove_node_at` has no caller in this codebase yet (see its doc
+/// comment), covered here only by direct unit tests.
+#[cfg(test)]
+mod remove_node_at_tests {
+    use super::*;
+    use crate::graph::EdgeKind;
+    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+
+    #[test]
+    fn removes_the_node_and_clears_edges_in_both_directions_leaving_the_sibling_slot_intact() {
+        let mut ids = IdGenerator::new();
+        // A - B - C line, B split into b0/b1. Wire both b0<->A and b1<->C, then remove b1: its
+        // edges must disappear while b0's stay untouched.
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let mut maze = Maze::new(field, g);
+
+        let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let b_point = SquarePoint { x: 1, y: 0 };
+        let b0 = maze.field.node_at(b_point).unwrap();
+        let c = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let b1 = maze.add_node_at(b_point);
+
+        maze.graph.add_bidirectional_edge(a, b0, EdgeKind::Basic);
+        maze.graph.add_bidirectional_edge(b1, c, EdgeKind::Basic);
+
+        maze.remove_node_at(b_point, b1);
+
+        assert!(maze.graph.edge_between(a, b0).is_some(), "b0's own edge must survive");
+        assert!(maze.graph.edge_between(b1, c).is_none());
+        assert!(maze.graph.edge_between(c, b1).is_none());
+        assert!(!maze.field.nodes_at(b_point).contains(&b1));
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot remove a point's original node")]
+    fn delegates_the_original_node_panic() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let mut maze = Maze::new(field, g);
+        let p = SquarePoint { x: 0, y: 0 };
+        let original = maze.field.node_at(p).unwrap();
+
+        maze.remove_node_at(p, original);
+    }
+
+    #[test]
+    #[should_panic(expected = "node does not belong to point")]
+    fn delegates_the_foreign_node_panic() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let mut maze = Maze::new(field, g);
+        let p0 = SquarePoint { x: 0, y: 0 };
+        let p1 = SquarePoint { x: 1, y: 0 };
+        let extra_at_p1 = maze.add_node_at(p1);
+
+        maze.remove_node_at(p0, extra_at_p1);
     }
 }
 

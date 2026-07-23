@@ -1,6 +1,7 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
 import type { PostEditEdge, PostEditTeleportEntry, FeatureId } from "../mazeStore";
+import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import {
   CURRENT_VERSION,
@@ -201,14 +202,36 @@ function validateTessellationConfig(v: unknown, path = "tessellation.config"): T
   }
 }
 
+/** Validates a `PostEditEndpoint` tagged union (GitHub issue #221) — `kind: "node"` (a plain
+ * resolved id) or `kind: "split"` (a `(point, slotId)` reference to one of a split point's extra
+ * nodes). Only *format* is checked here — whether a `split` endpoint's point still actually
+ * exists in the tessellation can't be verified at project-load time (no `Field` to check against
+ * yet); that's `apply_split_points` on the WASM side's job, surfacing as an ordinary
+ * `confirmPostEdit` error on first confirm after load, not a load-time failure. */
+function validatePostEditEndpoint(v: unknown, path: string): PostEditEndpoint {
+  const obj = assertObject(v, path);
+  const kind = assertString(obj.kind, `${path}.kind`);
+  if (kind === "node") {
+    return { kind: "node", id: assertNumber(obj.id, `${path}.id`) };
+  }
+  if (kind === "split") {
+    return {
+      kind: "split",
+      point: validateCoordPair(obj.point, `${path}.point`),
+      slotId: assertNumber(obj.slotId, `${path}.slotId`),
+    };
+  }
+  throw new Error(`Invalid PostEditEndpoint kind at ${path}.kind: ${kind}`);
+}
+
 function validatePostEditEdge(v: unknown, path: string): PostEditEdge {
   const obj = assertObject(v, path);
   const kind = assertString(obj.kind, `${path}.kind`);
   if (kind !== "wall" && kind !== "basic" && kind !== "one_way_forward" && kind !== "one_way_backward")
     throw new Error(`Invalid PostEditEdge kind at ${path}.kind: ${kind}`);
   return {
-    from: assertNumber(obj.from, `${path}.from`),
-    to: assertNumber(obj.to, `${path}.to`),
+    from: validatePostEditEndpoint(obj.from, `${path}.from`),
+    to: validatePostEditEndpoint(obj.to, `${path}.to`),
     kind,
   };
 }
@@ -217,10 +240,28 @@ function validatePostEditTeleportEntry(v: unknown, path: string): PostEditTelepo
   const obj = assertObject(v, path);
   return {
     id: assertNumber(obj.id, `${path}.id`),
-    from: assertNumber(obj.from, `${path}.from`),
-    to: assertNumber(obj.to, `${path}.to`),
+    from: validatePostEditEndpoint(obj.from, `${path}.from`),
+    to: validatePostEditEndpoint(obj.to, `${path}.to`),
     direction: validateTeleportDirection(obj.direction, `${path}.direction`),
   };
+}
+
+/** Validates `postEdit.splitPoints` (GitHub issue #221) — each value must be an array of unique
+ * non-negative integer slotIds. Format only, same rationale as `validatePostEditEndpoint`. */
+function validateSplitPoints(v: unknown, path: string): Record<string, number[]> {
+  const obj = assertObject(v, path);
+  const result: Record<string, number[]> = {};
+  for (const [key, raw] of Object.entries(obj)) {
+    const arr = assertArray(raw, `${path}.${key}`);
+    const slots = arr.map((s, i) => {
+      const n = assertNumber(s, `${path}.${key}[${i}]`);
+      if (!Number.isInteger(n) || n < 0) throw new Error(`Expected non-negative integer slotId at ${path}.${key}[${i}], got ${n}`);
+      return n;
+    });
+    if (new Set(slots).size !== slots.length) throw new Error(`Duplicate slotId in ${path}.${key}`);
+    result[key] = slots;
+  }
+  return result;
 }
 
 function validatePostEdit(v: unknown): ProjectFilePostEdit {
@@ -230,8 +271,8 @@ function validatePostEdit(v: unknown): ProjectFilePostEdit {
   if (obj.meta !== null && obj.meta !== undefined) {
     const m = assertObject(obj.meta, "postEdit.meta");
     meta = {
-      start: m.start === null ? null : assertNumber(m.start, "postEdit.meta.start"),
-      finish: m.finish === null ? null : assertNumber(m.finish, "postEdit.meta.finish"),
+      start: m.start === null ? null : validatePostEditEndpoint(m.start, "postEdit.meta.start"),
+      finish: m.finish === null ? null : validatePostEditEndpoint(m.finish, "postEdit.meta.finish"),
     };
   }
   // Optional — absent in project files saved before post-edit teleport editing existed.
@@ -239,7 +280,9 @@ function validatePostEdit(v: unknown): ProjectFilePostEdit {
     ? assertArray(obj.teleports, "postEdit.teleports").map((t, i) => validatePostEditTeleportEntry(t, `postEdit.teleports[${i}]`))
     : [];
   assertUniqueIds(teleports, (t) => t.id, "teleport id", "postEdit.teleports");
-  return { edges, meta, teleports };
+  // Optional — absent in project files saved before split points existed (GitHub issue #221).
+  const splitPoints = obj.splitPoints != null ? validateSplitPoints(obj.splitPoints, "postEdit.splitPoints") : {};
+  return { edges, meta, teleports, splitPoints };
 }
 
 function validateCoordPair(v: unknown, path: string): [number, number] {

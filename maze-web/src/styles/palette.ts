@@ -124,6 +124,7 @@ export const base = {
   nodeSelected: "#ff4a4a",
   nodeStart: "#44dd88",
   nodeFinish: "#dd4466",
+  nodeSplit: "#9d7fe0",
   edge: "#888888",
   oneWay: "#d4c045",
   invalid: "#ddaa00",

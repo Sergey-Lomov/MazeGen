@@ -4,6 +4,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto } from "../../pixi/postEditUtils";
+import { nodeEndpoint } from "../../pixi/postEditEndpoint";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
@@ -219,7 +220,12 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
     }
     const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges);
     const draftEdges = buildPostEditDraftEdgesFromGenerated(snapshot.edges);
-    const draftMeta = { start: snapshot.start, finish: snapshot.finish };
+    // Freshly generated — every id here is real, so plain node endpoints (never split; there are
+    // no split points yet right after generation).
+    const draftMeta = {
+      start: snapshot.start !== null ? nodeEndpoint(snapshot.start) : null,
+      finish: snapshot.finish !== null ? nodeEndpoint(snapshot.finish) : null,
+    };
     set({
       nodes: snapshot.nodes,
       edges: snapshot.edges,
@@ -251,7 +257,9 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       // of re-running `confirmPostEdit`'s own `computeAnalytics` wasm call, which would recompute
       // an identical result from scratch (see GitHub issue #138 profiling).
       postEditEdges: draftEdges,
-      postEditTeleportEdges: postEditTeleportsToDto(generatedTeleports),
+      // No split points right after generation — every teleport endpoint here is already a
+      // plain node endpoint, so `resolveSplit` is never actually invoked.
+      postEditTeleportEdges: postEditTeleportsToDto(generatedTeleports, () => undefined),
       postEditMeta: draftMeta,
       postEditAnalytics: {
         nodeStats: snapshot.node_stats,

@@ -25,6 +25,9 @@ Post-Edit sits between Generation and Analytics in `FeaturesPanel`. It lets user
 | `postEditTeleportPendingFrom` | `number \| null` | Node id of the pending teleport's fixed origin during two-click placement, or `null`. |
 | `_nextPostEditTeleportId` | `number` | Monotonic id source for `postEditDraftTeleports` entries. |
 | `postEditDraftMeta` | `PostEditMeta \| null` | Current working start/finish overrides. Read by `PostEditRenderer`. |
+| `postEditDraftSplitPoints` | `Record<string, number[]>` | slotIds of each split point's extra nodes, keyed by `"x,y"` — see "Split Points" below (GitHub issue #221). |
+| `postEditActiveSplitNode` | `Record<string, PostEditEndpoint>` | Which of a split point's nodes edge-tool clicks currently target, keyed by `"x,y"`. No entry means the point's original node. |
+| `postEditFocusedPoint` | `[number, number] \| null` | The point currently selected for the "Manage split nodes" dialog. |
 | `postEditEdges` | `Record<string, PostEditEdge> \| null` | Snapshot of `postEditDraftEdges` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
 | `postEditTeleportEdges` | `EdgeDto[]` | Snapshot of `postEditDraftTeleports` (converted via `postEditTeleportsToDto`) at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
 | `postEditMeta` | `PostEditMeta \| null` | Snapshot of `postEditDraftMeta` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
@@ -36,17 +39,33 @@ Post-Edit sits between Generation and Analytics in `FeaturesPanel`. It lets user
 | `_generatedStart` | `number \| null` | Start as generated — restored on `resetPostEdit`. |
 | `_generatedFinish` | `number \| null` | Finish as generated — restored on `resetPostEdit`. |
 
+### PostEditEndpoint (GitHub issue #221)
+
+```typescript
+type PostEditEndpoint =
+  | { kind: "node"; id: number }
+  | { kind: "split"; point: [number, number]; slotId: number };
+```
+
+A tile's point can resolve to more than one graph node ("split point", see `Specs/space.md`/epic #218). `node` is a plain already-resolved `NodeId`; `split` addresses one of a split point's extra nodes by its stable per-point `slotId`, since the JS side never predicts a not-yet-confirmed split node's real `NodeId`.
+
+**Why not a raw `NodeId`:** `compute_analytics` rebuilds the graph from scratch on every `confirmPostEdit` call, and `NodeId` is `IdGenerator`'s sequential counter — its value depends purely on how many nodes were created earlier in that specific call. A split node's absolute `NodeId` is therefore **not stable across confirms**: changing the set of split points (adding/removing a slot anywhere) can shift the `NodeId` of every node created after it in that call. This never showed up for ordinary nodes only because the tessellation's point set/order never changes between calls — split points are the first case where the "extra nodes beyond the base set" composition can actually change. The fix is not attempting to make split-node `NodeId`s stable (rejected: reserving id blocks/hash-based ids would make split nodes an architecture-level special case in `maze-core` for no real benefit) — it's that nothing holds onto a raw `NodeId` for a split node across confirms. Every place that needs to survive a confirm (`PostEditEdge`/`PostEditTeleportEntry`'s `from`/`to`, `PostEditMeta`'s `start`/`finish`) stores a `PostEditEndpoint` instead, resolved to a real id fresh on each use.
+
+Provided by `pixi/postEditEndpoint.ts`: `nodeEndpoint`/`splitEndpoint` (constructors), `endpointsEqual` (structural equality, used regardless of confirm state), `endpointKey`/`edgeKey` (stable string keys — `"n42"` for a node, `"s3,5:7"` for a split, disjoint prefixes), `endpointIsNode`, `resolveEndpoint` (resolves to a real id via a caller-supplied `resolveSplit` lookup, `undefined` if not resolvable yet), `buildSplitNodeResolver` (builds that lookup from a confirmed node snapshot grouped by point, plus `postEditDraftSplitPoints`).
+
+**Unresolved-endpoint contract:** a `split` endpoint doesn't resolve in the window between `addSplitNode` (which writes the slotId to the draft immediately) and the first successful `confirmPostEdit` after that. Canvas/renderer code (`postEditEdgesToDto`/`postEditTeleportsToDto`) silently drops any entry with an unresolved endpoint — nothing to draw yet, same as an ordinary id with no `nodeById` match. `confirmPostEdit`'s WASM call never needs to resolve edges/teleports' `split` endpoints on the JS side at all — `split_points` is sent alongside them in the same call, so WASM always resolves them itself, after creating the node. `start`/`finish` are the one place resolution happens client-side (see below).
+
 ### PostEditEdge
 
 ```typescript
 interface PostEditEdge {
-  from: number;
-  to: number;
+  from: PostEditEndpoint;
+  to: PostEditEndpoint;
   kind: "wall" | "basic" | "one_way_forward" | "one_way_backward";
 }
 ```
 
-`wall` is an explicit record (absence of record ≠ wall — wall is a deliberate user choice). `one_way_forward` and `one_way_backward` always store correct directed fields: `from→to` is the actual passage direction. There is no `"teleport"` kind here — teleport edges never enter `postEditDraftEdges`/`postEditEdges` at all (see `postEditDraftTeleports` above).
+`wall` is an explicit record (absence of record ≠ wall — wall is a deliberate user choice). `one_way_forward` and `one_way_backward` always store correct directed fields: `from→to` is the actual passage direction. There is no `"teleport"` kind here — teleport edges never enter `postEditDraftEdges`/`postEditEdges` at all (see `postEditDraftTeleports` above). Keyed in its `Record` by `edgeKey(from, to)`, not a hand-built `${from}-${to}` template literal.
 
 ### PostEditTeleportEntry
 
@@ -55,24 +74,59 @@ type PostEditTeleportDirection = "forward" | "backward" | "two_way";
 
 interface PostEditTeleportEntry {
   id: number;
-  from: number;
-  to: number;
+  from: PostEditEndpoint;
+  to: PostEditEndpoint;
   direction: PostEditTeleportDirection;
 }
 ```
 
-Edits teleport links by node id (unlike `PresetTeleportEntry`, which edits by cell coordinate on the pre-generation field). `id` is assigned by `_nextPostEditTeleportId`, monotonically increasing, never reused within a session. `from`/`to` are the two click points in placement order; for `"backward"`, the actual passage direction runs `to→from` (mirrors `PresetConnectionState::TeleportBackward`). `"two_way"` expands to both directions. Converted to `EdgeDto[]` via `postEditTeleportsToDto`.
+Edits teleport links by node/split endpoint (unlike `PresetTeleportEntry`, which edits by cell coordinate on the pre-generation field). `id` is assigned by `_nextPostEditTeleportId`, monotonically increasing, never reused within a session. `from`/`to` are the two click points in placement order; for `"backward"`, the actual passage direction runs `to→from` (mirrors `PresetConnectionState::TeleportBackward`). `"two_way"` expands to both directions. Converted to `EdgeDto[]` via `postEditTeleportsToDto`.
 
 ### PostEditMeta
 
 ```typescript
 interface PostEditMeta {
-  start: number | null;
-  finish: number | null;
+  start: PostEditEndpoint | null;
+  finish: PostEditEndpoint | null;
 }
 ```
 
-Separate from `state.start/finish` so Generation renderer always shows the originally generated endpoints.
+Separate from `state.start/finish` so Generation renderer always shows the originally generated endpoints. `start`/`finish` are `PostEditEndpoint`, not a bare `number` (revised for GitHub issue #221 — see the `PostEditEndpoint` section above for why). On the WASM boundary, `ComputeAnalyticsConfig.start`/`.finish` stay a plain `number | null` (`Maze::meta.start`/`.finish` in `maze-core` are always `Option<NodeId>`, unrelated to the endpoint concept) — `confirmPostEdit` resolves `postEditDraftMeta.start`/`.finish` to a plain id (or `null` if unresolved) client-side before building the WASM request, using the same `resolveEndpoint`/node-map lookup the controller uses for clicks.
+
+## Split Points (GitHub issue #221)
+
+Lets the user manually add extra nodes to a tile's point and wire up edges to them explicitly — e.g. two independent passages (N↔S and E↔W) through what the generator produced as a single 4-way junction. There is no "routing group" concept: the feature only lets the user create additional nodes at a point and connect edges to them like any other manual edge edit; which of a point's nodes ends up connected to what is entirely up to the user, one edge at a time.
+
+- **`postEditDraftSplitPoints`** stores the list of slotIds per point (not a count, not a positional index — see the `PostEditEndpoint` section for why a positional scheme doesn't work). Each slotId is unique only **within its own point** — `PostEditEndpoint`'s `split` variant already addresses point+slotId together, so no global counter is needed. `addSplitNode` mints the next slotId as `max(existing slotIds for this point) + 1` (or `0` if the point has none yet).
+- **The point's original node can never be removed** — only slotIds added via `addSplitNode` can be.
+- **Deleting a split node** (`removeSplitNode(point, slotId)`) first checks (via `endpointsEqual`, not a resolved id — works the same whether or not the node has been confirmed yet) whether `postEditDraftMeta.start`/`.finish` structurally equals the target; if so the removal is rejected outright with an error, no silent reassignment. Otherwise it removes every `postEditDraftEdges`/`postEditDraftTeleports` entry referencing that endpoint (`endpointsEqual`, a plain filter — no reindexing of any sibling slot), removes the slotId from the list, and resets `postEditActiveSplitNode` for that point if the removed slot was the active one.
+- **`cycleActiveSplitNode(point)`** cycles `postEditActiveSplitNode[key]` through original → slot 0 → slot 1 → … → back to original (no entry). No-op for a point with no split nodes.
+- **`setActiveSplitNode(point, endpoint)`** sets it directly (used by the dialog's per-row "Set active" button); a `node`-kind endpoint clears the entry (meaning the original node).
+
+### WASM boundary
+
+`ComputeAnalyticsConfig.split_points: [[number, number], number][]` — a flat list of `(point, slotId)` pairs, built by `confirmPostEdit` from all of `postEditDraftSplitPoints`'s entries (no sort on the JS side — the Rust side sorts internally). `apply_split_points` (in `maze-wasm/src/analytics.rs`) applies them via `Maze::add_node_at`, one call per entry, in a deterministic `(point, slotId)`-sorted order, before edges are resolved — some edges may reference a split node. Returns a `(point, slotId) -> NodeId` map used to resolve `PostEditEndpointDto::Split` in `PostEditEdgeDto.from`/`.to`.
+
+`nodes: Vec<NodeDto>` in the snapshot is built from `Field::all_points()`/`nodes_at()` (deterministic: a point's original node first, then each extra node in creation order), not `Graph::nodes()`'s insertion order — this makes "which node of a split point is the original one" a real, documented contract, not an incidental observation of `Graph`'s internals. The web-side node map (grouped by point) relies on this order.
+
+### Controller/UI
+
+- **A dedicated `manage_split_nodes` tool** (toolbar button next to the vertex tools) puts left-clicks in "focus a point" mode: clicking any point sets `postEditFocusedPoint` to that point (or clears it if the click misses), opening the "Manage split nodes" dialog. This does **not** touch right-click behavior for the other tools — right-click with an edge tool still applies the edge tool exactly like a left-click (unchanged, no `button` check), and right-click with `set_start`/`set_finish`/a teleport tool still clears/removes as before. Works on any point, split or not — it's the only way to create a point's *first* extra node.
+- **"Manage split nodes" dialog** (`ManageSplitNodesDialog.tsx`) is the single UI surface for managing a point's extra nodes — no separate always-visible toolbar toggle. One row per node (original node first, then each slot in order): a coordinate-style bubble (visual style borrowed from `DebugRefBubble`, not its hover/click behavior), a link count, a "Set active" button (disabled if already active), and (for slots only) a "Remove" button behind a `ConfirmModal`. A footer "+ Add node" button calls `addSplitNode`. Renders whenever `postEditFocusedPoint !== null`, independent of the active tool — switching tools does not close it. Closes on explicit close (✕/Escape, clearing `postEditFocusedPoint`) or on leaving the post-edit card.
+- **`buildNodeMap`** in `PostEditController` returns `Map<string, number[]>` (every real node at a point, in snapshot order), not one id per cell. **`resolveActiveEndpointAt(point, nodeMap, activeMap)`** resolves which endpoint edge-tool clicks on that point currently target: `activeMap[key]` if set, else the point's original node (`nodeMap`'s first entry); `null` if the point isn't in the field.
+- **Vertex tools (`set_start`/`set_finish`) on a split point's active node that isn't confirmed yet** are a no-op (not an error) — the same click works once that node is confirmed by a `confirmPostEdit`. This is a direct consequence of `PostEditEndpoint`'s unresolved-endpoint contract, not special-cased split logic: `resolveActiveEndpointAt` can return a `split` endpoint that doesn't resolve to a real id yet, and there is nothing wrong with assigning `postEditDraftMeta.start`/`.finish` to it (the endpoint itself is always valid) — it just can't be sent to WASM as a plain id until it resolves.
+
+### Persistence
+
+`ProjectFilePostEdit.splitPoints: Record<string, number[]>` mirrors `postEditDraftSplitPoints` — without it, saving/reloading a project would silently lose every manually created split point. `postEditActiveSplitNode` is not persisted (ephemeral UI selection, reset to `{}` on load). Project-file validation (`validatePostEditEndpoint` in `projectExport/validate.ts`) checks only the **format** of a `PostEditEndpoint`/`splitPoints` entry — it has no `Field` to check a `split` endpoint's point against at load time. Whether a loaded point still exists in the current tessellation is checked by `apply_split_points` on the WASM side, surfacing as an ordinary `confirmPostEdit` error on first confirm after load, not a load-time failure.
+
+### Rendering
+
+`PostEditRenderer` draws a minimal marker (a thin ring, `canvas.node.split` color token) at every point with a non-empty `postEditDraftSplitPoints` entry — no per-node differentiation on canvas. Full split-junction rendering is out of scope (see GitHub issue #223).
+
+### Out of scope
+
+Generator auto-split (GitHub issue #222), full split-junction rendering (#223 — only the minimal marker above), broader serialization work (#224) beyond this feature's own new fields, and a stateful WASM/`Maze` model for post-edit generally (a separate, much larger future conversation — `compute_analytics` stays a pure, from-scratch-rebuild function for this issue).
 
 ## Lifecycle
 
@@ -81,7 +135,7 @@ Separate from `state.start/finish` so Generation renderer always shows the origi
 1. Runs WASM generation.
 2. Initializes `postEditDraftEdges` via `buildPostEditDraftEdgesFromGenerated(snapshot.edges)` — detects one_way by absence of reverse edge.
 3. Initializes `postEditDraftTeleports` via `extractPostEditTeleports(snapshot.edges)` — a forward+backward pair between the same two nodes collapses into one `"two_way"` entry, a lone direction becomes a `"forward"` entry; also resets `_nextPostEditTeleportId` to the value returned alongside.
-4. Sets `postEditDraftMeta = { start: snapshot.start, finish: snapshot.finish }`, `postEditTeleportPendingFrom = null`.
+4. Sets `postEditDraftMeta = { start: nodeEndpoint(snapshot.start), finish: nodeEndpoint(snapshot.finish) }` (or `null` per field when the snapshot's own is `null`) — freshly generated, so every id is real and there are no split points yet, hence plain `node` endpoints. Sets `postEditTeleportPendingFrom = null`.
 5. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
 6. Sets `_generatedStart`, `_generatedFinish`.
 7. Resets `postEditTool` to `"wall"`.
@@ -101,9 +155,10 @@ Separate from `state.start/finish` so Generation renderer always shows the origi
 Async, versioned via `_postEditRequestId`:
 
 1. Increments `_postEditRequestId`.
-2. Snapshots `postEditDraftEdges`, `postEditDraftTeleports` (converted to `EdgeDto[]` via `postEditTeleportsToDto`), and `postEditDraftMeta` at call time.
-3. Reads `effectiveStart`/`effectiveFinish` from snapshot (falls back to `state.start/finish` when null).
-4. Serializes non-wall edges to `PostEditEdgeWasmDto[]`: `basic` → `"basic"` (bidirectional in WASM); `one_way_forward`/`one_way_backward` → `"one_way"` (WASM adds only one directed edge `from→to`); each converted teleport `EdgeDto` → `"teleport"` (WASM adds one directed `EdgeKind::Teleport` edge — a two-way teleport is sent as two separate `"teleport"` entries, one per direction, not auto-expanded like `"basic"`).
+2. Snapshots `postEditDraftEdges`, `postEditDraftTeleports` (converted to `EdgeDto[]` via `postEditTeleportsToDto`, resolving `split` endpoints through a resolver built from the *previous* confirmed node snapshot), and `postEditDraftMeta` at call time.
+3. Reads `effectiveStart`/`effectiveFinish` from snapshot (falls back to `state.start/finish`, wrapped as `nodeEndpoint(...)`, when null), then resolves each to a plain id via `resolveEndpoint` — `undefined` (unresolved split endpoint) becomes `null` on the wire, not an error; the same call's `split_points` will make it resolvable on a later confirm.
+4. Serializes non-wall edges to `PostEditEdgeWasmDto[]`: `basic` → `"basic"` (bidirectional in WASM); `one_way_forward`/`one_way_backward` → `"one_way"` (WASM adds only one directed edge `from→to`); each converted teleport `EdgeDto` → `"teleport"` (WASM adds one directed `EdgeKind::Teleport` edge — a two-way teleport is sent as two separate `"teleport"` entries, one per direction, not auto-expanded like `"basic"`). Each edge's `from`/`to` is sent as `PostEditEndpointWasmDto` (`toWasmEndpoint`, a trivial passthrough) — WASM resolves any `split` endpoint itself via `split_points` (see "Split Points" below).
+4b. Builds `split_points: [[number, number], number][]` — a flat list of `(point, slotId)` pairs from all of `postEditDraftSplitPoints`, no sort on the JS side (Rust sorts internally).
 5. Calls WASM `compute_analytics` — QC-only (runs `checks`, no repair). Always sends an empty `check_rules`: rules exist to dispatch repair strategies, and `compute_analytics` discards the `RepairEngine` it builds internally, so a rule referencing a check the caller disabled would only ever produce a spurious "inactive check" validation error for no benefit.
 6. If `_postEditRequestId` changed (stale) — discards result.
 7. Writes to `postEditAnalytics`, `postEditEdges` (confirmed snapshot), `postEditTeleportEdges` (confirmed snapshot, converted teleport `EdgeDto[]`), `postEditMeta` (confirmed snapshot). Auto-resets `showRouteOverlay` to `false` when `route_info == null`.
@@ -210,11 +265,12 @@ Cell cache (`cachedCells`, `cachedCellSet`) is built once on open and on `active
 
 Extends `BaseController` (shared with `PresetConnectionsController`). `BaseController` owns pan logic (`tryStartPan`, `handlePanMove`, `toViewport`), edge-drag bookkeeping (`beginEdgeDrag`/`continueEdgeDrag`/`endEdgeDrag`/`isDragActive` — dedupe-only, the caller's `onNewEdge` callback owns the store action and any redraw), and marker-drag bookkeeping (`draggingMarker`, `armMarkerDrag`/`releaseMarkerDrag` — the latter called automatically from `onPointerUp`). `PostEditController` adds node-map caching, edge picking, tool dispatch, confirm debounce, and teleport pending-placement/drag/cancel state (`draggingTeleportEndpoint`, `teleportDragMoved`, an ESC key listener wired in the constructor and torn down in `destroy()` — mirrors `PresetConnectionsController`).
 
-Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", nodeId>`) is cached per `nodes` reference — rebuilt only when `state.nodes` changes.
+Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", NodeId[]>` — every real node at a point, GitHub issue #221) is cached per `nodes` reference — rebuilt only when `state.nodes` changes.
 
-- **Left click + edge tool** → `applyPostEditTool`, schedule confirm if `autoConfirm`.
-- **Left click + endpoint tool (`set_start`/`set_finish`), no start/finish marker under cursor** → `setPostEditEndpoint` for whichever endpoint the active tool targets (confirm called internally by store action when `autoConfirm`).
-- **Left press-drag + endpoint tool, starting on start's or finish's own node** → arms drag for that marker regardless of which endpoint tool is active; each pointer move over a new node calls `setPostEditEndpoint` again to move it live. A press that never leaves the marker's node resolves as a plain click on release (no-op, node unchanged).
+- **Left click + edge tool** → resolves both cells' active endpoint (`resolveActiveEndpointAt`) and calls `applyPostEditTool`, schedule confirm if `autoConfirm`.
+- **Right click + edge tool** → focuses the clicked point for the "Manage split nodes" dialog (`setPostEditFocusedPoint`) instead of applying the tool — see "Split Points" above.
+- **Left click + endpoint tool (`set_start`/`set_finish`), no start/finish marker under cursor** → `setPostEditEndpoint` with the point's currently active endpoint (confirm called internally by store action when `autoConfirm`); no-op if that endpoint is an unconfirmed split node.
+- **Left press-drag + endpoint tool, starting on start's or finish's own node** → arms drag for that marker regardless of which endpoint tool is active; each pointer move over a new node calls `setPostEditEndpoint` again (with that cell's active endpoint) to move it live. A press that never leaves the marker's node resolves as a plain click on release (no-op, node unchanged).
 - **Right click + endpoint tool, on the start or finish marker's own node** → `clearPostEditEndpoint` for that marker, regardless of which endpoint tool is active. Right-click elsewhere is a no-op for endpoint tools.
 - **Teleport tools (`teleport_one_way`/`teleport_two_way`)** → see Teleport Tools Detail above.
 - **Middle click** → pan viewport.
@@ -231,15 +287,15 @@ Shared function in `postEditUtils.ts`, used by `_generateWithSeed` and `resetPos
 
 ## `postEditTeleportsToDto`
 
-Shared function in `postEditUtils.ts`. Converts `PostEditTeleportEntry[]` to `EdgeDto[]` at the WASM-call/render boundary: `"forward"` → one edge `from→to`; `"backward"` → one edge `to→from` (actual passage direction, mirrors `PresetConnectionState::TeleportBackward`); `"two_way"` → both directions. Used by `confirmPostEdit` (building the confirmed `postEditTeleportEdges` snapshot and the WASM request) and `PostEditRenderer` (building the edges fed to `TeleportRenderer`/`buildTeleportEdges`).
+Shared function in `postEditUtils.ts`: `(teleports: PostEditTeleportEntry[], resolveSplit) => EdgeDto[]`. Converts `PostEditTeleportEntry[]` to `EdgeDto[]` at the WASM-call/render boundary: `"forward"` → one edge `from→to`; `"backward"` → one edge `to→from` (actual passage direction, mirrors `PresetConnectionState::TeleportBackward`); `"two_way"` → both directions. Each endpoint is resolved via `resolveEndpoint`/`resolveSplit` first — an entry with an endpoint that doesn't resolve yet (unconfirmed split node) is silently dropped. Used by `confirmPostEdit` (building the confirmed `postEditTeleportEdges` snapshot and the WASM request) and `PostEditRenderer` (building the edges fed to `TeleportRenderer`/`buildTeleportEdges`).
 
 ## `pickPostEditTeleportEndpointAt`
 
-Shared function in `postEditUtils.ts`. Hit-tests a viewport position against `PostEditTeleportEntry[]` endpoints, resolving each entry's `from`/`to` node id to a screen position via a `nodeById` map before comparing distance to the cursor. Mirrors `pickTeleportEndpointAt` in `fieldEditUtils.ts`, adapted for node-id space (preset connections hit-test directly in cell coordinates).
+Shared function in `postEditUtils.ts`: `(viewportX, viewportY, cfg, teleports, nodeById, resolveSplit) => PostEditTeleportEndpointHit | null`. Hit-tests a viewport position against `PostEditTeleportEntry[]` endpoints, resolving each entry's `from`/`to` endpoint to a real node id (via `resolveEndpoint`/`resolveSplit`) then to a screen position via a `nodeById` map before comparing distance to the cursor — an endpoint that doesn't resolve yet is skipped. Mirrors `pickTeleportEndpointAt` in `fieldEditUtils.ts`, adapted for node-id space (preset connections hit-test directly in cell coordinates).
 
 ## `postEditEdgesToDto`
 
-Shared selector in `mazeSelectors.ts`. Converts `Record<string, PostEditEdge> | null` to `EdgeDto[]`, filtering out `wall` entries and mapping every remaining entry's `kind` to `"basic"` (post-edit's tool-facing distinction between `basic`/`one_way_forward`/`one_way_backward` collapses here — direction is already encoded in each entry's own `from`/`to`, and downstream consumers like `buildMazeWalls` derive one-way vs bidirectional by checking for the reverse pair, not by reading `kind`). Never returns teleport entries — those live in `postEditDraftTeleports`/`postEditTeleportEdges` and must be concatenated in by the caller (converting `postEditDraftTeleports` via `postEditTeleportsToDto` first). Used by both `PostEditRenderer` (passing `postEditDraftEdges`, concatenated with `postEditTeleportsToDto(postEditDraftTeleports)`) and `AnalyticsRenderer` (passing `postEditEdges`, concatenated with `postEditTeleportEdges`, which is already `EdgeDto[]`).
+Shared selector in `mazeSelectors.ts`: `(postEditEdges: Record<string, PostEditEdge> | null, resolveSplit) => EdgeDto[]`. Converts to `EdgeDto[]`, filtering out `wall` entries, resolving each remaining entry's `from`/`to` endpoint (dropping the entry if either doesn't resolve yet), and mapping every remaining entry's `kind` to `"basic"` (post-edit's tool-facing distinction between `basic`/`one_way_forward`/`one_way_backward` collapses here — direction is already encoded in each entry's own `from`/`to`, and downstream consumers like `buildMazeWalls` derive one-way vs bidirectional by checking for the reverse pair, not by reading `kind`). Never returns teleport entries — those live in `postEditDraftTeleports`/`postEditTeleportEdges` and must be concatenated in by the caller (converting `postEditDraftTeleports` via `postEditTeleportsToDto` first). Used by both `PostEditRenderer` (passing `postEditDraftEdges`, concatenated with `postEditTeleportsToDto(postEditDraftTeleports, resolveSplit)`) and `AnalyticsRenderer` (passing `postEditEdges`, concatenated with `postEditTeleportEdges`, which is already `EdgeDto[]`). Both renderers build their `resolveSplit` from the confirmed node snapshot via `buildSplitNodeResolver`.
 
 ## `buildClosedCells`
 

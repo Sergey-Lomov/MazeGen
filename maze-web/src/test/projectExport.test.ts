@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseAndValidate, serializeProject } from "../store/projectExport";
 import type { MazeState, PostEditEdge } from "../store/mazeStore";
+import { nodeEndpoint } from "../pixi/postEditEndpoint";
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
@@ -30,6 +31,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     postEditDraftEdges: null,
     postEditDraftMeta: null,
     postEditDraftTeleports: [],
+    postEditDraftSplitPoints: {},
+    postEditActiveSplitNode: {},
     fieldDirty: false,
     presetsDirty: false,
     mazeDirty: false,
@@ -129,13 +132,13 @@ describe("serializeProject / parseAndValidate round-trip", () => {
 
   it("round-trips dirty post-edit draft edges", () => {
     const edges: Record<string, PostEditEdge> = {
-      "0-1": { from: 0, to: 1, kind: "basic" },
-      "1-2": { from: 1, to: 2, kind: "one_way_forward" },
+      "0-1": { from: nodeEndpoint(0), to: nodeEndpoint(1), kind: "basic" },
+      "1-2": { from: nodeEndpoint(1), to: nodeEndpoint(2), kind: "one_way_forward" },
     };
     const state = makeState({
       postEditDirty: true,
       postEditDraftEdges: edges,
-      postEditDraftMeta: { start: 0, finish: 2 },
+      postEditDraftMeta: { start: nodeEndpoint(0), finish: nodeEndpoint(2) },
     });
     const serialized = serializeProject(state);
     expect(serialized.postEdit).not.toBeNull();
@@ -149,14 +152,44 @@ describe("serializeProject / parseAndValidate round-trip", () => {
       postEditDraftEdges: {},
       postEditDraftMeta: null,
       postEditDraftTeleports: [
-        { id: 1, from: 0, to: 2, direction: "forward" },
-        { id: 2, from: 1, to: 3, direction: "two_way" },
+        { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "forward" },
+        { id: 2, from: nodeEndpoint(1), to: nodeEndpoint(3), direction: "two_way" },
       ],
     });
     const serialized = serializeProject(state);
     expect(serialized.postEdit).not.toBeNull();
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.postEdit?.teleports).toEqual(serialized.postEdit?.teleports);
+  });
+
+  it("round-trips split points", () => {
+    const state = makeState({
+      postEditDirty: true,
+      postEditDraftEdges: {},
+      postEditDraftMeta: null,
+      postEditDraftSplitPoints: { "3,4": [0, 1] },
+    });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.postEdit?.splitPoints).toEqual({ "3,4": [0, 1] });
+  });
+
+  it("defaults postEdit.splitPoints to {} for a project file saved before split points existed", () => {
+    const state = makeState({ postEditDirty: true, postEditDraftEdges: {}, postEditDraftMeta: null });
+    const data = JSON.parse(JSON.stringify(serializeProject(state)));
+    delete data.postEdit.splitPoints;
+    const reparsed = parseAndValidate(data);
+    expect(reparsed.postEdit?.splitPoints).toEqual({});
+  });
+
+  it("rejects an invalid PostEditEndpoint kind", () => {
+    const state = makeState({
+      postEditDirty: true,
+      postEditDraftEdges: {},
+      postEditDraftMeta: { start: { kind: "bogus" } as unknown as ReturnType<typeof nodeEndpoint>, finish: null },
+    });
+    const data = JSON.parse(JSON.stringify(serializeProject(state)));
+    expect(() => parseAndValidate(data)).toThrow();
   });
 
   it("defaults postEdit.teleports to empty array for a project file saved before post-edit teleport editing existed", () => {
@@ -262,8 +295,8 @@ describe("parseAndValidate — malformed input", () => {
       edges: [],
       meta: null,
       teleports: [
-        { id: 1, from: 0, to: 2, direction: "forward" },
-        { id: 1, from: 1, to: 3, direction: "two_way" },
+        { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "forward" },
+        { id: 1, from: nodeEndpoint(1), to: nodeEndpoint(3), direction: "two_way" },
       ],
     };
     expect(() => parseAndValidate(data)).toThrow(/Duplicate teleport id/);

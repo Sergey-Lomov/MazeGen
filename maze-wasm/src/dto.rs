@@ -208,10 +208,22 @@ pub struct GraphAnalyticsDto {
     pub region_classes: HashMap<String, String>,
 }
 
+/// One endpoint of a post-edit edge — either a plain existing `NodeId`, or a reference to one of
+/// a split point's extra nodes by its stable `slot_id` (GitHub issue #221). The web side never
+/// predicts a split node's `NodeId` (it doesn't exist yet until this same call creates it via
+/// `apply_split_points`), so it addresses it by `(point, slot_id)` instead — resolved to a real
+/// id in `resolve_post_edit_endpoint`.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PostEditEndpointDto {
+    Node { id: u32 },
+    Split { point: [i32; 2], slot_id: u32 },
+}
+
 #[derive(Deserialize)]
 pub struct PostEditEdgeDto {
-    pub from: u32,
-    pub to: u32,
+    pub from: PostEditEndpointDto,
+    pub to: PostEditEndpointDto,
     /// "basic" | "one_way" | "teleport" — direction already normalized: from→to is the actual
     /// passage/teleport direction. See `build_graph_from_post_edit_edges` (lib.rs) for exactly
     /// how each kind is applied.
@@ -226,6 +238,12 @@ pub struct ComputeAnalyticsConfig {
     pub nodes: Vec<[i32; 2]>,
     /// Actual edges (passages only — walls are absence of edge).
     pub edges: Vec<PostEditEdgeDto>,
+    /// Extra nodes to add to split points before resolving edges — each entry is one
+    /// `(point, slot_id)` pair, applied via `Maze::add_node_at` in a deterministic
+    /// `(point, slot_id)`-sorted order (GitHub issue #221, see `apply_split_points`).
+    /// `#[serde(default)]` so calls/fixtures predating this field still deserialize.
+    #[serde(default)]
+    pub split_points: Vec<([i32; 2], u32)>,
     pub start: Option<u32>,
     pub finish: Option<u32>,
     /// Active checks for this analytics-only pass (no repair, no rules) — each becomes its own

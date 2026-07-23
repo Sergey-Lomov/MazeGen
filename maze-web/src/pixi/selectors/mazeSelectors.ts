@@ -6,17 +6,31 @@ import { getCellCenter, getNeighborData } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS } from "../renderConstants";
 import { canvas } from "../colorTokens";
+import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../postEditEndpoint";
 
 // Teleport edges are never part of `postEditEdges` — they're tracked separately (see
 // `postEditDraftTeleportEdges`/`postEditTeleportEdges` in storeTypes.ts) since a Teleport and a
 // Basic edge can coexist in the same direction between the same pair, which the `Record<from-to,
 // PostEditEdge>` shape used here can't represent. Callers needing both must concatenate
 // `postEditEdgesToDto(...)` with the teleport list themselves.
-export function postEditEdgesToDto(postEditEdges: Record<string, PostEditEdge> | null): EdgeDto[] {
+//
+// `resolveSplit` resolves a `split` endpoint to a real node id (see `postEditEndpoint.ts`'s doc
+// comment) — an entry with an unresolved endpoint (a split node added but not yet confirmed) is
+// silently dropped, same "nothing to draw yet" pattern used elsewhere on this boundary.
+export function postEditEdgesToDto(
+  postEditEdges: Record<string, PostEditEdge> | null,
+  resolveSplit: (point: [number, number], slotId: number) => number | undefined,
+): EdgeDto[] {
   if (postEditEdges === null) return [];
-  return Object.values(postEditEdges)
-    .filter(e => e.kind !== "wall")
-    .map(e => ({ from: e.from, to: e.to, kind: "basic" as const }));
+  const result: EdgeDto[] = [];
+  for (const e of Object.values(postEditEdges)) {
+    if (e.kind === "wall") continue;
+    const from = resolveEndpoint(e.from, resolveSplit);
+    const to = resolveEndpoint(e.to, resolveSplit);
+    if (from === undefined || to === undefined) continue;
+    result.push({ from, to, kind: "basic" });
+  }
+  return result;
 }
 
 // A cell is "closed" (filled as a wall) only when it has no connection at all — including a
@@ -24,10 +38,83 @@ export function postEditEdgesToDto(postEditEdges: Record<string, PostEditEdge> |
 // it renders no wall opening on any geometric side (see buildMazeWalls, which deliberately
 // ignores teleport edges for the opposite reason: a teleport must not fake an open passage
 // between geometric neighbors). Both kinds count as "connected" here.
+//
+// A split point (GitHub issue #221) can have more than one `NodeDto` at the same (x,y) — the
+// original node plus each extra split node. Grouping by cell before checking connectivity is
+// required: filtering `nodes` directly (one entry per *node*, not per *cell*) would mark the cell
+// closed whenever any single one of its nodes happens to have no edges (e.g. the original node's
+// direct passage was walled off, but a split node added at the same point has a passage of its
+// own) — the point as a whole is still open, so the cell must not render as a wall.
 export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[]): [number, number][] {
   const connected = new Set<number>();
   for (const e of edges) { connected.add(e.from); connected.add(e.to); }
-  return nodes.filter(n => !connected.has(n.id)).map(n => [n.x, n.y]);
+  const anyConnectedByCell = new Map<string, boolean>();
+  const cellCoords = new Map<string, [number, number]>();
+  for (const n of nodes) {
+    const key = `${n.x},${n.y}`;
+    cellCoords.set(key, [n.x, n.y]);
+    anyConnectedByCell.set(key, (anyConnectedByCell.get(key) ?? false) || connected.has(n.id));
+  }
+  const closed: [number, number][] = [];
+  for (const [key, isConnected] of anyConnectedByCell) {
+    if (!isConnected) closed.push(cellCoords.get(key)!);
+  }
+  return closed;
+}
+
+/** Reduces `nodes`/`edges` for wall/passage rendering (GitHub issue #221) so a split point's cell
+ * reads by its currently *active* node only, not the union of every node at that point — e.g. a
+ * point split into two independent detours (N<->S on one node, E<->W on the other) must show only
+ * whichever detour is active right now, not both openings merged into one cell.
+ *
+ * For every point present in `splitPoints`, keeps just the active node's `NodeDto` (looked up via
+ * `activeSplitNode`, defaulting to the point's original node — same "no entry means original"
+ * convention as `postEditActiveSplitNode`) and drops every edge touching one of that point's
+ * *other* nodes. Points absent from `splitPoints` (no split nodes at all) pass through untouched.
+ */
+export function filterNodesToActiveSplitNode(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  splitPoints: Readonly<Record<string, number[]>>,
+  activeSplitNode: Readonly<Record<string, PostEditEndpoint>>,
+): { nodes: NodeDto[]; edges: EdgeDto[] } {
+  const pointNodeMap = new Map<string, number[]>();
+  for (const n of nodes) {
+    const key = `${n.x},${n.y}`;
+    const list = pointNodeMap.get(key);
+    if (list) list.push(n.id); else pointNodeMap.set(key, [n.id]);
+  }
+  const resolveSplit = buildSplitNodeResolver(pointNodeMap, splitPoints);
+
+  // (point key) -> id of every node at that point EXCEPT the active one, to drop from edges/nodes.
+  const inactiveIdsByPoint = new Map<string, Set<number>>();
+  for (const key of Object.keys(splitPoints)) {
+    const ids = pointNodeMap.get(key);
+    if (!ids) continue;
+    const active = activeSplitNode[key];
+    // Falls back to the original node (ids[0]) both when there's no active entry AND when the
+    // active entry doesn't resolve yet (a just-added, not-yet-confirmed split node) — without the
+    // `?? ids[0]` here, an unresolved `activeId` (undefined) would match no id in `ids`, leaving
+    // every node "active" and silently reverting to the old union behavior for that one point.
+    const activeId = (active !== undefined ? resolveEndpoint(active, resolveSplit) : undefined) ?? ids[0];
+    inactiveIdsByPoint.set(key, new Set(ids.filter((id) => id !== activeId)));
+  }
+  if (inactiveIdsByPoint.size === 0) return { nodes, edges };
+
+  const isInactive = (id: number, key: string) => inactiveIdsByPoint.get(key)?.has(id) ?? false;
+  const filteredNodes = nodes.filter((n) => !isInactive(n.id, `${n.x},${n.y}`));
+
+  const idToPointKey = new Map<number, string>();
+  for (const n of nodes) idToPointKey.set(n.id, `${n.x},${n.y}`);
+  const filteredEdges = edges.filter((e) => {
+    const fromKey = idToPointKey.get(e.from);
+    const toKey = idToPointKey.get(e.to);
+    if (fromKey !== undefined && isInactive(e.from, fromKey)) return false;
+    if (toKey !== undefined && isInactive(e.to, toKey)) return false;
+    return true;
+  });
+
+  return { nodes: filteredNodes, edges: filteredEdges };
 }
 
 export function buildMazeWalls(
