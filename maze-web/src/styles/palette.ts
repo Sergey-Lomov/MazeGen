@@ -125,6 +125,13 @@ export const base = {
   nodeStart: "#44dd88",
   nodeFinish: "#dd4466",
   nodeSplit: "#9d7fe0",
+  // Split-junction slot colors (GitHub issue #223) — explicit for a point's first 3 nodes
+  // (original + first 2 extra), distinct from every other canvas hue above so a split passage
+  // never reads as a start/finish/teleport/one-way marker at a glance. Slot 3+ falls back to
+  // `colorUtils.buildPalette`, same rotating palette `RegionsRenderer` uses for components.
+  splitSlot0: "#4a9eff",
+  splitSlot1: "#ff9f4a",
+  splitSlot2: "#6dbf7e",
   edge: "#888888",
   oneWay: "#d4c045",
   invalid: "#ddaa00",

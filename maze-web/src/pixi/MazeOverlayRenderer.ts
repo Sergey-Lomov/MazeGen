@@ -3,7 +3,8 @@ import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
+import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { canvas } from "./colorTokens";
@@ -20,6 +21,7 @@ export interface MazeOverlayContainers {
   floor: Container;
   closedCells: Container;
   walls: Container;
+  splitJunctions: Container;
   teleports: Container;
   markers: Container;
 }
@@ -28,6 +30,7 @@ export class MazeOverlayRenderer {
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
+  private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
 
@@ -35,6 +38,7 @@ export class MazeOverlayRenderer {
     this.floor = new CellFillRenderer(containers.floor);
     this.closedCells = new CellFillRenderer(containers.closedCells);
     this.walls = new WallRenderer(containers.walls);
+    this.splitJunctions = new SplitJunctionRenderer(containers.splitJunctions);
     this.teleports = new TeleportRenderer(containers.teleports);
     this.markers = new WaypointsRenderer(containers.markers);
   }
@@ -51,6 +55,18 @@ export class MazeOverlayRenderer {
     const wallEdges = buildMazeWalls(nodes, edges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);
 
+    // A split node carrying a start/finish marker or a teleport endpoint always keeps its hub
+    // point (see buildSplitPassages's straightening exception) — see PostEditRenderer's identical
+    // specialNodeIds construction.
+    const specialNodeIds = new Set<number>();
+    if (start !== null) specialNodeIds.add(start);
+    if (finish !== null) specialNodeIds.add(finish);
+    for (const e of edges) {
+      if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
+    }
+    const splitPassages = buildSplitPassages(nodes, edges, cfg, specialNodeIds);
+    this.splitJunctions.render({ passages: splitPassages });
+
     const nodeById = new Map(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
     this.teleports.render({ edges: teleportEdges });
@@ -63,6 +79,7 @@ export class MazeOverlayRenderer {
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
+    this.splitJunctions.destroy();
     this.teleports.destroy();
     this.markers.destroy();
   }

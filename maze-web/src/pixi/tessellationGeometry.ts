@@ -17,6 +17,20 @@ export const TRI_NEIGHBOR_OFFSETS_DOWN: [number, number][] = [[-1, 0], [1, 0], [
 export const TRI_EDGE_VERTS_UP: [number, number][] = [[0, 2], [0, 1], [1, 2]];
 export const TRI_EDGE_VERTS_DOWN: [number, number][] = [[0, 2], [1, 2], [0, 1]];
 
+/** Starting rotation (degrees, clockwise) added to a split point's per-node circle-point angles
+ *  (GitHub issue #223) before evenly distributing them — a per-tessellation constant so the first
+ *  node's point doesn't land exactly on a tile vertex/edge-midpoint by coincidence. Square: 45°
+ *  (halfway between its 4 edge directions). Hex/tri: 0° for now, to be tuned visually later. */
+export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
+  switch (cfg.type) {
+    case "square":
+    case "square_custom":
+      return 45;
+    default:
+      return 0;
+  }
+}
+
 export function getCellVertices(x: number, y: number, cfg: TessellationConfig): Pos[] | null {
   switch (cfg.type) {
     case "square":

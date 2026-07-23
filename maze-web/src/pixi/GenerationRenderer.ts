@@ -5,14 +5,15 @@ import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
+import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
 import { KruskalDsuHighlightOverlay } from "./KruskalDsuHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge } from "./renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage } from "./renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 import { canvas } from "./colorTokens";
@@ -23,6 +24,7 @@ export class GenerationRenderer {
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
+  private readonly splitJunctionContainer: Container;
   private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
   private readonly debugRefHighlightContainer: Container;
@@ -33,6 +35,7 @@ export class GenerationRenderer {
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
+  private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly debugRefHighlight: DebugRefHighlightOverlay;
@@ -50,9 +53,12 @@ export class GenerationRenderer {
     nodes: NodeDto[];
     edges: EdgeDto[];
     cfg: TessellationConfig;
+    start: number | null;
+    finish: number | null;
     closedCells: [number, number][];
     wallEdges: WallEdge[];
     teleportEdges: TeleportEdge[];
+    splitPassages: SplitPassage[];
   } | null = null;
 
   // Keyed on `debugArena.debugValueNames` array identity, which is stable for a whole debug
@@ -69,6 +75,7 @@ export class GenerationRenderer {
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer = new Container();
+    this.splitJunctionContainer = new Container();
     this.teleportContainer = new Container();
     this.markersContainer = new Container();
     this.debugRefHighlightContainer = new Container();
@@ -79,6 +86,7 @@ export class GenerationRenderer {
     viewport.addChild(this.floorContainer);
     viewport.addChild(this.closedCellsContainer);
     viewport.addChild(this.wallsContainer);
+    viewport.addChild(this.splitJunctionContainer);
     viewport.addChild(this.teleportContainer);
     viewport.addChild(this.markersContainer);
     viewport.addChild(this.debugRefHighlightContainer);
@@ -89,6 +97,7 @@ export class GenerationRenderer {
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls = new WallRenderer(this.wallsContainer);
+    this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.debugRefHighlight = new DebugRefHighlightOverlay(this.debugRefHighlightContainer);
@@ -139,6 +148,7 @@ export class GenerationRenderer {
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
     this.wallsContainer.visible = visible;
+    this.splitJunctionContainer.visible = visible;
     this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
     this.debugRefHighlightContainer.visible = visible;
@@ -181,18 +191,39 @@ export class GenerationRenderer {
 
     const nodeById = new Map(view.nodes.map(n => [n.id, n]));
 
-    if (!this.geometryCache || this.geometryCache.nodes !== view.nodes || this.geometryCache.edges !== view.edges || this.geometryCache.cfg !== cfg) {
+    if (
+      !this.geometryCache ||
+      this.geometryCache.nodes !== view.nodes ||
+      this.geometryCache.edges !== view.edges ||
+      this.geometryCache.cfg !== cfg ||
+      this.geometryCache.start !== view.start ||
+      this.geometryCache.finish !== view.finish
+    ) {
+      // A split node carrying a start/finish marker or a teleport endpoint always keeps its hub
+      // point (see buildSplitPassages's straightening exception) — see PostEditRenderer's
+      // identical specialNodeIds construction.
+      const specialNodeIds = new Set<number>();
+      if (view.start !== null) specialNodeIds.add(view.start);
+      if (view.finish !== null) specialNodeIds.add(view.finish);
+      for (const e of view.edges) {
+        if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
+      }
+
       this.geometryCache = {
         nodes: view.nodes,
         edges: view.edges,
         cfg,
+        start: view.start,
+        finish: view.finish,
         closedCells: buildClosedCells(view.nodes, view.edges),
         wallEdges: buildMazeWalls(view.nodes, view.edges, cfg),
         teleportEdges: buildTeleportEdges(nodeById, view.edges, cfg),
+        splitPassages: buildSplitPassages(view.nodes, view.edges, cfg, specialNodeIds),
       };
     }
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: this.geometryCache.wallEdges }, cfg);
+    this.splitJunctions.render({ passages: this.geometryCache.splitPassages });
     this.teleports.render({ edges: this.geometryCache.teleportEdges });
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
@@ -253,6 +284,7 @@ export class GenerationRenderer {
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
+    this.splitJunctions.destroy();
     this.teleports.destroy();
     this.markers.destroy();
     this.debugRefHighlight.destroy();
@@ -262,6 +294,7 @@ export class GenerationRenderer {
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();
+    this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.debugRefHighlightContainer.destroy();

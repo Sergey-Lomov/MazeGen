@@ -8,15 +8,14 @@ import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, filterNodesToActiveSplitNode } from "./selectors/mazeSelectors";
+import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import type { NodeDto } from "../wasm/types";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { resolveEndpoint, buildSplitNodeResolver } from "./postEditEndpoint";
-import { getCellCenter } from "./tessellationGeometry";
-import { NODE_RADIUS } from "./renderConstants";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -32,7 +31,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly hoverContainer: Container;
   private readonly cellHoverContainer: Container;
   private readonly teleportPreviewContainer: Container;
-  private readonly splitMarkersContainer: Container;
+  private readonly splitJunctionContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -43,7 +42,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly hover: EdgeHighlightRenderer;
   private readonly cellHover: CellFillRenderer;
   private readonly teleportPreview: Graphics;
-  private readonly splitMarkers: Graphics;
+  private readonly splitJunctions: SplitJunctionRenderer;
 
   constructor(container: Container) {
     super();
@@ -61,6 +60,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.floorContainer);
     this.root.addChild(this.closedCellsContainer);
     this.root.addChild(this.wallsContainer);
+    this.splitJunctionContainer = new Container();
+    this.root.addChild(this.splitJunctionContainer);
     this.root.addChild(this.teleportContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.hoverContainer);
@@ -68,21 +69,18 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.cellHoverContainer);
     this.teleportPreviewContainer = new Container();
     this.root.addChild(this.teleportPreviewContainer);
-    this.splitMarkersContainer = new Container();
-    this.root.addChild(this.splitMarkersContainer);
 
     this.grid        = new GridRenderer(this.gridContainer);
     this.floor       = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls       = new WallRenderer(this.wallsContainer);
+    this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports   = new TeleportRenderer(this.teleportContainer);
     this.markers     = new WaypointsRenderer(this.markersContainer);
     this.hover       = new EdgeHighlightRenderer(this.hoverContainer);
     this.cellHover   = new CellFillRenderer(this.cellHoverContainer);
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
-    this.splitMarkers = new Graphics();
-    this.splitMarkersContainer.addChild(this.splitMarkers);
 
     this.root.visible = false;
 
@@ -158,8 +156,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditDraftTeleports !== prev.postEditDraftTeleports ||
       state.nodes !== prev.nodes ||
       state.postEditDraftMeta !== prev.postEditDraftMeta ||
-      state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
-      state.postEditActiveSplitNode !== prev.postEditActiveSplitNode
+      state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints
     ) {
       this.redrawAll(state);
     }
@@ -175,7 +172,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
 
-    const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = state;
+    const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints } = state;
 
     // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
     // a split node not yet confirmed simply doesn't resolve, and is dropped from what's drawn
@@ -195,21 +192,32 @@ export class PostEditRenderer extends BaseFieldRenderer {
       ...postEditTeleportsToDto(postEditDraftTeleports, resolveSplit),
     ];
 
+    // A split node carrying a start/finish marker or a teleport endpoint always keeps its hub
+    // point (see buildSplitPassages's straightening exception) so the marker/teleport line has a
+    // single unambiguous point to sit on, rather than an arbitrary spot on a straightened line.
+    const specialNodeIds = new Set<number>();
+    if (start !== null) specialNodeIds.add(start);
+    if (finish !== null) specialNodeIds.add(finish);
+    for (const e of activeEdges) {
+      if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
+    }
+
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
-    // Walls/passages read by each split point's currently *active* node only, not the union of
-    // every node at that point (GitHub issue #221) — e.g. a point split into two independent
-    // detours must show only whichever detour is active right now.
-    const { nodes: wallNodes, edges: wallActiveEdges } = filterNodesToActiveSplitNode(
-      nodes, activeEdges, postEditDraftSplitPoints, postEditActiveSplitNode,
-    );
-
-    const closed = buildClosedCells(wallNodes, wallActiveEdges);
+    // Split points (GitHub issue #223) render every node's passages at once, as colored lines
+    // from a small per-node point to each face it connects across — see `buildSplitPassages`.
+    // `postEditActiveSplitNode` still governs which endpoint edge-tool clicks target, but no
+    // longer what's drawn; ordinary `buildMazeWalls` skips a split point's own geometric edges
+    // entirely, since those are rendered here instead.
+    const closed = buildClosedCells(nodes, activeEdges);
     this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
 
-    const wallEdges = buildMazeWalls(wallNodes, wallActiveEdges, cfg);
+    const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);
+
+    const splitPassages = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds);
+    this.splitJunctions.render({ passages: splitPassages });
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);
@@ -218,25 +226,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg);
     this.markers.render({ markers: markerData });
 
-    this.renderSplitMarkers(postEditDraftSplitPoints, cfg);
-
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
-  }
-
-  /** Minimal visual marker for split points (GitHub issue #221) — a small ring at any point with
-   * extra nodes, no per-node differentiation on canvas. Full split-junction rendering is out of
-   * scope here (see GitHub issue #223). */
-  private renderSplitMarkers(splitPoints: Record<string, number[]>, cfg: NonNullable<typeof this.cfg>): void {
-    this.splitMarkers.clear();
-    for (const key of Object.keys(splitPoints)) {
-      if ((splitPoints[key]?.length ?? 0) === 0) continue;
-      const [x, y] = key.split(",").map(Number);
-      const { x: px, y: py } = getCellCenter(x, y, cfg);
-      this.splitMarkers
-        .circle(px, py, NODE_RADIUS * 1.3)
-        .stroke({ width: 2, color: canvas.node.split });
-    }
   }
 
   protected clearAll(): void {
@@ -246,12 +237,12 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.floor.render({ cells: [], color: canvas.floor.default, alpha: 1 }, cfg);
     this.closedCells.render({ cells: [], color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: [] }, cfg);
+    this.splitJunctions.render({ passages: [] });
     this.teleports.render({ edges: [] });
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.teleportPreview.clear();
-    this.splitMarkers.clear();
   }
 
   protected destroyChildren(): void {
@@ -259,21 +250,21 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
+    this.splitJunctions.destroy();
     this.teleports.destroy();
     this.markers.destroy();
     this.hover.destroy();
     this.cellHover.destroy();
     this.teleportPreview.destroy();
-    this.splitMarkers.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();
+    this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.hoverContainer.destroy();
     this.cellHoverContainer.destroy();
     this.teleportPreviewContainer.destroy();
-    this.splitMarkersContainer.destroy();
   }
 }

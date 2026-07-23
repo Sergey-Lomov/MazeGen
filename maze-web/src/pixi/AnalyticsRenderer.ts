@@ -20,6 +20,7 @@ export class AnalyticsRenderer {
   private readonly regionsContainer: Container;
   private readonly regionClassesContainer: Container;
   private readonly wallsContainer: Container;
+  private readonly splitJunctionContainer: Container;
   private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
   private readonly graphContainer: Container;
@@ -48,6 +49,7 @@ export class AnalyticsRenderer {
     this.regionsContainer     = new Container();
     this.regionClassesContainer = new Container();
     this.wallsContainer       = new Container();
+    this.splitJunctionContainer = new Container();
     this.teleportContainer    = new Container();
     this.markersContainer     = new Container();
     this.graphContainer       = new Container();
@@ -62,6 +64,7 @@ export class AnalyticsRenderer {
     container.addChild(this.regionsContainer);
     container.addChild(this.regionClassesContainer);
     container.addChild(this.wallsContainer);
+    container.addChild(this.splitJunctionContainer);
     container.addChild(this.teleportContainer);
     container.addChild(this.markersContainer);
     container.addChild(this.graphContainer);
@@ -75,6 +78,7 @@ export class AnalyticsRenderer {
       floor: this.floorContainer,
       closedCells: this.closedCellsContainer,
       walls: this.wallsContainer,
+      splitJunctions: this.splitJunctionContainer,
       teleports: this.teleportContainer,
       markers: this.markersContainer,
     });
@@ -162,6 +166,7 @@ export class AnalyticsRenderer {
     this.floorContainer.visible       = showMaze;
     this.closedCellsContainer.visible = showMaze;
     this.wallsContainer.visible       = showMaze;
+    this.splitJunctionContainer.visible = showMaze;
     this.teleportContainer.visible    = showMaze;
     this.markersContainer.visible     = showMaze;
     if (showMaze) {
@@ -277,6 +282,7 @@ export class AnalyticsRenderer {
     this.regionsContainer.destroy();
     this.regionClassesContainer.destroy();
     this.wallsContainer.destroy();
+    this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.graphContainer.destroy();

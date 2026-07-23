@@ -101,8 +101,17 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // this makes "which node of a split point comes first in the snapshot" a real contract (the
     // point's original node, then each `add_node_at` in creation order), which the web-side
     // controller relies on to tell a point's original node apart from its extra split nodes.
+    //
+    // `all_points()` yields one entry per *NodeId* (see its doc comment), not per unique point —
+    // for a split point with N nodes it repeats that point N times. Deduping by point here (first
+    // occurrence wins, `all_points()`'s NodeId-sorted order is preserved) is required so
+    // `nodes_at(p)` isn't flat-mapped once per repeat, which would emit a split point's node list
+    // N times over (GitHub issue #223 surfaced this once split-junction rendering started reading
+    // every node of a point instead of just one).
+    let mut seen_points: std::collections::HashSet<T::Point> = std::collections::HashSet::new();
     let nodes: Vec<NodeDto> = maze.field
         .all_points()
+        .filter(|p| seen_points.insert(*p))
         .flat_map(|p| maze.field.nodes_at(p).iter().map(move |&id| (id, p)))
         .filter_map(|(id, p)| {
             let id32 = u32::try_from(id).ok()?;
@@ -482,6 +491,31 @@ mod tests {
 
         assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
+    }
+
+    #[test]
+    fn snapshot_nodes_lists_a_split_points_nodes_exactly_once_each() {
+        // GitHub issue #223 regression: `Field::all_points()` yields one entry per NodeId, so a
+        // split point (2+ NodeIds at the same coordinate) used to make `nodes` list that point's
+        // node pair once per its own node count — a 2-node split point appeared 2x (4 entries
+        // instead of 2), a 3-node split point 3x, etc.
+        let mut ids = IdGenerator::new();
+        let mut field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 1, y: 0 };
+        let extra = field.add_node_at(p, &mut ids);
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        g.add_node(extra);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
+
+        let at_split_point: Vec<_> = snapshot.nodes.iter().filter(|n| n.x == 1 && n.y == 0).collect();
+        assert_eq!(at_split_point.len(), 2, "split point's node list must appear exactly once, not once per its own node count");
+        let mut ids_seen: Vec<u32> = at_split_point.iter().map(|n| n.id).collect();
+        ids_seen.sort_unstable();
+        ids_seen.dedup();
+        assert_eq!(ids_seen.len(), 2, "no duplicate NodeIds within the split point's entries");
     }
 
     #[test]

@@ -47,6 +47,7 @@ Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. R
 | `floorContainer` | `CellFillRenderer` | Fill all cells with `FLOOR_COLOR` |
 | `closedCellsContainer` | `CellFillRenderer` | Fill isolated cells (no edges) with `WALL_COLOR` |
 | `wallsContainer` | `WallRenderer` | Draw wall/passage edges |
+| `splitJunctionContainer` | `SplitJunctionRenderer` | Draw split points' independent passages |
 | `teleportContainer` | `TeleportRenderer` | Draw teleport edge markers |
 | `markersContainer` | `WaypointsRenderer` | Draw start/finish markers |
 
@@ -68,7 +69,10 @@ Renders the active maze inside `viewport`. Subscribes to `mazeStore` directly. R
 Fills a list of cells with a single color/alpha. Accepts `CellFillGroup | CellFillGroup[]`. Uses `getCellVertices` for polygon geometry.
 
 ### WallRenderer
-Draws wall segments between cell pairs. Each `WallEdge` specifies two cell coordinates, passage kind (`both/forward/backward/none`), and style (`solid/faint/invalid`). One-way passages get a directional triangle marker at the midpoint.
+Draws wall segments between cell pairs. Each `WallEdge` specifies two cell coordinates, passage kind (`both/forward/backward/none`), and style (`solid/faint/invalid`). One-way passages get a directional triangle marker at the midpoint. Split points (more than one `NodeDto` per point) are excluded entirely — see `SplitJunctionRenderer` below.
+
+### SplitJunctionRenderer (GitHub issue #223)
+Draws a split point's independent passages — wired into `PostEditRenderer` (its own instance), `GenerationRenderer` (its own instance, geometry cached alongside `wallEdges`/`teleportEdges`, keyed additionally on `start`/`finish` since `specialNodeIds` depends on them), and `AnalyticsRenderer` (via `MazeOverlayRenderer`, which now owns a `SplitJunctionRenderer` layer alongside its walls/floor/teleports/markers) — see `Specs/post-edit.md`'s Rendering section for the full geometry/color rules. Not wired into `PresetConnectionsRenderer`: that feature operates before generation on raw field cells, with no `NodeId`/split-point data to draw from. Each `SplitPassage` (one per connected node) draws its `wallSegments` (its own share of the wall on every face it connects across, one-way segments get a `drawOneWayTriangle` marker at their center) plus `connectors` linking those shares — a single straight line between the two shares for a 2-connection node, or one line per share from a small circle point otherwise. All in the node's own color. Built by `buildSplitPassages` (`mazeSelectors.ts`). Every caller builds `specialNodeIds` the same way: `start`/`finish` plus every teleport edge's `from`/`to`.
 
 ### WaypointsRenderer
 Draws filled circles at given positions (start/finish markers). Positions are in screen coordinates (pre-computed by selector).

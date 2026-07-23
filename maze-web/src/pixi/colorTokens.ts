@@ -9,6 +9,7 @@ export const canvas = {
     start: hexToNumber(base.nodeStart),
     finish: hexToNumber(base.nodeFinish),
     split: hexToNumber(base.nodeSplit),
+    splitSlots: [hexToNumber(base.splitSlot0), hexToNumber(base.splitSlot1), hexToNumber(base.splitSlot2)] as const,
   },
 
   edge: {

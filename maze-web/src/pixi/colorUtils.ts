@@ -19,6 +19,18 @@ export function hslToRgb(h: number, s: number, l: number): number {
   return (Math.round((r + m) * 255) << 16) | (Math.round((g + m) * 255) << 8) | Math.round((b + m) * 255);
 }
 
+/** Color for a split point's node at `slotIndex` (0 = original node, 1 = first extra node, ...)
+ *  — GitHub issue #223. Slots 0-2 use explicit fixed colors (`canvas.node.splitSlots`, passed in
+ *  by the caller) so the first few slots stay visually stable across renders/points rather than
+ *  shifting with `buildPalette`'s "most-separated-from-what's-already-used" logic. Slot 3+ falls
+ *  back to `buildPalette`, generating just enough colors for the slots actually beyond the fixed
+ *  set — same rotating hue-wheel palette `RegionsRenderer` uses for components. */
+export function splitSlotColor(slotIndex: number, fixedSlots: readonly number[]): number {
+  if (slotIndex < fixedSlots.length) return fixedSlots[slotIndex];
+  const overflowCount = slotIndex - fixedSlots.length + 1;
+  return buildPalette(overflowCount)[overflowCount - 1];
+}
+
 export function buildPalette(count: number): number[] {
   const S = 0.65;
   const result: number[] = [];
