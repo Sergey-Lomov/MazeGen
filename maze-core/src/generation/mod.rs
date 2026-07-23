@@ -20,7 +20,7 @@ pub use edge_based::{generate as generate_edge_based, EdgeBasedEvent, debug_valu
 pub use vertex_based::{generate as generate_vertex_based, VertexBasedEvent, debug_value_names as vertex_based_debug_value_names};
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
-    PresetConnectionState, TeleportDirection, PresetConnection, NodeLockKind, LockedNode,
+    PresetConnectionState, TeleportDirection, PresetConnection, PresetEndpoint, NodeLockKind, LockedNode,
     GenerationConfig,
 };
 pub(crate) use edge_ops::{

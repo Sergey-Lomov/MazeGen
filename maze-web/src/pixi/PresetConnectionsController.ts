@@ -57,8 +57,8 @@ export class PresetConnectionsController extends BaseController {
       if (!teleport) return;
       const current = this.draggingTeleportEndpoint.end === "from" ? teleport.from : teleport.to;
       const other = this.draggingTeleportEndpoint.end === "from" ? teleport.to : teleport.from;
-      const movedToOther = other[0] === cell.x && other[1] === cell.y;
-      if (current[0] !== cell.x || current[1] !== cell.y) {
+      const movedToOther = other.point[0] === cell.x && other.point[1] === cell.y;
+      if (current.point[0] !== cell.x || current.point[1] !== cell.y) {
         // Cursor left the original cell — this is a drag gesture even if landing on the other
         // endpoint's cell is rejected below, so pointerup must not reinterpret it as a click.
         this.teleportDragMoved = true;
@@ -78,6 +78,19 @@ export class PresetConnectionsController extends BaseController {
       return;
     }
     this.renderer.updateTeleportPreview(null, 0, 0);
+
+    if (state.presetConnectionsTool === "manage_split_nodes") {
+      // This tool targets a whole point (opens the split-node dialog on click), not one of its
+      // faces — highlight the cell under the cursor, not an edge (mirrors PostEditController's
+      // manage_split_nodes branch — GitHub issue #231).
+      const proj = makeProjection(state.tessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
+      this.renderer.updateHover(null);
+      return;
+    }
+    this.renderer.updateCellHover(null);
 
     const edge = pickEdgeAtPosition(vpX, vpY, state.tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     this.renderer.updateHover(edge);
@@ -105,9 +118,9 @@ export class PresetConnectionsController extends BaseController {
       // All four vertex elements (start, finish, every teleport endpoint) share one editing
       // mode: whichever vertex tool is active, drag/RMB-delete applies to any of them.
       const onStart =
-        store.presetStart !== null && store.presetStart[0] === coords[0] && store.presetStart[1] === coords[1];
+        store.presetStart !== null && store.presetStart.point[0] === coords[0] && store.presetStart.point[1] === coords[1];
       const onFinish =
-        store.presetFinish !== null && store.presetFinish[0] === coords[0] && store.presetFinish[1] === coords[1];
+        store.presetFinish !== null && store.presetFinish.point[0] === coords[0] && store.presetFinish.point[1] === coords[1];
       const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.tessellationConfig, store.presetTeleports);
 
       if (button === 2) {
@@ -149,11 +162,20 @@ export class PresetConnectionsController extends BaseController {
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
       const cur = store.presetGenSource;
-      if (cur && cur[0] === coords[0] && cur[1] === coords[1]) {
+      if (cur && cur.point[0] === coords[0] && cur.point[1] === coords[1]) {
         store.setPresetGenSource(null);
       } else {
         store.setPresetGenSource(coords);
       }
+      return;
+    }
+
+    if (tool === "manage_split_nodes") {
+      if (button !== 0) return;
+      const proj = makeProjection(state.tessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const key = encodePoint(cell.x, cell.y);
+      useMazeStore.getState().setPresetFocusedPoint(this.renderer.getCachedCellSet().has(key) ? [cell.x, cell.y] : null);
       return;
     }
 

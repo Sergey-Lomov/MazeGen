@@ -1,0 +1,43 @@
+{
+  "tessellation": {
+    "tessellation_type": "square",
+    "points": [
+      [-1, 0],
+      [0, 0]
+    ]
+  },
+  "stages": [
+    {
+      "id": "stage_1",
+      "name": "Stage 1",
+      "rules": []
+    }
+  ],
+  "initial": {
+    "method": "custom_vertex_based",
+    "depth_first": 0,
+    "corridor_chance": 0,
+    "branching": 0,
+    "directionality": 0
+  },
+  "elements": {
+    "one_way_chance": 0,
+    "teleport_chance": 0,
+    "teleport_one_way_chance": 0
+  },
+  "preset_connections": [
+    {
+      "from": { "point": [-1, 0] },
+      "to": { "point": [0, 0] },
+      "state": "wall"
+    },
+    {
+      "from": { "point": [-1, 0], "slot": 0 },
+      "to": { "point": [0, 0] },
+      "state": "passage"
+    }
+  ],
+  "locked_nodes": [],
+  "split_points": [[[-1, 0], 0]],
+  "qc_experiment": true
+}

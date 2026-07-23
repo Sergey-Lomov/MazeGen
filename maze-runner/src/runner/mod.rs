@@ -9,13 +9,13 @@ use maze_core::{
     graph::Graph,
     ids::IdGenerator,
     space::{Field, Tessellation},
-    generation::{generate_maze, build_preset_state, GenerationConfig},
+    generation::{generate_maze, build_preset_state, GenerationConfig, PresetEndpoint},
     RegionClass, GenerationTiming,
     quality_control::{Issue, QcEvent},
     event_log::{EventLog, DebugTape},
 };
 use crate::config::{
-    GenerateConfig, TessellationType,
+    GenerateConfig, TessellationType, PresetEndpointDto,
     build_generation_config, build_repair_limits,
 };
 
@@ -61,29 +61,41 @@ pub fn resolve_start<P: Copy>(pts: &[P], gen_source_xy: Option<[i32; 2]>, to_xy:
     pick_start(pts, to_xy)
 }
 
+fn preset_endpoint_dto_to_core(dto: &PresetEndpointDto) -> PresetEndpoint {
+    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot }
+}
+
 fn run_generate_typed<T: Tessellation + 'static>(
     seed: u64,
-    field: Field<T>,
+    mut field: Field<T>,
+    mut ids: IdGenerator,
     start: T::Point,
     config: &GenerateConfig,
     gen_config: GenerationConfig,
-    to_xy: impl Fn(T::Point) -> (i32, i32),
+    point_from_xy: impl Fn(i32, i32) -> T::Point,
 ) -> Result<MazeRunResult, String> {
     use maze_core::generation::pipeline::build_maze;
 
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
 
-    let start_id = field.nodes_at(start).first().copied()
-        .ok_or_else(|| "start node not found".to_string())?;
-
     let preset_state = build_preset_state(
-        &mut graph, &field,
+        &mut graph, &mut field, &mut ids,
         &gen_config.preset_connections,
         &gen_config.locked_nodes,
-        |x, y| field.all_points().find(|&p| to_xy(p) == (x, y)).expect("preset coordinate must exist on the field"),
+        &gen_config.split_points,
+        &point_from_xy,
         None,
-    );
+    )?;
+
+    // `start_id` re-resolves the same gen_source marker `resolve_start` already used to pick
+    // `start` geometrically, but now against `PresetState` — a slot-addressed gen_source needs
+    // the split node `build_preset_state` just created above, which `resolve_start` (geometry
+    // only, no `Field`/`NodeId` access) can't have resolved on its own.
+    let start_id = config.preset_gen_source.as_ref()
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)))
+        .or_else(|| field.nodes_at(start).first().copied())
+        .ok_or_else(|| "start node not found".to_string())?;
 
     // QC experiment mode skips the generation algorithm entirely — mirrors `maze-wasm`'s
     // `run_generate` (see `Specs`'s generation-card "QC experiment" mode). The graph built by
@@ -94,12 +106,10 @@ fn run_generate_typed<T: Tessellation + 'static>(
 
     let qc_engine = build_qc_and_repair::<T>(config)?;
     let limits = build_repair_limits(config)?;
-    let preset_start = config.preset_start.and_then(|[sx, sy]| {
-        field.all_points().find(|&p| to_xy(p) == (sx, sy)).and_then(|p| field.nodes_at(p).first().copied())
-    });
-    let preset_finish = config.preset_finish.and_then(|[fx, fy]| {
-        field.all_points().find(|&p| to_xy(p) == (fx, fy)).and_then(|p| field.nodes_at(p).first().copied())
-    });
+    let preset_start = config.preset_start.as_ref()
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
+    let preset_finish = config.preset_finish.as_ref()
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);
     let mut qc_log = config.debug_events.then(EventLog::new);
     let (maze, remaining_issues, timing) = build_maze(
@@ -132,33 +142,35 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
     let mut ids = IdGenerator::new();
     let gen_config = build_generation_config(config);
 
+    let gen_source_xy = config.preset_gen_source.as_ref().map(|dto| dto.point);
+
     match config.tessellation.tessellation_type {
         TessellationType::Square => {
             use maze_core::space::{SquareTessellation, SquarePoint};
             let pts: Vec<SquarePoint> = config.tessellation.points.iter()
                 .map(|&[x, y]| SquarePoint { x, y }).collect();
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
-            let start = resolve_start(&pts, config.preset_gen_source, |p| (p.x, p.y));
+            let start = resolve_start(&pts, gen_source_xy, |p| (p.x, p.y));
             let field = Field::<SquareTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
-            run_generate_typed(seed, field, start, config, gen_config, |p| (p.x, p.y))
+            run_generate_typed(seed, field, ids, start, config, gen_config, |x, y| SquarePoint { x, y })
         }
         TessellationType::Hex => {
             use maze_core::space::{HexTessellation, HexPoint};
             let pts: Vec<HexPoint> = config.tessellation.points.iter()
                 .map(|&[q, r]| HexPoint { q, r }).collect();
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
-            let start = resolve_start(&pts, config.preset_gen_source, |p| (p.q, p.r));
+            let start = resolve_start(&pts, gen_source_xy, |p| (p.q, p.r));
             let field = Field::<HexTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
-            run_generate_typed(seed, field, start, config, gen_config, |p| (p.q, p.r))
+            run_generate_typed(seed, field, ids, start, config, gen_config, |q, r| HexPoint { q, r })
         }
         TessellationType::Tri => {
             use maze_core::space::{TriTessellation, TriPoint};
             let pts: Vec<TriPoint> = config.tessellation.points.iter()
                 .map(|&[col, row]| TriPoint { col, row }).collect();
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
-            let start = resolve_start(&pts, config.preset_gen_source, |p| (p.col, p.row));
+            let start = resolve_start(&pts, gen_source_xy, |p| (p.col, p.row));
             let field = Field::<TriTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
-            run_generate_typed(seed, field, start, config, gen_config, |p| (p.col, p.row))
+            run_generate_typed(seed, field, ids, start, config, gen_config, |col, row| TriPoint { col, row })
         }
     }
 }

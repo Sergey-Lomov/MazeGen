@@ -61,6 +61,8 @@
   "preset.teleport_pending": "Вход телепорта задан, кликните клетку выхода",
   "preset.teleports_count": "{count} телепорт",
   "preset.teleports_count_plural": "{count} телепортов",
+  "preset.split_orphan": "{count} узел-разветвление не используется",
+  "preset.split_orphan_plural": "{count} узлов-разветвлений не используются",
 
   "quality.title": "Качество",
   "quality.add_check": "Добавить проверку",

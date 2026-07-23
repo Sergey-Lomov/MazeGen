@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 use maze_core::{
-    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, TeleportDirection, LockedNode, NodeLockKind},
+    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     RepairLimits,
 };
@@ -114,10 +114,20 @@ pub enum PresetConnectionStateDto {
     TeleportTwoWay,
 }
 
+/// Wire shape for a preset endpoint (GitHub issue #231) — a point plus an optional slot
+/// addressing one of that point's declared extra ("split") nodes. `slot: None` means the point's
+/// original node. Mirrors `maze-core::generation::PresetEndpoint`.
+#[derive(Deserialize)]
+pub struct PresetEndpointDto {
+    pub point: [i32; 2],
+    #[serde(default)]
+    pub slot: Option<u32>,
+}
+
 #[derive(Deserialize)]
 pub struct PresetConnectionDto {
-    pub from: [i32; 2],
-    pub to:   [i32; 2],
+    pub from: PresetEndpointDto,
+    pub to:   PresetEndpointDto,
     pub state: PresetConnectionStateDto,
 }
 
@@ -131,7 +141,7 @@ pub enum NodeLockKindDto {
 
 #[derive(Deserialize)]
 pub struct LockedNodeDto {
-    pub point: [i32; 2],
+    pub point: PresetEndpointDto,
     pub kind:  NodeLockKindDto,
 }
 
@@ -169,9 +179,14 @@ pub struct GenerateConfig {
     pub preset_connections: Vec<PresetConnectionDto>,
     #[serde(default)]
     pub locked_nodes: Vec<LockedNodeDto>,
-    pub preset_start: Option<[i32; 2]>,
-    pub preset_finish: Option<[i32; 2]>,
-    pub preset_gen_source: Option<[i32; 2]>,
+    pub preset_start: Option<PresetEndpointDto>,
+    pub preset_finish: Option<PresetEndpointDto>,
+    pub preset_gen_source: Option<PresetEndpointDto>,
+    /// Extra nodes to create at declared points before any preset above is resolved (GitHub
+    /// issue #231) — `((x, y), slot_id)` pairs. `#[serde(default)]` so configs predating this
+    /// field still deserialize.
+    #[serde(default)]
+    pub split_points: Vec<((i32, i32), u32)>,
     // Only consumed by `maze-wasm` (whether to build the narration-level debug event tree — see
     // GitHub issue #124) — `maze-runner`'s own native repro tests never read it.
     #[serde(default)]
@@ -227,6 +242,7 @@ impl Default for GenerateConfig {
             preset_start: None,
             preset_finish: None,
             preset_gen_source: None,
+            split_points: vec![],
             debug_events: false,
             qc_experiment: false,
         }
@@ -266,8 +282,8 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
     };
     let elements = build_elements_config(&config.elements);
     let preset_connections = config.preset_connections.iter().map(|dto| PresetConnection {
-        from: (dto.from[0], dto.from[1]),
-        to:   (dto.to[0],   dto.to[1]),
+        from: build_preset_endpoint(&dto.from),
+        to:   build_preset_endpoint(&dto.to),
         state: match dto.state {
             PresetConnectionStateDto::Wall             => PresetConnectionState::Wall,
             PresetConnectionStateDto::Passage          => PresetConnectionState::Passage,
@@ -279,14 +295,19 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
         },
     }).collect();
     let locked_nodes = config.locked_nodes.iter().map(|dto| LockedNode {
-        point: (dto.point[0], dto.point[1]),
+        point: build_preset_endpoint(&dto.point),
         kind: match dto.kind {
             NodeLockKindDto::In   => NodeLockKind::In,
             NodeLockKindDto::Out  => NodeLockKind::Out,
             NodeLockKindDto::Both => NodeLockKind::Both,
         },
     }).collect();
-    GenerationConfig { algorithm, elements, preset_connections, locked_nodes }
+    let split_points = config.split_points.clone();
+    GenerationConfig { algorithm, elements, preset_connections, locked_nodes, split_points }
+}
+
+fn build_preset_endpoint(dto: &PresetEndpointDto) -> PresetEndpoint {
+    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot }
 }
 
 fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {

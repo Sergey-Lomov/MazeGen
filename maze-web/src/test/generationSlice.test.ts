@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
+import { presetEndpoint } from "../pixi/presetEndpoint";
 import { fieldConfigToWasm, buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
 import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape } from "./storeTestHelpers";
@@ -64,7 +65,23 @@ describe("mazeStore.generate", () => {
       elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
+      split_points: [],
     });
+  });
+
+  it("sends a locked node as a PresetEndpointDto-shaped point, not a nested object", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({
+      seed: 7,
+      tessellationConfig: { type: "square", width: 3, height: 4 },
+      rules: [],
+      lockedNodes: new Map([["1,2", "both"]]),
+    });
+    useMazeStore.getState().generate();
+    expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
+      locked_nodes: [{ point: { point: [1, 2] }, kind: "both" }],
+    }));
+    useMazeStore.setState({ lockedNodes: new Map() });
   });
 
   it("calls generateMaze with hex_parallelogram tessellationConfig", () => {
@@ -84,6 +101,7 @@ describe("mazeStore.generate", () => {
       elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
+      split_points: [],
     });
   });
 
@@ -104,6 +122,7 @@ describe("mazeStore.generate", () => {
       elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
+      split_points: [],
     });
   });
 
@@ -214,6 +233,7 @@ describe("mazeStore.generate", () => {
       elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
+      split_points: [],
     });
   });
 
@@ -1247,13 +1267,13 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       tessellationConfig: { type: "square", width: 3, height: 3 },
-      presetStart: [0, 0],
-      presetFinish: [1, 1],
+      presetStart: presetEndpoint([0, 0]),
+      presetFinish: presetEndpoint([1, 1]),
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
-    expect(call[1].preset_start).toEqual([0, 0]);
-    expect(call[1].preset_finish).toEqual([1, 1]);
+    expect(call[1].preset_start).toEqual({ point: [0, 0] });
+    expect(call[1].preset_finish).toEqual({ point: [1, 1] });
   });
 
   it("omits preset_start and preset_finish when unset", () => {
@@ -1273,8 +1293,8 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       tessellationConfig: { type: "square", width: 1, height: 1 },
-      presetStart: [5, 5],
-      presetFinish: [9, 9],
+      presetStart: presetEndpoint([5, 5]),
+      presetFinish: presetEndpoint([9, 9]),
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
@@ -1616,6 +1636,7 @@ describe("mazeStore.qcExperiment toggle", () => {
     expect(generateMaze).toHaveBeenCalledWith(7, expect.objectContaining({
       qc_experiment: true,
       locked_nodes: [],
+      split_points: [],
     }));
   });
 

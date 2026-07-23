@@ -20,8 +20,10 @@ import {
   moveTeleportEndpoint,
   presetTeleportEntryToState,
   pickEdgeAtPosition,
+  presetEdgeKey,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/fieldEditUtils";
+import { presetEndpoint } from "../pixi/presetEndpoint";
 import { makeProjection } from "../pixi/tessellationProjection";
 import { TILE_SIZE } from "../pixi/constants";
 
@@ -56,8 +58,8 @@ describe("edgeKey", () => {
 // --- computeInvalidKeysFromCells ---
 
 const entry = (fx: number, fy: number, tx: number, ty: number): PresetConnectionEntry => ({
-  from: [fx, fy],
-  to: [tx, ty],
+  from: presetEndpoint([fx, fy]),
+  to: presetEndpoint([tx, ty]),
   state: "passage",
   source: "user",
 });
@@ -141,6 +143,25 @@ describe("applyTool — reset", () => {
     const result = applyTool(connections, fe(0, 0, 1, 0), "reset", "wall");
     expect(result.get(edgeKey([0, 0], [1, 0]))).toMatchObject({ state: "wall", source: "default" });
   });
+
+  it("resolves the active split slot before resetting — targets the slot's own key, not the plain point key", () => {
+    const activeMap = { "0,0": presetEndpoint([0, 0], 0) };
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0])), {
+        from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "wall" as const, source: "user" as const,
+      }],
+    ]);
+    const result = applyTool(connections, fe(0, 0, 1, 0), "reset", "undefined", activeMap);
+    expect(result.has(presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0])))).toBe(false);
+    expect(result.has(edgeKey([0, 0], [1, 0]))).toBe(false);
+  });
+
+  it("reset with an active split slot and a non-undefined default materializes the slot-addressed key", () => {
+    const activeMap = { "0,0": presetEndpoint([0, 0], 0) };
+    const result = applyTool(new Map(), fe(0, 0, 1, 0), "reset", "wall", activeMap);
+    const key = presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0]));
+    expect(result.get(key)).toMatchObject({ from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "wall", source: "default" });
+  });
 });
 
 describe("applyTool — one_way", () => {
@@ -152,7 +173,7 @@ describe("applyTool — one_way", () => {
   it("one_way_forward → one_way_backward", () => {
     const connections = new Map([[
       edgeKey([0, 0], [1, 0]),
-      { from: [0, 0] as [number, number], to: [1, 0] as [number, number], state: "one_way_forward" as const, source: "user" as const },
+      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const },
     ]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "one_way");
     expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_backward");
@@ -161,7 +182,7 @@ describe("applyTool — one_way", () => {
   it("one_way_backward → one_way_forward", () => {
     const connections = new Map([[
       edgeKey([0, 0], [1, 0]),
-      { from: [0, 0] as [number, number], to: [1, 0] as [number, number], state: "one_way_backward" as const, source: "user" as const },
+      { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_backward" as const, source: "user" as const },
     ]]);
     const result = applyTool(connections, fe(0, 0, 1, 0), "one_way");
     expect(result.get(edgeKey([0, 0], [1, 0]))?.state).toBe("one_way_forward");
@@ -218,7 +239,7 @@ describe("computeAutoLockedNodes", () => {
 // --- teleport helpers ---
 
 const teleport = (id: number, from: [number, number], to: [number, number], direction: PresetTeleportEntry["direction"] = "forward"): PresetTeleportEntry => ({
-  id, from, to, direction,
+  id, from: presetEndpoint(from), to: presetEndpoint(to), direction,
 });
 
 describe("computeInvalidTeleportIds", () => {
@@ -235,18 +256,18 @@ describe("computeInvalidTeleportIds", () => {
 
 describe("computeInvalidMarkers", () => {
   it("both markers in field — valid", () => {
-    const result = computeInvalidMarkers([0, 0], [1, 1], squareCfg);
+    const result = computeInvalidMarkers(presetEndpoint([0, 0]), presetEndpoint([1, 1]), squareCfg);
     expect(result).toEqual({ start: false, finish: false });
   });
 
   it("start outside field — invalid", () => {
-    const result = computeInvalidMarkers([50, 50], [1, 1], squareCfg);
+    const result = computeInvalidMarkers(presetEndpoint([50, 50]), presetEndpoint([1, 1]), squareCfg);
     expect(result.start).toBe(true);
     expect(result.finish).toBe(false);
   });
 
   it("finish outside field — invalid", () => {
-    const result = computeInvalidMarkers([0, 0], [50, 50], squareCfg);
+    const result = computeInvalidMarkers(presetEndpoint([0, 0]), presetEndpoint([50, 50]), squareCfg);
     expect(result.start).toBe(false);
     expect(result.finish).toBe(true);
   });
@@ -289,14 +310,14 @@ describe("removeTeleport", () => {
 describe("moveTeleportEndpoint", () => {
   it("moves the 'from' endpoint of the matching entry", () => {
     const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "from" }, [5, 5]);
-    expect(result[0].from).toEqual([5, 5]);
-    expect(result[0].to).toEqual([1, 1]);
+    expect(result[0].from).toEqual(presetEndpoint([5, 5]));
+    expect(result[0].to).toEqual(presetEndpoint([1, 1]));
   });
 
   it("moves the 'to' endpoint of the matching entry", () => {
     const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "to" }, [5, 5]);
-    expect(result[0].to).toEqual([5, 5]);
-    expect(result[0].from).toEqual([0, 0]);
+    expect(result[0].to).toEqual(presetEndpoint([5, 5]));
+    expect(result[0].from).toEqual(presetEndpoint([0, 0]));
   });
 });
 

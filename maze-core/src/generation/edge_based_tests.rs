@@ -300,19 +300,20 @@ fn teleport_chance_one_adds_teleport_edges_when_every_geometric_pair_is_preset_p
     // "skip if dst is preset_connected" guard, which made no sense for the teleport pool
     // (there, dst being preset_connected says nothing about the specific src-dst edge —
     // it's just "some other Unseen node happens to touch a preset passage elsewhere").
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = crate::ids::IdGenerator::resume_after(&field);
     let mut connections = Vec::new();
     for y in 0..3 {
         for x in 0..3 {
-            if x + 1 < 3 { connections.push(super::super::PresetConnection { from: (x, y), to: (x + 1, y), state: super::super::PresetConnectionState::Passage }); }
-            if y + 1 < 3 { connections.push(super::super::PresetConnection { from: (x, y), to: (x, y + 1), state: super::super::PresetConnectionState::Passage }); }
+            if x + 1 < 3 { connections.push(super::super::PresetConnection { from: super::super::PresetEndpoint::original((x, y)), to: super::super::PresetEndpoint::original((x + 1, y)), state: super::super::PresetConnectionState::Passage }); }
+            if y + 1 < 3 { connections.push(super::super::PresetConnection { from: super::super::PresetEndpoint::original((x, y)), to: super::super::PresetEndpoint::original((x, y + 1)), state: super::super::PresetConnectionState::Passage }); }
         }
     }
     let preset_state = crate::generation::build_preset_state(
-        &mut graph, &field, &connections, &[],
+        &mut graph, &mut field, &mut ids, &connections, &[], &[],
         |x, y| crate::space::SquarePoint { x, y },
         None,
-    );
+    ).unwrap();
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &preset_state, None);
     assert!(!teleport_edges(&graph).is_empty(), "teleport_chance=1.0 must still add teleport edges when the whole field is preset-passage");

@@ -35,13 +35,13 @@ There is no way to explicitly pin an edge to `"undefined"` when `defaultEdgeStat
 
 ## Canonical edge key
 
-Each edge is identified by a string key derived from its two endpoint cells. Cells are ordered lexicographically (first by X, then by Y if X equal) so that A < B always:
+Each edge is identified by a string key derived from its two endpoints. Endpoints are ordered lexicographically by point (first by X, then by Y if X equal, then by slot — see "Split nodes" below) so that A < B always:
 
 ```
-key = `${a[0]},${a[1]}-${b[0]},${b[1]}`   where A < B lexicographically
+key = `${a.point[0]},${a.point[1]}${aSlotSuffix}-${b.point[0]},${b.point[1]}${bSlotSuffix}`   where A < B lexicographically
 ```
 
-The `canonicalize(p1, p2)` function returns `[A, B]` in canonical order.
+`canonicalize(p1, p2)` (cell-coordinate ordering, used by hit-testing/rendering) returns `[A, B]` in canonical order; `presetEdgeKey(a, b)` (`PresetEndpoint`-aware, used for the `presetConnections` map key) additionally folds in each endpoint's slot, so a slot-addressed preset on a face never collides with that face's plain (original-node) preset — see "Split nodes" below. For two endpoints with no slot on either side, `presetEdgeKey` produces the exact same string `edgeKey`/`canonicalize` always did — every pre-#231 entry's key is unchanged.
 
 ## One-way direction
 
@@ -51,7 +51,7 @@ Clicking a one-way tool on an undecided or non-one-way edge sets `one_way_forwar
 
 ## Markers
 
-`presetStart`, `presetFinish`, and `presetGenSource` each store a single cell coordinate (`[number, number] | null`). These are independent of the edge connection map. All three markers count toward the preset subtitle total and status logic.
+`presetStart`, `presetFinish`, and `presetGenSource` each store a single `PresetEndpoint | null` (point + optional slot — see "Split nodes" below; a plain marker with no slot addresses the point's original node). These are independent of the edge connection map. All three markers count toward the preset subtitle total and status logic.
 
 `presetGenSource` sets where the generation algorithm starts (`preset_gen_source` field). `presetStart` sets the maze start endpoint shown after generation (`preset_start` field). The two are independent: if both are set, generation seeds from `presetGenSource` and the start marker is placed at `presetStart`. If neither is set, generation seeds from the center-nearest node and the start endpoint is assigned by the repair strategy.
 
@@ -62,13 +62,13 @@ Independent from the edge/marker model above. Stored as `presetTeleports: Preset
 ```ts
 interface PresetTeleportEntry {
   id: number;                 // stable identity, assigned on creation from _nextPresetTeleportId
-  from: [number, number];
-  to: [number, number];
+  from: PresetEndpoint;
+  to: PresetEndpoint;
   direction: "forward" | "backward" | "two_way";
 }
 ```
 
-`from`/`to` are the two click points in placement order. For `"backward"`, the actual passage direction runs `to → from` (mirrors `PresetConnectionState::Teleport(TeleportDirection::Backward)` on the Rust side) — `from`/`to` themselves are never swapped after creation; only interpretation of direction changes.
+`from`/`to` are the two click points in placement order, as `PresetEndpoint` (point + optional slot — see "Split nodes" below). For `"backward"`, the actual passage direction runs `to → from` (mirrors `PresetConnectionState::Teleport(TeleportDirection::Backward)` on the Rust side) — `from`/`to` themselves are never swapped after creation; only interpretation of direction changes. Dragging an endpoint to a different cell (`movePresetTeleportEndpoint`) drops any slot it previously addressed — the slot belonged to the old point, not the new one.
 
 ### Tools
 
@@ -198,10 +198,10 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `presetConnections` | `Map<string, PresetConnectionEntry>` | Edge key → entry |
 | `presetConnectionsTool` | `PresetConnectionTool` | Active tool |
 | `defaultEdgeState` | `"undefined" \| "wall" \| "passage"` | Implicit state for unset edges |
-| `presetStart` | `[number, number] \| null` | Start marker cell |
-| `presetFinish` | `[number, number] \| null` | Finish marker cell |
-| `presetGenSource` | `[number, number] \| null` | Generator start cell (overrides `presetStart` in WASM config) |
-| `lockedNodes` | `Map<string, NodeLockKind>` | Manually locked nodes |
+| `presetStart` | `PresetEndpoint \| null` | Start marker point (+ optional slot) |
+| `presetFinish` | `PresetEndpoint \| null` | Finish marker point (+ optional slot) |
+| `presetGenSource` | `PresetEndpoint \| null` | Generator start point (+ optional slot; overrides `presetStart` in WASM config) |
+| `lockedNodes` | `Map<string, NodeLockKind>` | Manually locked nodes (plain point key — always the original node) |
 | `autoLock` | `boolean` | Whether auto-lock is enabled |
 | `autoLockedNodes` | `Set<string>` | Nodes auto-locked because all their interior edges are preset |
 | `highlightInvalidPresets` | `boolean` | Whether to draw the invalid highlight overlay |
@@ -210,6 +210,9 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `presetTeleports` | `PresetTeleportEntry[]` | Preset teleport links — see "Preset teleports" |
 | `presetTeleportPendingFrom` | `[number, number] \| null` | First-click origin of an in-progress teleport placement |
 | `_nextPresetTeleportId` | `number` | Next id to assign to a newly created teleport entry |
+| `presetSplitPoints` | `Record<string, number[]>` | Declared split-node slotIds per point — see "Split nodes" |
+| `presetActiveSplitNode` | `Record<string, PresetEndpoint>` | Which node of a point new preset entries currently target — see "Split nodes" |
+| `presetFocusedPoint` | `[number, number] \| null` | Point currently selected for "Manage split nodes" |
 
 `presetConnections`, markers, locks, and `defaultEdgeState` reset when tessellation changes with a different kind (`confirmTessellation` with `clearMaze = true`) or when `resetPresetConnections()` is called.
 
@@ -231,8 +234,9 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `lock_out` | Generation | Locks node to block outgoing edges |
 | `full_lock` | Generation | Locks node both in and out (`"both"`) |
 | `gen_source` | Generation | Toggles `presetGenSource` on clicked cell (click same cell to clear) |
+| `manage_split_nodes` | Vertex | Left-click any in-field point to open "Manage split nodes" for it — see "Split nodes" above |
 
-Right-click on an edge clears its user override and re-materializes it as the current default (same as the `reset` tool — see "Entry source" above), for any tool that falls through to edge picking (i.e. not `set_start`/`set_finish`/`gen_source`/lock/teleport tools, each of which gives right-click its own tool-specific meaning — see their rows above).
+Right-click on an edge clears its user override and re-materializes it as the current default (same as the `reset` tool — see "Entry source" above), for any tool that falls through to edge picking (i.e. not `set_start`/`set_finish`/`gen_source`/lock/teleport/`manage_split_nodes` tools, each of which gives right-click its own tool-specific meaning — see their rows above).
 
 ## Node locking
 
@@ -249,7 +253,7 @@ Both sets are merged when rendering (`buildLocks`) and when checking for isolate
 | Status | Condition (priority order) |
 |---|---|
 | `unavailable` | Field not ready |
-| `warning` | Field ready, `computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size + invalidMarkerCount > 0` |
+| `warning` | Field ready, `computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size + invalidMarkerCount + computeInvalidSplitPoints(...).size > 0` |
 | `set` | Field ready, no invalids, `presetConnections.size + markerCount > 0` |
 | `set-default` | Field ready, no invalids, nothing set |
 
@@ -303,21 +307,72 @@ Hit-test for click/hover:
 
 Accepts an optional pre-built `cellSet` to avoid rebuilding on every pointer event (passed from `PresetConnectionsRenderer.getCachedCellSet()`).
 
+## Split nodes (GitHub issue #231)
+
+A tessellation point can resolve to more than one graph node ("split point" — see `Specs/space.md`/epic #218). Preset connections, teleports, locks, and markers can address a specific one of a split point's extra nodes, not just its original node — the same `{point, slotId}` addressing post-edit's split-node feature already uses (see `Specs/post-edit.md`), adapted for the pre-generation stage.
+
+### `PresetEndpoint`
+
+```ts
+interface PresetEndpoint {
+  point: [number, number];
+  slotId?: number;   // absent = the point's original node
+}
+```
+
+Used everywhere a preset previously stored a bare cell tuple: `PresetConnectionEntry.from`/`.to`, `PresetTeleportEntry.from`/`.to`, `presetStart`/`presetFinish`/`presetGenSource`. **No slot means the original node only** — this is a deliberate narrowing from the pre-#231 behavior, where a preset with no split-node concept applied to *every* node at a point (see `maze-core`'s `build_preset_state`, GitHub issue #219/#220). A preset explicitly addressing a declared slot now resolves to exactly that node.
+
+`lockedNodes` (the `Map<"x,y", NodeLockKind>` powering the lock tools) is unaffected — locks stay plain-point-keyed and always address the original node only; there is no lock-tool UI for addressing a specific slot.
+
+### Declaring split points
+
+`presetSplitPoints: Record<string, number[]>` (keyed `"x,y"`, values are that point's declared slotIds) mirrors post-edit's `postEditDraftSplitPoints` exactly — same slot-minting rule (`max(existing)+1`, or `0` if none yet), same per-point-only uniqueness. `presetActiveSplitNode: Record<string, PresetEndpoint>` mirrors `postEditActiveSplitNode` — which node of a point new preset entries on that point's faces currently target; absence means the original node.
+
+The shared, endpoint-type-agnostic slot-list bookkeeping (`addSlot`/`removeSlot`/`cycleActive`/`setActive`) lives in `pixi/splitPointsCore.ts`, used by both this feature and post-edit's own split-node actions — see that module's doc comment and `Specs/post-edit.md`.
+
+**`manage_split_nodes` tool** (`PresetConnectionTool`): left-click on any in-field point opens "Manage split nodes" for that point (`presetFocusedPoint`), reusing the same dialog shape as post-edit's — see `Specs/post-edit.md`'s "Split Points" section for the UI description (add/remove/set-active affordances, one card per node). The preset-stage adapter (`PresetSplitNodesDialog`) has no `NodeId`/confirmed-snapshot concept to resolve against (presets run before generation) — a card's "links" are built directly from `presetConnections`/`presetTeleports`, comparing endpoints structurally (`presetEndpointsEqual`), not resolved ids.
+
+Removing a split node (`removePresetSplitNode`) is rejected if it's currently assigned as `presetStart`/`presetFinish`/`presetGenSource` (same "reassign first" guard post-edit's `removeSplitNode` uses for start/finish); otherwise it strips every `presetConnections`/`presetTeleports` entry referencing that node.
+
+**Orphan slots are not auto-removed.** A declared slot with nothing referencing it is created anyway at generation time (see "Applying split points" below) and surfaces as a dedicated warning in the Preset Connections panel (`orphanSplitCount`, same `warningBubble` style as the isolated-nodes warning) — informational only, does not block generation.
+
+### Rendering
+
+A declared split point's faces render as colored per-slot passages, the same visual `PostEditRenderer`/`GenerationRenderer`/`MazeOverlayRenderer` already use for resolved split nodes (GitHub issue #223) — `buildSplitPassages` (`pixi/selectors/mazeSelectors.ts`) was generalized into `buildSplitPassagesCore<Id>`, parameterized over an opaque comparable id instead of a `NodeDto`'s numeric `NodeId`, so the same geometric algorithm (dividing a shared face among connected nodes, straightening 2-face connectors, hub-point fan-out for other counts) doesn't need a second implementation. `buildPresetSplitPassages` (`pixi/selectors/presetSelectors.ts`) is the preset-stage instantiation: identity is `presetEndpointKey` (a string) instead of a `NodeId`, nodes are assembled from `presetSplitPoints` plus every other endpoint referenced by a `presetConnections` entry touching a declared split point, and only `passage`/`one_way_*` states count as a connection across a face (`wall`/`undefined` don't; teleports are excluded entirely, same as the post-generation reading). `PresetConnectionsRenderer` draws the result via the same `SplitJunctionRenderer` class, and `buildPresetWallGroups` excludes a declared split point's own faces from its ordinary wall/undecided reading (mirrors `buildMazeWalls`'s `splitPointKeys` exclusion) so the two renderings never overlap.
+
+### Invalidity
+
+A fourth invalidity check, `computeInvalidSplitPoints`, applies the same "point outside the current field" criterion `computeInvalidKeys`/`computeInvalidTeleportIds`/`computeInvalidMarkers` already use, to `presetSplitPoints`'s keys. Needed separately because an orphan slot has no referencing preset/teleport/marker to be caught invalid through. Folded into "Clear invalid" and the combined invalid count alongside the other three categories. `generateConfigBuilder.ts` filters `split_points` through it before building the wire payload — the Rust side is guaranteed never to see a `split_points` entry for a point outside the field (see "Applying split points" below for what would happen if it did).
+
+### Applying split points (Rust side)
+
+`GenerationConfig.split_points: Vec<((i32,i32), u32)>` carries every declared `(point, slotId)` pair. `build_preset_state` (`maze-core/src/generation/preset_state.rs`) applies all of them via `Field::add_node_at`, in `(point, slotId)`-sorted order, in one pass **before** resolving any preset connection/lock/marker — mirrors `apply_split_points` (`maze-wasm/src/analytics.rs`), which does the same for post-edit's split nodes. The resulting `(point, slotId) -> NodeId` map is kept on `PresetState` (`resolve_endpoint`) so `preset_start`/`preset_finish`/`preset_gen_source` can be resolved against the exact same split nodes after the fact, without re-deriving the resolution logic.
+
+Every `PresetEndpoint` resolves to exactly one `NodeId`: `slotId: None` → the point's original node (`Field::nodes_at(point)[0]`); `slotId: Some(s)` → the node `add_node_at` created for `s` (index `1 + s's position in that point's sorted declared-slot list`). An endpoint that can't resolve (unknown point, or a slot never declared) is silently skipped, same as the pre-#231 "point out of bounds" skip — `build_preset_state` returns `Err` only for a `split_points` entry itself referencing an unknown point (guarded against by client-side filtering via `computeInvalidSplitPoints`, but not assumed — `Field::add_node_at` panics on an unknown point, so this is checked explicitly rather than relying on the caller).
+
 ## WASM wire format
 
 `generate()` sends only valid presets:
 
 ```ts
-preset_connections: Array<{ from: [number,number], to: [number,number], state: PresetConnectionState }>
-preset_start?: [number, number]      // explicit start endpoint (presetStart)
-preset_finish?: [number, number]
-preset_gen_source?: [number, number] // generation algorithm seed (presetGenSource)
-locked_nodes: Array<{ point: [number,number], kind: NodeLockKind }>
+preset_connections: Array<{ from: PresetEndpointDto, to: PresetEndpointDto, state: PresetConnectionState }>
+preset_start?: PresetEndpointDto       // explicit start endpoint (presetStart)
+preset_finish?: PresetEndpointDto
+preset_gen_source?: PresetEndpointDto  // generation algorithm seed (presetGenSource)
+locked_nodes: Array<{ point: PresetEndpointDto, kind: NodeLockKind }>
+split_points: Array<[[number, number], number]>  // declared (point, slotId) pairs — see "Split nodes" above
+
+interface PresetEndpointDto {
+  point: [number, number];
+  slot?: number;
+}
 ```
 
-Filtered by `computeInvalidKeys` before building the payload. Invalid entries are silently dropped. `lockedNodes` and `autoLockedNodes` are merged before sending.
+Filtered by `computeInvalidKeys`/`computeInvalidTeleportIds`/`computeInvalidMarkers`/`computeInvalidSplitPoints` before building the payload. Invalid entries are silently dropped. `lockedNodes` and `autoLockedNodes` are merged before sending.
 
-On the Rust side: `PresetConnectionDto` with `#[derive(Deserialize)]`; `PresetConnectionState` enum; stored in `GenerationConfig.preset_connections: Vec<PresetConnection>`. Default is `vec![]`.
+On the Rust side: `PresetConnectionDto`/`PresetEndpointDto` with `#[derive(Deserialize)]`; `PresetConnectionState` enum; stored in `GenerationConfig.preset_connections: Vec<PresetConnection>` (each endpoint a `PresetEndpoint { point: (i32,i32), slot: Option<u32> }`). Default is `vec![]`.
+
+**Breaking wire-format change (GitHub issue #231):** `PresetConnection.from`/`.to`, `LockedNode.point`, and `preset_start`/`preset_finish`/`preset_gen_source` changed from a bare `(i32,i32)`/`[i32;2]` to the `{point, slot}` object above — an intentional, non-backward-compatible change, not a migration. Project files and `maze-runner` fixtures predating this issue that use the old flat-tuple shape in these fields no longer parse.
 
 ## Lifecycle
 

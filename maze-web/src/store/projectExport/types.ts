@@ -1,6 +1,7 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
+import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, FeatureId } from "../mazeStore";
 
 export interface ProjectFilePostEdit {
@@ -105,10 +106,13 @@ export interface ProjectFile {
     lockedNodes: [string, NodeLockKind][];
     defaultEdgeState: "undefined" | "wall" | "passage";
     autoLock: boolean;
-    start: [number, number] | null;
-    finish: [number, number] | null;
-    genSource: [number, number] | null;
+    start: PresetEndpoint | null;
+    finish: PresetEndpoint | null;
+    genSource: PresetEndpoint | null;
     teleports: PresetTeleportEntry[];
+    /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y"
+     * (GitHub issue #231) — mirrors `postEdit.splitPoints` below. */
+    splitPoints: Record<string, number[]>;
   };
   postEdit: ProjectFilePostEdit | null;
   dirtyFlags: ProjectFileDirtyFlags;

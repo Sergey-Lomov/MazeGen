@@ -2,12 +2,17 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     graph::Graph,
+    ids::IdGenerator,
     space::{Field, Tessellation},
-    generation::{generate_maze, generate_maze_with_events, build_preset_state},
+    generation::{generate_maze, generate_maze_with_events, build_preset_state, PresetEndpoint},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
 use crate::analytics::build_analytics_snapshot;
 use crate::result::GenerateResult;
+
+fn preset_endpoint_dto_to_core(dto: &maze_runner::config::PresetEndpointDto) -> PresetEndpoint {
+    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot }
+}
 
 /// Runs the initial (pre-QC/repair) generation pass and returns the generation source's *unmerged*
 /// `TapeSource`/event kind/debug-value names (GitHub issue #147 — merging now happens once in
@@ -84,35 +89,19 @@ fn is_web_decodable(kind: Option<maze_core::event_log::EventedEventKind>) -> boo
 #[path = "runner_tests.rs"]
 mod tests;
 
-/// Looks up the field's point at web-space coordinates `(x, y)`, via linear scan over
-/// `all_points` (fields are small enough that this stays cheap, and no reverse coordinate index
-/// exists) — shared by `run_generate`'s preset-connection, preset-start, and preset-finish lookups
-/// so the three don't each repeat the same scan-and-compare.
-fn point_at_xy<T: Tessellation>(
-    field: &Field<T>,
-    point_to_xy: &impl Fn(T::Point) -> (i32, i32),
-    x: i32,
-    y: i32,
-) -> Option<T::Point> {
-    field.all_points().find(|&p| point_to_xy(p) == (x, y))
-}
-
 pub fn run_generate<T: Tessellation + 'static>(
     seed: u64,
-    field: Field<T>,
+    mut field: Field<T>,
+    mut ids: IdGenerator,
     start: T::Point,
     config: &GenerateConfig,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
+    point_from_xy: impl Fn(i32, i32) -> T::Point,
 ) -> Result<GenerateResult, JsValue> {
     use maze_core::generation::pipeline::build_maze;
 
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
-
-    let start_id = field
-        .nodes_at(start)
-        .first().copied()
-        .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
     let gen_config = build_generation_config(config);
     // The "preset setup" source (GitHub issue #225) — one event per preset connection that
@@ -123,18 +112,27 @@ pub fn run_generate<T: Tessellation + 'static>(
     // below.
     let mut preset_setup_log = config.debug_events.then(maze_core::event_log::EventLog::new);
     let preset_state = build_preset_state(
-        &mut graph, &field,
+        &mut graph, &mut field, &mut ids,
         &gen_config.preset_connections,
         &gen_config.locked_nodes,
-        |x, y| point_at_xy(&field, &point_to_xy, x, y).unwrap_or(start),
+        &gen_config.split_points,
+        &point_from_xy,
         preset_setup_log.as_mut(),
-    );
+    ).map_err(|e| JsValue::from_str(&e))?;
     let preset_setup_source = preset_setup_log
         .filter(|log| !log.is_empty())
         .map(|log| maze_core::event_log::TapeSource {
             scope_name: maze_core::generation::PRESET_SETUP_SCOPE_NAME,
             tape: log.finish().encode(),
         });
+
+    // `start_id` prefers a resolved `preset_gen_source` marker (possibly slot-addressed, GitHub
+    // issue #231) over the plain geometric `start` `tessellation_dispatch`'s `pick_start`/
+    // `resolve_start` already chose — mirrors `maze-runner`'s `run_generate_typed`.
+    let start_id = config.preset_gen_source.as_ref()
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)))
+        .or_else(|| field.nodes_at(start).first().copied())
+        .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
     let (generation_source, generation_kind, generation_debug_value_names, initial_build_ms) = run_initial_generation(
         &mut graph, &field, seed, start_id, gen_config, &preset_state, config.qc_experiment, config.debug_events,
@@ -143,12 +141,10 @@ pub fn run_generate<T: Tessellation + 'static>(
     let (qc_engine, check_types) = build_qc_and_repair_with_types::<T>(config)
         .map_err(|e| JsValue::from_str(&e))?;
 
-    let preset_start = config.preset_start
-        .and_then(|[sx, sy]| point_at_xy(&field, &point_to_xy, sx, sy))
-        .and_then(|p| field.nodes_at(p).first().copied());
-    let preset_finish = config.preset_finish
-        .and_then(|[fx, fy]| point_at_xy(&field, &point_to_xy, fx, fy))
-        .and_then(|p| field.nodes_at(p).first().copied());
+    let preset_start = config.preset_start.as_ref()
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
+    let preset_finish = config.preset_finish.as_ref()
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
 
     // QC/repair gets its own `EventLog<QcEvent>` when `debug_events` is on and there is at least
     // one other source to anchor against (generation, or the preset setup source) or

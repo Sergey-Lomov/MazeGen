@@ -50,10 +50,10 @@ mod run_initial_generation_tests {
     fn field_and_state() -> (Graph, Field<SquareTessellation>, PresetState) {
         let points: Vec<SquarePoint> = (0..3).flat_map(|x| (0..3).map(move |y| SquarePoint { x, y })).collect();
         let mut ids = IdGenerator::new();
-        let field = Field::<SquareTessellation>::new(points, &mut ids).unwrap();
+        let mut field = Field::<SquareTessellation>::new(points, &mut ids).unwrap();
         let mut graph = Graph::new();
         field.build_nodes(&mut graph);
-        let preset_state = build_preset_state(&mut graph, &field, &[], &[], |x, y| SquarePoint { x, y }, None);
+        let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
         (graph, field, preset_state)
     }
 

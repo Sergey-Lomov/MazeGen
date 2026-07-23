@@ -1,7 +1,108 @@
 {
   "tessellation": {
     "tessellation_type": "square",
-    "points": [[-2,-2],[-2,-1],[-2,0],[-2,1],[-2,2],[-1,-2],[-1,-1],[-1,0],[-1,1],[-1,2],[0,-2],[0,-1],[0,0],[0,1],[0,2],[1,-2],[1,-1],[1,0],[1,1],[1,2],[2,-2],[2,-1],[2,0],[2,1],[2,2]]
+    "points": [
+      [
+        -2,
+        -2
+      ],
+      [
+        -2,
+        -1
+      ],
+      [
+        -2,
+        0
+      ],
+      [
+        -2,
+        1
+      ],
+      [
+        -2,
+        2
+      ],
+      [
+        -1,
+        -2
+      ],
+      [
+        -1,
+        -1
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        -1,
+        1
+      ],
+      [
+        -1,
+        2
+      ],
+      [
+        0,
+        -2
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        1,
+        -2
+      ],
+      [
+        1,
+        -1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        -2
+      ],
+      [
+        2,
+        -1
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        2,
+        2
+      ]
+    ]
   },
   "stages": [
     {
@@ -11,11 +112,19 @@
         {
           "id": "rule_88a99bbf-828f-42f9-9b1e-a5602ccdcd35",
           "checks": [
-            { "local_id": "0", "type_id": "scc_count", "params": { "max_scc_count": "1" } }
+            {
+              "local_id": "0",
+              "type_id": "scc_count",
+              "params": {
+                "max_scc_count": "1"
+              }
+            }
           ],
           "strategy": {
             "id": "reduce_scc_count",
-            "params": { "merge_priority": "smallest" },
+            "params": {
+              "merge_priority": "smallest"
+            },
             "nested": [
               {
                 "id": "expand_region_passage",
@@ -39,14 +148,25 @@
         {
           "id": "rule_bbb86abc-1b35-487e-8383-9825c2edc8c3",
           "checks": [
-            { "local_id": "0", "type_id": "missing_endpoints", "params": {} }
+            {
+              "local_id": "0",
+              "type_id": "missing_endpoints",
+              "params": {}
+            }
           ],
-          "strategy": { "id": "farthest_endpoints", "params": {} }
+          "strategy": {
+            "id": "farthest_endpoints",
+            "params": {}
+          }
         },
         {
           "id": "rule_a940490e-3e0b-4c27-984d-30c4d69af199",
           "checks": [
-            { "local_id": "0", "type_id": "unreachable_finish", "params": {} }
+            {
+              "local_id": "0",
+              "type_id": "unreachable_finish",
+              "params": {}
+            }
           ],
           "strategy": null
         }
@@ -54,53 +174,615 @@
     }
   ],
   "repair_max_iterations": 10,
-  "initial": { "method": "recursive_backtracker" },
+  "initial": {
+    "method": "recursive_backtracker"
+  },
   "elements": {
     "one_way_chance": 0.04,
     "teleport_chance": 0,
     "teleport_one_way_chance": 0
   },
   "preset_connections": [
-    { "from": [-2,-2], "to": [-1,-2], "state": "passage" },
-    { "from": [-2,-2], "to": [-2,-1], "state": "passage" },
-    { "from": [-2,-1], "to": [-1,-1], "state": "passage" },
-    { "from": [-2,-1], "to": [-2,0], "state": "passage" },
-    { "from": [-2,0], "to": [-1,0], "state": "passage" },
-    { "from": [-2,0], "to": [-2,1], "state": "wall" },
-    { "from": [-2,1], "to": [-1,1], "state": "passage" },
-    { "from": [-2,1], "to": [-2,2], "state": "passage" },
-    { "from": [-2,2], "to": [-1,2], "state": "passage" },
-    { "from": [-1,-2], "to": [0,-2], "state": "wall" },
-    { "from": [-1,-2], "to": [-1,-1], "state": "passage" },
-    { "from": [-1,-1], "to": [0,-1], "state": "wall" },
-    { "from": [-1,-1], "to": [-1,0], "state": "passage" },
-    { "from": [-1,0], "to": [0,0], "state": "wall" },
-    { "from": [-1,0], "to": [-1,1], "state": "wall" },
-    { "from": [-1,1], "to": [0,1], "state": "wall" },
-    { "from": [-1,1], "to": [-1,2], "state": "passage" },
-    { "from": [-1,2], "to": [0,2], "state": "wall" },
-    { "from": [0,-2], "to": [1,-2], "state": "passage" },
-    { "from": [0,-2], "to": [0,-1], "state": "passage" },
-    { "from": [0,-1], "to": [1,-1], "state": "passage" },
-    { "from": [0,-1], "to": [0,0], "state": "passage" },
-    { "from": [0,0], "to": [1,0], "state": "passage" },
-    { "from": [0,0], "to": [0,1], "state": "wall" },
-    { "from": [0,1], "to": [1,1], "state": "passage" },
-    { "from": [0,1], "to": [0,2], "state": "passage" },
-    { "from": [0,2], "to": [1,2], "state": "passage" },
-    { "from": [1,-2], "to": [2,-2], "state": "passage" },
-    { "from": [1,-2], "to": [1,-1], "state": "passage" },
-    { "from": [1,-1], "to": [2,-1], "state": "passage" },
-    { "from": [1,-1], "to": [1,0], "state": "passage" },
-    { "from": [1,0], "to": [2,0], "state": "passage" },
-    { "from": [1,0], "to": [1,1], "state": "wall" },
-    { "from": [1,1], "to": [2,1], "state": "passage" },
-    { "from": [1,1], "to": [1,2], "state": "passage" },
-    { "from": [1,2], "to": [2,2], "state": "passage" },
-    { "from": [2,-2], "to": [2,-1], "state": "passage" },
-    { "from": [2,-1], "to": [2,0], "state": "passage" },
-    { "from": [2,0], "to": [2,1], "state": "wall" },
-    { "from": [2,1], "to": [2,2], "state": "passage" }
+    {
+      "from": {
+        "point": [
+          -2,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          -2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          -2,
+          -1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          -1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          -2,
+          0
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          0
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          -2,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          -2,
+          2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          2
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          -2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          -1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          0
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          2
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          -2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          -1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          -1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          0
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          2
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          -2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          -1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          -1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          0
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          0
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          2
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          2
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          2,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          -1
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          2,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          0
+        ]
+      },
+      "state": "passage"
+    },
+    {
+      "from": {
+        "point": [
+          2,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          2,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          2
+        ]
+      },
+      "state": "passage"
+    }
   ],
   "locked_nodes": [],
   "qc_experiment": true

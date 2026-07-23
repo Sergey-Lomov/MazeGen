@@ -58,6 +58,8 @@
   "preset.teleport_pending": "Teleport entry set, click exit cell",
   "preset.teleports_count": "{count} teleport",
   "preset.teleports_count_plural": "{count} teleports",
+  "preset.split_orphan": "{count} split node not referenced",
+  "preset.split_orphan_plural": "{count} split nodes not referenced",
   "quality.title": "Quality",
   "quality.add_check": "Add check",
   "quality.details": "Details",

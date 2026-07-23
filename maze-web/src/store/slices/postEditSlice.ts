@@ -8,6 +8,7 @@ import {
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
 } from "../../pixi/postEditEndpoint";
+import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
 import { fieldConfigToWasm } from "./generationSlice";
 
@@ -280,15 +281,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   addSplitNode: (point) => {
     set((state) => {
-      const key = `${point[0]},${point[1]}`;
-      const existing = state.postEditDraftSplitPoints[key] ?? [];
-      // First extra node at this point starts at slot 0; subsequent ones are max(existing)+1 —
-      // uniqueness is only needed within this point (see postEditDraftSplitPoints's doc comment),
-      // so no separate counter is kept in the store.
-      const slotId = existing.length === 0 ? 0 : Math.max(...existing) + 1;
+      const { splitPoints, slotId } = addSlot(state.postEditDraftSplitPoints, point);
       return {
-        postEditDraftSplitPoints: { ...state.postEditDraftSplitPoints, [key]: [...existing, slotId] },
-        postEditActiveSplitNode: { ...state.postEditActiveSplitNode, [key]: splitEndpoint(point, slotId) },
+        postEditDraftSplitPoints: splitPoints,
+        postEditActiveSplitNode: { ...state.postEditActiveSplitNode, [`${point[0]},${point[1]}`]: splitEndpoint(point, slotId) },
         postEditDirty: true,
       };
     });
@@ -299,7 +295,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   removeSplitNode: (point, slotId) => {
     const state = get();
-    const key = `${point[0]},${point[1]}`;
     const target = splitEndpoint(point, slotId);
 
     // Structural comparison (not a resolved id) — rejects the removal the same way whether or
@@ -319,22 +314,16 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       );
       const nextTeleports = state.postEditDraftTeleports.filter((t) => !refsTarget(t));
 
-      const existing = state.postEditDraftSplitPoints[key] ?? [];
-      const nextSlots = existing.filter((s) => s !== slotId);
-      const nextSplitPoints = { ...state.postEditDraftSplitPoints };
-      if (nextSlots.length === 0) delete nextSplitPoints[key];
-      else nextSplitPoints[key] = nextSlots;
-
-      const nextActive = { ...state.postEditActiveSplitNode };
-      if (nextActive[key] && endpointsEqual(nextActive[key], target)) {
-        delete nextActive[key];
-      }
+      const { splitPoints, activeMap } = removeSlot(
+        state.postEditDraftSplitPoints, state.postEditActiveSplitNode, point, slotId,
+        (entry, point, slotId) => entry.kind === "split" && endpointsEqual(entry, splitEndpoint(point, slotId)),
+      );
 
       return {
         postEditDraftEdges: nextDraftEdges,
         postEditDraftTeleports: nextTeleports,
-        postEditDraftSplitPoints: nextSplitPoints,
-        postEditActiveSplitNode: nextActive,
+        postEditDraftSplitPoints: splitPoints,
+        postEditActiveSplitNode: activeMap,
         postEditDirty: true,
       };
     });
@@ -344,36 +333,18 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   cycleActiveSplitNode: (point) => {
-    set((state) => {
-      const key = `${point[0]},${point[1]}`;
-      const slots = state.postEditDraftSplitPoints[key];
-      if (!slots || slots.length === 0) return {};
-      const sorted = [...slots].sort((a, b) => a - b);
-      const current = state.postEditActiveSplitNode[key];
-      // Cycle order: original -> slot[0] -> slot[1] -> ... -> back to original (no active entry).
-      const currentSlotIndex = current && current.kind === "split" ? sorted.indexOf(current.slotId) : -1;
-      const nextIndex = currentSlotIndex + 1;
-      const nextActive = { ...state.postEditActiveSplitNode };
-      if (nextIndex >= sorted.length) {
-        delete nextActive[key];
-      } else {
-        nextActive[key] = splitEndpoint(point, sorted[nextIndex]);
-      }
-      return { postEditActiveSplitNode: nextActive };
-    });
+    set((state) => ({
+      postEditActiveSplitNode: cycleActive(
+        state.postEditDraftSplitPoints, state.postEditActiveSplitNode, point,
+        splitEndpoint, (entry) => (entry && entry.kind === "split" ? entry.slotId : undefined),
+      ),
+    }));
   },
 
   setActiveSplitNode: (point, endpoint) => {
-    set((state) => {
-      const key = `${point[0]},${point[1]}`;
-      const nextActive = { ...state.postEditActiveSplitNode };
-      if (endpoint.kind === "node") {
-        delete nextActive[key];
-      } else {
-        nextActive[key] = endpoint;
-      }
-      return { postEditActiveSplitNode: nextActive };
-    });
+    set((state) => ({
+      postEditActiveSplitNode: setActive(state.postEditActiveSplitNode, point, endpoint, (e) => e.kind === "node"),
+    }));
   },
 
   setPostEditFocusedPoint: (point) => set({ postEditFocusedPoint: point }),

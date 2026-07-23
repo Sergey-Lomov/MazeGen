@@ -1,61 +1,787 @@
 {
   "tessellation": {
     "tessellation_type": "square",
-    "points": [[-2,-2],[-2,-1],[-2,0],[-2,1],[-2,2],[-1,-2],[-1,-1],[-1,0],[-1,1],[-1,2],[0,-2],[0,-1],[0,0],[0,1],[0,2],[1,-2],[1,-1],[1,0],[1,1],[1,2],[2,-2],[2,-1],[2,0],[2,1],[2,2]]
+    "points": [
+      [
+        -2,
+        -2
+      ],
+      [
+        -2,
+        -1
+      ],
+      [
+        -2,
+        0
+      ],
+      [
+        -2,
+        1
+      ],
+      [
+        -2,
+        2
+      ],
+      [
+        -1,
+        -2
+      ],
+      [
+        -1,
+        -1
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        -1,
+        1
+      ],
+      [
+        -1,
+        2
+      ],
+      [
+        0,
+        -2
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        1,
+        -2
+      ],
+      [
+        1,
+        -1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        -2
+      ],
+      [
+        2,
+        -1
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        2,
+        2
+      ]
+    ]
   },
   "stages": [
-    {"id":"stage_2","name":"Stage 2","rules":[
-      {"id":"rule_scc","checks":[{"local_id":"0","type_id":"scc_count","params":{"max_scc_count":"1"}}],"strategy":{"id":"reduce_scc_count","params":{"merge_priority":"smallest"},"nested":[{"id":"expand_region_passage","slot_id":"merge_target","params":{"target_mode":"prefer_needy","connection_mode":"passage","prefer_partially_connected":"true"}}]}}
-    ]},
-    {"id":"stage_wp","name":"Waypoints","rules":[
-      {"id":"rule_ep","checks":[{"local_id":"0","type_id":"missing_endpoints","params":{}}],"strategy":{"id":"scored_endpoints","params":{}}},
-      {"id":"rule_uf","checks":[{"local_id":"0","type_id":"unreachable_finish","params":{}}],"strategy":null}
-    ]}
+    {
+      "id": "stage_2",
+      "name": "Stage 2",
+      "rules": [
+        {
+          "id": "rule_scc",
+          "checks": [
+            {
+              "local_id": "0",
+              "type_id": "scc_count",
+              "params": {
+                "max_scc_count": "1"
+              }
+            }
+          ],
+          "strategy": {
+            "id": "reduce_scc_count",
+            "params": {
+              "merge_priority": "smallest"
+            },
+            "nested": [
+              {
+                "id": "expand_region_passage",
+                "slot_id": "merge_target",
+                "params": {
+                  "target_mode": "prefer_needy",
+                  "connection_mode": "passage",
+                  "prefer_partially_connected": "true"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "stage_wp",
+      "name": "Waypoints",
+      "rules": [
+        {
+          "id": "rule_ep",
+          "checks": [
+            {
+              "local_id": "0",
+              "type_id": "missing_endpoints",
+              "params": {}
+            }
+          ],
+          "strategy": {
+            "id": "scored_endpoints",
+            "params": {}
+          }
+        },
+        {
+          "id": "rule_uf",
+          "checks": [
+            {
+              "local_id": "0",
+              "type_id": "unreachable_finish",
+              "params": {}
+            }
+          ],
+          "strategy": null
+        }
+      ]
+    }
   ],
   "repair_max_iterations": 10,
-  "initial": {"method": "recursive_backtracker"},
-  "elements": {"one_way_chance": 0.04, "teleport_chance": 0, "teleport_one_way_chance": 0},
+  "initial": {
+    "method": "recursive_backtracker"
+  },
+  "elements": {
+    "one_way_chance": 0.04,
+    "teleport_chance": 0,
+    "teleport_one_way_chance": 0
+  },
   "preset_connections": [
-    {"from":[-2,-2],"to":[-1,-2],"state":"wall"},
-    {"from":[-2,-2],"to":[-2,-1],"state":"wall"},
-    {"from":[-2,-1],"to":[-1,-1],"state":"wall"},
-    {"from":[-2,-1],"to":[-2,0],"state":"wall"},
-    {"from":[-2,0],"to":[-1,0],"state":"wall"},
-    {"from":[-2,0],"to":[-2,1],"state":"wall"},
-    {"from":[-2,1],"to":[-1,1],"state":"wall"},
-    {"from":[-2,1],"to":[-2,2],"state":"wall"},
-    {"from":[-2,2],"to":[-1,2],"state":"wall"},
-    {"from":[-1,-2],"to":[0,-2],"state":"wall"},
-    {"from":[-1,-2],"to":[-1,-1],"state":"wall"},
-    {"from":[-1,-1],"to":[0,-1],"state":"wall"},
-    {"from":[-1,-1],"to":[-1,0],"state":"wall"},
-    {"from":[-1,0],"to":[0,0],"state":"wall"},
-    {"from":[-1,0],"to":[-1,1],"state":"wall"},
-    {"from":[-1,1],"to":[0,1],"state":"wall"},
-    {"from":[-1,1],"to":[-1,2],"state":"wall"},
-    {"from":[-1,2],"to":[0,2],"state":"wall"},
-    {"from":[0,-2],"to":[1,-2],"state":"wall"},
-    {"from":[0,-2],"to":[0,-1],"state":"wall"},
-    {"from":[0,-1],"to":[1,-1],"state":"wall"},
-    {"from":[0,-1],"to":[0,0],"state":"wall"},
-    {"from":[0,0],"to":[1,0],"state":"wall"},
-    {"from":[0,0],"to":[0,1],"state":"wall"},
-    {"from":[0,1],"to":[1,1],"state":"wall"},
-    {"from":[0,1],"to":[0,2],"state":"wall"},
-    {"from":[0,2],"to":[1,2],"state":"wall"},
-    {"from":[1,-2],"to":[2,-2],"state":"wall"},
-    {"from":[1,-2],"to":[1,-1],"state":"wall"},
-    {"from":[1,-1],"to":[2,-1],"state":"wall"},
-    {"from":[1,-1],"to":[1,0],"state":"wall"},
-    {"from":[1,0],"to":[2,0],"state":"wall"},
-    {"from":[1,0],"to":[1,1],"state":"wall"},
-    {"from":[1,1],"to":[2,1],"state":"wall"},
-    {"from":[1,1],"to":[1,2],"state":"wall"},
-    {"from":[1,2],"to":[2,2],"state":"wall"},
-    {"from":[2,-2],"to":[2,-1],"state":"wall"},
-    {"from":[2,-1],"to":[2,0],"state":"wall"},
-    {"from":[2,0],"to":[2,1],"state":"wall"},
-    {"from":[2,1],"to":[2,2],"state":"wall"}
+    {
+      "from": {
+        "point": [
+          -2,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          -2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          -2,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          -2,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          -2,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          -2,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -2,
+          2
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          -2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          -1,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          -1,
+          2
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          -2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          0,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          0,
+          2
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          -2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          1,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          1,
+          2
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          2
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          2,
+          -2
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          -1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          2,
+          -1
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          0
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          2,
+          0
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          1
+        ]
+      },
+      "state": "wall"
+    },
+    {
+      "from": {
+        "point": [
+          2,
+          1
+        ]
+      },
+      "to": {
+        "point": [
+          2,
+          2
+        ]
+      },
+      "state": "wall"
+    }
   ],
   "locked_nodes": [],
   "qc_experiment": true

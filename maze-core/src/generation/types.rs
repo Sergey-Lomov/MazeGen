@@ -82,10 +82,29 @@ pub enum TeleportDirection {
     TwoWay,
 }
 
+/// One endpoint of a preset connection/lock/marker (GitHub issue #231) — a point plus an optional
+/// slot addressing one of that point's extra ("split") nodes. `slot: None` means the point's
+/// original node — not a broadcast to every node at the point (that was #219/#220's interim
+/// behavior before presets could address a specific split node; see `build_preset_state`'s doc
+/// comment). Presets never hold a resolved `NodeId` up front — split nodes referenced here are
+/// created from `GenerationConfig.split_points` before any preset is resolved (see
+/// `build_preset_state`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PresetEndpoint {
+    pub point: (i32, i32),
+    pub slot: Option<u32>,
+}
+
+impl PresetEndpoint {
+    pub fn original(point: (i32, i32)) -> Self {
+        Self { point, slot: None }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PresetConnection {
-    pub from: (i32, i32),
-    pub to:   (i32, i32),
+    pub from: PresetEndpoint,
+    pub to:   PresetEndpoint,
     pub state: PresetConnectionState,
 }
 
@@ -98,7 +117,7 @@ pub enum NodeLockKind {
 
 #[derive(Debug, Clone)]
 pub struct LockedNode {
-    pub point: (i32, i32),
+    pub point: PresetEndpoint,
     pub kind:  NodeLockKind,
 }
 
@@ -108,6 +127,11 @@ pub struct GenerationConfig {
     pub elements:           ElementsConfig,
     pub preset_connections: Vec<PresetConnection>,
     pub locked_nodes:       Vec<LockedNode>,
+    /// Extra nodes to create at declared points before any preset above is resolved — one entry
+    /// per `(point, slot)` pair (GitHub issue #231). Applied via `Field::add_node_at` in
+    /// `(point, slot)`-sorted order by `build_preset_state`, mirroring `apply_split_points`
+    /// (`maze-wasm/src/analytics.rs`) for post-edit's split nodes.
+    pub split_points: Vec<((i32, i32), u32)>,
 }
 
 impl Default for GenerationConfig {
@@ -117,6 +141,7 @@ impl Default for GenerationConfig {
             elements:           ElementsConfig::default(),
             preset_connections: vec![],
             locked_nodes:       vec![],
+            split_points:       vec![],
         }
     }
 }

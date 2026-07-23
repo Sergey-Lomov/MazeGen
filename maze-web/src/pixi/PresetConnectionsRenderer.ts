@@ -13,6 +13,7 @@ import { GenSourceRenderer } from "./renderers/GenSourceRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
+import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
 import type { TeleportEdge } from "./renderers/types";
 import {
   buildPresetWallGroups,
@@ -21,6 +22,7 @@ import {
   buildIsolatedCellHighlights,
   buildInvalidEdgeHighlights,
   buildHoverEdgeHighlight,
+  buildPresetSplitPassages,
 } from "./selectors/presetSelectors";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
@@ -38,6 +40,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly invalidPassagesContainer: Container;
   private readonly undecidedWallsContainer: Container;
   private readonly presetWallsContainer: Container;
+  private readonly splitJunctionContainer: Container;
   private readonly teleportContainer: Container;
   private readonly locksContainer: Container;
   private readonly markersContainer: Container;
@@ -47,6 +50,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly invalidHLContainer: Container;
   private readonly invalidTeleportHLContainer: Container;
   private readonly hoverContainer: Container;
+  private readonly cellHoverContainer: Container;
   private readonly teleportPreviewContainer: Container;
 
   private readonly grid: GridRenderer;
@@ -54,6 +58,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly invalidPassages: WallRenderer;
   private readonly undecidedWalls: WallRenderer;
   private readonly presetWalls: WallRenderer;
+  private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
   private readonly locks: LockRenderer;
   private readonly markers: WaypointsRenderer;
@@ -63,6 +68,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly invalidHL: EdgeHighlightRenderer;
   private readonly invalidTeleportHL: Graphics;
   private readonly hover: EdgeHighlightRenderer;
+  private readonly cellHover: CellFillRenderer;
   private readonly teleportPreview: Graphics;
 
   constructor(container: Container) {
@@ -74,6 +80,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidPassagesContainer = new Container();
     this.undecidedWallsContainer = new Container();
     this.presetWallsContainer    = new Container();
+    this.splitJunctionContainer  = new Container();
     this.teleportContainer       = new Container();
     this.locksContainer          = new Container();
     this.markersContainer        = new Container();
@@ -83,6 +90,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHLContainer      = new Container();
     this.invalidTeleportHLContainer = new Container();
     this.hoverContainer          = new Container();
+    this.cellHoverContainer      = new Container();
     this.teleportPreviewContainer = new Container();
 
     this.root.addChild(this.gridContainer);
@@ -90,6 +98,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.invalidPassagesContainer);
     this.root.addChild(this.undecidedWallsContainer);
     this.root.addChild(this.presetWallsContainer);
+    this.root.addChild(this.splitJunctionContainer);
     this.root.addChild(this.teleportContainer);
     this.root.addChild(this.locksContainer);
     this.root.addChild(this.markersContainer);
@@ -99,6 +108,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.invalidHLContainer);
     this.root.addChild(this.invalidTeleportHLContainer);
     this.root.addChild(this.hoverContainer);
+    this.root.addChild(this.cellHoverContainer);
     this.root.addChild(this.teleportPreviewContainer);
 
     this.grid           = new GridRenderer(this.gridContainer);
@@ -106,6 +116,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidPassages = new WallRenderer(this.invalidPassagesContainer);
     this.undecidedWalls = new WallRenderer(this.undecidedWallsContainer);
     this.presetWalls    = new WallRenderer(this.presetWallsContainer);
+    this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports      = new TeleportRenderer(this.teleportContainer);
     this.locks          = new LockRenderer(this.locksContainer);
     this.markers        = new WaypointsRenderer(this.markersContainer);
@@ -116,6 +127,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidTeleportHL = new Graphics();
     this.invalidTeleportHLContainer.addChild(this.invalidTeleportHL);
     this.hover          = new EdgeHighlightRenderer(this.hoverContainer);
+    this.cellHover      = new CellFillRenderer(this.cellHoverContainer);
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
 
@@ -142,7 +154,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       const state = useMazeStore.getState();
       this.grid.render({ viewport: this.viewport }, this.cfg);
       this.redrawOrigin(state.showPresetOrigin);
-      this.redrawGenSource(state.presetGenSource);
+      this.redrawGenSource(state.presetGenSource?.point ?? null);
     }
   }
 
@@ -150,6 +162,14 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     if (!this.cfg) return;
     const highlights = buildHoverEdgeHighlight(edge, this.cfg);
     this.hover.render({ highlights });
+  }
+
+  /** Highlights a single cell (not a wall/edge) — used while the `manage_split_nodes` tool is
+   * active, since that tool targets a whole point rather than one of its faces (mirrors
+   * PostEditRenderer's `updateCellHover` — GitHub issue #231). */
+  updateCellHover(cell: [number, number] | null): void {
+    if (!this.cfg) return;
+    this.cellHover.render({ cells: cell ? [cell] : [], color: canvas.fieldEditor.hover, alpha: 0.35 }, this.cfg);
   }
 
   /** Renders the pending teleport's origin (semi-transparent marker) and a line stretching to the
@@ -197,7 +217,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       state.presetGenSource !== prev.presetGenSource ||
       state.lockedNodes !== prev.lockedNodes ||
       state.autoLockedNodes !== prev.autoLockedNodes ||
-      state.presetTeleports !== prev.presetTeleports
+      state.presetTeleports !== prev.presetTeleports ||
+      state.presetSplitPoints !== prev.presetSplitPoints
     ) {
       this.redrawAll(state);
       return;
@@ -223,6 +244,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     if (state.presetConnectionsTool !== prev.presetConnectionsTool || state.presetTeleportPendingFrom !== prev.presetTeleportPendingFrom) {
       if (!state.presetTeleportPendingFrom) this.teleportPreview.clear();
+      // Leaving manage_split_nodes (or switching to it) invalidates whatever cell-hover state
+      // was left over from the other tool's own hover handling — the controller recomputes it
+      // on the next pointer move, but a stale highlight shouldn't linger until then.
+      if (state.presetConnectionsTool !== prev.presetConnectionsTool) this.updateCellHover(null);
     }
   }
 
@@ -234,21 +259,24 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.grid.render({ viewport: this.viewport }, cfg);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
-    const { undecided, preset, invalidPassages, invalidKeys } = buildPresetWallGroups(cells, state.presetConnections, cfg);
+    const { undecided, preset, invalidPassages, invalidKeys } = buildPresetWallGroups(cells, state.presetConnections, cfg, state.presetSplitPoints);
     this.invalidPassages.render({ edges: invalidPassages }, cfg);
     this.undecidedWalls.render({ edges: undecided }, cfg);
     this.presetWalls.render({ edges: preset }, cfg);
 
+    const splitPassages = buildPresetSplitPassages(state.presetSplitPoints, state.presetConnections, cfg);
+    this.splitJunctions.render({ passages: splitPassages });
+
     const lockEntries = buildLocks(state.lockedNodes, state.autoLockedNodes);
     this.locks.render({ locks: lockEntries }, cfg);
 
-    const markerData = buildPresetMarkers(state.presetStart, state.presetFinish, cfg);
+    const markerData = buildPresetMarkers(state.presetStart?.point ?? null, state.presetFinish?.point ?? null, cfg);
     this.markers.render({ markers: markerData });
 
     this.teleports.render({ edges: buildPresetTeleportEdges(state.presetTeleports, cfg) });
 
     this.redrawOrigin(state.showPresetOrigin);
-    this.redrawGenSource(state.presetGenSource);
+    this.redrawGenSource(state.presetGenSource?.point ?? null);
     this.redrawIsolatedHL(state);
 
     if (state.highlightInvalidPresets) {
@@ -308,7 +336,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const invalidIds = computeInvalidTeleportIds(state.presetTeleports, this.cfg, customPts);
     for (const t of state.presetTeleports) {
       if (!invalidIds.has(t.id)) continue;
-      for (const [cx, cy] of [t.from, t.to]) {
+      for (const { point: [cx, cy] } of [t.from, t.to]) {
         const { x: px, y: py } = proj.gridToScreen(cx, cy);
         this.invalidTeleportHL
           .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
@@ -318,9 +346,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, this.cfg, customPts);
     const markerRadius = NODE_RADIUS * 1.5;
-    for (const [invalid, cell] of [[invalidMarkers.start, state.presetStart], [invalidMarkers.finish, state.presetFinish]] as const) {
-      if (!invalid || !cell) continue;
-      const { x: px, y: py } = proj.gridToScreen(cell[0], cell[1]);
+    for (const [invalid, endpoint] of [[invalidMarkers.start, state.presetStart], [invalidMarkers.finish, state.presetFinish]] as const) {
+      if (!invalid || !endpoint) continue;
+      const { x: px, y: py } = proj.gridToScreen(endpoint.point[0], endpoint.point[1]);
       this.invalidTeleportHL
         .circle(px, py, markerRadius + 3)
         .stroke({ width: 6, color: canvas.preset.invalid, alpha: 0.9 });
@@ -335,6 +363,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidPassages.render({ edges: [] }, cfg);
     this.undecidedWalls.render({ edges: [] }, cfg);
     this.presetWalls.render({ edges: [] }, cfg);
+    this.splitJunctions.render({ passages: [] });
     this.locks.render({ locks: [] }, cfg);
     this.markers.render({ markers: [] });
     this.teleports.render({ edges: [] });
@@ -344,6 +373,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHL.render({ highlights: [] });
     this.invalidTeleportHL.clear();
     this.hover.render({ highlights: [] });
+    this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.teleportPreview.clear();
   }
 
@@ -353,6 +383,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidPassages.destroy();
     this.undecidedWalls.destroy();
     this.presetWalls.destroy();
+    this.splitJunctions.destroy();
     this.teleports.destroy();
     this.locks.destroy();
     this.markers.destroy();
@@ -362,12 +393,14 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHL.destroy();
     this.invalidTeleportHL.destroy();
     this.hover.destroy();
+    this.cellHover.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.invalidPassagesContainer.destroy();
     this.undecidedWallsContainer.destroy();
     this.presetWallsContainer.destroy();
+    this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
     this.locksContainer.destroy();
     this.markersContainer.destroy();
@@ -377,6 +410,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidHLContainer.destroy();
     this.invalidTeleportHLContainer.destroy();
     this.hoverContainer.destroy();
+    this.cellHoverContainer.destroy();
     this.teleportPreviewContainer.destroy();
   }
 }
@@ -388,8 +422,8 @@ function buildPresetTeleportEdges(teleports: PresetTeleportEntry[], cfg: Tessell
     // for "backward" runs the other way (mirrors PresetConnectionState::TeleportBackward on the
     // Rust side, which builds the edge to→from), so entry/exit must swap for the renderer too.
     const [entryCell, exitCell] = t.direction === "backward" ? [t.to, t.from] : [t.from, t.to];
-    const entry = proj.gridToScreen(entryCell[0], entryCell[1]);
-    const exit = proj.gridToScreen(exitCell[0], exitCell[1]);
+    const entry = proj.gridToScreen(entryCell.point[0], entryCell.point[1]);
+    const exit = proj.gridToScreen(exitCell.point[0], exitCell.point[1]);
     return { from: [entry.x, entry.y], to: [exit.x, exit.y], oneWay: t.direction !== "two_way" };
   });
 }

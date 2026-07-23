@@ -9,13 +9,22 @@ fn node_at(field: &Field<crate::space::SquareTessellation>, x: i32, y: i32) -> N
     field.node_at(SquarePoint { x, y }).unwrap()
 }
 
+fn original(x: i32, y: i32) -> PresetEndpoint {
+    PresetEndpoint::original((x, y))
+}
+
+fn split(x: i32, y: i32, slot: u32) -> PresetEndpoint {
+    PresetEndpoint { point: (x, y), slot: Some(slot) }
+}
+
 #[test]
 fn build_preset_state_passage_adds_bidirectional_edge_and_marks_connected() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::Passage,
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     assert!(graph.edge_between(a, b).is_some());
@@ -26,12 +35,13 @@ fn build_preset_state_passage_adds_bidirectional_edge_and_marks_connected() {
 
 #[test]
 fn build_preset_state_passage_emits_passage_established() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::Passage,
     }];
     let mut log: EventLog<PresetSetupEvent> = EventLog::new();
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, Some(&mut log));
+    build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, Some(&mut log)).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     let events: Vec<_> = log.finish().iter().copied().collect();
@@ -40,11 +50,12 @@ fn build_preset_state_passage_emits_passage_established() {
 
 #[test]
 fn build_preset_state_wall_blocks_both_directions_without_adding_edges() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::Wall,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::Wall,
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     assert!(graph.edge_between(a, b).is_none());
@@ -54,22 +65,24 @@ fn build_preset_state_wall_blocks_both_directions_without_adding_edges() {
 
 #[test]
 fn build_preset_state_wall_emits_no_event() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::Wall,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::Wall,
     }];
     let mut log: EventLog<PresetSetupEvent> = EventLog::new();
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, Some(&mut log));
+    build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, Some(&mut log)).unwrap();
     assert!(log.finish().iter().next().is_none());
 }
 
 #[test]
 fn build_preset_state_one_way_forward_blocks_reverse_only() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::OneWayForward,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::OneWayForward,
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     assert!(graph.edge_between(a, b).is_some());
@@ -79,12 +92,13 @@ fn build_preset_state_one_way_forward_blocks_reverse_only() {
 
 #[test]
 fn build_preset_state_one_way_forward_emits_one_way_established_from_a_to_b() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::OneWayForward,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::OneWayForward,
     }];
     let mut log: EventLog<PresetSetupEvent> = EventLog::new();
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, Some(&mut log));
+    build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, Some(&mut log)).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     let events: Vec<_> = log.finish().iter().copied().collect();
@@ -93,11 +107,12 @@ fn build_preset_state_one_way_forward_emits_one_way_established_from_a_to_b() {
 
 #[test]
 fn build_preset_state_one_way_backward_blocks_forward_only() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::OneWayBackward,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::OneWayBackward,
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     assert!(graph.edge_between(b, a).is_some());
@@ -110,12 +125,13 @@ fn build_preset_state_one_way_backward_blocks_forward_only() {
 /// narrated event must carry the same already-swapped direction, not the preset's raw `from`/`to`.
 #[test]
 fn build_preset_state_one_way_backward_emits_one_way_established_from_b_to_a() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::OneWayBackward,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::OneWayBackward,
     }];
     let mut log: EventLog<PresetSetupEvent> = EventLog::new();
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, Some(&mut log));
+    build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, Some(&mut log)).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
     let events: Vec<_> = log.finish().iter().copied().collect();
@@ -124,21 +140,23 @@ fn build_preset_state_one_way_backward_emits_one_way_established_from_b_to_a() {
 
 #[test]
 fn build_preset_state_skips_out_of_bounds_points() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (99, 99), to: (1, 0), state: PresetConnectionState::Passage,
+        from: original(99, 99), to: original(1, 0), state: PresetConnectionState::Passage,
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
     assert!(state.preset_connected.is_empty());
 }
 
 #[test]
 fn build_preset_state_teleport_forward_adds_single_directed_teleport_edge() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
+        from: original(0, 0), to: original(2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 2, 2);
     let ab = graph.edge_between(a, b).expect("forward teleport edge missing");
@@ -153,12 +171,13 @@ fn build_preset_state_teleport_forward_adds_single_directed_teleport_edge() {
 
 #[test]
 fn build_preset_state_teleport_forward_emits_teleport_established_not_two_way() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
+        from: original(0, 0), to: original(2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
     }];
     let mut log: EventLog<PresetSetupEvent> = EventLog::new();
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, Some(&mut log));
+    build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, Some(&mut log)).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 2, 2);
     let events: Vec<_> = log.finish().iter().copied().collect();
@@ -167,11 +186,12 @@ fn build_preset_state_teleport_forward_emits_teleport_established_not_two_way() 
 
 #[test]
 fn build_preset_state_teleport_backward_adds_single_directed_teleport_edge() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Backward),
+        from: original(0, 0), to: original(2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Backward),
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 2, 2);
     assert!(graph.edge_between(a, b).is_none());
@@ -186,12 +206,13 @@ fn build_preset_state_teleport_backward_adds_single_directed_teleport_edge() {
 /// as `OneWayBackward`'s own swap test above.
 #[test]
 fn build_preset_state_teleport_backward_emits_teleport_established_swapped_not_two_way() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Backward),
+        from: original(0, 0), to: original(2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Backward),
     }];
     let mut log: EventLog<PresetSetupEvent> = EventLog::new();
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, Some(&mut log));
+    build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, Some(&mut log)).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 2, 2);
     let events: Vec<_> = log.finish().iter().copied().collect();
@@ -200,11 +221,12 @@ fn build_preset_state_teleport_backward_emits_teleport_established_swapped_not_t
 
 #[test]
 fn build_preset_state_teleport_two_way_adds_both_directed_teleport_edges() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
+        from: original(0, 0), to: original(2, 2), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 2, 2);
     assert!(graph.edge_between(a, b).is_some());
@@ -217,12 +239,13 @@ fn build_preset_state_teleport_two_way_adds_both_directed_teleport_edges() {
 
 #[test]
 fn build_preset_state_teleport_two_way_emits_one_event_with_two_way_true() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (2, 2), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
+        from: original(0, 0), to: original(2, 2), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
     }];
     let mut log: EventLog<PresetSetupEvent> = EventLog::new();
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, Some(&mut log));
+    build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, Some(&mut log)).unwrap();
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 2, 2);
     let events: Vec<_> = log.finish().iter().copied().collect();
@@ -231,9 +254,10 @@ fn build_preset_state_teleport_two_way_emits_one_event_with_two_way_true() {
 
 #[test]
 fn build_preset_state_locked_node_both_sets_in_and_out() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
-    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::Both }];
-    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y }, None);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let locks = vec![LockedNode { point: original(0, 0), kind: NodeLockKind::Both }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &locks, &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     assert!(state.locked_in.contains(&a));
     assert!(state.locked_out.contains(&a));
@@ -241,9 +265,10 @@ fn build_preset_state_locked_node_both_sets_in_and_out() {
 
 #[test]
 fn build_preset_state_locked_node_in_only_sets_locked_in_not_locked_out() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
-    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::In }];
-    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y }, None);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let locks = vec![LockedNode { point: original(0, 0), kind: NodeLockKind::In }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &locks, &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     assert!(state.locked_in.contains(&a));
     assert!(!state.locked_out.contains(&a));
@@ -251,9 +276,10 @@ fn build_preset_state_locked_node_in_only_sets_locked_in_not_locked_out() {
 
 #[test]
 fn build_preset_state_locked_node_out_only_sets_locked_out_not_locked_in() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
-    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::Out }];
-    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y }, None);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let locks = vec![LockedNode { point: original(0, 0), kind: NodeLockKind::Out }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &locks, &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     assert!(state.locked_out.contains(&a));
     assert!(!state.locked_in.contains(&a));
@@ -261,9 +287,10 @@ fn build_preset_state_locked_node_out_only_sets_locked_out_not_locked_in() {
 
 #[test]
 fn for_repair_returns_empty_when_qc_experiment() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
-    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::Both }];
-    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y }, None);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let locks = vec![LockedNode { point: original(0, 0), kind: NodeLockKind::Both }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &locks, &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let repair_state = state.for_repair(true);
     assert!(repair_state.locked_in.is_empty());
     assert!(repair_state.locked_out.is_empty());
@@ -273,85 +300,221 @@ fn for_repair_returns_empty_when_qc_experiment() {
 
 #[test]
 fn for_repair_returns_self_unchanged_when_not_qc_experiment() {
-    let (field, mut graph) = make_field_and_graph(3, 3);
-    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::Both }];
-    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y }, None);
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let locks = vec![LockedNode { point: original(0, 0), kind: NodeLockKind::Both }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &locks, &[], |x, y| SquarePoint { x, y }, None).unwrap();
     let a = node_at(&field, 0, 0);
     let repair_state = state.for_repair(false);
     assert!(repair_state.locked_in.contains(&a));
     assert!(repair_state.locked_out.contains(&a));
 }
 
-/// GitHub issue #219 — a locked node's point may resolve to more than one NodeId.
+/// GitHub issue #219 — a locked node's point may resolve to more than one NodeId. Locking without
+/// a `slot` (the original node, GitHub issue #231's decision) now locks only that one node — the
+/// added extra node is untouched, unlike the old broadcast-to-every-node behavior.
 #[test]
-fn locked_node_on_a_multi_node_point_locks_every_node_at_that_point() {
+fn locked_node_on_a_multi_node_point_without_slot_locks_only_the_original_node() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
     let point = SquarePoint { x: 0, y: 0 };
-    let original = field.nodes_at(point)[0];
+    let original_id = field.nodes_at(point)[0];
     let added = field.add_node_at(point, &mut ids);
     graph.add_node(added);
 
-    let locks = vec![LockedNode { point: (0, 0), kind: NodeLockKind::Both }];
-    let state = build_preset_state(&mut graph, &field, &[], &locks, |x, y| SquarePoint { x, y }, None);
+    let locks = vec![LockedNode { point: original(0, 0), kind: NodeLockKind::Both }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &locks, &[], |x, y| SquarePoint { x, y }, None).unwrap();
 
-    assert!(state.locked_in.contains(&original));
-    assert!(state.locked_out.contains(&original));
-    assert!(state.locked_in.contains(&added));
-    assert!(state.locked_out.contains(&added));
+    assert!(state.locked_in.contains(&original_id));
+    assert!(state.locked_out.contains(&original_id));
+    assert!(!state.locked_in.contains(&added));
+    assert!(!state.locked_out.contains(&added));
 }
 
-/// GitHub issue #220 — a preset connection on a multi-node point applies to every node at that
-/// point, not just the first (creation-order) one. `Field` has no face/group ownership (GitHub
-/// issue #219), so there's no way to pick "the right" node — every node participates.
+/// GitHub issue #231 — a lock explicitly addressing a declared split slot locks only that node.
 #[test]
-fn preset_connection_on_a_multi_node_point_connects_every_node_at_that_point() {
+fn locked_node_addressing_a_declared_slot_locks_only_that_node() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+
+    let locks = vec![LockedNode { point: split(0, 0, 0), kind: NodeLockKind::Both }];
+    let split_points = vec![((0, 0), 0)];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &locks, &split_points, |x, y| SquarePoint { x, y }, None).unwrap();
+
+    let point = SquarePoint { x: 0, y: 0 };
+    let original_id = field.nodes_at(point)[0];
+    let added_id = field.nodes_at(point)[1];
+    assert!(!state.locked_in.contains(&original_id));
+    assert!(state.locked_in.contains(&added_id));
+    assert!(state.locked_out.contains(&added_id));
+}
+
+/// GitHub issue #231 — a preset connection without a `slot` resolves to exactly one node (the
+/// original), not a broadcast across every node at the point. This replaces #220's old
+/// broadcast-to-every-combination test now that presets can address a specific split node.
+#[test]
+fn preset_connection_without_slot_connects_only_the_original_node() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
     let point = SquarePoint { x: 0, y: 0 };
-    let original = field.nodes_at(point)[0];
+    let original_id = field.nodes_at(point)[0];
     let added = field.add_node_at(point, &mut ids);
     graph.add_node(added);
 
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage,
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::Passage,
     }];
-    let state = build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
 
     let b = node_at(&field, 1, 0);
-    assert!(graph.edge_between(original, b).is_some());
-    assert!(graph.edge_between(b, original).is_some());
-    assert!(graph.edge_between(added, b).is_some());
-    assert!(graph.edge_between(b, added).is_some());
-    assert!(state.preset_connected.contains(&original));
-    assert!(state.preset_connected.contains(&added));
-    assert!(state.preset_connected.contains(&b));
+    assert!(graph.edge_between(original_id, b).is_some());
+    assert!(graph.edge_between(b, original_id).is_some());
+    assert!(graph.edge_between(added, b).is_none());
+    assert!(graph.edge_between(b, added).is_none());
+    assert!(state.preset_connected.contains(&original_id));
+    assert!(!state.preset_connected.contains(&added));
 }
 
-/// GitHub issue #220 — when both endpoints of a preset connection are multi-node points, every
-/// (from_id, to_id) combination gets the edge, not just the first node of each side.
+/// GitHub issue #231 — a preset connection explicitly addressing a declared split slot connects
+/// only that node, leaving the original node untouched.
 #[test]
-fn preset_connection_between_two_multi_node_points_connects_every_combination() {
+fn preset_connection_addressing_a_declared_slot_connects_only_that_node() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
-    let from_point = SquarePoint { x: 0, y: 0 };
-    let to_point = SquarePoint { x: 1, y: 0 };
-    let from_original = field.nodes_at(from_point)[0];
-    let from_added = field.add_node_at(from_point, &mut ids);
-    graph.add_node(from_added);
-    let to_original = field.nodes_at(to_point)[0];
-    let to_added = field.add_node_at(to_point, &mut ids);
-    graph.add_node(to_added);
 
     let presets = vec![PresetConnection {
-        from: (0, 0), to: (1, 0), state: PresetConnectionState::Passage,
+        from: split(0, 0, 0), to: original(1, 0), state: PresetConnectionState::Passage,
     }];
-    build_preset_state(&mut graph, &field, &presets, &[], |x, y| SquarePoint { x, y }, None);
+    let split_points = vec![((0, 0), 0)];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None).unwrap();
 
-    for &f in &[from_original, from_added] {
-        for &t in &[to_original, to_added] {
-            assert!(graph.edge_between(f, t).is_some());
-            assert!(graph.edge_between(t, f).is_some());
-        }
-    }
+    let point = SquarePoint { x: 0, y: 0 };
+    let original_id = field.nodes_at(point)[0];
+    let added_id = field.nodes_at(point)[1];
+    let b = node_at(&field, 1, 0);
+    assert!(graph.edge_between(original_id, b).is_none());
+    assert!(graph.edge_between(added_id, b).is_some());
+    assert!(state.preset_connected.contains(&added_id));
+    assert!(!state.preset_connected.contains(&original_id));
+}
+
+/// A preset addressing a slot that was never declared in `split_points` resolves to nothing and
+/// is silently skipped — same "unresolvable endpoint" handling as an out-of-bounds point.
+#[test]
+fn preset_connection_addressing_an_undeclared_slot_is_skipped() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+
+    let presets = vec![PresetConnection {
+        from: split(0, 0, 0), to: original(1, 0), state: PresetConnectionState::Passage,
+    }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
+    assert!(state.preset_connected.is_empty());
+}
+
+/// GitHub issue #231 — `split_points` is applied via `add_node_at` in `(point, slot)`-sorted
+/// order regardless of the order entries appear in the input slice, so the resulting `NodeId` for
+/// a given `(point, slot)` pair doesn't depend on payload transport order.
+#[test]
+fn split_points_creates_identical_nodes_regardless_of_input_order() {
+    let (mut field1, mut graph1) = make_field_and_graph(3, 3);
+    let mut ids1 = IdGenerator::resume_after(&field1);
+    let split_points_a = vec![((0, 0), 2), ((0, 0), 0), ((0, 0), 1)];
+    build_preset_state(&mut graph1, &mut field1, &mut ids1, &[], &[], &split_points_a, |x, y| SquarePoint { x, y }, None).unwrap();
+
+    let (mut field2, mut graph2) = make_field_and_graph(3, 3);
+    let mut ids2 = IdGenerator::resume_after(&field2);
+    let split_points_b = vec![((0, 0), 0), ((0, 0), 1), ((0, 0), 2)];
+    build_preset_state(&mut graph2, &mut field2, &mut ids2, &[], &[], &split_points_b, |x, y| SquarePoint { x, y }, None).unwrap();
+
+    let point = SquarePoint { x: 0, y: 0 };
+    assert_eq!(field1.nodes_at(point), field2.nodes_at(point));
+}
+
+/// `split_points` referencing an unknown point surfaces as an `Err`, not a panic
+/// (`Field::add_node_at` panics on an unknown point — `apply_split_points` guards against it).
+#[test]
+fn split_points_referencing_unknown_point_returns_err_not_panic() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let split_points = vec![((99, 99), 0)];
+    let err = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &split_points, |x, y| SquarePoint { x, y }, None).unwrap_err();
+    assert!(err.contains("(99, 99)"), "error should mention the offending point, got: {err}");
+}
+
+// --- PresetState::resolve_endpoint (GitHub issue #231) ---
+//
+// `resolve_endpoint` is the public entry point `maze-wasm`/`maze-runner` use to resolve
+// `preset_start`/`preset_finish`/`preset_gen_source` after `build_preset_state` has already
+// applied `split_points` — unlike `preset_connections`/`locked_nodes`, these three markers live
+// outside `GenerationConfig` and are resolved by the caller, separately, against the returned
+// `PresetState`. Covers each of `resolve_preset_endpoint`'s branches directly through the public
+// method, not just indirectly via `build_preset_state`'s own internal `resolve` closure.
+
+#[test]
+fn resolve_endpoint_with_no_slot_resolves_to_the_original_node() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
+    let original_id = node_at(&field, 0, 0);
+
+    let resolved = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, original(0, 0));
+    assert_eq!(resolved, Some(original_id));
+}
+
+#[test]
+fn resolve_endpoint_with_a_declared_slot_resolves_to_that_specific_node() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let split_points = vec![((0, 0), 0)];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &split_points, |x, y| SquarePoint { x, y }, None).unwrap();
+    let point = SquarePoint { x: 0, y: 0 };
+    let original_id = field.nodes_at(point)[0];
+    let added_id = field.nodes_at(point)[1];
+
+    let resolved_original = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, original(0, 0));
+    assert_eq!(resolved_original, Some(original_id));
+    let resolved_slot = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 0));
+    assert_eq!(resolved_slot, Some(added_id));
+}
+
+#[test]
+fn resolve_endpoint_with_an_undeclared_slot_returns_none() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    // No split_points declared at all -- point (0,0) has only its original node.
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
+
+    let resolved = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 0));
+    assert_eq!(resolved, None);
+}
+
+#[test]
+fn resolve_endpoint_for_an_unknown_point_returns_none() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
+
+    let resolved = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, original(99, 99));
+    assert_eq!(resolved, None);
+}
+
+/// Two different declared slots at the same point resolve to two different `NodeId`s, in
+/// declaration-slot order (mirrors `preset_connection_addressing_a_declared_slot_connects_only_that_node`'s
+/// single-slot case, extended to two).
+#[test]
+fn resolve_endpoint_distinguishes_between_two_declared_slots_at_the_same_point() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let split_points = vec![((0, 0), 0), ((0, 0), 1)];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &split_points, |x, y| SquarePoint { x, y }, None).unwrap();
+    let point = SquarePoint { x: 0, y: 0 };
+    let slot0_id = field.nodes_at(point)[1];
+    let slot1_id = field.nodes_at(point)[2];
+
+    let resolved0 = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 0));
+    let resolved1 = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 1));
+    assert_eq!(resolved0, Some(slot0_id));
+    assert_eq!(resolved1, Some(slot1_id));
+    assert_ne!(resolved0, resolved1);
 }

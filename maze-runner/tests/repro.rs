@@ -212,6 +212,35 @@ fn repro_95_qc_only_official_export() {
 }
 
 
+/// GitHub issue #231: a preset connection addressing a declared split slot must route through
+/// that specific node, not the point's original node. Fixture: a 2-cell square field, (-1,0)
+/// split into its original node plus one declared slot; the plain (original-node) edge to (0,0)
+/// is preset `wall`, but the slot-addressed edge to (0,0) is preset `passage`. `qc_experiment`
+/// mode skips algorithmic generation entirely, so every edge in the final graph is directly
+/// attributable to `build_preset_state`'s endpoint resolution — this is the "from beginning to
+/// end through `run_from_config`" integration coverage `Specs/preset-connections.md`'s "Split
+/// nodes" section calls for, complementing `preset_state_tests.rs`'s unit-level coverage of the
+/// same resolution logic.
+#[test]
+fn repro_231_preset_connection_addressing_declared_split_slot_routes_through_that_node() {
+    let result = run_fixture("tests/fixtures/issue-231-preset-split-node-passage.json", 0);
+
+    // 2 field points, one split into 2 nodes (original + slot 0) -- 3 nodes total.
+    assert_eq!(result.graph.node_count(), 3, "field has 2 points, one split into 2 nodes");
+
+    // Exactly one bidirectional passage exists in the final graph (the slot-addressed preset) --
+    // the plain (original-node) edge is walled, so it must not exist at all.
+    let edge_count = result.graph.edges().count();
+    assert_eq!(edge_count, 2, "exactly one bidirectional passage (2 directed edges) expected");
+
+    // The original node at (-1,0) must have zero edges -- only the wall preset (which adds no
+    // edge) ever referenced it; the passage went to the split slot instead.
+    let original_has_no_edges = result.graph.nodes().any(|n| {
+        result.graph.edges().all(|e| e.from != n.id && e.to != n.id)
+    });
+    assert!(original_has_no_edges, "the point's original node must remain edgeless — the passage targeted its split slot, not it");
+}
+
 /// GitHub issue #173: an empty 5x5 field, no preset connections, `qc_experiment` + `debug_events`
 /// on. No repair strategy can act on a completely edgeless graph (`missing_endpoints`'s
 /// `scored_endpoints` strategy needs some structure to score candidates against), so QC/repair

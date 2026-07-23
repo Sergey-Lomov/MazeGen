@@ -295,16 +295,24 @@ export type InitialGenerationConfig =
 
 export type PresetConnectionState = "wall" | "passage" | "one_way_forward" | "one_way_backward" | "teleport_forward" | "teleport_backward" | "teleport_two_way";
 
+/** Wire shape for a preset endpoint (GitHub issue #231) — a point plus an optional slot
+ * addressing one of that point's declared extra ("split") nodes. `slot: undefined` means the
+ * point's original node. Mirrors Rust's `PresetEndpointDto`/`PresetEndpoint`. */
+export interface PresetEndpointDto {
+  point: [number, number];
+  slot?: number;
+}
+
 export interface PresetConnection {
-  from: [number, number];
-  to: [number, number];
+  from: PresetEndpointDto;
+  to: PresetEndpointDto;
   state: PresetConnectionState;
 }
 
 export type NodeLockKind = "in" | "out" | "both";
 
 export interface LockedNodeDto {
-  point: [number, number];
+  point: PresetEndpointDto;
   kind: NodeLockKind;
 }
 
@@ -317,9 +325,12 @@ export interface GenerateConfig {
   elements: ElementsConfig;
   preset_connections?: PresetConnection[];
   locked_nodes?: LockedNodeDto[];
-  preset_start?: [number, number];
-  preset_finish?: [number, number];
-  preset_gen_source?: [number, number];
+  preset_start?: PresetEndpointDto;
+  preset_finish?: PresetEndpointDto;
+  preset_gen_source?: PresetEndpointDto;
+  /** Extra nodes to create at declared points before any preset above is resolved (GitHub issue
+   * #231) — `[[x, y], slotId]` pairs. Mirrors Rust's `GenerateConfig.split_points`. */
+  split_points?: [[number, number], number][];
   debug_events?: boolean;
   qc_experiment?: boolean;
 }

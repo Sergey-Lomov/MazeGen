@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints } from "../../pixi/fieldEditUtils";
+import { presetEndpointIsSplit } from "../../pixi/presetEndpoint";
 import { buttonStyle } from "../../styles/shared";
 import { ui, typography, muted, spacing } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import { Stack, Grid } from "../Layout";
 import { StatusTag } from "../StatusTag";
+import { PresetSplitNodesDialog } from "./PresetSplitNodesDialog";
 import * as m from "~/paraglide/messages";
 
 function getEdgeTools(): [PresetConnectionTool, string][] {
@@ -71,6 +73,9 @@ export function PresetConnectionsFeature() {
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
   const presetTeleportPendingFrom = useMazeStore((s) => s.presetTeleportPendingFrom);
   const setPresetTeleportPendingFrom = useMazeStore((s) => s.setPresetTeleportPendingFrom);
+  const presetSplitPoints = useMazeStore((s) => s.presetSplitPoints);
+  const presetFocusedPoint = useMazeStore((s) => s.presetFocusedPoint);
+  const setPresetFocusedPoint = useMazeStore((s) => s.setPresetFocusedPoint);
 
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -88,12 +93,33 @@ export function PresetConnectionsFeature() {
       const [x, y] = key.split(",").map(Number);
       const hasPassage = Array.from(presetConnections.values()).some(e => {
         if (e.state === "wall" || e.state === "undefined") return false;
-        return (e.from[0] === x && e.from[1] === y) || (e.to[0] === x && e.to[1] === y);
+        return (e.from.point[0] === x && e.from.point[1] === y) || (e.to.point[0] === x && e.to.point[1] === y);
       });
       if (!hasPassage) result.push(key);
     }
     return result;
   }, [lockedNodes, autoLockedNodes, presetConnections]);
+
+  // Orphan split nodes: declared in presetSplitPoints but referenced by nothing (GitHub issue
+  // #231) — created regardless, but likely forgotten by the user, so surfaced as a warning
+  // (same style as isolatedNodes above), not blocking generation.
+  const orphanSplitCount = useMemo(() => {
+    let count = 0;
+    for (const [key, slots] of Object.entries(presetSplitPoints)) {
+      const [x, y] = key.split(",").map(Number);
+      for (const slotId of slots) {
+        const target = { point: [x, y] as [number, number], slotId };
+        const referenced =
+          Array.from(presetConnections.values()).some(e => presetEndpointIsSplit(e.from, target) || presetEndpointIsSplit(e.to, target))
+          || presetTeleports.some(t => presetEndpointIsSplit(t.from, target) || presetEndpointIsSplit(t.to, target))
+          || (presetStart && presetEndpointIsSplit(presetStart, target))
+          || (presetFinish && presetEndpointIsSplit(presetFinish, target))
+          || (presetGenSource && presetEndpointIsSplit(presetGenSource, target));
+        if (!referenced) count++;
+      }
+    }
+    return count;
+  }, [presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource]);
 
   const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
   const invalidKeys = useMemo(
@@ -108,8 +134,12 @@ export function PresetConnectionsFeature() {
     () => computeInvalidMarkers(presetStart, presetFinish, tessellationConfig, customPts),
     [presetStart, presetFinish, tessellationConfig, customPts],
   );
+  const invalidSplitKeys = useMemo(
+    () => computeInvalidSplitPoints(presetSplitPoints, tessellationConfig, customPts),
+    [presetSplitPoints, tessellationConfig, customPts],
+  );
   const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
-  const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidMarkerCount;
+  const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidMarkerCount + invalidSplitKeys.size;
   const hasInvalid = invalidCount > 0;
 
   return (
@@ -152,6 +182,13 @@ export function PresetConnectionsFeature() {
             </button>
           ))}
         </Grid>
+        <button
+          className={tool === "manage_split_nodes" ? "hoverable-accent" : "hoverable"}
+          style={buttonStyle(tool === "manage_split_nodes" ? "toggle-active" : "toggle")}
+          onClick={() => setTool("manage_split_nodes")}
+        >
+          {m["post_edit.manage_split_nodes_tool"]()}
+        </button>
       </Stack>
 
       <span style={styles.sectionLabel}>{m["preset.generation_tools"]()}</span>
@@ -196,7 +233,7 @@ export function PresetConnectionsFeature() {
         <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
       </div>
 
-      {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish || presetGenSource || presetTeleports.length > 0 || presetTeleportPendingFrom) && (
+      {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish || presetGenSource || presetTeleports.length > 0 || presetTeleportPendingFrom || orphanSplitCount > 0) && (
         <Stack gap="itemGap">
           {presetTeleportPendingFrom && (
             <StatusTag onClear={() => setPresetTeleportPendingFrom(null)}>
@@ -219,17 +256,17 @@ export function PresetConnectionsFeature() {
           )}
           {presetStart && (
             <StatusTag onClear={() => setPresetStart(null)}>
-              {m["preset.start"]()}: {presetStart[0]},{presetStart[1]}
+              {m["preset.start"]()}: {presetStart.point[0]},{presetStart.point[1]}
             </StatusTag>
           )}
           {presetFinish && (
             <StatusTag onClear={() => setPresetFinish(null)}>
-              {m["preset.finish"]()}: {presetFinish[0]},{presetFinish[1]}
+              {m["preset.finish"]()}: {presetFinish.point[0]},{presetFinish.point[1]}
             </StatusTag>
           )}
           {presetGenSource && (
             <StatusTag onClear={() => setPresetGenSource(null)}>
-              {m["preset.gen_source"]()}: {presetGenSource[0]},{presetGenSource[1]}
+              {m["preset.gen_source"]()}: {presetGenSource.point[0]},{presetGenSource.point[1]}
             </StatusTag>
           )}
           {isolatedNodes.length > 0 && (
@@ -242,6 +279,13 @@ export function PresetConnectionsFeature() {
               ⚠ {isolatedNodes.length === 1
                 ? m["preset.nodes_isolated"]({ count: isolatedNodes.length })
                 : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
+            </div>
+          )}
+          {orphanSplitCount > 0 && (
+            <div style={styles.warningBubble} title="Split node declared but not referenced by any preset, teleport, or marker">
+              ⚠ {orphanSplitCount === 1
+                ? m["preset.split_orphan"]({ count: orphanSplitCount })
+                : m["preset.split_orphan_plural"]({ count: orphanSplitCount })}
             </div>
           )}
         </Stack>
@@ -270,6 +314,13 @@ export function PresetConnectionsFeature() {
           message={m["common.reset_all"]() + "?"}
           onConfirm={() => { resetPresetConnections(); setConfirmReset(false); }}
           onCancel={() => setConfirmReset(false)}
+        />
+      )}
+
+      {presetFocusedPoint && (
+        <PresetSplitNodesDialog
+          point={presetFocusedPoint}
+          onClose={() => setPresetFocusedPoint(null)}
         />
       )}
     </Stack>

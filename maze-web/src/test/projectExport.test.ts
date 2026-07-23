@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parseAndValidate, serializeProject } from "../store/projectExport";
 import type { MazeState, PostEditEdge } from "../store/mazeStore";
 import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { presetEndpoint } from "../pixi/presetEndpoint";
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
@@ -23,10 +24,13 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     lockedNodes: new Map(),
     defaultEdgeState: "undefined",
     autoLock: true,
-    presetStart: [1, 2],
-    presetFinish: [3, 4],
+    presetStart: presetEndpoint([1, 2]),
+    presetFinish: presetEndpoint([3, 4]),
     presetGenSource: null,
     presetTeleports: [],
+    presetSplitPoints: {},
+    presetActiveSplitNode: {},
+    presetFocusedPoint: null,
     postEditDirty: false,
     postEditDraftEdges: null,
     postEditDraftMeta: null,
@@ -211,7 +215,7 @@ describe("serializeProject / parseAndValidate round-trip", () => {
   it("round-trips preset connections and locked nodes", () => {
     const state = makeState({
       presetConnections: new Map([
-        ["0,0-1,0", { from: [0, 0], to: [1, 0], state: "passage", source: "user" }],
+        ["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage", source: "user" }],
       ]),
       lockedNodes: new Map([["2,3", "both"]]),
     });
@@ -224,8 +228,8 @@ describe("serializeProject / parseAndValidate round-trip", () => {
   it("round-trips preset teleports", () => {
     const state = makeState({
       presetTeleports: [
-        { id: 1, from: [0, 0], to: [2, 2], direction: "forward" },
-        { id: 2, from: [1, 1], to: [3, 3], direction: "two_way" },
+        { id: 1, from: presetEndpoint([0, 0]), to: presetEndpoint([2, 2]), direction: "forward" },
+        { id: 2, from: presetEndpoint([1, 1]), to: presetEndpoint([3, 3]), direction: "two_way" },
       ],
     });
     const serialized = serializeProject(state);
@@ -283,8 +287,8 @@ describe("parseAndValidate — malformed input", () => {
   it("throws on duplicate teleport id", () => {
     const data = valid();
     data.presets.teleports = [
-      { id: 1, from: [0, 0], to: [2, 2], direction: "forward" },
-      { id: 1, from: [1, 1], to: [3, 3], direction: "two_way" },
+      { id: 1, from: presetEndpoint([0, 0]), to: presetEndpoint([2, 2]), direction: "forward" },
+      { id: 1, from: presetEndpoint([1, 1]), to: presetEndpoint([3, 3]), direction: "two_way" },
     ];
     expect(() => parseAndValidate(data)).toThrow(/Duplicate teleport id/);
   });

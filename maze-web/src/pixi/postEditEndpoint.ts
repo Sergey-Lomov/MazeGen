@@ -1,3 +1,21 @@
+/** The point+slot half of `PostEditEndpoint` (below), standalone — identifies one of a split
+ * point's extra nodes by its stable per-point `slotId`. Always describes *some* added slot, never
+ * "a point with no slot" (that's `PostEditEndpoint`'s separate `node` variant, or `PresetEndpoint`
+ * with `slotId: undefined` — see `presetEndpoint.ts`). Shared between post-edit and preset-stage
+ * split-node addressing so both sides compare/key slots identically. */
+export interface SplitRef {
+  point: [number, number];
+  slotId: number;
+}
+
+export function splitRefsEqual(a: SplitRef, b: SplitRef): boolean {
+  return a.point[0] === b.point[0] && a.point[1] === b.point[1] && a.slotId === b.slotId;
+}
+
+export function splitRefKey(ref: SplitRef): string {
+  return `${ref.point[0]},${ref.point[1]}:${ref.slotId}`;
+}
+
 /** One endpoint of a post-edit edge/teleport/start/finish reference (GitHub issue #221). A tile's
  * point can resolve to more than one graph node ("split point") — a `node` endpoint is a plain
  * already-resolved `NodeId`; a `split` endpoint addresses one of a split point's extra nodes by
@@ -14,7 +32,7 @@
  * survives across confirms; only the resolved id, looked up fresh each time, doesn't need to. */
 export type PostEditEndpoint =
   | { kind: "node"; id: number }
-  | { kind: "split"; point: [number, number]; slotId: number };
+  | ({ kind: "split" } & SplitRef);
 
 export function nodeEndpoint(id: number): PostEditEndpoint {
   return { kind: "node", id };
@@ -30,14 +48,13 @@ export function splitEndpoint(point: [number, number], slotId: number): PostEdit
 export function endpointsEqual(a: PostEditEndpoint, b: PostEditEndpoint): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "node") return a.id === (b as { kind: "node"; id: number }).id;
-  const bs = b as { kind: "split"; point: [number, number]; slotId: number };
-  return a.point[0] === bs.point[0] && a.point[1] === bs.point[1] && a.slotId === bs.slotId;
+  return splitRefsEqual(a, b as SplitRef);
 }
 
 /** Stable string key for one endpoint: "n42" for a node, "s3,5:7" for a split (point "3,5",
  * slotId 7). The "n"/"s" prefix keeps the two variants' key spaces disjoint. */
 export function endpointKey(ep: PostEditEndpoint): string {
-  return ep.kind === "node" ? `n${ep.id}` : `s${ep.point[0]},${ep.point[1]}:${ep.slotId}`;
+  return ep.kind === "node" ? `n${ep.id}` : `s${splitRefKey(ep)}`;
 }
 
 /** Builds a Record key for an edge between two endpoints — replaces every hand-built

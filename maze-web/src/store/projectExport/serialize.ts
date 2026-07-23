@@ -46,6 +46,7 @@ export function serializeProject(state: MazeState): ProjectFile {
       finish: state.presetFinish,
       genSource: state.presetGenSource,
       teleports: state.presetTeleports,
+      splitPoints: state.presetSplitPoints,
     },
     postEdit,
     dirtyFlags: {

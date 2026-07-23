@@ -33,33 +33,34 @@ fn resolve_start<P: Copy>(pts: &[P], gen_source_xy: Option<[i32; 2]>, to_xy: imp
 
 pub fn dispatch_generate(seed: u64, config: &GenerateConfig) -> Result<GenerateResult, JsValue> {
     let mut ids = IdGenerator::new();
+    let gen_source_xy = config.preset_gen_source.as_ref().map(|dto| dto.point);
     match config.tessellation.tessellation_type {
         TessellationType::Square => {
             let pts: Vec<SquarePoint> = config.tessellation.points.iter()
                 .map(|&[x, y]| SquarePoint { x, y }).collect();
             if pts.is_empty() { return Err(JsValue::from_str("tessellation points must not be empty")); }
-            let start = resolve_start(&pts, config.preset_gen_source, |p| (p.x, p.y));
+            let start = resolve_start(&pts, gen_source_xy, |p| (p.x, p.y));
             let field = Field::<SquareTessellation>::new(pts, &mut ids)
                 .map_err(|e| JsValue::from_str(e))?;
-            run_generate(seed, field, start, config, |p: SquarePoint| (p.x, p.y))
+            run_generate(seed, field, ids, start, config, |p: SquarePoint| (p.x, p.y), |x, y| SquarePoint { x, y })
         }
         TessellationType::Hex => {
             let pts: Vec<HexPoint> = config.tessellation.points.iter()
                 .map(|&[q, r]| HexPoint { q, r }).collect();
             if pts.is_empty() { return Err(JsValue::from_str("tessellation points must not be empty")); }
-            let start = resolve_start(&pts, config.preset_gen_source, |p| (p.q, p.r));
+            let start = resolve_start(&pts, gen_source_xy, |p| (p.q, p.r));
             let field = Field::<HexTessellation>::new(pts, &mut ids)
                 .map_err(|e| JsValue::from_str(e))?;
-            run_generate(seed, field, start, config, |p: HexPoint| (p.q, p.r))
+            run_generate(seed, field, ids, start, config, |p: HexPoint| (p.q, p.r), |q, r| HexPoint { q, r })
         }
         TessellationType::Tri => {
             let pts: Vec<TriPoint> = config.tessellation.points.iter()
                 .map(|&[col, row]| TriPoint { col, row }).collect();
             if pts.is_empty() { return Err(JsValue::from_str("tessellation points must not be empty")); }
-            let start = resolve_start(&pts, config.preset_gen_source, |p| (p.col, p.row));
+            let start = resolve_start(&pts, gen_source_xy, |p| (p.col, p.row));
             let field = Field::<TriTessellation>::new(pts, &mut ids)
                 .map_err(|e| JsValue::from_str(e))?;
-            run_generate(seed, field, start, config, |p: TriPoint| (p.col, p.row))
+            run_generate(seed, field, ids, start, config, |p: TriPoint| (p.col, p.row), |col, row| TriPoint { col, row })
         }
     }
 }

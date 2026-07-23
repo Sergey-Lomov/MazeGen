@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
+import { presetEndpoint } from "../pixi/presetEndpoint";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 // getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
@@ -10,7 +11,7 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const { buildPresetWallGroups } = await import("../pixi/selectors/presetSelectors");
+const { buildPresetWallGroups, buildPresetSplitPassages } = await import("../pixi/selectors/presetSelectors");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
 const cfg: TessellationConfig = { type: "square", width: 2, height: 1 };
@@ -21,7 +22,7 @@ function connEntry(
   to: [number, number],
   state: PresetConnectionEntry["state"],
 ): PresetConnectionEntry {
-  return { from, to, state, source: "user" };
+  return { from: presetEndpoint(from), to: presetEndpoint(to), state, source: "user" };
 }
 
 describe("buildPresetWallGroups", () => {
@@ -94,5 +95,87 @@ describe("buildPresetWallGroups", () => {
     const matches = preset.filter(e => e.a[0] === 1 && e.b[0] === 2);
     expect(matches).toHaveLength(1);
     expect(matches[0].style).toBe("solid");
+  });
+
+  it("excludes a declared split point's own faces from the ordinary wall/undecided reading (GitHub issue #231)", () => {
+    const connections = new Map([["-1,0-0,0", connEntry([-1, 0], [0, 0], "wall")]]);
+    const splitPoints = { "-1,0": [0] };
+    const { undecided, preset } = buildPresetWallGroups(cells, connections, cfg, splitPoints);
+    expect(undecided).toHaveLength(0);
+    expect(preset.some(e => (e.a[0] === -1 && e.b[0] === 0) || (e.a[0] === 0 && e.b[0] === -1))).toBe(false);
+  });
+
+  it("an empty split-point slot list does not exclude the point's faces", () => {
+    const { undecided } = buildPresetWallGroups(cells, new Map(), cfg, { "-1,0": [] });
+    expect(undecided).toHaveLength(1);
+  });
+});
+
+// --- buildPresetSplitPassages ---
+
+describe("buildPresetSplitPassages", () => {
+  it("a point with no declared split produces no passages", () => {
+    const connections = new Map([["-1,0-0,0", connEntry([-1, 0], [0, 0], "passage")]]);
+    expect(buildPresetSplitPassages({}, connections, cfg)).toEqual([]);
+  });
+
+  it("a point with a declared but empty slot list produces no passages", () => {
+    expect(buildPresetSplitPassages({ "-1,0": [] }, new Map(), cfg)).toEqual([]);
+  });
+
+  it("the original node and one slot each get their own passage when both connect east", () => {
+    // Point (-1,0) split into original + slot 0, both wired as a passage to (0,0).
+    const connections = new Map([
+      ["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "passage" as const, source: "user" as const }],
+      ["-1,0:0-0,0", { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const passages = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
+    expect(passages).toHaveLength(2);
+    expect(passages[0].color).not.toBe(passages[1].color);
+    for (const p of passages) expect(p.wallSegments).toHaveLength(1);
+  });
+
+  it("a slot with no referencing preset produces no passage entry", () => {
+    const passages = buildPresetSplitPassages({ "-1,0": [0] }, new Map(), cfg);
+    expect(passages).toEqual([]);
+  });
+
+  it("wall/undefined preset states on a split endpoint don't count as a connection", () => {
+    const connections = new Map([
+      ["-1,0:0-0,0", { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]), state: "wall" as const, source: "user" as const }],
+    ]);
+    const passages = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
+    expect(passages).toEqual([]);
+  });
+
+  it("one-way preset connections produce a directed wall segment", () => {
+    const connections = new Map([
+      ["-1,0:0-0,0", { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]), state: "one_way_forward" as const, source: "user" as const }],
+    ]);
+    const passages = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
+    expect(passages).toHaveLength(1);
+    expect(passages[0].wallSegments[0].oneWayDir).toBeDefined();
+  });
+
+  it("one_way_backward connects the split slot from the plain neighbor's side, not the slot's own from/to", () => {
+    // entry.from is the plain neighbor (0,0), entry.to is the split slot -- a backward preset
+    // means the passage actually runs to -> from, i.e. (0,0) -> the slot, so the slot only shows
+    // up as a passage recipient (addPair(entry.to, entry.from) in buildPresetSplitPassages).
+    const connections = new Map([
+      ["-1,0:0-0,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([-1, 0], 0), state: "one_way_backward" as const, source: "user" as const }],
+    ]);
+    const passages = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
+    expect(passages).toHaveLength(1);
+    expect(passages[0].wallSegments[0].oneWayDir).toBeDefined();
+  });
+
+  it("a point split into two slots (no original-node reference) still produces one passage per referenced slot", () => {
+    // Point (-1,0) split into slot 0 and slot 1, only slot 1 is wired -- slot 0 gets no passage,
+    // the original node (never referenced by any connection) gets no passage either.
+    const connections = new Map([
+      ["-1,0:1-0,0", { from: presetEndpoint([-1, 0], 1), to: presetEndpoint([0, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const passages = buildPresetSplitPassages({ "-1,0": [0, 1] }, connections, cfg);
+    expect(passages).toHaveLength(1);
   });
 });

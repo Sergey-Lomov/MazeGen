@@ -219,26 +219,38 @@ export function getSplitAwareNodePosition(
  *  start/finish marker or a teleport endpoint (`specialNodeIds`) always keeps its hub point even
  *  at exactly 2 connections, since a marker/teleport line drawn on that node's hub point would
  *  otherwise sit on a straight line with nothing marking which point along it is actually special. */
-export function buildSplitPassages(
-  nodes: NodeDto[],
-  edges: EdgeDto[],
+/** A split point's node, abstracted over the identity type `Id` — `NodeDto`'s `id: number` for the
+ *  post-generation callers, `PresetEndpoint`'s `(point, slotId?)` (via `presetEndpointKey`) for the
+ *  preset-stage caller (GitHub issue #231), compared with `===`. */
+export type SplitPassageNode<Id> = { id: Id; x: number; y: number };
+
+/** Generic core of `buildSplitPassages` (GitHub issue #223/#231) — everything about the geometric
+ *  algorithm (dividing a shared face among a split point's connected nodes, straightening 2-face
+ *  connectors, hub-point fan-out) lives here, parameterized over an opaque, comparable `Id` type so
+ *  it has no notion of `NodeDto`/`EdgeDto`/resolved `NodeId`. `directedPairs` is the flat list of
+ *  `(from, to)` id pairs this point's nodes may connect across (teleports must already be filtered
+ *  out by the caller — a teleport must not read as an open passage here, same rule as
+ *  `buildMazeWalls`). `buildSplitPassages` (NodeDto/EdgeDto) and `buildPresetSplitPassages`
+ *  (PresetEndpoint, presetSelectors.ts) are both thin adapters over this. */
+export function buildSplitPassagesCore<Id>(
+  nodes: SplitPassageNode<Id>[],
+  directedPairs: { from: Id; to: Id }[],
   cfg: TessellationConfig,
-  specialNodeIds: ReadonlySet<number> = new Set(),
+  specialNodeIds: ReadonlySet<Id> = new Set(),
 ): SplitPassage[] {
-  const nodeById = new Map<number, NodeDto>();
+  const nodeById = new Map<Id, SplitPassageNode<Id>>();
   for (const n of nodes) nodeById.set(n.id, n);
 
   // Directed node-id pairs, so a node's own connectivity to a specific face can be read directly
   // without re-scanning `edges` per node (this function runs once per redraw over every split
   // point's every node).
   const directed = new Set<string>();
-  for (const e of edges) {
-    if (e.kind === "teleport") continue;
-    if (!nodeById.has(e.from) || !nodeById.has(e.to)) continue;
-    directed.add(`${e.from}->${e.to}`);
+  for (const { from, to } of directedPairs) {
+    if (!nodeById.has(from) || !nodeById.has(to)) continue;
+    directed.add(`${String(from)}->${String(to)}`);
   }
 
-  const byPoint = new Map<string, NodeDto[]>();
+  const byPoint = new Map<string, SplitPassageNode<Id>[]>();
   for (const n of nodes) {
     const key = `${n.x},${n.y}`;
     const list = byPoint.get(key);
@@ -262,7 +274,7 @@ export function buildSplitPassages(
     for (const node of pointNodes) {
       for (const other of nodes) {
         if (other.x === node.x && other.y === node.y) continue;
-        if (!directed.has(`${node.id}->${other.id}`) && !directed.has(`${other.id}->${node.id}`)) continue;
+        if (!directed.has(`${String(node.id)}->${String(other.id)}`) && !directed.has(`${String(other.id)}->${String(node.id)}`)) continue;
         facesToOthers.set(`${other.x},${other.y}`, { x: other.x, y: other.y });
       }
     }
@@ -281,7 +293,7 @@ export function buildSplitPassages(
       pointNodes.forEach((node, slotIndex) => {
         const connected = nodes.some((cand) =>
           cand.x === other.x && cand.y === other.y &&
-          (directed.has(`${node.id}->${cand.id}`) || directed.has(`${cand.id}->${node.id}`)));
+          (directed.has(`${String(node.id)}->${String(cand.id)}`) || directed.has(`${String(cand.id)}->${String(node.id)}`)));
         if (connected) connectedSlots.push(slotIndex);
       });
       if (connectedSlots.length === 0) continue;
@@ -304,8 +316,8 @@ export function buildSplitPassages(
         const segCenter = { x: (v0.x + v1.x) / 2, y: (v0.y + v1.y) / 2 };
 
         const node = pointNodes[slotIndex];
-        const fwd = nodes.some((cand) => cand.x === other.x && cand.y === other.y && directed.has(`${node.id}->${cand.id}`));
-        const bwd = nodes.some((cand) => cand.x === other.x && cand.y === other.y && directed.has(`${cand.id}->${node.id}`));
+        const fwd = nodes.some((cand) => cand.x === other.x && cand.y === other.y && directed.has(`${String(node.id)}->${String(cand.id)}`));
+        const bwd = nodes.some((cand) => cand.x === other.x && cand.y === other.y && directed.has(`${String(cand.id)}->${String(node.id)}`));
         let oneWayDir: { dx: number; dy: number } | undefined;
         if (fwd !== bwd) {
           const toCenter = getCellCenter(other.x, other.y, cfg);
@@ -334,6 +346,20 @@ export function buildSplitPassages(
   }
 
   return result;
+}
+
+/** Post-generation adapter over `buildSplitPassagesCore` — `NodeDto`'s own `id: number` is the
+ *  identity, `EdgeDto`'s teleport-kind entries are filtered out before reaching the core (a
+ *  teleport must not read as an open passage, same rule as `buildMazeWalls`). See
+ *  `buildSplitPassagesCore`'s doc comment for the shared algorithm. */
+export function buildSplitPassages(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+  specialNodeIds: ReadonlySet<number> = new Set(),
+): SplitPassage[] {
+  const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+  return buildSplitPassagesCore(nodes, directedPairs, cfg, specialNodeIds);
 }
 
 // --- Loss-detection predicates ---

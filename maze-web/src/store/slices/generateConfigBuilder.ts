@@ -1,7 +1,8 @@
 import { generateMaze } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
+import { presetEndpoint, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto } from "../../pixi/postEditUtils";
 import { nodeEndpoint } from "../../pixi/postEditEndpoint";
@@ -115,22 +116,32 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   const activeTessellation = activeTessellationOf(state);
   const customPts = state.isEditingField ? state.fieldPoints : undefined;
   const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
-  const validPresets = Array.from(state.presetConnections.values())
-    .filter(e => e.state !== "undefined" && !invalidKeys.has(`${e.from[0]},${e.from[1]}-${e.to[0]},${e.to[1]}`))
-    .map(e => ({ from: e.from, to: e.to, state: e.state as import("../../wasm/types").PresetConnectionState }));
+  const validPresets = Array.from(state.presetConnections.entries())
+    .filter(([key, e]) => e.state !== "undefined" && !invalidKeys.has(key))
+    .map(([, e]) => ({
+      from: presetEndpointToDto(e.from), to: presetEndpointToDto(e.to),
+      state: e.state as import("../../wasm/types").PresetConnectionState,
+    }));
   const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, activeTessellation, customPts);
   const validTeleportPresets = state.presetTeleports
     .filter(t => !invalidTeleportIds.has(t.id))
-    .map(t => ({ from: t.from, to: t.to, state: presetTeleportEntryToState(t.direction) }));
+    .map(t => ({ from: presetEndpointToDto(t.from), to: presetEndpointToDto(t.to), state: presetTeleportEntryToState(t.direction) }));
   const lockedEntries = new Map(state.lockedNodes);
   for (const key of state.autoLockedNodes) {
     if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
   }
   const locked_nodes = Array.from(lockedEntries.entries()).map(([key, kind]) => {
-    const [x, y] = key.split(",").map(Number);
-    return { point: [x, y] as [number, number], kind };
+    const [x, y] = key.split(",").map(Number) as [number, number];
+    return { point: presetEndpointToDto(presetEndpoint([x, y])), kind };
   });
   const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, activeTessellation, customPts);
+  const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, activeTessellation, customPts);
+  const split_points: [[number, number], number][] = Object.entries(state.presetSplitPoints)
+    .filter(([key]) => !invalidSplitKeys.has(key))
+    .flatMap(([key, slots]) => {
+      const [x, y] = key.split(",").map(Number) as [number, number];
+      return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
+    });
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
     stages,
@@ -140,9 +151,10 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     elements: state.elementsConfig,
     preset_connections: [...validPresets, ...validTeleportPresets],
     locked_nodes,
-    ...(state.presetStart && !invalidMarkers.start ? { preset_start: state.presetStart } : {}),
-    ...(state.presetGenSource ? { preset_gen_source: state.presetGenSource } : {}),
-    ...(state.presetFinish && !invalidMarkers.finish ? { preset_finish: state.presetFinish } : {}),
+    split_points,
+    ...(state.presetStart && !invalidMarkers.start ? { preset_start: presetEndpointToDto(state.presetStart) } : {}),
+    ...(state.presetGenSource ? { preset_gen_source: presetEndpointToDto(state.presetGenSource) } : {}),
+    ...(state.presetFinish && !invalidMarkers.finish ? { preset_finish: presetEndpointToDto(state.presetFinish) } : {}),
   };
 }
 

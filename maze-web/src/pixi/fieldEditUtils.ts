@@ -5,17 +5,24 @@ import { configAllCells } from "./tessellationCells";
 import { getCellNeighborOffsets, getSharedEdgeSegment } from "./tessellationGeometry";
 import type { PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
+/** `from`/`to` are `PresetEndpoint` (point + optional slot, GitHub issue #231), not a bare cell
+ * tuple — a preset connection can address one of a split point's declared extra nodes. Edge
+ * picking/hit-testing (`pickEdgeAtPosition`, `canonicalize`, `edgeKey`) still operates on raw
+ * cell coordinates (the cursor targets a point/face, never a specific node) — the active slot
+ * (`presetActiveSplitNode`, mirrors post-edit's `postEditActiveSplitNode`) is folded in only when
+ * `applyTool` actually writes an entry. */
 export interface PresetConnectionEntry {
-  from: [number, number];
-  to: [number, number];
+  from: PresetEndpoint;
+  to: PresetEndpoint;
   state: PresetConnectionClientState;
   source: "user" | "default";
 }
 
-export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way";
+export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "manage_split_nodes";
 
 export interface FieldEdge {
   key: string;
@@ -25,10 +32,11 @@ export interface FieldEdge {
 
 export type PresetTeleportDirection = "forward" | "backward" | "two_way";
 
+/** `from`/`to` are `PresetEndpoint` (GitHub issue #231) — same rationale as `PresetConnectionEntry`. */
 export interface PresetTeleportEntry {
   id: number;
-  from: [number, number];
-  to: [number, number];
+  from: PresetEndpoint;
+  to: PresetEndpoint;
   direction: PresetTeleportDirection;
 }
 
@@ -58,7 +66,7 @@ export function pickTeleportEndpointAt(
   let bestDistSq = Infinity;
   for (const t of teleports) {
     for (const end of ["from", "to"] as const) {
-      const [cx, cy] = end === "from" ? t.from : t.to;
+      const [cx, cy] = end === "from" ? t.from.point : t.to.point;
       const { x: px, y: py } = proj.gridToScreen(cx, cy);
       const dx = px - viewportX;
       const dy = py - viewportY;
@@ -93,7 +101,9 @@ export function moveTeleportEndpoint(
 ): PresetTeleportEntry[] {
   return teleports.map(t => {
     if (t.id !== hit.id) return t;
-    return { ...t, [hit.end]: cell };
+    // Moving to a different cell drops any slot the endpoint previously addressed — the slot
+    // belonged to the old point, not the new one.
+    return { ...t, [hit.end]: presetEndpoint(cell) };
   });
 }
 
@@ -135,16 +145,16 @@ export function computeInvalidKeysFromCells(
 
   const invalid = new Set<string>();
   for (const [key, entry] of presetConnections) {
-    const aIn = fieldSet.has(encodePoint(entry.from[0], entry.from[1]));
-    const bIn = fieldSet.has(encodePoint(entry.to[0], entry.to[1]));
+    const aIn = fieldSet.has(encodePoint(entry.from.point[0], entry.from.point[1]));
+    const bIn = fieldSet.has(encodePoint(entry.to.point[0], entry.to.point[1]));
     if (!aIn || !bIn) invalid.add(key);
   }
   return invalid;
 }
 
 export function computeInvalidMarkers(
-  presetStart: [number, number] | null,
-  presetFinish: [number, number] | null,
+  presetStart: PresetEndpoint | null,
+  presetFinish: PresetEndpoint | null,
   cfg: TessellationConfig,
   customPoints?: Set<number>,
 ): { start: boolean; finish: boolean } {
@@ -153,8 +163,8 @@ export function computeInvalidMarkers(
   for (const [x, y] of cells) fieldSet.add(encodePoint(x, y));
 
   return {
-    start: presetStart != null && !fieldSet.has(encodePoint(presetStart[0], presetStart[1])),
-    finish: presetFinish != null && !fieldSet.has(encodePoint(presetFinish[0], presetFinish[1])),
+    start: presetStart != null && !fieldSet.has(encodePoint(presetStart.point[0], presetStart.point[1])),
+    finish: presetFinish != null && !fieldSet.has(encodePoint(presetFinish.point[0], presetFinish.point[1])),
   };
 }
 
@@ -169,9 +179,31 @@ export function computeInvalidTeleportIds(
 
   const invalid = new Set<number>();
   for (const t of teleports) {
-    const aIn = fieldSet.has(encodePoint(t.from[0], t.from[1]));
-    const bIn = fieldSet.has(encodePoint(t.to[0], t.to[1]));
+    const aIn = fieldSet.has(encodePoint(t.from.point[0], t.from.point[1]));
+    const bIn = fieldSet.has(encodePoint(t.to.point[0], t.to.point[1]));
     if (!aIn || !bIn) invalid.add(t.id);
+  }
+  return invalid;
+}
+
+/** Invalid split-declaration points (GitHub issue #231) — same "point outside the current field"
+ * criterion as `computeInvalidKeys`/`computeInvalidTeleportIds`/`computeInvalidMarkers`, applied
+ * to `presetSplitPoints`'s keys instead. Needed separately because a declared split point can be
+ * an orphan (no preset/teleport/marker referencing it) — the only way an invalid point could reach
+ * the WASM `split_points` payload without going through one of the other three checks first. */
+export function computeInvalidSplitPoints(
+  presetSplitPoints: Record<string, number[]>,
+  cfg: TessellationConfig,
+  customPoints?: Set<number>,
+): Set<string> {
+  const cells = resolveCells(cfg, customPoints);
+  const fieldSet = new Set<number>();
+  for (const [x, y] of cells) fieldSet.add(encodePoint(x, y));
+
+  const invalid = new Set<string>();
+  for (const key of Object.keys(presetSplitPoints)) {
+    const [x, y] = key.split(",").map(Number);
+    if (!fieldSet.has(encodePoint(x, y))) invalid.add(key);
   }
   return invalid;
 }
@@ -297,6 +329,27 @@ export function computeAutoLockedNodes(
   return result;
 }
 
+/** Resolves which node of `point` a preset edge-tool click currently targets — the preset-stage
+ * counterpart of post-edit's `resolveActiveEndpointAt` (GitHub issue #231). `activeMap[key]` if
+ * set, else the point's original node (`presetEndpoint(point)`, no slot). */
+export function resolvePresetActiveEndpoint(
+  point: [number, number],
+  activeMap: Record<string, PresetEndpoint>,
+): PresetEndpoint {
+  const key = `${point[0]},${point[1]}`;
+  return activeMap[key] ?? presetEndpoint(point);
+}
+
+/** Preset-side edge key, slot-aware (GitHub issue #231): for two endpoints with no active slot on
+ * either side, identical to `edgeKey`'s plain geometric key — every existing preset entry (and
+ * the default-edge-state mechanism, which only ever targets original nodes) keeps its exact key.
+ * A slot-addressed endpoint on either side changes the key, so a split-targeted preset never
+ * collides with the point's plain (original-node) preset. */
+export function presetEdgeKey(a: PresetEndpoint, b: PresetEndpoint): string {
+  const [fa, fb] = a.point[0] < b.point[0] || (a.point[0] === b.point[0] && a.point[1] < b.point[1]) ? [a, b] : [b, a];
+  return `${fa.point[0]},${fa.point[1]}${fa.slotId !== undefined ? `:${fa.slotId}` : ""}-${fb.point[0]},${fb.point[1]}${fb.slotId !== undefined ? `:${fb.slotId}` : ""}`;
+}
+
 /**
  * Clears an edge's explicit user override so it goes back to tracking the current default:
  * deletes the entry if `defaultEdgeState` is `"undefined"`, otherwise materializes it as a
@@ -306,12 +359,14 @@ export function materializeReset(
   connections: Map<string, PresetConnectionEntry>,
   edge: FieldEdge,
   defaultEdgeState: PresetConnectionClientState,
+  from: PresetEndpoint = presetEndpoint(edge.from),
+  to: PresetEndpoint = presetEndpoint(edge.to),
 ): Map<string, PresetConnectionEntry> {
   const next = new Map(connections);
   if (defaultEdgeState === "undefined") {
     next.delete(edge.key);
   } else {
-    next.set(edge.key, { from: edge.from, to: edge.to, state: defaultEdgeState, source: "default" });
+    next.set(edge.key, { from, to, state: defaultEdgeState, source: "default" });
   }
   return next;
 }
@@ -321,23 +376,27 @@ export function applyTool(
   edge: FieldEdge,
   tool: PresetConnectionTool,
   defaultEdgeState: PresetConnectionClientState = "undefined",
+  activeMap: Record<string, PresetEndpoint> = {},
 ): Map<string, PresetConnectionEntry> {
+  const from = resolvePresetActiveEndpoint(edge.from, activeMap);
+  const to = resolvePresetActiveEndpoint(edge.to, activeMap);
+  const key = presetEdgeKey(from, to);
   if (tool === "reset") {
-    return materializeReset(connections, edge, defaultEdgeState);
+    return materializeReset(connections, { key, from: edge.from, to: edge.to }, defaultEdgeState, from, to);
   }
   const next = new Map(connections);
   if (tool === "one_way") {
-    const current = connections.get(edge.key);
+    const current = connections.get(key);
     if (current?.state === "one_way_forward") {
-      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_backward", source: "user" });
+      next.set(key, { from, to, state: "one_way_backward", source: "user" });
     } else if (current?.state === "one_way_backward") {
-      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_forward", source: "user" });
+      next.set(key, { from, to, state: "one_way_forward", source: "user" });
     } else {
-      next.set(edge.key, { from: edge.from, to: edge.to, state: "one_way_forward", source: "user" });
+      next.set(key, { from, to, state: "one_way_forward", source: "user" });
     }
     return next;
   }
   const state: PresetConnectionState = tool === "wall" ? "wall" : "passage";
-  next.set(edge.key, { from: edge.from, to: edge.to, state, source: "user" });
+  next.set(key, { from, to, state, source: "user" });
   return next;
 }

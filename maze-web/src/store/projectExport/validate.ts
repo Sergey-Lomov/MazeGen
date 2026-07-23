@@ -2,6 +2,7 @@ import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
 import type { PostEditEdge, PostEditTeleportEntry, FeatureId } from "../mazeStore";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
+import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import {
   CURRENT_VERSION,
@@ -112,10 +113,6 @@ function optNumber(obj: Record<string, unknown> | null, key: string, fallback: n
 
 function optSection(parent: Record<string, unknown>, key: string, path: string): Record<string, unknown> | null {
   return parent[key] != null ? assertObject(parent[key], path) : null;
-}
-
-function optCoordPair(v: unknown, path: string): [number, number] | null {
-  return v === null || v === undefined ? null : validateCoordPair(v, path);
 }
 
 function validatePairArray<T>(
@@ -290,6 +287,18 @@ function validateCoordPair(v: unknown, path: string): [number, number] {
   return [assertNumber(arr[0], `${path}[0]`), assertNumber(arr[1], `${path}[1]`)];
 }
 
+// GitHub issue #231 — a preset endpoint is a point plus an optional slot. `slotId` is optional in
+// the loaded JSON (omitted entirely for a plain, non-split endpoint) rather than `null`, matching
+// how `presetEndpoint()` constructs entries client-side (`{ point }`, no `slotId` key at all).
+function validatePresetEndpoint(v: unknown, path: string): PresetEndpoint {
+  const obj = assertObject(v, path);
+  const point = validateCoordPair(obj.point, `${path}.point`);
+  if (obj.slotId === undefined) return { point };
+  const slotId = assertNumber(obj.slotId, `${path}.slotId`);
+  if (!Number.isInteger(slotId) || slotId < 0) throw new Error(`Expected non-negative integer slotId at ${path}.slotId, got ${slotId}`);
+  return { point, slotId };
+}
+
 function validatePresetConnectionEntry(v: unknown, path: string): PresetConnectionEntry {
   const obj = assertObject(v, path);
   const state = assertString(obj.state, `${path}.state`);
@@ -299,8 +308,8 @@ function validatePresetConnectionEntry(v: unknown, path: string): PresetConnecti
   if (source !== "user" && source !== "default")
     throw new Error(`Invalid preset connection source at ${path}.source: ${source}`);
   return {
-    from: validateCoordPair(obj.from, `${path}.from`),
-    to: validateCoordPair(obj.to, `${path}.to`),
+    from: validatePresetEndpoint(obj.from, `${path}.from`),
+    to: validatePresetEndpoint(obj.to, `${path}.to`),
     state: state as PresetConnectionEntry["state"],
     source: source as "user" | "default",
   };
@@ -379,8 +388,8 @@ function validatePresetTeleportEntry(v: unknown, path: string): PresetTeleportEn
   const obj = assertObject(v, path);
   return {
     id: assertNumber(obj.id, `${path}.id`),
-    from: validateCoordPair(obj.from, `${path}.from`),
-    to: validateCoordPair(obj.to, `${path}.to`),
+    from: validatePresetEndpoint(obj.from, `${path}.from`),
+    to: validatePresetEndpoint(obj.to, `${path}.to`),
     direction: validateTeleportDirection(obj.direction, `${path}.direction`),
   };
 }
@@ -491,14 +500,16 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   if (defaultEdgeState !== "undefined" && defaultEdgeState !== "wall" && defaultEdgeState !== "passage")
     throw new Error(`Invalid defaultEdgeState: ${defaultEdgeState}`);
   const autoLock = assertBoolean(presetsObj.autoLock, "presets.autoLock");
-  const presetStart = optCoordPair(presetsObj.start, "presets.start");
-  const presetFinish = optCoordPair(presetsObj.finish, "presets.finish");
-  const genSource = optCoordPair(presetsObj.genSource, "presets.genSource");
+  const presetStart = presetsObj.start == null ? null : validatePresetEndpoint(presetsObj.start, "presets.start");
+  const presetFinish = presetsObj.finish == null ? null : validatePresetEndpoint(presetsObj.finish, "presets.finish");
+  const genSource = presetsObj.genSource == null ? null : validatePresetEndpoint(presetsObj.genSource, "presets.genSource");
   // Optional — absent in project files saved before preset teleports existed.
   const teleports = presetsObj.teleports != null
     ? assertArray(presetsObj.teleports, "presets.teleports").map((v, i) => validatePresetTeleportEntry(v, `presets.teleports[${i}]`))
     : [];
   assertUniqueIds(teleports, (t) => t.id, "teleport id", "presets.teleports");
+  // Optional — absent in project files saved before preset split points existed (GitHub issue #231).
+  const presetSplitPoints = presetsObj.splitPoints != null ? validateSplitPoints(presetsObj.splitPoints, "presets.splitPoints") : {};
 
   // postEdit
   const postEdit = migrated.postEdit === null || migrated.postEdit === undefined
@@ -562,6 +573,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
       finish: presetFinish,
       genSource,
       teleports,
+      splitPoints: presetSplitPoints,
     },
     postEdit,
     dirtyFlags,

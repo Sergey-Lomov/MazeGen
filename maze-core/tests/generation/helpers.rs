@@ -3,12 +3,21 @@ use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{EdgeBasedParams, ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, PresetState};
 
 pub fn build(width: usize, height: usize) -> (Graph, Field<SquareTessellation>, NodeId) {
+    let (graph, field, start, _ids) = build_with_ids(width, height);
+    (graph, field, start)
+}
+
+/// Same as `build`, but also returns the `IdGenerator` used to construct `field` — needed by
+/// callers that go on to declare `split_points` (GitHub issue #231) via `build_preset_state`,
+/// which itself calls `Field::add_node_at` and needs an `IdGenerator` that won't collide with the
+/// field's already-assigned ids.
+pub fn build_with_ids(width: usize, height: usize) -> (Graph, Field<SquareTessellation>, NodeId, IdGenerator) {
     let mut ids = IdGenerator::new();
     let field = Field::new(square_rect(width, height), &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-    (graph, field, start)
+    (graph, field, start, ids)
 }
 
 pub fn empty_preset() -> PresetState { PresetState::empty() }

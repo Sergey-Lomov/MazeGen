@@ -4,6 +4,7 @@ import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
+import type { PresetEndpoint } from "../pixi/presetEndpoint";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
@@ -267,9 +268,9 @@ export interface PresetConnectionsState {
   presetConnections: Map<string, PresetConnectionEntry>;
   presetConnectionsTool: PresetConnectionTool;
   defaultEdgeState: "undefined" | "wall" | "passage";
-  presetStart: [number, number] | null;
-  presetFinish: [number, number] | null;
-  presetGenSource: [number, number] | null;
+  presetStart: PresetEndpoint | null;
+  presetFinish: PresetEndpoint | null;
+  presetGenSource: PresetEndpoint | null;
   highlightInvalidPresets: boolean;
   highlightIsolatedNodes: boolean;
   showPresetOrigin: boolean;
@@ -284,6 +285,14 @@ export interface PresetConnectionsState {
   /** First-click endpoint of an in-progress teleport placement (teleport_one_way/teleport_two_way tools). */
   presetTeleportPendingFrom: [number, number] | null;
   _nextPresetTeleportId: number;
+  /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y"
+   * (GitHub issue #231) — mirrors post-edit's `postEditDraftSplitPoints`. */
+  presetSplitPoints: Record<string, number[]>;
+  /** Which of a split point's nodes preset edge-tool clicks currently target, keyed by "x,y". No
+   * entry means the point's original node. Mirrors post-edit's `postEditActiveSplitNode`. */
+  presetActiveSplitNode: Record<string, PresetEndpoint>;
+  /** The point currently selected for the "Manage split nodes" dialog on the preset stage. */
+  presetFocusedPoint: [number, number] | null;
 }
 
 export interface PresetConnectionsActions {
@@ -308,6 +317,11 @@ export interface PresetConnectionsActions {
   cyclePresetTeleportDirection: (id: number) => void;
   removePresetTeleport: (id: number) => void;
   movePresetTeleportEndpoint: (id: number, end: "from" | "to", cell: [number, number]) => void;
+  addPresetSplitNode: (point: [number, number]) => void;
+  removePresetSplitNode: (point: [number, number], slotId: number) => void;
+  cyclePresetActiveSplitNode: (point: [number, number]) => void;
+  setPresetActiveSplitNode: (point: [number, number], endpoint: PresetEndpoint) => void;
+  setPresetFocusedPoint: (point: [number, number] | null) => void;
 }
 
 /** Handle onto the last debug generation run's raw event tape (GitHub issue #124/#125) plus the
