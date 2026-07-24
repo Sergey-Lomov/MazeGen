@@ -210,4 +210,7 @@ export const dialogSize = {
   approve: { minWidth: 260, maxWidth: 360 },
   info: { minWidth: 280, maxWidth: 520, width: 520 },
   complex: { minWidth: 460, maxWidth: 720, width: 720, height: "60vh" },
+  // Split-pane dialogs (tile diagram + table) — wider and taller than `complex` to fit a large
+  // tile diagram beside a multi-row table (GitHub issue #234's split-node dialog redesign).
+  wide: { minWidth: 640, maxWidth: 960, width: 900, height: "70vh" },
 } as const;

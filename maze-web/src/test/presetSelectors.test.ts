@@ -116,11 +116,37 @@ describe("buildPresetWallGroups", () => {
 describe("buildPresetSplitPassages", () => {
   it("a point with no declared split produces no passages", () => {
     const connections = new Map([["-1,0-0,0", connEntry([-1, 0], [0, 0], "passage")]]);
-    expect(buildPresetSplitPassages({}, connections, cfg)).toEqual([]);
+    expect(buildPresetSplitPassages({}, connections, cfg).passages).toEqual([]);
   });
 
   it("a point with a declared but empty slot list produces no passages", () => {
-    expect(buildPresetSplitPassages({ "-1,0": [] }, new Map(), cfg)).toEqual([]);
+    expect(buildPresetSplitPassages({ "-1,0": [] }, new Map(), cfg).passages).toEqual([]);
+  });
+
+  it("a declared split node's undecided face still draws a default-optional passage once its in-field geometric neighbor is passed via `cells`, with no connection entry at all", () => {
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0] }, new Map(), cfg, {}, cells);
+    expect(passages).toHaveLength(2); // original node + slot 0, both facing the undecided east face
+    for (const p of passages) {
+      expect(p.wallSegments).toHaveLength(1);
+      expect(p.wallSegments[0].isUndefined).toBe(true);
+      expect(p.connectors[0].isUndefined).toBe(true);
+    }
+  });
+
+  it("when both points on a shared face are split, each node's connection is checked against its real partner, not the neighbor's first node", () => {
+    // Point (-1,0) split into original + slot 0; point (0,0) split into original + slot 0.
+    // Only slot0-to-slot0 has an explicit passage — the two originals have no connection between
+    // them and must stay optional/undefined, not inherit slot 0's decided state (regression: the
+    // old lookup resolved "the" neighbor as the neighbor point's first node regardless of which
+    // node the connection actually named).
+    const connections = new Map([
+      ["-1,0:0-0,0:0", { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0], 0), state: "passage" as const, source: "user" as const }],
+    ]);
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0], "0,0": [0] }, connections, cfg, {}, cells);
+    const originalA = passages.find(p => p.wallSegments[0]?.isUndefined === true);
+    const slot0A = passages.find(p => p.connectors.some(c => c.oneWayOut === undefined && !c.isUndefined));
+    expect(originalA).toBeDefined();
+    expect(slot0A).toBeDefined();
   });
 
   it("the original node and one slot each get their own passage when both connect east", () => {
@@ -129,32 +155,50 @@ describe("buildPresetSplitPassages", () => {
       ["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "passage" as const, source: "user" as const }],
       ["-1,0:0-0,0", { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]), state: "passage" as const, source: "user" as const }],
     ]);
-    const passages = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
     expect(passages).toHaveLength(2);
     expect(passages[0].color).not.toBe(passages[1].color);
     for (const p of passages) expect(p.wallSegments).toHaveLength(1);
   });
 
   it("a slot with no referencing preset produces no passage entry", () => {
-    const passages = buildPresetSplitPassages({ "-1,0": [0] }, new Map(), cfg);
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0] }, new Map(), cfg);
     expect(passages).toEqual([]);
   });
 
-  it("wall/undefined preset states on a split endpoint don't count as a connection", () => {
+  it("an explicit wall on a split endpoint's face draws no segment for that node, unlike its sibling's default-optional face", () => {
+    // Slot 0 explicitly walls off the east face -- gets no passage entry of its own. The point's
+    // other (original, undeclared) node still gets a default-optional ("undefined") passage on
+    // that same face, now that the neighbor (0,0) is known (referenced by the wall entry).
     const connections = new Map([
       ["-1,0:0-0,0", { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]), state: "wall" as const, source: "user" as const }],
     ]);
-    const passages = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
-    expect(passages).toEqual([]);
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
+    expect(passages).toHaveLength(1);
+    expect(passages[0].wallSegments[0].isUndefined).toBe(true);
   });
 
-  it("one-way preset connections produce a directed wall segment", () => {
+  it("an explicit 'undefined' state connection entry (not just an absent one) still reads as default-optional, never a decided kind", () => {
+    // `state: "undefined"` can be a real map entry (e.g. after `setPresetConnectionUndefined` /
+    // the reset tool touching one of a split point's faces), not just an absence — must produce
+    // the same default-optional reading as no entry at all, never leak into a decided kind.
+    const connections = new Map([
+      ["-1,0:0-0,0", { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]), state: "undefined" as const, source: "user" as const }],
+    ]);
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg, {}, cells);
+    const slot0 = passages.find(p => p.wallSegments.length === 1)!;
+    expect(slot0).toBeDefined();
+    expect(slot0.wallSegments[0].isUndefined).toBe(true);
+    expect(slot0.connectors[0].oneWayOut).toBeUndefined();
+  });
+
+  it("one-way preset connections produce a directed connector", () => {
     const connections = new Map([
       ["-1,0:0-0,0", { from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]), state: "one_way_forward" as const, source: "user" as const }],
     ]);
-    const passages = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
-    expect(passages).toHaveLength(1);
-    expect(passages[0].wallSegments[0].oneWayDir).toBeDefined();
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
+    const slot0 = passages.find(p => p.connectors[0].oneWayOut !== undefined)!;
+    expect(slot0.connectors[0].oneWayOut).toBeDefined();
   });
 
   it("one_way_backward connects the split slot from the plain neighbor's side, not the slot's own from/to", () => {
@@ -164,18 +208,19 @@ describe("buildPresetSplitPassages", () => {
     const connections = new Map([
       ["-1,0:0-0,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([-1, 0], 0), state: "one_way_backward" as const, source: "user" as const }],
     ]);
-    const passages = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
-    expect(passages).toHaveLength(1);
-    expect(passages[0].wallSegments[0].oneWayDir).toBeDefined();
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0] }, connections, cfg);
+    const slot0 = passages.find(p => p.connectors[0].oneWayOut !== undefined)!;
+    expect(slot0.connectors[0].oneWayOut).toBeDefined();
   });
 
-  it("a point split into two slots (no original-node reference) still produces one passage per referenced slot", () => {
-    // Point (-1,0) split into slot 0 and slot 1, only slot 1 is wired -- slot 0 gets no passage,
-    // the original node (never referenced by any connection) gets no passage either.
+  it("a point split into two slots (no original-node reference) still gives every one of the point's nodes a passage once the neighbor is known", () => {
+    // Point (-1,0) split into original + slot 0 + slot 1, only slot 1 is wired as a passage -- once
+    // that reference makes neighbor (0,0) known to the point, slot 0 and the original node both
+    // get a default-optional ("undefined") passage on the same face too, instead of none at all.
     const connections = new Map([
       ["-1,0:1-0,0", { from: presetEndpoint([-1, 0], 1), to: presetEndpoint([0, 0]), state: "passage" as const, source: "user" as const }],
     ]);
-    const passages = buildPresetSplitPassages({ "-1,0": [0, 1] }, connections, cfg);
-    expect(passages).toHaveLength(1);
+    const { passages } = buildPresetSplitPassages({ "-1,0": [0, 1] }, connections, cfg);
+    expect(passages).toHaveLength(3);
   });
 });

@@ -132,7 +132,7 @@ export function recomputeAutoLock(state: MazeState): Set<string> {
   if (!state.autoLock) return new Set<string>();
   const activeTessellation = activeTessellationOf(state);
   const customPts = state.isEditingField ? state.fieldPoints : undefined;
-  return computeAutoLockedNodes(state.presetConnections, activeTessellation, customPts);
+  return computeAutoLockedNodes(state.presetConnections, activeTessellation, customPts, state.presetSplitPoints);
 }
 
 /** Recompute autoLockedNodes after a change to presetConnections (or other auto-lock inputs). */

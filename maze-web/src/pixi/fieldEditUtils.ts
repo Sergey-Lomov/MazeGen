@@ -2,10 +2,10 @@ import { TILE_SIZE } from "./constants";
 import { TRI_TILE_SIZE } from "./triGeometry";
 import { makeProjection, encodePoint, decodePoint } from "./tessellationProjection";
 import { configAllCells } from "./tessellationCells";
-import { getCellNeighborOffsets, getSharedEdgeSegment } from "./tessellationGeometry";
+import { getCellNeighborOffsets, getSharedEdgeSegment, getNeighborData } from "./tessellationGeometry";
 import type { PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
+import { presetEndpoint, presetEndpointsEqual, type PresetEndpoint } from "./presetEndpoint";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
@@ -301,11 +301,17 @@ export function pickEdgeAtPosition(
 /**
  * Returns set of "x,y" keys for cells where all interior edges are explicitly preset.
  * An interior edge is one shared with another cell in the field.
+ *
+ * A declared split point (`presetSplitPoints`) auto-locks only if every one of its nodes
+ * (original + every declared slot) has every interior face decided — one node with an
+ * `undefined`/missing face on any side means the point as a whole still has an undecided
+ * connection, even if the original node's own faces all happen to be decided.
  */
 export function computeAutoLockedNodes(
   presetConnections: Map<string, PresetConnectionEntry>,
   cfg: TessellationConfig,
   customPoints?: Set<number>,
+  presetSplitPoints: Record<string, number[]> = {},
 ): Set<string> {
   const cells = resolveCells(cfg, customPoints);
   const cellSet = new Set<number>();
@@ -314,17 +320,25 @@ export function computeAutoLockedNodes(
   const result = new Set<string>();
   for (const [x, y] of cells) {
     const offsets = getCellNeighborOffsets(cfg, x, y);
+    const pointKey = `${x},${y}`;
+    const slots = presetSplitPoints[pointKey] ?? [];
+    const endpoints = [presetEndpoint([x, y]), ...slots.map((slotId) => presetEndpoint([x, y], slotId))];
+
     let allDefined = true;
     let hasInteriorEdge = false;
     for (const [dx, dy] of offsets) {
       const nx = x + dx, ny = y + dy;
       if (!cellSet.has(encodePoint(nx, ny))) continue;
       hasInteriorEdge = true;
-      const key = edgeKey([x, y], [nx, ny]);
-      const entry = presetConnections.get(key);
-      if (!entry || entry.state === "undefined") { allDefined = false; break; }
+      const neighbor = presetEndpoint([nx, ny]);
+      for (const ep of endpoints) {
+        const key = presetEdgeKey(ep, neighbor);
+        const entry = presetConnections.get(key);
+        if (!entry || entry.state === "undefined") { allDefined = false; break; }
+      }
+      if (!allDefined) break;
     }
-    if (hasInteriorEdge && allDefined) result.add(`${x},${y}`);
+    if (hasInteriorEdge && allDefined) result.add(pointKey);
   }
   return result;
 }
@@ -348,6 +362,70 @@ export function resolvePresetActiveEndpoint(
 export function presetEdgeKey(a: PresetEndpoint, b: PresetEndpoint): string {
   const [fa, fb] = a.point[0] < b.point[0] || (a.point[0] === b.point[0] && a.point[1] < b.point[1]) ? [a, b] : [b, a];
   return `${fa.point[0]},${fa.point[1]}${fa.slotId !== undefined ? `:${fa.slotId}` : ""}-${fb.point[0]},${fb.point[1]}${fb.slotId !== undefined ? `:${fb.slotId}` : ""}`;
+}
+
+/** Rotates every geometric-face connection of a split point's nodes by one offset index
+ * (clockwise/counter-clockwise, per `getNeighborData`'s fixed offset order) — a face's whole
+ * state (wall/passage/one_way + direction) moves from its current neighbor to the next one around
+ * the point, for every node of the point (original + every declared slot) at once. Teleports are
+ * untouched — a teleport isn't tied to a geometric face/offset, only ordinary connections are.
+ *
+ * Refuses (returns the input map unchanged) if any face that currently carries a connection would
+ * land on a neighbor outside the field — there'd be nowhere left to draw it. */
+export function rotatePresetSplitPoint(
+  presetConnections: Map<string, PresetConnectionEntry>,
+  point: [number, number],
+  slotIds: number[],
+  direction: 1 | -1,
+  cfg: TessellationConfig,
+  cellSet: Set<string>,
+): Map<string, PresetConnectionEntry> {
+  const { offsets } = getNeighborData(cfg, point[0], point[1]);
+  const n = offsets.length;
+  if (n === 0) return presetConnections;
+
+  const endpoints: PresetEndpoint[] = [presetEndpoint(point), ...slotIds.map((slotId) => presetEndpoint(point, slotId))];
+
+  type Move = { key: string; ep: PresetEndpoint; neighbor: [number, number]; entry: PresetConnectionEntry };
+  const moves: Move[] = [];
+
+  for (const ep of endpoints) {
+    for (let i = 0; i < n; i++) {
+      const neighbor: [number, number] = [point[0] + offsets[i][0], point[1] + offsets[i][1]];
+      const key = presetEdgeKey(ep, presetEndpoint(neighbor));
+      const entry = presetConnections.get(key);
+      if (!entry) continue;
+
+      const j = (i + direction + n) % n;
+      const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
+      if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return presetConnections; // boundary — refuse entirely
+
+      moves.push({ key, ep, neighbor: newNeighbor, entry });
+    }
+  }
+
+  const next = new Map(presetConnections);
+  for (const { key } of moves) next.delete(key);
+  for (const { ep, neighbor, entry } of moves) {
+    const neighborEp = presetEndpoint(neighbor);
+    const newKey = presetEdgeKey(ep, neighborEp);
+    const epIsLower = ep.point[0] < neighbor[0] || (ep.point[0] === neighbor[0] && ep.point[1] < neighbor[1]);
+    const [newFrom, newTo] = epIsLower ? [ep, neighborEp] : [neighborEp, ep];
+
+    // Direction is stored relative to canonical from/to, not to `ep` — re-derive it relative to
+    // `ep` first (which side of the *old* entry it was), then rebuild against the *new* canonical
+    // order, so a one-way passage keeps pointing the same way relative to `ep` even if canonical
+    // order flips between the old and new neighbor.
+    let state = entry.state;
+    if (entry.state === "one_way_forward" || entry.state === "one_way_backward") {
+      const epWasFrom = presetEndpointsEqual(entry.from, ep);
+      const outOfEp = epWasFrom === (entry.state === "one_way_forward");
+      const epIsNewFrom = presetEndpointsEqual(newFrom, ep);
+      state = (epIsNewFrom === outOfEp) ? "one_way_forward" : "one_way_backward";
+    }
+    next.set(newKey, { from: newFrom, to: newTo, state, source: entry.source });
+  }
+  return next;
 }
 
 /**

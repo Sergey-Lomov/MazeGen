@@ -100,6 +100,17 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
         defaultEdgeState: "undefined" as const,
         fieldEditMode: "default" as const,
         debugArena: null, debugStep: 0, debugStale: false,
+        // A split point (GitHub issue #221/#231) is a geometric-point-shaped concept — its slotIds
+        // are meaningless once the tessellation kind changes and every point coordinate means
+        // something else entirely. Left uncleared, a stale entry kept the split-node dot on the
+        // canvas with none of its connections (all cleared above, since they live in
+        // presetConnections/postEditDraftEdges).
+        presetSplitPoints: {},
+        presetActiveSplitNode: {},
+        presetFocusedPoint: null,
+        postEditDraftSplitPoints: {},
+        postEditActiveSplitNode: {},
+        postEditFocusedPoint: null,
       } : { debugStale: debugStaleOf(state) }),
       fieldDirty: false,
       presetsDirty: false,

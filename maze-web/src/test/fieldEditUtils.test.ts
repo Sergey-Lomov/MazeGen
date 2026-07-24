@@ -21,6 +21,7 @@ import {
   presetTeleportEntryToState,
   pickEdgeAtPosition,
   presetEdgeKey,
+  rotatePresetSplitPoint,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
@@ -234,6 +235,31 @@ describe("computeAutoLockedNodes", () => {
     const result = computeAutoLockedNodes(connections, squareCfg);
     expect(result.has("0,0")).toBe(true);
   });
+
+  // A declared split point (GitHub issue #234 follow-up) must check every one of its nodes
+  // (original + every slot), not just the original's own edges -- a point whose original node
+  // has every face decided but whose slot still has an undecided face must not auto-lock.
+  it("a split point's slot node with an undecided face is not locked even if the original node's faces are all decided", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([0, -1])), entry(-1, -1, 0, -1)],
+      [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([-1, 0])), entry(-1, -1, -1, 0)],
+      [presetEdgeKey(presetEndpoint([-1, -1], 0), presetEndpoint([0, -1])), entry(-1, -1, 0, -1)],
+      // slot 0's other face, toward (-1,0), has no entry at all -- still undecided.
+    ]);
+    const result = computeAutoLockedNodes(connections, squareCfg, undefined, { "-1,-1": [0] });
+    expect(result.has("-1,-1")).toBe(false);
+  });
+
+  it("a split point auto-locks once every one of its nodes has every interior face decided", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([0, -1])), entry(-1, -1, 0, -1)],
+      [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([-1, 0])), entry(-1, -1, -1, 0)],
+      [presetEdgeKey(presetEndpoint([-1, -1], 0), presetEndpoint([0, -1])), entry(-1, -1, 0, -1)],
+      [presetEdgeKey(presetEndpoint([-1, -1], 0), presetEndpoint([-1, 0])), entry(-1, -1, -1, 0)],
+    ]);
+    const result = computeAutoLockedNodes(connections, squareCfg, undefined, { "-1,-1": [0] });
+    expect(result.has("-1,-1")).toBe(true);
+  });
 });
 
 // --- teleport helpers ---
@@ -362,5 +388,86 @@ describe("presetTeleportEntryToState", () => {
     expect(presetTeleportEntryToState("forward")).toBe("teleport_forward");
     expect(presetTeleportEntryToState("backward")).toBe("teleport_backward");
     expect(presetTeleportEntryToState("two_way")).toBe("teleport_two_way");
+  });
+});
+
+// --- rotatePresetSplitPoint ---
+
+// 3x3 square grid (squareCfg above), center (0,0) has all 4 neighbors in-field.
+// SQUARE_NEIGHBOR_OFFSETS order: [0]=E(1,0), [1]=N(0,1), [2]=W(-1,0), [3]=S(0,-1) — direction 1
+// rotates E->N->W->S->E, direction -1 the reverse.
+const centerCellSet = new Set(["0,0", "1,0", "-1,0", "0,1", "0,-1", "1,1", "-1,1", "1,-1", "-1,-1"]);
+
+describe("rotatePresetSplitPoint", () => {
+  it("no split slots — plain point's passage moves from E to N (direction 1)", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet);
+    expect(result.has(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])))).toBe(false);
+    const moved = result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])));
+    expect(moved).toEqual({ from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "passage", source: "user" });
+  });
+
+  it("direction -1 moves E to S", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], -1, squareCfg, centerCellSet);
+    expect(result.has(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, -1])))).toBe(true);
+  });
+
+  it("one-way direction relative to the split point is preserved across the rotation", () => {
+    // (0,0) -> (1,0) one-way forward: canonical from=(0,0) (lower x), so state is directly
+    // "one_way_forward" meaning "out of (0,0)".
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "one_way_forward" as const, source: "user" as const }],
+    ]);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], 1, squareCfg, centerCellSet);
+    // New neighbor (0,1): canonical order is still (0,0) first (lower y) — same "out of (0,0)"
+    // meaning must still be one_way_forward with (0,0) as `from`.
+    const moved = result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])));
+    expect(moved).toEqual({ from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "one_way_forward", source: "user" });
+  });
+
+  it("one-way direction flips forward<->backward when canonical order flips across the rotation", () => {
+    // (-1,0) -> (0,0): canonical from=(-1,0), meaning "into (0,0)" is one_way_forward here
+    // (relative to (0,0), the passage direction is "in").
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([-1, 0]), presetEndpoint([0, 0])), { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "one_way_forward" as const, source: "user" as const }],
+    ]);
+    // Rotating (0,0) by -1 moves this W-face (index 2) connection to N (index 1): new neighbor
+    // (0,1), whose canonical order puts (0,0) first (lower y). Same "into (0,0)" meaning must now
+    // read as one_way_backward, since (0,0) is now the canonical `from`.
+    const result = rotatePresetSplitPoint(connections, [0, 0], [], -1, squareCfg, centerCellSet);
+    const moved = result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 1])));
+    expect(moved).toEqual({ from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "one_way_backward", source: "user" });
+  });
+
+  it("split node's own connection rotates independently of the original node's", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "passage" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([-1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([-1, 0]), state: "wall" as const, source: "user" as const }],
+    ]);
+    const result = rotatePresetSplitPoint(connections, [0, 0], [0], 1, squareCfg, centerCellSet);
+    expect(result.get(presetEdgeKey(presetEndpoint([0, 0], 0), presetEndpoint([0, 1])))?.state).toBe("passage");
+    expect(result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, 0], 0)))).toBeUndefined();
+    expect(result.get(presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([0, -1])))?.state).toBe("wall");
+  });
+
+  it("rotation onto a field boundary is refused entirely — connections unchanged", () => {
+    // Corner (-1,-1): only E(0,-1) and N(-1,0) are in-field; W(-2,-1) and S(-1,-2) are boundary.
+    // Its N-face connection rotating by +1 (N -> W) would land on the boundary.
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([-1, -1]), presetEndpoint([-1, 0])), { from: presetEndpoint([-1, -1]), to: presetEndpoint([-1, 0]), state: "passage" as const, source: "user" as const }],
+    ]);
+    const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet);
+    expect(result).toBe(connections); // same reference — untouched
+  });
+
+  it("no connections at all on this point — no-op, no boundary refusal", () => {
+    const connections = new Map<string, PresetConnectionEntry>();
+    const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet);
+    expect(result).toEqual(connections);
   });
 });

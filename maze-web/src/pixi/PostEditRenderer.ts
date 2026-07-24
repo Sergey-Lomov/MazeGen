@@ -156,7 +156,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditDraftTeleports !== prev.postEditDraftTeleports ||
       state.nodes !== prev.nodes ||
       state.postEditDraftMeta !== prev.postEditDraftMeta ||
-      state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints
+      state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
+      state.postEditActiveSplitNode !== prev.postEditActiveSplitNode
     ) {
       this.redrawAll(state);
     }
@@ -216,8 +217,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);
 
-    const splitPassages = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds);
-    this.splitJunctions.render({ passages: splitPassages });
+    const { passages: splitPassages, wallFaces } = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds, state.postEditActiveSplitNode, postEditDraftSplitPoints);
+    this.splitJunctions.render({ passages: splitPassages, wallFaces });
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);
@@ -237,7 +238,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.floor.render({ cells: [], color: canvas.floor.default, alpha: 1 }, cfg);
     this.closedCells.render({ cells: [], color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: [] }, cfg);
-    this.splitJunctions.render({ passages: [] });
+    this.splitJunctions.render({ passages: [], wallFaces: [] });
     this.teleports.render({ edges: [] });
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });

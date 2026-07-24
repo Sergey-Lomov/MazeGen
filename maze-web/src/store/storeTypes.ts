@@ -298,12 +298,28 @@ export interface PresetConnectionsState {
 export interface PresetConnectionsActions {
   setPresetConnectionsTool: (tool: PresetConnectionTool) => void;
   applyPresetConnectionsTool: (key: string, from: [number, number], to: [number, number]) => void;
+  /** Same as `applyPresetConnectionsTool`, but takes `tool` explicitly instead of reading
+   * `state.presetConnectionsTool` — used by the "Manage split nodes" dialog's own kind switcher
+   * (GitHub issue #234), which must not disturb the canvas's globally active edge tool. */
+  applyPresetConnectionsToolAt: (tool: PresetConnectionTool, key: string, from: [number, number], to: [number, number]) => void;
+  /** Sets an edge to the client-only `"undefined"` state (explicit "preset allows but doesn't
+   * force" — GitHub issue #234's "preset optional connection"). No `PresetConnectionTool` produces
+   * this state (see `Specs/preset-connections.md`'s "Entry source" — `reset` never pins `undefined`
+   * when a default is active); the "Manage split nodes" dialog is the only UI path to set it
+   * explicitly, so it bypasses `applyTool` and writes the entry directly. */
+  setPresetConnectionUndefined: (key: string, from: PresetEndpoint, to: PresetEndpoint) => void;
   applyPresetConnectionsReset: (key: string) => void;
   clearInvalidPresetConnections: () => void;
   resetPresetConnections: () => void;
   setPresetStart: (cell: [number, number] | null) => void;
   setPresetFinish: (cell: [number, number] | null) => void;
   setPresetGenSource: (cell: [number, number] | null) => void;
+  /** Same as `setPresetStart`/`setPresetFinish`, but take a `PresetEndpoint` directly instead of
+   * resolving via `state.presetActiveSplitNode` — used by the "Manage split nodes" dialog (GitHub
+   * issue #234) to assign start/finish to a *specific* node of a split point, independent of
+   * which node happens to be globally active for canvas clicks. */
+  setPresetStartEndpoint: (endpoint: PresetEndpoint | null) => void;
+  setPresetFinishEndpoint: (endpoint: PresetEndpoint | null) => void;
   setDefaultEdgeState: (s: "undefined" | "wall" | "passage") => void;
   setHighlightInvalidPresets: (highlight: boolean) => void;
   setHighlightIsolatedNodes: (highlight: boolean) => void;
@@ -322,6 +338,10 @@ export interface PresetConnectionsActions {
   cyclePresetActiveSplitNode: (point: [number, number]) => void;
   setPresetActiveSplitNode: (point: [number, number], endpoint: PresetEndpoint) => void;
   setPresetFocusedPoint: (point: [number, number] | null) => void;
+  /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
+   * by one offset index — see `rotatePresetSplitPoint` (fieldEditUtils.ts). No-op if it would push
+   * any connection outside the field. */
+  rotatePresetSplitPoint: (point: [number, number], direction: 1 | -1) => void;
 }
 
 /** Handle onto the last debug generation run's raw event tape (GitHub issue #124/#125) plus the
@@ -722,6 +742,10 @@ export interface PostEditActions {
   setPostEditAutoConfirm: (v: boolean) => void;
   setPostEditTool: (tool: PostEditTool) => void;
   applyPostEditTool: (edgeKey: string, from: PostEditEndpoint, to: PostEditEndpoint) => void;
+  /** Same as `applyPostEditTool`, but takes `tool` explicitly instead of reading
+   * `state.postEditTool` — used by the "Manage split nodes" dialog's own kind switcher (GitHub
+   * issue #234), which must not disturb the canvas's globally active edge tool. */
+  applyPostEditToolAt: (tool: PostEditTool, edgeKey: string, from: PostEditEndpoint, to: PostEditEndpoint) => void;
   setPostEditEndpoint: (kind: "start" | "finish", endpoint: PostEditEndpoint) => void;
   clearPostEditEndpoint: (kind: "start" | "finish") => void;
   setPostEditTeleportPendingFrom: (nodeId: number | null) => void;
@@ -736,6 +760,10 @@ export interface PostEditActions {
   cycleActiveSplitNode: (point: [number, number]) => void;
   setActiveSplitNode: (point: [number, number], endpoint: PostEditEndpoint) => void;
   setPostEditFocusedPoint: (point: [number, number] | null) => void;
+  /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
+   * by one offset index — see `rotatePostEditSplitPoint` (postEditUtils.ts). No-op if it would
+   * push any connection outside the field. */
+  rotateSplitPoint: (point: [number, number], direction: 1 | -1) => void;
 }
 
 export interface RootActions {

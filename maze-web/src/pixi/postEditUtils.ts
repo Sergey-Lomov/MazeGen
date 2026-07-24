@@ -2,8 +2,9 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditTool, PostEditTeleportEntry, PostEditTeleportEndpointHit } from "../store/mazeStore";
 import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
+import { getNeighborData } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { type PostEditEndpoint, nodeEndpoint, edgeKey, resolveEndpoint } from "./postEditEndpoint";
+import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual, resolveEndpoint } from "./postEditEndpoint";
 
 /** Built from a freshly confirmed WASM snapshot — every id here is an already-real node, never a
  * not-yet-confirmed split node, so entries are always plain `node` endpoints. */
@@ -196,5 +197,92 @@ export function applyPostEditEdgeTool(
     }
   }
 
+  return next;
+}
+
+/** Rotates every geometric-face connection of a split point's nodes by one offset index
+ * (clockwise/counter-clockwise, per `getNeighborData`'s fixed offset order) — the post-edit
+ * counterpart of `rotatePresetSplitPoint` (fieldEditUtils.ts). Each `postEditDraftEdges` Record
+ * entry is already a one-directional edge in its own right (a bidirectional passage is two
+ * separate entries, `A->B` and `B->A` — see `applyPostEditEdgeTool`'s "passage" branch), so unlike
+ * the preset side there's no canonical-order direction field to re-derive — an entry just gets
+ * re-keyed to point at the new neighbor, `kind` unchanged.
+ *
+ * The entry's *other* side (not one of this point's own endpoints) moves to whichever node is
+ * currently active at the new neighbor point (`resolveActiveAt`, same "active node, or that
+ * point's original node" rule the dialog's own face clicks use) — there's no other way to say
+ * "the same relative node" for a point that might itself be split.
+ *
+ * Refuses (returns the input unchanged) if any face that currently carries a connection would
+ * land on a neighbor outside the field. */
+export function rotatePostEditSplitPoint(
+  edges: Record<string, PostEditEdge>,
+  point: [number, number],
+  slotIds: number[],
+  direction: 1 | -1,
+  cfg: TessellationConfig,
+  cellSet: Set<string>,
+  nodes: NodeDto[],
+  activeSplitNode: Record<string, PostEditEndpoint>,
+): Record<string, PostEditEdge> {
+  const { offsets } = getNeighborData(cfg, point[0], point[1]);
+  const n = offsets.length;
+  if (n === 0) return edges;
+
+  const resolveActiveAt = (p: [number, number]): PostEditEndpoint | null => {
+    const ids: number[] = [];
+    for (const node of nodes) if (node.x === p[0] && node.y === p[1]) ids.push(node.id);
+    if (ids.length === 0) return null;
+    const activeEntry = activeSplitNode[`${p[0]},${p[1]}`];
+    return activeEntry ?? nodeEndpoint(ids[0]);
+  };
+
+  const coordsOf = (ep: PostEditEndpoint): [number, number] | undefined => {
+    if (ep.kind === "split") return ep.point;
+    const node = nodes.find((n) => n.id === ep.id);
+    return node ? [node.x, node.y] : undefined;
+  };
+
+  const endpoints: PostEditEndpoint[] = [
+    ...(() => {
+      const original = nodes.find((n) => n.x === point[0] && n.y === point[1]);
+      return original ? [nodeEndpoint(original.id)] : [];
+    })(),
+    ...slotIds.map((slotId) => splitEndpoint(point, slotId)),
+  ];
+
+  type Move = { oldKey: string; ep: PostEditEndpoint; otherIsFrom: boolean; newNeighbor: [number, number]; kind: PostEditEdge["kind"] };
+  const moves: Move[] = [];
+
+  for (const ep of endpoints) {
+    for (const [key, edge] of Object.entries(edges)) {
+      const epIsFrom = endpointsEqual(edge.from, ep);
+      const epIsTo = !epIsFrom && endpointsEqual(edge.to, ep);
+      if (!epIsFrom && !epIsTo) continue;
+
+      const other = epIsFrom ? edge.to : edge.from;
+      const otherCoords = coordsOf(other);
+      if (!otherCoords) continue;
+
+      const i = offsets.findIndex(([dx, dy]) => point[0] + dx === otherCoords[0] && point[1] + dy === otherCoords[1]);
+      if (i === -1) continue; // not a geometric neighbor of `point` (shouldn't happen for a face edge)
+
+      const j = (i + direction + n) % n;
+      const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
+      if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return edges; // boundary — refuse entirely
+
+      moves.push({ oldKey: key, ep, otherIsFrom: epIsTo, newNeighbor, kind: edge.kind });
+    }
+  }
+
+  const next = { ...edges };
+  for (const { oldKey } of moves) delete next[oldKey];
+  for (const { ep, otherIsFrom, newNeighbor, kind } of moves) {
+    const newOther = resolveActiveAt(newNeighbor);
+    if (!newOther) continue; // shouldn't happen — every in-field cell has at least its original node
+    const from = otherIsFrom ? newOther : ep;
+    const to = otherIsFrom ? ep : newOther;
+    next[edgeKey(from, to)] = { from, to, kind };
+  }
   return next;
 }

@@ -59,6 +59,7 @@ export class GenerationRenderer {
     wallEdges: WallEdge[];
     teleportEdges: TeleportEdge[];
     splitPassages: SplitPassage[];
+    splitWallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
   } | null = null;
 
   // Keyed on `debugArena.debugValueNames` array identity, which is stable for a whole debug
@@ -209,6 +210,7 @@ export class GenerationRenderer {
         if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
       }
 
+      const { passages: splitPassages, wallFaces: splitWallFaces } = buildSplitPassages(view.nodes, view.edges, cfg, specialNodeIds);
       this.geometryCache = {
         nodes: view.nodes,
         edges: view.edges,
@@ -218,12 +220,13 @@ export class GenerationRenderer {
         closedCells: buildClosedCells(view.nodes, view.edges),
         wallEdges: buildMazeWalls(view.nodes, view.edges, cfg),
         teleportEdges: buildTeleportEdges(nodeById, view.edges, cfg),
-        splitPassages: buildSplitPassages(view.nodes, view.edges, cfg, specialNodeIds),
+        splitPassages,
+        splitWallFaces,
       };
     }
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: this.geometryCache.wallEdges }, cfg);
-    this.splitJunctions.render({ passages: this.geometryCache.splitPassages });
+    this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces });
     this.teleports.render({ edges: this.geometryCache.teleportEdges });
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);

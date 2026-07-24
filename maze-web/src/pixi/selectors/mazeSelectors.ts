@@ -3,12 +3,13 @@ import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, PassageKind, TeleportEdge, SplitPassage } from "../renderers/types";
 import { getCellCenter, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment } from "../tessellationGeometry";
+import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../splitFaceLayout";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS } from "../renderConstants";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
-import { resolveEndpoint } from "../postEditEndpoint";
+import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../postEditEndpoint";
 
 // Teleport edges are never part of `postEditEdges` — they're tracked separately (see
 // `postEditDraftTeleportEdges`/`postEditTeleportEdges` in storeTypes.ts) since a Teleport and a
@@ -147,14 +148,22 @@ export function buildMazeWalls(
     }
   }
 
-  // Boundary walls (no neighbor in cellSet)
+  // Boundary walls (no neighbor in cellSet) — drawn even for split points: a field-edge side is
+  // never one of a split node's connected faces (`buildSplitPassagesCore` only draws segments
+  // toward faces the point's nodes actually connect across), so skipping it here would leave the
+  // point's outer edge with no wall at all.
+  const boundaryDrawn = new Set<string>();
   for (const n of nodes) {
-    if (splitPointKeys.has(`${n.x},${n.y}`)) continue; // rendered by buildSplitPassages instead
     const { offsets } = getNeighborData(cfg, n.x, n.y);
     for (const [dx, dy] of offsets) {
       const nx = n.x + dx;
       const ny = n.y + dy;
       if (cellSet.has(`${nx},${ny}`)) continue;
+      // A split point has several nodes at the same (x,y) — dedupe so its boundary side isn't
+      // pushed once per node.
+      const boundaryKey = `${n.x},${n.y}->${nx},${ny}`;
+      if (boundaryDrawn.has(boundaryKey)) continue;
+      boundaryDrawn.add(boundaryKey);
       result.push({ a: [n.x, n.y], b: [nx, ny], kind: "none", style: "solid" });
     }
   }
@@ -224,26 +233,39 @@ export function getSplitAwareNodePosition(
  *  preset-stage caller (GitHub issue #231), compared with `===`. */
 export type SplitPassageNode<Id> = { id: Id; x: number; y: number };
 
-/** Generic core of `buildSplitPassages` (GitHub issue #223/#231) — everything about the geometric
- *  algorithm (dividing a shared face among a split point's connected nodes, straightening 2-face
- *  connectors, hub-point fan-out) lives here, parameterized over an opaque, comparable `Id` type so
- *  it has no notion of `NodeDto`/`EdgeDto`/resolved `NodeId`. `directedPairs` is the flat list of
- *  `(from, to)` id pairs this point's nodes may connect across (teleports must already be filtered
- *  out by the caller — a teleport must not read as an open passage here, same rule as
- *  `buildMazeWalls`). `buildSplitPassages` (NodeDto/EdgeDto) and `buildPresetSplitPassages`
- *  (PresetEndpoint, presetSelectors.ts) are both thin adapters over this. */
+/** Generic core of `buildSplitPassages` (GitHub issue #223/#231/#234) — parameterized over an
+ *  opaque, comparable `Id` type so it has no notion of `NodeDto`/`EdgeDto`/resolved `NodeId`.
+ *  `directedPairs` is the flat list of `(from, to)` id pairs this point's nodes may connect across
+ *  (teleports must already be filtered out by the caller — a teleport must not read as an open
+ *  passage here, same rule as `buildMazeWalls`). The geometric layout itself (dividing a face
+ *  among connected nodes, straightening a 2-passage connector, hub-point fan-out, active-node
+ *  z-order, one-way arrow on the connector not the face segment) is `splitFaceLayout.ts`'s shared
+ *  algorithm — the same one the "Manage split nodes" dialog's tile diagram (`TileFaceEditor`) uses,
+ *  so the two never drift apart. `activeId(pointKey)` resolves which of a point's nodes currently
+ *  draws on top (mirrors `postEditActiveSplitNode`/`presetActiveSplitNode` — absence means the
+ *  point's first/original node). `buildSplitPassages` (NodeDto/EdgeDto) and
+ *  `buildPresetSplitPassages` (PresetEndpoint, presetSelectors.ts) are both thin adapters over
+ *  this. */
+export type SplitPassagesResult = {
+  passages: SplitPassage[];
+  /** Faces where every one of a split point's nodes explicitly has `wall` — drawn as one plain
+   *  solid wall spanning the whole face, same as an ordinary (non-split) wall, since it isn't
+   *  attributable to any single node's color. Mirrors `TileFaceEditor`'s `allWall` case. */
+  wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+};
+
 export function buildSplitPassagesCore<Id>(
   nodes: SplitPassageNode<Id>[],
   directedPairs: { from: Id; to: Id }[],
   cfg: TessellationConfig,
   specialNodeIds: ReadonlySet<Id> = new Set(),
-): SplitPassage[] {
+  activeId: (pointKey: string) => Id | undefined = () => undefined,
+  defaultKind: SplitFaceKind = "wall",
+  wallPairs: ReadonlySet<string> = new Set(),
+): SplitPassagesResult {
   const nodeById = new Map<Id, SplitPassageNode<Id>>();
   for (const n of nodes) nodeById.set(n.id, n);
 
-  // Directed node-id pairs, so a node's own connectivity to a specific face can be read directly
-  // without re-scanning `edges` per node (this function runs once per redraw over every split
-  // point's every node).
   const directed = new Set<string>();
   for (const { from, to } of directedPairs) {
     if (!nodeById.has(from) || !nodeById.has(to)) continue;
@@ -257,109 +279,125 @@ export function buildSplitPassagesCore<Id>(
     if (list) list.push(n); else byPoint.set(key, [n]);
   }
 
-  const result: SplitPassage[] = [];
+  // The neighboring point across a face may itself be split — several of its nodes can each have
+  // their own independent connection across that same geometric face. Picking a single "the"
+  // neighbor node per face (as opposed to per node-pair) would check `node`'s directed/wall state
+  // against the wrong neighbor whenever `node`'s real partner isn't that neighbor point's first
+  // node, silently falling back to `defaultKind` even though a real decided connection exists
+  // (reported bug: a passage added to a specific slot rendered as still-optional because the
+  // lookup checked the neighbor's original node instead). `other` must be resolved per node pair.
+  const resolveOther = (node: SplitPassageNode<Id>, neighbors: SplitPassageNode<Id>[]): SplitPassageNode<Id> => {
+    for (const candidate of neighbors) {
+      if (
+        directed.has(`${String(node.id)}->${String(candidate.id)}`) ||
+        directed.has(`${String(candidate.id)}->${String(node.id)}`) ||
+        wallPairs.has(`${String(node.id)}<->${String(candidate.id)}`)
+      ) {
+        return candidate;
+      }
+    }
+    return neighbors[0];
+  };
 
-  for (const pointNodes of byPoint.values()) {
+  const result: SplitPassage[] = [];
+  const wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+
+  for (const [pointKey, pointNodes] of byPoint) {
     if (pointNodes.length <= 1) continue; // unsplit point — rendered by buildMazeWalls instead
 
     const [px, py] = [pointNodes[0].x, pointNodes[0].y];
     const center = getCellCenter(px, py, cfg);
     const count = pointNodes.length;
-    const circlePoint = (slotIndex: number) => splitHubPoint(center, slotIndex, count, cfg);
+    const { offsets } = getNeighborData(cfg, px, py);
 
-    // Every distinct neighboring face this point's nodes connect across, geometric-neighbor-point
-    // keyed (not per specific neighbor node) — collected once per point so each face's edge can be
-    // divided among exactly the nodes that actually use it, in slot order.
-    const facesToOthers = new Map<string, { x: number; y: number }>();
-    for (const node of pointNodes) {
-      for (const other of nodes) {
-        if (other.x === node.x && other.y === node.y) continue;
-        if (!directed.has(`${String(node.id)}->${String(other.id)}`) && !directed.has(`${String(other.id)}->${String(node.id)}`)) continue;
-        facesToOthers.set(`${other.x},${other.y}`, { x: other.x, y: other.y });
-      }
+    // Per-offset-index face geometry + per-node kind, mirroring TileFaceEditor's model exactly —
+    // a face this point has no actual geometric neighbor for (or whose neighbor isn't in `nodes`)
+    // is skipped entirely (empty per-node kinds list, not a `SplitFaceKind` value — "none" doesn't
+    // exist as a per-node decision state, see `splitFaceLayout.ts`).
+    const faceInputs: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+    const kindsByFace: { nodeIndex: number; kind: SplitFaceKind }[][] = [];
+
+    for (const [dx, dy] of offsets) {
+      const neighbors = byPoint.get(`${px + dx},${py + dy}`);
+      const anyNeighbor = neighbors?.[0];
+      const seg = anyNeighbor ? getSharedEdgeSegment([px, py], [anyNeighbor.x, anyNeighbor.y], cfg) : null;
+      if (!neighbors || !seg) { faceInputs.push({ v0: center, v1: center }); kindsByFace.push([]); continue; }
+
+      faceInputs.push(seg);
+      kindsByFace.push(pointNodes.map((node, nodeIndex) => {
+        const other = resolveOther(node, neighbors);
+        const fwd = directed.has(`${String(node.id)}->${String(other.id)}`);
+        const bwd = directed.has(`${String(other.id)}->${String(node.id)}`);
+        const isWallPair = wallPairs.has(`${String(node.id)}<->${String(other.id)}`);
+        const kind: SplitFaceKind = fwd && bwd ? "passage" : fwd ? "one_way_out" : bwd ? "one_way_in" : isWallPair ? "wall" : defaultKind;
+        return { nodeIndex, kind };
+      }));
     }
 
-    // Per-node accumulator, in slot order — filled face by face below, then turned into
-    // `SplitPassage` entries once every face has been processed.
-    const segmentsBySlot: SplitPassage["wallSegments"][] = pointNodes.map(() => []);
+    const activeNodeId = activeId(pointKey);
+    const activeIndexRaw = activeNodeId === undefined ? -1 : pointNodes.findIndex((n) => n.id === activeNodeId);
+    const activeIndex = activeIndexRaw < 0 ? null : activeIndexRaw;
+    const faceLayouts = computeSplitFaceLayouts(faceInputs, kindsByFace, activeIndex);
+    faceLayouts.forEach((layout, i) => { if (layout.allWall) wallFaces.push(faceInputs[i]); });
+    const hubRadius = SPLIT_HUB_RADIUS;
+    const rotationRad = (getSplitCircleRotationDeg(cfg) * Math.PI) / 180;
+    const nodeConnectors = computeSplitConnectors(
+      faceLayouts, count, activeIndex, center, hubRadius, rotationRad,
+      (nodeIndex) => specialNodeIds.has(pointNodes[nodeIndex].id),
+    );
 
-    for (const other of facesToOthers.values()) {
-      const seg = getSharedEdgeSegment([px, py], [other.x, other.y], cfg);
-      if (!seg) continue;
+    for (const { nodeIndex, lines } of nodeConnectors) {
+      if (lines.length === 0) continue; // no connections — draws nothing
 
-      // This face's connected nodes, in slot order — determines both the sub-segment order along
-      // the edge and which node gets which piece.
-      const connectedSlots: number[] = [];
-      pointNodes.forEach((node, slotIndex) => {
-        const connected = nodes.some((cand) =>
-          cand.x === other.x && cand.y === other.y &&
-          (directed.has(`${String(node.id)}->${String(cand.id)}`) || directed.has(`${String(cand.id)}->${String(node.id)}`)));
-        if (connected) connectedSlots.push(slotIndex);
-      });
-      if (connectedSlots.length === 0) continue;
-
-      // `seg.v0`→`seg.v1` order is canonicalized by `getSharedEdgeSegment` based on the *lower*
-      // of the two points' coordinates, independent of which side `px,py` is on — flip the
-      // sub-segment order when this point is the "to" side, so slot order still maps to a
-      // consistent physical direction along the edge regardless of which side owns v0/v1.
-      const pxy: [number, number] = [px, py];
-      const oxy: [number, number] = [other.x, other.y];
-      const pIsLower = pxy[0] < oxy[0] || (pxy[0] === oxy[0] && pxy[1] < oxy[1]);
-      const orderedSlots = pIsLower ? connectedSlots : [...connectedSlots].reverse();
-
-      const n = orderedSlots.length;
-      orderedSlots.forEach((slotIndex, i) => {
-        const t0 = i / n;
-        const t1 = (i + 1) / n;
-        const v0 = { x: seg.v0.x + (seg.v1.x - seg.v0.x) * t0, y: seg.v0.y + (seg.v1.y - seg.v0.y) * t0 };
-        const v1 = { x: seg.v0.x + (seg.v1.x - seg.v0.x) * t1, y: seg.v0.y + (seg.v1.y - seg.v0.y) * t1 };
-        const segCenter = { x: (v0.x + v1.x) / 2, y: (v0.y + v1.y) / 2 };
-
-        const node = pointNodes[slotIndex];
-        const fwd = nodes.some((cand) => cand.x === other.x && cand.y === other.y && directed.has(`${String(node.id)}->${String(cand.id)}`));
-        const bwd = nodes.some((cand) => cand.x === other.x && cand.y === other.y && directed.has(`${String(cand.id)}->${String(node.id)}`));
-        let oneWayDir: { dx: number; dy: number } | undefined;
-        if (fwd !== bwd) {
-          const toCenter = getCellCenter(other.x, other.y, cfg);
-          const dx = fwd ? toCenter.x - center.x : center.x - toCenter.x;
-          const dy = fwd ? toCenter.y - center.y : center.y - toCenter.y;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          if (len > 0) oneWayDir = { dx: dx / len, dy: dy / len };
-        }
-
-        segmentsBySlot[slotIndex].push({ v0, v1, center: segCenter, oneWayDir });
-      });
-    }
-
-    pointNodes.forEach((node, slotIndex) => {
-      const wallSegments = segmentsBySlot[slotIndex];
-      if (wallSegments.length === 0) return; // no connections — draws nothing
-
-      const color = splitSlotColor(slotIndex, canvas.node.splitSlots);
-      const straighten = wallSegments.length === 2 && !specialNodeIds.has(node.id);
-      const connectors = straighten
-        ? [{ from: wallSegments[0].center, to: wallSegments[1].center }]
-        : wallSegments.map((seg) => ({ from: circlePoint(slotIndex), to: seg.center }));
+      const color = splitSlotColor(nodeIndex, canvas.node.splitSlots);
+      const wallSegments = faceLayouts
+        .flatMap((layout) => layout.segments.filter((s) => s.nodeIndex === nodeIndex))
+        .map((s) => ({
+          v0: s.v0, v1: s.v1,
+          center: { x: (s.v0.x + s.v1.x) / 2, y: (s.v0.y + s.v1.y) / 2 },
+          isUndefined: s.kind === "undefined",
+        }));
+      const connectors = lines.map((line) => ({ from: line.from, to: line.to, oneWayOut: line.oneWayOut, isUndefined: line.isUndefined }));
 
       result.push({ color, wallSegments, connectors });
-    });
+    }
   }
 
-  return result;
+  return { passages: result, wallFaces };
 }
 
 /** Post-generation adapter over `buildSplitPassagesCore` — `NodeDto`'s own `id: number` is the
  *  identity, `EdgeDto`'s teleport-kind entries are filtered out before reaching the core (a
- *  teleport must not read as an open passage, same rule as `buildMazeWalls`). See
- *  `buildSplitPassagesCore`'s doc comment for the shared algorithm. */
+ *  teleport must not read as an open passage, same rule as `buildMazeWalls`). `activeSplitNode`
+ *  (mirrors `postEditActiveSplitNode`) resolves which of a point's nodes draws on top (GitHub
+ *  issue #234 follow-up) — a `split` entry is resolved to its real `NodeId` via
+ *  `buildSplitNodeResolver` (needs `postEditDraftSplitPoints` for the point's sorted slotId
+ *  order); absence for a point means its original (first) node. See `buildSplitPassagesCore`'s doc
+ *  comment for the shared algorithm. */
 export function buildSplitPassages(
   nodes: NodeDto[],
   edges: EdgeDto[],
   cfg: TessellationConfig,
   specialNodeIds: ReadonlySet<number> = new Set(),
-): SplitPassage[] {
+  activeSplitNode: Record<string, PostEditEndpoint> = {},
+  postEditDraftSplitPoints: Record<string, number[]> = {},
+): SplitPassagesResult {
   const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
-  return buildSplitPassagesCore(nodes, directedPairs, cfg, specialNodeIds);
+
+  const nodeMap = new Map<string, number[]>();
+  for (const n of nodes) {
+    const key = `${n.x},${n.y}`;
+    const list = nodeMap.get(key);
+    if (list) list.push(n.id); else nodeMap.set(key, [n.id]);
+  }
+  const resolveSplit = buildSplitNodeResolver(nodeMap, postEditDraftSplitPoints);
+  const activeId = (pointKey: string): number | undefined => {
+    const active = activeSplitNode[pointKey];
+    if (!active) return undefined;
+    return resolveEndpoint(active, resolveSplit);
+  };
+
+  return buildSplitPassagesCore(nodes, directedPairs, cfg, specialNodeIds, activeId);
 }
 
 // --- Loss-detection predicates ---

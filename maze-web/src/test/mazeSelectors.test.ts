@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildSplitPassages, buildMazeMarkers } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { splitSlotColor } from "../pixi/colorUtils";
+import { canvas } from "../pixi/colorTokens";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -161,16 +163,19 @@ describe("buildMazeWalls", () => {
     expect(walls.some(w => w.a[0] === 0 && w.a[1] === 0 && w.b[0] === 1 && w.b[1] === 0 && w.kind === "none")).toBe(true);
   });
 
-  it("a split point's own geometric edges render no WallEdge at all (GitHub issue #223)", () => {
+  it("a split point's shared-with-neighbor face renders no WallEdge (GitHub issue #223), but its field-boundary faces still do (bug fix)", () => {
     // Point (0,0) split into node 0 (original) and node 2 (extra split node, wired to node 1).
-    // Every edge touching (0,0) -- including its boundary walls -- must be entirely absent from
-    // buildMazeWalls's output; split points render exclusively via buildSplitPassages instead.
+    // The face shared with (1,0) is rendered exclusively via buildSplitPassages, so it must be
+    // absent here -- but (0,0)'s other faces have no field neighbor at all, so buildSplitPassages
+    // never draws them either; buildMazeWalls must still supply their outer wall.
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
     const edges: EdgeDto[] = [e(2, 1), e(1, 2)];
     const walls = buildMazeWalls(nodes, edges, squareCfg);
     const touchingSplitPoint = walls.filter(w =>
       (w.a[0] === 0 && w.a[1] === 0) || (w.b[0] === 0 && w.b[1] === 0));
-    expect(touchingSplitPoint).toEqual([]);
+    expect(touchingSplitPoint.some(w => w.b[0] === 1 && w.b[1] === 0)).toBe(false);
+    expect(touchingSplitPoint.every(w => w.kind === "none")).toBe(true);
+    expect(touchingSplitPoint.length).toBe(3);
   });
 
   it("a split point's neighbor still renders its own boundary walls on faces not shared with the split point", () => {
@@ -186,14 +191,14 @@ describe("buildMazeWalls", () => {
 describe("buildSplitPassages", () => {
   it("unsplit point produces no passages", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
-    expect(buildSplitPassages(nodes, [e(0, 1), e(1, 0)], squareCfg)).toEqual([]);
+    expect(buildSplitPassages(nodes, [e(0, 1), e(1, 0)], squareCfg).passages).toEqual([]);
   });
 
   it("each connected split node gets one passage entry, in a distinct color", () => {
     // Point (0,0) split into node 0 (-> node 1 east) and node 2 (-> node 3 north).
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0), n(3, 0, 1)];
     const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(2, 3), e(3, 2)];
-    const passages = buildSplitPassages(nodes, edges, squareCfg);
+    const { passages } = buildSplitPassages(nodes, edges, squareCfg);
     expect(passages).toHaveLength(2);
     expect(passages[0].color).not.toBe(passages[1].color);
     expect(passages[0].wallSegments).toHaveLength(1);
@@ -202,8 +207,26 @@ describe("buildSplitPassages", () => {
 
   it("a node with no connections produces no passage entry", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
-    const passages = buildSplitPassages(nodes, [], squareCfg);
+    const { passages } = buildSplitPassages(nodes, [], squareCfg);
     expect(passages).toEqual([]);
+  });
+
+  it("activeSplitNode picks which node of a point draws last (on top), overriding the default (first/original) node", () => {
+    // Point (0,0) split into node 0 (original, slot index 0) and node 2 (slot index 1), both
+    // connected east/north respectively so both produce a passage entry. `splitSlotColor` keys
+    // off slot index (node 0 -> index 0, node 2 -> index 1), so the resulting color identifies
+    // which node ended up in which array position regardless of active-last reordering.
+    const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0), n(3, 0, 1)];
+    const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(2, 3), e(3, 2)];
+    const withoutActive = buildSplitPassages(nodes, edges, squareCfg).passages;
+    // Default (no activeSplitNode entry) keeps node-index order: node 0 (slot index 0) first.
+    expect(withoutActive[0].color).toBe(splitSlotColor(0, canvas.node.splitSlots));
+    expect(withoutActive[1].color).toBe(splitSlotColor(1, canvas.node.splitSlots));
+
+    const withActive = buildSplitPassages(nodes, edges, squareCfg, new Set(), { "0,0": nodeEndpoint(0) }).passages;
+    // node 0 (slot index 0) is now explicitly active -- it must be sorted last instead.
+    expect(withActive[0].color).toBe(splitSlotColor(1, canvas.node.splitSlots));
+    expect(withActive[1].color).toBe(splitSlotColor(0, canvas.node.splitSlots));
   });
 
   it("several edges from one node to different nodes of the same neighboring split point collapse to one wall segment per face", () => {
@@ -212,7 +235,7 @@ describe("buildSplitPassages", () => {
     // wall segment for node 0, even though it has two separate edges crossing that same face.
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0), n(3, 0, 1), n(4, 0, 0), n(5, 1, 0)];
     const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 5), e(5, 0)];
-    const passages = buildSplitPassages(nodes, edges, squareCfg);
+    const { passages } = buildSplitPassages(nodes, edges, squareCfg);
     // Node 0 -> east face (1 entry, deduped across its 2 edges to node 1 and node 5).
     // Node 1 -> west face (1 entry, its own edge back to node 0).
     // Node 5 -> west face (1 entry, its own edge back to node 0). Nodes 2/4 have no edges -> 0 entries.
@@ -220,24 +243,23 @@ describe("buildSplitPassages", () => {
     for (const p of passages) expect(p.wallSegments).toHaveLength(1);
   });
 
-  it("one-way passage's wall segment gets a direction vector, bidirectional does not", () => {
+  it("one-way passage's connector gets a direction marker, bidirectional does not", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
-    const oneWay = buildSplitPassages(nodes, [e(2, 1)], squareCfg);
-    expect(oneWay[0].wallSegments[0].oneWayDir).toBeDefined();
+    const oneWay = buildSplitPassages(nodes, [e(2, 1)], squareCfg).passages;
+    expect(oneWay[0].connectors[0].oneWayOut).toBeDefined();
 
-    const twoWay = buildSplitPassages(nodes, [e(2, 1), e(1, 2)], squareCfg);
-    expect(twoWay[0].wallSegments[0].oneWayDir).toBeUndefined();
+    const twoWay = buildSplitPassages(nodes, [e(2, 1), e(1, 2)], squareCfg).passages;
+    expect(twoWay[0].connectors[0].oneWayOut).toBeUndefined();
   });
 
-  it("a backward-only one-way passage points from the neighbor's center back toward this node, opposite of a forward-only one-way", () => {
+  it("a backward-only one-way passage's connector points the opposite way from a forward-only one-way", () => {
     // Node 2 (slot 0 at (0,0)) has only an incoming edge from node 1 (east neighbor) -- the
     // mirror of the existing forward-only case, exercising the other arm of the fwd/bwd ternary.
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
-    const forwardOnly = buildSplitPassages(nodes, [e(2, 1)], squareCfg)[0].wallSegments[0].oneWayDir!;
-    const backwardOnly = buildSplitPassages(nodes, [e(1, 2)], squareCfg)[0].wallSegments[0].oneWayDir!;
-    expect(backwardOnly).toBeDefined();
-    expect(backwardOnly.dx).toBeCloseTo(-forwardOnly.dx, 5);
-    expect(backwardOnly.dy).toBeCloseTo(-forwardOnly.dy, 5);
+    const forwardOnly = buildSplitPassages(nodes, [e(2, 1)], squareCfg).passages[0].connectors[0].oneWayOut;
+    const backwardOnly = buildSplitPassages(nodes, [e(1, 2)], squareCfg).passages[0].connectors[0].oneWayOut;
+    expect(forwardOnly).toBe(true);
+    expect(backwardOnly).toBe(false);
   });
 
   it("a teleport edge between a split point's nodes is excluded from passage geometry entirely", () => {
@@ -245,7 +267,7 @@ describe("buildSplitPassages", () => {
     // segment/passage at all, matching buildMazeWalls's own teleport exclusion.
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
     const teleportOnly: EdgeDto = { from: 2, to: 1, kind: "teleport" };
-    const passages = buildSplitPassages(nodes, [teleportOnly], squareCfg);
+    const { passages } = buildSplitPassages(nodes, [teleportOnly], squareCfg);
     expect(passages).toEqual([]);
   });
 
@@ -253,7 +275,7 @@ describe("buildSplitPassages", () => {
     // Node 2 (slot 0 at (0,0)) has an edge to node 1 at (2,0) -- not a geometric neighbor of
     // (0,0) in a square tessellation, so getSharedEdgeSegment returns null for that face.
     const nodes = [n(0, 0, 0), n(1, 2, 0), n(2, 0, 0)];
-    const passages = buildSplitPassages(nodes, [e(2, 1), e(1, 2)], squareCfg);
+    const { passages } = buildSplitPassages(nodes, [e(2, 1), e(1, 2)], squareCfg);
     expect(passages).toEqual([]);
   });
 
@@ -261,7 +283,7 @@ describe("buildSplitPassages", () => {
     // Node 2 (slot 0 at split point (0,0)) connects east to node 1 and north to node 3.
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0), n(3, 0, 1)];
     const edges: EdgeDto[] = [e(2, 1), e(1, 2), e(2, 3), e(3, 2)];
-    const passages = buildSplitPassages(nodes, edges, squareCfg);
+    const { passages } = buildSplitPassages(nodes, edges, squareCfg);
     const node2Passage = passages.find(p => p.wallSegments.length === 2)!;
     expect(node2Passage.wallSegments).toHaveLength(2);
     expect(node2Passage.connectors).toHaveLength(1);
@@ -273,7 +295,7 @@ describe("buildSplitPassages", () => {
     // Same setup as the straightening test above, but node 2 is now in `specialNodeIds`.
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0), n(3, 0, 1)];
     const edges: EdgeDto[] = [e(2, 1), e(1, 2), e(2, 3), e(3, 2)];
-    const passages = buildSplitPassages(nodes, edges, squareCfg, new Set([2]));
+    const { passages } = buildSplitPassages(nodes, edges, squareCfg, new Set([2]));
     const node2Passage = passages.find(p => p.wallSegments.length === 2)!;
     expect(node2Passage.connectors).toHaveLength(2);
     const center = { x: 20, y: -20 };
@@ -285,7 +307,7 @@ describe("buildSplitPassages", () => {
 
   it("a node with exactly 1 connected face gets one hub connector from the circle point", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
-    const passages = buildSplitPassages(nodes, [e(2, 1), e(1, 2)], squareCfg);
+    const { passages } = buildSplitPassages(nodes, [e(2, 1), e(1, 2)], squareCfg);
     const node2Passage = passages.find(p => p.wallSegments.length === 1)!;
     expect(node2Passage.connectors).toHaveLength(1);
     expect(node2Passage.connectors[0].to).toEqual(node2Passage.wallSegments[0].center);
@@ -300,7 +322,7 @@ describe("buildSplitPassages", () => {
     // Point (0,0) split into node 0 (original) and node 2 (slot 0), both connected to node 1 east.
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
     const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(2, 1), e(1, 2)];
-    const passages = buildSplitPassages(nodes, edges, squareCfg);
+    const { passages } = buildSplitPassages(nodes, edges, squareCfg);
     expect(passages).toHaveLength(2);
 
     const [seg0, seg1] = passages.map(p => p.wallSegments[0]);

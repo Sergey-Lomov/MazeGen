@@ -47,6 +47,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       triOrientation,
       tessellationConfig: cfg,
       presetConnections: restoredPresetConnections,
+      presetSplitPoints: file.presets.splitPoints,
     } as MazeState);
 
     // Single atomic set of all non-maze state

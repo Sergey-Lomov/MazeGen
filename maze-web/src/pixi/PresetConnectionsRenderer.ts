@@ -98,9 +98,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.invalidPassagesContainer);
     this.root.addChild(this.undecidedWallsContainer);
     this.root.addChild(this.presetWallsContainer);
+    this.root.addChild(this.locksContainer);
     this.root.addChild(this.splitJunctionContainer);
     this.root.addChild(this.teleportContainer);
-    this.root.addChild(this.locksContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.originContainer);
     this.root.addChild(this.genSourceContainer);
@@ -218,7 +218,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       state.lockedNodes !== prev.lockedNodes ||
       state.autoLockedNodes !== prev.autoLockedNodes ||
       state.presetTeleports !== prev.presetTeleports ||
-      state.presetSplitPoints !== prev.presetSplitPoints
+      state.presetSplitPoints !== prev.presetSplitPoints ||
+      state.presetActiveSplitNode !== prev.presetActiveSplitNode
     ) {
       this.redrawAll(state);
       return;
@@ -264,8 +265,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.undecidedWalls.render({ edges: undecided }, cfg);
     this.presetWalls.render({ edges: preset }, cfg);
 
-    const splitPassages = buildPresetSplitPassages(state.presetSplitPoints, state.presetConnections, cfg);
-    this.splitJunctions.render({ passages: splitPassages });
+    const { passages: splitPassages, wallFaces } = buildPresetSplitPassages(state.presetSplitPoints, state.presetConnections, cfg, state.presetActiveSplitNode, cells);
+    this.splitJunctions.render({ passages: splitPassages, wallFaces });
 
     const lockEntries = buildLocks(state.lockedNodes, state.autoLockedNodes);
     this.locks.render({ locks: lockEntries }, cfg);
@@ -363,7 +364,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidPassages.render({ edges: [] }, cfg);
     this.undecidedWalls.render({ edges: [] }, cfg);
     this.presetWalls.render({ edges: [] }, cfg);
-    this.splitJunctions.render({ passages: [] });
+    this.splitJunctions.render({ passages: [], wallFaces: [] });
     this.locks.render({ locks: [] }, cfg);
     this.markers.render({ markers: [] });
     this.teleports.render({ edges: [] });

@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("../wasm/wasmLoader", () => ({
+  getWasm: () => ({
+    // Square tessellation's cartesian projection is the identity — see squareGeometry.ts's doc
+    // comment on squareCenter.
+    cartesian_coords: (config: { points: [number, number][] }) => config.points,
+  }),
+}));
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ManageSplitNodesDialog } from "../components/features/ManageSplitNodesDialog";
 import { useMazeStore } from "../store/mazeStore";
@@ -29,10 +37,15 @@ describe("ManageSplitNodesDialog", () => {
     expect(screen.getByText("Node 1")).toBeInTheDocument();
   });
 
-  it("the original node has no Remove button", () => {
+  it("Remove is disabled while the original node is active (defaults active)", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    // Two Remove icon buttons — one per slot, none for the original node.
-    expect(screen.getAllByTitle("Remove")).toHaveLength(2);
+    expect(screen.getByText("Remove")).toBeDisabled();
+  });
+
+  it("Remove is enabled once a slot becomes active", () => {
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Node 0"));
+    expect(screen.getByText("Remove")).not.toBeDisabled();
   });
 
   it("the currently active card shows an Active badge (defaults to the original node)", () => {
@@ -52,31 +65,24 @@ describe("ManageSplitNodesDialog", () => {
     expect(useMazeStore.getState().postEditActiveSplitNode["2,2"]).toBeUndefined();
   });
 
-  it("clicking Remove doesn't also activate the card underneath it (event doesn't bubble)", () => {
-    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    const removeButtons = screen.getAllByTitle("Remove");
-    fireEvent.click(removeButtons[0]);
-    expect(useMazeStore.getState().postEditActiveSplitNode["2,2"]).toBeUndefined();
-  });
-
   it("clicking + Add node calls addSplitNode", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     fireEvent.click(screen.getByText("+ Add node"));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 1, 2]);
   });
 
-  it("clicking Remove then confirming calls removeSplitNode", () => {
+  it("clicking Remove (on the active slot) then confirming calls removeSplitNode", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    const removeButtons = screen.getAllByTitle("Remove");
-    fireEvent.click(removeButtons[0]);
+    fireEvent.click(screen.getByText("Node 0"));
+    fireEvent.click(screen.getByText("Remove"));
     fireEvent.click(screen.getByText("Ok"));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([1]);
   });
 
   it("clicking Remove then cancelling leaves the slot untouched", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    const removeButtons = screen.getAllByTitle("Remove");
-    fireEvent.click(removeButtons[0]);
+    fireEvent.click(screen.getByText("Node 0"));
+    fireEvent.click(screen.getByText("Remove"));
     fireEvent.click(screen.getByText("Cancel"));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 1]);
   });

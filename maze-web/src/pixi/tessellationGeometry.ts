@@ -117,6 +117,35 @@ export function getCellNeighborOffsets(cfg: TessellationConfig, x: number, y: nu
   return getNeighborData(cfg, x, y).offsets;
 }
 
+export interface TileSide {
+  /** Index into `getNeighborData`'s `offsets`/`edgeVerts` for this cell. */
+  index: number;
+  offset: [number, number];
+  v0: Pos;
+  v1: Pos;
+}
+
+/** Vertices and per-side segments of a single cell's tile shape, translated so the tile's own
+ * centroid sits at the origin — used to render an isolated "large tile" diagram (GitHub issue
+ * #234's split-node dialog) independent of the cell's actual position in the field. Uses the
+ * cell's real `(x, y)` (not just its config) because a triangle tile's shape depends on
+ * `(x+y) % 2` (up vs down) — see `getNeighborData`. */
+export function getTileDiagram(x: number, y: number, cfg: TessellationConfig): { vertices: Pos[]; sides: TileSide[] } | null {
+  const verts = getCellVertices(x, y, cfg);
+  if (!verts) return null;
+  const cx = verts.reduce((s, v) => s + v.x, 0) / verts.length;
+  const cy = verts.reduce((s, v) => s + v.y, 0) / verts.length;
+  const centered = verts.map((v) => ({ x: v.x - cx, y: v.y - cy }));
+  const { offsets, edgeVerts } = getNeighborData(cfg, x, y);
+  const sides: TileSide[] = edgeVerts.map(([vi, vj], index) => ({
+    index,
+    offset: offsets[index],
+    v0: centered[vi],
+    v1: centered[vj],
+  }));
+  return { vertices: centered, sides };
+}
+
 export function getSharedEdgeSegment(
   a: [number, number],
   b: [number, number],

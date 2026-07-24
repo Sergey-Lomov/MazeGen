@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, resolvePresetActiveEndpoint, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint } from "../../pixi/fieldEditUtils";
+import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, resolvePresetActiveEndpoint, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointIsSplit, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
@@ -35,6 +35,17 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   applyPresetConnectionsTool: (key, from, to) => set((state) => {
     const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool, state.defaultEdgeState, state.presetActiveSplitNode);
+    return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
+  }),
+
+  applyPresetConnectionsToolAt: (tool, key, from, to) => set((state) => {
+    const presetConnections = applyTool(state.presetConnections, { key, from, to }, tool, state.defaultEdgeState, state.presetActiveSplitNode);
+    return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
+  }),
+
+  setPresetConnectionUndefined: (key, from, to) => set((state) => {
+    const presetConnections = new Map(state.presetConnections);
+    presetConnections.set(key, { from, to, state: "undefined", source: "user" });
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
   }),
 
@@ -92,6 +103,8 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetFinish: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode),
     debugStale: debugStaleOf(state),
   })),
+  setPresetStartEndpoint: (endpoint) => set((state) => ({ presetStart: endpoint, debugStale: debugStaleOf(state) })),
+  setPresetFinishEndpoint: (endpoint) => set((state) => ({ presetFinish: endpoint, debugStale: debugStaleOf(state) })),
   setPresetGenSource: (cell) => set((state) => ({
     presetGenSource: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode),
     debugStale: debugStaleOf(state),
@@ -211,6 +224,19 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   })),
 
   setPresetFocusedPoint: (point) => set({ presetFocusedPoint: point }),
+
+  rotatePresetSplitPoint: (point, direction) => set((state) => {
+    const key = `${point[0]},${point[1]}`;
+    const slotIds = state.presetSplitPoints[key] ?? [];
+    const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
+    const cells = resolveCells(state.tessellationConfig, customPts);
+    const cellSet = buildCellSet(cells);
+    const presetConnections = rotatePresetSplitPoint(
+      state.presetConnections, point, slotIds, direction, state.tessellationConfig, cellSet,
+    );
+    if (presetConnections === state.presetConnections) return {};
+    return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
+  }),
 });
 
 export function applyDefaultEdgeState(

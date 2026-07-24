@@ -1,11 +1,11 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind, SplitPassage } from "../renderers/types";
+import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../renderers/types";
 import type { PresetConnectionEntry, FieldEdge } from "../fieldEditUtils";
 import { edgeKey, canonicalize, computeInvalidKeysFromCells } from "../fieldEditUtils";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
-import { buildSplitPassagesCore, type SplitPassageNode } from "./mazeSelectors";
+import { buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
 import { presetEndpoint, presetEndpointKey, type PresetEndpoint } from "../presetEndpoint";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
@@ -119,17 +119,23 @@ export function buildPresetSplitPassages(
   presetSplitPoints: Record<string, number[]>,
   connections: Map<string, PresetConnectionEntry>,
   cfg: TessellationConfig,
-): SplitPassage[] {
+  presetActiveSplitNode: Record<string, PresetEndpoint> = {},
+  cells: [number, number][] = [],
+): SplitPassagesResult {
   const splitPointKeys = new Set(Object.keys(presetSplitPoints).filter((k) => presetSplitPoints[k].length > 0));
-  if (splitPointKeys.size === 0) return [];
+  if (splitPointKeys.size === 0) return { passages: [], wallFaces: [] };
 
   // `buildSplitPassagesCore` needs every node a split point's nodes might connect to in the
   // `nodes` list, not just the split points themselves — mirrors `buildSplitPassages` (NodeDto),
   // where `nodes` is the whole maze's node list, so an ordinary (unsplit) neighbor is naturally
   // present. Here that has to be assembled explicitly: the declared split nodes, plus one plain
-  // (single, original-only) node per other endpoint referenced by a connection touching one of
-  // them — a plain neighbor point is never itself split, so it needs exactly one `SplitPassageNode`
-  // entry (its own original endpoint) for the "other" side of the face lookup to resolve.
+  // (single, original-only) node per in-field geometric neighbor of one of them — a plain neighbor
+  // point is never itself split, so it needs exactly one `SplitPassageNode` entry (its own original
+  // endpoint) for the "other" side of the face lookup to resolve. Registering every geometric
+  // neighbor (not just ones some connection entry happens to reference) is what lets an
+  // undeclared/default face read as "undefined" (optional) instead of vanishing — most faces have
+  // no connection entry at all until the user decides one way or the other.
+  const cellSet = buildCellSet(cells);
   const nodesByKey = new Map<string, SplitPassageNode<string>>();
   const addNode = (ep: PresetEndpoint) => {
     const id = presetEndpointKey(ep);
@@ -139,12 +145,27 @@ export function buildPresetSplitPassages(
     const [x, y] = key.split(",").map(Number);
     addNode(presetEndpoint([x, y]));
     for (const slotId of [...presetSplitPoints[key]].sort((a, b) => a - b)) addNode(presetEndpoint([x, y], slotId));
+
+    const { offsets } = getNeighborData(cfg, x, y);
+    for (const [dx, dy] of offsets) {
+      const nx = x + dx, ny = y + dy;
+      if (!cellSet.has(`${nx},${ny}`)) continue;
+      addNode(presetEndpoint([nx, ny]));
+      // The neighbor may itself be a declared split point with its own slots — register all of
+      // them too, not just its original node, otherwise `buildSplitPassagesCore`'s per-node
+      // partner resolution has no candidate to match a still-undecided (no `connections` entry
+      // yet) face against a specific neighbor slot, only the neighbor's original node.
+      const neighborKey = `${nx},${ny}`;
+      const neighborSlots = presetSplitPoints[neighborKey] ?? [];
+      for (const slotId of neighborSlots) addNode(presetEndpoint([nx, ny], slotId));
+    }
   }
 
   const directedPairs: { from: string; to: string }[] = [];
   const addPair = (a: PresetEndpoint, b: PresetEndpoint) => directedPairs.push({ from: presetEndpointKey(a), to: presetEndpointKey(b) });
+  const wallPairs = new Set<string>();
   for (const entry of connections.values()) {
-    if (entry.state === "wall" || entry.state === "undefined") continue;
+    if (entry.state === "undefined") continue;
     const fromIsSplit = splitPointKeys.has(`${entry.from.point[0]},${entry.from.point[1]}`);
     const toIsSplit = splitPointKeys.has(`${entry.to.point[0]},${entry.to.point[1]}`);
     if (!fromIsSplit && !toIsSplit) continue; // neither side touches a declared split point
@@ -153,9 +174,19 @@ export function buildPresetSplitPassages(
     if (entry.state === "passage") { addPair(entry.from, entry.to); addPair(entry.to, entry.from); }
     else if (entry.state === "one_way_forward") addPair(entry.from, entry.to);
     else if (entry.state === "one_way_backward") addPair(entry.to, entry.from);
+    else if (entry.state === "wall") {
+      const a = presetEndpointKey(entry.from), b = presetEndpointKey(entry.to);
+      wallPairs.add(`${a}<->${b}`);
+      wallPairs.add(`${b}<->${a}`);
+    }
   }
 
-  return buildSplitPassagesCore([...nodesByKey.values()], directedPairs, cfg);
+  const activeId = (pointKey: string): string | undefined => {
+    const active = presetActiveSplitNode[pointKey];
+    return active ? presetEndpointKey(active) : undefined;
+  };
+
+  return buildSplitPassagesCore([...nodesByKey.values()], directedPairs, cfg, new Set(), activeId, "undefined", wallPairs);
 }
 
 export function buildPresetMarkers(

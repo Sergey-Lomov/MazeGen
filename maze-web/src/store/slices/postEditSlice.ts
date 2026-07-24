@@ -4,11 +4,14 @@ import type { PostEditEdgeWasmDto, PostEditEndpointWasmDto } from "../../wasm/ty
 import {
   applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports,
   postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
+  rotatePostEditSplitPoint,
 } from "../../pixi/postEditUtils";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
 } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
+import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
+import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
 import { fieldConfigToWasm } from "./generationSlice";
 
@@ -60,12 +63,16 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   setPostEditTool: (tool) => set({ postEditTool: tool }),
 
   applyPostEditTool: (edgeKey, from_, to_) => {
+    get().applyPostEditToolAt(get().postEditTool, edgeKey, from_, to_);
+  },
+
+  applyPostEditToolAt: (tool, edgeKey, from_, to_) => {
     set((state) => {
       if (state.postEditDraftEdges === null) return {};
       return {
         postEditDraftEdges: applyPostEditEdgeTool(
           state.postEditDraftEdges,
-          state.postEditTool,
+          tool,
           edgeKey,
           from_,
           to_,
@@ -348,4 +355,23 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   setPostEditFocusedPoint: (point) => set({ postEditFocusedPoint: point }),
+
+  rotateSplitPoint: (point, direction) => {
+    set((state) => {
+      if (state.postEditDraftEdges === null) return {};
+      const key = `${point[0]},${point[1]}`;
+      const slotIds = state.postEditDraftSplitPoints[key] ?? [];
+      const cells = buildActiveCells(state.fieldPoints, state.fieldEditMode, state.activeTessellationConfig);
+      const cellSet = buildCellSet(cells);
+      const rotated = rotatePostEditSplitPoint(
+        state.postEditDraftEdges, point, slotIds, direction, state.activeTessellationConfig,
+        cellSet, state.nodes, state.postEditActiveSplitNode,
+      );
+      if (rotated === state.postEditDraftEdges) return {};
+      return { postEditDraftEdges: rotated, postEditDirty: true };
+    });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
 });

@@ -75,6 +75,15 @@ export function hexToNumber(hex: string): number {
   return parseInt(hex.replace("#", ""), 16);
 }
 
+function numberToHex(n: number): string {
+  return `#${n.toString(16).padStart(6, "0")}`;
+}
+
+// Numeric (Pixi) counterpart of `disabledOf`, for canvas colors stored as `0xRRGGBB` numbers.
+export function disabledOfNumber(n: number): number {
+  return hexToNumber(disabledOf(numberToHex(n)));
+}
+
 // ─── Base palette ───────────────────────────────────────────────────────────
 // Raw values. Everything else (ui.*, canvas.*) derives from these.
 
