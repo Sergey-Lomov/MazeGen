@@ -8,8 +8,9 @@ import {
 } from "../../pixi/postEditUtils";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
+  resolverForNodeId,
 } from "../../pixi/postEditEndpoint";
-import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
+import { addSlot, removeSlot, cycleActive, setActive, deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
@@ -146,7 +147,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       finish: resolvedFinish ?? null,
       checks,
     };
-
     try {
       const snapshot = computeAnalytics(config);
       if (get()._postEditRequestId !== requestId) return;
@@ -160,6 +160,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         // node's own edges never reached the graph on a later confirm even though this one had
         // already created it.
         nodes: snapshot.nodes,
+        // `compute_analytics` rebuilds the graph from scratch (see `resolverForNodeId`'s doc
+        // comment), assigning every node its own fresh id — `state.edges` must be replaced from
+        // this same snapshot, not left pointing at whatever ids the *previous* generate()/confirm
+        // happened to use. `GenerationRenderer` reads `state.edges` directly (not through the
+        // post-edit draft), so a stale value here silently drew edges to the wrong (or no) node —
+        // this was the root cause of an auto-split node (GitHub issue #222) looking disconnected
+        // right after a project load, even though the confirmed graph itself was correct.
+        edges: snapshot.edges,
         postEditAnalytics: {
           nodeStats: snapshot.node_stats,
           edgeStats: snapshot.edge_stats,
@@ -184,13 +192,27 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   resetPostEdit: () => {
     set((state) => {
-      const { teleports, nextId } = extractPostEditTeleports(state.edges);
+      // Re-derive split points from the generated snapshot (GitHub issue #222) rather than
+      // clearing them — an auto-split node still exists in `state.nodes`/`state.edges`, and every
+      // reference to it must be a `split` endpoint, not a stale raw id (see
+      // `resolverForNodeId`'s doc comment). A manually `addSplitNode`-added slot doesn't survive
+      // a reset either way (it was never real, being neither generated nor yet confirmed), so this
+      // is a strict superset of the old "just clear it" behavior for anything that actually exists.
+      const splitPoints = deriveSplitPointsFromNodes(state.nodes);
+      const pointNodeMap = new Map<string, number[]>();
+      for (const n of state.nodes) {
+        const key = `${n.x},${n.y}`;
+        const list = pointNodeMap.get(key);
+        if (list) list.push(n.id); else pointNodeMap.set(key, [n.id]);
+      }
+      const endpointFor = resolverForNodeId(pointNodeMap, splitPoints);
+      const { teleports, nextId } = extractPostEditTeleports(state.edges, endpointFor);
       return {
-        postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state.edges),
+        postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state.edges, endpointFor),
         postEditDraftTeleports: teleports,
         _nextPostEditTeleportId: nextId,
         postEditTeleportPendingFrom: null,
-        postEditDraftSplitPoints: {},
+        postEditDraftSplitPoints: splitPoints,
         postEditActiveSplitNode: {},
         postEditFocusedPoint: null,
         postEditEdges: null,
@@ -198,8 +220,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         postEditMeta: null,
         postEditAnalytics: null,
         postEditDraftMeta: {
-          start: state._generatedStart !== null ? nodeEndpoint(state._generatedStart) : null,
-          finish: state._generatedFinish !== null ? nodeEndpoint(state._generatedFinish) : null,
+          start: state._generatedStart !== null ? endpointFor(state._generatedStart) : null,
+          finish: state._generatedFinish !== null ? endpointFor(state._generatedFinish) : null,
         },
         postEditTool: "wall" as PostEditTool,
         postEditDirty: false,

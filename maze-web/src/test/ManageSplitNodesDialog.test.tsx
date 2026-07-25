@@ -125,6 +125,28 @@ describe("ManageSplitNodesDialog", () => {
     expect(screen.queryByText("2,2 <- 1,0")).not.toBeInTheDocument();
   });
 
+  it("shows links for an auto-split node (GitHub issue #222) keyed by its real NodeId, not a split endpoint", () => {
+    // Slot 0 already has a real node id (6) in the snapshot — an auto-split node minted by the
+    // generator, unlike a manually `addSplitNode`-added slot which has no id until confirm.
+    // `postEditDraftEdges` (built straight from wasm's `EdgeDto[]`) keys this edge by plain
+    // `nodeEndpoint(6)`, never `splitEndpoint([2,2], 0)` — the dialog must still resolve slot 0's
+    // row to this edge.
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 5, x: 2, y: 2 }, { id: 6, x: 2, y: 2 }],
+      postEditDraftEdges: {
+        "n6-n1": { from: nodeEndpoint(6), to: nodeEndpoint(1), kind: "basic" },
+      },
+      postEditDraftMeta: { start: nodeEndpoint(6), finish: null },
+    });
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+    // The link belongs to slot 0 (node 6), not the original node — slot 0's own side gets its
+    // usual "(Node 0)" title suffix.
+    expect(screen.getByText("2,2 (Node 0) -> 1,0")).toBeInTheDocument();
+    // Slot 0 (node 6) is also the run's start node — must resolve as such despite draftMeta
+    // carrying a plain node endpoint, not a split one.
+    expect(screen.getByText("Start")).toBeInTheDocument();
+  });
+
   it("names the partner's card title in parentheses when the link is between two nodes of the same split point", () => {
     useMazeStore.setState({
       postEditDraftEdges: {

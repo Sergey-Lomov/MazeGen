@@ -80,11 +80,11 @@ fn make_engines() -> QualityControlEngine<SquareTessellation> {
 
 fn make_generated_graph(seed: u64) -> (Field<SquareTessellation>, Graph) {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(5, 5), &mut ids).unwrap();
+    let mut field = Field::new(square_rect(5, 5), &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-    generate_maze(&mut graph, &field, seed, start, GenerationConfig::default(), &PresetState::empty());
+    generate_maze(&mut graph, &mut field, &mut ids, seed, start, GenerationConfig::default(), &PresetState::empty());
     (field, graph)
 }
 
@@ -371,7 +371,7 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
     // no repair iteration should ever leave a node with zero edges.
     for seed in 0..200u64 {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(11, 11), &mut ids).unwrap();
+        let mut field = Field::new(square_rect(11, 11), &mut ids).unwrap();
         let mut graph = Graph::new();
         field.build_nodes(&mut graph);
         let start = field.nodes_at(SquarePoint { x: 5, y: 5 }).first().copied().unwrap();
@@ -384,12 +384,13 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
                 directionality: 0.0,
                 cyclicity: 0.8,
             }),
-            elements: ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
+            elements: ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
             preset_connections: vec![],
             locked_nodes: vec![],
             split_points: vec![],
+            split_generation: maze_core::generation::SplitGenerationConfig::default(),
         };
-        generate_maze(&mut graph, &field, seed, start, gen_config, &PresetState::empty());
+        generate_maze(&mut graph, &mut field, &mut ids, seed, start, gen_config, &PresetState::empty());
 
         let qc = two_rules(
             (vec![("missing_endpoints", Box::new(MissingEndpointsCheck { instance_id: "ga:missing_endpoints".to_string() }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
@@ -411,7 +412,7 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
 fn exact_issue_23_seed_never_isolates_a_node() {
     let seed = 292118u64;
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(11, 11), &mut ids).unwrap();
+    let mut field = Field::new(square_rect(11, 11), &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     // UI picks the field's centroid as generation start (see tessellation_dispatch::pick_start),
@@ -426,12 +427,13 @@ fn exact_issue_23_seed_never_isolates_a_node() {
             directionality: 0.0,
             cyclicity: 0.8,
         }),
-        elements: ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
         preset_connections: vec![],
         locked_nodes: vec![],
         split_points: vec![],
+        split_generation: maze_core::generation::SplitGenerationConfig::default(),
     };
-    generate_maze(&mut graph, &field, seed, start, gen_config, &PresetState::empty());
+    generate_maze(&mut graph, &mut field, &mut ids, seed, start, gen_config, &PresetState::empty());
 
     let qc = two_rules(
         (vec![("missing_endpoints", Box::new(MissingEndpointsCheck { instance_id: "ga:missing_endpoints".to_string() }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],

@@ -10,11 +10,11 @@ use maze_core::repair::FarthestEndpointsStrategy;
 fn main() {
     let seed = 3u64;
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(10, 10), &mut ids).unwrap();
+    let mut field = Field::new(square_rect(10, 10), &mut ids).unwrap();
     let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
-    generate_maze(&mut graph, &field, seed, start, GenerationConfig::default(), &PresetState::empty());
+    generate_maze(&mut graph, &mut field, &mut ids, seed, start, GenerationConfig::default(), &PresetState::empty());
     assert!(is_connected(&graph, start));
 
     let missing_endpoints_rule = Rule::new(

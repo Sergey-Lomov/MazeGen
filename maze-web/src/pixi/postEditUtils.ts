@@ -6,16 +6,22 @@ import { getNeighborData } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual, resolveEndpoint } from "./postEditEndpoint";
 
-/** Built from a freshly confirmed WASM snapshot — every id here is an already-real node, never a
- * not-yet-confirmed split node, so entries are always plain `node` endpoints. */
-export function buildPostEditDraftEdgesFromGenerated(edges: EdgeDto[]): Record<string, PostEditEdge> {
+/** Built from a freshly confirmed WASM snapshot. `endpointFor` (see `resolverForNodeId`) resolves
+ * each raw id to a `split` endpoint when it's one of a point's automatically-split extra nodes
+ * (GitHub issue #222), or a plain `node` endpoint otherwise — never a not-yet-confirmed split
+ * node, since every id here already exists in the snapshot. Defaults to `nodeEndpoint` for callers
+ * that predate auto-split (no split points possible, so it's always the identity resolution). */
+export function buildPostEditDraftEdgesFromGenerated(
+  edges: EdgeDto[],
+  endpointFor: (id: number) => PostEditEndpoint = nodeEndpoint,
+): Record<string, PostEditEdge> {
   const basicEdges = edges.filter(e => e.kind !== "teleport");
   const edgeSet = new Set(basicEdges.map(e => `${e.from}-${e.to}`));
   const result: Record<string, PostEditEdge> = {};
   for (const e of basicEdges) {
     const hasReverse = edgeSet.has(`${e.to}-${e.from}`);
-    const from = nodeEndpoint(e.from);
-    const to = nodeEndpoint(e.to);
+    const from = endpointFor(e.from);
+    const to = endpointFor(e.to);
     result[edgeKey(from, to)] = {
       from,
       to,
@@ -32,7 +38,10 @@ export function buildPostEditDraftEdgesFromGenerated(edges: EdgeDto[]): Record<s
  * that Record. A forward+backward pair between the same two nodes collapses into one two_way
  * entry (mirroring PresetTeleportEntry); a lone direction becomes a forward entry (from→to is the
  * actual passage direction, so it never needs a "backward" entry of its own). */
-export function extractPostEditTeleports(edges: EdgeDto[]): { teleports: PostEditTeleportEntry[]; nextId: number } {
+export function extractPostEditTeleports(
+  edges: EdgeDto[],
+  endpointFor: (id: number) => PostEditEndpoint = nodeEndpoint,
+): { teleports: PostEditTeleportEntry[]; nextId: number } {
   const teleportEdges = edges.filter(e => e.kind === "teleport");
   const byPair = new Set(teleportEdges.map(e => `${e.from}->${e.to}`));
   const seenPairKey = new Set<string>();
@@ -47,8 +56,8 @@ export function extractPostEditTeleports(edges: EdgeDto[]): { teleports: PostEdi
     const reverseExists = byPair.has(`${e.to}->${e.from}`);
     teleports.push({
       id: nextId,
-      from: nodeEndpoint(e.from),
-      to: nodeEndpoint(e.to),
+      from: endpointFor(e.from),
+      to: endpointFor(e.to),
       direction: reverseExists ? "two_way" : "forward",
     });
     nextId++;

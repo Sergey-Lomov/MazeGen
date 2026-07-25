@@ -17,7 +17,7 @@ import {
   type ProjectFileNestedStrategy,
 } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
+import type { InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
 // ─── Migrations ──────────────────────────────────────────────────────────────
@@ -113,6 +113,74 @@ function optNumber(obj: Record<string, unknown> | null, key: string, fallback: n
 
 function optSection(parent: Record<string, unknown>, key: string, path: string): Record<string, unknown> | null {
   return parent[key] != null ? assertObject(parent[key], path) : null;
+}
+
+/** Validates `generation.splitGeneration` (GitHub issue #222) — absent in project files saved
+ * before this feature existed, so it defaults cleanly to "feature off" rather than throwing.
+ * Malformed patterns are dropped individually (never fail the whole load) — a hand-edited or
+ * corrupted pattern only degrades that one pattern's availability, not the entire file; the same
+ * leniency `validatePairArray`'s callers apply to individually-recoverable entries elsewhere. */
+function validateSplitGeneration(v: unknown, path: string): { patternMode: boolean; maxSplitNodes: number; patterns: SplitPattern[] } {
+  if (v == null) return { patternMode: false, maxSplitNodes: 2, patterns: [] };
+  let obj: Record<string, unknown>;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return { patternMode: false, maxSplitNodes: 2, patterns: [] };
+  }
+  const patternMode = optBool(obj, "patternMode", false);
+  const maxSplitNodes = Math.max(1, Math.trunc(optNumber(obj, "maxSplitNodes", 2)));
+  const rawPatterns = Array.isArray(obj.patterns) ? obj.patterns : [];
+  const patterns: SplitPattern[] = [];
+  for (const raw of rawPatterns) {
+    const pattern = tryValidateSplitPattern(raw);
+    if (pattern) patterns.push(pattern);
+  }
+  return { patternMode, maxSplitNodes, patterns };
+}
+
+function tryValidateSplitPattern(v: unknown): SplitPattern | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const obj = v as Record<string, unknown>;
+  if (typeof obj.node_count !== "number" || !Array.isArray(obj.faces)) return null;
+  const faces: SplitPattern["faces"] = [];
+  for (const nodeFaces of obj.faces) {
+    if (!Array.isArray(nodeFaces)) return null;
+    const validatedNodeFaces: SplitPattern["faces"][number] = [];
+    for (const face of nodeFaces) {
+      const validatedFace = tryValidateSplitPatternFace(face);
+      if (!validatedFace) return null;
+      validatedNodeFaces.push(validatedFace);
+    }
+    faces.push(validatedNodeFaces);
+  }
+  const weight = typeof obj.weight === "number" ? obj.weight : 1.0;
+  return { node_count: obj.node_count, faces, weight };
+}
+
+function tryValidateSplitPatternFace(v: unknown): SplitPattern["faces"][number][number] | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const obj = v as Record<string, unknown>;
+  if (typeof obj.face_index !== "number") return null;
+  const requirement = tryValidateSplitFaceRequirement(obj.requirement);
+  if (!requirement) return null;
+  const sibling_target = typeof obj.sibling_target === "number" ? obj.sibling_target : undefined;
+  return { face_index: obj.face_index, requirement, sibling_target };
+}
+
+function tryValidateSplitFaceRequirement(v: unknown): SplitPattern["faces"][number][number]["requirement"] | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const obj = v as Record<string, unknown>;
+  switch (obj.kind) {
+    case "passage": return { kind: "passage" };
+    case "wall": return { kind: "wall" };
+    case "unspecified": return { kind: "unspecified" };
+    case "one_way":
+      return obj.direction === "forward" || obj.direction === "backward"
+        ? { kind: "one_way", direction: obj.direction }
+        : null;
+    default: return null;
+  }
 }
 
 function validatePairArray<T>(
@@ -426,6 +494,9 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const initial = assertObject(genObj.initial, "generation.initial") as unknown as InitialGenerationConfig;
   assertString((initial as Record<string, unknown>).method as unknown, "generation.initial.method");
   const elements = assertObject(genObj.elements, "generation.elements") as unknown as ElementsConfig;
+  // Optional — absent in project files saved before automatic split-point assignment existed
+  // (GitHub issue #222). Defaults cleanly (never throws) to the feature-off shape.
+  const splitGeneration = validateSplitGeneration(genObj.splitGeneration, "generation.splitGeneration");
   // Optional — absent in project files saved before QC Only became a persistent toggle (see
   // GitHub issue #96); old files default to off, same as a fresh store.
   const qcExperiment = optBool(genObj, "qcExperiment", false);
@@ -562,7 +633,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   return {
     version: CURRENT_VERSION,
     tessellation: { config, savedConfigs },
-    generation: { seed, randomSeed, initial, elements, qcExperiment, seedHistory, seedHistoryIndex },
+    generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, seedHistory, seedHistoryIndex },
     quality: { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
     presets: {
       connections,

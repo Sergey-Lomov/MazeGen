@@ -76,6 +76,9 @@ fn run_generate_typed<T: Tessellation + 'static>(
 ) -> Result<MazeRunResult, String> {
     use maze_core::generation::pipeline::build_maze;
 
+    let degree = T::faces().len();
+    maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)?;
+
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
 
@@ -100,14 +103,18 @@ fn run_generate_typed<T: Tessellation + 'static>(
     // QC experiment mode skips the generation algorithm entirely — mirrors `maze-wasm`'s
     // `run_generate` (see `Specs`'s generation-card "QC experiment" mode). The graph built by
     // `build_preset_state` above (preset connections only) is fed straight into `build_maze`.
+    let mut start_reassignment = None;
     if !config.qc_experiment {
-        generate_maze(&mut graph, &field, seed, start_id, gen_config, &preset_state);
+        start_reassignment = generate_maze(&mut graph, &mut field, &mut ids, seed, start_id, gen_config, &preset_state);
     }
 
     let qc_engine = build_qc_and_repair::<T>(config)?;
     let limits = build_repair_limits(config)?;
+    // A split hit on the traversal-seed node reassigns `start_id` mid-run (GitHub issue #222) —
+    // only honored when there's no explicit `preset_start` pinning a human's fixed choice.
     let preset_start = config.preset_start.as_ref()
-        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)))
+        .or_else(|| start_reassignment.map(|r| r.reassigned_to));
     let preset_finish = config.preset_finish.as_ref()
         .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
     let repair_preset_state = preset_state.for_repair(config.qc_experiment);

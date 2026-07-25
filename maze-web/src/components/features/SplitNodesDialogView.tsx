@@ -103,7 +103,11 @@ interface Props<E> {
   onRotate: (direction: 1 | -1) => void;
 }
 
-const KIND_LABEL: Record<SplitEdgeKind, () => string> = {
+/** Exported for `AbstractPatternEditorDialog` (GitHub issue #222) — the pattern editor doesn't
+ *  reuse this whole component (it has no `NodeId`/start/finish/link-section concept, only
+ *  face-index/sibling_target data), but its own tile+card layout should still look identical, so
+ *  it borrows this label map and `dialogPanelStyles` below rather than redefining them. */
+export const KIND_LABEL: Record<SplitEdgeKind, () => string> = {
   passage: () => m["post_edit.split_kind_passage"](),
   one_way: () => m["post_edit.split_kind_one_way"](),
   undefined: () => m["post_edit.split_kind_undefined"](),
@@ -245,7 +249,10 @@ export function SplitNodesDialogView<E>({
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+/** Shared with `AbstractPatternEditorDialog` (GitHub issue #222) — that editor builds its own
+ *  tile+card layout (no `NodeId`/start/finish/link-section concept to reuse this whole component
+ *  for), but borrows this subset of styling so the two dialogs read as visually one family. */
+export const dialogPanelStyles: Record<string, React.CSSProperties> = {
   split: {
     flex: 1,
     display: "flex",
@@ -314,6 +321,20 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     display: "inline-block",
   },
+  activeBadge: {
+    ...typography.control,
+    fontSize: 11,
+    padding: "0 6px",
+    border: `1px solid ${ui.accent.base}`,
+    background: ui.accent.base,
+    color: ui.text.inverse,
+    borderRadius: radius.sm,
+    whiteSpace: "nowrap",
+  },
+};
+
+const styles: Record<string, React.CSSProperties> = {
+  ...dialogPanelStyles,
   // `marginTop` is a fixed value (not conditional on `row.active`) — a per-card conditional here
   // previously made active/inactive cards different heights, causing every card's layout to shift
   // on every active-node change (GitHub issue #234 follow-up).
@@ -341,16 +362,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: ui.debug.refHighlight.bg,
     borderColor: ui.debug.refHighlight.text,
     color: ui.debug.refHighlight.text,
-    whiteSpace: "nowrap",
-  },
-  activeBadge: {
-    ...typography.control,
-    fontSize: 11,
-    padding: "0 6px",
-    border: `1px solid ${ui.accent.base}`,
-    background: ui.accent.base,
-    color: ui.text.inverse,
-    borderRadius: radius.sm,
     whiteSpace: "nowrap",
   },
   badge: {

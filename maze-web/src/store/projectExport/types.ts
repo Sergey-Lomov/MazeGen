@@ -1,5 +1,5 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { NodeLockKind, InitialGenerationConfig, ElementsConfig } from "../../wasm/types";
+import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, FeatureId } from "../mazeStore";
@@ -90,6 +90,13 @@ export interface ProjectFile {
     randomSeed: boolean;
     initial: InitialGenerationConfig;
     elements: ElementsConfig;
+    /** CustomVertexBased-only automatic split-point assignment settings (GitHub issue #222) —
+     * scoped to the tessellation active when saved, same as `presets.splitPoints` below. */
+    splitGeneration: {
+      patternMode: boolean;
+      maxSplitNodes: number;
+      patterns: SplitPattern[];
+    };
     qcExperiment: boolean;
     seedHistory: number[];
     seedHistoryIndex: number;

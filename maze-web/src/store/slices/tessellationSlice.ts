@@ -4,7 +4,7 @@ import { encodePoint } from "../../pixi/tessellationProjection";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import type { PresetConnectionEntry } from "../../pixi/fieldEditUtils";
-import type { NodeLockKind } from "../../wasm/types";
+import type { NodeLockKind, SplitPattern } from "../../wasm/types";
 import type { MazeStore, TessellationState, TessellationActions, SquareShape, HexShape, TriangleShape } from "../storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
 import {
@@ -111,6 +111,10 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
         postEditDraftSplitPoints: {},
         postEditActiveSplitNode: {},
         postEditFocusedPoint: null,
+        // A split pattern's `face_index` values (GitHub issue #222) are relative to the
+        // tessellation they were authored against — meaningless (or silently wrong) once the
+        // tessellation kind changes, same rationale as `presetSplitPoints` above.
+        splitPatterns: [] as SplitPattern[],
       } : { debugStale: debugStaleOf(state) }),
       fieldDirty: false,
       presetsDirty: false,

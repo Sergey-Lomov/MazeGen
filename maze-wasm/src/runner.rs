@@ -26,42 +26,45 @@ fn preset_endpoint_dto_to_core(dto: &maze_runner::config::PresetEndpointDto) -> 
 /// preset connections (built by `build_preset_state` before this call), fed straight into
 /// `build_maze`'s QC/repair pass. The event tree has nothing to record in this case, so
 /// `debug_events` is ignored here rather than erroring.
+#[allow(clippy::too_many_arguments)]
 fn run_initial_generation<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &mut Field<T>,
+    ids: &mut IdGenerator,
     seed: u64,
     start_id: maze_core::ids::NodeId,
     gen_config: maze_core::generation::GenerationConfig,
     preset_state: &maze_core::generation::PresetState,
     qc_experiment: bool,
     debug_events: bool,
-) -> (Option<maze_core::event_log::TapeSource>, Option<maze_core::event_log::EventedEventKind>, Vec<(String, maze_core::event_log::DebugValueKind)>, f64) {
+) -> (Option<maze_core::event_log::TapeSource>, Option<maze_core::event_log::EventedEventKind>, Vec<(String, maze_core::event_log::DebugValueKind)>, f64, Option<maze_core::generation::StartReassignment>) {
     use maze_core::generation::pipeline::now_ms;
 
     let initial_build_start = now_ms();
-    let (raw_source, event_kind, debug_value_names): (
+    let (raw_source, event_kind, debug_value_names, start_reassignment): (
         Option<maze_core::event_log::TapeSource>,
         Option<maze_core::event_log::EventedEventKind>,
         Vec<(String, maze_core::event_log::DebugValueKind)>,
+        Option<maze_core::generation::StartReassignment>,
     ) = if qc_experiment {
-        (None, None, Vec::new())
+        (None, None, Vec::new(), None)
     } else if debug_events {
-        let result = generate_maze_with_events(graph, field, seed, start_id, gen_config, preset_state);
+        let result = generate_maze_with_events(graph, field, ids, seed, start_id, gen_config, preset_state);
         // Only forward this source past the WASM boundary when the web replay engine can
         // actually decode its event kind (GitHub issue #161) — extend `is_web_decodable` once a
         // new event kind gets a web decoder, and that's the only place this list needs to change.
         if is_web_decodable(Some(result.event_kind)) {
-            (Some(result.raw_source), Some(result.event_kind), result.debug_value_names)
+            (Some(result.raw_source), Some(result.event_kind), result.debug_value_names, result.start_reassignment)
         } else {
-            (None, None, Vec::new())
+            (None, None, Vec::new(), result.start_reassignment)
         }
     } else {
-        generate_maze(graph, field, seed, start_id, gen_config, preset_state);
-        (None, None, Vec::new())
+        let start_reassignment = generate_maze(graph, field, ids, seed, start_id, gen_config, preset_state);
+        (None, None, Vec::new(), start_reassignment)
     };
     let initial_build_ms = now_ms() - initial_build_start;
 
-    (raw_source, event_kind, debug_value_names, initial_build_ms)
+    (raw_source, event_kind, debug_value_names, initial_build_ms, start_reassignment)
 }
 
 /// Which [`maze_core::event_log::EventedEventKind`]s the web replay engine (`maze-web/src/debug/
@@ -104,6 +107,14 @@ pub fn run_generate<T: Tessellation + 'static>(
     field.build_nodes(&mut graph);
 
     let gen_config = build_generation_config(config);
+
+    // Validates split patterns (GitHub issue #222) before generation runs — this is the
+    // browser-facing path native `maze-runner`'s own regression tests never exercise, so it needs
+    // the same check `run_generate_typed` runs, via the shared `validate_split_patterns`.
+    let degree = T::faces().len();
+    maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)
+        .map_err(|e| JsValue::from_str(&e))?;
+
     // The "preset setup" source (GitHub issue #225) — one event per preset connection that
     // actually establishes an edge, narrated inline by `build_preset_state` itself (it's the only
     // place that still has each connection's resolved from/to/direction) rather than reconstructed
@@ -134,15 +145,18 @@ pub fn run_generate<T: Tessellation + 'static>(
         .or_else(|| field.nodes_at(start).first().copied())
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    let (generation_source, generation_kind, generation_debug_value_names, initial_build_ms) = run_initial_generation(
-        &mut graph, &field, seed, start_id, gen_config, &preset_state, config.qc_experiment, config.debug_events,
+    let (generation_source, generation_kind, generation_debug_value_names, initial_build_ms, start_reassignment) = run_initial_generation(
+        &mut graph, &mut field, &mut ids, seed, start_id, gen_config, &preset_state, config.qc_experiment, config.debug_events,
     );
 
     let (qc_engine, check_types) = build_qc_and_repair_with_types::<T>(config)
         .map_err(|e| JsValue::from_str(&e))?;
 
+    // A split hit on the traversal-seed node reassigns `start_id` mid-run (GitHub issue #222) —
+    // only honored when there's no explicit `preset_start` pinning a human's fixed choice.
     let preset_start = config.preset_start.as_ref()
-        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)))
+        .or_else(|| start_reassignment.map(|r| r.reassigned_to));
     let preset_finish = config.preset_finish.as_ref()
         .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
 

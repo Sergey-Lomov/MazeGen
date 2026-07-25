@@ -10,6 +10,8 @@ mod preset_setup_event;
 mod types;
 mod edge_ops;
 mod mutation_commands;
+mod split_pattern;
+mod split_logic;
 
 pub use preset_state::{PresetState, build_preset_state};
 pub use preset_setup_event::{PresetSetupEvent, PRESET_SETUP_SCOPE_NAME};
@@ -23,6 +25,11 @@ pub use types::{
     PresetConnectionState, TeleportDirection, PresetConnection, PresetEndpoint, NodeLockKind, LockedNode,
     GenerationConfig,
 };
+pub use split_pattern::{
+    SplitFaceRequirement, OneWayDirection, SplitPatternFace, SplitPattern, SplitGenerationConfig,
+    validate_split_patterns,
+};
+pub use split_logic::StartReassignment;
 pub(crate) use edge_ops::{
     can_connect,
     try_add_edge, try_add_edge_kind, try_add_bidirectional_edge,
@@ -54,35 +61,51 @@ pub(crate) fn gaussian_weighted_index(len: usize, depth_first: f64, rng: &mut Ma
 
 fn dispatch<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &mut Field<T>,
+    ids: &mut crate::ids::IdGenerator,
     seed: u64,
     start: NodeId,
     config: GenerationConfig,
     preset_state: &PresetState,
-) {
+) -> Option<StartReassignment> {
     match config.algorithm {
-        GenerationAlgorithm::CustomVertexBased(params) =>
-            vertex_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, None),
-        GenerationAlgorithm::CustomEdgeBased(params) =>
-            edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, None),
-        GenerationAlgorithm::RecursiveBacktracker =>
-            recursive_backtracker::generate(graph, field, seed, start, preset_state, None),
-        GenerationAlgorithm::WilsonAlgorithm =>
-            wilson::generate(graph, field, seed, start, preset_state, None),
-        GenerationAlgorithm::KruskalAlgorithm =>
-            kruskal::generate(graph, field, seed, preset_state, None),
+        GenerationAlgorithm::CustomVertexBased(params) => {
+            let mut start_reassignment = None;
+            vertex_based::generate(
+                graph, field, ids, seed, start, &params, &config.elements, &config.split_generation,
+                preset_state, &mut start_reassignment, None,
+            );
+            start_reassignment
+        }
+        GenerationAlgorithm::CustomEdgeBased(params) => {
+            edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, None);
+            None
+        }
+        GenerationAlgorithm::RecursiveBacktracker => {
+            recursive_backtracker::generate(graph, field, seed, start, preset_state, None);
+            None
+        }
+        GenerationAlgorithm::WilsonAlgorithm => {
+            wilson::generate(graph, field, seed, start, preset_state, None);
+            None
+        }
+        GenerationAlgorithm::KruskalAlgorithm => {
+            kruskal::generate(graph, field, seed, preset_state, None);
+            None
+        }
     }
 }
 
 pub fn generate_maze<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &mut Field<T>,
+    ids: &mut crate::ids::IdGenerator,
     seed: u64,
     start: NodeId,
     config: GenerationConfig,
     preset_state: &PresetState,
-) {
-    dispatch(graph, field, seed, start, config, preset_state);
+) -> Option<StartReassignment> {
+    dispatch(graph, field, ids, seed, start, config, preset_state)
 }
 
 /// Result of [`generate_maze_with_events`] — a named struct rather than a growing tuple, since
@@ -109,6 +132,10 @@ pub struct EventedGenerationResult {
     /// derived from what this particular run happened to emit. Empty when the algorithm declares
     /// none.
     pub debug_value_names: Vec<(String, crate::event_log::DebugValueKind)>,
+    /// Set only when `CustomVertexBased`'s automatic split-point assignment (GitHub issue #222)
+    /// split the run's traversal-seed node — every other algorithm, and every non-reassigning
+    /// `CustomVertexBased` run, leaves this `None`.
+    pub start_reassignment: Option<StartReassignment>,
 }
 
 /// Qualifies debug-value names with their source's scope name when more than one source is
@@ -141,12 +168,14 @@ pub fn qualify_debug_value_names(
 /// caller (`maze-wasm/src/runner.rs::run_generate`).
 pub fn generate_maze_with_events<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &mut Field<T>,
+    ids: &mut crate::ids::IdGenerator,
     seed: u64,
     start: NodeId,
     config: GenerationConfig,
     preset_state: &PresetState,
 ) -> EventedGenerationResult {
+    let mut start_reassignment = None;
     let (scope_name, event_kind, tape, debug_value_names): (
         &'static str,
         crate::event_log::EventedEventKind,
@@ -180,7 +209,10 @@ pub fn generate_maze_with_events<T: Tessellation>(
         }
         GenerationAlgorithm::CustomVertexBased(params) => {
             let mut log = crate::event_log::EventLog::new();
-            vertex_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, Some(&mut log));
+            vertex_based::generate(
+                graph, field, ids, seed, start, &params, &config.elements, &config.split_generation,
+                preset_state, &mut start_reassignment, Some(&mut log),
+            );
             ("generation", crate::event_log::EventedEventKind::VertexBased, log.finish().encode(), vertex_based::debug_value_names())
         }
     };
@@ -189,6 +221,7 @@ pub fn generate_maze_with_events<T: Tessellation>(
         raw_source: crate::event_log::TapeSource { scope_name, tape },
         event_kind,
         debug_value_names: debug_value_names.iter().map(|(name, kind)| (name.to_string(), *kind)).collect(),
+        start_reassignment,
     }
 }
 
@@ -199,7 +232,7 @@ pub(crate) mod test_utils {
     use crate::space::{Field, SquareTessellation, square_rect};
     use super::ElementsConfig;
 
-    pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 } }
+    pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 } }
 
     pub fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
@@ -207,6 +240,17 @@ pub(crate) mod test_utils {
         let mut graph = Graph::new();
         field.build_nodes(&mut graph);
         (field, graph)
+    }
+
+    /// Same as `make_field_and_graph`, but also hands back the `IdGenerator` used to build the
+    /// field — needed by any test calling `vertex_based::generate` directly, since it now takes
+    /// `&mut IdGenerator` for the split-node-minting path (GitHub issue #222).
+    pub fn make_field_graph_ids(w: usize, h: usize) -> (Field<SquareTessellation>, Graph, IdGenerator) {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(w, h), &mut ids).unwrap();
+        let mut graph = Graph::new();
+        field.build_nodes(&mut graph);
+        (field, graph, ids)
     }
 }
 

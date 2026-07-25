@@ -47,14 +47,14 @@ mod run_initial_generation_tests {
 
     /// A 3x3 square field with no preset connections/locks — enough for Recursive Backtracker
     /// to actually run and emit events.
-    fn field_and_state() -> (Graph, Field<SquareTessellation>, PresetState) {
+    fn field_and_state() -> (Graph, Field<SquareTessellation>, PresetState, IdGenerator) {
         let points: Vec<SquarePoint> = (0..3).flat_map(|x| (0..3).map(move |y| SquarePoint { x, y })).collect();
         let mut ids = IdGenerator::new();
         let mut field = Field::<SquareTessellation>::new(points, &mut ids).unwrap();
         let mut graph = Graph::new();
         field.build_nodes(&mut graph);
         let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
-        (graph, field, preset_state)
+        (graph, field, preset_state, ids)
     }
 
     fn rb_config() -> GenerationConfig {
@@ -63,9 +63,9 @@ mod run_initial_generation_tests {
 
     #[test]
     fn debug_events_false_yields_no_debug_tape() {
-        let (mut graph, field, preset_state) = field_and_state();
+        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let (raw_source, event_kind, debug_value_names, _) = run_initial_generation(&mut graph, &field, 1, start, rb_config(), &preset_state, false, false);
+        let (raw_source, event_kind, debug_value_names, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 1, start, rb_config(), &preset_state, false, false);
         assert!(raw_source.is_none(), "debug_events: false must not produce a tape");
         assert!(event_kind.is_none(), "debug_events: false must not produce an event kind");
         assert!(debug_value_names.is_empty(), "debug_events: false must not produce debug value names");
@@ -73,9 +73,9 @@ mod run_initial_generation_tests {
 
     #[test]
     fn debug_events_true_yields_correctly_strided_debug_tape() {
-        let (mut graph, field, preset_state) = field_and_state();
+        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let (raw_source, _, debug_value_names, _) = run_initial_generation(&mut graph, &field, 2, start, rb_config(), &preset_state, false, true);
+        let (raw_source, _, debug_value_names, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 2, start, rb_config(), &preset_state, false, true);
         let source = raw_source.expect("debug_events: true must produce a tape");
 
         assert!(!source.tape.node_table.is_empty(), "a 3x3 RB run must emit at least one event");
@@ -96,10 +96,10 @@ mod run_initial_generation_tests {
         // CustomVertexBased is instrumented in generate_maze_with_events (GitHub issue #143) and
         // its event kind is web-decodable — it declares the "visited", "frontier", and "reserve"
         // debug values (all Region-kind).
-        let (mut graph, field, preset_state) = field_and_state();
+        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::CustomVertexBased(maze_core::generation::GenerationParams::default()), ..GenerationConfig::default() };
-        let (raw_source, event_kind, debug_value_names, _) = run_initial_generation(&mut graph, &field, 3, start, config, &preset_state, false, true);
+        let (raw_source, event_kind, debug_value_names, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 3, start, config, &preset_state, false, true);
         let source = raw_source.expect("CustomVertexBased's event kind is web-decodable");
         assert!(!source.tape.node_table.is_empty(), "a 3x3 CustomVertexBased run must emit at least one event");
         assert_eq!(
@@ -119,13 +119,13 @@ mod run_initial_generation_tests {
         // CustomEdgeBased is instrumented in generate_maze_with_events (GitHub issue #144) and its
         // event kind is web-decodable — it declares the "active" and "visited" debug values (both
         // Region-kind).
-        let (mut graph, field, preset_state) = field_and_state();
+        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let config = GenerationConfig {
             algorithm: GenerationAlgorithm::CustomEdgeBased(maze_core::generation::EdgeBasedParams::default()),
             ..GenerationConfig::default()
         };
-        let (raw_source, event_kind, debug_value_names, _) = run_initial_generation(&mut graph, &field, 6, start, config, &preset_state, false, true);
+        let (raw_source, event_kind, debug_value_names, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 6, start, config, &preset_state, false, true);
         let source = raw_source.expect("CustomEdgeBased's event kind is web-decodable");
         assert!(!source.tape.node_table.is_empty(), "a 3x3 CustomEdgeBased run must emit at least one event");
         assert_eq!(
@@ -144,10 +144,10 @@ mod run_initial_generation_tests {
         // Kruskal is instrumented in generate_maze_with_events (GitHub issue #146) and its event
         // kind is web-decodable — but Kruskal's arm never produces debug values (out of scope for
         // #146, see Specs/event_log.md's #146/#161 sections).
-        let (mut graph, field, preset_state) = field_and_state();
+        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::KruskalAlgorithm, ..GenerationConfig::default() };
-        let (raw_source, event_kind, debug_value_names, _) = run_initial_generation(&mut graph, &field, 4, start, config, &preset_state, false, true);
+        let (raw_source, event_kind, debug_value_names, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 4, start, config, &preset_state, false, true);
         let source = raw_source.expect("Kruskal's event kind is web-decodable");
         assert!(!source.tape.node_table.is_empty(), "a 3x3 Kruskal run must emit at least one event");
         assert!(debug_value_names.is_empty(), "Kruskal does not declare debug values");
@@ -158,10 +158,10 @@ mod run_initial_generation_tests {
     fn debug_events_true_with_wilson_yields_a_tape_and_debug_values() {
         // Wilson is instrumented in generate_maze_with_events (GitHub issue #145) and its event
         // kind is web-decodable — it declares the "visited" and "current_walk" debug values.
-        let (mut graph, field, preset_state) = field_and_state();
+        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, ..GenerationConfig::default() };
-        let (raw_source, event_kind, debug_value_names, _) = run_initial_generation(&mut graph, &field, 5, start, config, &preset_state, false, true);
+        let (raw_source, event_kind, debug_value_names, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 5, start, config, &preset_state, false, true);
         let source = raw_source.expect("Wilson's event kind is web-decodable");
         assert!(!source.tape.node_table.is_empty(), "a 3x3 Wilson run must emit at least one event");
         assert_eq!(
@@ -179,9 +179,9 @@ mod run_initial_generation_tests {
 
     #[test]
     fn qc_experiment_ignores_debug_events_and_skips_generation() {
-        let (mut graph, field, preset_state) = field_and_state();
+        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let (raw_source, event_kind, debug_value_names, _) = run_initial_generation(&mut graph, &field, 5, start, rb_config(), &preset_state, true, true);
+        let (raw_source, event_kind, debug_value_names, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 5, start, rb_config(), &preset_state, true, true);
         assert!(raw_source.is_none(), "qc_experiment must skip the event tree entirely");
         assert!(event_kind.is_none(), "qc_experiment must skip the event kind entirely");
         assert!(debug_value_names.is_empty(), "qc_experiment must skip debug value names entirely");
@@ -190,9 +190,9 @@ mod run_initial_generation_tests {
 
     #[test]
     fn initial_build_ms_is_a_plausible_finite_duration() {
-        let (mut graph, field, preset_state) = field_and_state();
+        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
         let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let (_, _, _, initial_build_ms) = run_initial_generation(&mut graph, &field, 6, start, rb_config(), &preset_state, false, true);
+        let (_, _, _, initial_build_ms, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 6, start, rb_config(), &preset_state, false, true);
         assert!(initial_build_ms.is_finite() && initial_build_ms >= 0.0);
     }
 }

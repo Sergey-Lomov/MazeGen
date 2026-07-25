@@ -4,19 +4,19 @@ use super::helpers::*;
 
 #[test]
 fn same_seed_same_maze() {
-    let (mut g1, f1, start1) = build(8, 8);
-    let (mut g2, f2, start2) = build(8, 8);
-    generate_maze(&mut g1, &f1, 42, start1, default_config(), &empty_preset());
-    generate_maze(&mut g2, &f2, 42, start2, default_config(), &empty_preset());
+    let (mut g1, mut f1, start1, mut ids1) = build_with_ids(8, 8);
+    let (mut g2, mut f2, start2, mut ids2) = build_with_ids(8, 8);
+    generate_maze(&mut g1, &mut f1, &mut ids1, 42, start1, default_config(), &empty_preset());
+    generate_maze(&mut g2, &mut f2, &mut ids2, 42, start2, default_config(), &empty_preset());
     assert_eq!(collect_edges(&g1), collect_edges(&g2));
 }
 
 #[test]
 fn different_seed_different_maze() {
-    let (mut g1, f1, start1) = build(8, 8);
-    let (mut g2, f2, start2) = build(8, 8);
-    generate_maze(&mut g1, &f1, 1, start1, default_config(), &empty_preset());
-    generate_maze(&mut g2, &f2, 2, start2, default_config(), &empty_preset());
+    let (mut g1, mut f1, start1, mut ids1) = build_with_ids(8, 8);
+    let (mut g2, mut f2, start2, mut ids2) = build_with_ids(8, 8);
+    generate_maze(&mut g1, &mut f1, &mut ids1, 1, start1, default_config(), &empty_preset());
+    generate_maze(&mut g2, &mut f2, &mut ids2, 2, start2, default_config(), &empty_preset());
     assert_ne!(collect_edges(&g1), collect_edges(&g2));
 }
 
@@ -24,31 +24,31 @@ fn different_seed_different_maze() {
 fn traverses_preset_teleport_into_visited() {
     // GitHub issue #226: a preset teleport bridging two otherwise-disconnected halves must be
     // followed by the algorithm, not treated as a dead end.
-    let (mut graph, field, start, preset_state, _node_count, _, _) = build_with_preset_teleport_bridge();
-    generate_maze(&mut graph, &field, 42, start, default_config(), &preset_state);
+    let (mut graph, mut field, start, preset_state, _node_count, _, _, mut ids) = build_with_preset_teleport_bridge();
+    generate_maze(&mut graph, &mut field, &mut ids, 42, start, default_config(), &preset_state);
     assert!(is_connected(&graph, start));
 }
 
 #[test]
 fn traverses_one_way_preset_teleport_into_visited() {
     // GitHub issue #226: a one-way preset teleport must also be traversed, not just the two-way case.
-    let (mut graph, field, start, preset_state, _node_count) = build_with_one_way_preset_teleport_bridge();
-    generate_maze(&mut graph, &field, 42, start, default_config(), &preset_state);
+    let (mut graph, mut field, start, preset_state, _node_count, mut ids) = build_with_one_way_preset_teleport_bridge();
+    generate_maze(&mut graph, &mut field, &mut ids, 42, start, default_config(), &preset_state);
     assert!(is_connected(&graph, start));
 }
 
 #[test]
 fn generated_maze_is_connected() {
-    let (mut graph, field, start) = build(10, 10);
-    generate_maze(&mut graph, &field, 99, start, default_config(), &empty_preset());
+    let (mut graph, mut field, start, mut ids) = build_with_ids(10, 10);
+    generate_maze(&mut graph, &mut field, &mut ids, 99, start, default_config(), &empty_preset());
     assert!(is_connected(&graph, start));
 }
 
 #[test]
 fn generated_maze_edges_only_connect_field_neighbors() {
     for seed in [42, 1, 2, 3, 99, 1234, 9999] {
-        let (mut graph, field, start) = build(10, 10);
-        generate_maze(&mut graph, &field, seed, start, default_config(), &empty_preset());
+        let (mut graph, mut field, start, mut ids) = build_with_ids(10, 10);
+        generate_maze(&mut graph, &mut field, &mut ids, seed, start, default_config(), &empty_preset());
         for edge in graph.edges() {
             let neighbors = field.neighbors(edge.from);
             assert!(
@@ -76,10 +76,10 @@ fn generate_maze_with_extreme_params_is_connected() {
         directionality:  0.0,
         cyclicity:       0.0,
     };
-    let (mut g1, f1, start1) = build(10, 10);
-    let (mut g2, f2, start2) = build(10, 10);
-    generate_maze(&mut g1, &f1, 42, start1, config_with_params(all_max), &empty_preset());
-    generate_maze(&mut g2, &f2, 42, start2, config_with_params(all_min), &empty_preset());
+    let (mut g1, mut f1, start1, mut ids1) = build_with_ids(10, 10);
+    let (mut g2, mut f2, start2, mut ids2) = build_with_ids(10, 10);
+    generate_maze(&mut g1, &mut f1, &mut ids1, 42, start1, config_with_params(all_max), &empty_preset());
+    generate_maze(&mut g2, &mut f2, &mut ids2, 42, start2, config_with_params(all_min), &empty_preset());
     assert!(is_connected(&g1, start1));
     assert!(is_connected(&g2, start2));
 }
@@ -100,19 +100,19 @@ fn generate_maze_params_affect_structure() {
         directionality:  0.0,
         cyclicity:       0.0,
     };
-    let (mut g1, f1, start1) = build(10, 10);
-    let (mut g2, f2, start2) = build(10, 10);
-    generate_maze(&mut g1, &f1, 42, start1, config_with_params(high_branching), &empty_preset());
-    generate_maze(&mut g2, &f2, 42, start2, config_with_params(low_branching), &empty_preset());
+    let (mut g1, mut f1, start1, mut ids1) = build_with_ids(10, 10);
+    let (mut g2, mut f2, start2, mut ids2) = build_with_ids(10, 10);
+    generate_maze(&mut g1, &mut f1, &mut ids1, 42, start1, config_with_params(high_branching), &empty_preset());
+    generate_maze(&mut g2, &mut f2, &mut ids2, 42, start2, config_with_params(low_branching), &empty_preset());
     assert_ne!(collect_edges(&g1), collect_edges(&g2));
 }
 
 #[test]
 fn generated_maze_is_connected_with_all_one_way_edges() {
-    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 };
+    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
     for seed in [1, 42, 99, 1234, 9999] {
-        let (mut graph, field, start) = build(8, 8);
-        generate_maze(&mut graph, &field, seed, start, config_with_elements(elements.clone()), &empty_preset());
+        let (mut graph, mut field, start, mut ids) = build_with_ids(8, 8);
+        generate_maze(&mut graph, &mut field, &mut ids, seed, start, config_with_elements(elements.clone()), &empty_preset());
         assert!(
             is_connected(&graph, start),
             "seed={seed}: maze with one_way_chance=1.0 is not connected"
@@ -122,10 +122,10 @@ fn generated_maze_is_connected_with_all_one_way_edges() {
 
 #[test]
 fn vertex_based_cyclicity_creates_extra_edges() {
-    let (mut graph, field, start) = build(6, 6);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
     let node_count = graph.nodes().count();
     let params = GenerationParams { cyclicity: 1.0, ..GenerationParams::default() };
-    generate_maze(&mut graph, &field, 42, start, config_with_params(params), &empty_preset());
+    generate_maze(&mut graph, &mut field, &mut ids, 42, start, config_with_params(params), &empty_preset());
     assert!(
         graph.edges().count() > 2 * (node_count - 1),
         "cyclicity=1.0 produced no extra edges: edge_count={}",

@@ -575,6 +575,41 @@ function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
       return [{ kind: "text", text: m["debug.tree.node_queued_to_reserve"]() + " " }, { kind: "node", id: event.node }];
     case "StartVisited":
       return [{ kind: "text", text: m["debug.tree.start_added_to_visited_and_frontier"]() + " " }, { kind: "node", id: event.node }];
+    case "SplitRolled":
+      return [{
+        kind: "text",
+        text: !event.fired
+          ? m["debug.tree.split_rolled_not_fired"]({ param: fmt(event.splitChance), roll: fmt(event.roll) })
+          : event.eligible
+            ? m["debug.tree.split_rolled_fired_eligible"]({ param: fmt(event.splitChance), roll: fmt(event.roll) })
+            : m["debug.tree.split_rolled_fired_ineligible"]({ param: fmt(event.splitChance), roll: fmt(event.roll) }),
+      }];
+    case "SplitNodesCreated":
+      return [{
+        kind: "text",
+        text: event.pattern !== null
+          ? m["debug.tree.split_nodes_created_pattern"]({ count: event.nodes.length, pattern: event.pattern })
+          : m["debug.tree.split_nodes_created_non_pattern"]({ count: event.nodes.length }),
+      }, { kind: "region", nodes: event.nodes }];
+    case "SplitCyclicRolled":
+      return [{
+        kind: "text",
+        text: event.fired
+          ? m["debug.tree.split_cyclic_rolled_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) })
+          : m["debug.tree.split_cyclic_rolled_not_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) }),
+      }];
+    case "PatternAdaptationsComputed":
+      return [{ kind: "text", text: m["debug.tree.pattern_adaptations_computed"]({ pattern: event.pattern, count: event.count }) }];
+    case "PatternAdaptationChosen":
+      return [{ kind: "text", text: m["debug.tree.pattern_adaptation_chosen"]({ pattern: event.pattern, rotation: event.rotation, mirror: event.mirror ? "yes" : "no" }) }];
+    case "SplitTeleportRolled":
+      return event.fired && event.anchor !== null
+        ? [{ kind: "text", text: m["debug.tree.split_teleport_rolled_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) }) + " " }, { kind: "node", id: event.anchor }]
+        : [{ kind: "text", text: m["debug.tree.split_teleport_rolled_not_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) }) }];
+    case "SplitStartReassigned":
+      return [{ kind: "text", text: m["debug.tree.split_start_reassigned"]() + " " }, { kind: "node", id: event.reassignedTo }];
+    case "SplitParentEdgeRelocated":
+      return [{ kind: "text", text: m["debug.tree.split_parent_edge_relocated"]() + " " }, { kind: "edge", from: event.parent, to: event.takenBy, bidirectional: false }];
   }
 }
 

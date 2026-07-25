@@ -31,6 +31,14 @@ export const VERTEX_BASED_TAG = {
   SINGLE_CANDIDATE_SKIPS_DIRECTIONALITY: 23,
   NO_PARENT_SKIPS_DIRECTIONALITY: 24,
   DIRECTIONALITY_ROLLED: 25,
+  SPLIT_ROLLED: 26,
+  SPLIT_NODES_CREATED: 27,
+  SPLIT_CYCLIC_ROLLED: 28,
+  PATTERN_ADAPTATIONS_COMPUTED: 29,
+  PATTERN_ADAPTATION_CHOSEN: 30,
+  SPLIT_TELEPORT_ROLLED: 31,
+  SPLIT_START_REASSIGNED: 32,
+  SPLIT_PARENT_EDGE_RELOCATED: 33,
 } as const;
 
 export type VertexBasedEvent =
@@ -58,7 +66,15 @@ export type VertexBasedEvent =
   | { kind: "StartVisited"; node: bigint }
   | { kind: "SingleCandidateSkipsDirectionality"; node: bigint }
   | { kind: "NoParentSkipsDirectionality"; node: bigint }
-  | { kind: "DirectionalityRolled"; roll: number; directionality: number; fired: boolean; straightFound: boolean };
+  | { kind: "DirectionalityRolled"; roll: number; directionality: number; fired: boolean; straightFound: boolean }
+  | { kind: "SplitRolled"; src: bigint; roll: number; splitChance: number; fired: boolean; eligible: boolean }
+  | { kind: "SplitNodesCreated"; src: bigint; nodes: bigint[]; pattern: number | null }
+  | { kind: "SplitCyclicRolled"; src: bigint; roll: number; cyclicity: number; fired: boolean }
+  | { kind: "PatternAdaptationsComputed"; src: bigint; pattern: number; count: number }
+  | { kind: "PatternAdaptationChosen"; src: bigint; pattern: number; rotation: number; mirror: boolean }
+  | { kind: "SplitTeleportRolled"; roll: number; teleportChance: number; fired: boolean; anchor: bigint | null }
+  | { kind: "SplitStartReassigned"; original: bigint; reassignedTo: bigint }
+  | { kind: "SplitParentEdgeRelocated"; parent: bigint; src: bigint; takenBy: bigint };
 
 /** Decodes one `CustomVertexBased` event's binary payload. Contract: only called with `tag >= 1`
  *  — callers filter out `TAG_SCOPE` first. Throws on an unrecognized tag or a `payload_len`
@@ -176,6 +192,68 @@ export function decodeVertexBasedEvent(tag: number, bytes: Uint8Array): VertexBa
         fired: bytes[16] !== 0,
         straightFound: bytes[17] !== 0,
       };
+    case VERTEX_BASED_TAG.SPLIT_ROLLED:
+      expectLen(tag, bytes, 26);
+      return {
+        kind: "SplitRolled",
+        src: readNodeId(bytes, 0),
+        roll: readF64(bytes, 8),
+        splitChance: readF64(bytes, 16),
+        fired: bytes[24] !== 0,
+        eligible: bytes[25] !== 0,
+      };
+    case VERTEX_BASED_TAG.SPLIT_NODES_CREATED: {
+      const src = readNodeId(bytes, 0);
+      const { ids: nodes, next } = readNodeIdList(bytes, 8);
+      const hasPattern = bytes[next] !== 0;
+      const pattern = hasPattern ? readU32(bytes, next + 1) : null;
+      return { kind: "SplitNodesCreated", src, nodes, pattern };
+    }
+    case VERTEX_BASED_TAG.SPLIT_CYCLIC_ROLLED:
+      expectLen(tag, bytes, 25);
+      return {
+        kind: "SplitCyclicRolled",
+        src: readNodeId(bytes, 0),
+        roll: readF64(bytes, 8),
+        cyclicity: readF64(bytes, 16),
+        fired: bytes[24] !== 0,
+      };
+    case VERTEX_BASED_TAG.PATTERN_ADAPTATIONS_COMPUTED:
+      expectLen(tag, bytes, 16);
+      return {
+        kind: "PatternAdaptationsComputed",
+        src: readNodeId(bytes, 0),
+        pattern: readU32(bytes, 8),
+        count: readU32(bytes, 12),
+      };
+    case VERTEX_BASED_TAG.PATTERN_ADAPTATION_CHOSEN:
+      expectLen(tag, bytes, 17);
+      return {
+        kind: "PatternAdaptationChosen",
+        src: readNodeId(bytes, 0),
+        pattern: readU32(bytes, 8),
+        rotation: readU32(bytes, 12),
+        mirror: bytes[16] !== 0,
+      };
+    case VERTEX_BASED_TAG.SPLIT_TELEPORT_ROLLED: {
+      expectLen(tag, bytes, 26);
+      const fired = bytes[16] !== 0;
+      const hasAnchor = bytes[17] !== 0;
+      const anchor = hasAnchor ? readNodeId(bytes, 18) : null;
+      return {
+        kind: "SplitTeleportRolled",
+        roll: readF64(bytes, 0),
+        teleportChance: readF64(bytes, 8),
+        fired,
+        anchor,
+      };
+    }
+    case VERTEX_BASED_TAG.SPLIT_START_REASSIGNED:
+      expectLen(tag, bytes, 16);
+      return { kind: "SplitStartReassigned", original: readNodeId(bytes, 0), reassignedTo: readNodeId(bytes, 8) };
+    case VERTEX_BASED_TAG.SPLIT_PARENT_EDGE_RELOCATED:
+      expectLen(tag, bytes, 24);
+      return { kind: "SplitParentEdgeRelocated", parent: readNodeId(bytes, 0), src: readNodeId(bytes, 8), takenBy: readNodeId(bytes, 16) };
     default:
       throw new Error(`VertexBasedEvent: unknown wire tag ${tag}`);
   }
@@ -195,7 +273,10 @@ export function isMutatingVertexBasedEvent(event: VertexBasedEvent): boolean {
     event.kind === "NodeQueuedToReserve" ||
     event.kind === "ReserveCandidateChosen" ||
     event.kind === "StartVisited" ||
-    event.kind === "SrcChosenFromFrontier"
+    event.kind === "SrcChosenFromFrontier" ||
+    event.kind === "SplitNodesCreated" ||
+    event.kind === "SplitStartReassigned" ||
+    event.kind === "SplitParentEdgeRelocated"
   );
 }
 
@@ -238,6 +319,12 @@ function vertexBasedDebugValueDeltasFor(event: VertexBasedEvent): [string, Debug
       return [[VISITED, "insert", event.node], [FRONTIER, "insert", event.node]];
     case "SrcChosenFromFrontier":
       return [[FRONTIER, "remove", event.src]];
+    case "SplitNodesCreated":
+      // Only the newly minted nodes (index 0 is `src`, already visited by whatever brought it
+      // into this step) need a delta here — mirrors `VertexBasedEvent::debug_value_deltas` in
+      // `vertex_based.rs`. Whether a node also enters `frontier` is decided by its own later
+      // `NodeVisited` (or never, for a zero-connection pattern node).
+      return event.nodes.slice(1).map((n) => [VISITED, "insert", n] as [string, DebugValueOp, bigint]);
     default:
       return [];
   }
@@ -250,6 +337,13 @@ export interface VertexBasedApplyResult {
    *  independent per-node highlights) — mirrors `debugValues` on
    *  `ApplyResult`/`applyRecursiveBacktracker`/`EdgeBasedApplyResult`. */
   debugValues: DebugValues;
+  /** Node ids minted mid-run by a `SplitNodesCreated` event seen so far (GitHub issue #222) — every
+   *  such node is absent from the field until its own creation step, unlike every other node
+   *  (present from the arena's start). `DebugMazeView`'s final node list must exclude a split node
+   *  before this set contains it, or the tile reads as an already-split point (with no connections
+   *  yet) many steps before the split actually happened, rendering as fully closed. `src` itself
+   *  (index 0 of `SplitNodesCreated.nodes`) is never added here — it already existed. */
+  createdNodes: bigint[];
   step: number;
   nodeIndex: number;
 }
@@ -271,7 +365,7 @@ export function applyVertexBased(tape: ParsedTape, targetStep: number, from?: Ve
       throw new Error(`applyVertexBased: from.step ${from.step} is ahead of targetStep ${targetStep}`);
     }
     if (from.step === targetStep) {
-      return { edges: [...from.edges], debugValues: cloneDebugValues(from.debugValues), step: targetStep, nodeIndex: from.nodeIndex };
+      return { edges: [...from.edges], debugValues: cloneDebugValues(from.debugValues), createdNodes: [...from.createdNodes], step: targetStep, nodeIndex: from.nodeIndex };
     }
   }
 
@@ -284,6 +378,7 @@ export function applyVertexBased(tape: ParsedTape, targetStep: number, from?: Ve
   }
 
   const edges = from ? [...from.edges] : [];
+  const createdNodes = from ? [...from.createdNodes] : [];
   // Built as Set<bigint> per name, not Array, while replaying — "visited"/"frontier"/"reserve"
   // are Region-kind (order carries no meaning, see VertexBasedEvent's DebugValueDelta doc comment
   // in vertex_based.rs), so a Set gives O(1) insert/remove instead of the O(n) indexOf+splice a
@@ -309,6 +404,22 @@ export function applyVertexBased(tape: ParsedTape, targetStep: number, from?: Ve
         edges.push({ from: event.dst, to: event.src, kind });
       }
     }
+    if (event.kind === "SplitNodesCreated") {
+      createdNodes.push(...event.nodes.slice(1)); // index 0 is `src`, already existed
+    }
+    if (event.kind === "SplitParentEdgeRelocated") {
+      // Every existing edge entry between `parent` and `src` (either direction — a bidirectional
+      // Passage face has two, a one-way face just one) is relocated to `takenBy` with the same
+      // direction/kind, mirroring apply_pattern_adaptation's own remove-then-recreate in Rust.
+      for (let i = edges.length - 1; i >= 0; i--) {
+        const e = edges[i];
+        if (e.from === event.parent && e.to === event.src) {
+          edges[i] = { ...e, to: event.takenBy };
+        } else if (e.from === event.src && e.to === event.parent) {
+          edges[i] = { ...e, from: event.takenBy };
+        }
+      }
+    }
     for (const [name, op, id] of vertexBasedDebugValueDeltasFor(event)) {
       let set = sets.get(name);
       if (!set) {
@@ -328,5 +439,5 @@ export function applyVertexBased(tape: ParsedTape, targetStep: number, from?: Ve
     debugValues.set(name, [...set]);
   }
 
-  return { edges, debugValues, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
+  return { edges, debugValues, createdNodes, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
 }

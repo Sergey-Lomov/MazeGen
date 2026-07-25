@@ -28,9 +28,9 @@ pub fn empty_preset() -> PresetState { PresetState::empty() }
 /// does for a `PresetConnectionState::Teleport(TwoWay)` entry — see `Specs/preset-connections.md`).
 /// Regression fixture for GitHub issue #226: every generation algorithm must treat a preset
 /// teleport as a traversable extra neighbor, not a dead end. Returns
-/// `(graph, field, start, preset_state, node_count, teleport_a, teleport_b)`.
-pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>, NodeId, PresetState, usize, NodeId, NodeId) {
-    let (mut graph, field, start) = build(4, 1);
+/// `(graph, field, start, preset_state, node_count, teleport_a, teleport_b, ids)`.
+pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>, NodeId, PresetState, usize, NodeId, NodeId, IdGenerator) {
+    let (mut graph, field, start, ids) = build_with_ids(4, 1);
     let node_count = graph.nodes().count();
     let a = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
     let b = field.nodes_at(SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
@@ -44,7 +44,7 @@ pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>,
     preset_state.preset_teleports.entry(a).or_default().push(b);
     preset_state.preset_teleports.entry(b).or_default().push(a);
 
-    (graph, field, start, preset_state, node_count, a, b)
+    (graph, field, start, preset_state, node_count, a, b, ids)
 }
 
 /// One-way counterpart of `build_with_preset_teleport_bridge`: same 1x4 layout and walled-off
@@ -53,9 +53,9 @@ pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>,
 /// see `Specs/preset-connections.md`), so `preset_teleports` has an entry only for `a`, not `b`.
 /// Regression fixture for GitHub issue #226: a one-way preset teleport must still be traversed
 /// (from `a`'s side only) exactly like the two-way case, not silently treated symmetrically.
-/// Returns `(graph, field, start, preset_state, node_count)`.
-pub fn build_with_one_way_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>, NodeId, PresetState, usize) {
-    let (mut graph, field, start) = build(4, 1);
+/// Returns `(graph, field, start, preset_state, node_count, ids)`.
+pub fn build_with_one_way_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>, NodeId, PresetState, usize, IdGenerator) {
+    let (mut graph, field, start, ids) = build_with_ids(4, 1);
     let node_count = graph.nodes().count();
     let a = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
     let b = field.nodes_at(SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
@@ -67,10 +67,10 @@ pub fn build_with_one_way_preset_teleport_bridge() -> (Graph, Field<SquareTessel
     preset_state.blocked.insert((b, a));
     preset_state.preset_teleports.entry(a).or_default().push(b);
 
-    (graph, field, start, preset_state, node_count)
+    (graph, field, start, preset_state, node_count, ids)
 }
 
-pub fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 } }
+pub fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 } }
 
 pub fn default_config() -> GenerationConfig {
     GenerationConfig::default()
@@ -79,7 +79,7 @@ pub fn default_config() -> GenerationConfig {
 pub fn config_with_params(params: GenerationParams) -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::CustomVertexBased(params),
-        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
         ..GenerationConfig::default()
     }
 }
@@ -95,7 +95,7 @@ pub fn config_with_elements(elements: ElementsConfig) -> GenerationConfig {
 pub fn edge_based_config(params: EdgeBasedParams) -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::CustomEdgeBased(params),
-        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
         ..GenerationConfig::default()
     }
 }
@@ -103,7 +103,7 @@ pub fn edge_based_config(params: EdgeBasedParams) -> GenerationConfig {
 pub fn kruskal_config() -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::KruskalAlgorithm,
-        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
         ..GenerationConfig::default()
     }
 }

@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -521,6 +521,12 @@ export interface GenerationState {
    * Quality feature card surfaces as a warning. */
   repairMaxIterations: number | null;
   repairTimeBudgetSecs: number | null;
+  /** CustomVertexBased-only automatic split-point assignment settings (GitHub issue #222).
+   * `splitPatterns` is scoped to the currently active tessellation — reset (like other
+   * tessellation-specific settings) whenever the tessellation changes. */
+  splitPatternMode: boolean;
+  splitMaxNodes: number;
+  splitPatterns: SplitPattern[];
 }
 
 export interface GenerationActions {
@@ -649,6 +655,11 @@ export interface GenerationActions {
   setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;
   setRepairTimeBudgetSecs: (v: number | null) => void;
+  setSplitPatternMode: (v: boolean) => void;
+  setSplitMaxNodes: (v: number) => void;
+  addSplitPattern: (pattern: SplitPattern) => void;
+  removeSplitPattern: (index: number) => void;
+  updateSplitPattern: (index: number, pattern: SplitPattern) => void;
 }
 
 export interface AnalyticsOverlayState {

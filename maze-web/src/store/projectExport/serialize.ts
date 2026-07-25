@@ -24,6 +24,11 @@ export function serializeProject(state: MazeState): ProjectFile {
       randomSeed: state.randomSeed,
       initial: state.initialConfig,
       elements: state.elementsConfig,
+      splitGeneration: {
+        patternMode: state.splitPatternMode,
+        maxSplitNodes: state.splitMaxNodes,
+        patterns: state.splitPatterns,
+      },
       qcExperiment: state.qcExperiment,
       seedHistory: state.seedHistory,
       seedHistoryIndex: state.seedHistoryIndex,

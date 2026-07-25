@@ -36,7 +36,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   stages: [newStage(0)],
   strategyParams: {},
   initialConfig: { method: "recursive_backtracker" as const },
-  elementsConfig: { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 },
+  elementsConfig: { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
   nodeStats: null,
   edgeStats: null,
   teleportEdgeStats: null,
@@ -62,6 +62,9 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   mazeDirty: false,
   repairMaxIterations: 100,
   repairTimeBudgetSecs: 10,
+  splitPatternMode: false,
+  splitMaxNodes: 2,
+  splitPatterns: [],
 
   loadRegistry: () => {
     return initWasm().then(() => {
@@ -524,4 +527,19 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),
   setRepairTimeBudgetSecs: (v) => set({ repairTimeBudgetSecs: v }),
+
+  setSplitPatternMode: (v) => set((state) => ({ splitPatternMode: v, debugStale: debugStaleOf(state) })),
+  setSplitMaxNodes: (v) => set((state) => ({ splitMaxNodes: v, debugStale: debugStaleOf(state) })),
+  addSplitPattern: (pattern) => set((state) => ({
+    splitPatterns: [...state.splitPatterns, pattern],
+    debugStale: debugStaleOf(state),
+  })),
+  removeSplitPattern: (index) => set((state) => ({
+    splitPatterns: state.splitPatterns.filter((_, i) => i !== index),
+    debugStale: debugStaleOf(state),
+  })),
+  updateSplitPattern: (index, pattern) => set((state) => ({
+    splitPatterns: state.splitPatterns.map((p, i) => i === index ? pattern : p),
+    debugStale: debugStaleOf(state),
+  })),
 });

@@ -48,6 +48,19 @@ describe("mazeStore.generate", () => {
     expect(s.selectedNode).toBeNull();
   });
 
+  it("derives postEditDraftSplitPoints from a snapshot with an auto-split point (GitHub issue #222)", () => {
+    vi.mocked(generateMaze).mockReturnValue({
+      snapshot: {
+        ...mockSnapshot,
+        nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 1, y: 0 }],
+      },
+      debugTape: undefined,
+    });
+    useMazeStore.getState().generate();
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints).toEqual({ "1,0": [0] });
+  });
+
   it("calls generateMaze with current seed and tessellationConfig", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
@@ -62,10 +75,11 @@ describe("mazeStore.generate", () => {
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
-      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
+      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0, split_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
       split_points: [],
+      split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
     });
   });
 
@@ -98,10 +112,11 @@ describe("mazeStore.generate", () => {
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
-      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
+      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0, split_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
       split_points: [],
+      split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
     });
   });
 
@@ -119,10 +134,11 @@ describe("mazeStore.generate", () => {
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
-      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
+      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0, split_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
       split_points: [],
+      split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
     });
   });
 
@@ -230,10 +246,11 @@ describe("mazeStore.generate", () => {
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
       initial: expect.objectContaining({ method: "custom_vertex_based" }),
-      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0 },
+      elements: { one_way_chance: 0.04, teleport_chance: 0, teleport_one_way_chance: 0, split_chance: 0 },
       preset_connections: [],
       locked_nodes: [],
       split_points: [],
+      split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
     });
   });
 
@@ -1637,6 +1654,7 @@ describe("mazeStore.qcExperiment toggle", () => {
       qc_experiment: true,
       locked_nodes: [],
       split_points: [],
+      split_generation: { pattern_mode: false, max_split_nodes: 2, patterns: [] },
     }));
   });
 

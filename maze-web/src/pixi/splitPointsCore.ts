@@ -17,6 +17,31 @@ function pointKey(point: [number, number]): string {
   return `${point[0]},${point[1]}`;
 }
 
+/** Derives a fresh `SplitPoints` map straight from a freshly generated node list — needed because
+ *  a tile can now arrive already split without any prior `postEditDraftSplitPoints`/
+ *  `presetSplitPoints` entry (GitHub issue #222's generator-driven automatic split, on top of the
+ *  pre-existing manual `split_points`/preset-stage declarations from #221/#231): the generator
+ *  mints extra nodes at a point during its own run, with no corresponding slot ever registered on
+ *  the web side. Every point with more than one node gets slot ids `0..n-2` assigned to its nodes
+ *  in snapshot order, skipping index 0 (the point's original node — never a "slot", see
+ *  `ManageSplitNodesDialog`'s `originalNodeId`/`originalEndpoint`). Slot ids are positional, not
+ *  stable identifiers carried over from a previous state — call this once, right after a fresh
+ *  generation result arrives, not as an incremental merge into existing slot ids. */
+export function deriveSplitPointsFromNodes(nodes: { x: number; y: number }[]): SplitPoints {
+  const counts = new Map<string, number>();
+  for (const n of nodes) {
+    const key = pointKey([n.x, n.y]);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const result: SplitPoints = {};
+  for (const [key, count] of counts) {
+    if (count > 1) {
+      result[key] = Array.from({ length: count - 1 }, (_, i) => i);
+    }
+  }
+  return result;
+}
+
 /** Mints the next slotId for `point` (`max(existing) + 1`, or `0` if none yet — uniqueness is only
  * needed within a point, see `postEditDraftSplitPoints`'s doc comment) and appends it. */
 export function addSlot(

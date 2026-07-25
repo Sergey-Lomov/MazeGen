@@ -117,3 +117,42 @@ export function buildSplitNodeResolver(
     return ids[slotIndex + 1];
   };
 }
+
+/** The inverse of `buildSplitNodeResolver`: builds a real `NodeId` -> `PostEditEndpoint` resolver.
+ * A plain node whose point has no split-slot registered for it resolves to `nodeEndpoint(id)` as
+ * usual; a node that IS one of a split point's extra nodes (per `pointNodeMap`'s per-point order
+ * and `splitPoints`' sorted slot list — same contract as `buildSplitNodeResolver`, index 0 is
+ * always the original node) resolves to `splitEndpoint(point, slotId)` instead.
+ *
+ * Needed because a `NodeId` a WASM `generate()` call minted for an automatic split (GitHub issue
+ * #222) is only meaningful for *that* call — `compute_analytics` (driving `confirmPostEdit`)
+ * rebuilds the graph from scratch on every confirm, assigning ids in its own deterministic order
+ * (`tessellation.points` order, then `split_points` in sorted `(point, slot_id)` order), which
+ * generally does NOT match the id an auto-split node happened to get mid-traversal. A `node`
+ * endpoint pinned to that stale id would silently resolve to the wrong node (or none) on the next
+ * confirm — see the GitHub issue #222 post-load-isolated-node bug. Addressing it as
+ * `(point, slotId)` instead sidesteps the mismatch entirely: `compute_analytics` resolves a
+ * `split` endpoint through the very same `split_points` list it was just given, so it's always
+ * self-consistent regardless of what raw id the node ends up with. */
+export function resolverForNodeId(
+  pointNodeMap: ReadonlyMap<string, number[]>,
+  splitPoints: Readonly<Record<string, number[]>>,
+): (id: number) => PostEditEndpoint {
+  const pointOfId = new Map<number, [string, number[]]>();
+  for (const [key, ids] of pointNodeMap) {
+    for (const id of ids) pointOfId.set(id, [key, ids]);
+  }
+  return (id) => {
+    const entry = pointOfId.get(id);
+    if (!entry) return nodeEndpoint(id);
+    const [key, ids] = entry;
+    const index = ids.indexOf(id);
+    if (index <= 0) return nodeEndpoint(id);
+    const slots = splitPoints[key];
+    const sortedSlots = slots ? [...slots].sort((a, b) => a - b) : [];
+    const slotId = sortedSlots[index - 1];
+    if (slotId === undefined) return nodeEndpoint(id);
+    const [xStr, yStr] = key.split(",");
+    return splitEndpoint([Number(xStr), Number(yStr)], slotId);
+  };
+}

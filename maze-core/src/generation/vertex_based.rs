@@ -1,11 +1,13 @@
 use std::collections::HashSet;
 use rand::{Rng, SeedableRng};
 use crate::random::MazeRng;
-use crate::ids::NodeId;
+use crate::ids::{NodeId, IdGenerator};
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
 use crate::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog, ScopeGuard};
 use super::{ElementsConfig, GenerationParams, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
+use super::split_pattern::SplitGenerationConfig;
+use super::split_logic::{try_split_src, SplitOutcome, StartReassignment};
 
 /// Stable wire tags for [`VertexBasedEvent`] (see `Specs/event_log.md`'s #124 binary encoding) —
 /// manually assigned, never derived from Rust enum variant order/discriminant. `0` is reserved
@@ -36,6 +38,14 @@ mod wire_tags {
     pub const SINGLE_CANDIDATE_SKIPS_DIRECTIONALITY: u16 = 23;
     pub const NO_PARENT_SKIPS_DIRECTIONALITY: u16 = 24;
     pub const DIRECTIONALITY_ROLLED: u16 = 25;
+    pub const SPLIT_ROLLED: u16 = 26;
+    pub const SPLIT_NODES_CREATED: u16 = 27;
+    pub const SPLIT_CYCLIC_ROLLED: u16 = 28;
+    pub const PATTERN_ADAPTATIONS_COMPUTED: u16 = 29;
+    pub const PATTERN_ADAPTATION_CHOSEN: u16 = 30;
+    pub const SPLIT_TELEPORT_ROLLED: u16 = 31;
+    pub const SPLIT_START_REASSIGNED: u16 = 32;
+    pub const SPLIT_PARENT_EDGE_RELOCATED: u16 = 33;
 }
 
 /// Narration-level events for `CustomVertexBased` generation (see GitHub issue #143). Unlike
@@ -181,6 +191,46 @@ pub enum VertexBasedEvent {
     /// reader (and the `"frontier"` debug value) sees the start node there from the very first
     /// step instead of it silently appearing in the frontier with no corresponding event.
     StartVisited { node: NodeId },
+    /// The split roll for `src`, taken before any other per-step logic (GitHub issue #222) —
+    /// always consumed regardless of `split_chance`, same RNG-parity discipline as
+    /// `TeleportRolled`/`CyclicRolled`. `fired` is `roll < split_chance`. A hit does not
+    /// necessarily mean the split is applied — see `eligible`/`SplitNodesCreated`: an ineligible
+    /// or pattern-exhausted hit still falls back to the ordinary per-step flow for `src`.
+    SplitRolled { src: NodeId, roll: f64, split_chance: f64, fired: bool, eligible: bool },
+    /// A split was actually applied to `src`'s tile: `nodes` is every resulting node (index 0 is
+    /// always `src` itself), `pattern` is `Some(pattern index)` in pattern mode or `None` in
+    /// non-pattern mode.
+    SplitNodesCreated { src: NodeId, nodes: Vec<NodeId>, pattern: Option<usize> },
+    /// Pattern mode's once-per-event cyclic roll (distinct from the ordinary per-node
+    /// `CyclicRolled` — pattern mode rolls cyclicity once for the whole split event, not once per
+    /// resulting node). `fired` is `roll < cyclicity`; a hit allows exactly one pattern face to
+    /// resolve to an already-visited neighbor instead of requiring every `Passage`/`OneWay` face
+    /// to land on an unvisited one.
+    SplitCyclicRolled { src: NodeId, roll: f64, cyclicity: f64, fired: bool },
+    /// Every valid rotation/mirror adaptation found for the chosen pattern, before one is picked —
+    /// `count` is `adaptations.len()`, kept alongside since an empty result (pattern excluded,
+    /// loop retries another) is exactly as narratively interesting as a non-empty one.
+    PatternAdaptationsComputed { src: NodeId, pattern: usize, count: usize },
+    /// The adaptation actually applied, picked uniformly at random from
+    /// `PatternAdaptationsComputed`'s candidate set. `rotation`/`mirror` identify which of the
+    /// candidate adaptations this was.
+    PatternAdaptationChosen { src: NodeId, pattern: usize, rotation: usize, mirror: bool },
+    /// The split event's once-per-event teleport roll (mirrors `TeleportRolled`, but rolled once
+    /// for the whole split event rather than per resulting node — matches pattern mode's
+    /// once-per-event cyclicity). `anchor` is the resulting node the teleport connects from, when
+    /// it fires.
+    SplitTeleportRolled { roll: f64, teleport_chance: f64, fired: bool, anchor: Option<NodeId> },
+    /// `start` was reassigned from `original` to `reassigned_to` because the run's traversal-seed
+    /// node was split — only possible once per run (`start` is only ever the pre-split seed the
+    /// very first time this could apply), and only when no explicit `preset_start` pins it.
+    SplitStartReassigned { original: NodeId, reassigned_to: NodeId },
+    /// `src`'s pre-existing edge to its real traversal parent (already in the graph before this
+    /// split event — see `try_split_src`'s doc comment on `parent`) was relocated: the edge between
+    /// `parent` and `src` was removed, and the same direction/kind was recreated between `parent`
+    /// and `taken_by` — one of this event's resulting nodes whose pattern face resolved to `parent`
+    /// with a matching requirement. `taken_by == src` means the edge effectively stayed put (`src`
+    /// itself caught its own parent face).
+    SplitParentEdgeRelocated { parent: NodeId, src: NodeId, taken_by: NodeId },
 }
 
 impl DebugEvent for VertexBasedEvent {
@@ -202,6 +252,9 @@ impl DebugEvent for VertexBasedEvent {
                 | VertexBasedEvent::ReserveCandidateChosen { .. }
                 | VertexBasedEvent::StartVisited { .. }
                 | VertexBasedEvent::SrcChosenFromFrontier { .. }
+                | VertexBasedEvent::SplitNodesCreated { .. }
+                | VertexBasedEvent::SplitStartReassigned { .. }
+                | VertexBasedEvent::SplitParentEdgeRelocated { .. }
         )
     }
 }
@@ -249,6 +302,15 @@ impl DebugValueDelta<NodeId> for VertexBasedEvent {
             }
             VertexBasedEvent::SrcChosenFromFrontier { src, .. } => {
                 vec![(FRONTIER, DebugValueOp::Remove, *src)]
+            }
+            VertexBasedEvent::SplitNodesCreated { nodes, .. } => {
+                // Only the newly minted nodes (index 0 is `src`, already visited by whatever
+                // brought it into this step) need a delta here — each is visited immediately.
+                // Whether a given new node also enters `frontier` depends on whether the split
+                // path actually connected it to anything this event, which is decided per-node
+                // by the ordinary/pattern apply step and carried by that node's own `NodeVisited`
+                // (or, for a zero-connection pattern node, this is its only delta: `VISITED` only).
+                nodes.iter().skip(1).map(|n| (VISITED, DebugValueOp::Insert, *n)).collect()
             }
             _ => Vec::new(),
         }
@@ -298,6 +360,14 @@ impl EncodeEventPayload for VertexBasedEvent {
             VertexBasedEvent::SingleCandidateSkipsDirectionality { .. } => wire_tags::SINGLE_CANDIDATE_SKIPS_DIRECTIONALITY,
             VertexBasedEvent::NoParentSkipsDirectionality { .. } => wire_tags::NO_PARENT_SKIPS_DIRECTIONALITY,
             VertexBasedEvent::DirectionalityRolled { .. } => wire_tags::DIRECTIONALITY_ROLLED,
+            VertexBasedEvent::SplitRolled { .. } => wire_tags::SPLIT_ROLLED,
+            VertexBasedEvent::SplitNodesCreated { .. } => wire_tags::SPLIT_NODES_CREATED,
+            VertexBasedEvent::SplitCyclicRolled { .. } => wire_tags::SPLIT_CYCLIC_ROLLED,
+            VertexBasedEvent::PatternAdaptationsComputed { .. } => wire_tags::PATTERN_ADAPTATIONS_COMPUTED,
+            VertexBasedEvent::PatternAdaptationChosen { .. } => wire_tags::PATTERN_ADAPTATION_CHOSEN,
+            VertexBasedEvent::SplitTeleportRolled { .. } => wire_tags::SPLIT_TELEPORT_ROLLED,
+            VertexBasedEvent::SplitStartReassigned { .. } => wire_tags::SPLIT_START_REASSIGNED,
+            VertexBasedEvent::SplitParentEdgeRelocated { .. } => wire_tags::SPLIT_PARENT_EDGE_RELOCATED,
         }
     }
 
@@ -421,11 +491,57 @@ impl EncodeEventPayload for VertexBasedEvent {
                 out.push(if *fired { 1 } else { 0 });
                 out.push(if *straight_found { 1 } else { 0 });
             }
+            VertexBasedEvent::SplitRolled { src, roll, split_chance, fired, eligible } => {
+                out.extend_from_slice(&src.to_le_bytes());
+                out.extend_from_slice(&roll.to_le_bytes());
+                out.extend_from_slice(&split_chance.to_le_bytes());
+                out.push(if *fired { 1 } else { 0 });
+                out.push(if *eligible { 1 } else { 0 });
+            }
+            VertexBasedEvent::SplitNodesCreated { src, nodes, pattern } => {
+                out.extend_from_slice(&src.to_le_bytes());
+                push_ids(out, nodes);
+                out.push(if pattern.is_some() { 1 } else { 0 });
+                out.extend_from_slice(&(pattern.unwrap_or(0) as u32).to_le_bytes());
+            }
+            VertexBasedEvent::SplitCyclicRolled { src, roll, cyclicity, fired } => {
+                out.extend_from_slice(&src.to_le_bytes());
+                out.extend_from_slice(&roll.to_le_bytes());
+                out.extend_from_slice(&cyclicity.to_le_bytes());
+                out.push(if *fired { 1 } else { 0 });
+            }
+            VertexBasedEvent::PatternAdaptationsComputed { src, pattern, count } => {
+                out.extend_from_slice(&src.to_le_bytes());
+                out.extend_from_slice(&(*pattern as u32).to_le_bytes());
+                out.extend_from_slice(&(*count as u32).to_le_bytes());
+            }
+            VertexBasedEvent::PatternAdaptationChosen { src, pattern, rotation, mirror } => {
+                out.extend_from_slice(&src.to_le_bytes());
+                out.extend_from_slice(&(*pattern as u32).to_le_bytes());
+                out.extend_from_slice(&(*rotation as u32).to_le_bytes());
+                out.push(if *mirror { 1 } else { 0 });
+            }
+            VertexBasedEvent::SplitTeleportRolled { roll, teleport_chance, fired, anchor } => {
+                out.extend_from_slice(&roll.to_le_bytes());
+                out.extend_from_slice(&teleport_chance.to_le_bytes());
+                out.push(if *fired { 1 } else { 0 });
+                out.push(if anchor.is_some() { 1 } else { 0 });
+                out.extend_from_slice(&anchor.unwrap_or(0).to_le_bytes());
+            }
+            VertexBasedEvent::SplitStartReassigned { original, reassigned_to } => {
+                out.extend_from_slice(&original.to_le_bytes());
+                out.extend_from_slice(&reassigned_to.to_le_bytes());
+            }
+            VertexBasedEvent::SplitParentEdgeRelocated { parent, src, taken_by } => {
+                out.extend_from_slice(&parent.to_le_bytes());
+                out.extend_from_slice(&src.to_le_bytes());
+                out.extend_from_slice(&taken_by.to_le_bytes());
+            }
         }
     }
 }
 
-struct FrontierEntry {
+pub(super) struct FrontierEntry {
     node:   NodeId,
     parent: Option<NodeId>,
 }
@@ -434,18 +550,18 @@ struct FrontierEntry {
 /// functions don't each need a 6+ parameter list. `all_nodes` is sorted once at construction for
 /// deterministic iteration order (candidate pool for teleport rolls: any node in the graph, not
 /// restricted to geometric neighbors).
-struct GenState {
-    visited:     HashSet<NodeId>,
-    in_frontier: HashSet<NodeId>,
-    frontier:    Vec<FrontierEntry>,
-    reserve:     Vec<NodeId>,
-    in_reserve:  HashSet<NodeId>,
-    rng:         MazeRng,
-    all_nodes:   Vec<NodeId>,
+pub(super) struct GenState {
+    pub(super) visited:     HashSet<NodeId>,
+    pub(super) in_frontier: HashSet<NodeId>,
+    pub(super) frontier:    Vec<FrontierEntry>,
+    pub(super) reserve:     Vec<NodeId>,
+    pub(super) in_reserve:  HashSet<NodeId>,
+    pub(super) rng:         MazeRng,
+    pub(super) all_nodes:   Vec<NodeId>,
 }
 
 impl GenState {
-    fn new(graph: &Graph, seed: u64, start: NodeId) -> Self {
+    pub(super) fn new(graph: &Graph, seed: u64, start: NodeId) -> Self {
         let mut all_nodes: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
         all_nodes.sort_unstable();
         let mut state = GenState {
@@ -466,14 +582,18 @@ impl GenState {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &mut Field<T>,
+    ids: &mut IdGenerator,
     seed: u64,
     start: NodeId,
     params: &GenerationParams,
     elements: &ElementsConfig,
+    split_config: &SplitGenerationConfig,
     preset_state: &PresetState,
+    start_reassignment: &mut Option<StartReassignment>,
     mut event_log: Option<&mut EventLog<VertexBasedEvent>>,
 ) {
     let mut state = GenState::new(graph, seed, start);
@@ -484,7 +604,10 @@ pub fn generate<T: Tessellation>(
     loop {
         if state.frontier.is_empty() {
             let mut step_scope = event_log.as_deref_mut().map(|log| log.enter_numbered("step"));
-            let keep_going = handle_empty_frontier(graph, field, params, elements, preset_state, &mut state, step_scope.as_mut());
+            let keep_going = handle_empty_frontier(
+                graph, field, ids, params, elements, split_config, preset_state, &mut state,
+                start, start_reassignment, step_scope.as_mut(),
+            );
             drop(step_scope);
             if !keep_going {
                 break;
@@ -493,7 +616,10 @@ pub fn generate<T: Tessellation>(
         }
 
         let mut step_scope = event_log.as_deref_mut().map(|log| log.enter_numbered("step"));
-        step_from_frontier(graph, field, params, elements, preset_state, &mut state, step_scope.as_mut());
+        step_from_frontier(
+            graph, field, ids, params, elements, split_config, preset_state, &mut state,
+            start, start_reassignment, step_scope.as_mut(),
+        );
     }
 }
 
@@ -503,7 +629,7 @@ pub fn generate<T: Tessellation>(
 /// `src->dst` (mirrors `edge_based::add_edge_and_detect_direction`, GitHub issue #144). Returns
 /// `Some((from, to, bidirectional))` with the graph's actual direction when an edge was added,
 /// `None` when the attempt was silently declined by a preset conflict.
-fn add_edge_and_detect_direction(
+pub(super) fn add_edge_and_detect_direction(
     graph: &mut Graph,
     src: NodeId,
     dst: NodeId,
@@ -523,13 +649,18 @@ fn add_edge_and_detect_direction(
 /// hit replaces the step's entire mechanism: bridges via teleport instead of geometric adjacency)
 /// or by popping a reachable candidate off `reserve`. Returns `false` when generation is done
 /// (nothing left to bring in either way), `true` to keep looping.
+#[allow(clippy::too_many_arguments)]
 fn handle_empty_frontier<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &mut Field<T>,
+    ids: &mut IdGenerator,
     params: &GenerationParams,
     elements: &ElementsConfig,
+    split_config: &SplitGenerationConfig,
     preset_state: &PresetState,
     state: &mut GenState,
+    start: NodeId,
+    start_reassignment: &mut Option<StartReassignment>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> bool {
     // Teleport roll happens before any reserve lookup — a hit replaces this step's
@@ -555,6 +686,15 @@ fn handle_empty_frontier<T: Tessellation>(
             .filter(|n| state.visited.contains(n))
             .collect();
         let bridge = visited_nodes[state.rng.random_range(0..visited_nodes.len())];
+
+        let outcome = try_split_src(
+            graph, field, ids, params, elements, split_config, preset_state, state,
+            src, Some(bridge), None, start, start_reassignment, scope.as_deref_mut(),
+        );
+        if outcome == SplitOutcome::Handled {
+            return true;
+        }
+
         let added = add_edge_and_detect_direction(graph, bridge, src, |g| {
             try_add_edge_kind(g, bridge, src, EdgeKind::Teleport, elements.teleport_one_way_chance, preset_state, &mut state.rng)
         });
@@ -617,6 +757,15 @@ fn handle_empty_frontier<T: Tessellation>(
         .filter(|&n| state.visited.contains(&n) && can_connect(n, src, preset_state))
         .collect();
     let bridge = visited_neighbors[state.rng.random_range(0..visited_neighbors.len())];
+
+    let outcome = try_split_src(
+        graph, field, ids, params, elements, split_config, preset_state, state,
+        src, Some(bridge), None, start, start_reassignment, scope.as_deref_mut(),
+    );
+    if outcome == SplitOutcome::Handled {
+        return true;
+    }
+
     let added = add_edge_and_detect_direction(graph, bridge, src, |g| try_add_edge(g, bridge, src, elements, preset_state, &mut state.rng));
     if let Some((from, to, bidirectional)) = added {
         if let Some(log) = scope.as_deref_mut() {
@@ -634,13 +783,18 @@ fn handle_empty_frontier<T: Tessellation>(
 /// One "pop a frontier node and connect its free neighbors" step — the main-loop body once the
 /// frontier is non-empty: teleport roll, cyclic-roll (possibly teleport-widened), corridor/
 /// junction connect-choice, then applying every mutation this step decided on in order.
+#[allow(clippy::too_many_arguments)]
 fn step_from_frontier<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &mut Field<T>,
+    ids: &mut IdGenerator,
     params: &GenerationParams,
     elements: &ElementsConfig,
+    split_config: &SplitGenerationConfig,
     preset_state: &PresetState,
     state: &mut GenState,
+    start: NodeId,
+    start_reassignment: &mut Option<StartReassignment>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) {
     let fi = choose_from_frontier(&state.frontier, params, &mut state.rng);
@@ -654,14 +808,49 @@ fn step_from_frontier<T: Tessellation>(
     state.frontier.remove(fi);
     state.in_frontier.remove(&src);
 
+    let outcome = try_split_src(
+        graph, field, ids, params, elements, split_config, preset_state, state,
+        src, None, parent, start, start_reassignment, scope.as_deref_mut(),
+    );
+    if outcome == SplitOutcome::Handled {
+        return;
+    }
+
+    run_ordinary_step_body_for_node(graph, field, params, elements, preset_state, state, src, parent, true, None, scope);
+}
+
+/// The corridor/junction/cyclic/frontier-push body for one node, factored out of
+/// `step_from_frontier` so the split paths (GitHub issue #222) can invoke it once per resulting
+/// split node instead of once per ordinary frontier pop. `roll_teleport` gates whether this call's
+/// own teleport roll/connect-step runs at all — `step_from_frontier`'s own (non-split) call site
+/// always passes `true`; the non-pattern split path passes `false` for every per-node call and
+/// rolls teleport once for the whole split event instead (see `handle_non_pattern_split`).
+pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
+    graph: &mut Graph,
+    field: &Field<T>,
+    params: &GenerationParams,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    state: &mut GenState,
+    src: NodeId,
+    parent: Option<NodeId>,
+    roll_teleport: bool,
+    allowed_neighbors: Option<&HashSet<NodeId>>,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) {
     // Teleport roll happens immediately after src is fixed, before any geometric-neighbor
     // pool is built — a hit affects the cyclic-roll's candidate pool (below) and adds one
     // extra teleport connection alongside whatever the corridor/junction roll produces.
-    let teleport_roll = state.rng.random::<f64>();
-    let teleport_hit = teleport_roll < elements.teleport_chance;
-    if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::TeleportRolled { src, roll: teleport_roll, teleport_chance: elements.teleport_chance, fired: teleport_hit });
-    }
+    let teleport_hit = if roll_teleport {
+        let teleport_roll = state.rng.random::<f64>();
+        let hit = teleport_roll < elements.teleport_chance;
+        if let Some(log) = scope.as_deref_mut() {
+            log.emit(VertexBasedEvent::TeleportRolled { src, roll: teleport_roll, teleport_chance: elements.teleport_chance, fired: hit });
+        }
+        hit
+    } else {
+        false
+    };
 
     // free_regular: unvisited, non-frontier, non-preset neighbors — become frontier/reserve.
     // free_preset: preset-connected neighbors (geometric or teleport) not yet visited — connect to
@@ -670,6 +859,7 @@ fn step_from_frontier<T: Tessellation>(
     let teleport_dsts = preset_state.preset_teleports.get(&src).map(Vec::as_slice).unwrap_or(&[]);
     let all_free: Vec<NodeId> = field.neighbors(src)
         .into_iter()
+        .filter(|n| allowed_neighbors.is_none_or(|allowed| allowed.contains(n)))
         .chain(teleport_dsts.iter().copied())
         .filter(|&n| !state.visited.contains(&n) && !state.in_frontier.contains(&n)
             && (preset_connected.contains(&src) && preset_connected.contains(&n) || teleport_dsts.contains(&n) || can_connect(src, n, preset_state)))
@@ -879,7 +1069,7 @@ fn choose_connect_targets<T: Tessellation>(
     }
 }
 
-fn add_to_frontier(node: NodeId, parent: Option<NodeId>, frontier: &mut Vec<FrontierEntry>, in_frontier: &mut HashSet<NodeId>) {
+pub(super) fn add_to_frontier(node: NodeId, parent: Option<NodeId>, frontier: &mut Vec<FrontierEntry>, in_frontier: &mut HashSet<NodeId>) {
     if in_frontier.insert(node) {
         frontier.push(FrontierEntry { node, parent });
     }

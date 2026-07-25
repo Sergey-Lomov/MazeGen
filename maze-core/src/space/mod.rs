@@ -25,6 +25,18 @@ pub trait Tessellation {
     fn faces() -> &'static [Self::Face];
     fn face_between(from: Self::Point, to: Self::Point) -> Option<Self::Face>;
 
+    /// Position of `face` within `Self::faces()` — the index a `SplitPattern` face refers to.
+    /// Default impl is an O(degree) linear scan; fine as-is since it's only ever called from
+    /// `enumerate_adaptations` (a split-roll-hit-only path), never per-tile.
+    fn face_index(face: Self::Face) -> Option<usize> {
+        Self::faces().iter().position(|f| *f == face)
+    }
+
+    /// Inverse of `face_index` — the face at a given position in `Self::faces()`.
+    fn face_at(index: usize) -> Option<Self::Face> {
+        Self::faces().get(index).copied()
+    }
+
     /// Canonical Cartesian projection of `point`, in unit tile scale (one tile = 1.0), with no
     /// rendering-specific orientation/rotation applied — a display-only concept (e.g. hex
     /// flat_top/pointy_top, tri r0/r90/r180/r270 in `maze-web`) that stays entirely on the web

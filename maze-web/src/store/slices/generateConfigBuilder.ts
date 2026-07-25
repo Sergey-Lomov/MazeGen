@@ -5,7 +5,8 @@ import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, c
 import { presetEndpoint, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto } from "../../pixi/postEditUtils";
-import { nodeEndpoint } from "../../pixi/postEditEndpoint";
+import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
+import { resolverForNodeId } from "../../pixi/postEditEndpoint";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeTessellationOf } from "../storeHelpers";
@@ -152,6 +153,11 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     preset_connections: [...validPresets, ...validTeleportPresets],
     locked_nodes,
     split_points,
+    split_generation: {
+      pattern_mode: state.splitPatternMode,
+      max_split_nodes: state.splitMaxNodes,
+      patterns: state.splitPatterns,
+    },
     ...(state.presetStart && !invalidMarkers.start ? { preset_start: presetEndpointToDto(state.presetStart) } : {}),
     ...(state.presetGenSource ? { preset_gen_source: presetEndpointToDto(state.presetGenSource) } : {}),
     ...(state.presetFinish && !invalidMarkers.finish ? { preset_finish: presetEndpointToDto(state.presetFinish) } : {}),
@@ -230,13 +236,30 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
         lastStep = Math.max(0, totalSteps - 1);
       }
     }
-    const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges);
-    const draftEdges = buildPostEditDraftEdgesFromGenerated(snapshot.edges);
-    // Freshly generated — every id here is real, so plain node endpoints (never split; there are
-    // no split points yet right after generation).
+    // GitHub issue #222: the generator can now mint extra nodes at a point during its own run
+    // (automatic split), with no corresponding slot ever registered on the web side — derive one
+    // fresh from the snapshot itself so `ManageSplitNodesDialog`/`postEditActiveSplitNode`-based
+    // resolution (and rendering) see every resulting node, not just the point's original one.
+    const generatedSplitPoints = deriveSplitPointsFromNodes(snapshot.nodes);
+    // An auto-split node's raw `NodeId` is only meaningful for *this* generate() call —
+    // `confirmPostEdit`'s `compute_analytics` rebuilds the graph from scratch on every confirm,
+    // assigning ids in its own deterministic order that generally does NOT match where this node
+    // landed mid-traversal. Every reference into `postEditDraftEdges`/`Teleports`/`Meta` must
+    // therefore address an auto-split node as `(point, slotId)`, not a plain node id — see
+    // `resolverForNodeId`'s doc comment for the full explanation (this was the root cause of split
+    // nodes silently losing their connections after a project save/load round-trip).
+    const pointNodeMap = new Map<string, number[]>();
+    for (const n of snapshot.nodes) {
+      const key = `${n.x},${n.y}`;
+      const list = pointNodeMap.get(key);
+      if (list) list.push(n.id); else pointNodeMap.set(key, [n.id]);
+    }
+    const endpointForGeneratedId = resolverForNodeId(pointNodeMap, generatedSplitPoints);
+    const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges, endpointForGeneratedId);
+    const draftEdges = buildPostEditDraftEdgesFromGenerated(snapshot.edges, endpointForGeneratedId);
     const draftMeta = {
-      start: snapshot.start !== null ? nodeEndpoint(snapshot.start) : null,
-      finish: snapshot.finish !== null ? nodeEndpoint(snapshot.finish) : null,
+      start: snapshot.start !== null ? endpointForGeneratedId(snapshot.start) : null,
+      finish: snapshot.finish !== null ? endpointForGeneratedId(snapshot.finish) : null,
     };
     set({
       nodes: snapshot.nodes,
@@ -263,14 +286,18 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       showKruskalDsuGroups: false,
       postEditDraftEdges: draftEdges,
       postEditDraftTeleports: generatedTeleports,
+      postEditDraftSplitPoints: generatedSplitPoints,
+      postEditActiveSplitNode: {},
       _nextPostEditTeleportId: nextTeleportId,
       postEditTeleportPendingFrom: null,
       // Filled directly from the just-computed `snapshot` (same graph, same analytics) instead
       // of re-running `confirmPostEdit`'s own `computeAnalytics` wasm call, which would recompute
       // an identical result from scratch (see GitHub issue #138 profiling).
       postEditEdges: draftEdges,
-      // No split points right after generation — every teleport endpoint here is already a
-      // plain node endpoint, so `resolveSplit` is never actually invoked.
+      // Every teleport endpoint here is already a real, resolved `NodeId` (wasm reports one
+      // regardless of which of a point's nodes it is) — a plain node endpoint, not a `split` one,
+      // so `resolveSplit` is never actually invoked even though `generatedSplitPoints` may be
+      // non-empty.
       postEditTeleportEdges: postEditTeleportsToDto(generatedTeleports, () => undefined),
       postEditMeta: draftMeta,
       postEditAnalytics: {

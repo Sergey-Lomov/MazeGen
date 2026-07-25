@@ -7,9 +7,9 @@ use super::helpers::*;
 
 #[test]
 fn kruskal_visits_all_nodes() {
-    let (mut graph, field, start) = build(5, 5);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(5, 5);
     let node_count = graph.nodes().count();
-    generate_maze(&mut graph, &field, 42, start, kruskal_config(), &empty_preset());
+    generate_maze(&mut graph, &mut field, &mut ids, 42, start, kruskal_config(), &empty_preset());
     assert_perfect_maze(&graph, node_count);
 }
 
@@ -19,7 +19,7 @@ fn kruskal_traverses_preset_teleport_into_visited() {
     // followed by the algorithm, not treated as a dead end. Kruskal was already correct (it
     // pre-unions every existing graph edge, including preset teleports, into the DSU before its
     // main loop) — this pins that down as a regression guard.
-    let (mut graph, field, start, preset_state, _node_count, _, _) = build_with_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, _node_count, _, _, _ids) = build_with_preset_teleport_bridge();
     generate_kruskal(&mut graph, &field, 42, &preset_state, None);
     assert!(is_connected(&graph, start));
 }
@@ -27,7 +27,7 @@ fn kruskal_traverses_preset_teleport_into_visited() {
 #[test]
 fn kruskal_traverses_one_way_preset_teleport_into_visited() {
     // GitHub issue #226: a one-way preset teleport must also be traversed, not just the two-way case.
-    let (mut graph, field, start, preset_state, _node_count) = build_with_one_way_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, _node_count, _ids) = build_with_one_way_preset_teleport_bridge();
     generate_kruskal(&mut graph, &field, 42, &preset_state, None);
     assert!(is_connected(&graph, start));
 }
@@ -35,8 +35,8 @@ fn kruskal_traverses_one_way_preset_teleport_into_visited() {
 #[test]
 fn kruskal_is_connected() {
     for seed in [1, 42, 99, 1234, 9999] {
-        let (mut graph, field, start) = build(10, 10);
-        generate_maze(&mut graph, &field, seed, start, kruskal_config(), &empty_preset());
+        let (mut graph, mut field, start, mut ids) = build_with_ids(10, 10);
+        generate_maze(&mut graph, &mut field, &mut ids, seed, start, kruskal_config(), &empty_preset());
         assert!(is_connected(&graph, start), "seed={seed}: kruskal maze is not connected");
     }
 }
@@ -44,8 +44,8 @@ fn kruskal_is_connected() {
 #[test]
 fn kruskal_edges_only_connect_field_neighbors() {
     for seed in [42, 1, 99] {
-        let (mut graph, field, start) = build(10, 10);
-        generate_maze(&mut graph, &field, seed, start, kruskal_config(), &empty_preset());
+        let (mut graph, mut field, start, mut ids) = build_with_ids(10, 10);
+        generate_maze(&mut graph, &mut field, &mut ids, seed, start, kruskal_config(), &empty_preset());
         for edge in graph.edges() {
             let neighbors = field.neighbors(edge.from);
             assert!(
@@ -59,10 +59,10 @@ fn kruskal_edges_only_connect_field_neighbors() {
 
 #[test]
 fn kruskal_same_seed_same_maze() {
-    let (mut g1, f1, start1) = build(8, 8);
-    let (mut g2, f2, start2) = build(8, 8);
-    generate_maze(&mut g1, &f1, 42, start1, kruskal_config(), &empty_preset());
-    generate_maze(&mut g2, &f2, 42, start2, kruskal_config(), &empty_preset());
+    let (mut g1, mut f1, start1, mut ids1) = build_with_ids(8, 8);
+    let (mut g2, mut f2, start2, mut ids2) = build_with_ids(8, 8);
+    generate_maze(&mut g1, &mut f1, &mut ids1, 42, start1, kruskal_config(), &empty_preset());
+    generate_maze(&mut g2, &mut f2, &mut ids2, 42, start2, kruskal_config(), &empty_preset());
     assert_eq!(collect_edges(&g1), collect_edges(&g2));
 }
 

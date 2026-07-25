@@ -5,9 +5,9 @@ use super::helpers::*;
 
 #[test]
 fn wilson_visits_all_nodes() {
-    let (mut graph, field, start) = build(5, 5);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(5, 5);
     let node_count = graph.nodes().count();
-    generate_maze(&mut graph, &field, 42, start, GenerationConfig {
+    generate_maze(&mut graph, &mut field, &mut ids, 42, start, GenerationConfig {
         algorithm: GenerationAlgorithm::WilsonAlgorithm,
         elements: no_one_way_elements(),
         ..GenerationConfig::default()
@@ -19,7 +19,7 @@ fn wilson_visits_all_nodes() {
 fn wilson_traverses_preset_teleport_into_visited() {
     // GitHub issue #226: a preset teleport bridging two otherwise-disconnected halves must be
     // followed by the algorithm, not treated as a dead end.
-    let (mut graph, field, start, preset_state, node_count, _, _) = build_with_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, node_count, _, _, _ids) = build_with_preset_teleport_bridge();
     generate_wilson(&mut graph, &field, 42, start, &preset_state, None);
     assert_perfect_maze(&graph, node_count);
 }
@@ -29,18 +29,18 @@ fn wilson_traverses_one_way_preset_teleport_into_visited() {
     // GitHub issue #226: a one-way preset teleport must also be traversed, not just the two-way
     // case. Only a single directed teleport edge exists (not two), so the resulting graph isn't a
     // plain 2*(n-1) perfect maze — checking connectivity is the right level of assertion here.
-    let (mut graph, field, start, preset_state, _node_count) = build_with_one_way_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, _node_count, _ids) = build_with_one_way_preset_teleport_bridge();
     generate_wilson(&mut graph, &field, 42, start, &preset_state, None);
     assert!(is_connected(&graph, start));
 }
 
 #[test]
 fn wilson_is_deterministic() {
-    let (mut g1, f1, s1) = build(4, 4);
-    let (mut g2, f2, s2) = build(4, 4);
+    let (mut g1, mut f1, s1, mut ids1) = build_with_ids(4, 4);
+    let (mut g2, mut f2, s2, mut ids2) = build_with_ids(4, 4);
     let config = || GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, elements: no_one_way_elements(), ..GenerationConfig::default() };
-    generate_maze(&mut g1, &f1, 7, s1, config(), &empty_preset());
-    generate_maze(&mut g2, &f2, 7, s2, config(), &empty_preset());
+    generate_maze(&mut g1, &mut f1, &mut ids1, 7, s1, config(), &empty_preset());
+    generate_maze(&mut g2, &mut f2, &mut ids2, 7, s2, config(), &empty_preset());
     assert_deterministic(&g1, &g2);
 }
 

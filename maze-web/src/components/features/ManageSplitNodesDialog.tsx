@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, endpointKey, edgeKey,
+  resolveEndpoint, buildSplitNodeResolver,
 } from "../../pixi/postEditEndpoint";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
@@ -61,6 +62,29 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   );
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const pointNodeMap = useMemo(() => {
+    const m = new Map<string, number[]>();
+    for (const n of nodes) {
+      const k = `${n.x},${n.y}`;
+      const list = m.get(k);
+      if (list) list.push(n.id); else m.set(k, [n.id]);
+    }
+    return m;
+  }, [nodes]);
+  const resolveSplit = useMemo(() => buildSplitNodeResolver(pointNodeMap, splitPoints), [pointNodeMap, splitPoints]);
+  // Two endpoints are "the same link" if they resolve to the same real `NodeId` — a plain `node`
+  // endpoint and a `split` endpoint can both resolve to the same id (GitHub issue #222: an
+  // auto-split node already has a real id right after generation, but `draftEdges`/`draftMeta`
+  // only ever carry plain `node` endpoints, built straight from wasm's `NodeId`s — see
+  // `buildPostEditDraftEdgesFromGenerated`). Falls back to structural equality when either side
+  // doesn't resolve yet (a freshly `addSplitNode`-added slot has no real id until the next
+  // confirm — see `resolveEndpoint`'s doc comment).
+  const endpointsMatch = (a: PostEditEndpoint, b: PostEditEndpoint): boolean => {
+    const ra = resolveEndpoint(a, resolveSplit);
+    const rb = resolveEndpoint(b, resolveSplit);
+    if (ra !== undefined && rb !== undefined) return ra === rb;
+    return endpointsEqual(a, b);
+  };
   // Every real node at this point, in snapshot order (index 0 is always the point's original
   // node — see `Field::nodes_at`/`all_points`'s contract, mirrored by `PostEditController`'s
   // `buildNodeMap`). Needed to resolve the original node's real `NodeId` — it's a graph node id
@@ -90,7 +114,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // as the suffix; a plain `node` endpoint elsewhere on the maze (not this point's original node)
   // has no title at all, just its coordinates.
   const describeEndpoint = (ep: PostEditEndpoint): string => {
-    if (originalEndpoint && endpointsEqual(ep, originalEndpoint)) {
+    if (originalEndpoint && endpointsMatch(ep, originalEndpoint)) {
       return `${point[0]},${point[1]}`;
     }
     if (ep.kind === "split") {
@@ -109,29 +133,29 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     if (draftEdges) {
       for (const e of Object.values(draftEdges)) {
         if (e.kind === "wall") {
-          if (endpointsEqual(e.from, ep)) forbidden.push({ otherLabel: describeEndpoint(e.to), arrow: "->", category: "forbidden" });
-          else if (endpointsEqual(e.to, ep)) forbidden.push({ otherLabel: describeEndpoint(e.from), arrow: "<-", category: "forbidden" });
+          if (endpointsMatch(e.from, ep)) forbidden.push({ otherLabel: describeEndpoint(e.to), arrow: "->", category: "forbidden" });
+          else if (endpointsMatch(e.to, ep)) forbidden.push({ otherLabel: describeEndpoint(e.from), arrow: "<-", category: "forbidden" });
           continue;
         }
-        if (endpointsEqual(e.from, ep)) mark(e.to, "out");
-        else if (endpointsEqual(e.to, ep)) mark(e.from, "in");
+        if (endpointsMatch(e.from, ep)) mark(e.to, "out");
+        else if (endpointsMatch(e.to, ep)) mark(e.from, "in");
       }
     }
     for (const t of draftTeleports) {
       if (t.direction === "two_way") {
-        if (endpointsEqual(t.from, ep)) { mark(t.to, "out"); mark(t.to, "in"); }
-        else if (endpointsEqual(t.to, ep)) { mark(t.from, "out"); mark(t.from, "in"); }
-      } else if (endpointsEqual(t.from, ep)) {
+        if (endpointsMatch(t.from, ep)) { mark(t.to, "out"); mark(t.to, "in"); }
+        else if (endpointsMatch(t.to, ep)) { mark(t.from, "out"); mark(t.from, "in"); }
+      } else if (endpointsMatch(t.from, ep)) {
         mark(t.to, t.direction === "backward" ? "in" : "out");
-      } else if (endpointsEqual(t.to, ep)) {
+      } else if (endpointsMatch(t.to, ep)) {
         mark(t.from, t.direction === "backward" ? "out" : "in");
       }
     }
     return [...finalize(), ...forbidden];
   };
 
-  const isStart = (ep: PostEditEndpoint) => draftMeta?.start != null && endpointsEqual(draftMeta.start, ep);
-  const isFinish = (ep: PostEditEndpoint) => draftMeta?.finish != null && endpointsEqual(draftMeta.finish, ep);
+  const isStart = (ep: PostEditEndpoint) => draftMeta?.start != null && endpointsMatch(draftMeta.start, ep);
+  const isFinish = (ep: PostEditEndpoint) => draftMeta?.finish != null && endpointsMatch(draftMeta.finish, ep);
 
   // Node color by row order (original node first, then each slot in slotId order) — same
   // fixed-then-generated palette the canvas uses for resolved split nodes (GitHub issue #223).

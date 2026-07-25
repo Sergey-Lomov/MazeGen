@@ -255,6 +255,58 @@ function buildVertexBasedArenaTape(): ParsedTape {
   return parseTape(nodeTable, payload);
 }
 
+function u32le(v: number): Uint8Array {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, v, true);
+  return bytes;
+}
+
+// CustomVertexBased fixture with a split (GitHub issue #222):
+//   root (0)
+//     -> "step 1" scope (1)
+//          -> EdgeAdded(1,2) (2)
+//          -> NodeVisited(2, parent=1) (3)
+//          -> SplitNodesCreated(src=2, nodes=[2,3], pattern=null) (4) -- mints node 3
+//          -> EdgeAdded(2,3) (5) -- the new sibling's own connection
+// Node 3 (id=5 in the fixture's NodeDto list) doesn't exist yet at step 2 (before
+// SplitNodesCreated) — only from step 3 onward should it appear in `view.nodes`.
+function buildVertexBasedSplitArenaTape(): ParsedTape {
+  const nodeTable = new Uint8Array(6 * 22);
+  const edgeAddedPayload = (from: bigint, to: bigint) => concatBytes([u64le(from), u64le(to), new Uint8Array([0])]);
+  const nodeVisitedPayload = concatBytes([u64le(2n), u64le(1n)]);
+  const splitNodesCreatedPayload = concatBytes([
+    u64le(2n), // src
+    u32le(2), u64le(2n), u64le(5n), // nodes = [src, new sibling id=5]
+    new Uint8Array([0]), // hasPattern = false
+  ]);
+  const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
+    { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("root") },
+    { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("step 1") },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: VERTEX_BASED_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 4, tag: VERTEX_BASED_TAG.NODE_VISITED, bytes: nodeVisitedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 5, tag: VERTEX_BASED_TAG.SPLIT_NODES_CREATED, bytes: splitNodesCreatedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: VERTEX_BASED_TAG.EDGE_ADDED, bytes: edgeAddedPayload(2n, 5n) },
+  ];
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const r of records) {
+    offsets.push(cursor);
+    cursor += r.bytes.byteLength;
+  }
+  const payload = concatBytes(records.map((r) => r.bytes));
+  const dv = new DataView(nodeTable.buffer);
+  records.forEach((r, i) => {
+    const base = i * 22;
+    dv.setUint32(base + 0, r.parent, true);
+    dv.setUint32(base + 4, r.firstChild, true);
+    dv.setUint32(base + 8, r.nextSibling, true);
+    dv.setUint16(base + 12, r.tag, true);
+    dv.setUint32(base + 14, offsets[i], true);
+    dv.setUint32(base + 18, r.bytes.byteLength, true);
+  });
+  return parseTape(nodeTable, payload);
+}
+
 describe("selectDebugMazeView", () => {
   it("returns null when there is no debug arena", () => {
     expect(selectDebugMazeView(null, 0)).toBeNull();
@@ -423,6 +475,39 @@ describe("selectDebugMazeView", () => {
     expect(view?.dsuGroups).toBeNull();
     expect(view?.debugMaps.size).toBe(0);
     expect(view?.debugVertices.size).toBe(0);
+  });
+
+  // --- Split-node visibility (GitHub issue #222) ---
+  // Regression: `arena.nodes` is the run's final, static node list, so a split-minted node id
+  // (here 5, sibling of src=2) is present in it from the start regardless of `debugStep`. Before
+  // this fix, `view.nodes` was just `arena.nodes` unfiltered — a point with more than one node
+  // read as "split" (excluded from ordinary wall rendering, see `buildSplitPointKeys` in
+  // `mazeSelectors.ts`) many steps before the split actually happened, and with no edges yet for
+  // the not-yet-created sibling, the whole point rendered fully closed instead of as ordinary
+  // walls.
+
+  it("excludes a split-minted node from view.nodes before its SplitNodesCreated step, and includes it from that step onward", () => {
+    const tape = buildVertexBasedSplitArenaTape();
+    const splitNodes: NodeDto[] = [...nodes, { id: 5, x: 1, y: 0 }]; // sibling shares node 2's cell
+    const arena: DebugArenaHandle = {
+      tape, algorithmKind: "vertex_based",
+      sources: [{ scopeName: "generation", kind: "vertex_based", nodeIndex: 0, startStep: 0, endStep: 4, checkpointFroms: [] }],
+      nodes: splitNodes, totalSteps: 4,
+      debugValueNames: [{ name: "visited", kind: "region" }, { name: "frontier", kind: "region" }, { name: "reserve", kind: "region" }],
+    };
+
+    // step 1 = EdgeAdded(1,2), NodeVisited(2) applied — SplitNodesCreated hasn't fired yet.
+    const beforeSplit = selectDebugMazeView(arena, 1);
+    expect(beforeSplit?.nodes.map((n) => n.id)).toEqual([1, 2, 3, 4]);
+
+    // step 2 = SplitNodesCreated(src=2, nodes=[2,5]) applied — node 5 now exists.
+    const atSplit = selectDebugMazeView(arena, 2);
+    expect(atSplit?.nodes.map((n) => n.id)).toEqual([1, 2, 3, 4, 5]);
+
+    // step 3 = EdgeAdded(2,5) applied — node 5 still present, now with its own edge.
+    const afterSplit = selectDebugMazeView(arena, 3);
+    expect(afterSplit?.nodes.map((n) => n.id)).toEqual([1, 2, 3, 4, 5]);
+    expect(afterSplit?.edges).toContainEqual({ from: 2, to: 5, kind: "basic" });
   });
 
   // --- Kruskal dispatch (GitHub issue #146) ---

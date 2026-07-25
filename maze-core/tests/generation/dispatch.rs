@@ -11,10 +11,10 @@ fn generate_maze_dispatches_all_algorithms() {
         GenerationAlgorithm::KruskalAlgorithm,
     ];
     for algo in algorithms {
-        let (mut graph, field, start) = build(4, 4);
+        let (mut graph, mut field, start, mut ids) = build_with_ids(4, 4);
         let node_count = graph.nodes().count();
         let config = GenerationConfig { algorithm: algo, elements: no_one_way_elements(), ..GenerationConfig::default() };
-        generate_maze(&mut graph, &field, 42, start, config, &empty_preset());
+        generate_maze(&mut graph, &mut field, &mut ids, 42, start, config, &empty_preset());
         assert_perfect_maze(&graph, node_count);
     }
 }

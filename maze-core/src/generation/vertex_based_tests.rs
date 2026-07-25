@@ -1,9 +1,31 @@
 use super::*;
-use crate::generation::test_utils::{default_elements, make_field_and_graph};
+use crate::generation::test_utils::{default_elements, make_field_graph_ids};
+use crate::generation::split_pattern::SplitGenerationConfig;
 use rand::SeedableRng;
 
 fn rng(seed: u64) -> MazeRng { MazeRng::seed_from_u64(seed) }
 fn default_params() -> GenerationParams { GenerationParams::default() }
+fn no_split() -> SplitGenerationConfig { SplitGenerationConfig::default() }
+
+/// Calls `generate` with split-related params defaulted to "feature off" (`no_split()`,
+/// `start_reassignment: &mut None`) — every existing test predates GitHub issue #222 and asserts
+/// pre-split behavior, so this keeps call sites close to their pre-#222 shape instead of every
+/// one repeating the same 3 extra no-op arguments.
+#[allow(clippy::too_many_arguments)]
+fn generate_default_split<T: Tessellation>(
+    graph: &mut Graph,
+    field: &mut Field<T>,
+    ids: &mut IdGenerator,
+    seed: u64,
+    start: NodeId,
+    params: &GenerationParams,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    event_log: Option<&mut EventLog<VertexBasedEvent>>,
+) {
+    let mut start_reassignment = None;
+    generate(graph, field, ids, seed, start, params, elements, &no_split(), preset_state, &mut start_reassignment, event_log);
+}
 
 // ─── add_to_frontier / pop_reserve / choose_from_frontier ───────────────
 
@@ -134,20 +156,21 @@ fn empty_presets() -> super::PresetState { super::PresetState::empty() }
 
 #[test]
 fn vertex_based_visits_all_nodes() {
-    let (field, mut graph) = make_field_and_graph(5, 5);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
     let node_count = graph.nodes().count();
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
     assert_eq!(graph.edges().count(), 2 * (node_count - 1));
 }
 
 #[test]
 fn vertex_based_is_deterministic() {
-    let (field, mut g1) = make_field_and_graph(4, 4);
-    let (_, mut g2) = make_field_and_graph(4, 4);
+    let (mut field, mut g1, mut ids) = make_field_graph_ids(4, 4);
+    let (_, mut g2, mut ids2) = make_field_graph_ids(4, 4);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut g1, &field, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
-    generate(&mut g2, &field, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
+    generate_default_split(&mut g1, &mut field, &mut ids, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
+    let mut field2 = field.clone();
+    generate_default_split(&mut g2, &mut field2, &mut ids2, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
     let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
     let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to)).collect();
     e1.sort();
@@ -162,15 +185,15 @@ fn teleport_edges(graph: &Graph) -> Vec<(NodeId, NodeId)> {
 }
 
 fn no_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 }
 }
 
 fn full_two_way_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0, split_chance: 0.0 }
 }
 
 fn full_one_way_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 1.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 1.0, split_chance: 0.0 }
 }
 
 #[test]
@@ -179,18 +202,18 @@ fn teleport_chance_zero_matches_baseline_exactly() {
     // same edge set as generation without any teleport awareness at all (regression guard
     // for the refactor that threaded teleport rolls through this function).
     for seed in [1, 7, 42, 1234, 9999] {
-        let (field, mut graph) = make_field_and_graph(6, 6);
+        let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        generate(&mut graph, &field, seed, start, &default_params(), &no_teleport_elements(), &empty_presets(), None);
+        generate_default_split(&mut graph, &mut field, &mut ids, seed, start, &default_params(), &no_teleport_elements(), &empty_presets(), None);
         assert!(teleport_edges(&graph).is_empty(), "seed {seed}: teleport_chance=0.0 must add no teleport edges");
     }
 }
 
 #[test]
 fn teleport_chance_one_adds_teleport_edges() {
-    let (field, mut graph) = make_field_and_graph(6, 6);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert!(!teleport_edges(&graph).is_empty(), "teleport_chance=1.0 should add at least one teleport edge on a 6x6 field");
 }
 
@@ -198,9 +221,9 @@ fn teleport_chance_one_adds_teleport_edges() {
 fn teleport_edges_can_connect_non_geometric_neighbors() {
     // At least one teleport edge in a large-enough field must link two nodes that are not
     // geometric neighbors — otherwise the "regardless of adjacency" property isn't exercised.
-    let (field, mut graph) = make_field_and_graph(8, 8);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 7, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 7, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let has_non_adjacent_teleport = teleport_edges(&graph).iter()
         .any(|&(from, to)| !field.neighbors(from).contains(&to));
     assert!(has_non_adjacent_teleport, "expected at least one teleport edge between non-adjacent nodes");
@@ -208,9 +231,9 @@ fn teleport_edges_can_connect_non_geometric_neighbors() {
 
 #[test]
 fn teleport_one_way_chance_zero_all_teleports_are_two_way() {
-    let (field, mut graph) = make_field_and_graph(6, 6);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let edges = teleport_edges(&graph);
     assert!(!edges.is_empty(), "expected teleport edges to assert two-way-ness over");
     for &(from, to) in &edges {
@@ -221,9 +244,9 @@ fn teleport_one_way_chance_zero_all_teleports_are_two_way() {
 
 #[test]
 fn teleport_one_way_chance_one_all_teleports_are_one_way() {
-    let (field, mut graph) = make_field_and_graph(6, 6);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets(), None);
     let edges = teleport_edges(&graph);
     assert!(!edges.is_empty(), "expected teleport edges to assert one-way-ness over");
     for &(from, to) in &edges {
@@ -234,10 +257,10 @@ fn teleport_one_way_chance_one_all_teleports_are_one_way() {
 
 #[test]
 fn teleport_full_chance_still_visits_all_nodes_and_stays_connected() {
-    let (field, mut graph) = make_field_and_graph(6, 6);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
     let node_count = graph.nodes().count();
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert_eq!(graph.nodes().count(), node_count);
     for node in graph.nodes() {
         let has_edge = graph.edges().any(|e| e.from == node.id || e.to == node.id);
@@ -248,11 +271,12 @@ fn teleport_full_chance_still_visits_all_nodes_and_stays_connected() {
 
 #[test]
 fn teleport_is_deterministic_for_fixed_seed() {
-    let (field, mut g1) = make_field_and_graph(6, 6);
-    let (_, mut g2) = make_field_and_graph(6, 6);
+    let (mut field, mut g1, mut ids) = make_field_graph_ids(6, 6);
+    let (_, mut g2, mut ids2) = make_field_graph_ids(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut g1, &field, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
-    generate(&mut g2, &field, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut g1, &mut field, &mut ids, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    let mut field2 = field.clone();
+    generate_default_split(&mut g2, &mut field2, &mut ids2, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
     let mut e2: Vec<_> = g2.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
     e1.sort_by_key(|(f, t, _)| (*f, *t));
@@ -263,12 +287,12 @@ fn teleport_is_deterministic_for_fixed_seed() {
 #[test]
 fn teleport_single_node_field_never_panics() {
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<crate::space::SquareTessellation> =
+    let mut field: Field<crate::space::SquareTessellation> =
         Field::new(vec![crate::space::SquarePoint { x: 0, y: 0 }], &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 1, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 1, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert!(teleport_edges(&graph).is_empty(), "single-node field has no partner for a teleport");
 }
 
@@ -282,13 +306,13 @@ fn teleport_fragmented_field_frontier_empty_branch_stays_connected() {
     // 3x3 block plus one far-away isolated point, connected to nothing geometrically.
     let mut points: Vec<SquarePoint> = crate::space::square_rect(3, 3);
     points.push(SquarePoint { x: 100, y: 100 });
-    let field: Field<crate::space::SquareTessellation> = Field::new(points, &mut ids).unwrap();
+    let mut field: Field<crate::space::SquareTessellation> = Field::new(points, &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
     let node_count = graph.nodes().count();
 
-    generate(&mut graph, &field, 3, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 3, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // With teleport_chance=1.0, the isolated point must be reachable via a teleport bridge
     // through the frontier-empty branch (it can never be a `free_regular` geometric
@@ -302,33 +326,33 @@ fn teleport_fragmented_field_frontier_empty_branch_stays_connected() {
 fn teleport_respects_locked_out_source() {
     // A teleport roll must still honor preset_state: a locked_out source can never gain an
     // outgoing teleport (nor an outgoing geometric edge).
-    let (field, mut graph) = make_field_and_graph(4, 4);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let a = start;
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(a);
 
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
 
     assert!(graph.edges().all(|e| e.from != a), "locked_out node {a} must never be an edge source (teleport or otherwise)");
 }
 
 #[test]
 fn teleport_respects_locked_in_destination() {
-    let (field, mut graph) = make_field_and_graph(4, 4);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let b = field.node_at(crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_in.insert(b);
 
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
 
     assert!(graph.edges().all(|e| e.to != b), "locked_in node {b} must never be an edge destination (teleport or otherwise)");
 }
 
 #[test]
 fn teleport_respects_blocked_pair() {
-    let (field, mut graph) = make_field_and_graph(4, 4);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let a = start;
     let b = field.node_at(crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
@@ -336,7 +360,7 @@ fn teleport_respects_blocked_pair() {
     preset_state.blocked.insert((a, b));
     preset_state.blocked.insert((b, a));
 
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
 
     assert!(graph.edge_between(a, b).is_none(), "fully blocked pair ({a},{b}) must never get an edge, teleport or otherwise");
 }
@@ -360,10 +384,10 @@ fn teleport_junction_reduces_geometric_count_by_one_when_teleport_added() {
         directionality: 0.0,
         cyclicity: 0.0,
     };
-    let (field, mut graph) = make_field_and_graph(5, 5);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
     // Center node of a 5x5 field has 4 free geometric neighbors when starting there.
     let start = field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap();
-    generate(&mut graph, &field, 11, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 11, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // src's out-degree (counting both directions of any bidirectional edge as present)
     // must include all 4 geometric neighbors plus exactly one teleport partner.
@@ -394,9 +418,9 @@ fn teleport_corridor_adds_exactly_one_geometric_and_one_teleport() {
         directionality: 0.0,
         cyclicity: 0.0,
     };
-    let (field, mut graph) = make_field_and_graph(5, 5);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
     let start = field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap();
-    generate(&mut graph, &field, 13, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 13, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     let src_edges: Vec<_> = graph.edges().filter(|e| e.from == start || e.to == start).collect();
     let has_geometric = src_edges.iter().any(|e| e.kind == EdgeKind::Basic);
@@ -417,9 +441,9 @@ fn teleport_cyclic_roll_widens_pool_to_any_visited_node() {
         directionality: 0.0,
         cyclicity: 1.0,
     };
-    let (field, mut graph) = make_field_and_graph(8, 8);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // At least one Teleport-kind edge should exist that isn't a geometric neighbor pair —
     // this covers both the cyclic-teleport path and the corridor/junction-teleport path,
@@ -432,9 +456,9 @@ fn teleport_cyclic_roll_widens_pool_to_any_visited_node() {
 #[test]
 fn teleport_never_creates_self_loop() {
     for seed in 0..30 {
-        let (field, mut graph) = make_field_and_graph(4, 4);
+        let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
         let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        generate(&mut graph, &field, seed, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+        generate_default_split(&mut graph, &mut field, &mut ids, seed, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
         assert!(graph.edges().all(|e| e.from != e.to), "seed {seed}: no edge (teleport or otherwise) may be a self-loop");
     }
 }
@@ -459,145 +483,155 @@ fn snapshot(graph: &Graph) -> Vec<(NodeId, NodeId, &'static str)> {
 
 #[test]
 fn golden_baseline_params_seed_42() {
-    let (field, mut graph) = make_field_and_graph(6, 6);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
+    // Regenerated for GitHub issue #222: the split roll is always consumed regardless of
+    // split_chance (RNG-parity discipline, see vertex_based.rs's `try_split_src` doc comment) —
+    // every existing seed's output changes the moment this feature ships, even at split_chance ==
+    // 0.0 (default_elements()). Documented, one-time breaking change, not a regression.
     assert_eq!(snapshot(&graph), vec![
         (0, 1, "B"), (0, 6, "B"), (1, 0, "B"), (2, 3, "B"), (2, 8, "B"), (3, 2, "B"), (3, 4, "B"),
-        (4, 3, "B"), (4, 5, "B"), (5, 4, "B"), (5, 11, "B"), (6, 0, "B"), (6, 7, "B"), (7, 6, "B"),
-        (7, 13, "B"), (8, 2, "B"), (9, 10, "B"), (9, 15, "B"), (10, 9, "B"), (10, 11, "B"), (11, 5, "B"),
-        (11, 10, "B"), (11, 17, "B"), (12, 13, "B"), (13, 7, "B"), (13, 12, "B"), (13, 14, "B"),
-        (13, 19, "B"), (14, 13, "B"), (14, 15, "B"), (15, 9, "B"), (15, 14, "B"), (16, 17, "B"),
-        (17, 11, "B"), (17, 16, "B"), (18, 19, "B"), (19, 13, "B"), (19, 18, "B"), (19, 20, "B"),
-        (19, 25, "B"), (20, 19, "B"), (20, 21, "B"), (20, 26, "B"), (21, 20, "B"), (21, 27, "B"),
+        (4, 3, "B"), (4, 5, "B"), (4, 10, "B"), (5, 4, "B"), (5, 11, "B"), (6, 0, "B"), (6, 12, "B"),
+        (7, 8, "B"), (8, 2, "B"), (8, 7, "B"), (8, 9, "B"), (8, 14, "B"), (9, 8, "B"), (9, 15, "B"),
+        (10, 4, "B"), (10, 16, "B"), (11, 5, "B"), (11, 17, "B"), (12, 6, "B"), (12, 13, "B"),
+        (13, 12, "B"), (13, 19, "B"), (14, 8, "B"), (14, 20, "B"), (15, 9, "B"), (16, 10, "B"),
+        (16, 22, "B"), (17, 11, "B"), (18, 19, "B"), (19, 13, "B"), (19, 18, "B"), (19, 20, "B"),
+        (19, 25, "B"), (20, 14, "B"), (20, 19, "B"), (20, 21, "B"), (21, 20, "B"), (22, 16, "B"),
         (22, 23, "B"), (22, 28, "B"), (23, 22, "B"), (23, 29, "B"), (24, 30, "B"), (25, 19, "B"),
-        (25, 31, "B"), (26, 20, "B"), (26, 32, "B"), (27, 21, "B"), (27, 28, "B"), (27, 33, "B"),
-        (28, 22, "B"), (28, 27, "B"), (29, 23, "B"), (30, 24, "B"), (30, 31, "B"), (31, 25, "B"),
-        (31, 30, "B"), (32, 26, "B"), (33, 27, "B"), (33, 34, "B"), (34, 33, "B"), (34, 35, "B"),
-        (35, 34, "B"),
+        (25, 26, "B"), (26, 25, "B"), (26, 32, "B"), (27, 33, "B"), (28, 22, "B"), (28, 34, "B"),
+        (29, 23, "B"), (29, 35, "B"), (30, 24, "B"), (30, 31, "B"), (31, 30, "B"), (31, 32, "B"),
+        (32, 26, "B"), (32, 31, "B"), (33, 27, "B"), (33, 34, "B"), (34, 28, "B"), (34, 33, "B"),
+        (35, 29, "B"),
     ]);
 }
 
 #[test]
 fn golden_full_two_way_teleport_seed_42() {
-    let (field, mut graph) = make_field_and_graph(6, 6);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
+    // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
-        (0, 1, "B"), (0, 6, "T"), (1, 0, "B"), (2, 20, "T"), (3, 9, "B"), (4, 31, "T"), (5, 24, "T"),
-        (6, 0, "T"), (6, 9, "T"), (6, 12, "B"), (7, 28, "T"), (8, 26, "T"), (9, 3, "B"), (9, 6, "T"),
-        (9, 21, "T"), (10, 11, "B"), (10, 14, "T"), (10, 32, "T"), (11, 10, "B"), (11, 15, "T"),
-        (12, 6, "B"), (13, 19, "B"), (14, 10, "T"), (15, 11, "T"), (16, 33, "T"), (17, 21, "T"),
-        (17, 23, "B"), (17, 26, "T"), (18, 19, "B"), (18, 24, "B"), (18, 28, "T"), (19, 13, "B"),
-        (19, 18, "B"), (19, 29, "T"), (20, 2, "T"), (20, 30, "T"), (21, 9, "T"), (21, 17, "T"),
-        (21, 22, "B"), (22, 21, "B"), (23, 17, "B"), (24, 5, "T"), (24, 18, "B"), (24, 25, "B"),
-        (25, 24, "B"), (25, 26, "B"), (25, 35, "T"), (26, 8, "T"), (26, 17, "T"), (26, 25, "B"),
-        (27, 28, "B"), (27, 32, "T"), (27, 33, "B"), (28, 7, "T"), (28, 18, "T"), (28, 27, "B"),
-        (29, 19, "T"), (30, 20, "T"), (30, 31, "B"), (31, 4, "T"), (31, 30, "B"), (31, 32, "B"),
-        (32, 10, "T"), (32, 27, "T"), (32, 31, "B"), (33, 16, "T"), (33, 27, "B"), (33, 34, "B"),
-        (34, 33, "B"), (35, 25, "T"),
+        (0, 1, "B"), (0, 22, "T"), (1, 0, "B"), (2, 30, "T"), (3, 9, "B"), (3, 22, "T"), (3, 34, "T"),
+        (4, 10, "B"), (4, 31, "T"), (5, 11, "B"), (6, 12, "B"), (6, 18, "T"), (6, 28, "T"), (7, 20, "T"),
+        (8, 26, "T"), (9, 3, "B"), (10, 4, "B"), (10, 11, "B"), (10, 14, "T"), (11, 5, "B"), (11, 10, "B"),
+        (11, 13, "T"), (11, 17, "B"), (12, 6, "B"), (13, 11, "T"), (13, 19, "B"), (13, 35, "T"),
+        (14, 10, "T"), (15, 16, "B"), (15, 21, "T"), (15, 34, "T"), (16, 15, "B"), (16, 17, "B"),
+        (16, 25, "T"), (17, 11, "B"), (17, 16, "B"), (17, 24, "T"), (18, 6, "T"), (19, 13, "B"),
+        (19, 20, "B"), (19, 26, "T"), (20, 7, "T"), (20, 19, "B"), (21, 15, "T"), (22, 0, "T"),
+        (22, 3, "T"), (22, 23, "B"), (23, 22, "B"), (24, 17, "T"), (25, 16, "T"), (26, 8, "T"),
+        (26, 19, "T"), (26, 27, "B"), (27, 26, "B"), (27, 28, "B"), (27, 30, "T"), (28, 6, "T"),
+        (28, 27, "B"), (29, 35, "B"), (30, 2, "T"), (30, 27, "T"), (31, 4, "T"), (32, 35, "T"),
+        (33, 34, "B"), (34, 3, "T"), (34, 15, "T"), (34, 33, "B"), (35, 13, "T"), (35, 29, "B"),
+        (35, 32, "T"),
     ]);
 }
 
 #[test]
 fn golden_full_one_way_teleport_seed_42() {
-    let (field, mut graph) = make_field_and_graph(6, 6);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets(), None);
+    // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
-        (0, 1, "B"), (1, 0, "B"), (2, 3, "B"), (3, 2, "B"), (3, 4, "B"), (4, 3, "B"), (4, 11, "T"),
-        (4, 13, "T"), (5, 11, "B"), (5, 20, "T"), (6, 0, "T"), (6, 9, "T"), (6, 12, "B"), (7, 13, "B"),
-        (8, 9, "B"), (9, 8, "B"), (9, 18, "T"), (10, 26, "T"), (11, 5, "B"), (11, 34, "T"), (12, 6, "B"),
-        (13, 7, "B"), (13, 26, "T"), (14, 21, "T"), (14, 29, "T"), (15, 7, "T"), (17, 15, "T"),
-        (18, 19, "B"), (18, 24, "B"), (19, 18, "B"), (22, 23, "B"), (22, 24, "T"), (22, 28, "B"),
-        (22, 32, "T"), (23, 22, "B"), (24, 18, "B"), (24, 25, "B"), (25, 24, "B"), (27, 33, "B"),
-        (28, 22, "B"), (28, 34, "B"), (29, 3, "T"), (30, 18, "T"), (31, 28, "T"), (33, 16, "T"),
-        (33, 27, "B"), (33, 34, "B"), (34, 28, "B"), (34, 33, "B"), (34, 35, "B"), (35, 34, "B"),
+        (0, 1, "B"), (0, 22, "T"), (1, 0, "B"), (2, 3, "B"), (2, 35, "T"), (3, 2, "B"), (5, 34, "T"),
+        (6, 12, "B"), (7, 8, "B"), (7, 13, "B"), (8, 3, "T"), (8, 7, "B"), (9, 8, "T"), (10, 16, "B"),
+        (10, 17, "T"), (12, 6, "B"), (12, 13, "B"), (12, 18, "B"), (12, 24, "T"), (13, 7, "B"),
+        (13, 12, "B"), (14, 18, "T"), (15, 7, "T"), (16, 10, "B"), (17, 23, "B"), (18, 12, "B"),
+        (19, 20, "B"), (20, 19, "B"), (20, 22, "T"), (20, 32, "T"), (21, 17, "T"), (22, 28, "B"),
+        (23, 17, "B"), (24, 30, "B"), (25, 13, "T"), (26, 32, "B"), (27, 33, "B"), (28, 22, "B"),
+        (29, 4, "T"), (29, 16, "T"), (30, 10, "T"), (30, 24, "B"), (31, 32, "B"), (32, 3, "T"),
+        (32, 26, "B"), (32, 31, "B"), (33, 11, "T"), (33, 27, "B"), (33, 34, "B"), (34, 24, "T"),
+        (34, 33, "B"),
     ]);
 }
 
 #[test]
 fn golden_high_cyclicity_seed_21() {
     let params = GenerationParams { depth_first: 0.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 1.0 };
-    let (field, mut graph) = make_field_and_graph(8, 8);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
+    // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
-        (0, 1, "T"), (0, 8, "B"), (0, 13, "T"), (0, 16, "T"), (0, 30, "T"), (0, 42, "T"), (0, 43, "T"),
-        (0, 55, "T"), (0, 58, "T"), (1, 0, "T"), (1, 2, "B"), (1, 3, "T"), (1, 9, "B"), (1, 35, "T"),
-        (1, 38, "T"), (1, 61, "T"), (2, 1, "B"), (2, 7, "T"), (2, 40, "T"), (2, 50, "T"), (2, 53, "T"),
-        (3, 1, "T"), (3, 4, "B"), (3, 11, "B"), (4, 3, "B"), (4, 12, "B"), (4, 34, "T"), (4, 56, "T"),
-        (5, 6, "B"), (5, 13, "B"), (5, 22, "T"), (5, 32, "T"), (5, 62, "T"), (6, 5, "B"), (6, 14, "B"),
-        (6, 17, "T"), (6, 25, "T"), (6, 40, "T"), (7, 2, "T"), (7, 15, "B"), (8, 0, "B"), (8, 16, "B"),
-        (8, 24, "T"), (8, 42, "T"), (9, 1, "B"), (9, 10, "B"), (9, 16, "T"), (9, 18, "T"), (9, 39, "T"),
-        (10, 9, "B"), (10, 11, "B"), (10, 29, "T"), (10, 54, "T"), (10, 58, "T"), (11, 3, "B"),
-        (11, 10, "B"), (11, 56, "T"), (11, 63, "T"), (12, 4, "B"), (12, 20, "B"), (12, 48, "T"),
-        (13, 0, "T"), (13, 5, "B"), (13, 21, "B"), (13, 31, "T"), (13, 60, "T"), (14, 6, "B"),
-        (14, 21, "T"), (14, 22, "B"), (15, 7, "B"), (15, 26, "T"), (15, 56, "T"), (16, 0, "T"),
-        (16, 8, "B"), (16, 9, "T"), (16, 24, "B"), (16, 36, "T"), (16, 42, "T"), (16, 59, "T"),
-        (17, 6, "T"), (17, 18, "B"), (17, 25, "B"), (18, 9, "T"), (18, 17, "B"), (18, 26, "B"),
-        (19, 27, "B"), (19, 40, "T"), (20, 12, "B"), (20, 28, "B"), (20, 49, "T"), (21, 13, "B"),
-        (21, 14, "T"), (21, 26, "T"), (21, 29, "B"), (21, 50, "T"), (22, 5, "T"), (22, 14, "B"),
-        (22, 23, "B"), (22, 44, "T"), (22, 52, "T"), (23, 22, "B"), (23, 29, "T"), (23, 31, "B"),
-        (24, 8, "T"), (24, 16, "B"), (24, 32, "B"), (25, 6, "T"), (25, 17, "B"), (25, 49, "T"),
-        (26, 15, "T"), (26, 18, "B"), (26, 21, "T"), (26, 27, "B"), (27, 19, "B"), (27, 26, "B"),
-        (27, 56, "T"), (28, 20, "B"), (28, 36, "B"), (28, 51, "T"), (29, 10, "T"), (29, 21, "B"),
-        (29, 23, "T"), (29, 30, "B"), (30, 0, "T"), (30, 29, "B"), (30, 38, "B"), (31, 13, "T"),
-        (31, 23, "B"), (31, 39, "B"), (32, 5, "T"), (32, 24, "B"), (32, 40, "B"), (32, 59, "T"),
-        (33, 34, "B"), (33, 37, "T"), (33, 41, "B"), (34, 4, "T"), (34, 33, "B"), (34, 35, "B"),
-        (35, 1, "T"), (35, 34, "B"), (36, 16, "T"), (36, 28, "B"), (36, 37, "B"), (36, 45, "T"),
-        (37, 33, "T"), (37, 36, "B"), (37, 38, "B"), (37, 58, "T"), (38, 1, "T"), (38, 30, "B"),
-        (38, 37, "B"), (39, 9, "T"), (39, 31, "B"), (39, 47, "B"), (40, 2, "T"), (40, 6, "T"),
-        (40, 19, "T"), (40, 32, "B"), (40, 48, "B"), (40, 51, "T"), (41, 33, "B"), (41, 42, "T"),
-        (41, 61, "T"), (42, 0, "T"), (42, 8, "T"), (42, 16, "T"), (42, 41, "T"), (42, 43, "B"),
-        (42, 49, "T"), (42, 51, "T"), (43, 0, "T"), (43, 42, "B"), (43, 51, "B"), (43, 56, "T"),
-        (43, 57, "T"), (44, 22, "T"), (44, 45, "B"), (44, 52, "B"), (45, 36, "T"), (45, 44, "B"),
-        (45, 46, "B"), (46, 45, "B"), (46, 49, "T"), (46, 54, "B"), (47, 39, "B"), (47, 55, "B"),
-        (47, 59, "T"), (48, 12, "T"), (48, 40, "B"), (48, 56, "B"), (48, 58, "T"), (49, 20, "T"),
-        (49, 25, "T"), (49, 42, "T"), (49, 46, "T"), (49, 50, "B"), (49, 57, "B"), (50, 2, "T"),
-        (50, 21, "T"), (50, 49, "B"), (50, 56, "T"), (51, 28, "T"), (51, 40, "T"), (51, 42, "T"),
-        (51, 43, "B"), (51, 59, "B"), (52, 22, "T"), (52, 44, "B"), (52, 60, "B"), (53, 2, "T"),
-        (53, 59, "T"), (54, 10, "T"), (54, 46, "B"), (54, 55, "B"), (55, 0, "T"), (55, 47, "B"),
-        (55, 54, "B"), (56, 4, "T"), (56, 11, "T"), (56, 15, "T"), (56, 27, "T"), (56, 43, "T"),
-        (56, 48, "B"), (56, 50, "T"), (57, 43, "T"), (57, 49, "B"), (57, 58, "B"), (58, 0, "T"),
-        (58, 10, "T"), (58, 37, "T"), (58, 48, "T"), (58, 57, "B"), (58, 59, "B"), (59, 16, "T"),
-        (59, 32, "T"), (59, 47, "T"), (59, 51, "B"), (59, 53, "T"), (59, 58, "B"), (60, 13, "T"),
-        (60, 52, "B"), (60, 61, "B"), (61, 1, "T"), (61, 41, "T"), (61, 60, "B"), (61, 62, "B"),
-        (62, 5, "T"), (62, 61, "B"), (62, 63, "B"), (63, 11, "T"), (63, 62, "B"),
+        (0, 1, "B"), (0, 12, "T"), (0, 25, "T"), (0, 34, "T"), (0, 43, "T"), (0, 60, "T"), (0, 61, "T"),
+        (1, 0, "B"), (1, 9, "B"), (1, 22, "T"), (1, 25, "T"), (1, 33, "T"), (1, 35, "T"), (1, 57, "T"),
+        (2, 3, "B"), (2, 4, "T"), (2, 10, "B"), (2, 15, "T"), (2, 17, "T"), (3, 2, "B"), (3, 4, "B"),
+        (3, 10, "T"), (4, 2, "T"), (4, 3, "B"), (4, 5, "B"), (5, 4, "B"), (5, 13, "B"), (5, 16, "T"),
+        (6, 14, "B"), (6, 28, "T"), (7, 15, "B"), (7, 18, "T"), (7, 63, "T"), (8, 9, "B"), (8, 10, "T"),
+        (8, 16, "B"), (8, 17, "T"), (8, 18, "T"), (8, 26, "T"), (8, 39, "T"), (8, 54, "T"), (9, 1, "B"),
+        (9, 8, "B"), (9, 18, "T"), (9, 24, "T"), (9, 25, "T"), (9, 26, "T"), (10, 2, "B"), (10, 3, "T"),
+        (10, 8, "T"), (10, 11, "B"), (11, 10, "B"), (11, 16, "T"), (11, 19, "B"), (12, 0, "T"),
+        (12, 13, "B"), (13, 5, "B"), (13, 12, "B"), (13, 58, "T"), (14, 6, "B"), (14, 15, "B"),
+        (14, 59, "T"), (15, 2, "T"), (15, 7, "B"), (15, 14, "B"), (16, 5, "T"), (16, 8, "B"),
+        (16, 11, "T"), (16, 24, "B"), (16, 25, "T"), (16, 37, "T"), (16, 38, "T"), (17, 2, "T"),
+        (17, 8, "T"), (17, 18, "B"), (18, 7, "T"), (18, 8, "T"), (18, 9, "T"), (18, 17, "B"),
+        (18, 26, "B"), (19, 11, "B"), (19, 27, "T"), (19, 47, "T"), (20, 21, "B"), (20, 23, "T"),
+        (20, 28, "B"), (20, 49, "T"), (20, 63, "T"), (21, 20, "B"), (21, 22, "B"), (21, 42, "T"),
+        (22, 1, "T"), (22, 21, "B"), (22, 23, "B"), (22, 30, "T"), (23, 20, "T"), (23, 22, "B"),
+        (23, 31, "B"), (24, 9, "T"), (24, 16, "B"), (24, 32, "B"), (24, 42, "T"), (24, 48, "T"),
+        (24, 63, "T"), (25, 0, "T"), (25, 1, "T"), (25, 9, "T"), (25, 16, "T"), (25, 26, "B"),
+        (26, 8, "T"), (26, 9, "T"), (26, 18, "B"), (26, 25, "B"), (26, 31, "T"), (26, 32, "T"),
+        (27, 19, "T"), (27, 35, "B"), (27, 49, "T"), (27, 55, "T"), (27, 57, "T"), (28, 6, "T"),
+        (28, 20, "B"), (28, 29, "B"), (28, 32, "T"), (28, 44, "T"), (28, 45, "T"), (29, 28, "B"),
+        (29, 37, "B"), (29, 42, "T"), (30, 22, "T"), (30, 38, "B"), (30, 46, "T"), (31, 23, "B"),
+        (31, 26, "T"), (31, 39, "B"), (32, 24, "B"), (32, 26, "T"), (32, 28, "T"), (32, 33, "B"),
+        (32, 59, "T"), (33, 1, "T"), (33, 32, "B"), (33, 34, "B"), (33, 41, "T"), (33, 49, "T"),
+        (34, 0, "T"), (34, 33, "B"), (34, 40, "T"), (34, 42, "B"), (34, 56, "T"), (35, 1, "T"),
+        (35, 27, "B"), (35, 36, "B"), (36, 35, "B"), (36, 37, "B"), (36, 41, "T"), (37, 16, "T"),
+        (37, 29, "B"), (37, 36, "B"), (38, 16, "T"), (38, 30, "B"), (38, 39, "B"), (38, 53, "T"),
+        (39, 8, "T"), (39, 31, "B"), (39, 38, "B"), (40, 34, "T"), (40, 48, "B"), (41, 33, "T"),
+        (41, 36, "T"), (41, 42, "B"), (41, 49, "B"), (42, 21, "T"), (42, 24, "T"), (42, 29, "T"),
+        (42, 34, "B"), (42, 41, "B"), (43, 0, "T"), (43, 44, "B"), (43, 51, "B"), (44, 28, "T"),
+        (44, 43, "B"), (44, 52, "B"), (45, 28, "T"), (45, 46, "B"), (45, 53, "B"), (46, 30, "T"),
+        (46, 45, "B"), (46, 47, "B"), (47, 19, "T"), (47, 46, "B"), (47, 49, "T"), (47, 55, "B"),
+        (48, 24, "T"), (48, 40, "B"), (48, 56, "B"), (48, 58, "T"), (49, 20, "T"), (49, 27, "T"),
+        (49, 33, "T"), (49, 41, "B"), (49, 47, "T"), (49, 57, "B"), (50, 51, "B"), (50, 58, "B"),
+        (50, 63, "T"), (51, 43, "B"), (51, 50, "B"), (51, 62, "T"), (52, 44, "B"), (52, 57, "T"),
+        (53, 38, "T"), (53, 45, "B"), (53, 54, "B"), (54, 8, "T"), (54, 53, "B"), (54, 62, "B"),
+        (55, 27, "T"), (55, 47, "B"), (55, 63, "B"), (56, 34, "T"), (56, 48, "B"), (56, 57, "B"),
+        (57, 1, "T"), (57, 27, "T"), (57, 49, "B"), (57, 52, "T"), (57, 56, "B"), (57, 62, "T"),
+        (58, 13, "T"), (58, 48, "T"), (58, 50, "B"), (58, 59, "B"), (59, 14, "T"), (59, 32, "T"),
+        (59, 58, "B"), (59, 60, "B"), (60, 0, "T"), (60, 59, "B"), (60, 61, "B"), (61, 0, "T"),
+        (61, 60, "B"), (61, 62, "B"), (62, 51, "T"), (62, 54, "B"), (62, 57, "T"), (62, 61, "B"),
+        (63, 7, "T"), (63, 20, "T"), (63, 24, "T"), (63, 50, "T"), (63, 55, "B"),
     ]);
 }
 
 #[test]
 fn golden_all_one_way_seed_7() {
-    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 };
-    let (field, mut graph) = make_field_and_graph(6, 6);
+    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    generate(&mut graph, &field, 7, start, &default_params(), &elements, &empty_presets(), None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 7, start, &default_params(), &elements, &empty_presets(), None);
+    // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
-        (0, 1, "B"), (0, 6, "B"), (1, 2, "B"), (3, 4, "B"), (3, 9, "B"), (4, 10, "B"), (7, 1, "B"),
-        (8, 2, "B"), (8, 9, "B"), (9, 15, "B"), (11, 5, "B"), (12, 13, "B"), (13, 19, "B"), (15, 14, "B"),
-        (16, 10, "B"), (16, 22, "B"), (17, 11, "B"), (17, 16, "B"), (20, 19, "B"), (21, 20, "B"),
-        (23, 22, "B"), (23, 29, "B"), (24, 18, "B"), (26, 20, "B"), (26, 25, "B"), (27, 21, "B"),
-        (28, 27, "B"), (28, 29, "B"), (30, 24, "B"), (31, 25, "B"), (31, 30, "B"), (32, 31, "B"),
-        (33, 32, "B"), (34, 33, "B"), (35, 34, "B"),
+        (0, 1, "B"), (2, 1, "B"), (2, 3, "B"), (3, 9, "B"), (4, 5, "B"), (7, 6, "B"), (9, 15, "B"),
+        (10, 11, "B"), (11, 5, "B"), (12, 6, "B"), (13, 7, "B"), (13, 14, "B"), (14, 8, "B"),
+        (16, 10, "B"), (16, 22, "B"), (17, 11, "B"), (19, 18, "B"), (19, 25, "B"), (20, 14, "B"),
+        (20, 26, "B"), (21, 15, "B"), (21, 27, "B"), (23, 17, "B"), (24, 18, "B"), (24, 30, "B"),
+        (26, 27, "B"), (28, 27, "B"), (29, 23, "B"), (29, 35, "B"), (31, 25, "B"), (31, 32, "B"),
+        (32, 33, "B"), (33, 27, "B"), (34, 28, "B"), (35, 34, "B"),
     ]);
 }
 
 #[test]
 fn golden_with_preset_locks_seed_42() {
-    let (field, mut graph) = make_field_and_graph(5, 5);
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap());
     preset_state.locked_in.insert(field.node_at(crate::space::SquarePoint { x: 4, y: 4 }).unwrap());
-    generate(&mut graph, &field, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
+    generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
+    // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
-        (0, 1, "B"), (0, 4, "T"), (1, 0, "B"), (2, 7, "B"), (3, 8, "B"), (3, 19, "T"), (3, 20, "T"),
-        (4, 0, "T"), (4, 7, "T"), (4, 9, "B"), (5, 6, "B"), (5, 17, "T"), (6, 5, "B"), (6, 11, "B"),
-        (6, 20, "T"), (6, 23, "T"), (7, 2, "B"), (7, 4, "T"), (7, 15, "T"), (8, 3, "B"), (8, 22, "T"),
-        (9, 4, "B"), (10, 21, "T"), (11, 6, "B"), (14, 19, "B"), (15, 7, "T"), (15, 12, "T"),
-        (15, 16, "B"), (16, 15, "B"), (17, 5, "T"), (18, 19, "B"), (19, 3, "T"), (19, 14, "B"),
-        (19, 18, "B"), (20, 3, "T"), (20, 6, "T"), (20, 21, "B"), (21, 10, "T"), (21, 20, "B"),
-        (22, 8, "T"), (23, 6, "T"),
+        (0, 1, "B"), (0, 15, "T"), (1, 0, "B"), (2, 7, "B"), (3, 8, "B"), (3, 15, "T"), (4, 17, "T"),
+        (6, 19, "T"), (7, 2, "B"), (7, 21, "T"), (8, 3, "B"), (9, 11, "T"), (10, 15, "B"), (11, 9, "T"),
+        (11, 16, "T"), (13, 18, "T"), (14, 19, "B"), (15, 0, "T"), (15, 3, "T"), (15, 10, "B"),
+        (16, 11, "T"), (16, 17, "B"), (16, 21, "B"), (17, 4, "T"), (17, 12, "B"), (17, 16, "B"),
+        (17, 18, "B"), (17, 22, "B"), (18, 13, "T"), (18, 17, "B"), (18, 19, "B"), (19, 6, "T"),
+        (19, 14, "B"), (19, 18, "B"), (20, 21, "B"), (21, 7, "T"), (21, 16, "B"), (21, 20, "B"),
+        (22, 17, "B"), (24, 5, "T"), (24, 19, "B"), (24, 23, "B"),
     ]);
 }

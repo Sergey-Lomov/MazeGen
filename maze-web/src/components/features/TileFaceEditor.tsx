@@ -44,6 +44,10 @@ interface Props {
    * beside the tile (outside its own bounding box, so they never overlap a node's drawing) —
    * counter-clockwise on the left, clockwise on the right. */
   onRotate: (direction: 1 | -1) => void;
+  /** Hides the rotate-buttons row entirely — for a small, non-interactive preview (e.g. a split
+   *  pattern's card in the settings list) where rotate controls would have nothing meaningful to
+   *  do. Defaults to `true` (shown), matching every existing caller. */
+  showRotateControls?: boolean;
 }
 
 /** Large single-tile diagram, rendered in the field's own tessellation — shows every node's
@@ -64,7 +68,7 @@ interface Props {
  * node's connector (hub/straight-through line to a face's own segment) and the face segment itself
  * always match: a one-way's arrowhead sits only on the connector, never on the along-face
  * segment. */
-export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, onFaceRightClick, onRotate }: Props) {
+export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, onFaceRightClick, onRotate, showRotateControls = true }: Props) {
   const [boundaryHint, setBoundaryHint] = useState(false);
   const diagram = getTileDiagram(point[0], point[1], cfg);
   if (!diagram) return null;
@@ -221,15 +225,17 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
         <div style={styles.hint}>{m["post_edit.split_boundary_hint"]()}</div>
       )}
     </div>
-    <div style={styles.rotateRow}>
-      <span style={typography.body}>{m["post_edit.split_rotate_label"]()}</span>
-      <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(1)} title={m["post_edit.split_rotate_ccw"]()}>
-        <RotateCcw size={16} />
-      </button>
-      <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(-1)} title={m["post_edit.split_rotate_cw"]()}>
-        <RotateCw size={16} />
-      </button>
-    </div>
+    {showRotateControls && (
+      <div style={styles.rotateRow}>
+        <span style={typography.body}>{m["post_edit.split_rotate_label"]()}</span>
+        <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(1)} title={m["post_edit.split_rotate_ccw"]()}>
+          <RotateCcw size={16} />
+        </button>
+        <button className="hoverable" style={styles.rotateBtn} onClick={() => onRotate(-1)} title={m["post_edit.split_rotate_cw"]()}>
+          <RotateCw size={16} />
+        </button>
+      </div>
+    )}
     </div>
   );
 }

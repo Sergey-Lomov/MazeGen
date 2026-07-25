@@ -160,11 +160,11 @@ fn deterministic() {
 #[test]
 fn nav_paths_only_contain_adjacent_maze_nodes() {
     let mut ids = IdGenerator::new();
-    let field = Field::<SquareTessellation>::new(square_rect(10, 10), &mut ids).unwrap();
+    let mut field = Field::<SquareTessellation>::new(square_rect(10, 10), &mut ids).unwrap();
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
     let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-    generate_maze(&mut graph, &field, 42, start, GenerationConfig::default(), &PresetState::empty());
+    generate_maze(&mut graph, &mut field, &mut ids, 42, start, GenerationConfig::default(), &PresetState::empty());
 
     let maze_nodes: std::collections::HashSet<u64> = graph.nodes().map(|n| n.id).collect();
     let nav = build_nav_graph(&graph);

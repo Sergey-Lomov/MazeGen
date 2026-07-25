@@ -61,10 +61,15 @@ interface DebugMazeViewContribution {
   dsuGroups: Map<bigint, bigint> | null;
   debugMaps: Map<string, Map<bigint, bigint>>;
   debugVertices: Map<string, bigint | null>;
+  /** Node ids minted mid-run by a split event (GitHub issue #222, `VertexBased`-only today) that
+   *  have appeared by this contribution's step — see `VertexBasedApplyResult.createdNodes`'s doc
+   *  comment for why this must gate `DebugMazeView.nodes`, not just `.edges`. Always empty for
+   *  every other source kind (only `vertex_based` ever produces split nodes). */
+  createdNodes: bigint[];
 }
 
 function emptyContribution(): DebugMazeViewContribution {
-  return { edges: [], removedEdges: [], start: null, finish: null, debugValues: new Map(), dsuGroups: null, debugMaps: new Map(), debugVertices: new Map() };
+  return { edges: [], removedEdges: [], start: null, finish: null, debugValues: new Map(), dsuGroups: null, debugMaps: new Map(), debugVertices: new Map(), createdNodes: [] };
 }
 
 /** Prefixes every debug-value/-map/-vertex name in a contribution with `"{scopeName}:"`, mirroring
@@ -119,6 +124,7 @@ function generationContribution(arena: DebugArenaHandle, source: DebugArenaHandl
     const result = adapterFor("vertex_based").apply(arena.tape, localStep, from, startIndex, endIndex);
     contribution.edges = result.edges;
     contribution.debugValues = result.debugValues;
+    contribution.createdNodes = result.createdNodes;
   } else {
     const from = nearestCheckpointFromAtOrBefore<ApplyFrom>(source.checkpointFroms, localStep) ?? undefined;
     const result = adapterFor("recursive_backtracker").apply(arena.tape, localStep, from, startIndex, endIndex);
@@ -174,6 +180,7 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
   dsuGroups: Map<bigint, bigint> | null;
   debugMaps: Map<string, Map<bigint, bigint>>;
   debugVertices: Map<string, bigint | null>;
+  createdNodes: bigint[];
 } {
   let edges: { from: bigint; to: bigint; kind?: "basic" | "teleport" }[] = [];
   let start: bigint | null = null;
@@ -182,6 +189,7 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
   let dsuGroups: Map<bigint, bigint> | null = null;
   let debugMaps: Map<string, Map<bigint, bigint>> = new Map();
   let debugVertices: Map<string, bigint | null> = new Map();
+  let createdNodes: bigint[] = [];
 
   for (const contribution of contributions) {
     if (contribution.removedEdges.length > 0) {
@@ -199,9 +207,10 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
     if (contribution.dsuGroups) dsuGroups = contribution.dsuGroups;
     if (contribution.debugMaps.size > 0) debugMaps = contribution.debugMaps;
     if (contribution.debugVertices.size > 0) debugVertices = contribution.debugVertices;
+    if (contribution.createdNodes.length > 0) createdNodes = createdNodes.concat(contribution.createdNodes);
   }
 
-  return { edges, start, finish, debugValues, dsuGroups, debugMaps, debugVertices };
+  return { edges, start, finish, debugValues, dsuGroups, debugMaps, debugVertices, createdNodes };
 }
 
 // Single-slot memo, keyed on (arena, debugStep) identity — every consumer (currently just
@@ -213,6 +222,34 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
 let lastArena: DebugArenaHandle | null = null;
 let lastStep: number | null = null;
 let lastView: DebugMazeView | null = null;
+
+// Per-arena memo of every split-node id (GitHub issue #222) minted anywhere across the whole tape,
+// regardless of `debugStep` — needed to tell "not yet created at this step" apart from "an
+// ordinary node that was always there" when filtering `arena.nodes` below. Computed once per arena
+// (replaying each vertex_based source fully, at its own last step) rather than per `debugStep`
+// call, since it never changes for a given arena.
+const allSplitNodeIdsByArena = new WeakMap<DebugArenaHandle, ReadonlySet<bigint>>();
+
+function allSplitNodeIdsOf(arena: DebugArenaHandle): ReadonlySet<bigint> {
+  const cached = allSplitNodeIdsByArena.get(arena);
+  if (cached) return cached;
+
+  const ids = new Set<bigint>();
+  for (let i = 0; i < arena.sources.length; i++) {
+    const source = arena.sources[i];
+    if (source.kind !== "vertex_based" || source.endStep === source.startStep) continue;
+    const startIndex = sourceContentStart(arena.tape, source.nodeIndex);
+    const endIndex = i + 1 < arena.sources.length
+      ? sourceContentStart(arena.tape, arena.sources[i + 1].nodeIndex)
+      : arena.tape.nodeCount;
+    const localStep = source.endStep - source.startStep - 1;
+    const result = adapterFor("vertex_based").apply(arena.tape, localStep, undefined, startIndex, endIndex);
+    for (const id of result.createdNodes) ids.add(id);
+  }
+
+  allSplitNodeIdsByArena.set(arena, ids);
+  return ids;
+}
 
 /** Reconstructs maze state at `debugStep` from `debugArena` via the replay engine (GitHub issue
  *  #125), across every top-level source in the arena's tape (GitHub issue #147: today generation
@@ -278,8 +315,20 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
     ? new Map([...merged.dsuGroups].map(([id, root]) => [Number(id), Number(root)]))
     : null;
 
+  // `arena.nodes` is the run's final, static node list — it already includes every split node
+  // (GitHub issue #222) that will ever be minted, regardless of `debugStep`. A split node not yet
+  // created by this step must be excluded here, or its point renders as an already-split tile with
+  // no connections at all (fully closed) many steps before the split event actually happens. Only
+  // filters ids present in `allSplitNodeIds` at all — an ordinary node is never in that set, so
+  // this is a no-op whenever the run produced no splits.
+  const allSplitNodeIds = allSplitNodeIdsOf(arena);
+  const createdSoFar = new Set(merged.createdNodes);
+  const nodes = allSplitNodeIds.size === 0
+    ? arena.nodes
+    : arena.nodes.filter((n) => !allSplitNodeIds.has(BigInt(n.id)) || createdSoFar.has(BigInt(n.id)));
+
   const view: DebugMazeView = {
-    nodes: arena.nodes,
+    nodes,
     edges: merged.edges.map((e) => ({ from: Number(e.from), to: Number(e.to), kind: e.kind ?? "basic" })),
     start: merged.start === null ? null : Number(merged.start),
     finish: merged.finish === null ? null : Number(merged.finish),

@@ -284,6 +284,41 @@ export interface ElementsConfig {
   one_way_chance?: number;
   teleport_chance?: number;
   teleport_one_way_chance?: number;
+  /** CustomVertexBased-only (GitHub issue #222): probability, rolled at the start of every
+   * step, that the step's tile is split into several graph nodes instead of merged into one. */
+  split_chance?: number;
+}
+
+/** Mirrors Rust's `SplitFaceRequirementDto` (GitHub issue #222). */
+export type SplitFaceRequirement =
+  | { kind: "passage" }
+  | { kind: "one_way"; direction: "forward" | "backward" }
+  | { kind: "wall" }
+  | { kind: "unspecified" };
+
+/** Mirrors Rust's `SplitPatternFaceDto`. `face_index` is a position into the active
+ * tessellation's face list (e.g. Square: 0=N, 1=S, 2=E, 3=W). */
+export interface SplitPatternFace {
+  face_index: number;
+  requirement: SplitFaceRequirement;
+  /** `Some(i)`: this face connects to pattern-local node `i` (an inter-split edge). */
+  sibling_target?: number;
+}
+
+/** Mirrors Rust's `SplitPatternDto` — an abstract, tessellation-relative split template. */
+export interface SplitPattern {
+  node_count: number;
+  /** `faces[i]` is pattern-local node `i`'s face list; node 0 is the tile's pre-existing node. */
+  faces: SplitPatternFace[][];
+  weight?: number;
+}
+
+/** Mirrors Rust's `SplitGenerationConfigDto` — CustomVertexBased-only automatic split-point
+ * assignment settings (GitHub issue #222). */
+export interface SplitGenerationConfig {
+  pattern_mode?: boolean;
+  max_split_nodes?: number;
+  patterns?: SplitPattern[];
 }
 
 export type InitialGenerationConfig =
@@ -331,6 +366,8 @@ export interface GenerateConfig {
   /** Extra nodes to create at declared points before any preset above is resolved (GitHub issue
    * #231) — `[[x, y], slotId]` pairs. Mirrors Rust's `GenerateConfig.split_points`. */
   split_points?: [[number, number], number][];
+  /** CustomVertexBased-only automatic split-point assignment settings (GitHub issue #222). */
+  split_generation?: SplitGenerationConfig;
   debug_events?: boolean;
   qc_experiment?: boolean;
 }

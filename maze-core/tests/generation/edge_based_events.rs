@@ -151,7 +151,7 @@ fn edge_based_event_log_mutating_edges_match_graph_edges() {
 /// the one `build_preset_state` already planted).
 #[test]
 fn edge_based_event_log_preset_teleport_dst_emits_preset_skipped_not_edge_added() {
-    let (mut graph, field, start, preset_state, _node_count, teleport_src, teleport_dst) = build_with_preset_teleport_bridge();
+    let (mut graph, field, start, preset_state, _node_count, teleport_src, teleport_dst, _ids) = build_with_preset_teleport_bridge();
     let params = EdgeBasedParams::default();
     let elements = no_one_way_elements();
     let mut log: EventLog<EdgeBasedEvent> = EventLog::new();
@@ -175,7 +175,7 @@ fn edge_based_event_log_preset_teleport_dst_emits_preset_skipped_not_edge_added(
 /// across many seeds, not just the algorithm's connection-attempt intent.
 #[test]
 fn edge_based_event_log_edge_added_direction_matches_graph_even_when_one_way_reverses_it() {
-    let one_way_elements = maze_core::generation::ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 };
+    let one_way_elements = maze_core::generation::ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
     let params = EdgeBasedParams::default();
     for seed in 0..20 {
         let (mut graph, field, start) = build(6, 6);
@@ -222,7 +222,7 @@ fn edge_based_event_kinds_agree_with_is_mutating() {
 }
 
 fn teleport_elements() -> maze_core::generation::ElementsConfig {
-    maze_core::generation::ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.3, teleport_one_way_chance: 0.0 }
+    maze_core::generation::ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.3, teleport_one_way_chance: 0.0, split_chance: 0.0 }
 }
 
 #[test]
@@ -419,10 +419,10 @@ fn edge_based_event_payload_round_trips_for_representative_variants() {
 
 #[test]
 fn edge_based_wired_into_generate_maze_with_events() {
-    let (mut graph, field, start) = build(5, 5);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(5, 5);
     let config = GenerationAlgorithm::CustomEdgeBased(EdgeBasedParams::default());
     let result = generate_maze_with_events(
-        &mut graph, &field, 6, start,
+        &mut graph, &mut field, &mut ids, 6, start,
         maze_core::generation::GenerationConfig { algorithm: config, elements: no_one_way_elements(), ..maze_core::generation::GenerationConfig::default() },
         &empty_preset(),
     );

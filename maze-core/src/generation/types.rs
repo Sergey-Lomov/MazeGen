@@ -7,11 +7,21 @@ pub struct ElementsConfig {
     /// Probability that an added teleport is one-way rather than two-way. Only consulted when
     /// `teleport_chance` already hit — mirrors `one_way_chance`'s role but scoped to teleports.
     pub teleport_one_way_chance: f64,
+    /// `CustomVertexBased`-only (GitHub issue #222): probability, rolled fresh at the start of
+    /// every step (before any other per-step logic), that the step's tile is split into several
+    /// graph nodes instead of merged into one. Always consumed regardless of value, same
+    /// RNG-parity discipline as `teleport_chance`/`cyclicity` (see `vertex_based.rs`).
+    pub split_chance: f64,
 }
 
 impl Default for ElementsConfig {
     fn default() -> Self {
-        ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0 }
+        ElementsConfig {
+            one_way_chance: 0.04,
+            teleport_chance: 0.0,
+            teleport_one_way_chance: 0.0,
+            split_chance: 0.0,
+        }
     }
 }
 
@@ -132,6 +142,9 @@ pub struct GenerationConfig {
     /// `(point, slot)`-sorted order by `build_preset_state`, mirroring `apply_split_points`
     /// (`maze-wasm/src/analytics.rs`) for post-edit's split nodes.
     pub split_points: Vec<((i32, i32), u32)>,
+    /// `CustomVertexBased`-only (GitHub issue #222) automatic split-point assignment settings.
+    /// Ignored by every other generation algorithm.
+    pub split_generation: crate::generation::split_pattern::SplitGenerationConfig,
 }
 
 impl Default for GenerationConfig {
@@ -142,6 +155,7 @@ impl Default for GenerationConfig {
             preset_connections: vec![],
             locked_nodes:       vec![],
             split_points:       vec![],
+            split_generation:   crate::generation::split_pattern::SplitGenerationConfig::default(),
         }
     }
 }

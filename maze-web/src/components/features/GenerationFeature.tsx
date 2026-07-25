@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
+import { SplitSettingsDialog } from "../dialogs/SplitSettingsDialog";
 import { ConfirmModal } from "../ConfirmModal";
 import { sharedStyles } from "../../styles/shared";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
@@ -43,6 +44,7 @@ export function GenerationFeature({ canGenerate }: Props) {
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [splitSettingsDialogOpen, setSplitSettingsDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"generate" | null>(null);
   const [seedDraft, setSeedDraft] = useState(String(seed));
 
@@ -162,10 +164,21 @@ export function GenerationFeature({ canGenerate }: Props) {
               <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.04} onChange={(v) => setElementsParam("one_way_chance", v)} />
               <SliderParam variant="primary" label={m["generation.teleport_chance"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
               <SliderParam variant="primary" label={m["generation.teleport_one_way_chance"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
+              {isVertexBased && (
+                <div style={styles.row}>
+                  <div style={{ flex: 1 }}>
+                    <SliderParam variant="primary" label={m["generation.split_chance"]()} value={elementsConfig.split_chance ?? 0.0} onChange={(v) => setElementsParam("split_chance", v)} />
+                  </div>
+                  <button className="hoverable" style={styles.editBtn} onClick={() => setSplitSettingsDialogOpen(true)} title={m["generation.split_settings"]()}>⚙</button>
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
+      {isVertexBased && splitSettingsDialogOpen && (
+        <SplitSettingsDialog onClose={() => setSplitSettingsDialogOpen(false)} />
+      )}
 
       {/* Status line */}
       {generationStatus === "error" && error && (

@@ -1,9 +1,30 @@
-use maze_core::generation::{generate_vertex_based, generate_maze_with_events, vertex_based_debug_value_names, VertexBasedEvent, GenerationParams, GenerationAlgorithm};
+use maze_core::generation::{generate_vertex_based, generate_maze_with_events, vertex_based_debug_value_names, VertexBasedEvent, GenerationParams, GenerationAlgorithm, SplitGenerationConfig};
 use maze_core::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog, EventedEventKind, NodePayload, TAG_SCOPE};
+use maze_core::{Graph, IdGenerator, NodeId};
+use maze_core::space::{Field, SquareTessellation};
 use super::helpers::*;
 
 fn no_randomness_params() -> GenerationParams {
     GenerationParams { depth_first: 0.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 0.0 }
+}
+
+/// Calls `generate_vertex_based` with split-related params defaulted to "feature off" — every
+/// existing test here predates GitHub issue #222 and asserts pre-split narration, so this keeps
+/// call sites close to their pre-#222 shape instead of every one repeating the same 3 no-op args.
+#[allow(clippy::too_many_arguments)]
+fn generate_vertex_based_default_split(
+    graph: &mut Graph,
+    field: &mut Field<SquareTessellation>,
+    ids: &mut IdGenerator,
+    seed: u64,
+    start: NodeId,
+    params: &GenerationParams,
+    elements: &maze_core::generation::ElementsConfig,
+    preset_state: &maze_core::generation::PresetState,
+    event_log: Option<&mut EventLog<VertexBasedEvent>>,
+) {
+    let mut start_reassignment = None;
+    generate_vertex_based(graph, field, ids, seed, start, params, elements, &SplitGenerationConfig::default(), preset_state, &mut start_reassignment, event_log);
 }
 
 /// One test asserting the exact event sequence, on the smallest deterministic input (a 1x2
@@ -12,11 +33,11 @@ fn no_randomness_params() -> GenerationParams {
 /// order once. Every other test below asserts an invariant instead.
 #[test]
 fn vertex_based_single_step_emits_exact_event_sequence() {
-    let (mut graph, field, start) = build(1, 2);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(1, 2);
     let params = no_randomness_params();
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 1, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 1, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     let neighbor = field.neighbors(start)[0];
@@ -43,34 +64,40 @@ fn vertex_based_single_step_emits_exact_event_sequence() {
         _ => None,
     }).collect();
 
-    assert_eq!(events1.len(), 7, "expected exactly 7 events in step 1, got {events1:?}");
+    assert_eq!(events1.len(), 8, "expected exactly 8 events in step 1, got {events1:?}");
     assert!(
         matches!(events1[0], VertexBasedEvent::SrcChosenFromFrontier { src, frontier_len: 1, position: 0, .. } if src == start),
         "event 0: {:?}", events1[0]
     );
     assert!(
-        matches!(events1[1], VertexBasedEvent::TeleportRolled { src, fired: false, .. } if src == start),
+        // GitHub issue #222: the split roll fires first, before any other per-step logic —
+        // always consumed regardless of split_chance (0.0 here), so it always shows as a miss.
+        matches!(events1[1], VertexBasedEvent::SplitRolled { src, fired: false, eligible: false, .. } if src == start),
         "event 1: {:?}", events1[1]
     );
     assert!(
-        matches!(events1[2], VertexBasedEvent::CyclicRolled { src, fired: false, .. } if src == start),
+        matches!(events1[2], VertexBasedEvent::TeleportRolled { src, fired: false, .. } if src == start),
         "event 2: {:?}", events1[2]
     );
     assert!(
-        matches!(events1[3], VertexBasedEvent::CorridorRolled { is_corridor: true, .. }),
+        matches!(events1[3], VertexBasedEvent::CyclicRolled { src, fired: false, .. } if src == start),
         "event 3: {:?}", events1[3]
     );
     assert!(
-        matches!(events1[4], VertexBasedEvent::CandidateChosen { src, dst, used_directionality: false } if src == start && dst == neighbor),
+        matches!(events1[4], VertexBasedEvent::CorridorRolled { is_corridor: true, .. }),
         "event 4: {:?}", events1[4]
     );
     assert!(
-        matches!(events1[5], VertexBasedEvent::EdgeAdded { src, dst, bidirectional: true } if src == start && dst == neighbor),
+        matches!(events1[5], VertexBasedEvent::CandidateChosen { src, dst, used_directionality: false } if src == start && dst == neighbor),
         "event 5: {:?}", events1[5]
     );
     assert!(
-        matches!(events1[6], VertexBasedEvent::NodeVisited { node, parent } if node == neighbor && parent == start),
+        matches!(events1[6], VertexBasedEvent::EdgeAdded { src, dst, bidirectional: true } if src == start && dst == neighbor),
         "event 6: {:?}", events1[6]
+    );
+    assert!(
+        matches!(events1[7], VertexBasedEvent::NodeVisited { node, parent } if node == neighbor && parent == start),
+        "event 7: {:?}", events1[7]
     );
 
     // Step 2: neighbor becomes src (the only node left in frontier), but its only geometric
@@ -81,26 +108,33 @@ fn vertex_based_single_step_emits_exact_event_sequence() {
         NodePayload::Event(e) => Some(e.clone()),
         _ => None,
     }).collect();
-    assert_eq!(events2.len(), 4, "expected exactly 4 events in step 2, got {events2:?}");
+    assert_eq!(events2.len(), 5, "expected exactly 5 events in step 2, got {events2:?}");
     assert!(
         matches!(events2[0], VertexBasedEvent::SrcChosenFromFrontier { src, frontier_len: 1, position: 0, .. } if src == neighbor),
         "event 0: {:?}", events2[0]
     );
     assert!(
-        matches!(events2[1], VertexBasedEvent::TeleportRolled { src, fired: false, .. } if src == neighbor),
+        matches!(events2[1], VertexBasedEvent::SplitRolled { src, fired: false, eligible: false, .. } if src == neighbor),
         "event 1: {:?}", events2[1]
     );
     assert!(
-        matches!(events2[2], VertexBasedEvent::CyclicRolled { src, fired: false, .. } if src == neighbor),
+        matches!(events2[2], VertexBasedEvent::TeleportRolled { src, fired: false, .. } if src == neighbor),
         "event 2: {:?}", events2[2]
     );
     assert!(
-        matches!(events2[3], VertexBasedEvent::CorridorRolled { is_corridor: true, .. }),
+        matches!(events2[3], VertexBasedEvent::CyclicRolled { src, fired: false, .. } if src == neighbor),
         "event 3: {:?}", events2[3]
+    );
+    assert!(
+        matches!(events2[4], VertexBasedEvent::CorridorRolled { is_corridor: true, .. }),
+        "event 4: {:?}", events2[4]
     );
 
     // Step 3: frontier is now empty — handle_empty_frontier runs, teleport bridge roll fails
-    // (teleport_chance = 0), reserve is empty so the scan exhausts immediately.
+    // (teleport_chance = 0), reserve is empty so the scan exhausts immediately. No SplitRolled
+    // here — handle_empty_frontier's teleport-bridge branch only calls try_split_src once it has
+    // picked a src/bridge pair, which requires an unvisited node to exist (none left in a 1x2
+    // field at this point), so this branch returns early before ever reaching the split roll.
     let step3 = step_scopes.next().expect("expected a third \"step N\" scope");
     assert!(step_scopes.next().is_none(), "a 1x2 field must produce exactly three steps");
     let events3: Vec<VertexBasedEvent> = step3.children().filter_map(|c| match c.payload() {
@@ -125,11 +159,11 @@ fn vertex_based_single_step_emits_exact_event_sequence() {
 
 #[test]
 fn vertex_based_event_log_mutating_edges_match_graph_edges() {
-    let (mut graph, field, start) = build(6, 6);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
     let params = GenerationParams::default();
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 5, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 5, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     for event in tape.mutating_events() {
@@ -154,13 +188,17 @@ fn vertex_based_event_log_mutating_edges_match_graph_edges() {
 /// edge was just added on top of the one `build_preset_state` already planted).
 #[test]
 fn vertex_based_event_log_preset_teleport_dst_emits_preset_neighbor_visited_not_edge_added() {
-    let (mut graph, field, start, preset_state, _node_count, _, _) = build_with_preset_teleport_bridge();
-    let teleport_src = *preset_state.preset_teleports.keys().next().unwrap();
+    let (mut graph, mut field, start, preset_state, _node_count, teleport_a, teleport_b, mut ids) = build_with_preset_teleport_bridge();
+    // `preset_teleports` has an entry for both directions (a two-way teleport) — pick the lower
+    // NodeId deterministically rather than `.keys().next()`, whose HashMap iteration order is
+    // randomized per-process (GitHub issue #222 surfaced this: RNG-timing changes make the
+    // previously-"usually fine" nondeterministic pick occasionally select the other direction).
+    let teleport_src = teleport_a.min(teleport_b);
     let teleport_dst = preset_state.preset_teleports[&teleport_src][0];
     let params = GenerationParams::default();
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 42, start, &params, &elements, &preset_state, Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 42, start, &params, &elements, &preset_state, Some(&mut log));
     let tape = log.finish();
 
     let saw_preset_neighbor_visited = tape.iter().any(|e| matches!(
@@ -180,12 +218,12 @@ fn vertex_based_event_log_preset_teleport_dst_emits_preset_neighbor_visited_not_
 /// graph's actual direction, not the algorithm's connection-attempt intent, across many seeds.
 #[test]
 fn vertex_based_event_log_edge_added_direction_matches_graph_even_when_one_way_reverses_it() {
-    let one_way_elements = maze_core::generation::ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0 };
+    let one_way_elements = maze_core::generation::ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
     let params = GenerationParams::default();
     for seed in 0..20 {
-        let (mut graph, field, start) = build(6, 6);
+        let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
         let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-        generate_vertex_based(&mut graph, &field, seed, start, &params, &one_way_elements, &empty_preset(), Some(&mut log));
+        generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, seed, start, &params, &one_way_elements, &empty_preset(), Some(&mut log));
         let tape = log.finish();
 
         let mut saw_any_edge_added = false;
@@ -204,11 +242,11 @@ fn vertex_based_event_log_edge_added_direction_matches_graph_even_when_one_way_r
 
 #[test]
 fn vertex_based_event_kinds_agree_with_is_mutating() {
-    let (mut graph, field, start) = build(6, 6);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
     let params = GenerationParams { cyclicity: 0.5, ..GenerationParams::default() };
     let elements = teleport_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 3, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 3, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     for event in tape.iter() {
@@ -231,16 +269,16 @@ fn vertex_based_event_kinds_agree_with_is_mutating() {
 }
 
 fn teleport_elements() -> maze_core::generation::ElementsConfig {
-    maze_core::generation::ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.3, teleport_one_way_chance: 0.0 }
+    maze_core::generation::ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.3, teleport_one_way_chance: 0.0, split_chance: 0.0 }
 }
 
 #[test]
 fn vertex_based_every_step_scope_is_nonempty_and_directly_under_root() {
-    let (mut graph, field, start) = build(6, 6);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
     let params = GenerationParams::default();
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 9, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 9, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     let mut saw_any = false;
@@ -259,11 +297,11 @@ fn vertex_based_reserve_search_scopes_are_nonempty_and_nested_under_a_step_scope
     // A field sparse/disconnected enough (via a high depth_first pop pattern and a wide field)
     // reliably drives the frontier empty mid-run at least once, forcing a "reserve_search"
     // sub-scope to open.
-    let (mut graph, field, start) = build(8, 8);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(8, 8);
     let params = GenerationParams { depth_first: 1.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 0.0 };
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 2, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 2, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     let mut saw_any = false;
@@ -284,11 +322,11 @@ fn vertex_based_junction_count_scopes_open_with_setup_then_slot_rolls_matching_m
     // corridor_chance = 0.0 forces every step into the junction branch; a params.branching in
     // (0, 1) and a reasonably connected field guarantee virtual_max >= 2 on at least one step, so
     // junction_count's roll series actually runs.
-    let (mut graph, field, start) = build(6, 6);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
     let params = GenerationParams { corridor_chance: 0.0, branching: 0.5, depth_first: 0.5, directionality: 0.0, cyclicity: 0.0 };
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 8, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 8, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     let mut saw_any = false;
@@ -325,14 +363,14 @@ fn vertex_based_junction_count_scopes_open_with_setup_then_slot_rolls_matching_m
 
 #[test]
 fn vertex_based_none_log_does_not_change_generation_output() {
-    let (mut g1, f1, s1) = build(6, 6);
-    let (mut g2, f2, s2) = build(6, 6);
+    let (mut g1, mut f1, s1, mut ids1) = build_with_ids(6, 6);
+    let (mut g2, mut f2, s2, mut ids2) = build_with_ids(6, 6);
     let params = GenerationParams::default();
     let elements = no_one_way_elements();
 
-    generate_vertex_based(&mut g1, &f1, 17, s1, &params, &elements, &empty_preset(), None);
+    generate_vertex_based_default_split(&mut g1, &mut f1, &mut ids1, 17, s1, &params, &elements, &empty_preset(), None);
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut g2, &f2, 17, s2, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut g2, &mut f2, &mut ids2, 17, s2, &params, &elements, &empty_preset(), Some(&mut log));
 
     assert_deterministic(&g1, &g2);
 }
@@ -352,11 +390,11 @@ fn vertex_based_debug_values_declares_visited_frontier_reserve_as_region() {
 
 #[test]
 fn vertex_based_debug_value_deltas_keep_visited_frontier_reserve_disjoint_and_consistent() {
-    let (mut graph, field, start) = build(6, 6);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
     let params = GenerationParams { cyclicity: 0.3, ..GenerationParams::default() };
     let elements = teleport_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 4, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 4, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     let mut visited: std::collections::HashSet<u64> = std::collections::HashSet::new();
@@ -391,11 +429,11 @@ fn vertex_based_debug_value_deltas_keep_visited_frontier_reserve_disjoint_and_co
 
 #[test]
 fn vertex_based_event_type_ids_are_unique_and_nonzero() {
-    let (mut graph, field, start) = build(6, 6);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
     let params = GenerationParams { cyclicity: 0.3, ..GenerationParams::default() };
     let elements = teleport_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 21, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 21, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     let mut seen_by_variant = std::collections::HashMap::new();
@@ -515,11 +553,11 @@ fn vertex_based_event_payload_round_trips_for_representative_variants() {
 fn vertex_based_single_candidate_skips_directionality_is_trace_only_and_precedes_candidate_chosen() {
     // A field where every non-start node has exactly one free neighbor forces
     // choose_candidate's single-candidate short-circuit on every corridor step after the first.
-    let (mut graph, field, start) = build(1, 3);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(1, 3);
     let params = no_randomness_params();
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 1, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 1, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     let mut saw_skip = false;
@@ -536,11 +574,11 @@ fn vertex_based_single_candidate_skips_directionality_is_trace_only_and_precedes
 fn vertex_based_directionality_rolled_emitted_whenever_multiple_candidates_and_a_parent_exist() {
     // A 4x4 grid gives interior nodes multiple free neighbors; corridor_chance = 1.0 forces every
     // step through the single-candidate-pick branch of choose_candidate.
-    let (mut graph, field, start) = build(4, 4);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(4, 4);
     let params = GenerationParams { corridor_chance: 1.0, directionality: 0.5, ..no_randomness_params() };
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
-    generate_vertex_based(&mut graph, &field, 2, start, &params, &elements, &empty_preset(), Some(&mut log));
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 2, start, &params, &elements, &empty_preset(), Some(&mut log));
     let tape = log.finish();
 
     let mut saw_rolled = false;
@@ -564,10 +602,10 @@ fn vertex_based_directionality_rolled_emitted_whenever_multiple_candidates_and_a
 
 #[test]
 fn vertex_based_wired_into_generate_maze_with_events() {
-    let (mut graph, field, start) = build(5, 5);
+    let (mut graph, mut field, start, mut ids) = build_with_ids(5, 5);
     let config = GenerationAlgorithm::CustomVertexBased(GenerationParams::default());
     let result = generate_maze_with_events(
-        &mut graph, &field, 6, start,
+        &mut graph, &mut field, &mut ids, 6, start,
         maze_core::generation::GenerationConfig { algorithm: config, elements: no_one_way_elements(), ..maze_core::generation::GenerationConfig::default() },
         &empty_preset(),
     );

@@ -14,6 +14,9 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     seedHistoryIndex: 0,
     initialConfig: { method: "recursive_backtracker" },
     elementsConfig: {},
+    splitPatternMode: false,
+    splitMaxNodes: 2,
+    splitPatterns: [],
     qcExperiment: false,
     rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }],
@@ -121,6 +124,50 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     const reparsed = parseAndValidate(raw);
     expect(reparsed.generation.seedHistory).toEqual([10, 30]);
     expect(reparsed.generation.seedHistoryIndex).toBe(1);
+  });
+
+  it("round-trips a non-empty splitGeneration config (GitHub issue #222)", () => {
+    const state = makeState({
+      splitPatternMode: true,
+      splitMaxNodes: 3,
+      splitPatterns: [
+        {
+          node_count: 2,
+          faces: [
+            [
+              { face_index: 0, requirement: { kind: "passage" } },
+              { face_index: 1, requirement: { kind: "one_way", direction: "forward" }, sibling_target: 1 },
+            ],
+            [
+              { face_index: 2, requirement: { kind: "wall" } },
+            ],
+          ],
+          weight: 2.5,
+        },
+      ],
+    });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.generation.splitGeneration).toEqual(serialized.generation.splitGeneration);
+    expect(reparsed.generation.splitGeneration.patternMode).toBe(true);
+    expect(reparsed.generation.splitGeneration.maxSplitNodes).toBe(3);
+    expect(reparsed.generation.splitGeneration.patterns).toHaveLength(1);
+  });
+
+  it("defaults splitGeneration cleanly for a project file saved before this feature existed", () => {
+    const state = makeState();
+    const raw = JSON.parse(JSON.stringify(serializeProject(state)));
+    delete raw.generation.splitGeneration;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.generation.splitGeneration).toEqual({ patternMode: false, maxSplitNodes: 2, patterns: [] });
+  });
+
+  it("drops a malformed split pattern without failing the whole file", () => {
+    const state = makeState({ splitPatternMode: true, splitMaxNodes: 2, splitPatterns: [] });
+    const raw = JSON.parse(JSON.stringify(serializeProject(state)));
+    raw.generation.splitGeneration.patterns = [{ node_count: "not a number" }, { garbage: true }];
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.generation.splitGeneration.patterns).toEqual([]);
   });
 
   it("defaults repair limits for a project file saved before this setting existed", () => {

@@ -100,6 +100,57 @@ pub struct ElementsConfigDto {
     pub one_way_chance: Option<f64>,
     pub teleport_chance: Option<f64>,
     pub teleport_one_way_chance: Option<f64>,
+    pub split_chance: Option<f64>,
+}
+
+/// Wire shape for `maze_core::generation::SplitFaceRequirement` (GitHub issue #222).
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SplitFaceRequirementDto {
+    Passage,
+    OneWay { direction: OneWayDirectionDto },
+    Wall,
+    Unspecified,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OneWayDirectionDto {
+    Forward,
+    Backward,
+}
+
+/// Wire shape for `maze_core::generation::SplitPatternFace`. `face_index` is passed through
+/// unvalidated here — this layer isn't generic over a concrete `T: Tessellation` yet, so the
+/// degree-range check happens later, in `dispatch`/`run_generate_typed` (see
+/// `Specs`/plan section 3.6).
+#[derive(Deserialize)]
+pub struct SplitPatternFaceDto {
+    pub face_index: usize,
+    pub requirement: SplitFaceRequirementDto,
+    #[serde(default)]
+    pub sibling_target: Option<usize>,
+}
+
+/// Wire shape for `maze_core::generation::SplitPattern`.
+#[derive(Deserialize)]
+pub struct SplitPatternDto {
+    pub node_count: usize,
+    pub faces: Vec<Vec<SplitPatternFaceDto>>,
+    #[serde(default = "default_pattern_weight")]
+    pub weight: f64,
+}
+
+fn default_pattern_weight() -> f64 { 1.0 }
+
+/// Wire shape for `maze_core::generation::SplitGenerationConfig`.
+#[derive(Deserialize, Default)]
+pub struct SplitGenerationConfigDto {
+    #[serde(default)]
+    pub pattern_mode: bool,
+    pub max_split_nodes: Option<u32>,
+    #[serde(default)]
+    pub patterns: Vec<SplitPatternDto>,
 }
 
 #[derive(Deserialize)]
@@ -187,6 +238,9 @@ pub struct GenerateConfig {
     /// field still deserialize.
     #[serde(default)]
     pub split_points: Vec<((i32, i32), u32)>,
+    /// `CustomVertexBased`-only automatic split-point assignment settings (GitHub issue #222).
+    #[serde(default)]
+    pub split_generation: SplitGenerationConfigDto,
     // Only consumed by `maze-wasm` (whether to build the narration-level debug event tree — see
     // GitHub issue #124) — `maze-runner`'s own native repro tests never read it.
     #[serde(default)]
@@ -243,6 +297,7 @@ impl Default for GenerateConfig {
             preset_finish: None,
             preset_gen_source: None,
             split_points: vec![],
+            split_generation: SplitGenerationConfigDto::default(),
             debug_events: false,
             qc_experiment: false,
         }
@@ -303,7 +358,40 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
         },
     }).collect();
     let split_points = config.split_points.clone();
-    GenerationConfig { algorithm, elements, preset_connections, locked_nodes, split_points }
+    let split_generation = build_split_generation_config(&config.split_generation);
+    GenerationConfig { algorithm, elements, preset_connections, locked_nodes, split_points, split_generation }
+}
+
+/// Builds `SplitGenerationConfig` from the wire DTO. `max_split_nodes` is clamped to `.max(1)` —
+/// only `0` is rejected; `1` is a valid, deliberate no-op (see
+/// `maze_core::generation::SplitGenerationConfig`'s doc comment). `face_index` is passed through
+/// unvalidated here — this layer isn't generic over a concrete `T: Tessellation`, so the
+/// degree-range check happens later, once `T` is known (`dispatch`/`run_generate_typed`).
+fn build_split_generation_config(dto: &SplitGenerationConfigDto) -> maze_core::generation::SplitGenerationConfig {
+    use maze_core::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement, OneWayDirection};
+    let max_split_nodes = dto.max_split_nodes.unwrap_or(2).max(1);
+    let patterns = dto.patterns.iter().map(|p| SplitPattern {
+        node_count: p.node_count,
+        faces: p.faces.iter().map(|node_faces| node_faces.iter().map(|f| SplitPatternFace {
+            face_index: f.face_index,
+            requirement: match &f.requirement {
+                SplitFaceRequirementDto::Passage => SplitFaceRequirement::Passage,
+                SplitFaceRequirementDto::OneWay { direction } => SplitFaceRequirement::OneWay(match direction {
+                    OneWayDirectionDto::Forward => OneWayDirection::Forward,
+                    OneWayDirectionDto::Backward => OneWayDirection::Backward,
+                }),
+                SplitFaceRequirementDto::Wall => SplitFaceRequirement::Wall,
+                SplitFaceRequirementDto::Unspecified => SplitFaceRequirement::Unspecified,
+            },
+            sibling_target: f.sibling_target,
+        }).collect()).collect(),
+        weight: p.weight.max(0.0),
+    }).collect();
+    maze_core::generation::SplitGenerationConfig {
+        pattern_mode: dto.pattern_mode,
+        max_split_nodes,
+        patterns,
+    }
 }
 
 fn build_preset_endpoint(dto: &PresetEndpointDto) -> PresetEndpoint {
@@ -335,5 +423,6 @@ fn build_elements_config(dto: &ElementsConfigDto) -> ElementsConfig {
     if let Some(v) = dto.one_way_chance { e.one_way_chance = v.clamp(0.0, 1.0); }
     if let Some(v) = dto.teleport_chance { e.teleport_chance = v.clamp(0.0, 1.0); }
     if let Some(v) = dto.teleport_one_way_chance { e.teleport_one_way_chance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.split_chance { e.split_chance = v.clamp(0.0, 1.0); }
     e
 }
