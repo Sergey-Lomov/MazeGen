@@ -71,6 +71,19 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditDirty).toBe(false);
   });
 
+  it("applyPostEditToolAt triggers confirmPostEdit when postEditAutoConfirm is on (GitHub issue #241)", async () => {
+    useMazeStore.setState({ postEditAutoConfirm: true, postEditDraftEdges: {} });
+    useMazeStore.getState().applyPostEditToolAt("passage", key01, n(0), n(1));
+    await Promise.resolve();
+    expect(computeAnalytics).toHaveBeenCalled();
+  });
+
+  it("applyPostEditToolAt does not call confirmPostEdit when postEditAutoConfirm is off", () => {
+    useMazeStore.setState({ postEditAutoConfirm: false, postEditDraftEdges: {} });
+    useMazeStore.getState().applyPostEditToolAt("passage", key01, n(0), n(1));
+    expect(computeAnalytics).not.toHaveBeenCalled();
+  });
+
   it("confirmPostEdit computes analytics from the current draft and stores a snapshot", async () => {
     await useMazeStore.getState().confirmPostEdit();
     const s = useMazeStore.getState();

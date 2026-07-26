@@ -83,6 +83,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         postEditDirty: true,
       };
     });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
   },
 
   confirmPostEdit: async () => {
