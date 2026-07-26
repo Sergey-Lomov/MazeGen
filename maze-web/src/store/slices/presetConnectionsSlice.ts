@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, resolvePresetActiveEndpoint, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint } from "../../pixi/fieldEditUtils";
-import { presetEndpoint, presetEndpointIsSplit, type PresetEndpoint } from "../../pixi/presetEndpoint";
+import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint } from "../../pixi/fieldEditUtils";
+import { presetEndpoint, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
@@ -240,6 +240,74 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     if (presetConnections === state.presetConnections) return {};
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
   }),
+
+  applyPresetSplitBlueprint: (point, blueprint) => {
+    const state = get();
+    const key = `${point[0]},${point[1]}`;
+    const existingSlots = state.presetSplitPoints[key] ?? [];
+    // Every node currently at this point — original plus every declared slot — is about to have
+    // its faces fully rebuilt by the blueprint.
+    const existingNodeEndpoints: PresetEndpoint[] = [presetEndpoint(point), ...existingSlots.map((slotId) => presetEndpoint(point, slotId))];
+    const refsExistingNode = (ep: PresetEndpoint) => existingNodeEndpoints.some((t) => presetEndpointsEqual(ep, t));
+
+    if ((state.presetStart && refsExistingNode(state.presetStart))
+      || (state.presetFinish && refsExistingNode(state.presetFinish))
+      || (state.presetGenSource && refsExistingNode(state.presetGenSource))) {
+      set({ error: "Cannot apply a blueprint while an existing split node is assigned as start/finish/gen-source — reassign it first." });
+      return;
+    }
+
+    set((state) => {
+      const presetConnections = new Map(state.presetConnections);
+      for (const [k, entry] of presetConnections) {
+        if (refsExistingNode(entry.from) || refsExistingNode(entry.to)) presetConnections.delete(k);
+      }
+      const presetTeleports = state.presetTeleports.filter((t) => !refsExistingNode(t.from) && !refsExistingNode(t.to));
+      const presetActiveSplitNode = { ...state.presetActiveSplitNode };
+      delete presetActiveSplitNode[key];
+
+      const nodeEndpoints: PresetEndpoint[] = blueprint.nodeFaces.map((_, i) => (i === 0 ? presetEndpoint(point) : presetEndpoint(point, i - 1)));
+
+      const { offsets } = getNeighborData(state.tessellationConfig, point[0], point[1]);
+      const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
+      const cells = resolveCells(state.tessellationConfig, customPts);
+      const inFieldCells = buildCellSet(cells);
+      const resolveActiveAt = (p: [number, number]): PresetEndpoint =>
+        resolvePresetActiveEndpoint(p, presetActiveSplitNode);
+
+      // Every one of the blueprint's declared faces gets a `passage`; every other in-field face
+      // of the tile gets an explicit `wall` — presets default to `undefined` (optional), which
+      // would leave a blueprint's "no connection here" faces looking undecided instead of forbidden.
+      // Bounded by `offsets.length` (the tile's real degree), not `blueprint.degree` — guards
+      // against a caller passing a blueprint authored for a different tile degree (normal UI flow
+      // always picks one via `blueprintsForDegree`, so this only matters for a direct call).
+      const faceCount = Math.min(blueprint.degree, offsets.length);
+      for (let nodeIndex = 0; nodeIndex < blueprint.nodeFaces.length; nodeIndex++) {
+        const endpoint = nodeEndpoints[nodeIndex];
+        const requiredFaces = new Set(blueprint.nodeFaces[nodeIndex]);
+        for (let faceIndex = 0; faceIndex < faceCount; faceIndex++) {
+          const [dx, dy] = offsets[faceIndex];
+          const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+          if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
+          const neighborActive = resolveActiveAt(neighbor);
+          const edgeK = presetEdgeKey(endpoint, neighborActive);
+          const [from, to] = canonicalizePresetPair(endpoint, neighborActive);
+          presetConnections.set(edgeK, { from, to, state: requiredFaces.has(faceIndex) ? "passage" : "wall", source: "user" });
+        }
+      }
+
+      const nextSplitPoints = { ...state.presetSplitPoints };
+      const slotCount = blueprint.nodeFaces.length - 1;
+      if (slotCount <= 0) delete nextSplitPoints[key];
+      else nextSplitPoints[key] = Array.from({ length: slotCount }, (_, i) => i);
+
+      return withRecomputedAutoLock(state, {
+        presetConnections, presetTeleports,
+        presetSplitPoints: nextSplitPoints, presetActiveSplitNode,
+        presetsDirty: true,
+      });
+    });
+  },
 });
 
 export function applyDefaultEdgeState(

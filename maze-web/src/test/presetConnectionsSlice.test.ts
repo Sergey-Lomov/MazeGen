@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
-import { presetEndpoint } from "../pixi/presetEndpoint";
+import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -324,6 +324,95 @@ describe("mazeStore preset connections", () => {
       expect(useMazeStore.getState().presetFocusedPoint).toEqual([1, 2]);
       useMazeStore.getState().setPresetFocusedPoint(null);
       expect(useMazeStore.getState().presetFocusedPoint).toBeNull();
+    });
+  });
+
+  describe("applyPresetSplitBlueprint (GitHub issue #235)", () => {
+    // Square field is centered on the origin (`ox = floor(width/2)`, see `configAllCells`) —
+    // width 9 covers x,y in [-4, 4], wide enough for the origin plus every one of its neighbors.
+    const wideField = { type: "square" as const, width: 9, height: 9 };
+    const square = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
+
+    it("mints one slot per extra blueprint node and wires passage connections to in-field neighbors", () => {
+      useMazeStore.setState({ tessellationConfig: wideField, presetSplitPoints: {}, presetActiveSplitNode: {} });
+      useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
+      const s = useMazeStore.getState();
+      expect(s.presetSplitPoints["0,0"]).toEqual([0]);
+      const slot0 = presetEndpoint([0, 0], 0);
+      // node0 faces [0,2] = E,W -> neighbors (1,0), (-1,0)
+      expect(s.presetConnections.get("-1,0-0,0")?.state).toBe("passage");
+      expect(s.presetConnections.get("0,0-1,0")?.state).toBe("passage");
+      // node0's other two faces (N,S — not required by node0) get an explicit wall, not left undefined
+      expect(s.presetConnections.get("0,0-0,1")?.state).toBe("wall");
+      expect(s.presetConnections.get("0,-1-0,0")?.state).toBe("wall");
+      // node1 (slot0) faces [1,3] = N,S -> neighbors (0,1), (0,-1); its E,W faces get an explicit wall
+      const slotConnections = [...s.presetConnections.values()].filter((e) => presetEndpointsEqual(e.from, slot0) || presetEndpointsEqual(e.to, slot0));
+      expect(slotConnections).toHaveLength(4);
+      const slotPassages = slotConnections.filter((e) => e.state === "passage");
+      const slotWalls = slotConnections.filter((e) => e.state === "wall");
+      expect(slotPassages).toHaveLength(2);
+      expect(slotWalls).toHaveLength(2);
+      expect(s.presetsDirty).toBe(true);
+    });
+
+    it("replaces an existing split point entirely, dropping stale slots/connections", () => {
+      const staleTarget = presetEndpoint([0, 0], 5);
+      useMazeStore.setState({
+        tessellationConfig: wideField,
+        presetSplitPoints: { "0,0": [5] },
+        presetConnections: new Map([["0,0:5-5,5", { from: staleTarget, to: presetEndpoint([5, 5]), state: "passage" as const, source: "user" as const }]]),
+      });
+      useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
+      const s = useMazeStore.getState();
+      expect(s.presetSplitPoints["0,0"]).toEqual([0]);
+      expect(s.presetConnections.has("0,0:5-5,5")).toBe(false);
+    });
+
+    it("rejects applying a blueprint while an existing slot is assigned as presetStart", () => {
+      useMazeStore.setState({
+        tessellationConfig: wideField,
+        presetSplitPoints: { "0,0": [0] },
+        presetStart: presetEndpoint([0, 0], 0),
+      });
+      useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
+      const s = useMazeStore.getState();
+      expect(s.presetSplitPoints["0,0"]).toEqual([0]);
+      expect(s.error).toContain("start/finish/gen-source");
+    });
+
+    it("skips a face index beyond the tile's real degree instead of throwing (blueprint authored for a different degree)", () => {
+      // Square tiles have 4 faces (offsets.length === 4) — a hex blueprint's face index 5 has
+      // nothing to destructure from `offsets[5]` on a square tile.
+      const oversized = { id: 0, degree: 6, nodeFaces: [[0, 5]] };
+      useMazeStore.setState({ tessellationConfig: wideField, presetSplitPoints: {}, presetActiveSplitNode: {} });
+      expect(() => useMazeStore.getState().applyPresetSplitBlueprint([0, 0], oversized)).not.toThrow();
+      // Face 0 (in range) still wires normally; face 5 (out of range) is silently skipped.
+      expect(useMazeStore.getState().presetConnections.get("0,0-1,0")?.state).toBe("passage");
+    });
+
+    it("skips a face pointing outside the field instead of writing a connection to it", () => {
+      // width=3 centers cells at x,y in [-1, 1] — the origin's east neighbor (1,0) is in-field,
+      // but its own east neighbor (2,0) (face 0 of a shifted point) would be out of field.
+      const narrowField = { type: "square" as const, width: 1, height: 1 };
+      useMazeStore.setState({ tessellationConfig: narrowField, presetSplitPoints: {}, presetActiveSplitNode: {} });
+      useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
+      const s = useMazeStore.getState();
+      // Every face of (0,0) points outside a 1x1 field — no connection should be written at all.
+      expect(s.presetConnections.size).toBe(0);
+    });
+
+    it("clears presetSplitPoints for a single-node blueprint (no extra slots to mint)", () => {
+      const singleNode = { id: 0, degree: 4, nodeFaces: [[0, 2]] };
+      useMazeStore.setState({
+        tessellationConfig: wideField,
+        presetSplitPoints: { "0,0": [0, 1] },
+        presetActiveSplitNode: {},
+        presetStart: null,
+        presetFinish: null,
+        presetGenSource: null,
+      });
+      useMazeStore.getState().applyPresetSplitBlueprint([0, 0], singleNode);
+      expect(useMazeStore.getState().presetSplitPoints["0,0"]).toBeUndefined();
     });
   });
 });

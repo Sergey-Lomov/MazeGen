@@ -5,6 +5,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
+import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
@@ -348,6 +349,11 @@ export interface PresetConnectionsActions {
    * by one offset index — see `rotatePresetSplitPoint` (fieldEditUtils.ts). No-op if it would push
    * any connection outside the field. */
   rotatePresetSplitPoint: (point: [number, number], direction: 1 | -1) => void;
+  /** Applies a built-in split-node blueprint (GitHub issue #235) to `point` — a full replace:
+   * every existing slot at the point (and every connection/teleport/start/finish/gen-source
+   * reference to it) is dropped first, then one fresh slot per blueprint node is minted and its
+   * required faces get a `passage`. See `splitBlueprints.ts`. */
+  applyPresetSplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
 }
 
 /** Handle onto the last debug generation run's raw event tape (GitHub issue #124/#125) plus the
@@ -787,6 +793,11 @@ export interface PostEditActions {
    * by one offset index — see `rotatePostEditSplitPoint` (postEditUtils.ts). No-op if it would
    * push any connection outside the field. */
   rotateSplitPoint: (point: [number, number], direction: 1 | -1) => void;
+  /** Applies a built-in split-node blueprint (GitHub issue #235) to `point` — a full replace:
+   * every existing slot at the point (and every edge/teleport/start/finish reference to it) is
+   * dropped first, then one fresh slot per blueprint node is minted and its required faces get a
+   * `passage`. See `splitBlueprints.ts`. */
+  applySplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
 }
 
 export interface RootActions {

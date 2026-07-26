@@ -1,13 +1,15 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeTessellationOf } from "../../store/storeHelpers";
 import { Modal } from "../Modal";
 import { Switch } from "../Switch";
 import { TileFaceEditor } from "../features/TileFaceEditor";
 import { sharedStyles } from "../../styles/shared";
-import { ui, typography, muted, spacing, dialogSpacing } from "../../styles/theme";
+import { ui, typography, muted, spacing, dialogSpacing, indent } from "../../styles/theme";
 import { AbstractPatternEditorDialog } from "./AbstractPatternEditorDialog";
 import { degreeFor, tileNodesForPattern } from "../../pixi/splitPatternTile";
+import { blueprintsForDegree, blueprintToSplitPattern, tileNodesForBlueprint } from "../../pixi/splitBlueprints";
 import type { SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
@@ -51,6 +53,12 @@ export function SplitSettingsDialog({ onClose }: Props) {
     const fresh: SplitPattern = { node_count: 2, faces: [[], []], weight: 1.0 };
     addSplitPattern(fresh);
     setEditingIndex(splitPatterns.length);
+  }
+
+  const blueprints = useMemo(() => blueprintsForDegree(degree), [degree]);
+
+  function handleAddBlueprint(blueprint: (typeof blueprints)[number]) {
+    addSplitPattern(blueprintToSplitPattern(blueprint));
   }
 
   // Removing a pattern shifts every later index down by one — an open editor for the removed
@@ -110,7 +118,12 @@ export function SplitSettingsDialog({ onClose }: Props) {
 
         {splitPatternMode && (
           <div style={styles.patternsSection}>
-            <span style={styles.label}>{m["generation.split_patterns"]()}</span>
+            <div style={styles.sectionHeader}>
+              <span style={styles.label}>{m["generation.split_patterns"]()}</span>
+              <button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern} title={m["generation.split_pattern_add"]()}>
+                <Plus size={14} />
+              </button>
+            </div>
             {splitPatterns.length === 0 ? (
               <div style={styles.empty}>{m["generation.split_patterns_none"]()}</div>
             ) : (
@@ -144,9 +157,26 @@ export function SplitSettingsDialog({ onClose }: Props) {
                 </div>
               ))
             )}
-            <button className="hoverable" style={styles.addBtn} onClick={handleAddPattern}>
-              {m["generation.split_pattern_add"]()}
-            </button>
+            {blueprints.length > 0 && (
+              <div style={styles.blueprintsBlock}>
+                <span style={styles.label}>{m["generation.split_pattern_blueprints_label"]()}</span>
+                <div style={styles.blueprintStrip}>
+                  {blueprints.map((blueprint) => (
+                    <button
+                      key={blueprint.id}
+                      className="hoverable"
+                      style={styles.blueprintThumb}
+                      onClick={() => handleAddBlueprint(blueprint)}
+                    >
+                      <TileFaceEditor
+                        point={ANCHOR_POINT} cfg={tessellationConfig} nodes={tileNodesForBlueprint(blueprint)}
+                        activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -223,18 +253,50 @@ const styles: Record<string, React.CSSProperties> = {
     color: ui.text.secondary,
     padding: "2px 6px",
   },
-  addBtn: {
-    ...typography.control,
+  // Horizontally scrolling strip of built-in blueprint thumbnails (GitHub issue #235 follow-up)
+  // — same visual pattern as `SplitNodesDialogView`'s own blueprint strip, one-click "add a
+  // standard pattern" shortcut sitting right below the pattern list.
+  blueprintsBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: spacing.itemGap,
+  },
+  blueprintStrip: {
+    display: "flex",
+    flexDirection: "row",
+    gap: spacing.itemGap,
+    overflowX: "auto",
+    paddingBottom: 2,
+  },
+  blueprintThumb: {
+    flex: "0 0 auto",
+    width: 56,
+    height: 56,
+    padding: 4,
+    border: `1px solid ${ui.border.default}`,
+    borderRadius: 6,
+    background: "none",
+    cursor: "default",
+  },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  iconBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     background: "none",
     border: `1px solid ${ui.border.strong}`,
     borderRadius: 4,
     cursor: "default",
-    padding: "4px 8px",
+    padding: 4,
     color: ui.text.secondary,
-    alignSelf: "flex-start",
   },
   empty: {
     ...muted(typography.body),
     padding: `4px 0`,
+    paddingLeft: indent.tree,
   },
 };

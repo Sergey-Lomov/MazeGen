@@ -341,6 +341,18 @@ describe("mazeStore.setHexOrientation", () => {
     useMazeStore.getState().setHexOrientation("pointy_top");
     expect(useMazeStore.getState().activeTessellationConfig).toBe(activeBefore);
   });
+
+  it("closes an open split-node panel (GitHub issue #235 follow-up) — its face indices meant something else under the old orientation", () => {
+    useMazeStore.setState(hexPredefinedState({
+      tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
+      presetFocusedPoint: [1, 1],
+      postEditFocusedPoint: [2, 2],
+    }));
+    useMazeStore.getState().setHexOrientation("pointy_top");
+    const s = useMazeStore.getState();
+    expect(s.presetFocusedPoint).toBeNull();
+    expect(s.postEditFocusedPoint).toBeNull();
+  });
 });
 
 describe("mazeStore.setTriOrientation", () => {

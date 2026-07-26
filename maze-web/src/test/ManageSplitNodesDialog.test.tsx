@@ -67,7 +67,7 @@ describe("ManageSplitNodesDialog", () => {
 
   it("clicking + Add node calls addSplitNode", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("+ Add node"));
+    fireEvent.click(screen.getByText("Add node"));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 1, 2]);
   });
 
@@ -161,5 +161,22 @@ describe("ManageSplitNodesDialog", () => {
     // Slot 0's card: own side gets a "(Node 0)" suffix too; the partner (the original node) never
     // gets a suffix, on either side of a bubble.
     expect(screen.getByText("2,2 (Node 0) <- 2,2")).toBeInTheDocument();
+  });
+
+  it("applies a blueprint immediately, with no confirm, when clicked right after the panel opens", () => {
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("blueprint-thumb-0"));
+    // No confirm modal — the point's slots changed straight away.
+    expect(screen.queryByText(/replace every existing node/i)).not.toBeInTheDocument();
+    expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).not.toEqual([0, 1]);
+  });
+
+  it("asks for confirmation before applying a blueprint once the user has made a manual edit", () => {
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Add node")); // a manual edit on this point
+    fireEvent.click(screen.getByTestId("blueprint-thumb-0"));
+    expect(screen.getByText(/replace every existing node/i)).toBeInTheDocument();
+    // Slots are untouched until the confirm is accepted.
+    expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 1, 2]);
   });
 });

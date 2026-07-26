@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState, mockSnapshot } from "./storeTestHelpers";
 import { nodeEndpoint, splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
+import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -367,5 +368,81 @@ describe("mazeStore split-node actions", () => {
     expect(useMazeStore.getState().postEditFocusedPoint).toEqual([1, 1]);
     useMazeStore.getState().setPostEditFocusedPoint(null);
     expect(useMazeStore.getState().postEditFocusedPoint).toBeNull();
+  });
+});
+
+describe("mazeStore applySplitBlueprint", () => {
+  const square: SplitNodeBlueprint = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
+
+  // `activeTessellationConfig` square field is centered on the origin (`ox = floor(width/2)`,
+  // see `configAllCells`) — width 9 covers x,y in [-4, 4], comfortably wide enough for a point
+  // at the origin plus every one of its 4 neighbors.
+  const wideField = { type: "square" as const, width: 9, height: 9 };
+
+  it("mints one slot per extra blueprint node and wires passages to existing neighbors", () => {
+    useMazeStore.setState({
+      activeTessellationConfig: wideField,
+      postEditDraftMeta: null,
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
+        { id: 2, x: -1, y: 0, i: 0 }, { id: 3, x: 0, y: 1, i: 0 }, { id: 4, x: 0, y: -1, i: 0 },
+      ],
+    });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
+    const original = n(0);
+    const slot0 = splitEndpoint([0, 0], 0);
+    // node0 faces [0,2] = E,W -> neighbors (1,0)=id1, (-1,0)=id2
+    expect(s.postEditDraftEdges?.[edgeKey(original, n(1))]).toBeDefined();
+    expect(s.postEditDraftEdges?.[edgeKey(original, n(2))]).toBeDefined();
+    // node1 (slot0) faces [1,3] = N,S -> neighbors (0,1)=id3, (0,-1)=id4
+    expect(s.postEditDraftEdges?.[edgeKey(slot0, n(3))]).toBeDefined();
+    expect(s.postEditDraftEdges?.[edgeKey(slot0, n(4))]).toBeDefined();
+    expect(s.postEditDirty).toBe(true);
+  });
+
+  it("replaces an existing split point entirely, dropping stale slots/edges", () => {
+    const staleTarget = splitEndpoint([0, 0], 5);
+    useMazeStore.setState({
+      activeTessellationConfig: wideField,
+      postEditDraftMeta: null,
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
+      postEditDraftSplitPoints: { "0,0": [5] },
+      postEditDraftEdges: { [edgeKey(n(0), staleTarget)]: { from: n(0), to: staleTarget, kind: "basic" } },
+    });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), staleTarget)]).toBeUndefined();
+  });
+
+  it("rejects applying a blueprint while an existing slot is assigned as start/finish", () => {
+    const target = splitEndpoint([0, 0], 0);
+    useMazeStore.setState({
+      activeTessellationConfig: wideField,
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
+      postEditDraftSplitPoints: { "0,0": [0] },
+      postEditDraftMeta: { start: target, finish: null },
+    });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
+    expect(s.error).toContain("start/finish");
+  });
+
+  it("skips a face index beyond the tile's real degree instead of throwing (blueprint authored for a different degree)", () => {
+    // Square tiles have 4 faces (offsets.length === 4) — a hex blueprint's face index 5 has
+    // nothing to destructure from `offsets[5]` on a square tile.
+    const oversized: SplitNodeBlueprint = { id: 0, degree: 6, nodeFaces: [[0, 5]] };
+    useMazeStore.setState({
+      activeTessellationConfig: wideField,
+      postEditDraftMeta: null,
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+    });
+    expect(() => useMazeStore.getState().applySplitBlueprint([0, 0], oversized)).not.toThrow();
+    const s = useMazeStore.getState();
+    // Face 0 (in range) still wires normally; face 5 (out of range) is silently skipped.
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), n(1))]).toBeDefined();
   });
 });

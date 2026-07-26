@@ -8,11 +8,12 @@ import {
 } from "../../pixi/postEditUtils";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
-  resolverForNodeId,
+  resolverForNodeId, edgeKey,
 } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive, deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
+import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
 import { fieldConfigToWasm } from "./generationSlice";
 
@@ -396,6 +397,97 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       );
       if (rotated === state.postEditDraftEdges) return {};
       return { postEditDraftEdges: rotated, postEditDirty: true };
+    });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  applySplitBlueprint: (point, blueprint) => {
+    const state = get();
+    const key = `${point[0]},${point[1]}`;
+    const meta = state.postEditDraftMeta;
+    const originalId = state.nodes.find((n) => n.x === point[0] && n.y === point[1])?.id;
+    const originalEndpoint: PostEditEndpoint | null = originalId !== undefined ? nodeEndpoint(originalId) : null;
+    // Every node currently at this point — original plus every declared slot — is about to have
+    // its faces fully rebuilt by the blueprint; bail out if start/finish still addresses any of
+    // them, same guard as a manual `removeSplitNode` (reassign first).
+    const existingSlots = state.postEditDraftSplitPoints[key] ?? [];
+    const existingNodeEndpoints: PostEditEndpoint[] = [
+      ...(originalEndpoint ? [originalEndpoint] : []),
+      ...existingSlots.map((slotId) => splitEndpoint(point, slotId)),
+    ];
+    if (meta && existingNodeEndpoints.some((t) =>
+      (meta.start && endpointsEqual(meta.start, t)) || (meta.finish && endpointsEqual(meta.finish, t)))) {
+      set({ error: "Cannot apply a blueprint while an existing split node is assigned as start/finish — reassign it first." });
+      return;
+    }
+
+    set((state) => {
+      // Every edge/teleport touching any of this point's current nodes is dropped first — a face
+      // the blueprint doesn't claim must end up with no connection at all (post-edit's own
+      // default-to-wall convention, see `tileFaceKindOf`), not whatever stale connection the
+      // point happened to have before.
+      const refsExistingNode = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
+        existingNodeEndpoints.some((t) => endpointsEqual(e.from, t) || endpointsEqual(e.to, t));
+
+      const nextDraftEdges: NonNullable<typeof state.postEditDraftEdges> =
+        state.postEditDraftEdges === null ? {} : Object.fromEntries(
+          Object.entries(state.postEditDraftEdges).filter(([, e]) => !refsExistingNode(e)),
+        );
+      const nextTeleports = state.postEditDraftTeleports.filter((t) => !refsExistingNode(t));
+      const nextActiveSplitNode = { ...state.postEditActiveSplitNode };
+      delete nextActiveSplitNode[key];
+
+      // Original node (slot-less) stays addressable throughout — its own faces are governed by
+      // the blueprint's node 0 like any other minted node.
+      const slotEndpoints: PostEditEndpoint[] = blueprint.nodeFaces.slice(1).map((_, i) => splitEndpoint(point, i));
+      const nodeEndpoints: PostEditEndpoint[] = [originalEndpoint, ...slotEndpoints].filter((e): e is PostEditEndpoint => e !== null);
+
+      const { offsets } = getNeighborData(state.activeTessellationConfig, point[0], point[1]);
+      const cells = buildActiveCells(state.fieldPoints, state.fieldEditMode, state.activeTessellationConfig);
+      const inFieldCells = buildCellSet(cells);
+      const resolveActiveAt = (p: [number, number]): PostEditEndpoint | null => {
+        const pKey = `${p[0]},${p[1]}`;
+        const ids: number[] = [];
+        for (const n of state.nodes) if (n.x === p[0] && n.y === p[1]) ids.push(n.id);
+        if (ids.length === 0) return null;
+        return nextActiveSplitNode[pKey] ?? nodeEndpoint(ids[0]);
+      };
+
+      // Every one of the blueprint's declared faces gets a `passage` to its in-field neighbor;
+      // every other face of the tile is left with no entry at all, which post-edit already reads
+      // as `wall` by default — no separate "wall" pass needed.
+      for (let nodeIndex = 0; nodeIndex < blueprint.nodeFaces.length; nodeIndex++) {
+        const endpoint = nodeEndpoints[nodeIndex];
+        if (!endpoint) continue;
+        for (const faceIndex of blueprint.nodeFaces[nodeIndex]) {
+          // Guards against a caller passing a blueprint authored for a different tile degree
+          // (normal UI flow always picks one via `blueprintsForDegree`, so this only matters for
+          // a direct/programmatic `applySplitBlueprint` call) — `offsets[faceIndex]` would
+          // otherwise be `undefined` and the destructure below would throw.
+          if (faceIndex >= offsets.length) continue;
+          const [dx, dy] = offsets[faceIndex];
+          const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+          if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
+          const neighborActive = resolveActiveAt(neighbor);
+          if (!neighborActive) continue;
+          nextDraftEdges[edgeKey(endpoint, neighborActive)] = { from: endpoint, to: neighborActive, kind: "basic" };
+          nextDraftEdges[edgeKey(neighborActive, endpoint)] = { from: neighborActive, to: endpoint, kind: "basic" };
+        }
+      }
+
+      const nextSplitPoints = { ...state.postEditDraftSplitPoints };
+      if (slotEndpoints.length === 0) delete nextSplitPoints[key];
+      else nextSplitPoints[key] = slotEndpoints.map((_, i) => i);
+
+      return {
+        postEditDraftEdges: nextDraftEdges,
+        postEditDraftTeleports: nextTeleports,
+        postEditDraftSplitPoints: nextSplitPoints,
+        postEditActiveSplitNode: nextActiveSplitNode,
+        postEditDirty: true,
+      };
     });
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();

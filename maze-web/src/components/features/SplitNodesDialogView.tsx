@@ -3,6 +3,7 @@ import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
+import { fittingRotation, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
 import { ui, typography, radius, spacing, indent } from "../../styles/theme";
 import { buttonStyle, sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
@@ -114,6 +115,13 @@ interface Props<E> {
    *  highlight anything on. */
   onHoverLink?: (row: SplitNodesRow<E>, link: LinkInfo<E>) => void;
   onUnhoverLink?: () => void;
+  /** Built-in split-node blueprints (GitHub issue #235) available at this point's tile degree —
+   *  `[]` if none are defined. Optional: the pattern editor has no point/field concept to offer
+   *  these against. */
+  blueprints?: SplitNodeBlueprint[];
+  /** Applies `blueprint` (already rotated to fit the point's boundary, see `fittingRotation`) —
+   *  a full replace of the point's current nodes/connections. */
+  onApplyBlueprint?: (blueprint: SplitNodeBlueprint) => void;
 }
 
 /** Exported for `AbstractPatternEditorDialog` (GitHub issue #222) — the pattern editor doesn't
@@ -126,6 +134,8 @@ export const KIND_LABEL: Record<SplitEdgeKind, () => string> = {
   undefined: () => m["post_edit.split_kind_undefined"](),
   wall: () => m["post_edit.split_kind_wall"](),
 };
+
+const NOOP = () => {};
 
 const SECTION_LABEL: Record<LinkCategory, () => string> = {
   required: () => m["post_edit.split_section_required"](),
@@ -146,18 +156,82 @@ const SECTION_LABEL: Record<LinkCategory, () => string> = {
 export function SplitNodesDialogView<E>({
   title, point, cfg, rows, tileNodes, availableKinds, activeKind, onKindChange,
   onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onToggleStart, onToggleFinish, onRotate,
-  onHoverLink, onUnhoverLink,
+  onHoverLink, onUnhoverLink, blueprints, onApplyBlueprint,
 }: Props<E>) {
   const [pendingRemove, setPendingRemove] = useState<SplitNodesRow<E> | null>(null);
+  const [pendingBlueprint, setPendingBlueprint] = useState<SplitNodeBlueprint | null>(null);
+  // Tracks whether the user has made any manual edit to this point since the panel opened (face
+  // click, add/remove node, rotate, start/finish toggle) — a fresh `useState` per mount, so it
+  // resets whenever the panel reopens (React remounts on a `point` change since the caller keys
+  // it, or on close/reopen). Gates the blueprint-apply confirm: applying a blueprint the instant
+  // the panel opens has nothing of the user's own to lose, so no warning is needed there; once
+  // they've touched anything by hand, a blueprint's full replace becomes destructive and gets the
+  // confirmation. Picking a kind/making a card active doesn't count — neither changes the point's
+  // actual data.
+  const [hasManualEdit, setHasManualEdit] = useState(false);
   const activeRow = rows.find((row) => row.active);
   const activeRowIndex = rows.findIndex((row) => row.active);
   const activeIndex = activeRowIndex === -1 ? null : activeRowIndex;
   const warnings = splitNodeDiagnostics(tileNodes);
 
+  // Every offered blueprint is tried at every rotation until one avoids the point's boundary
+  // faces (see `fittingRotation`) — a point at the field's edge has some faces with no neighbor
+  // at all, so a blueprint requiring a passage there can never be applied as authored. `null`
+  // means no rotation fits; the button stays disabled.
+  const isBoundary = (faceIndex: number) => tileNodes[0]?.faces[faceIndex]?.boundary ?? false;
+  const fittedBlueprints = (blueprints ?? []).map((bp) => ({ original: bp, fitted: fittingRotation(bp, isBoundary) }));
+  const anyDisabled = fittedBlueprints.some((b) => b.fitted === null);
+
+  const markEdited = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => {
+    setHasManualEdit(true);
+    fn(...args);
+  };
+  const handleFaceClick = markEdited(onFaceClick);
+  const handleFaceRightClick = markEdited(onFaceRightClick);
+  const handleRotate = markEdited(onRotate);
+  const handleToggleStart = markEdited(onToggleStart);
+  const handleToggleFinish = markEdited(onToggleFinish);
+  const handleAdd = markEdited(onAdd);
+  const handleRemove = markEdited(onRemove);
+
   return (
     <>
     <SidePanel title={title} onClose={onClose} warnings={warnings}>
       <div style={styles.tileArea}>
+        {blueprints && blueprints.length > 0 && (
+          <Stack gap="itemGap">
+            <span style={typography.body}>{m["post_edit.split_blueprints_label"]()}</span>
+            <div style={styles.blueprintStrip}>
+              {fittedBlueprints.map(({ original, fitted }) => (
+                <button
+                  key={original.id}
+                  data-testid={`blueprint-thumb-${original.id}`}
+                  className={fitted ? "hoverable" : undefined}
+                  style={{ ...styles.blueprintThumb, ...(!fitted ? sharedStyles.btnDisabled : {}) }}
+                  disabled={!fitted}
+                  onClick={() => {
+                    if (!fitted) return;
+                    // Nothing of the user's own to lose if they haven't touched this point by
+                    // hand yet since the panel opened — skip the destructive-replace confirm and
+                    // apply immediately.
+                    if (hasManualEdit) setPendingBlueprint(fitted);
+                    else onApplyBlueprint?.(fitted);
+                  }}
+                >
+                  <TileFaceEditor
+                    // Same `point` as the panel's own tile diagram, not a fixed anchor — a
+                    // triangle tile's shape (up vs down) depends on `(x+y) % 2` (see
+                    // `getNeighborData`), so a fixed `[0,0]` anchor could show the blueprint
+                    // preview in the opposite orientation from the point it'll actually apply to.
+                    point={point} cfg={cfg} nodes={tileNodesForBlueprint(fitted ?? original)}
+                    activeIndex={null} onFaceClick={NOOP} onFaceRightClick={NOOP} onRotate={NOOP} showRotateControls={false}
+                  />
+                </button>
+              ))}
+            </div>
+            {anyDisabled && <span style={typography.caption}>{m["post_edit.split_blueprint_disabled_hint"]()}</span>}
+          </Stack>
+        )}
         <Inline gap="itemGap" justify="center" style={{ flexWrap: "wrap" }}>
           {availableKinds.map((kind) => (
             <button
@@ -172,7 +246,7 @@ export function SplitNodesDialogView<E>({
         </Inline>
         <TileFaceEditor
           point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
-          onFaceClick={onFaceClick} onFaceRightClick={onFaceRightClick} onRotate={onRotate}
+          onFaceClick={handleFaceClick} onFaceRightClick={handleFaceRightClick} onRotate={handleRotate}
         />
       </div>
 
@@ -234,7 +308,7 @@ export function SplitNodesDialogView<E>({
         <div style={styles.nodeListFooter}>
           <Stack gap="itemGap">
             <Inline gap="itemGap">
-              <button className="hoverable-accent" style={{ ...buttonStyle("primary"), flex: 1 }} onClick={onAdd}>
+              <button className="hoverable-accent" style={{ ...buttonStyle("primary"), flex: 1 }} onClick={handleAdd}>
                 {m["post_edit.split_add_node"]()}
               </button>
               <button
@@ -251,14 +325,14 @@ export function SplitNodesDialogView<E>({
                 <button
                   className={activeRow.isStart ? "hoverable-accent" : "hoverable"}
                   style={{ ...buttonStyle(activeRow.isStart ? "toggle-active" : "toggle"), flex: 1 }}
-                  onClick={onToggleStart}
+                  onClick={handleToggleStart}
                 >
                   {activeRow.isStart ? m["post_edit.split_clear_start"]() : m["post_edit.split_set_start"]()}
                 </button>
                 <button
                   className={activeRow.isFinish ? "hoverable-accent" : "hoverable"}
                   style={{ ...buttonStyle(activeRow.isFinish ? "toggle-active" : "toggle"), flex: 1 }}
-                  onClick={onToggleFinish}
+                  onClick={handleToggleFinish}
                 >
                   {activeRow.isFinish ? m["post_edit.split_clear_finish"]() : m["post_edit.split_set_finish"]()}
                 </button>
@@ -271,8 +345,15 @@ export function SplitNodesDialogView<E>({
     {pendingRemove !== null && (
       <ConfirmModal
         message={m["post_edit.confirm_remove_split_node"]()}
-        onConfirm={() => { onRemove(pendingRemove); setPendingRemove(null); }}
+        onConfirm={() => { handleRemove(pendingRemove); setPendingRemove(null); }}
         onCancel={() => setPendingRemove(null)}
+      />
+    )}
+    {pendingBlueprint !== null && (
+      <ConfirmModal
+        message={m["post_edit.confirm_apply_blueprint"]()}
+        onConfirm={() => { onApplyBlueprint?.(pendingBlueprint); setPendingBlueprint(null); }}
+        onCancel={() => setPendingBlueprint(null)}
       />
     )}
     </>
@@ -379,6 +460,26 @@ export const dialogPanelStyles: Record<string, React.CSSProperties> = {
 
 const styles: Record<string, React.CSSProperties> = {
   ...dialogPanelStyles,
+  // Horizontally scrolling strip of small blueprint thumbnails (GitHub issue #235) — each button
+  // renders `TileFaceEditor` at a fixed small size instead of a text label, so a blueprint reads
+  // as a preview of what it'll produce rather than a name to guess from.
+  blueprintStrip: {
+    display: "flex",
+    flexDirection: "row",
+    gap: spacing.itemGap,
+    overflowX: "auto",
+    paddingBottom: 2,
+  },
+  blueprintThumb: {
+    flex: "0 0 auto",
+    width: 64,
+    height: 64,
+    padding: 4,
+    border: `1px solid ${ui.border.default}`,
+    borderRadius: radius.md,
+    background: ui.bg.panelAlt,
+    cursor: "pointer",
+  },
   // `marginTop` is a fixed value (not conditional on `row.active`) — a per-card conditional here
   // previously made active/inactive cards different heights, causing every card's layout to shift
   // on every active-node change (GitHub issue #234 follow-up).

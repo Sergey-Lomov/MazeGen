@@ -129,20 +129,45 @@ export interface TileSide {
  * centroid sits at the origin — used to render an isolated "large tile" diagram (GitHub issue
  * #234's split-node dialog) independent of the cell's actual position in the field. Uses the
  * cell's real `(x, y)` (not just its config) because a triangle tile's shape depends on
- * `(x+y) % 2` (up vs down) — see `getNeighborData`. */
+ * `(x+y) % 2` (up vs down) — see `getNeighborData`.
+ *
+ * Each side's `v0`/`v1` direction matches `getSharedEdgeSegment`'s own choice for that same
+ * shared edge, not just this cell's own `edgeVerts` — `getSharedEdgeSegment` canonicalizes on the
+ * *lower*-coordinate of the two cells sharing an edge and derives `v0`/`v1` from that cell's
+ * vertices, which for a non-square tessellation (hex/triangle, whose vertex winding isn't
+ * guaranteed to agree between two neighboring cells) can run opposite to this cell's own
+ * `edgeVerts` for that side whenever this cell isn't the lower one. Both the split-node dialog's
+ * tile diagram (`TileFaceEditor`, via this function) and the post-generation canvas
+ * (`SplitJunctionRenderer`/`buildSplitPassagesCore`, via `getSharedEdgeSegment`) feed the same
+ * `computeSplitFaceLayouts`, which divides a face's segment along `v0 -> v1` in node order — a
+ * disagreement here made the two sides split a multi-node face in mirrored order (GitHub issue
+ * #235 follow-up: reported as differing node positions on a shared hex face between the dialog
+ * and the canvas for the exact same data). */
 export function getTileDiagram(x: number, y: number, cfg: TessellationConfig): { vertices: Pos[]; sides: TileSide[] } | null {
   const verts = getCellVertices(x, y, cfg);
   if (!verts) return null;
-  const cx = verts.reduce((s, v) => s + v.x, 0) / verts.length;
-  const cy = verts.reduce((s, v) => s + v.y, 0) / verts.length;
-  const centered = verts.map((v) => ({ x: v.x - cx, y: v.y - cy }));
+  const center = getCellCenter(x, y, cfg);
+  const centered = verts.map((v) => ({ x: v.x - center.x, y: v.y - center.y }));
   const { offsets, edgeVerts } = getNeighborData(cfg, x, y);
-  const sides: TileSide[] = edgeVerts.map(([vi, vj], index) => ({
-    index,
-    offset: offsets[index],
-    v0: centered[vi],
-    v1: centered[vj],
-  }));
+  const sides: TileSide[] = edgeVerts.map(([vi, vj], index) => {
+    const [dx, dy] = offsets[index];
+    const nx = x + dx, ny = y + dy;
+    const selfIsLower = x < nx || (x === nx && y < ny);
+    if (selfIsLower) {
+      return { index, offset: offsets[index], v0: centered[vi], v1: centered[vj] };
+    }
+    // The neighbor is the canonical-lower cell for this shared edge — mirror
+    // `getSharedEdgeSegment`'s choice by deriving `v0`/`v1` from its own (absolute-coordinate)
+    // vertices/edgeVerts, then translating into this tile's own centered coordinate space.
+    const shared = getSharedEdgeSegment([x, y], [nx, ny], cfg);
+    if (!shared) return { index, offset: offsets[index], v0: centered[vi], v1: centered[vj] };
+    return {
+      index,
+      offset: offsets[index],
+      v0: { x: shared.v0.x - center.x, y: shared.v0.y - center.y },
+      v1: { x: shared.v1.x - center.x, y: shared.v1.y - center.y },
+    };
+  });
   return { vertices: centered, sides };
 }
 

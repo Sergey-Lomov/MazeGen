@@ -9,6 +9,7 @@ import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
+import { blueprintsForDegree } from "../../pixi/splitBlueprints";
 import { SplitNodesDialogView, createRequiredLinksTracker, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
 import type { TileFace, TileFaceKind, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
@@ -47,6 +48,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   const clearPostEditEndpoint = useMazeStore((s) => s.clearPostEditEndpoint);
   const rotateSplitPoint = useMazeStore((s) => s.rotateSplitPoint);
   const setPostEditHoveredLink = useMazeStore((s) => s.setPostEditHoveredLink);
+  const applySplitBlueprint = useMazeStore((s) => s.applySplitBlueprint);
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
@@ -180,6 +182,11 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
 
   const activeEndpoint: PostEditEndpoint | null = activeSplitNode[key] ?? originalEndpoint;
 
+  const blueprints = useMemo(
+    () => blueprintsForDegree(getNeighborData(cfg, point[0], point[1]).offsets.length),
+    [cfg, point],
+  );
+
   // Faces of one node (any row, not just the active one) — used to build `tileNodes` below, all
   // of the point's nodes drawn on the tile diagram at once (GitHub issue #234).
   const facesOf = (endpoint: PostEditEndpoint): TileFace[] => {
@@ -258,6 +265,8 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onRotate={(direction) => rotateSplitPoint(point, direction)}
       onHoverLink={(row, link) => setPostEditHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
       onUnhoverLink={() => setPostEditHoveredLink(null)}
+      blueprints={blueprints}
+      onApplyBlueprint={(blueprint) => applySplitBlueprint(point, blueprint)}
     />
   );
 }

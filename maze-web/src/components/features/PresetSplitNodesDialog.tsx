@@ -7,6 +7,7 @@ import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
+import { blueprintsForDegree } from "../../pixi/splitBlueprints";
 import { SplitNodesDialogView, createRequiredLinksTracker, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
 import type { TileFace, TileFaceKind, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
@@ -49,6 +50,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const setPresetFinishEndpoint = useMazeStore((s) => s.setPresetFinishEndpoint);
   const rotatePresetSplitPoint = useMazeStore((s) => s.rotatePresetSplitPoint);
   const setPresetHoveredLink = useMazeStore((s) => s.setPresetHoveredLink);
+  const applyPresetSplitBlueprint = useMazeStore((s) => s.applyPresetSplitBlueprint);
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
@@ -151,6 +153,11 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
 
   const activeEndpoint = activeSplitNode[key] ?? originalEndpoint;
 
+  const blueprints = useMemo(
+    () => blueprintsForDegree(getNeighborData(cfg, point[0], point[1]).offsets.length),
+    [cfg, point],
+  );
+
   // Faces of one node (any row, not just the active one) — used to build `tileNodes` below, all
   // of the point's nodes drawn on the tile diagram at once (GitHub issue #234).
   const facesOf = (endpoint: PresetEndpoint): TileFace[] => {
@@ -229,6 +236,8 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       onRotate={(direction) => rotatePresetSplitPoint(point, direction)}
       onHoverLink={(row, link) => setPresetHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
       onUnhoverLink={() => setPresetHoveredLink(null)}
+      blueprints={blueprints}
+      onApplyBlueprint={(blueprint) => applyPresetSplitBlueprint(point, blueprint)}
     />
   );
 }

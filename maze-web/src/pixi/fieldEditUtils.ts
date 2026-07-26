@@ -354,13 +354,21 @@ export function resolvePresetActiveEndpoint(
   return activeMap[key] ?? presetEndpoint(point);
 }
 
+/** Orders two preset endpoints `[from, to]` by the same canonical rule `presetEdgeKey` uses for
+ * its own key ordering (lower `x`, then lower `y`) — exported so callers that need to build a
+ * `PresetConnectionEntry` (which stores `from`/`to` in this same canonical order, see
+ * `applyTool`/`applyPresetSplitBlueprint`) don't have to re-derive the comparison themselves. */
+export function canonicalizePresetPair(a: PresetEndpoint, b: PresetEndpoint): [PresetEndpoint, PresetEndpoint] {
+  return a.point[0] < b.point[0] || (a.point[0] === b.point[0] && a.point[1] < b.point[1]) ? [a, b] : [b, a];
+}
+
 /** Preset-side edge key, slot-aware (GitHub issue #231): for two endpoints with no active slot on
  * either side, identical to `edgeKey`'s plain geometric key — every existing preset entry (and
  * the default-edge-state mechanism, which only ever targets original nodes) keeps its exact key.
  * A slot-addressed endpoint on either side changes the key, so a split-targeted preset never
  * collides with the point's plain (original-node) preset. */
 export function presetEdgeKey(a: PresetEndpoint, b: PresetEndpoint): string {
-  const [fa, fb] = a.point[0] < b.point[0] || (a.point[0] === b.point[0] && a.point[1] < b.point[1]) ? [a, b] : [b, a];
+  const [fa, fb] = canonicalizePresetPair(a, b);
   return `${fa.point[0]},${fa.point[1]}${fa.slotId !== undefined ? `:${fa.slotId}` : ""}-${fb.point[0]},${fb.point[1]}${fb.slotId !== undefined ? `:${fb.slotId}` : ""}`;
 }
 

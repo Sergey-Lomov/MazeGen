@@ -218,7 +218,16 @@ export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexO
     const activeTessellationConfig = state.nodes.length > 0
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
-    return { [field]: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, fieldDirty: true, error: null, debugStale: debugStaleOf(state) } as Partial<MazeState>;
+    return {
+      [field]: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, fieldDirty: true, error: null, debugStale: debugStaleOf(state),
+      // A rotation changes which geometric face each offset index means (GitHub issue #235
+      // follow-up) — a split-node panel left open across the flip would keep addressing faces
+      // that no longer mean what its tile diagram was drawn for. Closing it is the same
+      // "point/config just changed under it" rule `confirmTessellation`'s kind-change path
+      // already applies to both focused-point fields.
+      presetFocusedPoint: null,
+      postEditFocusedPoint: null,
+    } as Partial<MazeState>;
   };
 }
 
