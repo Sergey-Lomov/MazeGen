@@ -196,7 +196,9 @@ pub fn run_generate<T: Tessellation + 'static>(
     );
     timing.initial_build_ms = initial_build_ms;
 
-    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, point_to_xy)
+    // Fresh generation has no removal history yet — a node's position within `nodes_at(point)`
+    // already equals its real `i` (GitHub issue #236, `NodeDto.i` doc comment).
+    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, point_to_xy, |_, _, pos| pos as u32)
         .map_err(|e| JsValue::from_str(&e))?;
     snapshot.timing = Some(timing_to_dto(timing));
 

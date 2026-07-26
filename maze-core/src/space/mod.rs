@@ -141,6 +141,44 @@ impl<T: Tessellation> Field<T> {
         self.node_to_point.len()
     }
 
+    /// Builds a `Field` directly from caller-supplied `(NodeId, Point)` pairs, bypassing
+    /// `IdGenerator` entirely — GitHub issue #236. Unlike `new` (which always mints fresh
+    /// sequential ids), this preserves whatever ids the caller already has, so a rebuild from a
+    /// previously-generated snapshot reproduces the exact same ids instead of re-deriving a
+    /// different (if deterministic) assignment.
+    ///
+    /// Entries are grouped by point in the order given — a point's *first* entry becomes its
+    /// original node (`nodes_at(point)[0]`), each subsequent entry for the same point an extra
+    /// slot, in that order — mirroring `add_node_at`'s "original first, then creation order"
+    /// contract (see its doc comment) so a caller (`build_analytics_snapshot`'s `nodes` list, and
+    /// therefore `apply_split_points`) can rely on nodes flowing back through this constructor to
+    /// preserve which node was the original.
+    ///
+    /// Does not itself guard against an empty `entries` — caller's responsibility, since this is
+    /// only reachable from `run_compute_analytics` with a caller-controlled snapshot, not
+    /// user-facing tessellation setup like `new`.
+    ///
+    /// Debug-asserts against a duplicate `NodeId` across two different points — such an entry
+    /// would silently let the later one win in `node_to_point` while both survive in
+    /// `point_to_nodes`, leaving `point_of`/`nodes_at` disagreeing about where that id lives. Only
+    /// a `debug_assert!` (not a returned `Result`) since this is an internal-consistency bug in the
+    /// caller-supplied snapshot, not a recoverable runtime condition a caller could reasonably
+    /// handle — mirrors `Graph::add_edge`'s existing `debug_assert!` convention for the same kind
+    /// of "this should be structurally impossible" invariant.
+    pub fn from_id_points(entries: impl IntoIterator<Item = (NodeId, T::Point)>) -> Self {
+        let mut point_to_nodes: HashMap<T::Point, Vec<NodeId>> = HashMap::new();
+        let mut node_to_point = HashMap::new();
+        for (id, point) in entries {
+            debug_assert!(
+                node_to_point.get(&id).is_none_or(|&existing| existing == point),
+                "from_id_points: duplicate NodeId {id:?} across two different points",
+            );
+            point_to_nodes.entry(point).or_default().push(id);
+            node_to_point.insert(id, point);
+        }
+        Self { point_to_nodes, node_to_point }
+    }
+
     /// Adds another `NodeId` to an already-existing point — see GitHub issue #219. The point
     /// must already be in the field (panics otherwise): `Field`'s point set/shape is fixed at
     /// construction (`all_points`/field bounds — used by `render_ascii`, region-size QC checks —
@@ -301,6 +339,50 @@ mod field_clone_tests {
         for point in field.all_points() {
             assert_eq!(field.node_at(point), cloned.node_at(point));
         }
+    }
+}
+
+#[cfg(test)]
+mod from_id_points_tests {
+    use super::*;
+    use crate::space::{SquareTessellation, SquarePoint};
+
+    #[test]
+    fn preserves_the_given_ids_instead_of_minting_new_ones() {
+        let field: Field<SquareTessellation> = Field::from_id_points([
+            (10, SquarePoint { x: 0, y: 0 }),
+            (20, SquarePoint { x: 1, y: 0 }),
+        ]);
+
+        assert_eq!(field.node_at(SquarePoint { x: 0, y: 0 }), Some(10));
+        assert_eq!(field.node_at(SquarePoint { x: 1, y: 0 }), Some(20));
+        assert_eq!(field.point_of(10), Some(SquarePoint { x: 0, y: 0 }));
+        assert_eq!(field.point_of(20), Some(SquarePoint { x: 1, y: 0 }));
+        assert_eq!(field.node_count(), 2);
+    }
+
+    /// A point's *first* entry in the given order becomes its original node (`nodes_at[0]`), each
+    /// subsequent entry an extra slot in that order — mirrors `add_node_at`'s own "original first,
+    /// then creation order" contract, which `apply_split_points`/`build_analytics_snapshot` in
+    /// `maze-wasm` rely on.
+    #[test]
+    fn groups_entries_by_point_preserving_given_order_as_creation_order() {
+        let p = SquarePoint { x: 0, y: 0 };
+        let field: Field<SquareTessellation> = Field::from_id_points([
+            (5, p),
+            (7, p),
+            (9, p),
+        ]);
+
+        assert_eq!(field.nodes_at(p), &[5, 7, 9]);
+    }
+
+    #[test]
+    fn empty_entries_yields_an_empty_field() {
+        let field: Field<SquareTessellation> = Field::from_id_points(std::iter::empty());
+
+        assert_eq!(field.node_count(), 0);
+        assert_eq!(field.all_points().count(), 0);
     }
 }
 

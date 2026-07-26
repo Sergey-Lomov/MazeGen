@@ -6,7 +6,8 @@ function isNodeDto(v: unknown): v is NodeDto {
   return typeof v === "object" && v !== null &&
     typeof (v as NodeDto).id === "number" &&
     typeof (v as NodeDto).x === "number" &&
-    typeof (v as NodeDto).y === "number";
+    typeof (v as NodeDto).y === "number" &&
+    typeof (v as NodeDto).i === "number";
 }
 
 function isEdgeDto(v: unknown): v is EdgeDto {

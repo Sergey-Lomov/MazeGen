@@ -14,7 +14,7 @@ const { buildRegionGeometry } = await import("../pixi/selectors/issueHighlightSe
 const cfg: TessellationConfig = { type: "square", width: 4, height: 1 };
 
 function node(id: number, x: number, y: number): NodeDto {
-  return { id, x, y };
+  return { id, x, y, i: 0 };
 }
 
 describe("buildRegionGeometry", () => {

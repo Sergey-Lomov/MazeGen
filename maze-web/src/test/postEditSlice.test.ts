@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.mocked(computeAnalytics).mockReturnValue(mockSnapshot);
   useMazeStore.setState({
     edges: [{ from: 0, to: 1, kind: "basic" }],
-    nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }],
+    nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
     start: 0,
     finish: 1,
     activeTessellationConfig: { type: "square", width: 2, height: 1 },
@@ -81,7 +81,7 @@ describe("mazeStore post-edit actions", () => {
   });
 
   it("confirmPostEdit refreshes state.nodes from the snapshot (a confirmed split node must become resolvable on the next confirm)", async () => {
-    const nodesWithSplit = [...mockSnapshot.nodes, { id: 2, x: 0, y: 0 }];
+    const nodesWithSplit = [...mockSnapshot.nodes, { id: 2, x: 0, y: 0, i: 1 }];
     vi.mocked(computeAnalytics).mockReturnValueOnce({ ...mockSnapshot, nodes: nodesWithSplit });
     await useMazeStore.getState().confirmPostEdit();
     expect(useMazeStore.getState().nodes).toEqual(nodesWithSplit);

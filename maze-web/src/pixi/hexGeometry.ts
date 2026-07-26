@@ -1,5 +1,4 @@
 import { TILE_SIZE } from "./constants";
-import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { squareCenter } from "./squareGeometry";
 import { triCenter } from "./triGeometry";
@@ -29,7 +28,7 @@ export function hexCenter(q: number, r: number, orientation: "flat_top" | "point
   return { x, y };
 }
 
-export function cellCenter(node: NodeDto, cfg: TessellationConfig): Pos {
+export function cellCenter(node: { x: number; y: number }, cfg: TessellationConfig): Pos {
   if (cfg.type === "square" || cfg.type === "square_custom") {
     return squareCenter(node.x, node.y, cfg);
   } else if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {

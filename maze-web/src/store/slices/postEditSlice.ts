@@ -140,7 +140,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
     const config = {
       tessellation: fieldConfigToWasm(activeTessellationConfig),
-      nodes: nodes.map(n => [n.x, n.y] as [number, number]),
+      nodes,
       edges: wasmEdges,
       split_points: splitPointsPayload,
       start: resolvedStart ?? null,

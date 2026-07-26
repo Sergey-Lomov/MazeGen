@@ -105,10 +105,10 @@ function buildThreeStepTape(): ParsedTape {
 }
 
 const nodes: NodeDto[] = [
-  { id: 1, x: 0, y: 0 },
-  { id: 2, x: 1, y: 0 },
-  { id: 3, x: 2, y: 0 },
-  { id: 4, x: 3, y: 0 },
+  { id: 1, x: 0, y: 0, i: 0 },
+  { id: 2, x: 1, y: 0, i: 0 },
+  { id: 3, x: 2, y: 0, i: 0 },
+  { id: 4, x: 3, y: 0, i: 0 },
 ];
 
 function threeStepArena() {
@@ -157,7 +157,7 @@ function buildManyStepTape(stepCount: number): ParsedTape {
 function manyStepArena(stepCount: number) {
   const tape = buildManyStepTape(stepCount);
   const { totalSteps, checkpointFroms } = adapterForKind("recursive_backtracker").resolveMetadata(tape);
-  const manyNodes: NodeDto[] = Array.from({ length: stepCount + 1 }, (_, i) => ({ id: i + 1, x: i, y: 0 }));
+  const manyNodes: NodeDto[] = Array.from({ length: stepCount + 1 }, (_, i) => ({ id: i + 1, x: i, y: 0, i: 0 }));
   return {
     tape, algorithmKind: "recursive_backtracker" as const,
     sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps, checkpointFroms }],

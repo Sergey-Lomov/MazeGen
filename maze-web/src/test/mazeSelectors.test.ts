@@ -87,7 +87,7 @@ describe("postEditEdgesToDto", () => {
 
 // --- buildClosedCells ---
 
-const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y });
+const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y, i: 0 });
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 
 describe("buildClosedCells", () => {

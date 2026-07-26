@@ -241,7 +241,7 @@ const centerCellSet = new Set(["0,0", "1,0", "-1,0", "0,1", "0,-1", "1,1", "-1,1
 // coordinate without a separate lookup table.
 const idOf = (x: number, y: number) => (x + 10) * 100 + (y + 10);
 const gridNodes: NodeDto[] = [];
-for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) gridNodes.push({ id: idOf(x, y), x, y });
+for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) gridNodes.push({ id: idOf(x, y), x, y, i: 0 });
 
 describe("rotatePostEditSplitPoint", () => {
   it("no split slots — a one-way edge from the point moves from its E neighbor to its N neighbor (direction 1)", () => {
@@ -301,9 +301,9 @@ describe("rotatePostEditSplitPoint", () => {
   it("rotation onto a field boundary is refused entirely — edges unchanged", () => {
     // Corner (-1,-1): only E(0,-1) and N(-1,0) are in-field; W(-2,-1) and S(-1,-2) are boundary.
     const cornerNodes: NodeDto[] = [
-      { id: 1, x: -1, y: -1 },
-      { id: 2, x: -1, y: 0 }, // N neighbor
-      { id: 3, x: 0, y: -1 }, // E neighbor
+      { id: 1, x: -1, y: -1, i: 0 },
+      { id: 2, x: -1, y: 0, i: 0 }, // N neighbor
+      { id: 3, x: 0, y: -1, i: 0 }, // E neighbor
     ];
     const edges: Record<string, PostEditEdge> = {};
     const corner = nodeEndpoint(1);

@@ -33,8 +33,8 @@ beforeEach(() => {
 
 const validSnapshot = {
   nodes: [
-    { id: 0, x: 0, y: 0 },
-    { id: 1, x: 1, y: 0 },
+    { id: 0, x: 0, y: 0, i: 0 },
+    { id: 1, x: 1, y: 0, i: 0 },
   ],
   edges: [
     { from: 0, to: 1 },
@@ -82,19 +82,27 @@ describe("generateMaze / validateSnapshot", () => {
     expect(() => generateMaze(1, defaultConfig)).toThrow("invalid nodes");
   });
 
+  // GitHub issue #236: NodeDto gained a required `i` field (stable per-point index) — a WASM
+  // snapshot missing it must fail validation the same way a missing `id`/`x`/`y` already does,
+  // not silently pass through with `i` as `undefined`.
+  it("throws when node missing i", () => {
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [] }));
+    expect(() => generateMaze(1, defaultConfig)).toThrow("invalid nodes");
+  });
+
   it("throws when edges missing", () => {
-    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }] }));
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0, i: 0 }] }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("invalid edges");
   });
 
   it("throws when edge missing from", () => {
-    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [{ to: 0 }] }));
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0, i: 0 }], edges: [{ to: 0 }] }));
     expect(() => generateMaze(1, defaultConfig)).toThrow("invalid edges");
   });
 
   it("throws when edge.from not in nodes", () => {
     mockGenerate.mockReturnValue(fakeGenerateResult({
-      nodes: [{ id: 0, x: 0, y: 0 }],
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
       edges: [{ from: 99, to: 0 }],
       issues: [],
       nav_nodes: [],
@@ -105,7 +113,7 @@ describe("generateMaze / validateSnapshot", () => {
 
   it("throws when edge.to not in nodes", () => {
     mockGenerate.mockReturnValue(fakeGenerateResult({
-      nodes: [{ id: 0, x: 0, y: 0 }],
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
       edges: [{ from: 0, to: 99 }],
       issues: [],
       nav_nodes: [],
@@ -122,7 +130,7 @@ describe("generateMaze / validateSnapshot", () => {
   });
 
   it("accepts null start/finish", () => {
-    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0 }], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [] }));
+    mockGenerate.mockReturnValue(fakeGenerateResult({ nodes: [{ id: 0, x: 0, y: 0, i: 0 }], edges: [], start: null, finish: null, issues: [], nav_nodes: [], nav_edges: [] }));
     const result = generateMaze(1, defaultConfig);
     expect(result.snapshot.start).toBeNull();
     expect(result.snapshot.finish).toBeNull();

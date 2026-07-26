@@ -147,8 +147,8 @@ function buildLoopErasedDeadEndWilsonTape(): ParsedTape {
 }
 
 const nodes: NodeDto[] = [
-  { id: 1, x: 0, y: 0 },
-  { id: 2, x: 3, y: 4 },
+  { id: 1, x: 0, y: 0, i: 0 },
+  { id: 2, x: 3, y: 4, i: 0 },
 ];
 
 // jsdom has no real layout — @tanstack/react-virtual's default `observeElementRect` measures the

@@ -88,7 +88,7 @@ export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uin
 }
 
 export const mockSnapshot = {
-  nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }],
+  nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
   edges: [{ from: 0, to: 1, kind: "basic" as const }],
   start: 0,
   finish: 1,

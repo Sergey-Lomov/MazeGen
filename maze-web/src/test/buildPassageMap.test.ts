@@ -19,7 +19,7 @@ vi.mock("../wasm/mazeService", () => ({
 }));
 
 const squareCfg = { type: "square" as const, width: 11, height: 11 };
-const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y });
+const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y, i: 0 });
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 const tp = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
 

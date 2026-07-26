@@ -64,10 +64,10 @@ function buildTapeWithEdges(edges: [bigint, bigint][]): ParsedTape {
 }
 
 const nodes: NodeDto[] = [
-  { id: 1, x: 0, y: 0 },
-  { id: 2, x: 1, y: 0 },
-  { id: 3, x: 2, y: 0 },
-  { id: 4, x: 3, y: 0 },
+  { id: 1, x: 0, y: 0, i: 0 },
+  { id: 2, x: 1, y: 0, i: 0 },
+  { id: 3, x: 2, y: 0, i: 0 },
+  { id: 4, x: 3, y: 0, i: 0 },
 ];
 
 /** Flat, no nested scopes (mirrors buildTapeWithEdges — Kruskal's applyKruskal only uses the flat
@@ -488,7 +488,7 @@ describe("selectDebugMazeView", () => {
 
   it("excludes a split-minted node from view.nodes before its SplitNodesCreated step, and includes it from that step onward", () => {
     const tape = buildVertexBasedSplitArenaTape();
-    const splitNodes: NodeDto[] = [...nodes, { id: 5, x: 1, y: 0 }]; // sibling shares node 2's cell
+    const splitNodes: NodeDto[] = [...nodes, { id: 5, x: 1, y: 0, i: 1 }]; // sibling shares node 2's cell
     const arena: DebugArenaHandle = {
       tape, algorithmKind: "vertex_based",
       sources: [{ scopeName: "generation", kind: "vertex_based", nodeIndex: 0, startStep: 0, endStep: 4, checkpointFroms: [] }],

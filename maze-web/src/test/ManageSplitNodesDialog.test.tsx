@@ -19,7 +19,7 @@ beforeEach(() => {
     // Node 5 is the split point (2,2)'s original node — the dialog resolves "Original node" to
     // its real NodeId from this snapshot, not from the point's coordinates (see the fixed bug
     // where it was mistakenly built as `nodeEndpoint(point[0])`).
-    nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 5, x: 2, y: 2 }],
+    nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 2, y: 2, i: 0 }],
     postEditDraftSplitPoints: { "2,2": [0, 1] },
     postEditActiveSplitNode: {},
     postEditDraftEdges: {},
@@ -132,7 +132,7 @@ describe("ManageSplitNodesDialog", () => {
     // `nodeEndpoint(6)`, never `splitEndpoint([2,2], 0)` — the dialog must still resolve slot 0's
     // row to this edge.
     useMazeStore.setState({
-      nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 5, x: 2, y: 2 }, { id: 6, x: 2, y: 2 }],
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 2, y: 2, i: 0 }, { id: 6, x: 2, y: 2, i: 1 }],
       postEditDraftEdges: {
         "n6-n1": { from: nodeEndpoint(6), to: nodeEndpoint(1), kind: "basic" },
       },

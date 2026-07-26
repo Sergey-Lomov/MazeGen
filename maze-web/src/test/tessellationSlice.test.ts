@@ -325,7 +325,7 @@ describe("mazeStore.setHexOrientation", () => {
     useMazeStore.setState(hexPredefinedState({
       tessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
       activeTessellationConfig: { type: "hex_parallelogram", cols: 8, rows: 6, orientation: "flat_top" },
-      nodes: [{ id: 0, x: 0, y: 0 }],
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
     }));
     useMazeStore.getState().setHexOrientation("pointy_top");
     expect(useMazeStore.getState().activeTessellationConfig).toMatchObject({ type: "hex_parallelogram", orientation: "pointy_top", cols: 8 });
@@ -397,7 +397,7 @@ describe("mazeStore.setTriOrientation", () => {
     useMazeStore.setState(trianglePredefinedState({
       tessellationConfig: { type: "triangle_rect", cols: 6, rows: 4, orientation: "r0" },
       activeTessellationConfig: { type: "triangle_rect", cols: 6, rows: 4, orientation: "r0" },
-      nodes: [{ id: 0, x: 0, y: 0 }],
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
     }));
     useMazeStore.getState().setTriOrientation("r90");
     expect(useMazeStore.getState().activeTessellationConfig).toMatchObject({ type: "triangle_rect", orientation: "r90", cols: 6 });
@@ -470,7 +470,7 @@ describe("mazeStore preview/confirm flow", () => {
       previewKind: "square",
       previewHexOrientation: "flat_top",
       previewTriOrientation: "r0",
-      nodes: [{ id: 0, x: 0, y: 0 }],
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
       edges: [],
     });
     useMazeStore.getState().confirmTessellation();
@@ -483,7 +483,7 @@ describe("mazeStore preview/confirm flow", () => {
       previewKind: "hex",
       previewHexOrientation: "flat_top",
       previewTriOrientation: "r0",
-      nodes: [{ id: 0, x: 0, y: 0 }],
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
       edges: [{ from: 0, to: 0, kind: "basic" }],
       start: 0,
       finish: 0,

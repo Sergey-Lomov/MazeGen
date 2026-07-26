@@ -11,7 +11,6 @@ use maze_core::{
     },
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
     graph::{Graph, EdgeKind},
-    ids::IdGenerator,
     space::{Field, SquarePoint, HexPoint, TriPoint},
     Maze,
 };
@@ -32,6 +31,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     issues_override: Option<Vec<Box<dyn Issue>>>,
     check_types: &HashMap<String, String>,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
+    // Node's stable per-point index (GitHub issue #236, `NodeDto.i` doc comment) — `0` is always
+    // the point's original node. A fresh maze (generation) has no removal history yet, so a node's
+    // position within `nodes_at(point)` (the default every call site but `run_compute_analytics`
+    // passes) already equals its real `i`. `run_compute_analytics` instead passes a lookup built
+    // from the client's own `cfg.nodes`, since post-edit's removal history can leave a hole in the
+    // `i` sequence that a freshly recomputed position would wrongly compact away.
+    index_of: impl Fn(maze_core::ids::NodeId, T::Point, usize) -> u32,
 ) -> Result<MazeSnapshot, String> {
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
     let graph_analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
@@ -112,11 +118,12 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let nodes: Vec<NodeDto> = maze.field
         .all_points()
         .filter(|p| seen_points.insert(*p))
-        .flat_map(|p| maze.field.nodes_at(p).iter().map(move |&id| (id, p)))
-        .filter_map(|(id, p)| {
+        .flat_map(|p| maze.field.nodes_at(p).iter().enumerate().map(move |(pos, &id)| (id, p, pos)))
+        .filter_map(|(id, p, pos)| {
             let id32 = u32::try_from(id).ok()?;
             let (x, y) = point_to_xy(p);
-            Some(NodeDto { id: id32, x, y })
+            let i = index_of(id, p, pos);
+            Some(NodeDto { id: id32, x, y, i })
         })
         .collect();
 
@@ -252,28 +259,22 @@ pub fn compute_analytics(config: JsValue) -> Result<JsValue, JsValue> {
 fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, JsValue> {
     match cfg.tessellation.tessellation_type {
         TessellationType::Square => {
-            let pts: Vec<SquarePoint> = cfg.tessellation.points.iter()
-                .map(|&[x, y]| SquarePoint { x, y }).collect();
             run_compute_analytics::<maze_core::space::SquareTessellation>(
-                cfg, pts,
+                cfg,
                 |p: SquarePoint| (p.x, p.y),
                 |[x, y]| Some(SquarePoint { x, y }),
             )
         }
         TessellationType::Hex => {
-            let pts: Vec<HexPoint> = cfg.tessellation.points.iter()
-                .map(|&[q, r]| HexPoint { q, r }).collect();
             run_compute_analytics::<maze_core::space::HexTessellation>(
-                cfg, pts,
+                cfg,
                 |p: HexPoint| (p.q, p.r),
                 |[q, r]| Some(HexPoint { q, r }),
             )
         }
         TessellationType::Tri => {
-            let pts: Vec<TriPoint> = cfg.tessellation.points.iter()
-                .map(|&[col, row]| TriPoint { col, row }).collect();
             run_compute_analytics::<maze_core::space::TriTessellation>(
-                cfg, pts,
+                cfg,
                 |p: TriPoint| (p.col, p.row),
                 |[col, row]| Some(TriPoint { col, row }),
             )
@@ -355,14 +356,23 @@ fn build_graph_from_post_edit_edges(
     Ok(())
 }
 
-/// Applies `split_points` (GitHub issue #221) to an already-built `Maze`, one `Maze::add_node_at`
-/// call per entry, in deterministic `(point, slot_id)` order — so two calls with the same set of
-/// entries (regardless of input order, and regardless of the add/remove history that produced
-/// that set) always create nodes in the same relative order and therefore get the same `NodeId`s.
-/// Returns the `(point, slot_id) -> NodeId` map `build_graph_from_post_edit_edges` needs to
-/// resolve `Split` endpoints.
+/// Resolves `split_points` (GitHub issue #221) against a `Maze` already built from the client's
+/// authoritative `nodes` list (GitHub issue #236) — reuses each slot's existing `NodeId` where one
+/// already exists (a split node confirmed by an earlier call), minting a fresh one via
+/// `Maze::add_node_at` only for a slot with no existing node yet (just `addSplitNode`'d in the UI,
+/// not yet confirmed). This is what makes a split node's `NodeId` stable across confirms — the
+/// old approach (always re-minting every slot in sorted order every call) is exactly the bug this
+/// issue fixes: a split node's absolute id shifting between calls depending on what else changed.
 ///
-/// Every point is checked against the field with `xy_to_point`/`contains` *before* calling
+/// `existing_by_index` is `(point, i) -> NodeId` (`NodeDto.i`, see its doc comment), built directly
+/// by the caller from `cfg.nodes` — **not** reconstructed from position in `nodes_at`. `slot_id`
+/// maps onto `i` as `slot_id + 1` (`i = 0` is always the point's original node, which `split_points`
+/// never addresses). Matching by the real `i` rather than by position is what keeps this correct
+/// after a non-last split node is removed: `i` never shifts or gets compacted when an earlier
+/// sibling at the same point disappears (a position-based scheme would silently resolve a
+/// surviving slot to whatever node happens to now sit at that position instead).
+///
+/// Every point is checked against the field with `xy_to_point`/`contains` before calling
 /// `add_node_at` — `Field::add_node_at` panics on an unknown point, and a stale `split_points`
 /// entry (e.g. a project saved when the point existed, loaded after the tessellation shrank) must
 /// surface as an ordinary `Err`, not take down the whole call.
@@ -370,37 +380,88 @@ fn apply_split_points<T: Tessellation>(
     maze: &mut Maze<T>,
     xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
     split_points: &[([i32; 2], u32)],
+    existing_by_index: &HashMap<([i32; 2], u32), u64>,
 ) -> Result<HashMap<([i32; 2], u32), u64>, String> {
-    let mut sorted: Vec<([i32; 2], u32)> = split_points.to_vec();
-    sorted.sort_unstable();
-
     let mut map = HashMap::new();
-    for (xy, slot_id) in sorted {
-        let point = xy_to_point(xy)
-            .filter(|&p| maze.field.contains(p))
-            .ok_or_else(|| format!("split_points references unknown point {xy:?}"))?;
-        let node = maze.add_node_at(point);
+    for &(xy, slot_id) in split_points {
+        let node = match existing_by_index.get(&(xy, slot_id + 1)) {
+            Some(&id) => id,
+            None => {
+                let point = xy_to_point(xy)
+                    .filter(|&p| maze.field.contains(p))
+                    .ok_or_else(|| format!("split_points references unknown point {xy:?}"))?;
+                maze.add_node_at(point)
+            }
+        };
         map.insert((xy, slot_id), node);
     }
     Ok(map)
 }
 
+/// Builds the three artifacts `run_compute_analytics` needs from `cfg.nodes` (GitHub issue #236)
+/// — split out so this pure `NodeDto[]` → `(Field, index maps)` transformation can be unit-tested
+/// without a `JsValue`/wasm context, unlike `run_compute_analytics` itself (ends in
+/// `serde_wasm_bindgen::Serializer::json_compatible()`, which panics outside a real WASM runtime —
+/// see `run_initial_generation`'s doc comment in `runner.rs` for the same constraint on the
+/// generation path).
+///
+/// Returns `(field, existing_by_index, index_by_node)`:
+/// - `field`: rebuilt directly from the client's own node ids, not re-minted from
+///   `tessellation.points` order — this is what makes the rebuild reproduce exactly the ids the
+///   client already holds, including auto-split nodes whose ids come from generator traversal
+///   order rather than coordinate order. Entries are sorted by `i` within each point
+///   (`Vec::sort_by_key` is stable, but the sort itself is what matters here, not stability) so
+///   `Field`'s own "position 0 is the original, never-removable node" invariant lines up with `i`'s
+///   identical "0 is original" rule regardless of what order the client happened to list a point's
+///   nodes in.
+/// - `existing_by_index`: `(point, i) -> NodeId`, what `apply_split_points` matches `split_points`
+///   entries against.
+/// - `index_by_node`: `NodeId -> i`, what `build_analytics_snapshot`'s `index_of` callback reuses.
+///
+/// A node whose `(x, y)` doesn't resolve against the current tessellation (e.g. a project saved
+/// before the tessellation shrank) is an `Err`, not a silent drop — `apply_split_points` already
+/// treats the analogous stale-`split_points`-point case as an error, and silently excluding a node
+/// here would leave `IdGenerator::resume_after`'s next-id ceiling computed from fewer nodes than the
+/// client actually holds, risking a freshly minted node colliding with an id the client still has
+/// cached for a node outside this call's surviving set.
+fn build_field_from_nodes<T: Tessellation>(
+    nodes: &[NodeDto],
+    xy_to_point: &impl Fn([i32; 2]) -> Option<T::Point>,
+) -> Result<(Field<T>, HashMap<([i32; 2], u32), u64>, HashMap<u64, u32>), String>
+where
+    T::Point: Copy,
+{
+    let mut entries: Vec<(u64, T::Point, u32)> = Vec::with_capacity(nodes.len());
+    for n in nodes {
+        let point = xy_to_point([n.x, n.y])
+            .ok_or_else(|| format!("node {} references a point outside the current tessellation: [{}, {}]", n.id, n.x, n.y))?;
+        entries.push((n.id as u64, point, n.i));
+    }
+    entries.sort_by_key(|&(_, _, i)| i);
+    let existing_by_index: HashMap<([i32; 2], u32), u64> = nodes.iter()
+        .map(|n| (([n.x, n.y], n.i), n.id as u64))
+        .collect();
+    let index_by_node: HashMap<u64, u32> = nodes.iter()
+        .map(|n| (n.id as u64, n.i))
+        .collect();
+    let field = Field::<T>::from_id_points(entries.into_iter().map(|(id, p, _)| (id, p)));
+    Ok((field, existing_by_index, index_by_node))
+}
+
 fn run_compute_analytics<T: Tessellation + 'static>(
     cfg: ComputeAnalyticsConfig,
-    pts: Vec<T::Point>,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
     xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
 ) -> Result<JsValue, JsValue>
 where
     T::Point: Copy,
 {
-    if pts.is_empty() {
-        return Err(JsValue::from_str("tessellation points must not be empty"));
+    if cfg.nodes.is_empty() {
+        return Err(JsValue::from_str("nodes must not be empty"));
     }
 
-    let mut ids = IdGenerator::new();
-    let field = Field::<T>::new(pts, &mut ids)
-        .map_err(|e| JsValue::from_str(e))?;
+    let (field, existing_by_index, index_by_node) = build_field_from_nodes::<T>(&cfg.nodes, &xy_to_point)
+        .map_err(|e| JsValue::from_str(&e))?;
 
     let mut graph = Graph::new();
     field.build_nodes(&mut graph);
@@ -409,7 +470,7 @@ where
 
     // Split points must exist before edges are resolved — some edges may address a split node
     // by (point, slot_id) that only comes into being here (GitHub issue #221).
-    let split_map = apply_split_points(&mut maze, xy_to_point, &cfg.split_points)
+    let split_map = apply_split_points(&mut maze, xy_to_point, &cfg.split_points, &existing_by_index)
         .map_err(|e| JsValue::from_str(&e))?;
 
     build_graph_from_post_edit_edges(&mut maze.graph, &cfg.edges, &split_map)
@@ -433,7 +494,12 @@ where
     let (qc_engine, check_types) = crate::runner::build_qc_and_repair_with_types::<T>(&qc_config)
         .map_err(|e| JsValue::from_str(&e))?;
 
-    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, point_to_xy)
+    // Reuses each node's real `i` from the client's own `cfg.nodes` where known (GitHub issue
+    // #236) — falls back to position only for a node not in `cfg.nodes` at all, i.e. a split node
+    // this exact call just minted via `apply_split_points`, which by construction sits at the
+    // point's next free position (no hole possible for a node that never existed before this call).
+    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, point_to_xy,
+        |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32))
         .map_err(|e| JsValue::from_str(&e))?;
 
     snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
@@ -443,6 +509,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maze_core::ids::IdGenerator;
     use maze_core::space::{SquareTessellation, SquarePoint, square_rect};
     use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
 
@@ -470,7 +537,7 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -487,7 +554,7 @@ mod tests {
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -508,7 +575,7 @@ mod tests {
         g.add_node(extra);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         let at_split_point: Vec<_> = snapshot.nodes.iter().filter(|n| n.x == 1 && n.y == 0).collect();
         assert_eq!(at_split_point.len(), 2, "split point's node list must appear exactly once, not once per its own node count");
@@ -530,7 +597,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // Neither start nor finish set.
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(snapshot.graph_analytics.region_classes.is_empty());
     }
@@ -550,7 +617,7 @@ mod tests {
         maze.meta.start = Some(a);
         maze.meta.finish = Some(c);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y)).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
         // a region, which is always "path" by definition.
@@ -678,55 +745,133 @@ mod tests {
         Some(SquarePoint { x: xy[0], y: xy[1] })
     }
 
-    #[test]
-    fn apply_split_points_creates_nodes_regardless_of_input_order() {
-        let mut ids1 = IdGenerator::new();
-        let field1 = Field::new(square_rect(1, 1), &mut ids1).unwrap();
-        let mut g1 = Graph::new();
-        field1.build_nodes(&mut g1);
-        let mut maze1: Maze<SquareTessellation> = Maze::new(field1, g1);
-        let map1 = apply_split_points(&mut maze1, xy_to_square, &[([0, 0], 2), ([0, 0], 0), ([0, 0], 1)]).unwrap();
-
-        let mut ids2 = IdGenerator::new();
-        let field2 = Field::new(square_rect(1, 1), &mut ids2).unwrap();
-        let mut g2 = Graph::new();
-        field2.build_nodes(&mut g2);
-        let mut maze2: Maze<SquareTessellation> = Maze::new(field2, g2);
-        let map2 = apply_split_points(&mut maze2, xy_to_square, &[([0, 0], 0), ([0, 0], 1), ([0, 0], 2)]).unwrap();
-
-        assert_eq!(map1[&([0, 0], 0)], map2[&([0, 0], 0)]);
-        assert_eq!(map1[&([0, 0], 1)], map2[&([0, 0], 1)]);
-        assert_eq!(map1[&([0, 0], 2)], map2[&([0, 0], 2)]);
+    fn node(id: u32, x: i32, y: i32, i: u32) -> NodeDto {
+        NodeDto { id, x, y, i }
     }
 
-    /// `NodeId` is `IdGenerator`'s sequential counter (position in the creation queue), not a
-    /// value derived from `(point, slot_id)` — so removing a slot from the set genuinely does
-    /// shift the `NodeId` of slots that would've been created after it (GitHub issue #221's plan,
-    /// "Ключевое архитектурное решение" section, records why this is expected and NOT something
-    /// `apply_split_points` tries to prevent: the fix for cross-call stability lives on the web
-    /// side, in never storing a raw resolved `NodeId` for a split node past one confirm call).
-    /// This test pins that "no attempt at cross-call stability" contract down directly, so a
-    /// future change doesn't silently reintroduce an assumption this crate never guaranteed.
     #[test]
-    fn removing_a_slot_from_the_set_shifts_the_id_of_a_later_slot_across_calls() {
+    fn build_field_from_nodes_preserves_given_ids_and_populates_index_maps() {
+        let nodes = vec![node(10, 0, 0, 0), node(20, 1, 0, 0)];
+        let (field, existing_by_index, index_by_node) = build_field_from_nodes::<SquareTessellation>(&nodes, &xy_to_square).unwrap();
+
+        assert_eq!(field.nodes_at(SquarePoint { x: 0, y: 0 }), &[10]);
+        assert_eq!(field.nodes_at(SquarePoint { x: 1, y: 0 }), &[20]);
+        assert_eq!(existing_by_index[&([0, 0], 0)], 10);
+        assert_eq!(existing_by_index[&([1, 0], 0)], 20);
+        assert_eq!(index_by_node[&10], 0);
+        assert_eq!(index_by_node[&20], 0);
+    }
+
+    #[test]
+    fn build_field_from_nodes_places_extra_slots_after_the_original_regardless_of_input_order() {
+        // Given out of i-order (i=1 before i=0) — the field must still put i=0 at position 0
+        // (Field's own "original node never removable" invariant depends on this).
+        let nodes = vec![node(2, 0, 0, 1), node(1, 0, 0, 0)];
+        let (field, _, _) = build_field_from_nodes::<SquareTessellation>(&nodes, &xy_to_square).unwrap();
+
+        assert_eq!(field.nodes_at(SquarePoint { x: 0, y: 0 }), &[1, 2]);
+    }
+
+    #[test]
+    fn build_field_from_nodes_rejects_a_node_outside_the_current_tessellation() {
+        // xy_to_point that maps every coordinate to None -- simulates a project saved before the
+        // tessellation shrank, whose stale node no longer resolves to a real point.
+        let nodes = vec![node(1, 5, 5, 0)];
+        let xy_to_none = |_: [i32; 2]| -> Option<SquarePoint> { None };
+        let result = build_field_from_nodes::<SquareTessellation>(&nodes, &xy_to_none);
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("expected an error for a node outside the current tessellation"),
+        };
+        assert!(err.contains("[5, 5]"), "error should mention the offending coordinates, got: {err}");
+        assert!(err.contains('1'), "error should mention the offending node id, got: {err}");
+    }
+
+    #[test]
+    fn apply_split_points_mints_distinct_new_nodes_when_none_exist_yet() {
         let mut ids = IdGenerator::new();
         let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
         let mut g = Graph::new();
         field.build_nodes(&mut g);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let before = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0), ([0, 0], 1), ([0, 0], 2)]).unwrap();
+        let map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0), ([0, 0], 1), ([0, 0], 2)], &no_splits()).unwrap();
 
-        let mut ids2 = IdGenerator::new();
-        let field2 = Field::new(square_rect(1, 1), &mut ids2).unwrap();
-        let mut g2 = Graph::new();
-        field2.build_nodes(&mut g2);
-        let mut maze2: Maze<SquareTessellation> = Maze::new(field2, g2);
-        // slot 1 (the middle one) removed from the set entirely.
-        let after = apply_split_points(&mut maze2, xy_to_square, &[([0, 0], 0), ([0, 0], 2)]).unwrap();
+        assert_ne!(map[&([0, 0], 0)], map[&([0, 0], 1)]);
+        assert_ne!(map[&([0, 0], 1)], map[&([0, 0], 2)]);
+        assert_ne!(map[&([0, 0], 0)], map[&([0, 0], 2)]);
+    }
 
-        assert_eq!(before[&([0, 0], 0)], after[&([0, 0], 0)], "the first slot in the set is unaffected");
-        assert_ne!(before[&([0, 0], 2)], after[&([0, 0], 2)],
-            "the later slot's absolute NodeId does shift once an earlier slot disappears from the set");
+    /// GitHub issue #236's core fix: a slot that already has a real node (the field was rebuilt
+    /// from the client's own authoritative node list via `Field::from_id_points`, matched by its
+    /// real `i` — not by position) resolves to that exact same `NodeId` — no re-mint, no drift —
+    /// instead of the old behavior where every call re-minted every slot from scratch in sorted
+    /// order.
+    #[test]
+    fn apply_split_points_reuses_an_already_existing_slots_node_id() {
+        let mut ids = IdGenerator::new();
+        let mut field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 0, y: 0 };
+        // Simulates a field rebuilt with slot 0 already confirmed at a prior call (i = 1: slot_id
+        // 0 + 1, since i = 0 is always the point's original node).
+        let existing_node = field.add_node_at(p, &mut ids);
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        g.add_node(existing_node);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let existing = HashMap::from([(([0, 0], 1u32), existing_node)]);
+
+        let map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0)], &existing).unwrap();
+
+        assert_eq!(map[&([0, 0], 0)], existing_node, "must reuse the existing node, not mint a new one");
+    }
+
+    /// One slot already exists (from a prior confirm), a second is newly added in the UI
+    /// (`addSplitNode`) — the existing slot's id is reused, only the new one gets minted.
+    #[test]
+    fn apply_split_points_mints_only_the_newly_added_slot() {
+        let mut ids = IdGenerator::new();
+        let mut field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 0, y: 0 };
+        let existing_node = field.add_node_at(p, &mut ids);
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        g.add_node(existing_node);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let existing = HashMap::from([(([0, 0], 1u32), existing_node)]);
+
+        let map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0), ([0, 0], 1)], &existing).unwrap();
+
+        assert_eq!(map[&([0, 0], 0)], existing_node, "first slot reuses the pre-existing node");
+        assert_ne!(map[&([0, 0], 1)], existing_node, "second slot must be a freshly minted, distinct node");
+    }
+
+    /// The actual regression this issue fixes: slot 0 (the *first* of two confirmed extra nodes)
+    /// is removed by the user — its `NodeId` no longer appears in `existing_by_index` at all (the
+    /// client's `state.nodes`/`i` no longer carries it), while slot 1 (the *second*, surviving
+    /// extra node) keeps its own `i` and must keep resolving to its own real `NodeId`, not to
+    /// whatever node used to sit before it. A position-based scheme would wrongly resolve slot 1
+    /// to slot 0's old node (or mint a fresh one) once slot 0's entry disappears from the list.
+    #[test]
+    fn apply_split_points_keeps_a_surviving_later_slot_correct_after_an_earlier_slot_is_removed() {
+        let mut ids = IdGenerator::new();
+        let mut field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 0, y: 0 };
+        let removed_node = field.add_node_at(p, &mut ids);
+        let surviving_node = field.add_node_at(p, &mut ids);
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        g.add_node(removed_node);
+        g.add_node(surviving_node);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        // Only slot_id 1 (i = 2) survives in the client's node list — slot_id 0 (i = 1, the
+        // removed node) is gone entirely, exactly as `removeSplitNode` leaves `state.nodes` before
+        // the next confirm resends a pruned `cfg.nodes`.
+        let existing = HashMap::from([(([0, 0], 2u32), surviving_node)]);
+
+        let map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 1)], &existing).unwrap();
+
+        assert_eq!(map[&([0, 0], 1)], surviving_node,
+            "the surviving slot must resolve to its own node, not the removed slot's");
     }
 
     /// Same set, same call — resolving `(point, slot_id)` twice within one `apply_split_points`
@@ -738,7 +883,7 @@ mod tests {
         let mut g = Graph::new();
         field.build_nodes(&mut g);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0), ([0, 0], 1)]).unwrap();
+        let map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0), ([0, 0], 1)], &no_splits()).unwrap();
 
         assert_ne!(map[&([0, 0], 0)], map[&([0, 0], 1)], "distinct slots must resolve to distinct nodes");
         assert!(maze.graph.nodes().any(|n| n.id == map[&([0, 0], 0)]));
@@ -753,7 +898,7 @@ mod tests {
         field.build_nodes(&mut g);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let err = apply_split_points(&mut maze, xy_to_square, &[([5, 5], 0)]).unwrap_err();
+        let err = apply_split_points(&mut maze, xy_to_square, &[([5, 5], 0)], &no_splits()).unwrap_err();
         assert!(err.contains("[5, 5]"), "error should mention the offending point, got: {err}");
     }
 
@@ -768,7 +913,7 @@ mod tests {
         field.build_nodes(&mut g);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let err = apply_split_points(&mut maze, xy_to_square, &[([9, 9], 0)]).unwrap_err();
+        let err = apply_split_points(&mut maze, xy_to_square, &[([9, 9], 0)], &no_splits()).unwrap_err();
         assert!(err.contains("[9, 9]"), "error should mention the offending point, got: {err}");
     }
 
@@ -781,7 +926,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let a = maze.field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
 
-        let split_map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0)]).unwrap();
+        let split_map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0)], &no_splits()).unwrap();
         let split_node = split_map[&([0, 0], 0)];
 
         let edges = vec![PostEditEdgeDto {
@@ -813,7 +958,7 @@ mod tests {
         let b = maze.field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
         // No edge at all between a and b — the direct passage is walled off.
 
-        let split_map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0)]).unwrap();
+        let split_map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0)], &no_splits()).unwrap();
         let split_node = split_map[&([0, 0], 0)];
 
         let edges = vec![

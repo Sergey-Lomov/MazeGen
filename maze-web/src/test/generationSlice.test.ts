@@ -52,7 +52,7 @@ describe("mazeStore.generate", () => {
     vi.mocked(generateMaze).mockReturnValue({
       snapshot: {
         ...mockSnapshot,
-        nodes: [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }, { id: 2, x: 1, y: 0 }],
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 2, x: 1, y: 0, i: 1 }],
       },
       debugTape: undefined,
     });

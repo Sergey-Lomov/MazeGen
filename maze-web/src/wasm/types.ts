@@ -1,7 +1,12 @@
+/** `i` is a node's stable index among its point's nodes (GitHub issue #236) — `0` is always the
+ * point's original node (never removable by post-edit), `1, 2, ...` are extra split-point slots in
+ * creation order. Unlike a position in a rebuilt list, `i` never shifts or gets compacted when an
+ * earlier-created sibling at the same point is removed. */
 export interface NodeDto {
   id: number;
   x: number;
   y: number;
+  i: number;
 }
 
 // Note: (from, to) is not unique across MazeSnapshot.edges — a Basic and a Teleport edge
@@ -391,13 +396,21 @@ export interface PostEditEdgeWasmDto {
 
 export interface ComputeAnalyticsConfig {
   tessellation: WasmTessellationConfig;
-  /** Node coordinates — mirrors tessellation.points for API clarity. */
-  nodes: ReadonlyArray<[number, number]>;
+  /** The client's authoritative node list (real ids from the previous generation/confirm) —
+   * `Field`/`Graph` are rebuilt directly from these ids on the Rust side (GitHub issue #236)
+   * instead of re-minting them from `tessellation.points` order, so a rebuild always reproduces
+   * exactly the ids the client already holds, including auto-split nodes (#222). */
+  nodes: NodeDto[];
   /** Passage edges only (walls = absence of edge). */
   edges: PostEditEdgeWasmDto[];
   /** Extra nodes to add to split points before edges are resolved — each entry is one
-   * `(point, slotId)` pair (GitHub issue #221). Applied via `Maze::add_node_at` in a deterministic
-   * `(point, slotId)`-sorted order on the Rust side — this array's own order doesn't matter. */
+   * `(point, slotId)` pair (GitHub issue #221). `slotId` maps onto `NodeDto.i` as `slotId + 1`
+   * (`i = 0` is always the point's original node) — a slot whose `i` already exists in `nodes`
+   * (confirmed by an earlier call) resolves to that same existing id, matched by `i` directly, not
+   * by array position; only a genuinely new slot (just `addSplitNode`'d, not yet confirmed) gets a
+   * freshly minted one — see `apply_split_points` in `maze-wasm/src/analytics.rs`. This array's own
+   * order doesn't matter (unlike an earlier version of this fix, matching was position-based and
+   * did require the client's creation order — no longer the case). */
   split_points?: [[number, number], number][];
   /** Plain resolved node id — NOT a `PostEditEndpointWasmDto`. `Maze::meta.start`/`.finish` in
    * `maze-core` are always `Option<NodeId>`; the frontend resolves `PostEditEndpoint` to a

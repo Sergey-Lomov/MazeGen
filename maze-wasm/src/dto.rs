@@ -2,11 +2,19 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::generation_config::TessellationConfig;
 
-#[derive(Serialize)]
+/// `i` is a node's stable index among its point's nodes (GitHub issue #236) — `0` is always the
+/// point's original node (the one that can never be removed by post-edit), `1, 2, ...` are extra
+/// split-point slots in the order they were created. Unlike a position in a rebuilt list, `i`
+/// never shifts when an earlier-created sibling at the same point is removed — a hole in the `i`
+/// sequence is expected and does not get compacted. This is what lets `apply_split_points` address
+/// a slot by its real `i` directly instead of reconstructing a mapping from array position, which
+/// silently desyncs once a non-last split node is removed.
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct NodeDto {
     pub id: u32,
     pub x: i32,
     pub y: i32,
+    pub i: u32,
 }
 
 #[derive(Serialize)]
@@ -233,15 +241,22 @@ pub struct PostEditEdgeDto {
 #[derive(Deserialize)]
 pub struct ComputeAnalyticsConfig {
     pub tessellation: TessellationConfig,
-    /// Node coordinates — included for API clarity; field is reconstructed from tessellation.points.
-    #[allow(dead_code)]
-    pub nodes: Vec<[i32; 2]>,
+    /// The client's authoritative node list (real ids from the previous generation/confirm) —
+    /// `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_points`) instead of
+    /// re-minting them from `tessellation.points` order (GitHub issue #236). This is what makes a
+    /// rebuild reproduce the exact same ids the client already holds, including auto-split nodes
+    /// created by the generator (whose ids come from traversal order, not coordinate order).
+    pub nodes: Vec<NodeDto>,
     /// Actual edges (passages only — walls are absence of edge).
     pub edges: Vec<PostEditEdgeDto>,
     /// Extra nodes to add to split points before resolving edges — each entry is one
-    /// `(point, slot_id)` pair, applied via `Maze::add_node_at` in a deterministic
-    /// `(point, slot_id)`-sorted order (GitHub issue #221, see `apply_split_points`).
-    /// `#[serde(default)]` so calls/fixtures predating this field still deserialize.
+    /// `(point, slot_id)` pair. `slot_id` is the client's own numbering of a point's *extra* nodes
+    /// only (`0, 1, 2, ...`, never the original) — it maps onto `NodeDto.i` as `slot_id + 1` (`i`
+    /// includes the original node at `0`). A `(point, slot_id)` already present in `nodes` (i.e.
+    /// `i = slot_id + 1` already exists for that point) resolves to that exact existing `NodeId`;
+    /// only a genuinely new slot gets minted via `Maze::add_node_at` (GitHub issue #221/#236, see
+    /// `apply_split_points`). `#[serde(default)]` so calls/fixtures predating this field still
+    /// deserialize.
     #[serde(default)]
     pub split_points: Vec<([i32; 2], u32)>,
     pub start: Option<u32>,

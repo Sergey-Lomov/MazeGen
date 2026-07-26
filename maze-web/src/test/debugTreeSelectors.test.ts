@@ -408,8 +408,8 @@ describe("displayStepForRow (GitHub issue #166)", () => {
 describe("buildNodeCoordIndex", () => {
   it("joins bigint node ids to (x, y) without narrowing to number", () => {
     const nodes: NodeDto[] = [
-      { id: 1, x: 0, y: 0 },
-      { id: 2, x: 3, y: 4 },
+      { id: 1, x: 0, y: 0, i: 0 },
+      { id: 2, x: 3, y: 4, i: 0 },
     ];
     const index = buildNodeCoordIndex(nodes);
     expect(index.get(2n)).toEqual({ x: 3, y: 4 });
