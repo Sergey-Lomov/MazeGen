@@ -2,3 +2,4 @@
 maze-web/generated/
 maze-web/coverage/
 .claude/settings.local.json
+.claude/hooks/wasm-rebuild.log

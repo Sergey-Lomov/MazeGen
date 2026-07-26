@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -Command \"cd d:\\Development\\MazeGen; $changed = git status --porcelain=v1 | ForEach-Object { $_.Substring(3) }; if ($changed -match '^(maze-core|maze-wasm)/') { & './wasm-rebuild.ps1' }\"",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"d:\\Development\\MazeGen\\.claude\\hooks\\wasm-rebuild-hook.ps1\"",
             "timeout": 120,
             "statusMessage": "Checking if wasm rebuild needed..."
           }
