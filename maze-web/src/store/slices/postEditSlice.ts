@@ -8,7 +8,7 @@ import {
 } from "../../pixi/postEditUtils";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
-  resolverForNodeId, edgeKey,
+  resolverForNodeId, edgeKey, resolvePostEditPartnerAt,
 } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive, deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
@@ -447,13 +447,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       const { offsets } = getNeighborData(state.activeTessellationConfig, point[0], point[1]);
       const cells = buildActiveCells(state.fieldPoints, state.fieldEditMode, state.activeTessellationConfig);
       const inFieldCells = buildCellSet(cells);
-      const resolveActiveAt = (p: [number, number]): PostEditEndpoint | null => {
-        const pKey = `${p[0]},${p[1]}`;
-        const ids: number[] = [];
-        for (const n of state.nodes) if (n.x === p[0] && n.y === p[1]) ids.push(n.id);
-        if (ids.length === 0) return null;
-        return nextActiveSplitNode[pKey] ?? nodeEndpoint(ids[0]);
-      };
 
       // Every one of the blueprint's declared faces gets a `passage` to its in-field neighbor;
       // every other face of the tile is left with no entry at all, which post-edit already reads
@@ -470,10 +463,19 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           const [dx, dy] = offsets[faceIndex];
           const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
           if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
-          const neighborActive = resolveActiveAt(neighbor);
-          if (!neighborActive) continue;
-          nextDraftEdges[edgeKey(endpoint, neighborActive)] = { from: endpoint, to: neighborActive, kind: "basic" };
-          nextDraftEdges[edgeKey(neighborActive, endpoint)] = { from: neighborActive, to: endpoint, kind: "basic" };
+          const neighborIds: number[] = [];
+          for (const n of state.nodes) if (n.x === neighbor[0] && n.y === neighbor[1]) neighborIds.push(n.id);
+          const neighborKey = `${neighbor[0]},${neighbor[1]}`;
+          // The neighbor's real connecting node — not just its active UI slot (GitHub issue #243).
+          // Resolved against the pre-cleanup snapshot (`state.postEditDraftEdges`) and `point`'s
+          // *old* (pre-blueprint) endpoints: any pre-existing neighbor edge was recorded against
+          // one of those, never against `endpoint` (a fresh node this call is about to mint).
+          const neighborPartner = resolvePostEditPartnerAt(
+            existingNodeEndpoints, neighbor, neighborIds, state.postEditDraftEdges ?? {}, state.postEditDraftSplitPoints[neighborKey] ?? [], nextActiveSplitNode,
+          );
+          if (!neighborPartner) continue;
+          nextDraftEdges[edgeKey(endpoint, neighborPartner)] = { from: endpoint, to: neighborPartner, kind: "basic" };
+          nextDraftEdges[edgeKey(neighborPartner, endpoint)] = { from: neighborPartner, to: endpoint, kind: "basic" };
         }
       }
 

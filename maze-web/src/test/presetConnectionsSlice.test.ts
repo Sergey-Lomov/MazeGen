@@ -414,5 +414,31 @@ describe("mazeStore preset connections", () => {
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], singleNode);
       expect(useMazeStore.getState().presetSplitPoints["0,0"]).toBeUndefined();
     });
+
+    it("wires two adjacent split points to each other's real connecting slot, not the active one (GitHub issue #243)", () => {
+      // Square offsets: index0=E(1,0) index1=S(0,1) index2=W(-1,0) index3=N(0,-1)
+      // node0(original): S,N faces. node1(slot0): E,W faces — slot0 is the node that actually
+      // faces the neighboring cell on either side.
+      const eastWestBlueprint = { id: 0, degree: 4, nodeFaces: [[1, 3], [0, 2]] };
+      useMazeStore.setState({ tessellationConfig: wideField, presetSplitPoints: {}, presetActiveSplitNode: {} });
+
+      useMazeStore.getState().applyPresetSplitBlueprint([0, 0], eastWestBlueprint);
+      useMazeStore.getState().applyPresetSplitBlueprint([1, 0], eastWestBlueprint);
+      const s = useMazeStore.getState();
+
+      const c1Slot0 = presetEndpoint([0, 0], 0);
+      const c2Slot0 = presetEndpoint([1, 0], 0);
+      const realEntry = s.presetConnections.get("0,0:0-1,0:0");
+      expect(realEntry?.state).toBe("passage");
+      expect(realEntry?.from).toEqual(c1Slot0);
+      expect(realEntry?.to).toEqual(c2Slot0);
+
+      // No entry should wrongly link either cell's original (non-connecting) node to the other cell
+      // as a passage — and every one of those non-connecting pairs gets an explicit `wall`, not an
+      // undecided gap (GitHub issue #243 follow-up).
+      expect(s.presetConnections.get("0,0-1,0")?.state).toBe("wall");
+      expect(s.presetConnections.get("0,0-1,0:0")?.state).toBe("wall");
+      expect(s.presetConnections.get("0,0:0-1,0")?.state).toBe("wall");
+    });
   });
 });

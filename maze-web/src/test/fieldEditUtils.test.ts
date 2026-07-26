@@ -22,6 +22,8 @@ import {
   pickEdgeAtPosition,
   presetEdgeKey,
   rotatePresetSplitPoint,
+  resolvePresetPartnerAt,
+  allNodesAt,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
@@ -469,5 +471,60 @@ describe("rotatePresetSplitPoint", () => {
     const connections = new Map<string, PresetConnectionEntry>();
     const result = rotatePresetSplitPoint(connections, [-1, -1], [], 1, squareCfg, centerCellSet);
     expect(result).toEqual(connections);
+  });
+});
+
+// --- allNodesAt ---
+
+describe("allNodesAt", () => {
+  it("returns just the original endpoint for an undeclared point", () => {
+    expect(allNodesAt([0, 0], {})).toEqual([presetEndpoint([0, 0])]);
+  });
+
+  it("returns the original plus every declared slot, in slot order", () => {
+    expect(allNodesAt([0, 0], { "0,0": [1, 0] })).toEqual([
+      presetEndpoint([0, 0]),
+      presetEndpoint([0, 0], 1),
+      presetEndpoint([0, 0], 0),
+    ]);
+  });
+});
+
+// --- resolvePresetPartnerAt ---
+
+describe("resolvePresetPartnerAt (GitHub issue #243)", () => {
+  it("returns the neighbor's real connecting node when it has a decided passage", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0], 0)), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0], 0), state: "passage" as const, source: "user" as const }],
+    ]);
+    const result = resolvePresetPartnerAt([presetEndpoint([0, 0])], [1, 0], connections, { "1,0": [0] }, {});
+    expect(result).toEqual(presetEndpoint([1, 0], 0));
+  });
+
+  it("a passage to a later candidate wins over an explicit wall to an earlier candidate", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0])), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall" as const, source: "user" as const }],
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0], 0)), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0], 0), state: "passage" as const, source: "user" as const }],
+    ]);
+    const result = resolvePresetPartnerAt([presetEndpoint([0, 0])], [1, 0], connections, { "1,0": [0] }, {});
+    expect(result).toEqual(presetEndpoint([1, 0], 0));
+  });
+
+  it("falls back to a wall match when no candidate has a decided passage", () => {
+    const connections = new Map([
+      [presetEdgeKey(presetEndpoint([0, 0]), presetEndpoint([1, 0], 0)), { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0], 0), state: "wall" as const, source: "user" as const }],
+    ]);
+    const result = resolvePresetPartnerAt([presetEndpoint([0, 0])], [1, 0], connections, { "1,0": [0] }, {});
+    expect(result).toEqual(presetEndpoint([1, 0], 0));
+  });
+
+  it("falls back to the active-slot resolution when the neighbor has no decided entry at all", () => {
+    const result = resolvePresetPartnerAt([presetEndpoint([0, 0])], [1, 0], new Map(), { "1,0": [0] }, { "1,0": presetEndpoint([1, 0], 0) });
+    expect(result).toEqual(presetEndpoint([1, 0], 0));
+  });
+
+  it("falls back to the neighbor's original node when nothing is decided and nothing is active", () => {
+    const result = resolvePresetPartnerAt([presetEndpoint([0, 0])], [1, 0], new Map(), { "1,0": [0] }, {});
+    expect(result).toEqual(presetEndpoint([1, 0]));
   });
 });

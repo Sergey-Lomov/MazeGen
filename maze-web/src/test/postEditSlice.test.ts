@@ -445,4 +445,39 @@ describe("mazeStore applySplitBlueprint", () => {
     // Face 0 (in range) still wires normally; face 5 (out of range) is silently skipped.
     expect(s.postEditDraftEdges?.[edgeKey(n(0), n(1))]).toBeDefined();
   });
+
+  it("wires a newly-blueprinted split cell to its neighbor's real connecting slot, not the neighbor's active one (GitHub issue #243)", () => {
+    // C1 at (0,0) is already split: id0 = original, id10 = slot0 — and id10 is the one with the
+    // real (pre-existing) connection east, toward C2. C2 at (1,0) is still a plain point (id1),
+    // about to be blueprinted with a slot of its own that requires a passage west, toward C1.
+    useMazeStore.setState({
+      activeTessellationConfig: wideField,
+      postEditDraftMeta: null,
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 10, x: 0, y: 0, i: 1 },
+        { id: 1, x: 1, y: 0, i: 0 },
+      ],
+      postEditDraftSplitPoints: { "0,0": [0] },
+      postEditActiveSplitNode: {},
+      postEditDraftEdges: {
+        [edgeKey(n(10), n(1))]: { from: n(10), to: n(1), kind: "basic" },
+        [edgeKey(n(1), n(10))]: { from: n(1), to: n(10), kind: "basic" },
+      },
+    });
+
+    // Square offsets: index0=E(1,0) index2=W(-1,0). node0(original) has no faces here; node1(slot0)
+    // requires the west face — the one actually facing C1.
+    const westOnly: SplitNodeBlueprint = { id: 0, degree: 4, nodeFaces: [[], [2]] };
+    useMazeStore.getState().applySplitBlueprint([1, 0], westOnly);
+    const s = useMazeStore.getState();
+
+    // C1's slot0 already has a real confirmed id (10) — the partner resolves to `nodeEndpoint(10)`,
+    // not an unresolved `splitEndpoint`, since a confirmed node is always addressed by its real id.
+    const c2Slot0 = splitEndpoint([1, 0], 0);
+    expect(s.postEditDraftEdges?.[edgeKey(n(10), c2Slot0)]).toBeDefined();
+    expect(s.postEditDraftEdges?.[edgeKey(c2Slot0, n(10))]).toBeDefined();
+    // The original nodes on either side must not end up wrongly linked to each other.
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), n(1))]).toBeUndefined();
+    expect(s.postEditDraftEdges?.[edgeKey(n(0), c2Slot0)]).toBeUndefined();
+  });
 });

@@ -161,6 +161,21 @@ describe("buildPresetSplitPassages", () => {
     for (const p of passages) expect(p.wallSegments).toHaveLength(1);
   });
 
+  it("a real passage to one neighbor node wins over an explicit wall to another neighbor node on the same face, regardless of map iteration order (GitHub issue #243 follow-up)", () => {
+    // Point (-1,0) has only its original node connecting east. Point (0,0) is split: its original
+    // has an explicit wall to (-1,0)'s original, but its slot 0 has the real passage. The wall
+    // entry must not shadow the passage just because it happens to be checked first.
+    const connections = new Map([
+      ["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "wall" as const, source: "user" as const }],
+      ["-1,0-0,0:0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0], 0), state: "passage" as const, source: "user" as const }],
+    ]);
+    const { passages } = buildPresetSplitPassages({ "0,0": [0] }, connections, cfg, {}, cells);
+    const original = passages.find((p) => p.wallSegments.length === 1)!;
+    expect(original).toBeDefined();
+    expect(original.wallSegments[0].isUndefined).toBe(false);
+    expect(original.connectors[0].isUndefined).toBe(false);
+  });
+
   it("a slot with no referencing preset produces no passage entry", () => {
     const { passages } = buildPresetSplitPassages({ "-1,0": [0] }, new Map(), cfg);
     expect(passages).toEqual([]);

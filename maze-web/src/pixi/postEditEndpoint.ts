@@ -63,6 +63,55 @@ export function edgeKey(from: PostEditEndpoint, to: PostEditEndpoint): string {
   return `${endpointKey(from)}-${endpointKey(to)}`;
 }
 
+/** Resolves which node of a split `neighborPoint` genuinely connects back toward the point being
+ * (re)built — used when wiring a face automatically (blueprint apply), where the correct partner
+ * is whichever of the neighbor's nodes already has an edge, in `draftEdges`, toward any of that
+ * point's *pre-blueprint* endpoints (`pointOldEndpoints` — the point is about to be rebuilt by its
+ * own blueprint too, so its old identity, not the fresh endpoint the caller is about to write, is
+ * what any pre-existing neighbor edge was recorded against), not whichever node happens to be the
+ * neighbor's currently active UI slot (GitHub issue #243 — picking "the" active node here silently
+ * wired a connection to the wrong node while leaving the neighbor's real connecting node's entry
+ * orphaned). Falls back to the active-slot resolution when no such edge exists yet — mirrors the
+ * preset-stage `resolvePresetPartnerAt` and the renderer's own `resolveOther`
+ * (`buildSplitPassagesCore`). `neighborNodeIds` is every real node currently at `neighborPoint`, in
+ * snapshot order (index 0 = original); `neighborSplitSlots` is that point's declared slotId list
+ * (sorted order lines up with `neighborNodeIds`' extra entries, same contract as
+ * `buildSplitNodeResolver`). */
+export function resolvePostEditPartnerAt(
+  pointOldEndpoints: PostEditEndpoint[],
+  neighborPoint: [number, number],
+  neighborNodeIds: number[],
+  draftEdges: Readonly<Record<string, { from: PostEditEndpoint; to: PostEditEndpoint }>>,
+  neighborSplitSlots: number[],
+  activeMap: Readonly<Record<string, PostEditEndpoint>>,
+): PostEditEndpoint | null {
+  if (neighborNodeIds.length === 0) return null;
+  const sortedSlots = [...neighborSplitSlots].sort((a, b) => a - b);
+  // Every confirmed node — including a split slot — already has a real `NodeId`, and existing
+  // `postEditDraftEdges` entries are recorded against that plain `nodeEndpoint`, never a `split`
+  // endpoint (that variant only ever addresses a slot not yet confirmed, see `PostEditEndpoint`'s
+  // doc comment) — search/return `nodeEndpoint(id)` for every candidate so an existing edge's key
+  // actually matches.
+  const candidates: PostEditEndpoint[] = neighborNodeIds.map((id) => nodeEndpoint(id));
+
+  for (const candidate of candidates) {
+    for (const from of pointOldEndpoints) {
+      if (draftEdges[edgeKey(from, candidate)] || draftEdges[edgeKey(candidate, from)]) return candidate;
+    }
+  }
+  const key = `${neighborPoint[0]},${neighborPoint[1]}`;
+  const active = activeMap[key];
+  if (active) {
+    // The active-slot fallback may itself be an unresolved `split` endpoint (a not-yet-confirmed
+    // slot) — resolve it to the matching confirmed id when possible so the returned endpoint stays
+    // consistent with `candidates` above; otherwise return it as-is (nothing to resolve against yet).
+    if (active.kind === "node") return active;
+    const slotIndex = sortedSlots.indexOf(active.slotId);
+    return slotIndex >= 0 && neighborNodeIds[slotIndex + 1] !== undefined ? nodeEndpoint(neighborNodeIds[slotIndex + 1]) : active;
+  }
+  return candidates[0];
+}
+
 /** True if `ep` is a plain node endpoint equal to `id` — replaces ad-hoc `x === nodeId` checks
  * that assumed a bare number. */
 export function endpointIsNode(ep: PostEditEndpoint, id: number): boolean {

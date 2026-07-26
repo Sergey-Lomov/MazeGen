@@ -63,9 +63,17 @@ state, not an overlay:
    mirroring `removeSplitNode`/`removePresetSplitNode`'s own guard.
 2. One fresh slot is minted per blueprint node beyond the first (`blueprint.nodeFaces.length - 1`
    slots total).
-3. For every node, every declared face gets a `Passage` to its in-field neighbor (resolved via the
-   neighbor's currently active node, same as ordinary edge-tool clicks); a face pointing outside
-   the field is silently skipped (no connection can exist there).
+3. For every node, every declared face gets a `Passage` to its in-field neighbor; a face pointing
+   outside the field is silently skipped (no connection can exist there). The neighbor is resolved
+   to whichever of its nodes actually has a decided connection back toward this point already
+   (`resolvePresetPartnerAt`/`resolvePostEditPartnerAt`, GitHub issue #243) — **not** the neighbor's
+   currently active UI slot: if the neighbor is itself split, picking "the" active node regardless
+   of which of its nodes really connects here would silently wire the passage to the wrong node
+   while leaving the neighbor's real connecting node's entry orphaned. Falls back to the active
+   slot only when the neighbor has no decided entry on this face yet. In the preset stage, every
+   other node of an already-split neighbor (every one that isn't the resolved partner) also gets an
+   explicit `wall` on this same face, unless it already has its own decided entry — otherwise that
+   node's side of the face would silently stay `undefined` instead of reading as forbidden.
 4. Every other face of the tile — one not in the blueprint's `nodeFaces[i]` list — is left with no
    explicit decision in post-edit (already reads as `Wall` by default, see `postEditUtils.ts`'s
    `tileFaceKindOf`-equivalent convention) but gets an **explicit** `wall` entry in the preset

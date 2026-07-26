@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "../../pixi/presetEndpoint";
-import { presetEdgeKey, resolvePresetActiveEndpoint } from "../../pixi/fieldEditUtils";
+import { presetEdgeKey, resolvePresetActiveEndpoint, resolvePresetPartnerAt } from "../../pixi/fieldEditUtils";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
@@ -167,8 +167,13 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
       if (boundary) return { kind: "wall" as TileFaceKind, boundary };
 
-      const neighborActive = resolvePresetActiveEndpoint(neighbor, useMazeStore.getState().presetActiveSplitNode);
-      const entry = presetConnections.get(presetEdgeKey(endpoint, neighborActive));
+      // The neighbor's real connecting node for this face — not just its active UI slot (GitHub
+      // issue #243 follow-up): a split neighbor may have its real decided connection on a node
+      // other than whichever one currently happens to be active in its own panel.
+      const neighborPartner = resolvePresetPartnerAt(
+        [endpoint], neighbor, presetConnections, useMazeStore.getState().presetSplitPoints, useMazeStore.getState().presetActiveSplitNode,
+      );
+      const entry = presetConnections.get(presetEdgeKey(endpoint, neighborPartner));
       let kind: TileFaceKind = "undefined";
       if (entry) {
         if (entry.state === "wall") kind = "wall";

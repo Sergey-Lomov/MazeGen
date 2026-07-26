@@ -354,6 +354,55 @@ export function resolvePresetActiveEndpoint(
   return activeMap[key] ?? presetEndpoint(point);
 }
 
+/** Resolves which node of a split `neighborPoint` genuinely connects across the face toward
+ * `point` — used when wiring a face automatically (blueprint apply), where the correct partner is
+ * whichever of the neighbor's nodes already has a decided (`passage`/`wall`/one-way) entry toward
+ * any of `point`'s pre-blueprint nodes (`pointOldEndpoints` — `point` is about to be rebuilt by
+ * its own blueprint too, so its *old* identity, not the fresh endpoint the caller is about to
+ * write, is what any pre-existing neighbor entry was recorded against), not whichever node happens
+ * to be the neighbor's currently active UI slot (GitHub issue #243 — picking "the" active node
+ * here silently wired a connection to the wrong node while leaving the neighbor's real connecting
+ * node's entry orphaned). Falls back to the active-slot resolution when no such decided entry
+ * exists yet (neighbor not split, or this exact face not yet decided on any of its nodes) — mirrors
+ * `buildSplitPassagesCore`'s `resolveOther`. */
+export function resolvePresetPartnerAt(
+  pointOldEndpoints: PresetEndpoint[],
+  neighborPoint: [number, number],
+  presetConnections: Map<string, PresetConnectionEntry>,
+  presetSplitPoints: Record<string, number[]>,
+  activeMap: Record<string, PresetEndpoint>,
+): PresetEndpoint {
+  const candidates = allNodesAt(neighborPoint, presetSplitPoints);
+
+  // A `passage`/one-way entry is a real connection and wins outright. A `wall` entry only counts
+  // as a fallback match (recorded lower priority) — a blueprint explicitly writes `wall` on every
+  // face it doesn't use (see `applyPresetSplitBlueprint`), so the *first* candidate found with an
+  // explicit `wall` isn't necessarily the neighbor's real connecting node; a later candidate might
+  // still hold the real `passage`. Only fall through to a `wall` match if no candidate has a
+  // `passage`/one-way entry at all.
+  let wallFallback: PresetEndpoint | null = null;
+  for (const candidate of candidates) {
+    for (const from of pointOldEndpoints) {
+      const entry = presetConnections.get(presetEdgeKey(from, candidate));
+      if (!entry || entry.state === "undefined") continue;
+      if (entry.state === "wall") { wallFallback ??= candidate; continue; }
+      return candidate;
+    }
+  }
+  return wallFallback ?? resolvePresetActiveEndpoint(neighborPoint, activeMap);
+}
+
+/** Every node currently declared at `point` (original plus every declared slot, per
+ * `presetSplitPoints`) — used both by `resolvePresetPartnerAt` (the neighbor's full candidate set)
+ * and by `applyPresetSplitBlueprint` (to explicitly wall off every neighbor node the blueprint's
+ * resolved partner didn't pick, so a face doesn't silently leave one of the neighbor's other nodes
+ * undecided — GitHub issue #243 follow-up). */
+export function allNodesAt(point: [number, number], presetSplitPoints: Record<string, number[]>): PresetEndpoint[] {
+  const key = `${point[0]},${point[1]}`;
+  const slots = presetSplitPoints[key] ?? [];
+  return [presetEndpoint(point), ...slots.map((slotId) => presetEndpoint(point, slotId))];
+}
+
 /** Orders two preset endpoints `[from, to]` by the same canonical rule `presetEdgeKey` uses for
  * its own key ordering (lower `x`, then lower `y`) — exported so callers that need to build a
  * `PresetConnectionEntry` (which stores `from`/`to` in this same canonical order, see

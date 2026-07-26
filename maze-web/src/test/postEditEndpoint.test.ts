@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   nodeEndpoint, splitEndpoint, endpointsEqual, endpointKey, edgeKey, endpointIsNode, resolveEndpoint,
-  buildSplitNodeResolver,
+  buildSplitNodeResolver, resolvePostEditPartnerAt,
 } from "../pixi/postEditEndpoint";
 
 describe("endpointsEqual", () => {
@@ -123,5 +123,41 @@ describe("buildSplitNodeResolver", () => {
   it("returns undefined for a point missing from nodeMap entirely", () => {
     const resolve = buildSplitNodeResolver(new Map(), { "1,2": [0] });
     expect(resolve([1, 2], 0)).toBeUndefined();
+  });
+});
+
+describe("resolvePostEditPartnerAt (GitHub issue #243)", () => {
+  it("returns the neighbor's real connecting node — found via an existing draftEdges entry", () => {
+    const draftEdges = {
+      [edgeKey(nodeEndpoint(0), nodeEndpoint(10))]: { from: nodeEndpoint(0), to: nodeEndpoint(10), kind: "basic" },
+    };
+    const result = resolvePostEditPartnerAt([nodeEndpoint(0)], [1, 0], [1, 10], draftEdges, [0], {});
+    expect(result).toEqual(nodeEndpoint(10));
+  });
+
+  it("returns null when the neighbor point has no nodes at all", () => {
+    const result = resolvePostEditPartnerAt([nodeEndpoint(0)], [1, 0], [], {}, [], {});
+    expect(result).toBeNull();
+  });
+
+  it("falls back to a node-kind active endpoint when no draftEdges entry matches", () => {
+    const result = resolvePostEditPartnerAt([nodeEndpoint(0)], [1, 0], [1, 10], {}, [0], { "1,0": nodeEndpoint(10) });
+    expect(result).toEqual(nodeEndpoint(10));
+  });
+
+  it("resolves a split-kind active fallback to the matching confirmed node id", () => {
+    const result = resolvePostEditPartnerAt([nodeEndpoint(0)], [1, 0], [1, 10], {}, [0], { "1,0": splitEndpoint([1, 0], 0) });
+    expect(result).toEqual(nodeEndpoint(10));
+  });
+
+  it("returns the unresolved split-kind active endpoint as-is when its slot isn't confirmed yet", () => {
+    const active = splitEndpoint([1, 0], 5);
+    const result = resolvePostEditPartnerAt([nodeEndpoint(0)], [1, 0], [1], {}, [], { "1,0": active });
+    expect(result).toEqual(active);
+  });
+
+  it("falls back to the neighbor's first node when nothing matches and nothing is active", () => {
+    const result = resolvePostEditPartnerAt([nodeEndpoint(0)], [1, 0], [1, 10], {}, [0], {});
+    expect(result).toEqual(nodeEndpoint(1));
   });
 });

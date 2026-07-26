@@ -287,17 +287,24 @@ export function buildSplitPassagesCore<Id>(
   // node, silently falling back to `defaultKind` even though a real decided connection exists
   // (reported bug: a passage added to a specific slot rendered as still-optional because the
   // lookup checked the neighbor's original node instead). `other` must be resolved per node pair.
+  //
+  // A directed (passage/one-way) match wins outright over a `wall` match — a blueprint apply
+  // explicitly walls off every neighbor candidate the resolved partner didn't pick (GitHub issue
+  // #243 follow-up), so the *first* candidate in iteration order with a `wall` entry isn't
+  // necessarily `node`'s real connecting neighbor; a later candidate might still hold the real
+  // passage. Only fall back to a `wall` match if no candidate has a directed entry at all.
   const resolveOther = (node: SplitPassageNode<Id>, neighbors: SplitPassageNode<Id>[]): SplitPassageNode<Id> => {
+    let wallFallback: SplitPassageNode<Id> | null = null;
     for (const candidate of neighbors) {
       if (
         directed.has(`${String(node.id)}->${String(candidate.id)}`) ||
-        directed.has(`${String(candidate.id)}->${String(node.id)}`) ||
-        wallPairs.has(`${String(node.id)}<->${String(candidate.id)}`)
+        directed.has(`${String(candidate.id)}->${String(node.id)}`)
       ) {
         return candidate;
       }
+      if (wallPairs.has(`${String(node.id)}<->${String(candidate.id)}`)) wallFallback ??= candidate;
     }
-    return neighbors[0];
+    return wallFallback ?? neighbors[0];
   };
 
   const result: SplitPassage[] = [];

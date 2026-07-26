@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint } from "../../pixi/fieldEditUtils";
+import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
@@ -272,9 +272,6 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
       const cells = resolveCells(state.tessellationConfig, customPts);
       const inFieldCells = buildCellSet(cells);
-      const resolveActiveAt = (p: [number, number]): PresetEndpoint =>
-        resolvePresetActiveEndpoint(p, presetActiveSplitNode);
-
       // Every one of the blueprint's declared faces gets a `passage`; every other in-field face
       // of the tile gets an explicit `wall` — presets default to `undefined` (optional), which
       // would leave a blueprint's "no connection here" faces looking undecided instead of forbidden.
@@ -289,10 +286,28 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
           const [dx, dy] = offsets[faceIndex];
           const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
           if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
-          const neighborActive = resolveActiveAt(neighbor);
-          const edgeK = presetEdgeKey(endpoint, neighborActive);
-          const [from, to] = canonicalizePresetPair(endpoint, neighborActive);
+          // The neighbor's real connecting node — not just its active UI slot (GitHub issue #243).
+          // Resolved against the pre-cleanup snapshot (`state.presetConnections`) and `point`'s
+          // *old* (pre-blueprint) endpoints: any pre-existing neighbor entry was recorded against
+          // one of those, never against `endpoint` (a fresh node this call is about to mint).
+          const neighborPartner = resolvePresetPartnerAt(existingNodeEndpoints, neighbor, state.presetConnections, state.presetSplitPoints, presetActiveSplitNode);
+          const edgeK = presetEdgeKey(endpoint, neighborPartner);
+          const [from, to] = canonicalizePresetPair(endpoint, neighborPartner);
           presetConnections.set(edgeK, { from, to, state: requiredFaces.has(faceIndex) ? "passage" : "wall", source: "user" });
+
+          // If the neighbor point is itself split, every one of its *other* nodes (not the resolved
+          // partner) must end up with an explicit `wall` on this face too, unless one of them
+          // already has its own decided (non-`undefined`) entry here — otherwise that other node's
+          // side of this face silently stays `undefined` instead of reading as forbidden (GitHub
+          // issue #243 follow-up).
+          for (const other of allNodesAt(neighbor, state.presetSplitPoints)) {
+            if (presetEndpointsEqual(other, neighborPartner)) continue;
+            const otherKey = presetEdgeKey(endpoint, other);
+            const otherState = presetConnections.get(otherKey)?.state;
+            if (otherState !== undefined && otherState !== "undefined") continue;
+            const [oFrom, oTo] = canonicalizePresetPair(endpoint, other);
+            presetConnections.set(otherKey, { from: oFrom, to: oTo, state: "wall", source: "user" });
+          }
         }
       }
 
