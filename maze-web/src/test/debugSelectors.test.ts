@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, RB_TAG, WILSON_TAG, KRUSKAL_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, PRESET_SETUP_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
+import { parseTape, RB_TAG, WILSON_TAG, KRUSKAL_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, PRESET_SETUP_TAG, QC_TAG, TAG_SCOPE, NO_NODE, type ParsedTape } from "../debug/eventTape";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugArenaHandle } from "../store/storeTypes";
 import type { NodeDto } from "../wasm/types";
@@ -508,6 +508,57 @@ describe("selectDebugMazeView", () => {
     const afterSplit = selectDebugMazeView(arena, 3);
     expect(afterSplit?.nodes.map((n) => n.id)).toEqual([1, 2, 3, 4, 5]);
     expect(afterSplit?.edges).toContainEqual({ from: 2, to: 5, kind: "basic" });
+  });
+
+  // --- QC node removal (GitHub issue #248's remove_split strategy) ---
+
+  // root (0) -> BidirectionalEdgeAdded(2,3) (1) -> NodeRemoved(3) (2)
+  function buildQcNodeRemovedArenaTape(): ParsedTape {
+    const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
+      { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: TAG_SCOPE, bytes: new TextEncoder().encode("root") },
+      { parent: 0, firstChild: NO_NODE, nextSibling: 2, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, bytes: concatBytes([u64le(2n), u64le(3n)]) },
+      { parent: 0, firstChild: NO_NODE, nextSibling: NO_NODE, tag: QC_TAG.NODE_REMOVED, bytes: u64le(3n) },
+    ];
+    const offsets: number[] = [];
+    let cursor = 0;
+    for (const r of records) {
+      offsets.push(cursor);
+      cursor += r.bytes.byteLength;
+    }
+    const payload = concatBytes(records.map((r) => r.bytes));
+    const nodeTable = new Uint8Array(records.length * 22);
+    const dv = new DataView(nodeTable.buffer);
+    records.forEach((r, i) => {
+      const base = i * 22;
+      dv.setUint32(base + 0, r.parent, true);
+      dv.setUint32(base + 4, r.firstChild, true);
+      dv.setUint32(base + 8, r.nextSibling, true);
+      dv.setUint16(base + 12, r.tag, true);
+      dv.setUint32(base + 14, offsets[i], true);
+      dv.setUint32(base + 18, r.bytes.byteLength, true);
+    });
+    return parseTape(nodeTable, payload);
+  }
+
+  it("a node removed by QC's remove_split strategy (RemoveNode/NodeRemoved) disappears from view.nodes from that step onward", () => {
+    const tape = buildQcNodeRemovedArenaTape();
+    const arena: DebugArenaHandle = {
+      tape, algorithmKind: "quality_control",
+      sources: [{ scopeName: "quality_control", kind: "quality_control", nodeIndex: 0, startStep: 0, endStep: 2, checkpointFroms: [] }],
+      nodes: [{ id: 2, x: 0, y: 0, i: 0 }, { id: 3, x: 1, y: 0, i: 0 }],
+      totalSteps: 2,
+      debugValueNames: [],
+    };
+
+    // step 0 = BidirectionalEdgeAdded(2,3) applied — node 3 still present, connected.
+    const beforeRemoval = selectDebugMazeView(arena, 0);
+    expect(beforeRemoval?.nodes.map((n) => n.id)).toEqual([2, 3]);
+    expect(beforeRemoval?.edges).toContainEqual({ from: 2, to: 3, kind: "basic" });
+
+    // step 1 = NodeRemoved(3) applied — node 3 must be gone from view.nodes entirely, not just
+    // edgeless (its RemoveNode command already cleared its edges too, on the Rust side).
+    const afterRemoval = selectDebugMazeView(arena, 1);
+    expect(afterRemoval?.nodes.map((n) => n.id)).toEqual([2]);
   });
 
   // --- Kruskal dispatch (GitHub issue #146) ---

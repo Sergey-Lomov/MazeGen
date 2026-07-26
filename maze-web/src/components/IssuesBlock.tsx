@@ -51,6 +51,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const regionNodes = sourceCheck != null && (issue.payload.kind === "region_needs_expansion" || issue.payload.kind === "region_needs_shrink")
     ? issue.payload.nodes[sourceCheck] ?? null
     : null;
+  // `invalid_split_tile`'s payload is a flat node list (no group structure) — each flagged node
+  // is wrapped as its own singleton group so it reuses `RegionHighlightRenderer`'s per-group
+  // fill+perimeter, which for a group of size one reads as a border drawn around just that cell.
+  const splitTileNodes = sourceCheck != null && issue.payload.kind === "invalid_split_tile"
+    ? issue.payload.nodes[sourceCheck]?.map((id) => [id]) ?? null
+    : null;
   const palette = notificationPalette(severity);
 
   const handleMouseEnter = loopEdges != null
@@ -61,10 +67,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? () => setHoveredIssueLoopEdges(oneWayEdges.flat())
     : regionNodes != null
     ? () => setHoveredIssueRegionGroups(regionNodes)
+    : splitTileNodes != null
+    ? () => setHoveredIssueRegionGroups(splitTileNodes)
     : undefined;
   const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null
     ? () => setHoveredIssueLoopEdges(null)
-    : regionNodes != null
+    : regionNodes != null || splitTileNodes != null
     ? () => setHoveredIssueRegionGroups(null)
     : undefined;
 

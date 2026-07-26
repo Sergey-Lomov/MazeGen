@@ -369,30 +369,41 @@ for sending it, only unnecessary wire/type surface.
 There is no dedicated "rule dispatch result" event — a rule's applied/proposed repair outcome is
 narrated by resolving the `"apply requests"` scope's own label from its children's mutating-vs-
 `*Declined` counts (see the "Scope shape" note above), not a summary event carrying
-`RepairResult`/`ApplyOutcome` fields directly.
+`RepairResult`/`ApplyOutcome` fields directly. The one exception is `RepairResult::Failed` itself:
+`StrategyFailed { strategy_id: &'static str }` (GitHub issue #248) is emitted into the `"strategy
+<id>"` scope, alongside that strategy's own `*Proposed` events, whenever `apply()` returns `Failed`
+this iteration — one shared trace event for every strategy (not a dedicated variant per strategy
+type), since "this strategy gave up" carries the same narration meaning regardless of which
+strategy it was. `strategy_id` duplicates the scope name's own strategy id so a caller with only
+the flat event (no scope context) can still tell which strategy failed.
 
-**Proposed events — one variant per `repair::MutationCommand` variant (10 total)**
+**Proposed events — one variant per `repair::MutationCommand` variant (11 total)**
 (`DirectedEdgeProposed`, `BidirectionalEdgeProposed`, `DirectedTeleportProposed`,
 `BidirectionalTeleportProposed`, `EdgeRemoveProposed`, `EdgeRemoveBetweenProposed`,
 `EdgeRemoveWithReverseProposed`, `TeleportRemoveWithReverseProposed`, `StartSetProposed`,
-`FinishSetProposed`) — emitted into the `"strategy <id>"` scope for every command a strategy's
-`apply()` returned, before any of them has been revalidated or applied by `apply_commands`.
-Narrates what was *asked for*, independent of whether the separate `"apply requests"` scope right
-after actually honors it. Not a field-for-field mirror for all 10:
+`FinishSetProposed`, `NodeRemoveProposed`) — emitted into the `"strategy <id>"` scope for every
+command a strategy's `apply()` returned, before any of them has been revalidated or applied by
+`apply_commands`. Narrates what was *asked for*, independent of whether the separate "apply
+requests" scope right after actually honors it. Not a field-for-field mirror for all 11:
 `RemoveEdge`/`RemoveEdgeWithReverse`/`RemoveTeleportWithReverse` carry only an opaque `EdgeId`,
 meaningless to web-side narration on its own —
 `EdgeRemoveProposed`/`EdgeRemoveWithReverseProposed`/`TeleportRemoveWithReverseProposed` instead
 carry the resolved `(from: NodeId, to: NodeId)` pair, read off the still-intact graph before
 anything is mutated (GitHub issue #171's follow-up fix). If resolution fails (stale id), no event
 is emitted for that command rather than fabricating a `(0, 0)` pair — node id `0` is a real, valid
-id, so a fabricated pair would be indistinguishable from a genuine edge.
+id, so a fabricated pair would be indistinguishable from a genuine edge. `NodeRemoveProposed`
+(GitHub issue #248) carries `node: NodeId` directly — a node's own id is meaningful on its own,
+unlike an `EdgeId`, so no resolution step is needed.
 
-**Mutating events — one variant per `repair::MutationCommand` variant (10 total)**
+**Mutating events — one variant per `repair::MutationCommand` variant (11 total)**
 (`DirectedEdgeAdded`, `BidirectionalEdgeAdded`, `DirectedTeleportAdded`,
 `BidirectionalTeleportAdded`, `EdgeRemoved`, `EdgeRemovedBetween`, `EdgeRemovedWithReverse`,
-`TeleportRemovedWithReverse`, `StartSet`, `FinishSet`) — emitted by `apply_commands`
-(`quality_control/rule.rs`) for exactly the commands its own revalidation actually applied
-(`is_mutating()` is `true` for these ten and only these ten). Each also has a same-fields,
+`TeleportRemovedWithReverse`, `StartSet`, `FinishSet`, `NodeRemoved`) — emitted by
+`apply_commands` (`quality_control/rule.rs`) for exactly the commands its own revalidation
+actually applied (`is_mutating()` is `true` for these eleven and only these eleven).
+`NodeRemoved(NodeId)` (GitHub issue #248) narrates `MutationCommand::RemoveNode` actually applied —
+see `Specs/repair.md`'s `RemoveNode`/`RemoveSplitStrategy` sections for what removes a node and
+why. Each also has a same-fields,
 trace-only `*Declined` counterpart (`DirectedEdgeDeclined`, etc.) emitted when revalidation rejects
 a proposed command — one dedicated variant per command kind rather than a single payload-less
 `CommandDeclined`, so narration/tests can say exactly which command failed revalidation, not just
@@ -434,9 +445,11 @@ generation algorithm's "debug value" (RB's `recursion_stack`, Wilson's `current_
 deliberately out of scope, not a gap.
 
 **Wire tags** are assigned in `quality_control/event.rs`'s own `wire_tags` module, ordinary local
-tags in `1..=37` (well under the 255 a single source's local tag byte allows) — namespaced by
+tags in `1..=41` (well under the 255 a single source's local tag byte allows) — namespaced by
 source index only when `merge_tapes` folds this tape together with generation's, same mechanism
-every merged source already uses (`Specs/event_log.md`'s "#169" section).
+every merged source already uses (`Specs/event_log.md`'s "#169" section). `38`/`39`/`40` are
+`NodeRemoved`/`NodeRemoveDeclined`/`NodeRemoveProposed` (GitHub issue #248); `41` is
+`StrategyFailed`.
 
 ## Built-in Checks
 
@@ -1049,6 +1062,30 @@ Unlike `MinOneWayCountCheck`/`MinOneWayRatioCheck` (which report a numeric defic
 If the count/ratio is above the configured maximum, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, vec![(one_ways, to_remove)])` with `.with_detail(instance_id, "max_one_ways", ...)` / `.with_detail(instance_id, "max_ratio", ...)` chained on.
 
 `OneWayGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_ONE_WAY_GROUP`.
+
+### SplitDistanceFromWaypointCheck
+
+```rust
+pub const SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT: u32 = 0;
+pub const SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
+
+pub enum SplitWaypoint { Start, Finish, Any }
+
+pub struct SplitDistanceFromWaypointCheck {
+    pub instance_id: String,
+    pub distance: u32,
+    pub comparison: Comparison,
+    pub waypoint: SplitWaypoint,
+}
+```
+
+Part of the split-QC epic (#246), GitHub issue #248. Flags an extra split node (`Field::add_node_at`'s minted node — never a point's slot-0 original, `Field::nodes_at(point)[0]`) whose point sits too close to/far from a waypoint (start/finish) in progression space. Mirrors `TeleportWaypointDistanceCheck`'s shape (`SplitWaypoint` is `TeleportWaypoint`'s split-tile counterpart, `Any` uses whichever of start/finish is closer).
+
+A split point's distance to a waypoint is the **minimum** shortest-path distance (in tiles, via the shared distance maps) over *every* node at that point (`Field::nodes_at`, slot-0 included) — a split point is one physical tile, so its progression-space position is shared by all its nodes. A node absent from the relevant distance map (unreachable, or compressed out of the nav graph as an interior corridor node — see `NavGraph::nav_node_for`) contributes no distance for itself; a point where every node is undefined is never flagged. Silently skips if the maze doesn't have the waypoint(s) this instance needs set (covered by `MissingEndpointsCheck`).
+
+Only ever flags extra nodes (`nodes_at(point)[1..]`), never slot-0 — the hard constraint every strategy in epic #246 shares. Fires `InvalidSplitTileIssue::new_from_check(instance_id, invalid)` with `.with_detail(instance_id, "distance", ...)` chained on, where `invalid` is every flagged point's extra node ids.
+
+`RemoveSplitStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE`.
 
 ## WASM Interface
 

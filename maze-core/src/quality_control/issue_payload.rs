@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use crate::ids::NodeId;
 use crate::graph::{Graph, scc::ConnectedComponents};
 use super::issue::Issue;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue};
 
 /// Structural payload data for an `Issue`, resolved against the current `Graph`/`ConnectedComponents`
 /// — one shared source of truth for both `maze-wasm`'s JSON `IssuePayloadDto` (via a thin
@@ -46,6 +47,12 @@ pub enum IssuePayload {
     /// reused) so `payload.kind` still mirrors `IssueKind::as_str()` (`invalid_one_way` vs.
     /// `invalid_teleport`), same rationale as every other variant here.
     InvalidOneWay { groups: HashMap<String, Vec<Vec<[u32; 2]>>> },
+    /// Keyed by source check id — each entry is the flat list of maze node ids flagged by that
+    /// check (extra split nodes only — never a point's slot-0 node, see `InvalidSplitTileIssue`'s
+    /// doc comment). Flat rather than list-of-lists (unlike `RegionNeedsExpansion`'s per-region
+    /// grouping) since a split-tile flag has no group structure to preserve — every flagged node
+    /// highlights independently. Mirrors `IssuePayloadDto::InvalidSplitTile`.
+    InvalidSplitTile { nodes: HashMap<String, Vec<u32>> },
 }
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
@@ -183,6 +190,21 @@ fn resolve_invalid_one_way_group_payload(groups: &[(Vec<crate::ids::EdgeId>, u32
     if out.is_empty() { None } else { Some(IssuePayload::InvalidOneWay { groups: out }) }
 }
 
+/// Resolves flagged split-tile `NodeId`s into a flat per-check list, keyed by the specific
+/// check(s) that flagged *that* node (`invalid_sources`) — mirrors `resolve_invalid_teleport_payload`'s
+/// per-node attribution rationale, just without an edge/graph lookup since a split node id is
+/// already the value to report (no edge endpoints to resolve).
+fn resolve_invalid_split_tile_payload(invalid: &[NodeId], invalid_sources: &HashMap<NodeId, Vec<String>>) -> Option<IssuePayload> {
+    let mut nodes: HashMap<String, Vec<u32>> = HashMap::new();
+    for &id in invalid {
+        let Ok(id32) = u32::try_from(id) else { continue };
+        for source in invalid_sources.get(&id).into_iter().flatten() {
+            nodes.entry(source.clone()).or_default().push(id32);
+        }
+    }
+    if nodes.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { nodes }) }
+}
+
 pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         if let Some(payload) = resolve_invalid_loop_payload(all, invalid, invalid_sources, graph) {
@@ -244,6 +266,12 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
 
     if let Some(InvalidOneWayGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidOneWayGroupIssue>() {
         if let Some(payload) = resolve_invalid_one_way_group_payload(groups, invalid_sources, graph) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidSplitTileIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitTileIssue>() {
+        if let Some(payload) = resolve_invalid_split_tile_payload(invalid, invalid_sources) {
             return payload;
         }
     }

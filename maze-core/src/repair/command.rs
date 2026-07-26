@@ -45,6 +45,15 @@ pub enum MutationCommand {
     /// Idempotent — applied only if `meta.finish` is still unset at apply time. Same rationale
     /// as `SetStart` for having no paired helper.
     SetFinish(NodeId),
+    /// Removes an extra split node (`Field::add_node_at`'s minted node) and every edge incident
+    /// to it — mirrors `Maze::remove_node_at`'s atomic field+graph removal (GitHub issue #221).
+    /// Never valid for a point's slot-0 (original) node — `try_remove_node` refuses that case, the
+    /// same hard constraint every split-QC repair strategy shares (see GitHub epic #246). A
+    /// strategy wanting to preserve the removed node's connections (e.g. `RemoveSplitStrategy`'s
+    /// `redistribute` param) must propose the replacement `AddDirectedEdge`/
+    /// `AddBidirectionalEdge` commands itself, ahead of this one in its own returned batch — this
+    /// command only ever deletes, it never redirects.
+    RemoveNode { node: NodeId },
 }
 
 /// Every `EdgeId` a batch of commands proposes removing — a strategy building on another

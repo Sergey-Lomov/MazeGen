@@ -92,6 +92,8 @@ pub fn apply_commands<T: Tessellation>(
                 if maze.meta.finish.is_none() { maze.meta.finish = Some(node); }
                 true
             }
+            MutationCommand::RemoveNode { node } =>
+                crate::generation::try_remove_node(&mut maze.field, &mut maze.graph, node, preset_state),
         };
         if ok { applied += 1; }
         if let Some(log) = event_log.as_mut() {
@@ -140,6 +142,8 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Op
         (MutationCommand::SetStart(node), false) => QcEvent::StartSetDeclined(*node),
         (MutationCommand::SetFinish(node), true) => QcEvent::FinishSet(*node),
         (MutationCommand::SetFinish(node), false) => QcEvent::FinishSetDeclined(*node),
+        (MutationCommand::RemoveNode { node }, true) => QcEvent::NodeRemoved(*node),
+        (MutationCommand::RemoveNode { node }, false) => QcEvent::NodeRemoveDeclined(*node),
     })
 }
 
@@ -175,6 +179,7 @@ fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &
         }
         MutationCommand::SetStart(node) => QcEvent::StartSetProposed(*node),
         MutationCommand::SetFinish(node) => QcEvent::FinishSetProposed(*node),
+        MutationCommand::RemoveNode { node } => QcEvent::NodeRemoveProposed(*node),
     })
 }
 
@@ -379,6 +384,9 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
                     if let Some(event) = qc_event_proposed_for_command(cmd, maze) {
                         scope.emit(event);
                     }
+                }
+                if matches!(result, RepairResult::Failed) {
+                    scope.emit(QcEvent::StrategyFailed { strategy_id: rule_strategy.strategy.strategy_id() });
                 }
             }
         }

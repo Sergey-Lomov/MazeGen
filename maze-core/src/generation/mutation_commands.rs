@@ -14,9 +14,11 @@
 
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
+use crate::space::{Field, Tessellation};
 use crate::repair::command::MutationCommand;
 use super::preset_state::PresetState;
 use super::edge_ops::{directed_edge_feasible, bidirectional_edge_feasible, remove_edge_between_feasible};
+use super::node_ops::remove_node_feasible;
 
 // Step 1 of GitHub issue #118's migration (Specs/repair.md): additive, not yet wired into any
 // caller — strategies still mutate `&mut Maze` directly today. `#[allow(dead_code)]` until step 2
@@ -86,6 +88,12 @@ pub(crate) fn cmd_remove_edge_with_reverse(graph: &Graph, id: crate::ids::EdgeId
     vec![MutationCommand::RemoveEdgeWithReverse { id }]
 }
 
+#[allow(dead_code)]
+pub(crate) fn cmd_remove_node<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, node: NodeId) -> Vec<MutationCommand> {
+    if !remove_node_feasible(field, preset_state, node) { return vec![]; }
+    vec![MutationCommand::RemoveNode { node }]
+}
+
 /// Direct unit tests for the `cmd_*` `MutationCommand` builders and the feasibility predicates
 /// they share with their `try_*` mutating counterparts (GitHub issue #118, `Specs/repair.md`).
 /// These builders had no direct test coverage before — only exercised transitively (and only
@@ -106,6 +114,18 @@ mod cmd_builders_tests {
         field.build_nodes(&mut g);
         let nodes: Vec<NodeId> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
         (g, nodes)
+    }
+
+    /// Field + extra split node at its first point — the shape `cmd_remove_node` needs (a `Field`
+    /// to resolve slot-0/point identity against, unlike every other `cmd_*` builder here which
+    /// only ever touches `Graph`).
+    fn field_with_extra_node() -> (Field<SquareTessellation>, NodeId, NodeId) {
+        let mut ids = crate::IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let p = field.all_points().next().unwrap();
+        let slot0 = field.node_at(p).unwrap();
+        let extra = field.add_node_at(p, &mut ids);
+        (field, slot0, extra)
     }
 
     #[test]
@@ -330,6 +350,60 @@ mod cmd_builders_tests {
             let applied = try_remove_edge_by_id(&mut g, id, &preset_state);
             assert_eq!(proposed, applied,
                 "cmd_remove_edge_by_id and try_remove_edge_by_id disagreed for protected={protected}");
+        }
+    }
+
+    #[test]
+    fn cmd_remove_node_proposes_when_feasible() {
+        let (field, _slot0, extra) = field_with_extra_node();
+        let cmds = cmd_remove_node(&field, &PresetState::empty(), extra);
+        assert_eq!(cmds, vec![MutationCommand::RemoveNode { node: extra }]);
+    }
+
+    #[test]
+    fn cmd_remove_node_empty_for_slot0() {
+        let (field, slot0, _extra) = field_with_extra_node();
+        assert!(cmd_remove_node(&field, &PresetState::empty(), slot0).is_empty(),
+            "slot-0 (the point's original node) must never be proposed for removal");
+    }
+
+    #[test]
+    fn cmd_remove_node_empty_for_a_locked_out_node() {
+        let (field, _slot0, extra) = field_with_extra_node();
+        let mut preset_state = PresetState::empty();
+        preset_state.locked_out.insert(extra);
+        assert!(cmd_remove_node(&field, &preset_state, extra).is_empty());
+    }
+
+    #[test]
+    fn cmd_remove_node_empty_for_a_preset_edge_endpoint() {
+        let (field, slot0, extra) = field_with_extra_node();
+        let mut preset_state = PresetState::empty();
+        preset_state.preset_edges.insert((slot0, extra));
+        assert!(cmd_remove_node(&field, &preset_state, extra).is_empty());
+    }
+
+    /// Cross-checks `cmd_remove_node`'s verdict against `try_remove_node`'s actual result, same
+    /// "the two paths can never disagree" property `cmd_and_try_agree_on_*` above guarantees for
+    /// the edge-addressed builders.
+    #[test]
+    fn cmd_and_try_agree_on_every_preset_lock_combination_for_remove_node() {
+        for (locked_out, locked_in, preset_edge) in [
+            (false, false, false), (true, false, false), (false, true, false), (false, false, true),
+        ] {
+            let (mut field, slot0, extra) = field_with_extra_node();
+            let mut g = Graph::new();
+            field.build_nodes(&mut g);
+            g.add_node(extra);
+            let mut preset_state = PresetState::empty();
+            if locked_out { preset_state.locked_out.insert(extra); }
+            if locked_in { preset_state.locked_in.insert(extra); }
+            if preset_edge { preset_state.preset_edges.insert((slot0, extra)); }
+
+            let proposed = !cmd_remove_node(&field, &preset_state, extra).is_empty();
+            let applied = super::super::node_ops::try_remove_node(&mut field, &mut g, extra, &preset_state);
+            assert_eq!(proposed, applied,
+                "cmd_remove_node and try_remove_node disagreed for locks ({locked_out}, {locked_in}, {preset_edge})");
         }
     }
 }

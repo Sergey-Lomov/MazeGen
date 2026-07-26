@@ -268,6 +268,16 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_TAG.FINISH_SET_DECLINED, u64le(2n))).toEqual({ kind: "FinishSetDeclined", id: 2n });
   });
 
+  it("decodes NodeRemoved/NodeRemoveDeclined/NodeRemoveProposed (8 bytes, GitHub issue #248)", () => {
+    expect(decodeQcEvent(QC_TAG.NODE_REMOVED, u64le(9n))).toEqual({ kind: "NodeRemoved", id: 9n });
+    expect(decodeQcEvent(QC_TAG.NODE_REMOVE_DECLINED, u64le(9n))).toEqual({ kind: "NodeRemoveDeclined", id: 9n });
+    expect(decodeQcEvent(QC_TAG.NODE_REMOVE_PROPOSED, u64le(9n))).toEqual({ kind: "NodeRemoveProposed", id: 9n });
+  });
+
+  it("decodes StrategyFailed (a plain length-prefixed strategy id string)", () => {
+    expect(decodeQcEvent(QC_TAG.STRATEGY_FAILED, strPayload("remove_split"))).toEqual({ kind: "StrategyFailed", strategyId: "remove_split" });
+  });
+
   it("decodes every *Proposed variant identically to its mutating mirror except the kind", () => {
     expect(decodeQcEvent(QC_TAG.DIRECTED_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedEdgeProposed", from: 1n, to: 2n });
     expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeProposed", a: 1n, b: 2n });
@@ -303,6 +313,7 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "TeleportRemovedWithReverse", from: 1n, to: 2n, reverseRemoved: true })).toBe(true);
     expect(isMutatingQcEvent({ kind: "StartSet", id: 1n })).toBe(true);
     expect(isMutatingQcEvent({ kind: "FinishSet", id: 1n })).toBe(true);
+    expect(isMutatingQcEvent({ kind: "NodeRemoved", id: 1n })).toBe(true);
 
     expect(isMutatingQcEvent({ kind: "IterationStarted", iteration: 0 })).toBe(false);
     expect(isMutatingQcEvent({ kind: "CheckRan", checkId: "c", issue: null })).toBe(false);
@@ -328,6 +339,9 @@ describe("isMutatingQcEvent", () => {
     expect(isMutatingQcEvent({ kind: "TeleportRemoveWithReverseProposed", from: 1n, to: 2n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "StartSetProposed", id: 1n })).toBe(false);
     expect(isMutatingQcEvent({ kind: "FinishSetProposed", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "NodeRemoveDeclined", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "NodeRemoveProposed", id: 1n })).toBe(false);
+    expect(isMutatingQcEvent({ kind: "StrategyFailed", strategyId: "remove_split" })).toBe(false);
   });
 });
 
@@ -387,7 +401,32 @@ describe("mutatingQcEvents / applyQc", () => {
     expect(result.finish).toBe(20n);
     expect(result.edges).toEqual([{ from: 10n, to: 20n, kind: "basic" }, { from: 20n, to: 10n, kind: "basic" }]);
     expect(result.removedEdges).toEqual([{ from: 1n, to: 2n }]);
+    expect(result.removedNodes).toEqual([]);
     expect(result.step).toBe(3);
+  });
+
+  it("NodeRemoved (GitHub issue #248) accumulates into removedNodes, in emission order, deduplicated", () => {
+    // root (0) -> NodeRemoved(7) (1) -> NodeRemoved(9) (2) -> NodeRemoved(7) (3, duplicate)
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
+      { parent: 0, firstChild: null, nextSibling: 3, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(9n) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
+    ]);
+    const result = applyQc(tape, 2, undefined, 0);
+    expect(result.removedNodes).toEqual([7n, 9n]);
+  });
+
+  it("resuming NodeRemoved accumulation from a previous result matches a full replay to the same targetStep", () => {
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(9n) },
+    ]);
+    const from = applyQc(tape, 0, undefined, 0);
+    const viaResume = applyQc(tape, 1, from, 0);
+    const fromScratch = applyQc(tape, 1, undefined, 0);
+    expect(viaResume.removedNodes).toEqual(fromScratch.removedNodes);
   });
 
   it("EdgeRemoved/TeleportRemovedWithReverse (resolved from,to — GitHub issue #171's follow-up fix) fold into the same keyed accumulator as EdgeRemovedBetween", () => {
@@ -818,6 +857,33 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
       { kind: "text", text: 'Check "check1": issue found ' },
       { kind: "issue", issueKind: "invalid_one_way", target: null, reasons: ["One-way validation"] },
     ]);
+  });
+
+  it("CheckRan with an InvalidSplitTile payload carries a region-shaped highlight target, one singleton-cell group per flagged node, flattened across every contributing check", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_split_tile", payload: { kind: "InvalidSplitTile", nodes: new Map([["check1", [5n, 6n]]]) }, details: new Map([["distance", "3"]]) },
+    }, { stageTitle: () => undefined, ruleTitle: () => undefined, checkTypeId: () => "split_distance_from_waypoint" });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "Split distance from waypoint": issue found ' },
+      { kind: "issue", issueKind: "invalid_split_tile", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Split node closer than 3 tiles to a waypoint"] },
+    ]);
+  });
+
+  it("an InvalidSplitTile payload with no actual nodes (empty map) resolves to a null highlight target, not an empty-array target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_split_tile", payload: { kind: "InvalidSplitTile", nodes: new Map() }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_split_tile", target: null, reasons: ["Split tile validation"] },
+    ]);
+  });
+
+  it("StrategyFailed narrates the strategy's resolved display label", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "StrategyFailed", strategyId: "remove_split" });
+    expect(tokens).toEqual([{ kind: "text", text: 'Strategy "Split node removal" failed' }]);
   });
 
   it("an InvalidLoop payload with no actual edges (empty map) resolves to a null highlight target, not an empty-array target", () => {

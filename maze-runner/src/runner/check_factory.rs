@@ -32,12 +32,13 @@ use maze_core::{
         MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
         MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
         MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
+        SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT,
         Comparison, CycleKind,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
-        MissingOneWaysIssue, MissingTeleportsIssue,
+        MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue,
     },
     RegionClass,
 };
@@ -66,6 +67,7 @@ pub(crate) enum KindTag {
     InvalidOneWayGroup,
     MissingOneWays,
     MissingTeleports,
+    InvalidSplitTile,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -102,6 +104,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "max_one_way_ratio"         => KindTag::InvalidOneWayGroup,
         "min_teleport_count"        => KindTag::MissingTeleports,
         "min_teleport_ratio"        => KindTag::MissingTeleports,
+        "split_distance_from_waypoint" => KindTag::InvalidSplitTile,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -145,6 +148,14 @@ fn parse_one_way_waypoint(param: Option<&String>) -> OneWayWaypoint {
         Some("start") => OneWayWaypoint::Start,
         Some("finish") => OneWayWaypoint::Finish,
         _ => OneWayWaypoint::Any,
+    }
+}
+
+fn parse_split_waypoint(param: Option<&String>) -> SplitWaypoint {
+    match param.map(String::as_str) {
+        Some("start") => SplitWaypoint::Start,
+        Some("finish") => SplitWaypoint::Finish,
+        _ => SplitWaypoint::Any,
     }
 }
 
@@ -499,6 +510,21 @@ pub(crate) fn build_missing_one_ways_check<T: Tessellation>(instance: &CheckInst
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MIN_ONE_WAY_RATIO_DEFAULT);
             Some(Box::new(MinOneWayRatioCheck { instance_id, min_ratio }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_invalid_split_tile_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitTileIssue>>> {
+    match instance.type_id.as_str() {
+        "split_distance_from_waypoint" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
+            let waypoint = parse_split_waypoint(instance.params.get("waypoint"));
+            Some(Box::new(SplitDistanceFromWaypointCheck { instance_id, distance, comparison, waypoint }))
         }
         _ => None,
     }

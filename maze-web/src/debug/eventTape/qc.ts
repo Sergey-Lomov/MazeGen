@@ -45,6 +45,12 @@ export const QC_TAG = {
   EDGE_REMOVED_WITH_REVERSE: 35,
   EDGE_REMOVE_WITH_REVERSE_DECLINED: 36,
   EDGE_REMOVE_WITH_REVERSE_PROPOSED: 37,
+
+  NODE_REMOVED: 38,
+  NODE_REMOVE_DECLINED: 39,
+  NODE_REMOVE_PROPOSED: 40,
+
+  STRATEGY_FAILED: 41,
 } as const;
 
 export type RepairLimitKind = "MaxIterations" | "TimeBudget";
@@ -57,7 +63,8 @@ export type IssuePayload =
   | { kind: "RegionNeedsExpansion"; nodes: Map<string, bigint[][]> }
   | { kind: "RegionNeedsShrink"; nodes: Map<string, bigint[][]> }
   | { kind: "InvalidTeleport"; groups: Map<string, [bigint, bigint][][]> }
-  | { kind: "InvalidOneWay"; groups: Map<string, [bigint, bigint][][]> };
+  | { kind: "InvalidOneWay"; groups: Map<string, [bigint, bigint][][]> }
+  | { kind: "InvalidSplitTile"; nodes: Map<string, bigint[]> };
 
 /** Mirrors `QcEvent` in `maze-core/src/quality_control/event.rs` — see that type's doc comment for
  *  the trace/mutating/declined split. `ruleId`/`checkId`/`issueKind` are the wire strings
@@ -98,7 +105,11 @@ export type QcEvent =
   | { kind: "EdgeRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "TeleportRemoveWithReverseProposed"; from: bigint; to: bigint }
   | { kind: "StartSetProposed"; id: bigint }
-  | { kind: "FinishSetProposed"; id: bigint };
+  | { kind: "FinishSetProposed"; id: bigint }
+  | { kind: "NodeRemoved"; id: bigint }
+  | { kind: "NodeRemoveDeclined"; id: bigint }
+  | { kind: "NodeRemoveProposed"; id: bigint }
+  | { kind: "StrategyFailed"; strategyId: string };
 
 /** Reads the `HashMap<String, Vec<Vec<[u32; 2]>>>` wire shape `write_str_keyed_edge_pairs`
  *  produces (`IssuePayload::InvalidLoop`'s `edges`). */
@@ -156,6 +167,28 @@ function readStrKeyedNodeLists(bytes: Uint8Array, offset: number): { value: Map<
   return { value, next: pos };
 }
 
+/** Reads the `HashMap<String, Vec<u32>>` wire shape `write_str_keyed_flat_node_lists` produces
+ *  (`IssuePayload::InvalidSplitTile`'s `nodes` — flat, no region-grouping level unlike
+ *  `RegionNeedsExpansion`). */
+function readStrKeyedFlatNodeLists(bytes: Uint8Array, offset: number): { value: Map<string, bigint[]>; next: number } {
+  const value = new Map<string, bigint[]>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    const nodeCount = readU32(bytes, pos);
+    pos += 4;
+    const nodes: bigint[] = [];
+    for (let n = 0; n < nodeCount; n++) {
+      nodes.push(BigInt(readU32(bytes, pos)));
+      pos += 4;
+    }
+    value.set(key, nodes);
+  }
+  return { value, next: pos };
+}
+
 /** Reads one check's own raw display details (GitHub issue #171) — mirrors `write_details`
  *  (`HashMap<&'static str, String>`, e.g. `{"threshold" -> "10"}`). */
 function readDetails(bytes: Uint8Array, offset: number): { value: Map<string, string>; next: number } {
@@ -209,6 +242,10 @@ function readIssuePayload(bytes: Uint8Array, offset: number): { value: IssuePayl
   if (tag === 5) {
     const { value: groups, next } = readStrKeyedEdgePairs(bytes, offset + 1);
     return { value: { kind: "InvalidOneWay", groups }, next };
+  }
+  if (tag === 6) {
+    const { value: nodes, next } = readStrKeyedFlatNodeLists(bytes, offset + 1);
+    return { value: { kind: "InvalidSplitTile", nodes }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }
@@ -339,6 +376,21 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       expectLen(tag, bytes, 8);
       return { kind: "FinishSetProposed", id: readNodeId(bytes, 0) };
 
+    case QC_TAG.NODE_REMOVED:
+      expectLen(tag, bytes, 8);
+      return { kind: "NodeRemoved", id: readNodeId(bytes, 0) };
+    case QC_TAG.NODE_REMOVE_DECLINED:
+      expectLen(tag, bytes, 8);
+      return { kind: "NodeRemoveDeclined", id: readNodeId(bytes, 0) };
+    case QC_TAG.NODE_REMOVE_PROPOSED:
+      expectLen(tag, bytes, 8);
+      return { kind: "NodeRemoveProposed", id: readNodeId(bytes, 0) };
+
+    case QC_TAG.STRATEGY_FAILED: {
+      const { value: strategyId } = readStr(bytes, 0);
+      return { kind: "StrategyFailed", strategyId };
+    }
+
     default:
       throw new Error(`QcEvent: unknown wire tag ${tag}`);
   }
@@ -358,7 +410,8 @@ export function isMutatingQcEvent(event: QcEvent): boolean {
     event.kind === "EdgeRemovedWithReverse" ||
     event.kind === "TeleportRemovedWithReverse" ||
     event.kind === "StartSet" ||
-    event.kind === "FinishSet"
+    event.kind === "FinishSet" ||
+    event.kind === "NodeRemoved"
   );
 }
 
@@ -387,6 +440,12 @@ export interface QcApplyResult {
    *  `edges` list alone can't express "remove this edge", only "these edges exist". */
   edges: Edge[];
   removedEdges: { from: bigint; to: bigint }[];
+  /** Maze node ids removed by `MutationCommand::RemoveNode` (GitHub issue #248's `remove_split`
+   *  strategy) up to this step — append-only, since a node once removed never reappears within
+   *  QC's own event stream (unlike edges, which can be re-added). Lets `mergeDebugMazeView`
+   *  exclude a removed split node from the reconstructed node list, mirroring how `removedEdges`
+   *  lets it retract an earlier source's edges. */
+  removedNodes: bigint[];
   start: bigint | null;
   finish: bigint | null;
   step: number;
@@ -425,7 +484,7 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
       throw new Error(`applyQc: from.step ${from.step} is ahead of targetStep ${targetStep}`);
     }
     if (from.step === targetStep) {
-      return { edges: [...from.edges], removedEdges: [...from.removedEdges], start: from.start, finish: from.finish, step: targetStep, nodeIndex: from.nodeIndex };
+      return { edges: [...from.edges], removedEdges: [...from.removedEdges], removedNodes: [...from.removedNodes], start: from.start, finish: from.finish, step: targetStep, nodeIndex: from.nodeIndex };
     }
   }
 
@@ -445,6 +504,7 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
   // a from-scratch replay up to `from.step` would have built.
   const net = new Map<string, Edge>(from ? from.edges.map((e) => [`${e.from}:${e.to}`, e]) : undefined);
   const removedFromEarlierSources = new Set<string>(from ? from.removedEdges.map((e) => `${e.from}:${e.to}`) : undefined);
+  const removedNodes = new Set<bigint>(from?.removedNodes);
   let start: bigint | null = from?.start ?? null;
   let finish: bigint | null = from?.finish ?? null;
 
@@ -501,6 +561,9 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
       case "FinishSet":
         finish = event.id;
         break;
+      case "NodeRemoved":
+        removedNodes.add(event.id);
+        break;
       default:
         break;
     }
@@ -512,5 +575,5 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
     return { from: BigInt(from), to: BigInt(to) };
   });
 
-  return { edges, removedEdges, start, finish, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
+  return { edges, removedEdges, removedNodes: [...removedNodes], start, finish, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
 }

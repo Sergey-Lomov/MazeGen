@@ -131,6 +131,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.min_teleport_ratio.label"] as MessageFn,
     description: m["check.min_teleport_ratio.description"] as MessageFn,
   },
+  split_distance_from_waypoint: {
+    label: m["check.split_distance_from_waypoint.label"] as MessageFn,
+    description: m["check.split_distance_from_waypoint.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -193,6 +197,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
   missing_teleports: {
     label: m["issue.missing_teleports.label"] as MessageFn,
     description: m["issue.missing_teleports.description"] as MessageFn,
+  },
+  invalid_split_tile: {
+    label: m["issue.invalid_split_tile.label"] as MessageFn,
+    description: m["issue.invalid_split_tile.description"] as MessageFn,
   },
 };
 
@@ -326,6 +334,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   missing_teleports: {
     label: m["strategy.missing_teleports.label"] as MessageFn,
     description: m["strategy.missing_teleports.description"] as MessageFn,
+  },
+  remove_split: {
+    label: m["strategy.remove_split.label"] as MessageFn,
+    description: m["strategy.remove_split.description"] as MessageFn,
   },
 };
 
@@ -573,6 +585,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   attempts_limit: {
     label: m["param.attempts_limit.label"] as MessageFn,
     description: m["param.attempts_limit.description"] as MessageFn,
+  },
+  redistribute: {
+    label: m["param.redistribute.label"] as MessageFn,
+    description: m["param.redistribute.description"] as MessageFn,
   },
 };
 

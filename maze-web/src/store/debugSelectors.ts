@@ -66,10 +66,16 @@ interface DebugMazeViewContribution {
    *  comment for why this must gate `DebugMazeView.nodes`, not just `.edges`. Always empty for
    *  every other source kind (only `vertex_based` ever produces split nodes). */
   createdNodes: bigint[];
+  /** Maze node ids removed by QC's `remove_split` strategy (GitHub issue #248's `RemoveNode`
+   *  mutation command) that have happened by this contribution's step — only `quality_control`
+   *  ever sets this (mirrors `createdNodes` being `vertex_based`-only). Must gate
+   *  `DebugMazeView.nodes` the same way `createdNodes` does, or a removed split node keeps
+   *  rendering as a stray, edgeless dot for the rest of the replay. */
+  removedNodes: bigint[];
 }
 
 function emptyContribution(): DebugMazeViewContribution {
-  return { edges: [], removedEdges: [], start: null, finish: null, debugValues: new Map(), dsuGroups: null, debugMaps: new Map(), debugVertices: new Map(), createdNodes: [] };
+  return { edges: [], removedEdges: [], start: null, finish: null, debugValues: new Map(), dsuGroups: null, debugMaps: new Map(), debugVertices: new Map(), createdNodes: [], removedNodes: [] };
 }
 
 /** Prefixes every debug-value/-map/-vertex name in a contribution with `"{scopeName}:"`, mirroring
@@ -157,6 +163,7 @@ function qcContribution(arena: DebugArenaHandle, source: DebugArenaHandle["sourc
   const contribution = emptyContribution();
   contribution.edges = result.edges;
   contribution.removedEdges = result.removedEdges;
+  contribution.removedNodes = result.removedNodes;
   contribution.start = result.start;
   contribution.finish = result.finish;
   return contribution;
@@ -181,6 +188,7 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
   debugMaps: Map<string, Map<bigint, bigint>>;
   debugVertices: Map<string, bigint | null>;
   createdNodes: bigint[];
+  removedNodes: bigint[];
 } {
   let edges: { from: bigint; to: bigint; kind?: "basic" | "teleport" }[] = [];
   let start: bigint | null = null;
@@ -190,6 +198,7 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
   let debugMaps: Map<string, Map<bigint, bigint>> = new Map();
   let debugVertices: Map<string, bigint | null> = new Map();
   let createdNodes: bigint[] = [];
+  let removedNodes: bigint[] = [];
 
   for (const contribution of contributions) {
     if (contribution.removedEdges.length > 0) {
@@ -208,9 +217,10 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
     if (contribution.debugMaps.size > 0) debugMaps = contribution.debugMaps;
     if (contribution.debugVertices.size > 0) debugVertices = contribution.debugVertices;
     if (contribution.createdNodes.length > 0) createdNodes = createdNodes.concat(contribution.createdNodes);
+    if (contribution.removedNodes.length > 0) removedNodes = removedNodes.concat(contribution.removedNodes);
   }
 
-  return { edges, start, finish, debugValues, dsuGroups, debugMaps, debugVertices, createdNodes };
+  return { edges, start, finish, debugValues, dsuGroups, debugMaps, debugVertices, createdNodes, removedNodes };
 }
 
 // Single-slot memo, keyed on (arena, debugStep) identity — every consumer (currently just
@@ -323,9 +333,17 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
   // this is a no-op whenever the run produced no splits.
   const allSplitNodeIds = allSplitNodeIdsOf(arena);
   const createdSoFar = new Set(merged.createdNodes);
-  const nodes = allSplitNodeIds.size === 0
+  // A node removed by QC's `remove_split` strategy (GitHub issue #248) must stop rendering from
+  // this step onward, same "gate DebugMazeView.nodes, not just .edges" rationale as `createdNodes`
+  // above — otherwise it lingers as a stray, edgeless dot once its last edge is retracted.
+  const removedSoFar = new Set(merged.removedNodes);
+  const nodes = (allSplitNodeIds.size === 0 && removedSoFar.size === 0)
     ? arena.nodes
-    : arena.nodes.filter((n) => !allSplitNodeIds.has(BigInt(n.id)) || createdSoFar.has(BigInt(n.id)));
+    : arena.nodes.filter((n) => {
+        const id = BigInt(n.id);
+        if (removedSoFar.has(id)) return false;
+        return !allSplitNodeIds.has(id) || createdSoFar.has(id);
+      });
 
   const view: DebugMazeView = {
     nodes,

@@ -77,6 +77,14 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       const edges = [...payload.groups.values()].flat(2);
       return edges.length > 0 ? { kind: "cycle", edges } : null;
     }
+    case "InvalidSplitTile": {
+      // Reuses the "region" shape — `RegionHighlightRenderer`'s per-group perimeter reads as a
+      // border around each individual flagged cell regardless of whether the group's cells are
+      // actually connected, so a flat split-tile node list draws correctly here even though it
+      // has no region structure of its own (unlike RegionNeedsExpansion's real SCC regions).
+      const nodes = [...payload.nodes.values()].flat();
+      return nodes.length > 0 ? { kind: "region", nodes } : null;
+    }
   }
 }
 
@@ -780,6 +788,14 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.start_set_proposed"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSetProposed":
       return [{ kind: "text", text: m["debug.tree.qc.finish_set_proposed"]() + " " }, { kind: "node", id: event.id }];
+    case "NodeRemoved":
+      return [{ kind: "text", text: m["debug.tree.qc.node_removed"]() + " " }, { kind: "node", id: event.id }];
+    case "NodeRemoveDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.node_remove_declined"]() + " " }, { kind: "node", id: event.id }];
+    case "NodeRemoveProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.node_remove_proposed"]() + " " }, { kind: "node", id: event.id }];
+    case "StrategyFailed":
+      return [{ kind: "text", text: m["debug.tree.qc.strategy_failed"]({ strategyId: quoted(resolveStrategyLabel(event.strategyId)) }) }];
   }
 }
 

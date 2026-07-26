@@ -22,6 +22,7 @@ pub(crate) mod group_issue;
 mod invalid_one_way_group;
 mod missing_one_ways;
 mod missing_teleports;
+mod invalid_split_tile;
 
 pub use group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 pub use missing_endpoints::MissingEndpointsIssue;
@@ -41,6 +42,7 @@ pub use invalid_one_way::InvalidOneWayIssue;
 pub use invalid_one_way_group::{InvalidOneWayGroupIssue, OneWayGroupKind};
 pub use missing_one_ways::MissingOneWaysIssue;
 pub use missing_teleports::MissingTeleportsIssue;
+pub use invalid_split_tile::InvalidSplitTileIssue;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and

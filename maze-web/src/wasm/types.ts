@@ -128,6 +128,14 @@ export type IssuePayloadDto =
        * group (`invalid_one_way_group`) can be any size — both share this payload shape. Keyed
        * per check for the same reason as the `invalid_loop` variant's `edges`. */
       groups: Record<string, [number, number][][]>;
+    }
+  | {
+      kind: "invalid_split_tile";
+      /** Keyed by source check id — each entry is the flat list of flagged extra split-node maze
+       * ids (never a point's slot-0 node). Flat rather than list-of-lists (unlike
+       * `region_needs_expansion`'s `nodes`) since a split-tile flag has no group structure — every
+       * flagged node highlights independently. */
+      nodes: Record<string, number[]>;
     };
 
 export interface IssueDto {

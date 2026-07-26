@@ -49,6 +49,16 @@ function regionNeedsExpansionIssue(sourceCheck: string): IssueDto {
   };
 }
 
+function invalidSplitTileIssue(sourceCheck: string): IssueDto {
+  return {
+    kind: "invalid_split_tile",
+    payload: { kind: "invalid_split_tile", nodes: { [sourceCheck]: [7, 8] } },
+    source_checks: [sourceCheck],
+    source_check_types: { [sourceCheck]: sourceCheck },
+    details: {},
+  };
+}
+
 describe("IssueBubble", () => {
   it("hovering an invalid_loop bubble sets hoveredIssueLoopEdges to this check's flattened edges; leaving clears it", () => {
     const issue = invalidLoopIssue("loop_length");
@@ -90,6 +100,20 @@ describe("IssueBubble", () => {
     const bubble = screen.getByText("Region expansion");
     fireEvent.mouseEnter(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[5, 6]]);
+    fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
+  });
+
+  it("hovering an invalid_split_tile bubble sets hoveredIssueRegionGroups to one singleton group per flagged node (shared region-highlight path, reused as a per-cell border); leaving clears it", () => {
+    // The payload is a flat node list (no group structure of its own) -- IssueBubble wraps each
+    // flagged node as its own [id] group so it reuses RegionHighlightRenderer's per-group
+    // fill+perimeter, which for a size-one group reads as a border around just that cell.
+    const issue = invalidSplitTileIssue("split_distance_from_waypoint");
+    render(<IssueBubble issue={issue} sourceCheck="split_distance_from_waypoint" />);
+
+    const bubble = screen.getByText("Split tile validation");
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[7], [8]]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });

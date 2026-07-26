@@ -50,6 +50,12 @@ mod wire_tags {
     pub const EDGE_REMOVED_WITH_REVERSE: u16 = 35;
     pub const EDGE_REMOVE_WITH_REVERSE_DECLINED: u16 = 36;
     pub const EDGE_REMOVE_WITH_REVERSE_PROPOSED: u16 = 37;
+
+    pub const NODE_REMOVED: u16 = 38;
+    pub const NODE_REMOVE_DECLINED: u16 = 39;
+    pub const NODE_REMOVE_PROPOSED: u16 = 40;
+
+    pub const STRATEGY_FAILED: u16 = 41;
 }
 
 /// Narration-level events for the quality-control/repair pipeline (GitHub issue #147) — see
@@ -97,6 +103,14 @@ pub enum QcEvent {
     /// `Stage::run_repair`'s fixpoint loop stopped because the shared `RepairBudget` was
     /// exhausted (see `StageOutcome::LimitReached`).
     IterationLimitReached(RepairLimitKind),
+    /// A strategy's `apply()` returned `RepairResult::Failed` this iteration — one shared trace
+    /// event for every strategy (not a dedicated variant per strategy type), since "this strategy
+    /// gave up" carries the same narration meaning regardless of which strategy it was. Emitted
+    /// inside the strategy's own `"strategy <id>"` scope, right alongside its `*Proposed` events —
+    /// `strategy_id` is `RepairStrategy::strategy_id()`, the same wire string the scope name itself
+    /// already carries, so a caller with only the flat event (no scope context) can still tell
+    /// which strategy failed.
+    StrategyFailed { strategy_id: &'static str },
 
     // --- proposed: exact mirror of `repair::MutationCommand`'s 10 variants, emitted for every
     // command a strategy's `apply()` returned, in the `"strategy <id>"` scope, before any of them
@@ -123,6 +137,9 @@ pub enum QcEvent {
     TeleportRemoveWithReverseProposed { from: NodeId, to: NodeId },
     StartSetProposed(NodeId),
     FinishSetProposed(NodeId),
+    /// Mirrors `EdgeRemoveProposed`'s "resolve identity ahead of mutation" rationale — the node's
+    /// own id is meaningful on its own (unlike an `EdgeId`), so this just carries `node` directly.
+    NodeRemoveProposed(NodeId),
 
     // --- mutating: exact mirror of `repair::MutationCommand`'s 10 variants, emitted only for
     // commands `apply_commands` actually applied (its `ok == true` branch). ---
@@ -152,6 +169,8 @@ pub enum QcEvent {
     TeleportRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
     StartSet(NodeId),
     FinishSet(NodeId),
+    /// `MutationCommand::RemoveNode` actually applied — carries the removed node's own id.
+    NodeRemoved(NodeId),
 
     // --- trace: same fields as the matching mutating variant above, for a command
     // `apply_commands` proposed but whose revalidation rejected it (its `ok == false` branch). ---
@@ -178,6 +197,9 @@ pub enum QcEvent {
     TeleportRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
     StartSetDeclined(NodeId),
     FinishSetDeclined(NodeId),
+    /// `MutationCommand::RemoveNode` proposed but revalidation rejected it (node no longer exists,
+    /// is slot-0, or is preset-protected by the time `apply_commands` ran).
+    NodeRemoveDeclined(NodeId),
 }
 
 impl DebugEvent for QcEvent {
@@ -198,6 +220,7 @@ impl DebugEvent for QcEvent {
                 | QcEvent::TeleportRemovedWithReverse { .. }
                 | QcEvent::StartSet(_)
                 | QcEvent::FinishSet(_)
+                | QcEvent::NodeRemoved(_)
         )
     }
 }
@@ -228,6 +251,10 @@ fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
         IssuePayload::InvalidOneWay { groups } => {
             out.push(5);
             write_str_keyed_edge_pairs(out, groups);
+        }
+        IssuePayload::InvalidSplitTile { nodes } => {
+            out.push(6);
+            write_str_keyed_flat_node_lists(out, nodes);
         }
     }
 }
@@ -286,6 +313,19 @@ fn write_str_keyed_node_lists(out: &mut Vec<u8>, map: &std::collections::HashMap
     }
 }
 
+/// Flat variant of `write_str_keyed_node_lists` — one node list per key, no region-grouping level
+/// (`IssuePayload::InvalidSplitTile` has no group structure to preserve, unlike `RegionNeedsExpansion`).
+fn write_str_keyed_flat_node_lists(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<u32>>) {
+    out.extend_from_slice(&(map.len() as u32).to_le_bytes());
+    for (key, nodes) in map {
+        write_str(out, key);
+        out.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
+        for &node in nodes {
+            out.extend_from_slice(&node.to_le_bytes());
+        }
+    }
+}
+
 impl EncodeEventPayload for QcEvent {
     fn type_id(&self) -> u16 {
         match self {
@@ -304,6 +344,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::TeleportRemovedWithReverse { .. } => wire_tags::TELEPORT_REMOVED_WITH_REVERSE,
             QcEvent::StartSet(_) => wire_tags::START_SET,
             QcEvent::FinishSet(_) => wire_tags::FINISH_SET,
+            QcEvent::NodeRemoved(_) => wire_tags::NODE_REMOVED,
 
             QcEvent::DirectedEdgeDeclined { .. } => wire_tags::DIRECTED_EDGE_DECLINED,
             QcEvent::BidirectionalEdgeDeclined { .. } => wire_tags::BIDIRECTIONAL_EDGE_DECLINED,
@@ -315,6 +356,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::TeleportRemoveWithReverseDeclined { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_DECLINED,
             QcEvent::StartSetDeclined(_) => wire_tags::START_SET_DECLINED,
             QcEvent::FinishSetDeclined(_) => wire_tags::FINISH_SET_DECLINED,
+            QcEvent::NodeRemoveDeclined(_) => wire_tags::NODE_REMOVE_DECLINED,
 
             QcEvent::DirectedEdgeProposed { .. } => wire_tags::DIRECTED_EDGE_PROPOSED,
             QcEvent::BidirectionalEdgeProposed { .. } => wire_tags::BIDIRECTIONAL_EDGE_PROPOSED,
@@ -326,6 +368,9 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::TeleportRemoveWithReverseProposed { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_PROPOSED,
             QcEvent::StartSetProposed(_) => wire_tags::START_SET_PROPOSED,
             QcEvent::FinishSetProposed(_) => wire_tags::FINISH_SET_PROPOSED,
+            QcEvent::NodeRemoveProposed(_) => wire_tags::NODE_REMOVE_PROPOSED,
+
+            QcEvent::StrategyFailed { .. } => wire_tags::STRATEGY_FAILED,
         }
     }
 
@@ -379,9 +424,12 @@ impl EncodeEventPayload for QcEvent {
                 write_node_id(out, *b);
             }
             QcEvent::StartSet(id) | QcEvent::StartSetDeclined(id) | QcEvent::StartSetProposed(id)
-            | QcEvent::FinishSet(id) | QcEvent::FinishSetDeclined(id) | QcEvent::FinishSetProposed(id) => {
+            | QcEvent::FinishSet(id) | QcEvent::FinishSetDeclined(id) | QcEvent::FinishSetProposed(id)
+            | QcEvent::NodeRemoved(id) | QcEvent::NodeRemoveDeclined(id) | QcEvent::NodeRemoveProposed(id) => {
                 write_node_id(out, *id);
             }
+
+            QcEvent::StrategyFailed { strategy_id } => write_str(out, strategy_id),
         }
     }
 }
@@ -403,6 +451,7 @@ mod tests {
         assert!(QcEvent::TeleportRemovedWithReverse { from: 1, to: 2, reverse_removed: true }.is_mutating());
         assert!(QcEvent::StartSet(1).is_mutating());
         assert!(QcEvent::FinishSet(1).is_mutating());
+        assert!(QcEvent::NodeRemoved(1).is_mutating());
     }
 
     #[test]
@@ -427,6 +476,7 @@ mod tests {
         assert!(!QcEvent::TeleportRemoveWithReverseDeclined { from: 1, to: 2, reverse_removed: false }.is_mutating());
         assert!(!QcEvent::StartSetDeclined(1).is_mutating());
         assert!(!QcEvent::FinishSetDeclined(1).is_mutating());
+        assert!(!QcEvent::NodeRemoveDeclined(1).is_mutating());
     }
 
     #[test]
@@ -441,6 +491,7 @@ mod tests {
         assert!(!QcEvent::TeleportRemoveWithReverseProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::StartSetProposed(1).is_mutating());
         assert!(!QcEvent::FinishSetProposed(1).is_mutating());
+        assert!(!QcEvent::NodeRemoveProposed(1).is_mutating());
     }
 
     #[test]
@@ -463,6 +514,7 @@ mod tests {
             QcEvent::TeleportRemovedWithReverse { from: 0, to: 0, reverse_removed: true },
             QcEvent::StartSet(0),
             QcEvent::FinishSet(0),
+            QcEvent::NodeRemoved(0),
             QcEvent::DirectedEdgeDeclined { from: 0, to: 0 },
             QcEvent::BidirectionalEdgeDeclined { a: 0, b: 0 },
             QcEvent::DirectedTeleportDeclined { from: 0, to: 0 },
@@ -473,6 +525,7 @@ mod tests {
             QcEvent::TeleportRemoveWithReverseDeclined { from: 0, to: 0, reverse_removed: false },
             QcEvent::StartSetDeclined(0),
             QcEvent::FinishSetDeclined(0),
+            QcEvent::NodeRemoveDeclined(0),
             QcEvent::DirectedEdgeProposed { from: 0, to: 0 },
             QcEvent::BidirectionalEdgeProposed { a: 0, b: 0 },
             QcEvent::DirectedTeleportProposed { from: 0, to: 0 },
@@ -483,6 +536,8 @@ mod tests {
             QcEvent::TeleportRemoveWithReverseProposed { from: 0, to: 0 },
             QcEvent::StartSetProposed(0),
             QcEvent::FinishSetProposed(0),
+            QcEvent::NodeRemoveProposed(0),
+            QcEvent::StrategyFailed { strategy_id: "remove_split" },
         ];
         let mut tags = HashSet::new();
         for event in &events {
@@ -518,6 +573,30 @@ mod tests {
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes[16], 0);
+    }
+
+    #[test]
+    fn node_removed_declined_and_proposed_all_encode_the_same_node_id_bytes() {
+        // GitHub issue #248: NodeRemoved/NodeRemoveDeclined/NodeRemoveProposed share the same
+        // single-NodeId payload shape as StartSet/FinishSet, but never had their own direct
+        // encode_payload assertion (only indirectly exercised via every_variant_has_a_unique_
+        // nonzero_wire_tag's type_id() calls) — pins the actual byte output down explicitly.
+        for event in [QcEvent::NodeRemoved(42), QcEvent::NodeRemoveDeclined(42), QcEvent::NodeRemoveProposed(42)] {
+            let mut bytes = Vec::new();
+            event.encode_payload(&mut bytes);
+            assert_eq!(bytes, 42u64.to_le_bytes().to_vec(), "{event:?} must encode its NodeId as 8 little-endian bytes");
+        }
+    }
+
+    #[test]
+    fn strategy_failed_is_not_mutating_and_encodes_its_strategy_id() {
+        let event = QcEvent::StrategyFailed { strategy_id: "remove_split" };
+        assert!(!event.is_mutating());
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        let mut expected = Vec::new();
+        write_str(&mut expected, "remove_split");
+        assert_eq!(bytes, expected);
     }
 
     /// `EdgeRemoveWithReverseDeclined` is always constructed with `reverse_removed: false` in

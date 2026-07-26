@@ -7,7 +7,7 @@ use maze_core::{
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
-        MissingOneWaysIssue, MissingTeleportsIssue,
+        MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue,
     },
 };
 use crate::config::GenerateConfig;
@@ -18,7 +18,7 @@ use super::check_factory::{
     build_region_needs_shrink_check,
     build_missing_regions_check, build_invalid_teleport_check, build_teleport_group_proximity_check,
     build_invalid_one_way_check, build_one_way_group_proximity_check, build_missing_one_ways_check,
-    build_missing_teleports_check,
+    build_missing_teleports_check, build_invalid_split_tile_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
 
@@ -86,6 +86,7 @@ fn build_rule<T: Tessellation + 'static>(rule_cfg: &crate::config::QcRuleConfig)
         KindTag::InvalidOneWayGroup => build_rule_for!(InvalidOneWayGroupIssue, build_one_way_group_proximity_check, rule_cfg),
         KindTag::MissingOneWays => build_rule_for!(MissingOneWaysIssue, build_missing_one_ways_check, rule_cfg),
         KindTag::MissingTeleports => build_rule_for!(MissingTeleportsIssue, build_missing_teleports_check, rule_cfg),
+        KindTag::InvalidSplitTile => build_rule_for!(InvalidSplitTileIssue, build_invalid_split_tile_check, rule_cfg),
     }
 }
 

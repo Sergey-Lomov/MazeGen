@@ -94,7 +94,8 @@ fn command_endpoints(command: &MutationCommand) -> Option<(crate::ids::NodeId, c
         | MutationCommand::RemoveEdgeWithReverse { .. }
         | MutationCommand::RemoveTeleportWithReverse { .. }
         | MutationCommand::SetStart(_)
-        | MutationCommand::SetFinish(_) => None,
+        | MutationCommand::SetFinish(_)
+        | MutationCommand::RemoveNode { .. } => None,
     }
 }
 

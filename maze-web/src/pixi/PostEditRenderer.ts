@@ -10,6 +10,7 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
+import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
@@ -34,6 +35,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly teleportPreviewContainer: Container;
   private readonly splitJunctionContainer: Container;
   private readonly linkHoverContainer: Container;
+  private readonly issueHighlightContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -53,6 +55,12 @@ export class PostEditRenderer extends BaseFieldRenderer {
    *  to node center, not the shared geometric wall segment (a link bubble names a specific pair of
    *  *nodes*, and a teleport link has no shared face at all to draw on). */
   private readonly linkHover: NodeEdgeHighlightRenderer;
+  /** Highlights a hovered `IssueBubble`'s flagged cells/edges/regions in the post-edit canvas —
+   *  own instance, not shared with `AnalyticsRenderer`'s (feature-renderer ownership rule,
+   *  `maze-web/CLAUDE.md`). `IssuesBlock`/`IssueBubble` drive both from the same store fields
+   *  (`hoveredIssueLoopEdges`/`hoveredIssueRegionGroups`), so no post-edit-specific wiring needed
+   *  beyond owning this instance and re-rendering it on the same triggers as everything else. */
+  private readonly issueHighlight: IssueHighlightOverlay;
 
   constructor(container: Container) {
     super();
@@ -81,6 +89,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.teleportPreviewContainer);
     this.linkHoverContainer = new Container();
     this.root.addChild(this.linkHoverContainer);
+    this.issueHighlightContainer = new Container();
+    this.root.addChild(this.issueHighlightContainer);
 
     this.grid        = new GridRenderer(this.gridContainer);
     this.floor       = new CellFillRenderer(this.floorContainer);
@@ -94,6 +104,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
     this.linkHover   = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
+    this.issueHighlight = new IssueHighlightOverlay(this.issueHighlightContainer);
 
     this.root.visible = false;
 
@@ -177,9 +188,27 @@ export class PostEditRenderer extends BaseFieldRenderer {
       this.redrawLinkHover(state);
     }
 
+    if (
+      state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges ||
+      state.hoveredIssueRegionGroups !== prev.hoveredIssueRegionGroups ||
+      state.nodes !== prev.nodes
+    ) {
+      this.redrawIssueHighlight(state);
+    }
+
     if (state.postEditTool !== prev.postEditTool || state.postEditTeleportPendingFrom !== prev.postEditTeleportPendingFrom) {
       if (state.postEditTeleportPendingFrom === null) this.teleportPreview.clear();
     }
+  }
+
+  private redrawIssueHighlight(state: MazeState): void {
+    if (!this.cfg) return;
+    this.issueHighlight.render({
+      nodes: state.nodes,
+      edges: state.hoveredIssueLoopEdges,
+      regionGroups: state.hoveredIssueRegionGroups,
+      cfg: this.cfg,
+    });
   }
 
   private redrawLinkHover(state: MazeState): void {
@@ -258,6 +287,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.redrawLinkHover(state);
+    this.redrawIssueHighlight(state);
   }
 
   protected clearAll(): void {
@@ -273,6 +303,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.linkHover.clear();
+    this.issueHighlight.clear();
     this.teleportPreview.clear();
   }
 
@@ -287,6 +318,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hover.destroy();
     this.cellHover.destroy();
     this.linkHover.destroy();
+    this.issueHighlight.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
@@ -299,5 +331,6 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.cellHoverContainer.destroy();
     this.teleportPreviewContainer.destroy();
     this.linkHoverContainer.destroy();
+    this.issueHighlightContainer.destroy();
   }
 }

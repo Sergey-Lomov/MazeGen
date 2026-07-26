@@ -23,6 +23,34 @@ fn repro_86_farthest_endpoints_wrong_finish() {
     assert!(kinds.is_empty(), "no remaining issues expected, got {kinds:?}");
 }
 
+/// Regression for GitHub issue #248's user report: with a preset-protected split node (the
+/// preset passage into it puts it in `preset_edges`, so `try_remove_node` always declines
+/// `RemoveNode`), `RemoveSplitStrategy` used to report `Fixed` regardless, spinning the repair
+/// fixpoint loop until `repair_limit_reached` instead of failing fast on the first iteration --
+/// the split-tile issue only ever surfaced after the whole repair budget was burned (and could be
+/// missed entirely if the caller doesn't wait out the full budget). Fixed by checking
+/// `remove_node_feasible` up front and reporting `Failed` when nothing is actually removable.
+#[test]
+fn repro_248_split_distance_from_waypoint_fails_fast_on_a_preset_protected_node() {
+    let result = run_fixture("tests/fixtures/repro-248-split-distance-from-waypoint.json", 0);
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
+    assert_eq!(kinds, vec!["invalid_split_tile"], "must surface the split-tile issue directly, without burning the repair budget into repair_limit_reached");
+}
+
+/// GitHub issue #248 follow-up: a split node whose only two edges form a plain pass-through
+/// corridor (in from one side, out the other -- the shape real preset split nodes usually have)
+/// gets compressed into some other nav-edge's interior `path` by `NavGraph`; `nav_node_for`
+/// returns `None` for it, so `split_distance_from_waypoint` silently never fired for the common
+/// split-node shape (only worked when the split node happened to also be a junction, e.g. in the
+/// other repro fixture above). Fixed by falling back to `NavGraph::corridor_index`, the same
+/// resolution `routing::resolve_nav_node` already uses for a route's own interior nodes.
+#[test]
+fn repro_248_split_distance_from_waypoint_fires_for_a_compressed_corridor_split_node() {
+    let result = run_fixture("tests/fixtures/repro-248-compressed-corridor-split.json", 0);
+    let kinds: Vec<&str> = result.remaining_issues.iter().map(|i| i.kind().as_str()).collect();
+    assert_eq!(kinds, vec!["invalid_split_tile"], "must fire even though the split node is a compressed pass-through corridor, not a junction");
+}
+
 /// Template — copy + rename + add assertions.
 #[test]
 #[ignore]

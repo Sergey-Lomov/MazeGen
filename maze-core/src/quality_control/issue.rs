@@ -19,6 +19,7 @@ pub enum IssueKind {
     InvalidOneWayGroup,
     MissingOneWays,
     MissingTeleports,
+    InvalidSplitTile,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -121,6 +122,16 @@ pub const MISSING_ONE_WAYS: IssueKind = IssueKind::MissingOneWays;
 /// one. Carries `MissingTeleportsIssue { missing }` — see that type's doc comment. No repair
 /// strategy registered yet for this kind (deliberately out of scope for #211).
 pub const MISSING_TELEPORTS: IssueKind = IssueKind::MissingTeleports;
+/// An extra split node (`Field::add_node_at`'s minted node, never a point's slot-0 original) is
+/// invalid for some check-specific reason — currently `SplitDistanceFromWaypointCheck` (the
+/// node's point sits too close to/far from `meta.start`/`meta.finish`, per a configured
+/// `Comparison`). Mirrors `INVALID_TELEPORT`'s role for teleports: a semantic category, not tied
+/// to one specific reason — future per-split-node checks may flag a split node invalid for other
+/// reasons and reuse this same kind. Carries `InvalidSplitTileIssue { invalid: Vec<NodeId>, .. }`
+/// — see that type's doc comment. Repaired by `RemoveSplitStrategy` (see `repair.md`), which
+/// collapses the flagged extra node back into its point's slot-0 original — never removes slot-0
+/// itself (a hard constraint across every split-QC strategy, see GitHub epic #246).
+pub const INVALID_SPLIT_TILE: IssueKind = IssueKind::InvalidSplitTile;
 
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
@@ -142,6 +153,7 @@ impl IssueKind {
             IssueKind::InvalidOneWayGroup => "invalid_one_way_group",
             IssueKind::MissingOneWays => "missing_one_ways",
             IssueKind::MissingTeleports => "missing_teleports",
+            IssueKind::InvalidSplitTile => "invalid_split_tile",
         }
     }
 
@@ -172,6 +184,7 @@ impl IssueKind {
             "invalid_one_way_group" => Some(IssueKind::InvalidOneWayGroup),
             "missing_one_ways" => Some(IssueKind::MissingOneWays),
             "missing_teleports" => Some(IssueKind::MissingTeleports),
+            "invalid_split_tile" => Some(IssueKind::InvalidSplitTile),
             _ => None,
         }
     }

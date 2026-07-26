@@ -1,0 +1,51 @@
+{
+  "tessellation": {
+    "tessellation_type": "square",
+    "points": [
+      [0, 0],
+      [1, 0],
+      [2, 0]
+    ]
+  },
+  "stages": [
+    {
+      "id": "stage_1",
+      "name": "Stage 1",
+      "rules": [
+        {
+          "id": "split_rule",
+          "checks": [
+            {
+              "local_id": "split_check",
+              "type_id": "split_distance_from_waypoint",
+              "params": { "distance": "5", "comparison": "lt", "waypoint": "start" }
+            }
+          ],
+          "strategy": { "id": "remove_split", "params": { "redistribute": "false" } }
+        }
+      ]
+    }
+  ],
+  "initial": {
+    "method": "custom_vertex_based",
+    "depth_first": 0,
+    "corridor_chance": 0,
+    "branching": 0,
+    "directionality": 0
+  },
+  "elements": {
+    "one_way_chance": 0,
+    "teleport_chance": 0,
+    "teleport_one_way_chance": 0
+  },
+  "preset_connections": [
+    { "from": { "point": [0, 0] }, "to": { "point": [1, 0] }, "state": "wall" },
+    { "from": { "point": [1, 0], "slot": 0 }, "to": { "point": [0, 0] }, "state": "passage" },
+    { "from": { "point": [1, 0] }, "to": { "point": [2, 0] }, "state": "passage" }
+  ],
+  "locked_nodes": [],
+  "split_points": [[[1, 0], 0]],
+  "preset_start": { "point": [0, 0] },
+  "preset_finish": { "point": [2, 0] },
+  "qc_experiment": false
+}
