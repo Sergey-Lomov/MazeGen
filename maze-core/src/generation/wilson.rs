@@ -5,7 +5,7 @@ use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
 use crate::event_log::{DebugEvent, DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta, DebugVertexOp, EncodeEventPayload, EventLog};
-use super::{PresetState, try_add_bidirectional_edge, can_connect};
+use super::{PresetState, try_add_bidirectional_edge, bidirectional_edge_feasible, split_aware_neighbors};
 
 /// Stable wire tags for [`WilsonEvent`] (see `Specs/event_log.md`'s #124 binary encoding) —
 /// manually assigned, never derived from Rust enum variant order/discriminant. `0` is reserved
@@ -266,12 +266,21 @@ pub fn generate<T: Tessellation>(
                 let teleport_dsts = preset_state.preset_teleports.get(&current).map(Vec::as_slice).unwrap_or(&[]);
                 let teleport_reverse_srcs = teleport_srcs.get(&current).map(Vec::as_slice).unwrap_or(&[]);
                 // Preset-teleport destinations already have their edge in the graph —
-                // traversable regardless of `can_connect` (see GitHub issue #226). The reverse of a
-                // one-way preset teleport is also traversable for search purposes, so a walk can
-                // still reach `visited` from the "wrong" side (see `teleport_srcs` above, #228).
-                let neighbors: Vec<NodeId> = field.neighbors(current)
+                // traversable regardless of `bidirectional_edge_feasible` (see GitHub issue #226).
+                // The reverse of a one-way preset teleport is also traversable for search purposes,
+                // so a walk can still reach `visited` from the "wrong" side (see `teleport_srcs`
+                // above, #228).
+                //
+                // `bidirectional_edge_feasible` (both directions free), not `can_connect` (either
+                // direction free) — Wilson always commits a full bidirectional passage via
+                // `try_add_bidirectional_edge` in the commit phase below. `can_connect`'s looser
+                // check let a one-direction-blocked candidate pass this search-phase filter, get
+                // walked into and committed, yet have `try_add_bidirectional_edge` silently refuse
+                // to add anything — leaving `EdgeAdded`/`NodeVisited` narrated with no graph edge
+                // behind them.
+                let neighbors: Vec<NodeId> = split_aware_neighbors(field, graph, current)
                     .into_iter()
-                    .filter(|&n| can_connect(current, n, preset_state))
+                    .filter(|&n| bidirectional_edge_feasible(preset_state, current, n))
                     .chain(teleport_dsts.iter().copied())
                     .chain(teleport_reverse_srcs.iter().copied())
                     .collect();
@@ -308,7 +317,8 @@ pub fn generate<T: Tessellation>(
         // Only opens the "commit" scope when there's actually a path to commit — a walk that
         // dead-ends on its very first step (no `next` entry recorded for `walk_start`) would
         // otherwise leave an empty, non-expandable "commit" scope in the tree.
-        if !visited.contains(&walk_start) && next.contains_key(&walk_start) {
+        let has_path_to_commit = next.contains_key(&walk_start);
+        if !visited.contains(&walk_start) && has_path_to_commit {
             let mut commit_scope = walk_scope.as_mut().map(|g| g.enter("commit"));
             let mut node = walk_start;
             while !visited.contains(&node) {
@@ -328,6 +338,20 @@ pub fn generate<T: Tessellation>(
                 }
                 node = dst;
             }
+        }
+
+        // A walk that dead-ended without ever reaching `visited` (no path exists from `walk_start`
+        // under the current edge constraints — e.g. every neighbor is one-directionally blocked for
+        // the bidirectional add this algorithm always performs) leaves `walk_start` neither visited
+        // nor removed from `unvisited` by the `retain` below. Without this, the outer `while
+        // !unvisited.is_empty()` loop would pick the exact same unreachable `walk_start` forever —
+        // an infinite loop (confirmed: `next`'s loop-erasure can't break it, since the walk keeps
+        // re-stepping between the same disconnected node(s) with no progress). `walk_start` is
+        // dropped from the pool unconnected, same as it would end up for a fully preset-isolated
+        // node — reachability/connectivity here is `build_maze`'s repair pass's concern, not this
+        // algorithm's.
+        if !visited.contains(&walk_start) && !has_path_to_commit {
+            unvisited.retain(|&n| n != walk_start);
         }
 
         unvisited.retain(|n| !visited.contains(n));

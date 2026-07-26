@@ -96,6 +96,61 @@ fn can_connect_false_when_locked_out_and_locked_in_overlap_both_ways() {
     assert!(!can_connect(a, b, &preset_state));
 }
 
+// ─── bidirectional_edge_feasible ────────────────────────────────────────
+
+#[test]
+fn bidirectional_edge_feasible_true_when_no_constraints() {
+    let (field, _graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    let preset_state = PresetState::empty();
+    assert!(bidirectional_edge_feasible(&preset_state, a, b));
+}
+
+#[test]
+fn bidirectional_edge_feasible_false_when_only_one_direction_blocked() {
+    // Unlike `can_connect` (either direction free suffices for a one-way pick),
+    // `bidirectional_edge_feasible` requires *both* directions free — a single blocked
+    // direction must already fail it, since a bidirectional add needs both.
+    let (field, _graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((a, b));
+    assert!(!bidirectional_edge_feasible(&preset_state, a, b));
+}
+
+#[test]
+fn bidirectional_edge_feasible_false_when_both_directions_blocked() {
+    let (field, _graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    let mut preset_state = PresetState::empty();
+    preset_state.blocked.insert((a, b));
+    preset_state.blocked.insert((b, a));
+    assert!(!bidirectional_edge_feasible(&preset_state, a, b));
+}
+
+#[test]
+fn bidirectional_edge_feasible_false_when_src_locked_out() {
+    let (field, _graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    let mut preset_state = PresetState::empty();
+    preset_state.locked_out.insert(a);
+    assert!(!bidirectional_edge_feasible(&preset_state, a, b));
+}
+
+#[test]
+fn bidirectional_edge_feasible_false_when_dst_locked_in() {
+    let (field, _graph) = make_field_and_graph(3, 3);
+    let a = node_at(&field, 0, 0);
+    let b = node_at(&field, 1, 0);
+    let mut preset_state = PresetState::empty();
+    preset_state.locked_in.insert(b);
+    assert!(!bidirectional_edge_feasible(&preset_state, a, b));
+}
+
 // ─── try_add_edge ────────────────────────────────────────────────────────
 
 #[test]

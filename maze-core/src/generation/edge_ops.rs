@@ -2,6 +2,7 @@ use crate::random::MazeRng;
 use rand::Rng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
+use crate::space::{Field, Tessellation};
 use super::types::ElementsConfig;
 use super::preset_state::PresetState;
 
@@ -25,6 +26,34 @@ pub(crate) fn add_edge_kind(graph: &mut Graph, src: NodeId, dst: NodeId, kind: E
 
 pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &ElementsConfig, rng: &mut MazeRng) {
     add_edge_kind(graph, src, dst, EdgeKind::Basic, elements.one_way_chance, rng);
+}
+
+/// `field.neighbors(node)`, filtered for split-point safety (GitHub issue #242). `Field` has no
+/// notion of which face belongs to which of a split point's several nodes (see `Field::neighbors`'s
+/// own doc comment) — for a point with more than one node, plain geometric adjacency returns every
+/// sibling node's neighbors indiscriminately, letting a canonical algorithm (RecursiveBacktracker,
+/// Wilson, Kruskal) wire two independent split passages together by walking in through one
+/// sibling's face and out through another's.
+///
+/// A geometric neighbor `n` is dropped from `node`'s candidate list when `n` already has an edge
+/// (either direction, in `graph`) to a *different* node at `node`'s own point — that neighbor's
+/// only face into this point is already claimed by a sibling (whether via a preset passage
+/// resolved before generation started, or a dynamically-added edge from earlier in this same run),
+/// so it can no longer be `node`'s neighbor too. An unsplit point (the common case, `nodes_at`
+/// returns a single-element slice) never has a "different sibling" to check against, so this is a
+/// no-op there — identical to calling `field.neighbors` directly.
+pub(crate) fn split_aware_neighbors<T: Tessellation>(field: &Field<T>, graph: &Graph, node: NodeId) -> Vec<NodeId> {
+    let siblings: &[NodeId] = field.point_of(node)
+        .map(|point| field.nodes_at(point))
+        .unwrap_or(&[]);
+    field.neighbors(node)
+        .into_iter()
+        .filter(|&n| {
+            siblings.iter().all(|&sib| {
+                sib == node || (graph.edge_between(sib, n).is_none() && graph.edge_between(n, sib).is_none())
+            })
+        })
+        .collect()
 }
 
 /// Returns true if the algorithm is allowed to add an edge src→dst (at least one direction).

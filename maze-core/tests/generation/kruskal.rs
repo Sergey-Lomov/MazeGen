@@ -33,6 +33,47 @@ fn kruskal_traverses_one_way_preset_teleport_into_visited() {
 }
 
 #[test]
+fn kruskal_does_not_wire_both_split_siblings_to_the_same_free_neighbor() {
+    // GitHub issue #242: `original` and `slot` are two nodes of the same split point, and `left`
+    // is their only geometric neighbor. With no presets at all, `original` and `slot` start as
+    // separate DSU components, so both `(original, left)` and `(slot, left)` look like ordinary,
+    // cycle-free candidate edges to the DSU cycle check alone — nothing but split-awareness stops
+    // Kruskal from adding both, wiring `left`'s one physical face to two independent split
+    // passages at once. Only one of the two edges may end up in the graph.
+    let (mut graph, field, original, slot, left) = build_with_split_point_single_free_neighbor();
+    generate_kruskal(&mut graph, &field, 1, &empty_preset(), None);
+
+    let original_wired = graph.edge_between(original, left).is_some() || graph.edge_between(left, original).is_some();
+    let slot_wired = graph.edge_between(slot, left).is_some() || graph.edge_between(left, slot).is_some();
+    assert!(
+        original_wired != slot_wired,
+        "left must connect to exactly one split sibling, not both (original={original_wired}, slot={slot_wired})"
+    );
+}
+
+#[test]
+fn kruskal_never_unions_dsu_when_bidirectional_add_would_be_refused() {
+    // `a`/`b` are geometric neighbors with only one direction blocked: `can_connect` allows the
+    // pair (either direction free suffices), but Kruskal always adds a full bidirectional passage
+    // via `try_add_bidirectional_edge`, which requires *both* directions free and therefore
+    // silently refuses. Before this fix, the upfront `edge_set` filter used `can_connect`, letting
+    // `(a,b)` become a candidate edge, get DSU-unioned (`union_by_min` runs before the add
+    // attempt), and have `EdgeAdded`/`SetsMerged` narrated even though no edge was actually added
+    // — leaving the graph disconnected while the algorithm believed the pair was joined.
+    let (mut graph, field, preset_state, a, b) = build_with_one_directionally_blocked_pair();
+    generate_kruskal(&mut graph, &field, 0, &preset_state, None);
+
+    assert!(
+        graph.edge_between(a, b).is_none() && graph.edge_between(b, a).is_none(),
+        "the one-directional block must prevent any edge between a and b"
+    );
+    assert!(
+        !is_connected(&graph, a),
+        "a 2-node field with the only pair one-directionally blocked must end up disconnected, not falsely unioned"
+    );
+}
+
+#[test]
 fn kruskal_is_connected() {
     for seed in [1, 42, 99, 1234, 9999] {
         let (mut graph, mut field, start, mut ids) = build_with_ids(10, 10);

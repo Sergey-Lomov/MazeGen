@@ -35,6 +35,84 @@ fn recursive_backtracker_traverses_one_way_preset_teleport_into_visited() {
 }
 
 #[test]
+fn recursive_backtracker_does_not_bridge_split_siblings_through_a_claimed_neighbor() {
+    // GitHub issue #242: `(0,0)` is claimed by the split point's original node via a preset
+    // passage. Starting the walk from the *slot* node (the other split node), RB must never wire
+    // it to `(0,0)` too — that would merge the two independent split passages through one shared
+    // neighbor, defeating the point of the split.
+    let (mut graph, field, preset_state, original, slot, left, right) = build_with_split_point_preset_claim();
+    generate_recursive_backtracker(&mut graph, &field, 42, slot, &preset_state, None);
+
+    assert!(graph.edge_between(original, left).is_some(), "the preset passage to `left` must still exist");
+    assert!(
+        graph.edge_between(slot, left).is_none() && graph.edge_between(left, slot).is_none(),
+        "slot node must never connect to `left` — that face is already claimed by `original`"
+    );
+    // The slot node must still reach the rest of the maze through its own free neighbor.
+    assert!(graph.edge_between(slot, right).is_some() || graph.edge_between(right, slot).is_some());
+}
+
+#[test]
+fn recursive_backtracker_respects_wall_between_a_preset_connected_split_node_and_a_preset_connected_neighbor() {
+    // GitHub issue #242's second bug: `slot` and `left` are each `preset_connected` via their own,
+    // unrelated presets (slot->right is Passage, left->(0,1) is Passage) — but `slot` has an
+    // explicit Wall specifically against `left`. The candidate filter used to short-circuit
+    // `can_connect` whenever *both* nodes were anywhere in the flat `preset_connected` set, which
+    // made this Wall a no-op: `left` still showed up in `slot`'s `CandidatesComputed` and could be
+    // picked, even though `try_add_bidirectional_edge` then silently refused to add the edge
+    // (respecting `blocked` itself) — leaving `slot` marked visited/pushed onto a neighbor it was
+    // never actually wired to. Asserted via the event log, not just final graph edges, since a
+    // silently-refused edge leaves no trace in the graph at all — the visible bug is `left`
+    // appearing as a live candidate/visit in the first place.
+    let (mut graph, field, preset_state, _original, slot, left, right) = build_with_split_point_preset_connected_false_positive();
+    let mut log: maze_core::event_log::EventLog<RecursiveBacktrackerEvent> = maze_core::event_log::EventLog::new();
+    generate_recursive_backtracker(&mut graph, &field, 42, slot, &preset_state, Some(&mut log));
+    let tape = log.finish();
+
+    assert!(graph.edge_between(slot, right).is_some(), "the preset passage slot->right must still exist");
+    // `left` is legitimately reachable through the rest of the maze via its own ordinary geometric
+    // neighbors — the bug is specifically `left` showing up as a candidate for `slot`, right after
+    // `slot` was selected (`VertexSelected(slot)`'s immediately-following `CandidatesComputed`).
+    let mut events = tape.iter();
+    while let Some(event) = events.next() {
+        if matches!(event, RecursiveBacktrackerEvent::VertexSelected(n) if *n == slot) {
+            let next = events.next().expect("VertexSelected must be followed by CandidatesComputed");
+            assert!(
+                matches!(next, RecursiveBacktrackerEvent::CandidatesComputed(cands) if !cands.contains(&left)),
+                "`left` must never appear as a candidate for `slot` — the explicit Wall between them must be respected, got {next:?}"
+            );
+        }
+    }
+    assert!(
+        graph.edge_between(slot, left).is_none() && graph.edge_between(left, slot).is_none(),
+        "the explicit Wall between slot and left must be respected, not bypassed by preset_connected membership"
+    );
+}
+
+#[test]
+fn recursive_backtracker_never_narrates_an_edge_add_when_bidirectional_add_would_be_refused() {
+    // `a`/`b` are geometric neighbors with only one direction blocked: `can_connect` allows the
+    // pair (either direction free suffices), but RB always commits a full bidirectional passage
+    // via `try_add_bidirectional_edge`, which requires *both* directions free and therefore
+    // silently refuses. Before this fix, the candidate filter used `can_connect`, letting `b` pass
+    // as a candidate, get chosen, and have `EdgeAdded`/`VertexVisited` emitted even though no edge
+    // was actually added to the graph.
+    let (mut graph, field, preset_state, a, b) = build_with_one_directionally_blocked_pair();
+    let mut log: maze_core::event_log::EventLog<RecursiveBacktrackerEvent> = maze_core::event_log::EventLog::new();
+    generate_recursive_backtracker(&mut graph, &field, 0, a, &preset_state, Some(&mut log));
+    let tape = log.finish();
+
+    assert!(
+        graph.edge_between(a, b).is_none() && graph.edge_between(b, a).is_none(),
+        "the one-directional block must prevent any edge between a and b"
+    );
+    assert!(
+        !tape.iter().any(|e| matches!(e, RecursiveBacktrackerEvent::EdgeAdded { from, to, .. } if *from == a && *to == b)),
+        "must never narrate EdgeAdded for a pair the bidirectional add refused"
+    );
+}
+
+#[test]
 fn recursive_backtracker_is_deterministic() {
     let (mut g1, mut f1, s1, mut ids1) = build_with_ids(4, 4);
     let (mut g2, mut f2, s2, mut ids2) = build_with_ids(4, 4);

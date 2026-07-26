@@ -6,7 +6,7 @@ use crate::graph::{EdgeKind, Graph};
 use crate::space::{Field, Tessellation};
 use crate::dsu::Dsu;
 use crate::event_log::{DebugEvent, EncodeEventPayload, EventLog};
-use super::{PresetState, try_add_bidirectional_edge, can_connect};
+use super::{PresetState, try_add_bidirectional_edge, bidirectional_edge_feasible, split_aware_neighbors};
 
 /// Stable wire tags for [`KruskalEvent`] (see `Specs/event_log.md`'s #124 binary encoding) —
 /// manually assigned, never derived from Rust enum variant order/discriminant. `0` is reserved
@@ -164,10 +164,18 @@ pub fn generate<T: Tessellation>(
     let mut rng = MazeRng::seed_from_u64(seed);
 
     // Collect all unique undirected edges in sorted order for determinism.
+    // `bidirectional_edge_feasible` (both directions free), not `can_connect` (either direction
+    // free) — Kruskal always adds a full bidirectional passage via `try_add_bidirectional_edge`,
+    // which itself requires both directions free. Using `can_connect`'s looser check let a
+    // one-direction-blocked pair pass this filter into `edge_set`, get unioned into the DSU
+    // (`dsu.union_by_min` runs *before* the add-attempt below), yet have
+    // `try_add_bidirectional_edge` silently refuse to add anything — merging the pair's DSU
+    // components with no actual edge behind it, wrongly rejecting a later genuinely-addable edge
+    // between those components as a cycle.
     let mut edge_set: BTreeSet<(NodeId, NodeId)> = BTreeSet::new();
     for node in graph.nodes().map(|n| n.id).collect::<Vec<_>>() {
-        for neighbor in field.neighbors(node) {
-            if !can_connect(node, neighbor, preset_state) { continue; }
+        for neighbor in split_aware_neighbors(field, graph, node) {
+            if !bidirectional_edge_feasible(preset_state, node, neighbor) { continue; }
             let pair = if node < neighbor { (node, neighbor) } else { (neighbor, node) };
             edge_set.insert(pair);
         }
@@ -224,7 +232,21 @@ pub fn generate<T: Tessellation>(
             g.emit(KruskalEvent::RootsCompared { from: a, to: b, root_of_from: root_a, root_of_to: root_b });
         }
 
-        if ra == rb {
+        // A split point's several nodes share the same geometric neighbor pool (`Field` has no
+        // notion of which face belongs to which sibling — see `split_aware_neighbors`'s doc
+        // comment). The upfront `edge_set` above only filters out a neighbor already claimed by a
+        // *preset* sibling edge (the only edges that exist before this loop starts); a neighbor two
+        // non-preset siblings both compete for is still a candidate edge for both at that point.
+        // Re-check here, against the graph as it stands mid-loop, so whichever sibling's edge to
+        // that neighbor gets added first (shuffle order) locks it out for every other sibling —
+        // same "first come, first served" semantics as the DSU cycle check itself.
+        let has_edge = |x: NodeId, y: NodeId| graph.edge_between(x, y).is_some() || graph.edge_between(y, x).is_some();
+        let a_siblings = field.point_of(a).map(|p| field.nodes_at(p)).unwrap_or(&[]);
+        let b_siblings = field.point_of(b).map(|p| field.nodes_at(p)).unwrap_or(&[]);
+        let split_conflict = a_siblings.iter().any(|&sib| sib != a && has_edge(sib, b))
+            || b_siblings.iter().any(|&sib| sib != b && has_edge(sib, a));
+
+        if ra == rb || split_conflict {
             if let Some(g) = scope_guard.as_mut() {
                 g.emit(KruskalEvent::EdgeRejected);
             }

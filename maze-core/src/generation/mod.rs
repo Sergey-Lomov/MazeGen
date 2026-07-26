@@ -31,7 +31,7 @@ pub use split_pattern::{
 };
 pub use split_logic::StartReassignment;
 pub(crate) use edge_ops::{
-    can_connect,
+    can_connect, split_aware_neighbors,
     try_add_edge, try_add_edge_kind, try_add_bidirectional_edge,
     try_add_directed_edge, try_add_directed_teleport, try_add_bidirectional_teleport,
     try_remove_edge, try_remove_edge_by_id, try_remove_edge_with_reverse, try_remove_teleport_with_reverse,

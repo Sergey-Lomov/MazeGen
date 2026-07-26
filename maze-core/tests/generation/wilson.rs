@@ -35,6 +35,76 @@ fn wilson_traverses_one_way_preset_teleport_into_visited() {
 }
 
 #[test]
+fn wilson_does_not_bridge_split_siblings_through_a_claimed_neighbor() {
+    // GitHub issue #242: `(0,0)` is claimed by the split point's original node via a preset
+    // passage (so it's `preset_connected`, seeded visited at start). Wilson must never wire the
+    // *slot* node (the other split node) to `(0,0)` too — that would merge the two independent
+    // split passages through one shared neighbor, defeating the point of the split. On this 3x1
+    // fixture the split point's only two faces go to `left`/`right`, so once `original` claims
+    // `left`, `slot` can only ever reach `right` — the two resulting components staying separate
+    // (never touching, since siblings never connect to each other) is the correct outcome, not a
+    // connectivity bug.
+    let (mut graph, field, preset_state, original, slot, left, right) = build_with_split_point_preset_claim();
+    // Seed 171 is load-bearing: it's the walk's RNG draw that steps onto `left` first when
+    // `field.neighbors` isn't split-aware (verified by temporarily reverting the fix) — an
+    // arbitrary seed like 42 doesn't happen to exercise that path and would pass either way.
+    generate_wilson(&mut graph, &field, 171, right, &preset_state, None);
+
+    assert!(graph.edge_between(original, left).is_some(), "the preset passage to `left` must still exist");
+    assert!(
+        graph.edge_between(slot, left).is_none() && graph.edge_between(left, slot).is_none(),
+        "slot node must never connect to `left` — that face is already claimed by `original`"
+    );
+    assert!(
+        graph.edge_between(slot, right).is_some() || graph.edge_between(right, slot).is_some(),
+        "slot node must still connect through its own free neighbor"
+    );
+}
+
+#[test]
+fn wilson_never_narrates_an_edge_add_when_bidirectional_add_would_be_refused() {
+    // `a`/`b` are geometric neighbors with only one direction blocked: `can_connect` allows the
+    // pair (either direction free suffices), but Wilson's commit phase always adds a full
+    // bidirectional passage via `try_add_bidirectional_edge`, which requires *both* directions
+    // free and therefore silently refuses. Before this fix, the search-phase filter used
+    // `can_connect`, letting the walk step onto `b` and commit it with `EdgeAdded`/`NodeVisited`
+    // even though no edge was actually added to the graph.
+    let (mut graph, field, preset_state, a, b) = build_with_one_directionally_blocked_pair();
+    let mut log: EventLog<WilsonEvent> = EventLog::new();
+    generate_wilson(&mut graph, &field, 0, a, &preset_state, Some(&mut log));
+    let tape = log.finish();
+
+    assert!(
+        graph.edge_between(a, b).is_none() && graph.edge_between(b, a).is_none(),
+        "the one-directional block must prevent any edge between a and b"
+    );
+    assert!(
+        !tape.iter().any(|e| matches!(e, WilsonEvent::EdgeAdded { from, to, .. } if (*from == a && *to == b) || (*from == b && *to == a))),
+        "must never narrate EdgeAdded for a pair the bidirectional add refused"
+    );
+}
+
+#[test]
+fn wilson_terminates_and_generates_the_reachable_portion_when_one_node_is_permanently_unreachable() {
+    // Regression for the infinite-loop this fix introduced a guard against: `isolated` can never
+    // be committed (its only neighbor, `middle`, is one-directionally blocked for the bidirectional
+    // add Wilson always performs), but that must not stall the outer unvisited-set loop forever —
+    // `start`/`middle` must still generate a normal connected passage between them, and the whole
+    // run must actually terminate (this test hanging is itself a failure signal).
+    let (mut graph, field, preset_state, start, middle, isolated) = build_with_isolated_node_among_others();
+    generate_wilson(&mut graph, &field, 3, start, &preset_state, None);
+
+    assert!(
+        graph.edge_between(start, middle).is_some() || graph.edge_between(middle, start).is_some(),
+        "start and middle must still connect normally"
+    );
+    assert!(
+        graph.edge_between(middle, isolated).is_none() && graph.edge_between(isolated, middle).is_none(),
+        "isolated must never gain an edge — the block prevents bidirectional add either direction"
+    );
+}
+
+#[test]
 fn wilson_is_deterministic() {
     let (mut g1, mut f1, s1, mut ids1) = build_with_ids(4, 4);
     let (mut g2, mut f2, s2, mut ids2) = build_with_ids(4, 4);

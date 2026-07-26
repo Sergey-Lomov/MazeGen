@@ -5,7 +5,7 @@ use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
 use crate::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog};
-use super::{PresetState, try_add_bidirectional_edge, can_connect};
+use super::{PresetState, try_add_bidirectional_edge, bidirectional_edge_feasible, split_aware_neighbors};
 
 /// Stable wire tags for [`RecursiveBacktrackerEvent`] (GitHub issue #124's binary encoding) —
 /// manually assigned, never derived from Rust enum variant order/discriminant, so the wire
@@ -156,7 +156,6 @@ pub fn generate<T: Tessellation>(
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut rng = MazeRng::seed_from_u64(seed);
 
-    let preset_connected = &preset_state.preset_connected;
     visited.insert(start);
 
     let mut stack: Vec<NodeId> = vec![start];
@@ -166,11 +165,26 @@ pub fn generate<T: Tessellation>(
         if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexSelected(current)); }
 
         let teleport_dsts = preset_state.preset_teleports.get(&current).map(Vec::as_slice).unwrap_or(&[]);
-        let unvisited: Vec<NodeId> = field
-            .neighbors(current)
+        let unvisited: Vec<NodeId> = split_aware_neighbors(field, graph, current)
             .into_iter()
             .filter(|&n| !visited.contains(&n)
-                && (preset_connected.contains(&current) && preset_connected.contains(&n) || can_connect(current, n, preset_state)))
+                // A preset passage between this exact pair already has its edge in the graph —
+                // traversable regardless of `bidirectional_edge_feasible`. Checked via
+                // `graph.edge_between` on the specific pair, not
+                // `preset_connected.contains(current) && preset_connected.contains(n)` (GitHub
+                // issue #242): the latter is a flat NodeId set with no notion of *which* pair is
+                // actually connected, so for a split point it false-positives whenever `current`
+                // and `n` each have their own, unrelated preset passage to some other node — even
+                // when a preset Wall explicitly blocks this exact pair.
+                //
+                // `bidirectional_edge_feasible` (both directions free), not `can_connect` (either
+                // direction free) — RB always adds a full bidirectional passage via
+                // `try_add_bidirectional_edge`, which itself requires both directions free. Using
+                // `can_connect`'s looser check let a one-direction-blocked candidate pass this
+                // filter yet have `try_add_bidirectional_edge` silently refuse to add anything,
+                // while the code still emitted `EdgeAdded`/marked the node visited — a narrated
+                // edge with no graph edge behind it.
+                && (graph.edge_between(current, n).is_some() || graph.edge_between(n, current).is_some() || bidirectional_edge_feasible(preset_state, current, n)))
             // Preset-teleport destinations already have their edge in the graph — traversable
             // regardless of `can_connect` (that check governs whether a *new* edge may be added,
             // which doesn't apply here — see GitHub issue #226).
@@ -185,8 +199,13 @@ pub fn generate<T: Tessellation>(
         } else {
             let chosen = unvisited[rng.random_range(0..unvisited.len())];
             if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::CandidateChosen(chosen)); }
-            // Preset nodes (adjacency or teleport) already have their edge in the graph — skip adding it again.
-            if !preset_connected.contains(&chosen) && !teleport_dsts.contains(&chosen) {
+            // A preset edge between this exact pair already exists in the graph — skip adding it
+            // again. Checked directly on the pair (not the flat `preset_connected` set — see the
+            // candidate filter's doc comment above) so a split node never has its own bidirectional
+            // edge silently skipped just because it happens to share `preset_connected` membership
+            // with `chosen` via an unrelated preset.
+            let already_edged = graph.edge_between(current, chosen).is_some() || graph.edge_between(chosen, current).is_some();
+            if !already_edged && !teleport_dsts.contains(&chosen) {
                 try_add_bidirectional_edge(graph, current, chosen, preset_state);
                 if let Some(g) = step_guard.as_mut() {
                     g.emit(RecursiveBacktrackerEvent::EdgeAdded { from: current, to: chosen, bidirectional: true });
