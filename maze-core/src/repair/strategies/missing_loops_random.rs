@@ -55,7 +55,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
         let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
         let target = target.max(1);
 
-        let mut pool: Vec<NodeId> = maze.field.all_points().flat_map(|p| maze.field.nodes_at(p).iter().copied()).collect();
+        let mut pool: Vec<NodeId> = maze.field.all_node_ids().collect();
         let mut failed: HashSet<NodeId> = HashSet::new();
         let mut added: u32 = 0;
         // Pairs proposed as a bidirectional-edge command so far this call — stands in for what

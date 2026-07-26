@@ -25,7 +25,7 @@ impl IdGenerator {
     /// parameter, so there is no way for a caller to accidentally pass in a fresh, incompatible
     /// generator that would collide with IDs the field already holds.
     pub(crate) fn resume_after<T: Tessellation>(field: &Field<T>) -> Self {
-        let next = field.all_node_ids().max().map_or(0, |max| max + 1);
+        let next = field.max_node_id().map_or(0, |max| max + 1);
         Self { next }
     }
 }

@@ -292,12 +292,28 @@ impl<T: Tessellation> Field<T> {
         self.point_to_nodes.contains_key(&point)
     }
 
-    /// Every `NodeId` currently in the field — used by `IdGenerator::resume_after` to compute a
-    /// safe next ID when a `Maze` is constructed from an already-populated `Field` (GitHub issue
-    /// #219): without this, an `IdGenerator` created fresh after construction would risk
-    /// colliding with IDs the field already holds.
-    pub(crate) fn all_node_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.node_to_point.keys().copied()
+    /// Every `NodeId` in the field, one entry each, sorted order — the id-pool counterpart to
+    /// `all_points()` (see GitHub issue #232). Prefer this over
+    /// `all_points().flat_map(|p| nodes_at(p))`: that pattern repeats a split point (N nodes) N
+    /// times via `all_points()` and then re-expands each repeat via `nodes_at`, yielding a point's
+    /// nodes N² times instead of N — skewing any random pick built from the result toward split
+    /// points (`maze-wasm/src/analytics.rs`'s `build_analytics_snapshot` hit the visible form of
+    /// this bug directly, GitHub issue #223; several `maze-core` repair strategies' node-pool
+    /// builders had the same pattern with the milder "skewed probability" symptom). Also used by
+    /// `IdGenerator::resume_after` to compute a safe next ID when a `Maze` is constructed from an
+    /// already-populated `Field` (GitHub issue #219).
+    pub fn all_node_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
+        let mut ids: Vec<NodeId> = self.node_to_point.keys().copied().collect();
+        ids.sort_unstable();
+        ids.into_iter()
+    }
+
+    /// The largest `NodeId` currently in the field, `None` if empty — used by
+    /// `IdGenerator::resume_after` (GitHub issue #219). A plain `max()` over unsorted ids, not
+    /// `all_node_ids().max()`: that would pay for a full sort just to then discard everything but
+    /// the last element.
+    pub(crate) fn max_node_id(&self) -> Option<NodeId> {
+        self.node_to_point.keys().copied().max()
     }
 }
 
@@ -442,6 +458,44 @@ mod remove_node_at_tests {
         let extra_at_p1 = field.add_node_at(p1, &mut ids);
 
         field.remove_node_at(p0, extra_at_p1);
+    }
+}
+
+#[cfg(test)]
+mod all_node_ids_tests {
+    use super::*;
+    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+
+    // GitHub issue #232: `all_points().flat_map(|p| nodes_at(p))` repeats a split point's nodes
+    // once per its own node count (N times via `all_points()`, each re-expanded to N nodes via
+    // `nodes_at`), yielding N² entries instead of N. `all_node_ids` must yield each node exactly
+    // once regardless of how many nodes share a point.
+    #[test]
+    fn split_point_nodes_appear_exactly_once_each() {
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 0, y: 0 };
+        let extra1 = field.add_node_at(p, &mut ids);
+        let extra2 = field.add_node_at(p, &mut ids);
+
+        let all: Vec<NodeId> = field.all_node_ids().collect();
+
+        assert_eq!(all.len(), 4, "2 plain points + 2 extra split nodes = 4 total, not 2*3=6");
+        assert!(all.contains(&extra1));
+        assert!(all.contains(&extra2));
+        let mut sorted = all.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), all.len(), "no duplicate NodeIds");
+    }
+
+    #[test]
+    fn matches_node_count() {
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        field.add_node_at(SquarePoint { x: 1, y: 0 }, &mut ids);
+
+        assert_eq!(field.all_node_ids().count(), field.node_count());
     }
 }
 

@@ -130,7 +130,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
         let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
         let target = target.max(1);
 
-        let mut pool: Vec<NodeId> = maze.field.all_points().flat_map(|p| maze.field.nodes_at(p).iter().copied()).collect();
+        let mut pool: Vec<NodeId> = maze.field.all_node_ids().collect();
         let mut proposed: HashSet<(NodeId, NodeId)> = HashSet::new();
         let mut commands = Vec::new();
         let mut added: u32 = 0;
@@ -232,7 +232,7 @@ fn pick_exit<T: Tessellation>(
     rng: &mut dyn RngCore,
 ) -> Option<NodeId> {
     let dist = bfs_distances(maze, entry);
-    let all_nodes: Vec<NodeId> = maze.field.all_points().flat_map(|p| maze.field.nodes_at(p).iter().copied()).collect();
+    let all_nodes: Vec<NodeId> = maze.field.all_node_ids().collect();
 
     let feasible = |exit: &NodeId| -> bool {
         *exit != entry
