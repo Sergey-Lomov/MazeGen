@@ -1323,9 +1323,12 @@ at all — it keeps reading `record.tag` exactly as before.
 merged root's direct children — a pure navigation/inspection helper, used by tests and as the entry
 point a future multi-source consumer (#147) would use to enumerate sources. `mazeService.ts`'s
 `DebugTape.sourceScopeNames`/`sourceEventKinds` mirror the WASM boundary's parallel arrays;
-`DebugArenaHandle.algorithmKind` (`storeTypes.ts`) reads the first (only) entry of
-`sourceEventKinds` — consuming more than one source's decoder/apply/narration at once is out of
-scope until #147.
+`DebugArenaHandle.algorithmKind` (`storeTypes.ts`) reads the only entry of `sourceEventKinds` —
+consuming more than one source's decoder/apply/narration at once is out of scope until #147. (Once
+#225's "preset setup" source and #147's QC source exist, `algorithmKind` is resolved via
+`resolveAlgorithmKind` — `generateConfigBuilder.ts` — which picks the generation source's own kind
+out of `sources`, not simply `sources[0]`; see that function's doc comment and Contract A below for
+the full source-order rules.)
 
 `DebugEventTree.tsx` auto-expands, on every fresh tape, both each top-level source scope and its
 one child (the former root) — matching pre-#169 behavior (where `"step N"`/`"edge N"`/... were

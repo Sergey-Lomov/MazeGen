@@ -360,16 +360,20 @@ export interface PresetConnectionsActions {
  *  static node list needed to join reconstructed `bigint` node ids against `NodeDto.id`. */
 export interface DebugArenaHandle {
   tape: ParsedTape;
-  /** Which concrete event enum `tape`'s *first* top-level source scope was encoded from — always
-   *  the generation source (GitHub issue #147: QC, when present, is always merged as a later
-   *  source than generation — Contract A, `Specs/event_log.md`'s #147 section). Kept only for the
-   *  handful of call sites that are inherently generation-specific (e.g. `GenerationRenderer.ts`'s
-   *  Kruskal DSU-groups toggle, `DebugPanel.tsx`'s Kruskal-only UI) — anything that needs to
-   *  dispatch per-node across a possibly-multi-source tape must use `sources`/`adapterForNode`
-   *  instead, never this field. */
+  /** Which concrete event enum `tape`'s generation source was encoded from — the generation
+   *  source's own kind, *not* necessarily `sources[0]` (GitHub issue #225's "preset setup" source,
+   *  when present, is always merged before generation — Contract A, `Specs/event_log.md`'s #147
+   *  section). Falls back to `sources[sources.length - 1].kind` (always "quality_control", per
+   *  Contract A's fixed source order) only for `qc_experiment` runs (GitHub issue #173), which
+   *  have no generation source at all — a preset setup source can still precede it there. Kept
+   *  only for the handful of call sites that are
+   *  inherently generation-specific (e.g. `GenerationRenderer.ts`'s Kruskal DSU-groups toggle,
+   *  `DebugPanel.tsx`'s Kruskal-only UI) — anything that needs to dispatch per-node across a
+   *  possibly-multi-source tape must use `sources`/`adapterForNode` instead, never this field. */
   algorithmKind: EventedEventKind;
   /** One entry per top-level source scope in `tape`, in the same order as `topLevelSourceScopes`
-   *  (GitHub issue #147/#169) — `algorithmKind` above is just `sources[0].kind`, kept as a
+   *  (GitHub issue #147/#169) — `algorithmKind` above is derived from whichever entry here is the
+   *  generation source (see that field's doc comment), not simply `sources[0]`, kept as a
    *  separate field for the generation-specific call sites described in that field's doc comment.
    *  `startStep`/`endStep` are 0-based, half-open `[startStep, endStep)` ranges into the same
    *  global `debugStep` numbering `debugStep`/`totalSteps` already use (Contract A) — e.g. with a

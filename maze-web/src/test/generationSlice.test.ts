@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { encodePoint } from "../pixi/tessellationProjection";
 import { presetEndpoint } from "../pixi/presetEndpoint";
-import { fieldConfigToWasm, buildExactGenerateCallPayload } from "../store/slices/generationSlice";
+import { fieldConfigToWasm, buildExactGenerateCallPayload, resolveAlgorithmKind } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
 import { baseStoreState, emptyFreePoints, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape } from "./storeTestHelpers";
 import { parseTape } from "../debug/eventTape";
@@ -33,6 +33,32 @@ import { initWasm } from "../wasm/wasmLoader";
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   resetGenerationMocks(vi.mocked(generateMaze), vi.mocked(computeAnalytics), vi.mocked(initWasm));
+});
+
+function source(kind: DebugArenaHandle["algorithmKind"]): DebugArenaHandle["sources"][number] {
+  return { scopeName: kind, kind, nodeIndex: 0, startStep: 0, endStep: 0, checkpointFroms: [] };
+}
+
+describe("resolveAlgorithmKind", () => {
+  it("returns the only source's kind when there's no preset setup or QC", () => {
+    expect(resolveAlgorithmKind([source("kruskal")])).toBe("kruskal");
+  });
+
+  it("GitHub issue #227: skips a preceding preset_setup source and returns generation's own kind", () => {
+    expect(resolveAlgorithmKind([source("preset_setup"), source("kruskal")])).toBe("kruskal");
+  });
+
+  it("skips both a preceding preset_setup source and a trailing QC source", () => {
+    expect(resolveAlgorithmKind([source("preset_setup"), source("wilson"), source("quality_control")])).toBe("wilson");
+  });
+
+  it("qc_experiment run (GitHub issue #173, no generation source): falls back to quality_control, not the first source", () => {
+    expect(resolveAlgorithmKind([source("preset_setup"), source("quality_control")])).toBe("quality_control");
+  });
+
+  it("qc_experiment run with no preset setup either: single quality_control source", () => {
+    expect(resolveAlgorithmKind([source("quality_control")])).toBe("quality_control");
+  });
 });
 
 describe("mazeStore.generate", () => {

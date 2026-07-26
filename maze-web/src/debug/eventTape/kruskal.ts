@@ -172,18 +172,21 @@ class KruskalDsu {
   }
 }
 
-/** Locates the single `PresetUnionsApplied` event, if any — emitted once, directly under the
- *  root scope, before any `"edge N"` scope (see `kruskal.rs`'s `generate`). Absent when the run
- *  had no preset connections (`kruskal.rs` skips emitting it entirely rather than emitting an
- *  empty pairs list — see `KruskalEvent::PresetUnionsApplied`'s doc comment). A plain linear scan
- *  from the start, bounded by the position of the first scope node (so it never walks into
- *  per-edge event data), since this event is trace-only and not part of `mutatingKruskalEventsWithIndex`'s scan. */
-function findPresetUnions(tape: ParsedTape): [bigint, bigint, "basic" | "teleport"][] {
-  for (let i = 0; i < tape.nodeCount; i++) {
+/** Locates the single `PresetUnionsApplied` event, if any — emitted once, directly under
+ *  Kruskal's own source scope, before any `"edge N"` scope (see `kruskal.rs`'s `generate`).
+ *  Absent when the run had no preset connections (`kruskal.rs` skips emitting it entirely rather
+ *  than emitting an empty pairs list — see `KruskalEvent::PresetUnionsApplied`'s doc comment). A
+ *  plain linear scan from `startIndex` (Kruskal's own source content start within the shared
+ *  multi-source tape, GitHub issue #169/#225 — *not* necessarily node 0 once a "preset setup" or
+ *  another source precedes Kruskal's), bounded by `endIndex` (or the first "edge N" scope inside
+ *  that range, whichever comes first), since this event is trace-only and not part of
+ *  `mutatingKruskalEventsWithIndex`'s scan. */
+function findPresetUnions(tape: ParsedTape, startIndex: number, endIndex: number): [bigint, bigint, "basic" | "teleport"][] {
+  for (let i = startIndex; i < endIndex; i++) {
     const record = nodeAt(tape, i);
     if (record.tag === TAG_SCOPE) {
       // Reached the first "edge N" scope — PresetUnionsApplied (if any) always precedes it.
-      if (i > 0) break;
+      if (i > startIndex) break;
       continue;
     }
     const bytes = tape.payload.subarray(record.payloadOffset, record.payloadOffset + record.payloadLen);
@@ -253,7 +256,7 @@ export function applyKruskal(tape: ParsedTape, targetStep: number, from?: Kruska
   if (from) {
     for (const [id, root] of from.dsuGroups) dsu.seed(id, root);
   } else {
-    for (const [a, b, kind] of findPresetUnions(tape)) {
+    for (const [a, b, kind] of findPresetUnions(tape, startIndex, endIndex ?? tape.nodeCount)) {
       dsu.union(a, b);
       // One tuple per actual directed graph edge (kruskal.rs no longer canonicalizes direction —
       // a two-way preset already yields both (a,b) and (b,a) as separate pairs; a one-way preset

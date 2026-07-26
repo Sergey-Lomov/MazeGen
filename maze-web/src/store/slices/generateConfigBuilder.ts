@@ -17,6 +17,19 @@ import { adapterForKind } from "../../debug/algorithmRegistry";
 export type StoreSet = (partial: Partial<MazeStore> | ((s: MazeStore) => Partial<MazeStore>)) => void;
 export type StoreGet = () => MazeStore;
 
+/** Picks `DebugArenaHandle.algorithmKind` out of a resolved `sources` list — the generation
+ *  source's own kind, *not* necessarily `sources[0]` (GitHub issue #225's "preset setup" source,
+ *  when present, is always merged before generation — Contract A, `Specs/event_log.md`'s #147
+ *  section). Falls back to `sources[sources.length - 1].kind` (always "quality_control", per
+ *  Contract A's fixed source order) only for `qc_experiment` runs (GitHub issue #173), which have
+ *  no generation source at all — a preset setup source can still precede it there (it's
+ *  independent of `qc_experiment`, see `runner.rs`'s `preset_setup_log` doc comment). Requires
+ *  `sources` non-empty (call sites only reach this once `sources.length > 0` is already known). */
+export function resolveAlgorithmKind(sources: DebugArenaHandle["sources"]): DebugArenaHandle["algorithmKind"] {
+  const generationSource = sources.find((s) => s.kind !== "preset_setup" && s.kind !== "quality_control");
+  return generationSource?.kind ?? sources[sources.length - 1].kind;
+}
+
 export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConfig {
   const t = cfg.type;
   const tessellation_type = t.startsWith("hex") ? "hex" as const
@@ -196,9 +209,9 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
     let lastStep = 0;
     if (debugMode && debugTape) {
       const tape = parseTape(debugTape.nodeTable, debugTape.payload);
-      // One entry per top-level source scope (GitHub issue #147/#169) — generation always first,
-      // QC (when present) always after, per Contract A (`Specs/event_log.md`'s #147 section).
-      // Checkpoints (GitHub issue #128, generalized past Recursive Backtracker) are computed on
+      // One entry per top-level source scope (GitHub issue #147/#169/#225) — preset setup (when
+      // present) always first, then generation, then QC, per Contract A (`Specs/event_log.md`'s
+      // #147 section). Checkpoints (GitHub issue #128, generalized past Recursive Backtracker) are computed on
       // the web side (`resolveDebugArenaMetadata`) per source — each source's own opaque
       // `checkpointFroms` lives on its own `sources[]` entry (see `DebugArenaHandle.sources`'s doc
       // comment), since every adapter's snapshot shape differs.
@@ -230,7 +243,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
         // (GenerateResult::debug_value_names()), not from scanning the tape — see
         // resolveDebugArenaMetadata's doc comment for why.
         debugArena = {
-          tape, algorithmKind: sources[0].kind, sources, nodes: snapshot.nodes, totalSteps,
+          tape, algorithmKind: resolveAlgorithmKind(sources), sources, nodes: snapshot.nodes, totalSteps,
           debugValueNames: debugTape.debugValueNames,
         };
         lastStep = Math.max(0, totalSteps - 1);

@@ -12,7 +12,7 @@ import {
 import { generateWithSeed } from "./generateConfigBuilder";
 
 export { isTypeAlreadyActive } from "./generationSliceHelpers";
-export { fieldConfigToWasm, buildGenerateConfig, generateWithSeed, buildExactGenerateCallPayload, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
+export { fieldConfigToWasm, buildGenerateConfig, generateWithSeed, buildExactGenerateCallPayload, resolveAlgorithmKind, NESTED_STRATEGY_WEIGHT_PARAM_ID } from "./generateConfigBuilder";
 export type { StoreSet, StoreGet } from "./generateConfigBuilder";
 
 export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationState & GenerationActions> = (set, get) => ({

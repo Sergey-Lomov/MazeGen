@@ -608,6 +608,28 @@ describe("applyKruskal", () => {
     expect(result.dsuGroups.get(2n)).toBe(1n);
   });
 
+  it("GitHub issue #227: finds PresetUnionsApplied when Kruskal isn't the tape's first top-level source (multi-source tape, #169/#225)", () => {
+    // merged root (0)
+    //   -> "preset_setup" wrapper (1) -> some unrelated preset-setup event (2)
+    //   -> "generation" wrapper (3) -> PresetUnionsApplied([(1,2,basic)]) (4)
+    //        -> "edge 1" scope (5) -> EdgeAdded(1,3) (6) -> SetsMerged(1,3) (7)
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("merged root") },
+      { parent: 0, firstChild: 2, nextSibling: 3, tag: TAG_SCOPE, payloadBytes: scopePayload("preset_setup") },
+      { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
+      { parent: 0, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+      { parent: 3, firstChild: null, nextSibling: 5, tag: KRUSKAL_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "basic"]]) },
+      { parent: 3, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
+      { parent: 5, firstChild: null, nextSibling: 7, tag: KRUSKAL_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 3n) },
+      { parent: 5, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(1n, 3n) },
+    ]);
+    // Kruskal's own source content starts at node 4 (the "generation" wrapper's firstChild).
+    const result = applyKruskal(tape, 0, undefined, 4, tape.nodeCount);
+    expect(result.dsuGroups.get(1n)).toBe(1n);
+    expect(result.dsuGroups.get(2n)).toBe(1n);
+    expect(result.edges).toContainEqual({ from: 1n, to: 2n, kind: "basic" });
+  });
+
   it("resuming from a previous result (GitHub issue #128's generalization) matches a full replay to the same targetStep", () => {
     const tape = buildKruskalTape();
     const from = applyKruskal(tape, 0);
