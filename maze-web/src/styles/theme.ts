@@ -210,7 +210,9 @@ export const dialogSize = {
   approve: { minWidth: 260, maxWidth: 360 },
   info: { minWidth: 280, maxWidth: 520, width: 520 },
   complex: { minWidth: 460, maxWidth: 720, width: 720, height: "60vh" },
-  // Split-pane dialogs (tile diagram + table) — wider and taller than `complex` to fit a large
-  // tile diagram beside a multi-row table (GitHub issue #234's split-node dialog redesign).
-  wide: { minWidth: 640, maxWidth: 960, width: 900, height: "70vh" },
+  // The pattern editor (`AbstractPatternEditorDialog`) — its tile diagram and node-card list stack
+  // vertically, not side-by-side (GitHub issue #237 follow-up: post-edit/preset moved to a
+  // `SidePanel`, leaving this the only `wide` caller), so it no longer needs `complex`'s width,
+  // just its own extra height for the tile+cards column.
+  wide: { minWidth: 420, maxWidth: 560, width: 480, height: "70vh" },
 } as const;

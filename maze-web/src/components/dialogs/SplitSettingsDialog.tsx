@@ -66,6 +66,17 @@ export function SplitSettingsDialog({ onClose }: Props) {
     });
   }
 
+  // Closing the editor on a pattern left with no faces defined on any node (GitHub issue #237) —
+  // silently drops it from the list instead of keeping a dead entry the generator would treat as
+  // an all-wall split (every face defaults to `Wall` when absent, see `tileFaceKindOf`).
+  function handleCloseEditor() {
+    if (editingIndex === null) return;
+    const edited = splitPatterns[editingIndex];
+    const isEmpty = edited && edited.faces.every((nodeFaces) => nodeFaces.length === 0);
+    if (isEmpty) removeSplitPattern(editingIndex);
+    setEditingIndex(null);
+  }
+
   const totalWeight = splitPatterns.reduce((sum, p) => sum + Math.max(0, p.weight ?? 1.0), 0);
   const percentOf = (weight: number) => {
     const w = Math.max(0, weight);
@@ -99,11 +110,9 @@ export function SplitSettingsDialog({ onClose }: Props) {
 
         {splitPatternMode && (
           <div style={styles.patternsSection}>
-            <div style={styles.row}>
-              <span style={styles.label}>{m["generation.split_patterns"]()}</span>
-            </div>
+            <span style={styles.label}>{m["generation.split_patterns"]()}</span>
             {splitPatterns.length === 0 ? (
-              <div style={styles.empty}>—</div>
+              <div style={styles.empty}>{m["generation.split_patterns_none"]()}</div>
             ) : (
               splitPatterns.map((pattern, i) => (
                 <div key={i} style={styles.patternCard}>
@@ -145,7 +154,7 @@ export function SplitSettingsDialog({ onClose }: Props) {
         <AbstractPatternEditorDialog
           pattern={splitPatterns[editingIndex]}
           onChange={(next) => updateSplitPattern(editingIndex, next)}
-          onClose={() => setEditingIndex(null)}
+          onClose={handleCloseEditor}
         />
       )}
     </>

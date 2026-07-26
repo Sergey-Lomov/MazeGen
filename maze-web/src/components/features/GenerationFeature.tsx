@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, History } from "lucide-react";
+import { ChevronLeft, ChevronRight, History, Settings } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
@@ -169,7 +169,9 @@ export function GenerationFeature({ canGenerate }: Props) {
                   <div style={{ flex: 1 }}>
                     <SliderParam variant="primary" label={m["generation.split_chance"]()} value={elementsConfig.split_chance ?? 0.0} onChange={(v) => setElementsParam("split_chance", v)} />
                   </div>
-                  <button className="hoverable" style={styles.editBtn} onClick={() => setSplitSettingsDialogOpen(true)} title={m["generation.split_settings"]()}>⚙</button>
+                  <button className="hoverable" style={styles.gearBtn} onClick={() => setSplitSettingsDialogOpen(true)} title={m["generation.split_settings"]()}>
+                    <Settings size={16} color={ui.text.tertiary} />
+                  </button>
                 </div>
               )}
             </>
@@ -272,6 +274,18 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1,
     flexShrink: 0,
     opacity: 0.7,
+  },
+  // `lucide-react` icon instead of the `⚙` glyph (GitHub issue #237 follow-up) — the glyph read
+  // thin/blurry at small sizes across fonts; a real SVG icon looks crisp instead.
+  gearBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "none",
+    border: "none",
+    padding: `0 ${inset.iconButtonInset}px`,
+    cursor: "default",
+    flexShrink: 0,
   },
   seedToolbarBtn: {
     background: "none",

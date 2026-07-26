@@ -293,6 +293,11 @@ export interface PresetConnectionsState {
   presetActiveSplitNode: Record<string, PresetEndpoint>;
   /** The point currently selected for the "Manage split nodes" dialog on the preset stage. */
   presetFocusedPoint: [number, number] | null;
+  /** The link (edge/teleport) currently hovered in the preset "Manage split nodes" panel's link
+   *  bubbles (GitHub issue #237) — `null` when nothing is hovered. Drives a canvas highlight the
+   *  same way `EdgeHighlightRenderer`'s pointermove-driven hover does, but sourced from the panel
+   *  instead of the cursor. */
+  presetHoveredLink: { from: PresetEndpoint; to: PresetEndpoint } | null;
 }
 
 export interface PresetConnectionsActions {
@@ -338,6 +343,7 @@ export interface PresetConnectionsActions {
   cyclePresetActiveSplitNode: (point: [number, number]) => void;
   setPresetActiveSplitNode: (point: [number, number], endpoint: PresetEndpoint) => void;
   setPresetFocusedPoint: (point: [number, number] | null) => void;
+  setPresetHoveredLink: (link: { from: PresetEndpoint; to: PresetEndpoint } | null) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotatePresetSplitPoint` (fieldEditUtils.ts). No-op if it would push
    * any connection outside the field. */
@@ -747,6 +753,11 @@ export interface PostEditState {
   _generatedFinish: number | null;
   /** True after any manual post-edit change since the last generate/reset. */
   postEditDirty: boolean;
+  /** The link (edge/teleport) currently hovered in the "Manage split nodes" panel's link bubbles
+   *  (GitHub issue #237) — `null` when nothing is hovered. Drives a canvas highlight the same way
+   *  `EdgeHighlightRenderer`'s pointermove-driven hover does, but sourced from the panel instead of
+   *  the cursor. */
+  postEditHoveredLink: { from: PostEditEndpoint; to: PostEditEndpoint } | null;
 }
 
 export interface PostEditActions {
@@ -771,6 +782,7 @@ export interface PostEditActions {
   cycleActiveSplitNode: (point: [number, number]) => void;
   setActiveSplitNode: (point: [number, number], endpoint: PostEditEndpoint) => void;
   setPostEditFocusedPoint: (point: [number, number] | null) => void;
+  setPostEditHoveredLink: (link: { from: PostEditEndpoint; to: PostEditEndpoint } | null) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
    * by one offset index — see `rotatePostEditSplitPoint` (postEditUtils.ts). No-op if it would
    * push any connection outside the field. */

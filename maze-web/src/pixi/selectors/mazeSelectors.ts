@@ -2,10 +2,11 @@
 import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, PassageKind, TeleportEdge, SplitPassage } from "../renderers/types";
+import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import { getCellCenter, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment } from "../tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../splitFaceLayout";
 import { buildCellSet } from "./sharedSelectors";
-import { NODE_RADIUS } from "../renderConstants";
+import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
@@ -472,6 +473,37 @@ export function buildTeleportEdges(
   }
 
   return result;
+}
+
+/** Highlight for `postEditHoveredLink` (GitHub issue #237) — same "node-to-node" style
+ *  `DebugRefHighlightOverlay` uses for an edge ref (`NodeEdgeHighlightRenderer`: a straight line
+ *  + circle markers on each end), cell center to cell center — not the shared geometric wall
+ *  segment (a teleport link has no shared face at all to draw on), and not a split point's hub
+ *  point either (kept simple: this highlight only needs to say "these two cells", not distinguish
+ *  which of a split point's several nodes). Silently renders nothing if either endpoint doesn't
+ *  resolve (an unconfirmed split node — same "nothing to draw yet" contract as
+ *  `postEditEdgesToDto`). */
+export function buildLinkHoverHighlight(
+  link: { from: PostEditEndpoint; to: PostEditEndpoint } | null,
+  nodes: NodeDto[],
+  resolveSplit: (point: [number, number], slotId: number) => number | undefined,
+  cfg: TessellationConfig,
+): NodeEdgeHighlight[] {
+  if (!link) return [];
+  const fromId = resolveEndpoint(link.from, resolveSplit);
+  const toId = resolveEndpoint(link.to, resolveSplit);
+  if (fromId === undefined || toId === undefined) return [];
+  const fromNode = nodes.find((n) => n.id === fromId);
+  const toNode = nodes.find((n) => n.id === toId);
+  if (!fromNode || !toNode) return [];
+  return [{
+    from: getCellCenter(fromNode.x, fromNode.y, cfg),
+    to: getCellCenter(toNode.x, toNode.y, cfg),
+    color: canvas.fieldEditor.hover,
+    alpha: 1.0,
+    width: WALL_THICKNESS * 2,
+    nodeRadius: NODE_RADIUS,
+  }];
 }
 
 /** A start/finish marker on a split point (GitHub issue #223) anchors to that node's own hub

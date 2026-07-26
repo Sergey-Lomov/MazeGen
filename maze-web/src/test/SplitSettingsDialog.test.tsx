@@ -63,4 +63,42 @@ describe("SplitSettingsDialog", () => {
     expect(useMazeStore.getState().splitPatterns).toHaveLength(2);
     expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
   });
+
+  // Closing the pattern editor's own Modal (its `X` close button, not the outer SplitSettingsDialog's
+  // — both portal into `document.body`; the pattern editor's is the second `.lucide-x` icon once
+  // it's open) drives `handleCloseEditor`.
+  function closePatternEditor() {
+    const closeIcons = document.body.querySelectorAll("svg.lucide-x");
+    fireEvent.click(closeIcons[closeIcons.length - 1].closest("button")!);
+  }
+
+  it("closing the editor on a pattern left with no faces on any node drops it from the list", () => {
+    useMazeStore.setState({ splitPatterns: [pattern(1), { node_count: 2, faces: [[], []], weight: 5 }] });
+    render(<SplitSettingsDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getAllByTitle("Edit pattern")[1]);
+    expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
+
+    closePatternEditor();
+
+    expect(useMazeStore.getState().splitPatterns).toHaveLength(1);
+    expect(useMazeStore.getState().splitPatterns[0].weight).toBe(1);
+    expect(screen.queryByText("Edit split pattern")).not.toBeInTheDocument();
+  });
+
+  it("closing the editor on a pattern with at least one face defined keeps it in the list", () => {
+    const withFace: SplitPattern = {
+      node_count: 2,
+      faces: [[{ face_index: 0, requirement: { kind: "passage" } }], []],
+      weight: 1,
+    };
+    useMazeStore.setState({ splitPatterns: [withFace] });
+    render(<SplitSettingsDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getAllByTitle("Edit pattern")[0]);
+    expect(screen.getByText("Edit split pattern")).toBeInTheDocument();
+
+    closePatternEditor();
+
+    expect(useMazeStore.getState().splitPatterns).toHaveLength(1);
+    expect(screen.queryByText("Edit split pattern")).not.toBeInTheDocument();
+  });
 });

@@ -12,6 +12,7 @@ import { OriginRenderer } from "./renderers/OriginRenderer";
 import { GenSourceRenderer } from "./renderers/GenSourceRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
+import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
 import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
 import type { TeleportEdge } from "./renderers/types";
@@ -23,6 +24,7 @@ import {
   buildInvalidEdgeHighlights,
   buildHoverEdgeHighlight,
   buildPresetSplitPassages,
+  buildLinkHoverHighlight,
 } from "./selectors/presetSelectors";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
@@ -52,6 +54,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly hoverContainer: Container;
   private readonly cellHoverContainer: Container;
   private readonly teleportPreviewContainer: Container;
+  private readonly linkHoverContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -70,6 +73,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly hover: EdgeHighlightRenderer;
   private readonly cellHover: CellFillRenderer;
   private readonly teleportPreview: Graphics;
+  /** Highlights the link a "Manage split nodes" panel bubble is currently hovered (GitHub issue
+   *  #237) — mirrors `PostEditRenderer`'s own `linkHover`, driven by `presetHoveredLink`. Same
+   *  `NodeEdgeHighlightRenderer` primitive `DebugRefHighlightOverlay` uses for its edge-ref
+   *  highlight. */
+  private readonly linkHover: NodeEdgeHighlightRenderer;
 
   constructor(container: Container) {
     super();
@@ -92,6 +100,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.hoverContainer          = new Container();
     this.cellHoverContainer      = new Container();
     this.teleportPreviewContainer = new Container();
+    this.linkHoverContainer      = new Container();
 
     this.root.addChild(this.gridContainer);
     this.root.addChild(this.floorContainer);
@@ -110,6 +119,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.hoverContainer);
     this.root.addChild(this.cellHoverContainer);
     this.root.addChild(this.teleportPreviewContainer);
+    this.root.addChild(this.linkHoverContainer);
 
     this.grid           = new GridRenderer(this.gridContainer);
     this.floor          = new CellFillRenderer(this.floorContainer);
@@ -130,6 +140,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.cellHover      = new CellFillRenderer(this.cellHoverContainer);
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
+    this.linkHover      = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
 
     this.root.visible = false;
 
@@ -243,6 +254,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       this.redrawIsolatedHL(state);
     }
 
+    if (state.presetHoveredLink !== prev.presetHoveredLink) {
+      this.redrawLinkHover(state);
+    }
+
     if (state.presetConnectionsTool !== prev.presetConnectionsTool || state.presetTeleportPendingFrom !== prev.presetTeleportPendingFrom) {
       if (!state.presetTeleportPendingFrom) this.teleportPreview.clear();
       // Leaving manage_split_nodes (or switching to it) invalidates whatever cell-hover state
@@ -290,6 +305,13 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     }
 
     this.hover.render({ highlights: [] });
+    this.redrawLinkHover(state);
+  }
+
+  private redrawLinkHover(state: MazeState): void {
+    if (!this.cfg) return;
+    const highlights = buildLinkHoverHighlight(state.presetHoveredLink, this.cfg);
+    this.linkHover.render(highlights);
   }
 
   private redrawOrigin(show: boolean): void {
@@ -375,6 +397,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidTeleportHL.clear();
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
+    this.linkHover.clear();
     this.teleportPreview.clear();
   }
 
@@ -395,6 +418,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidTeleportHL.destroy();
     this.hover.destroy();
     this.cellHover.destroy();
+    this.linkHover.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
@@ -413,6 +437,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.hoverContainer.destroy();
     this.cellHoverContainer.destroy();
     this.teleportPreviewContainer.destroy();
+    this.linkHoverContainer.destroy();
   }
 }
 

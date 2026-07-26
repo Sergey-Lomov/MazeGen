@@ -8,8 +8,9 @@ import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
+import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
@@ -32,6 +33,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly cellHoverContainer: Container;
   private readonly teleportPreviewContainer: Container;
   private readonly splitJunctionContainer: Container;
+  private readonly linkHoverContainer: Container;
 
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
@@ -43,6 +45,14 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly cellHover: CellFillRenderer;
   private readonly teleportPreview: Graphics;
   private readonly splitJunctions: SplitJunctionRenderer;
+  /** Highlights the link a "Manage split nodes" panel bubble is currently hovered (GitHub issue
+   *  #237) — driven by `postEditHoveredLink`, a separate layer/container from `hover` (that one
+   *  is driven by canvas pointermove instead, via `updateHover`) so the two never fight over the
+   *  same `Graphics` object. Same `NodeEdgeHighlightRenderer` primitive `DebugRefHighlightOverlay`
+   *  uses for its edge-ref highlight — a straight line + circle markers on each end, node center
+   *  to node center, not the shared geometric wall segment (a link bubble names a specific pair of
+   *  *nodes*, and a teleport link has no shared face at all to draw on). */
+  private readonly linkHover: NodeEdgeHighlightRenderer;
 
   constructor(container: Container) {
     super();
@@ -69,6 +79,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.root.addChild(this.cellHoverContainer);
     this.teleportPreviewContainer = new Container();
     this.root.addChild(this.teleportPreviewContainer);
+    this.linkHoverContainer = new Container();
+    this.root.addChild(this.linkHoverContainer);
 
     this.grid        = new GridRenderer(this.gridContainer);
     this.floor       = new CellFillRenderer(this.floorContainer);
@@ -81,6 +93,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.cellHover   = new CellFillRenderer(this.cellHoverContainer);
     this.teleportPreview = new Graphics();
     this.teleportPreviewContainer.addChild(this.teleportPreview);
+    this.linkHover   = new NodeEdgeHighlightRenderer(this.linkHoverContainer);
 
     this.root.visible = false;
 
@@ -160,11 +173,26 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditActiveSplitNode !== prev.postEditActiveSplitNode
     ) {
       this.redrawAll(state);
+    } else if (state.postEditHoveredLink !== prev.postEditHoveredLink) {
+      this.redrawLinkHover(state);
     }
 
     if (state.postEditTool !== prev.postEditTool || state.postEditTeleportPendingFrom !== prev.postEditTeleportPendingFrom) {
       if (state.postEditTeleportPendingFrom === null) this.teleportPreview.clear();
     }
+  }
+
+  private redrawLinkHover(state: MazeState): void {
+    if (!this.cfg) return;
+    const pointNodeMap = new Map<string, number[]>();
+    for (const nd of state.nodes) {
+      const k = `${nd.x},${nd.y}`;
+      const list = pointNodeMap.get(k);
+      if (list) list.push(nd.id); else pointNodeMap.set(k, [nd.id]);
+    }
+    const resolveSplit = buildSplitNodeResolver(pointNodeMap, state.postEditDraftSplitPoints);
+    const highlights = buildLinkHoverHighlight(state.postEditHoveredLink, state.nodes, resolveSplit, this.cfg);
+    this.linkHover.render(highlights);
   }
 
   protected redrawAll(state: MazeState): void {
@@ -229,6 +257,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
+    this.redrawLinkHover(state);
   }
 
   protected clearAll(): void {
@@ -243,6 +272,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
+    this.linkHover.clear();
     this.teleportPreview.clear();
   }
 
@@ -256,6 +286,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.markers.destroy();
     this.hover.destroy();
     this.cellHover.destroy();
+    this.linkHover.destroy();
     this.teleportPreview.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
@@ -267,5 +298,6 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.hoverContainer.destroy();
     this.cellHoverContainer.destroy();
     this.teleportPreviewContainer.destroy();
+    this.linkHoverContainer.destroy();
   }
 }

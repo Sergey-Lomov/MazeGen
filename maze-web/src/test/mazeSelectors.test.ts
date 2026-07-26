@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildSplitPassages, buildMazeMarkers } from "../pixi/selectors/mazeSelectors";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight } from "../pixi/selectors/mazeSelectors";
+import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -426,5 +426,54 @@ describe("buildMazeMarkers", () => {
   it("null start/finish produce no markers", () => {
     const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)]]);
     expect(buildMazeMarkers(nodeById, null, null, squareCfg)).toEqual([]);
+  });
+});
+
+// --- buildLinkHoverHighlight ---
+
+describe("buildLinkHoverHighlight", () => {
+  const noSplitsResolver = () => undefined;
+
+  it("null link produces no highlight", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    expect(buildLinkHoverHighlight(null, nodes, noSplitsResolver, squareCfg)).toEqual([]);
+  });
+
+  it("resolves both plain-node endpoints to their cell centers", () => {
+    const nodes = [n(0, 0, 0), n(1, 2, 0)];
+    const link = { from: nodeEndpoint(0), to: nodeEndpoint(1) };
+    const result = buildLinkHoverHighlight(link, nodes, noSplitsResolver, squareCfg);
+    expect(result).toHaveLength(1);
+    expect(result[0].from).not.toEqual(result[0].to);
+  });
+
+  it("returns no highlight when the from endpoint doesn't resolve to a node id", () => {
+    const nodes = [n(1, 1, 0)];
+    const link = { from: nodeEndpoint(0), to: nodeEndpoint(1) }; // node 0 missing from resolver output too
+    expect(buildLinkHoverHighlight(link, nodes, noSplitsResolver, squareCfg)).toEqual([]);
+  });
+
+  it("returns no highlight for an unresolved split endpoint (not yet confirmed)", () => {
+    const nodes = [n(0, 0, 0)];
+    const link = { from: nodeEndpoint(0), to: splitEndpoint([1, 0], 0) };
+    // noSplitsResolver always returns undefined -> the split endpoint never resolves.
+    expect(buildLinkHoverHighlight(link, nodes, noSplitsResolver, squareCfg)).toEqual([]);
+  });
+
+  it("returns no highlight when a resolved id isn't present in the nodes snapshot", () => {
+    const nodes = [n(0, 0, 0)]; // node 1 missing
+    const link = { from: nodeEndpoint(0), to: nodeEndpoint(1) };
+    expect(buildLinkHoverHighlight(link, nodes, noSplitsResolver, squareCfg)).toEqual([]);
+  });
+
+  it("resolves a split endpoint via the resolver to its own hub point", () => {
+    // Point (0,0) split into node 0 (original) and node 2 (slot 0).
+    const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
+    const resolveSplit = (point: [number, number], slotId: number) =>
+      point[0] === 0 && point[1] === 0 && slotId === 0 ? 2 : undefined;
+    const link = { from: nodeEndpoint(1), to: splitEndpoint([0, 0], 0) };
+    const result = buildLinkHoverHighlight(link, nodes, resolveSplit, squareCfg);
+    expect(result).toHaveLength(1);
+    expect(result[0].from).not.toEqual(result[0].to);
   });
 });

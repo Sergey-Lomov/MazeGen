@@ -46,6 +46,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   const setPostEditEndpoint = useMazeStore((s) => s.setPostEditEndpoint);
   const clearPostEditEndpoint = useMazeStore((s) => s.clearPostEditEndpoint);
   const rotateSplitPoint = useMazeStore((s) => s.rotateSplitPoint);
+  const setPostEditHoveredLink = useMazeStore((s) => s.setPostEditHoveredLink);
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
@@ -127,14 +128,14 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // Groups a node's edges/teleports by partner, collapsing a passage's two directed `basic`
   // entries (A->B and B->A — see `applyPostEditEdgeTool`'s "passage" branch, which always writes
   // both) into a single "<->" link instead of showing the same passage twice.
-  const links = (ep: PostEditEndpoint): LinkInfo[] => {
+  const links = (ep: PostEditEndpoint): LinkInfo<PostEditEndpoint>[] => {
     const { mark, finalize } = createRequiredLinksTracker(endpointKey, describeEndpoint);
-    const forbidden: LinkInfo[] = [];
+    const forbidden: LinkInfo<PostEditEndpoint>[] = [];
     if (draftEdges) {
       for (const e of Object.values(draftEdges)) {
         if (e.kind === "wall") {
-          if (endpointsMatch(e.from, ep)) forbidden.push({ otherLabel: describeEndpoint(e.to), arrow: "->", category: "forbidden" });
-          else if (endpointsMatch(e.to, ep)) forbidden.push({ otherLabel: describeEndpoint(e.from), arrow: "<-", category: "forbidden" });
+          if (endpointsMatch(e.from, ep)) forbidden.push({ otherLabel: describeEndpoint(e.to), otherEndpoint: e.to, arrow: "->", category: "forbidden" });
+          else if (endpointsMatch(e.to, ep)) forbidden.push({ otherLabel: describeEndpoint(e.from), otherEndpoint: e.from, arrow: "<-", category: "forbidden" });
           continue;
         }
         if (endpointsMatch(e.from, ep)) mark(e.to, "out");
@@ -242,7 +243,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       onKindChange={setActiveKind}
       onFaceClick={handleFaceClick}
       onFaceRightClick={handleFaceRightClick}
-      onClose={onClose}
+      onClose={() => { setPostEditHoveredLink(null); onClose(); }}
       onSetActive={(ep) => setActiveSplitNode(point, ep)}
       onAdd={() => addSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.kind === "split") removeSplitNode(point, row.endpoint.slotId); }}
@@ -255,6 +256,8 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
         isFinish(activeEndpoint) ? clearPostEditEndpoint("finish") : setPostEditEndpoint("finish", activeEndpoint);
       }}
       onRotate={(direction) => rotateSplitPoint(point, direction)}
+      onHoverLink={(row, link) => setPostEditHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
+      onUnhoverLink={() => setPostEditHoveredLink(null)}
     />
   );
 }

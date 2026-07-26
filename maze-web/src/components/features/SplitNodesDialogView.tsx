@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Modal } from "../Modal";
+import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
+import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { ui, typography, radius, spacing, indent } from "../../styles/theme";
 import { buttonStyle, sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
@@ -18,10 +19,14 @@ import type React from "react";
  *  state's own name — "allowed" read as ambiguous next to "required"/"forbidden". */
 export type LinkCategory = "required" | "undefined" | "forbidden";
 
-export interface LinkInfo {
+export interface LinkInfo<E> {
   otherLabel: string;
   arrow: string;
   category: LinkCategory;
+  /** The link's partner endpoint — used to highlight this specific connection on the canvas while
+   *  the bubble is hovered (GitHub issue #237), same coordinates the tile diagram/canvas renderer
+   *  already resolve endpoints to. */
+  otherEndpoint: E;
 }
 
 /** Groups a node's directed passage/teleport entries by partner, collapsing a bidirectional pair
@@ -38,15 +43,16 @@ export function createRequiredLinksTracker<E>(
   endpointKey: (ep: E) => string,
   describeEndpoint: (ep: E) => string,
 ) {
-  const byPartner = new Map<string, { otherLabel: string; out: boolean; in: boolean }>();
+  const byPartner = new Map<string, { otherLabel: string; otherEndpoint: E; out: boolean; in: boolean }>();
   const mark = (partnerEp: E, direction: "out" | "in") => {
     const partnerKey = endpointKey(partnerEp);
-    const entry = byPartner.get(partnerKey) ?? { otherLabel: describeEndpoint(partnerEp), out: false, in: false };
+    const entry = byPartner.get(partnerKey) ?? { otherLabel: describeEndpoint(partnerEp), otherEndpoint: partnerEp, out: false, in: false };
     entry[direction] = true;
     byPartner.set(partnerKey, entry);
   };
-  const finalize = (): LinkInfo[] => [...byPartner.values()].map(({ otherLabel, out, in: isIn }) => ({
+  const finalize = (): LinkInfo<E>[] => [...byPartner.values()].map(({ otherLabel, otherEndpoint, out, in: isIn }) => ({
     otherLabel,
+    otherEndpoint,
     arrow: out && isIn ? "<->" : isIn ? "<-" : "->",
     category: "required" as const,
   }));
@@ -70,7 +76,7 @@ export interface SplitNodesRow<E> {
   removable: boolean;
   active: boolean;
   ownLabel: string;
-  links: LinkInfo[];
+  links: LinkInfo<E>[];
   isStart: boolean;
   isFinish: boolean;
 }
@@ -101,6 +107,13 @@ interface Props<E> {
   /** Rotates every node's connections by one geometric face, clockwise (`1`) or counter-clockwise
    * (`-1`) — see `rotatePostEditSplitPoint`/`rotatePresetSplitPoint`. */
   onRotate: (direction: 1 | -1) => void;
+  /** Hovering a link bubble highlights that specific connection on the canvas (GitHub issue #237)
+   *  — same mechanism as `EdgeHighlightRenderer`'s existing hover highlight, driven here by the
+   *  panel instead of a canvas pointermove. `row` is the bubble's own card row (the link's "from"
+   *  side); `link.otherEndpoint` is its partner. Optional — the pattern editor has no canvas to
+   *  highlight anything on. */
+  onHoverLink?: (row: SplitNodesRow<E>, link: LinkInfo<E>) => void;
+  onUnhoverLink?: () => void;
 }
 
 /** Exported for `AbstractPatternEditorDialog` (GitHub issue #222) — the pattern editor doesn't
@@ -133,36 +146,38 @@ const SECTION_LABEL: Record<LinkCategory, () => string> = {
 export function SplitNodesDialogView<E>({
   title, point, cfg, rows, tileNodes, availableKinds, activeKind, onKindChange,
   onFaceClick, onFaceRightClick, onClose, onSetActive, onAdd, onRemove, onToggleStart, onToggleFinish, onRotate,
+  onHoverLink, onUnhoverLink,
 }: Props<E>) {
   const [pendingRemove, setPendingRemove] = useState<SplitNodesRow<E> | null>(null);
   const activeRow = rows.find((row) => row.active);
   const activeRowIndex = rows.findIndex((row) => row.active);
   const activeIndex = activeRowIndex === -1 ? null : activeRowIndex;
+  const warnings = splitNodeDiagnostics(tileNodes);
 
   return (
     <>
-    <Modal title={title} size="wide" onClose={onClose} rawBody={
-      <div style={styles.split}>
-        <div style={styles.left}>
-          <Inline gap="itemGap" justify="center" style={{ flexWrap: "wrap" }}>
-            {availableKinds.map((kind) => (
-              <button
-                key={kind}
-                className={kind === activeKind ? "hoverable-accent" : "hoverable"}
-                style={buttonStyle(kind === activeKind ? "toggle-active" : "toggle")}
-                onClick={() => onKindChange(kind)}
-              >
-                {KIND_LABEL[kind]()}
-              </button>
-            ))}
-          </Inline>
-          <TileFaceEditor
-            point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
-            onFaceClick={onFaceClick} onFaceRightClick={onFaceRightClick} onRotate={onRotate}
-          />
-        </div>
+    <SidePanel title={title} onClose={onClose} warnings={warnings}>
+      <div style={styles.tileArea}>
+        <Inline gap="itemGap" justify="center" style={{ flexWrap: "wrap" }}>
+          {availableKinds.map((kind) => (
+            <button
+              key={kind}
+              className={kind === activeKind ? "hoverable-accent" : "hoverable"}
+              style={buttonStyle(kind === activeKind ? "toggle-active" : "toggle")}
+              onClick={() => onKindChange(kind)}
+            >
+              {KIND_LABEL[kind]()}
+            </button>
+          ))}
+        </Inline>
+        <TileFaceEditor
+          point={point} cfg={cfg} nodes={tileNodes} activeIndex={activeIndex}
+          onFaceClick={onFaceClick} onFaceRightClick={onFaceRightClick} onRotate={onRotate}
+        />
+      </div>
 
-        <div style={styles.right}>
+      <div style={styles.nodeListWrap}>
+        <div style={styles.nodeList}>
           <Stack gap="itemGap">
             {rows.map((row) => (
               <div
@@ -193,7 +208,14 @@ export function SplitNodesDialogView<E>({
                             <span style={typography.caption}>{m["post_edit.split_section_empty"]()}</span>
                           ) : (
                             links.map((link, i) => (
-                              <span key={i} style={styles.bubble}>{row.ownLabel} {link.arrow} {link.otherLabel}</span>
+                              <span
+                                key={i}
+                                style={styles.bubble}
+                                onMouseEnter={onHoverLink ? () => onHoverLink(row, link) : undefined}
+                                onMouseLeave={onUnhoverLink}
+                              >
+                                {row.ownLabel} {link.arrow} {link.otherLabel}
+                              </span>
                             ))
                           )}
                         </div>
@@ -203,6 +225,14 @@ export function SplitNodesDialogView<E>({
                 </div>
               </div>
             ))}
+          </Stack>
+        </div>
+
+        {/* Fixed footer (GitHub issue #237 follow-up) — Add/Remove/Start/Finish controls stay
+         * reachable regardless of how far the card list above is scrolled, instead of scrolling
+         * off with it. */}
+        <div style={styles.nodeListFooter}>
+          <Stack gap="itemGap">
             <Inline gap="itemGap">
               <button className="hoverable-accent" style={{ ...buttonStyle("primary"), flex: 1 }} onClick={onAdd}>
                 {m["post_edit.split_add_node"]()}
@@ -237,7 +267,7 @@ export function SplitNodesDialogView<E>({
           </Stack>
         </div>
       </div>
-    } />
+    </SidePanel>
     {pendingRemove !== null && (
       <ConfirmModal
         message={m["post_edit.confirm_remove_split_node"]()}
@@ -253,33 +283,47 @@ export function SplitNodesDialogView<E>({
  *  tile+card layout (no `NodeId`/start/finish/link-section concept to reuse this whole component
  *  for), but borrows this subset of styling so the two dialogs read as visually one family. */
 export const dialogPanelStyles: Record<string, React.CSSProperties> = {
-  split: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "row",
-    minHeight: 0,
-  },
-  // `minHeight: 0` is required, not cosmetic — without it, a flex item's default `min-height:
-  // auto` keeps `left` sized to its content's min-content height (buttons + tile's own intrinsic
-  // size) instead of stretching to `split`'s full height, so `TileFaceEditor`'s `flex: 1` wrap
-  // below has no extra height to grow into and the diagram renders tiny.
-  left: {
-    flex: "1 1 38%",
+  // Panel body stacked vertically (GitHub issue #237: tile diagram on top, node list below) —
+  // replaces the old modal's side-by-side left/right columns now that this content lives in a
+  // narrow `SidePanel` docked beside the canvas instead of a wide centered modal.
+  //
+  // `minHeight: 0` on `tileArea` is required, not cosmetic — without it, a flex item's default
+  // `min-height: auto` keeps it sized to its content's min-content height (buttons + tile's own
+  // intrinsic size) instead of taking its allotted share of the column, so `TileFaceEditor`'s
+  // `flex: 1` wrap below has no extra height to grow into and the diagram renders tiny.
+  tileArea: {
+    flex: "0 0 auto",
     display: "flex",
     flexDirection: "column",
     gap: spacing.groupGap,
     padding: spacing.sectionGap,
-    borderRight: `1px solid ${ui.border.default}`,
+    borderBottom: `1px solid ${ui.border.default}`,
+    minHeight: 260,
+  },
+  // Column split into a scrolling card list and a fixed footer (GitHub issue #237 follow-up) —
+  // `nodeListWrap` is the flex column, `nodeList` (`overflowY: auto`, `flex: 1`) holds only the
+  // scrollable card list, `nodeListFooter` (`flex: "0 0 auto"`, outside the scroll area) holds
+  // the Add/Remove/Start/Finish controls so they stay reachable regardless of scroll position.
+  nodeListWrap: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
     minWidth: 0,
     minHeight: 0,
   },
-  right: {
-    flex: "1 1 62%",
+  nodeList: {
+    flex: 1,
     display: "flex",
     flexDirection: "column",
     padding: spacing.groupGap,
     minWidth: 0,
+    minHeight: 0,
     overflowY: "auto",
+  },
+  nodeListFooter: {
+    flex: "0 0 auto",
+    padding: spacing.groupGap,
+    borderTop: `1px solid ${ui.border.default}`,
   },
   // One bordered card per node — the whole card (except its corner controls) is a click target
   // that activates the node. `position: relative` anchors `cardCorner`. Deliberately no

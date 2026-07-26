@@ -11,7 +11,7 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const { buildPresetWallGroups, buildPresetSplitPassages } = await import("../pixi/selectors/presetSelectors");
+const { buildPresetWallGroups, buildPresetSplitPassages, buildLinkHoverHighlight } = await import("../pixi/selectors/presetSelectors");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
 const cfg: TessellationConfig = { type: "square", width: 2, height: 1 };
@@ -222,5 +222,26 @@ describe("buildPresetSplitPassages", () => {
     ]);
     const { passages } = buildPresetSplitPassages({ "-1,0": [0, 1] }, connections, cfg);
     expect(passages).toHaveLength(3);
+  });
+});
+
+describe("buildLinkHoverHighlight", () => {
+  it("null link produces no highlight", () => {
+    expect(buildLinkHoverHighlight(null, cfg)).toEqual([]);
+  });
+
+  it("resolves both endpoints to their own cell centers", () => {
+    const link = { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]) };
+    const result = buildLinkHoverHighlight(link, cfg);
+    expect(result).toHaveLength(1);
+    expect(result[0].from).not.toEqual(result[0].to);
+  });
+
+  it("a split-slot endpoint resolves to the same cell center as its point (no hub-point offset)", () => {
+    // GitHub issue #237: this highlight deliberately uses the plain cell center for a split
+    // endpoint too, not the hub-aware position — kept simple, same as buildHoverEdgeHighlight.
+    const original = buildLinkHoverHighlight({ from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]) }, cfg);
+    const slotted = buildLinkHoverHighlight({ from: presetEndpoint([-1, 0], 0), to: presetEndpoint([0, 0]) }, cfg);
+    expect(slotted[0].from).toEqual(original[0].from);
   });
 });

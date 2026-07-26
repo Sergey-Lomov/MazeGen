@@ -1,14 +1,12 @@
-import { Container, Graphics } from "pixi.js";
+import { Container } from "pixi.js";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import { cellCenter } from "./hexGeometry";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
-import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
+import { NodeEdgeHighlightRenderer, type NodeEdgeHighlight } from "./renderers/NodeEdgeHighlightRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
-import { touchedNodeIds } from "./renderers/edgeUtils";
-import type { EdgeHL } from "./renderers/types";
 import type { Pos } from "./tessellationGeometry";
 
 const HIGHLIGHT_WIDTH = 3;
@@ -24,45 +22,38 @@ export interface DebugRefHighlightData {
  *  narration (GitHub issue #130) — owned by `GenerationRenderer`, per the feature-renderer
  *  ownership rule (`maze-web/CLAUDE.md`): must not share `IssueHighlightOverlay`'s instance even
  *  though the drawing logic overlaps, so it holds its own instances of the shared
- *  `EdgeHighlightRenderer`/`RegionHighlightRenderer` classes instead. Uses a distinct accent
+ *  `NodeEdgeHighlightRenderer`/`RegionHighlightRenderer` classes instead. Uses a distinct accent
  *  color (`canvas.debug.refHighlight`) for plain node/edge/cycle/region refs; an `issue`-kind ref
  *  (GitHub issue #203) instead uses `canvas.debug.issueHighlight`, matching Analytics'
  *  `IssueHighlightOverlay`'s issue-highlight red so an issue reads the same way in both views.
  *
- *  `edge` and `cycle` both render via `edgeHighlightRenderer` (one segment vs. several — same
- *  primitive), `region` via `regionHighlightRenderer`, `node` via this class's own small
- *  persistent `Graphics` (the only kind with no existing reusable renderer, and the only
- *  consumer of one). Exactly one of the three sub-renderers has content at a time; the other two
- *  are cleared. */
+ *  `edge` and `cycle` both render via `edgeRenderer` (one segment vs. several — same primitive,
+ *  `NodeEdgeHighlightRenderer` also draws the endpoint circle markers), `region` via
+ *  `regionRenderer`, `node` via `RegionHighlightRenderer` treating a single node as a
+ *  one-element region. Exactly one of the two sub-renderers has content at a time; the other is
+ *  cleared. */
 export class DebugRefHighlightOverlay {
   private readonly edgeContainer: Container;
   private readonly regionContainer: Container;
-  private readonly nodeContainer: Container;
 
-  private readonly edgeRenderer: EdgeHighlightRenderer;
+  private readonly edgeRenderer: NodeEdgeHighlightRenderer;
   private readonly regionRenderer: RegionHighlightRenderer;
-  private readonly nodeGraphics: Graphics;
 
   constructor(container: Container) {
     this.edgeContainer = new Container();
     this.regionContainer = new Container();
-    this.nodeContainer = new Container();
     container.addChild(this.edgeContainer);
     container.addChild(this.regionContainer);
-    container.addChild(this.nodeContainer);
 
-    this.edgeRenderer = new EdgeHighlightRenderer(this.edgeContainer);
+    this.edgeRenderer = new NodeEdgeHighlightRenderer(this.edgeContainer);
     this.regionRenderer = new RegionHighlightRenderer(this.regionContainer);
-    this.nodeGraphics = new Graphics();
-    this.nodeContainer.addChild(this.nodeGraphics);
   }
 
   render(data: DebugRefHighlightData): void {
     const { nodes, ref, cfg } = data;
-    this.nodeGraphics.clear();
 
     if (!ref || nodes.length === 0) {
-      this.edgeRenderer.render({ highlights: [] });
+      this.edgeRenderer.render([]);
       this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
       return;
     }
@@ -74,20 +65,18 @@ export class DebugRefHighlightOverlay {
     switch (ref.kind) {
       case "edge": {
         const highlights = this.edgeHighlightsFor([[ref.from, ref.to]], posOf, [ref.bidirectional]);
-        this.edgeRenderer.render({ highlights });
+        this.edgeRenderer.render(highlights);
         this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
-        this.drawNodeCircles([ref.from, ref.to], posOf);
         break;
       }
       case "cycle": {
         const highlights = this.edgeHighlightsFor(ref.edges, posOf);
-        this.edgeRenderer.render({ highlights });
+        this.edgeRenderer.render(highlights);
         this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
-        this.drawNodeCircles(touchedNodeIds(ref.edges), posOf);
         break;
       }
       case "region": {
-        this.edgeRenderer.render({ highlights: [] });
+        this.edgeRenderer.render([]);
         const regionNodeIds = ref.nodes.map((id) => Number(id));
         this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         break;
@@ -96,7 +85,7 @@ export class DebugRefHighlightOverlay {
         // Highlights the referenced vertex's own tile (fill+perimeter, via `RegionHighlightRenderer`
         // treating the single node as a one-element region), not a circle marker at its center —
         // reads more directly as "this maze cell" than a dot floating on top of the maze.
-        this.edgeRenderer.render({ highlights: [] });
+        this.edgeRenderer.render([]);
         this.regionRenderer.render({ nodes, regionGroups: [[Number(ref.id)]], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         break;
       }
@@ -104,17 +93,16 @@ export class DebugRefHighlightOverlay {
         // No structural target (most issue kinds — see `IssuePayload::None`): nothing to
         // highlight, same as the no-`ref` branch above.
         if (!ref.target) {
-          this.edgeRenderer.render({ highlights: [] });
+          this.edgeRenderer.render([]);
           this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
           break;
         }
         if (ref.target.kind === "cycle") {
           const highlights = this.edgeHighlightsFor(ref.target.edges, posOf, undefined, canvas.debug.issueHighlight);
-          this.edgeRenderer.render({ highlights });
+          this.edgeRenderer.render(highlights);
           this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
-          this.drawNodeCircles(touchedNodeIds(ref.target.edges), posOf, canvas.debug.issueHighlight);
         } else {
-          this.edgeRenderer.render({ highlights: [] });
+          this.edgeRenderer.render([]);
           const regionNodeIds = ref.target.nodes.map((id) => Number(id));
           this.regionRenderer.render({ nodes, regionGroups: [regionNodeIds], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         }
@@ -128,42 +116,30 @@ export class DebugRefHighlightOverlay {
     posOf: (id: bigint) => Pos | undefined,
     bidirectional?: (boolean | undefined)[],
     color: number = canvas.debug.refHighlight,
-  ): EdgeHL[] {
-    const highlights: EdgeHL[] = [];
+  ): NodeEdgeHighlight[] {
+    const highlights: NodeEdgeHighlight[] = [];
     edges.forEach(([from, to], i) => {
       const a = posOf(from);
       const b = posOf(to);
       if (!a || !b) return;
       highlights.push({
-        from: [a.x, a.y], to: [b.x, b.y],
-        color, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA,
+        from: a, to: b,
+        color, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, nodeRadius: NODE_RADIUS,
         bidirectional: bidirectional?.[i],
       });
     });
     return highlights;
   }
 
-  private drawNodeCircles(ids: bigint[], posOf: (id: bigint) => Pos | undefined, color: number = canvas.debug.refHighlight): void {
-    for (const id of ids) {
-      const pos = posOf(id);
-      if (!pos) continue;
-      this.nodeGraphics.circle(pos.x, pos.y, NODE_RADIUS);
-      this.nodeGraphics.fill({ color, alpha: HIGHLIGHT_ALPHA });
-    }
-  }
-
   clear(): void {
-    this.edgeRenderer.render({ highlights: [] });
+    this.edgeRenderer.clear();
     this.regionRenderer.clear();
-    this.nodeGraphics.clear();
   }
 
   destroy(): void {
     this.edgeRenderer.destroy();
     this.regionRenderer.destroy();
-    this.nodeGraphics.destroy();
     this.edgeContainer.destroy();
     this.regionContainer.destroy();
-    this.nodeContainer.destroy();
   }
 }

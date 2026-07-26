@@ -30,6 +30,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetSplitPoints: {},
   presetActiveSplitNode: {},
   presetFocusedPoint: null,
+  presetHoveredLink: null,
 
   setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool, presetTeleportPendingFrom: null }),
 
@@ -79,6 +80,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetSplitPoints: {},
     presetActiveSplitNode: {},
     presetFocusedPoint: null,
+    presetHoveredLink: null,
     debugStale: debugStaleOf(state),
   })),
 
@@ -224,6 +226,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   })),
 
   setPresetFocusedPoint: (point) => set({ presetFocusedPoint: point }),
+  setPresetHoveredLink: (link) => set({ presetHoveredLink: link }),
 
   rotatePresetSplitPoint: (point, direction) => set((state) => {
     const key = `${point[0]},${point[1]}`;

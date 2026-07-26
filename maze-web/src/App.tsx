@@ -5,6 +5,7 @@ import { FeaturesPanel } from "./components/FeaturesPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
+import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
 import { useMazeStore } from "./store/mazeStore";
 import { ui, typography, disabled, inset } from "./styles/theme";
 import { canvas } from "./pixi/colorTokens";
@@ -62,6 +63,11 @@ export function App() {
         {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}
       </div>
       {generationOpen && debugMode && debugArena && <DebugPanel />}
+      {/* Portal target for `SidePanel` (GitHub issue #237) — split-node management panels
+       * (post-edit, preset, pattern editor) render here regardless of where in the component tree
+       * they're triggered from, so they always dock beside the canvas, never inside the left
+       * features panel. */}
+      <div id={SIDE_PANEL_SLOT_ID} />
       {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
     </div>
   );

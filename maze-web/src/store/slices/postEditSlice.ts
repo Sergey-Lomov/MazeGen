@@ -51,6 +51,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   postEditDraftSplitPoints: {},
   postEditActiveSplitNode: {},
   postEditFocusedPoint: null,
+  postEditHoveredLink: null,
   postEditEdges: null,
   postEditTeleportEdges: [],
   postEditMeta: null,
@@ -377,6 +378,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   setPostEditFocusedPoint: (point) => set({ postEditFocusedPoint: point }),
+  setPostEditHoveredLink: (link) => set({ postEditHoveredLink: link }),
 
   rotateSplitPoint: (point, direction) => {
     set((state) => {

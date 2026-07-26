@@ -104,10 +104,13 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
     const dir = out ? 1 : -1;
     const ux = (dx / len) * dir, uy = (dy / len) * dir;
     const perpX = -uy, perpY = ux;
+    // Wide, near-equilateral triangle (base ~= length) — same read as the canvas's own one-way
+    // arrow (`drawOneWayTriangle`), just scaled to this editor's own stroke width instead of
+    // `TILE_SIZE`; the canvas rendering itself is untouched.
     const size = strokeWidth * 1.6;
     const tipX = c.x + ux * size, tipY = c.y + uy * size;
     const baseX = c.x - ux * size * 0.6, baseY = c.y - uy * size * 0.6;
-    return `${tipX},${tipY} ${baseX + perpX * size * 0.5},${baseY + perpY * size * 0.5} ${baseX - perpX * size * 0.5},${baseY - perpY * size * 0.5}`;
+    return `${tipX},${tipY} ${baseX + perpX * size},${baseY + perpY * size} ${baseX - perpX * size},${baseY - perpY * size}`;
   };
 
   const faceInputs = sides.map((side) => ({ v0: side.v0, v1: side.v1 }));

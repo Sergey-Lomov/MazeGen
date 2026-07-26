@@ -1,8 +1,9 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../renderers/types";
+import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import type { PresetConnectionEntry, FieldEdge } from "../fieldEditUtils";
-import { edgeKey, canonicalize, computeInvalidKeysFromCells } from "../fieldEditUtils";
+import { edgeKey, computeInvalidKeysFromCells } from "../fieldEditUtils";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
@@ -57,12 +58,14 @@ export function buildPresetWallGroups(
 
       if (entry.state === "one_way_forward" || entry.state === "one_way_backward") {
         kind = entry.state === "one_way_forward" ? "forward" : "backward";
-        const [fa, fb] = canonicalize([x, y], [nx, ny]);
-        const cA = getCellCenter(fa[0], fa[1], cfg);
-        const cB = getCellCenter(fb[0], fb[1], cfg);
+        // Direction is `entry.from -> entry.to` for "forward" (reversed for "backward") — `entry`'s
+        // own from/to, NOT canonical `[x,y]/[nx,ny]` order, since a split-node-dialog click can
+        // store `from`/`to` in either order (Specs/preset-connections.md's "One-way direction").
+        const cFrom = getCellCenter(entry.from.point[0], entry.from.point[1], cfg);
+        const cTo = getCellCenter(entry.to.point[0], entry.to.point[1], cfg);
         const isForward = entry.state === "one_way_forward";
-        const tdx = isForward ? cB.x - cA.x : cA.x - cB.x;
-        const tdy = isForward ? cB.y - cA.y : cA.y - cB.y;
+        const tdx = isForward ? cTo.x - cFrom.x : cFrom.x - cTo.x;
+        const tdy = isForward ? cTo.y - cFrom.y : cFrom.y - cTo.y;
         const len = Math.sqrt(tdx * tdx + tdy * tdy);
         if (len > 0) oneWayDir = { dx: tdx / len, dy: tdy / len };
       }
@@ -88,12 +91,11 @@ export function buildPresetWallGroups(
 
     if (entry.state === "one_way_forward" || entry.state === "one_way_backward") {
       kind = entry.state === "one_way_forward" ? "forward" : "backward";
-      const [fa, fb] = canonicalize(entry.from.point, entry.to.point);
-      const cA = getCellCenter(fa[0], fa[1], cfg);
-      const cB = getCellCenter(fb[0], fb[1], cfg);
+      const cFrom = getCellCenter(entry.from.point[0], entry.from.point[1], cfg);
+      const cTo = getCellCenter(entry.to.point[0], entry.to.point[1], cfg);
       const isForward = entry.state === "one_way_forward";
-      const tdx = isForward ? cB.x - cA.x : cA.x - cB.x;
-      const tdy = isForward ? cB.y - cA.y : cA.y - cB.y;
+      const tdx = isForward ? cTo.x - cFrom.x : cFrom.x - cTo.x;
+      const tdy = isForward ? cTo.y - cFrom.y : cFrom.y - cTo.y;
       const len = Math.sqrt(tdx * tdx + tdy * tdy);
       if (len > 0) oneWayDir = { dx: tdx / len, dy: tdy / len };
     }
@@ -292,5 +294,26 @@ export function buildHoverEdgeHighlight(
     color: canvas.fieldEditor.hover,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,
+  }];
+}
+
+/** Highlight for `presetHoveredLink` (GitHub issue #237) — same "node-to-node" style
+ *  `DebugRefHighlightOverlay` uses for an edge ref (`NodeEdgeHighlightRenderer`: a straight line
+ *  + circle markers on each end), cell center to cell center — not the shared geometric wall
+ *  segment `buildHoverEdgeHighlight` draws (a teleport link has no shared face at all to draw
+ *  on), and not a split point's hub point either (kept simple: this highlight only needs to say
+ *  "these two cells", not distinguish which of a split point's several nodes). */
+export function buildLinkHoverHighlight(
+  link: { from: PresetEndpoint; to: PresetEndpoint } | null,
+  cfg: TessellationConfig,
+): NodeEdgeHighlight[] {
+  if (!link) return [];
+  return [{
+    from: getCellCenter(link.from.point[0], link.from.point[1], cfg),
+    to: getCellCenter(link.to.point[0], link.to.point[1], cfg),
+    color: canvas.fieldEditor.hover,
+    alpha: 1.0,
+    width: WALL_THICKNESS * 2,
+    nodeRadius: NODE_RADIUS,
   }];
 }

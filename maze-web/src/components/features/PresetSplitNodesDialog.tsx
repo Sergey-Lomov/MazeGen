@@ -48,6 +48,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const setPresetStartEndpoint = useMazeStore((s) => s.setPresetStartEndpoint);
   const setPresetFinishEndpoint = useMazeStore((s) => s.setPresetFinishEndpoint);
   const rotatePresetSplitPoint = useMazeStore((s) => s.rotatePresetSplitPoint);
+  const setPresetHoveredLink = useMazeStore((s) => s.setPresetHoveredLink);
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
@@ -70,10 +71,10 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
 
   // Groups an endpoint's connections/teleports/markers by partner, same collapsing rule as
   // post-edit's `links` (a passage's two directed entries become one "<->" link).
-  const links = (ep: PresetEndpoint): LinkInfo[] => {
+  const links = (ep: PresetEndpoint): LinkInfo<PresetEndpoint>[] => {
     const { mark, finalize } = createRequiredLinksTracker(presetEndpointKey, describeEndpoint);
-    const forbidden: LinkInfo[] = [];
-    const undecided: LinkInfo[] = [];
+    const forbidden: LinkInfo<PresetEndpoint>[] = [];
+    const undecided: LinkInfo<PresetEndpoint>[] = [];
     const decidedPartners = new Set<string>();
     for (const entry of presetConnections.values()) {
       const fromMatches = presetEndpointsEqual(entry.from, ep);
@@ -81,12 +82,12 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       if (!fromMatches && !toMatches) continue;
       const partner = fromMatches ? entry.to : entry.from;
       if (entry.state === "wall") {
-        forbidden.push({ otherLabel: describeEndpoint(partner), arrow: fromMatches ? "->" : "<-", category: "forbidden" });
+        forbidden.push({ otherLabel: describeEndpoint(partner), otherEndpoint: partner, arrow: fromMatches ? "->" : "<-", category: "forbidden" });
         decidedPartners.add(presetEndpointKey(partner));
         continue;
       }
       if (entry.state === "undefined") {
-        undecided.push({ otherLabel: describeEndpoint(partner), arrow: fromMatches ? "->" : "<-", category: "undefined" });
+        undecided.push({ otherLabel: describeEndpoint(partner), otherEndpoint: partner, arrow: fromMatches ? "->" : "<-", category: "undefined" });
         decidedPartners.add(presetEndpointKey(partner));
         continue;
       }
@@ -119,7 +120,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
       const neighborEndpoint = resolvePresetActiveEndpoint(neighbor, activeSplitNode);
       if (decidedPartners.has(presetEndpointKey(neighborEndpoint))) continue;
-      undecided.push({ otherLabel: describeEndpoint(neighborEndpoint), arrow: "->", category: "undefined" });
+      undecided.push({ otherLabel: describeEndpoint(neighborEndpoint), otherEndpoint: neighborEndpoint, arrow: "->", category: "undefined" });
     }
     return [...finalize(), ...undecided, ...forbidden];
   };
@@ -219,13 +220,15 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       onKindChange={setActiveKind}
       onFaceClick={handleFaceClick}
       onFaceRightClick={handleFaceRightClick}
-      onClose={onClose}
+      onClose={() => { setPresetHoveredLink(null); onClose(); }}
       onSetActive={(ep) => setPresetActiveSplitNode(point, ep)}
       onAdd={() => addPresetSplitNode(point)}
       onRemove={(row) => { if (row.endpoint.slotId !== undefined) removePresetSplitNode(point, row.endpoint.slotId); }}
       onToggleStart={() => setPresetStartEndpoint(isStart(activeEndpoint) ? null : activeEndpoint)}
       onToggleFinish={() => setPresetFinishEndpoint(isFinish(activeEndpoint) ? null : activeEndpoint)}
       onRotate={(direction) => rotatePresetSplitPoint(point, direction)}
+      onHoverLink={(row, link) => setPresetHoveredLink({ from: row.endpoint, to: link.otherEndpoint })}
+      onUnhoverLink={() => setPresetHoveredLink(null)}
     />
   );
 }
