@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::distance_map::cycle_min_distance;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement};
+use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
 use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const LOOP_DISTANCE_FROM_FINISH_DEFAULT: u32 = 0;
@@ -17,6 +17,7 @@ pub const LOOP_DISTANCE_FROM_FINISH_DEFAULT: u32 = 0;
 pub struct LoopDistanceFromFinishCheck {
     pub instance_id: String,
     pub min_distance_from_finish: u32,
+    pub cycle_kind: CycleKind,
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromFinishCheck {
@@ -26,7 +27,7 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromFinishCheck
         // Not yet migrated to honor `_requirement` — always computes all(), see GitHub issue #105.
         let Some(dist_from_finish) = maze.analysis.distance_from_finish(&maze.graph, &maze.meta) else { return };
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some((nav, cycles, too_close)) = find_invalid_cycles(maze, |nav, cycle| {
+        let Some((nav, cycles, too_close)) = find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
             cycle_min_distance(nav, cycle, &dist_from_finish) < self.min_distance_from_finish as usize
         }) else { return };
 
@@ -73,7 +74,7 @@ mod tests {
     #[test]
     fn fires_when_cycle_closer_than_threshold() {
         let maze = maze_with_triangle_at_distance(3);
-        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5 };
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -89,7 +90,7 @@ mod tests {
     #[test]
     fn silent_when_cycle_farther_than_threshold() {
         let maze = maze_with_triangle_at_distance(10);
-        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5 };
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -130,7 +131,7 @@ mod tests {
     #[test]
     fn flags_only_the_cycle_below_threshold_when_multiple_cycles_exist() {
         let maze = maze_with_two_triangles(20);
-        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5 };
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 5, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -142,7 +143,7 @@ mod tests {
     #[test]
     fn silent_when_threshold_is_zero() {
         let maze = maze_with_triangle_at_distance(0);
-        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 0 };
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 0, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -153,7 +154,7 @@ mod tests {
     fn silent_when_finish_is_missing() {
         let mut maze = maze_with_triangle_at_distance(3);
         maze.meta.finish = None;
-        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100 };
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -171,7 +172,7 @@ mod tests {
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.finish = Some(nodes[2]);
-        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100 };
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -200,7 +201,7 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.finish = Some(maze.field.node_at(SquarePoint { x: SIDE - 1, y: SIDE - 1 }).unwrap());
-        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100 };
+        let check = LoopDistanceFromFinishCheck { instance_id: TEST_ID.to_string(), min_distance_from_finish: 100, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());

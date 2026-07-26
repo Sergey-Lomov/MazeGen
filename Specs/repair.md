@@ -684,6 +684,25 @@ The loop ends when the sample queue empties. Returns `Fixed` (with every nested 
 
 Cannot translate the nested strategy's own `requirement()` into `InvalidLoopGroupRequirement` — `Rule::new` resolves a strategy's `requirement()` from `&self, params` alone, before `nested` is known to it at all, so there is no nested `RepairStrategy` to consult yet at that point. Always requests `InvalidLoopGroupRequirement::all()` ("compute everything") — safe (never wrong, just potentially wasted computation) regardless of what the eventually-configured nested strategy turns out to need.
 
+### MissingLoopsRandomStrategy
+
+Handles `MISSING_LOOPS` — opposite approach from `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`, which cut edges from existing bad loops. This strategy instead seeds new connections at random between geometrically adjacent node pairs, expecting a follow-up QC pass to discard whichever of them don't end up forming a valid loop. `issue.missing` (how many loops short of the requirement) is mandatory — the producing check (`MinLoopsCountCheck`/`MinLoopDensityCheck`) already computed it; there is no other channel.
+
+**Parameters:**
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `reserve_percent` | Float | `50.0` | `[0, 500]` | Target connection count is `ceil(missing * (1 + reserve_percent / 100))`, not the strict `missing` value — a buffer against candidates that turn out blocked or already-connected. |
+| `loop_one_way_chance` | Float | `0.0` | `[0, 100]` | Chance a seeded connection is added as a single one-way edge (random direction) instead of a full bidirectional passage — see GitHub issue #217's follow-up. |
+
+Named `loop_one_way_chance`, not `one_way_chance` — a `StrategyParam::id` is looked up by web i18n as a flat key with no strategy-scoping, and `MissingTeleportsStrategy` already registers its own `one_way_chance` param with a teleport-specific label; a shared id would resolve to whichever strategy's label the web layer happened to look up.
+
+Picks a random unconnected node from `maze.field.all_node_ids()`, then a random geometric neighbor, repeating until `target` connections are added or the candidate pool is exhausted. For each candidate pair, per-pair RNG draws mirror `generation::edge_ops::add_edge_kind`'s own sample-consumption contract (a `[0, 100)` chance roll, then — only for the one-way branch — a direction coin flip) so a later param change never reorders draws relative to earlier iterations of this same loop:
+- **Chance roll below `loop_one_way_chance`**: rolls a random direction, then adds `MutationCommand::AddDirectedEdge` if `generation::directed_edge_feasible` allows it; otherwise the pair is skipped (another neighbor is tried).
+- **Otherwise**: strictly bidirectional — skips the pair unless both directions are unblocked (`generation::bidirectional_edge_feasible`, stricter than `can_connect`'s "at least one direction" contract), then adds `MutationCommand::AddBidirectionalEdge`.
+
+A pair already connected (via `Graph::edge_between` in either direction) or already proposed earlier in the same `apply` call is skipped without consuming the chance/direction rolls. Returns `Failed` if no connection could be added at all; otherwise `Fixed { score: None }` with every proposed command, even if fewer than `target` were actually added.
+
 ### region_merge_core (shared, not a strategy)
 
 `maze-core/src/repair/strategies/region_merge_core.rs` — logic shared by every strategy that merges an undersized SCC region into a neighboring region (`ExpandRegionPassageStrategy` and `TeleportRegionMergeStrategy` below), factored out once issue #89 needed the same target-selection/merge-loop bookkeeping a second time with a different candidate-discovery rule (geometric adjacency vs. any node pair). Not itself a `RepairStrategy` — just a module the strategies import from.

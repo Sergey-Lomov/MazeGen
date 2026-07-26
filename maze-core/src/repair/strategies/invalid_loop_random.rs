@@ -103,6 +103,7 @@ mod tests {
     use crate::quality_control::check::Check;
     use crate::quality_control::checks::LoopLengthCheck;
     use crate::quality_control::Comparison;
+    use crate::quality_control::CycleKind;
     use crate::repair::params::{build_params, StrategyParams};
     use crate::generation::PresetState;
     use crate::repair::strategies::test_utils::apply_and_commit;
@@ -120,7 +121,7 @@ mod tests {
     }
 
     fn check_finds_short_loop(maze: &Maze<SquareTessellation>) -> bool {
-        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 };
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
@@ -146,7 +147,7 @@ mod tests {
         let mut maze = maze_with_triangle();
         assert!(check_finds_short_loop(&maze));
 
-        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 };
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
@@ -177,7 +178,7 @@ mod tests {
     fn apply_is_deterministic_for_fixed_seed() {
         let issue = {
             let maze = maze_with_triangle();
-            let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 };
+            let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
             let mut issues = Vec::new();
             let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
             check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
@@ -214,7 +215,7 @@ mod tests {
         g.add_edge(nodes[2], nodes[1], EdgeKind::Basic); // C->B
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 };
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
@@ -251,7 +252,7 @@ mod tests {
         }
 
         let maze = build();
-        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 };
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
@@ -293,7 +294,7 @@ mod tests {
             Maze::new(field, g)
         }
 
-        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 };
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
 
         let mut maze_full = build();
         let mut full_issues = Vec::new();
@@ -322,7 +323,7 @@ mod tests {
         // candidate remains, so the strategy must pick exactly that one deterministically.
         let maze = maze_with_triangle();
 
-        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10 };
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());

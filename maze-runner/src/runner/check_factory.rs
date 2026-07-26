@@ -32,7 +32,7 @@ use maze_core::{
         MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
         MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
         MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
-        Comparison,
+        Comparison, CycleKind,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
@@ -171,6 +171,13 @@ fn parse_comparison(param: Option<&String>, default: Comparison) -> Comparison {
     param.and_then(|v| Comparison::from_str(v)).unwrap_or(default)
 }
 
+/// GitHub issue #217: `cycle_kind` is shared by every loop-based check built on
+/// `cycle_check_core::find_invalid_cycles` — missing or unparseable falls back to `CycleKind::Any`,
+/// the pre-#217 behavior of considering every cycle regardless of directionality.
+fn parse_cycle_kind(param: Option<&String>) -> CycleKind {
+    param.and_then(|v| CycleKind::from_str(v)).unwrap_or(CycleKind::Any)
+}
+
 /// One `build_*_check` function per `KindTag` — `type_id`s that share a `KindTag` (e.g.
 /// `min_loops_count`/`min_loop_density`, both `MissingLoops`) are handled by the same function's
 /// own `match`. Parsing logic per arm is unchanged from the pre-#113 single `build_check`, just
@@ -223,28 +230,32 @@ pub(crate) fn build_invalid_loop_check<T: Tessellation>(instance: &CheckInstance
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(LOOP_LENGTH_DEFAULT);
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
-            Some(Box::new(LoopLengthCheck { instance_id, comparison, length }))
+            let cycle_kind = parse_cycle_kind(instance.params.get("cycle_kind"));
+            Some(Box::new(LoopLengthCheck { instance_id, comparison, length, cycle_kind }))
         }
         "external_escape_diversity" => {
             let min_distinct_exits = instance.params.get("min_distinct_exits")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(EXTERNAL_ESCAPE_DIVERSITY_DEFAULT);
-            Some(Box::new(ExternalEscapeDiversityCheck { instance_id, min_distinct_exits }))
+            let cycle_kind = parse_cycle_kind(instance.params.get("cycle_kind"));
+            Some(Box::new(ExternalEscapeDiversityCheck { instance_id, min_distinct_exits, cycle_kind }))
         }
         "loop_distance_from_start" => {
             let min_distance_from_start = instance.params.get("min_distance_from_start")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(LOOP_DISTANCE_FROM_START_DEFAULT);
-            Some(Box::new(LoopDistanceFromStartCheck { instance_id, min_distance_from_start }))
+            let cycle_kind = parse_cycle_kind(instance.params.get("cycle_kind"));
+            Some(Box::new(LoopDistanceFromStartCheck { instance_id, min_distance_from_start, cycle_kind }))
         }
         "loop_distance_from_finish" => {
             let min_distance_from_finish = instance.params.get("min_distance_from_finish")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(LOOP_DISTANCE_FROM_FINISH_DEFAULT);
-            Some(Box::new(LoopDistanceFromFinishCheck { instance_id, min_distance_from_finish }))
+            let cycle_kind = parse_cycle_kind(instance.params.get("cycle_kind"));
+            Some(Box::new(LoopDistanceFromFinishCheck { instance_id, min_distance_from_finish, cycle_kind }))
         }
         _ => None,
     }

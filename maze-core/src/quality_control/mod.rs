@@ -4,6 +4,7 @@ pub mod issue_payload;
 pub mod event;
 pub mod check;
 pub mod comparison;
+pub mod cycle_kind;
 pub mod rule;
 pub mod stage;
 pub mod engine;
@@ -22,6 +23,7 @@ pub use issue_kinds::{
 };
 pub use check::Check;
 pub use comparison::Comparison;
+pub use cycle_kind::CycleKind;
 pub use rule::{Rule, RuleTrait, ApplyOutcome, RuleIterationOutcome};
 pub use stage::Stage;
 pub use engine::QualityControlEngine;

@@ -11,6 +11,7 @@ use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 
 pub const PARAM_RESERVE_PERCENT: &str = "reserve_percent";
+pub const PARAM_ONE_WAY_CHANCE: &str = "loop_one_way_chance";
 
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
@@ -18,16 +19,32 @@ static PARAMS: &[StrategyParam] = &[
         label: "Reserve percent",
         kind: StrategyParamKind::Float { default: 50.0, min: 0.0, max: 500.0 },
     },
+    StrategyParam {
+        id: PARAM_ONE_WAY_CHANCE,
+        label: "Loop one-way chance",
+        kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 100.0 },
+    },
 ];
 
 /// Handles `MISSING_LOOPS` — opposite approach from `InvalidLoopRandomStrategy`/
 /// `InvalidLoopScoredStrategy`, which cut edges from existing bad loops. This strategy instead
-/// seeds new bidirectional connections at random, expecting a follow-up QC pass to discard
-/// whichever of them don't end up forming a valid loop.
+/// seeds new connections at random, expecting a follow-up QC pass to discard whichever of them
+/// don't end up forming a valid loop.
 ///
 /// **`issue.data` is mandatory for this kind**: `missing` (how many loops short of the
 /// requirement) has no other channel — the producing check (`MinLoopsCheck`, either `Absolute` or
 /// `Ratio` mode) already computed it.
+///
+/// `loop_one_way_chance` (GitHub issue #217 follow-up) mirrors base-generation's own
+/// `ElementsConfig::one_way_chance` coin-flip contract (`generation::edge_ops::add_edge_kind`) —
+/// named distinctly from that field (and from `MissingTeleportsStrategy`'s own `one_way_chance`
+/// param) since a `StrategyParam::id` is looked up by web i18n as a flat key with no
+/// strategy-scoping, and a shared id would resolve to whichever strategy's label was registered,
+/// not necessarily this one's. Per candidate pair, a `[0, 100)` roll below `loop_one_way_chance`
+/// adds a single directed edge in a random direction instead of a full bidirectional passage — letting this strategy seed one-way
+/// shortcuts (which QC's `CycleKind::OneWay` filter, see #217, can then evaluate) rather than
+/// always producing fully bidirectional loops. Default `0.0` reproduces the pre-#217-follow-up
+/// always-bidirectional behavior exactly.
 pub struct MissingLoopsRandomStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRandomStrategy {
@@ -54,6 +71,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
         let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(50.0);
         let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
         let target = target.max(1);
+
+        let one_way_chance = params.get(PARAM_ONE_WAY_CHANCE).and_then(|v| v.as_float()).unwrap_or(0.0) / 100.0;
 
         let mut pool: Vec<NodeId> = maze.field.all_node_ids().collect();
         let mut failed: HashSet<NodeId> = HashSet::new();
@@ -82,13 +101,26 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
                 if already_connected {
                     continue;
                 }
-                // Strictly bidirectional: skip the pair unless both directions are
-                // unblocked, rather than `can_connect`'s "at least one direction" contract.
-                if !crate::generation::bidirectional_edge_feasible(preset_state, src, dst) {
-                    continue;
+                // Same RNG sample-consumption contract as `generation::edge_ops::add_edge_kind`:
+                // a one-way pair rolls the chance check then the direction (two samples), a
+                // bidirectional pair rolls only the chance check (one sample) — always rolled,
+                // regardless of which branch preset_state ends up permitting, so a later param
+                // change doesn't reorder RNG draws relative to earlier iterations of this loop.
+                if rng.random::<f64>() < one_way_chance {
+                    let forward = rng.random::<bool>();
+                    let (from, to) = if forward { (src, dst) } else { (dst, src) };
+                    if !crate::generation::directed_edge_feasible(preset_state, from, to) {
+                        continue;
+                    }
+                    commands.push(MutationCommand::AddDirectedEdge { from, to });
+                } else {
+                    // Strictly bidirectional: skip the pair unless both directions are
+                    // unblocked, rather than `can_connect`'s "at least one direction" contract.
+                    if !crate::generation::bidirectional_edge_feasible(preset_state, src, dst) {
+                        continue;
+                    }
+                    commands.push(MutationCommand::AddBidirectionalEdge { a: src, b: dst });
                 }
-
-                commands.push(MutationCommand::AddBidirectionalEdge { a: src, b: dst });
                 proposed_pairs.insert((src, dst));
                 added += 1;
                 connected = true;
@@ -260,6 +292,46 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         // 2 missing * (1 + 0%) = 2 connections => 4 directed edges, vs 6 with the 50% default.
         assert_eq!(maze.graph.edges().count(), 4);
+    }
+
+    #[test]
+    fn one_way_chance_100_adds_only_directed_edges() {
+        let mut maze = maze_grid(4);
+        let issue = missing_issue(2);
+        let mut overrides = HashMap::new();
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        overrides.insert("loop_one_way_chance".to_string(), "100".to_string());
+        let params = build_params(
+            <MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(42);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        // 2 missing * (1 + 0%) = 2 connections, each single-directed => 2 edges, none reversed.
+        assert_eq!(maze.graph.edges().count(), 2);
+        for edge in maze.graph.edges() {
+            assert!(maze.graph.edge_between(edge.to, edge.from).is_none(), "loop_one_way_chance: 100 must never add a reverse");
+        }
+    }
+
+    #[test]
+    fn one_way_chance_0_reproduces_pre_existing_always_bidirectional_behavior() {
+        let mut maze = maze_grid(4);
+        let issue = missing_issue(2);
+        let mut overrides = HashMap::new();
+        overrides.insert("loop_one_way_chance".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(42);
+        let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert_eq!(maze.graph.edges().count(), 6);
+        for edge in maze.graph.edges() {
+            assert!(maze.graph.edge_between(edge.to, edge.from).is_some(), "every added edge must have its reverse");
+        }
     }
 
     #[test]

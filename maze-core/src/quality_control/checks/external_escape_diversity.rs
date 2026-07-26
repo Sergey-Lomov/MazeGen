@@ -4,7 +4,7 @@ use crate::Maze;
 use crate::graph::nav::NavNodeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement};
+use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
 use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
@@ -17,6 +17,7 @@ pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
 pub struct ExternalEscapeDiversityCheck {
     pub instance_id: String,
     pub min_distinct_exits: u32,
+    pub cycle_kind: CycleKind,
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopIssue> for ExternalEscapeDiversityCheck {
@@ -26,7 +27,7 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for ExternalEscapeDiversityChec
         // Not yet migrated to honor `_requirement` — always computes all() (see GitHub issue
         // #105's "what does NOT change" section: only min/max_loop_length branch on it so far).
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some((nav, cycles, low_diversity)) = find_invalid_cycles(maze, |nav, cycle| {
+        let Some((nav, cycles, low_diversity)) = find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
             distinct_exit_count(nav, cycle) < self.min_distinct_exits
         }) else { return };
 
@@ -112,7 +113,7 @@ mod tests {
     #[test]
     fn fires_when_exits_converge_on_same_node() {
         let maze = maze_with_trapped_ring();
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -128,7 +129,7 @@ mod tests {
     #[test]
     fn silent_when_exits_are_diverse() {
         let maze = maze_with_diverse_ring();
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -138,7 +139,7 @@ mod tests {
     #[test]
     fn silent_when_threshold_is_zero() {
         let maze = maze_with_trapped_ring();
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 0 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 0, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -166,7 +167,7 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -183,7 +184,7 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3 };
+        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());

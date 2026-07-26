@@ -488,6 +488,18 @@ Two separate check types, both flagging `MISSING_LOOPS`. GitHub issue #177 origi
 
 Either way, if `missing` is `0`, the check is silent; otherwise fires `MissingLoopsIssue::new_from_check(instance_id, missing)` with `.with_detail(instance_id, "missing", missing.to_string())` chained on — the same detail key regardless of which check type fired, so the web UI's per-source-check label resolver renders both with one shared message shape. Repaired by `MissingLoopsRandomStrategy` (see `repair.md`) — no strategy-side branching on which check produced the issue, since both types produce the same `MissingLoopsIssue` shape.
 
+### CycleKind (cycle-directionality filter)
+
+```rust
+pub enum CycleKind { Any, TwoWay, OneWay }
+```
+
+`CycleKind` (`quality_control::cycle_kind`) — see GitHub issue #217. A shared per-check option on the `cycle_check_core::find_invalid_cycles` skeleton (below), letting a user restrict a loop-based check to a specific cycle directionality instead of one threshold applying to every cycle regardless of shape. `Any` (the default, reproducing pre-#217 behavior) considers every cycle; `TwoWay` restricts to cycles where every nav-edge has a `reverse_edge` (see `nav-graph.md`'s "Reverse edge linking") — a fully bidirectional loop; `OneWay` restricts to cycles containing at least one nav-edge with no `reverse_edge`. Every check built on `find_invalid_cycles` (`LoopLengthCheck`, `ExternalEscapeDiversityCheck`, `LoopDistanceFromStartCheck`, `LoopDistanceFromFinishCheck`) picks this filter up automatically via a `cycle_kind: CycleKind` field, applied inside `find_invalid_cycles` itself before the check's own predicate runs — no check reimplements the directionality test.
+
+### cycle_check_core (shared loop-check skeleton)
+
+`quality_control::checks::cycle_check_core` — see GitHub issue #107. `find_invalid_cycles(maze, cycle_kind, invalid)` builds the nav graph, enumerates simple cycles (`find_deduped_simple_cycles`), restricts them to `cycle_kind`, then applies the caller's own `invalid` predicate to the surviving cycles — silently skipping (returning `None`) if enumeration overflows (`CycleSearchResult::TooManyCycles`, issue #22) or nothing is flagged. `build_issue` resolves the flagged (and, per `InvalidLoopRequirement`, valid) cycles into an `InvalidLoopIssue`. Every loop-based check owns only its own predicate and detail key/value; cycle enumeration, the `cycle_kind` filter, and issue-building are shared.
+
 ### LoopLengthCheck
 
 ```rust
@@ -496,6 +508,7 @@ pub const LOOP_LENGTH_DEFAULT: u32 = 10;
 pub struct LoopLengthCheck {
     pub comparison: Comparison,
     pub length: u32,
+    pub cycle_kind: CycleKind,
 }
 ```
 
@@ -509,6 +522,8 @@ Self-loop nav-edges (junction-free rings) are included — previously a known ga
 
 If any cycles satisfy `comparison` against `length` (`invalid` non-empty), fires a single `InvalidLoopIssue::new_from_check("loop_length", all, invalid, invalid_sources)` with `.with_detail("loop_length", "threshold", self.length.to_string())` chained on — the configured threshold, for the web UI to render a specific message instead of the generic `INVALID_LOOP` label. No issue is fired if `invalid` is empty, even if `all` is not. Other checks may also produce `INVALID_LOOP` issues for different reasons in the same pass — see the pipeline's merge behavior in `repair.md`. Two active `loop_length` instances with different `comparison`/`length` (e.g. one `Lt` and one `Gt`) reproduce the pre-#177 "both min and max active" configuration — they merge into one `INVALID_LOOP` issue per the same dedup rule.
 
+`cycle_kind` (GitHub issue #217, see `CycleKind`'s doc comment above) restricts which enumerated cycles this check evaluates by directionality — `Any` (default) considers every cycle, `TwoWay` only cycles with every edge bidirectional, `OneWay` only cycles containing at least one edge with no reverse.
+
 ### ExternalEscapeDiversityCheck
 
 ```rust
@@ -516,12 +531,15 @@ pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
 
 pub struct ExternalEscapeDiversityCheck {
     pub min_distinct_exits: u32,
+    pub cycle_kind: CycleKind,
 }
 ```
 
 Detects cycles that are "locally trapped" despite having many outgoing connections — see issue #32. Uses the same enumeration pipeline as `LoopLengthCheck` (`nav_graph` → `find_all_simple_cycles` → `dedup_bidirectional_pairs`, same silent skip on `CycleSearchResult::TooManyCycles`), but the filter is purely topological rather than length- or geometry-based: for each cycle, collect the set of cycle vertices (nav-nodes touched by any of its nav-edges), then count the distinct nav-nodes outside that set reached by a direct outgoing nav-edge from any cycle vertex (`distinct_exit_count`). No further traversal past that one hop, no geometry, no connected-component analysis on the rest of the graph — a cycle with 8 outgoing edges that all land on the same external node scores 1, not 8.
 
 If any cycle's distinct exit count is below `min_distinct_exits`, fires a single `InvalidLoopIssue::new_from_check("external_escape_diversity", all, invalid, invalid_sources)` with `.with_detail("external_escape_diversity", "min_distinct_exits", self.min_distinct_exits.to_string())` chained on. No issue is fired if `invalid` is empty. Can be active alongside `LoopLengthCheck` — both merge into one `INVALID_LOOP` issue per the same dedup rule.
+
+`cycle_kind` (GitHub issue #217) restricts which enumerated cycles this check evaluates by directionality — see `CycleKind`'s doc comment above.
 
 ### LoopDistanceFromStartCheck
 
@@ -530,6 +548,7 @@ pub const LOOP_DISTANCE_FROM_START_DEFAULT: u32 = 0;
 
 pub struct LoopDistanceFromStartCheck {
     pub min_distance_from_start: u32,
+    pub cycle_kind: CycleKind,
 }
 ```
 
@@ -539,6 +558,8 @@ Silently skips (no issue, no panic) if `meta.start` is unset — `distance_from_
 
 Default `0` never fires on its own — the threshold has no natural default (unlike a tile-length minimum), so the check is a no-op until a user picks a value. If any cycles closer than the threshold are found, fires a single `InvalidLoopIssue::new_from_check("loop_distance_from_start", all, invalid, invalid_sources)` with `.with_detail("loop_distance_from_start", "min_distance_from_start", self.min_distance_from_start.to_string())` chained on. Can be active alongside any other `INVALID_LOOP`-producing check — all merge into one issue per the same dedup rule.
 
+`cycle_kind` (GitHub issue #217) restricts which enumerated cycles this check evaluates by directionality — see `CycleKind`'s doc comment above.
+
 ### LoopDistanceFromFinishCheck
 
 ```rust
@@ -546,12 +567,15 @@ pub const LOOP_DISTANCE_FROM_FINISH_DEFAULT: u32 = 0;
 
 pub struct LoopDistanceFromFinishCheck {
     pub min_distance_from_finish: u32,
+    pub cycle_kind: CycleKind,
 }
 ```
 
 Symmetric counterpart to `LoopDistanceFromStartCheck` — flags simple cycles placed too close to `meta.finish` instead. Uses `maze.analysis.distance_from_finish` (distance **to** finish, following directed edges backward), same cycle enumeration pipeline, same "minimum among touched nav-nodes" rule, same silent skip on missing `meta.finish` or `TooManyCycles` overflow.
 
 Fires `InvalidLoopIssue::new_from_check("loop_distance_from_finish", all, invalid, invalid_sources)` with `.with_detail("loop_distance_from_finish", "min_distance_from_finish", self.min_distance_from_finish.to_string())` chained on.
+
+`cycle_kind` (GitHub issue #217) restricts which enumerated cycles this check evaluates by directionality — see `CycleKind`'s doc comment above.
 
 ### MaxLoopDensityCheck
 

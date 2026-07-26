@@ -342,6 +342,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.comparison.label"] as MessageFn,
     description: m["param.comparison.description"] as MessageFn,
   },
+  cycle_kind: {
+    label: m["param.cycle_kind.label"] as MessageFn,
+    description: m["param.cycle_kind.description"] as MessageFn,
+  },
   min_distinct_exits: {
     label: m["param.min_distinct_exits.label"] as MessageFn,
     description: m["param.min_distinct_exits.description"] as MessageFn,
@@ -562,6 +566,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.one_way_chance.label"] as MessageFn,
     description: m["param.one_way_chance.description"] as MessageFn,
   },
+  loop_one_way_chance: {
+    label: m["param.loop_one_way_chance.label"] as MessageFn,
+    description: m["param.loop_one_way_chance.description"] as MessageFn,
+  },
   attempts_limit: {
     label: m["param.attempts_limit.label"] as MessageFn,
     description: m["param.attempts_limit.description"] as MessageFn,
@@ -621,6 +629,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "comparison.le": m["param.comparison.option.le"] as MessageFn,
   "comparison.ge": m["param.comparison.option.ge"] as MessageFn,
   "comparison.eq": m["param.comparison.option.eq"] as MessageFn,
+  "cycle_kind.any": m["param.cycle_kind.option.any"] as MessageFn,
+  "cycle_kind.two_way": m["param.cycle_kind.option.two_way"] as MessageFn,
+  "cycle_kind.one_way": m["param.cycle_kind.option.one_way"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random"] as MessageFn,
 };
@@ -665,6 +676,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "other_edge.entry_or_exit": m["param.other_edge.option.entry_or_exit.explanation"] as MessageFn,
   "priority.random": m["param.priority.option.random.explanation"] as MessageFn,
   "priority.problematic": m["param.priority.option.problematic.explanation"] as MessageFn,
+  "cycle_kind.any": m["param.cycle_kind.option.any.explanation"] as MessageFn,
+  "cycle_kind.two_way": m["param.cycle_kind.option.two_way.explanation"] as MessageFn,
+  "cycle_kind.one_way": m["param.cycle_kind.option.one_way.explanation"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random.explanation"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random.explanation"] as MessageFn,
 };

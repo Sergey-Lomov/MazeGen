@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::distance_map::cycle_min_distance;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement};
+use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
 use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const LOOP_DISTANCE_FROM_START_DEFAULT: u32 = 0;
@@ -17,6 +17,7 @@ pub const LOOP_DISTANCE_FROM_START_DEFAULT: u32 = 0;
 pub struct LoopDistanceFromStartCheck {
     pub instance_id: String,
     pub min_distance_from_start: u32,
+    pub cycle_kind: CycleKind,
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromStartCheck {
@@ -26,7 +27,7 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromStartCheck 
         // Not yet migrated to honor `_requirement` — always computes all(), see GitHub issue #105.
         let Some(dist_from_start) = maze.analysis.distance_from_start(&maze.graph, &maze.meta) else { return };
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some((nav, cycles, too_early)) = find_invalid_cycles(maze, |nav, cycle| {
+        let Some((nav, cycles, too_early)) = find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
             cycle_min_distance(nav, cycle, &dist_from_start) < self.min_distance_from_start as usize
         }) else { return };
 
@@ -73,7 +74,7 @@ mod tests {
     #[test]
     fn fires_when_cycle_closer_than_threshold() {
         let maze = maze_with_triangle_at_distance(3);
-        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -89,7 +90,7 @@ mod tests {
     #[test]
     fn silent_when_cycle_farther_than_threshold() {
         let maze = maze_with_triangle_at_distance(10);
-        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -131,7 +132,7 @@ mod tests {
     #[test]
     fn flags_only_the_cycle_below_threshold_when_multiple_cycles_exist() {
         let maze = maze_with_two_triangles(20);
-        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 5, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -143,7 +144,7 @@ mod tests {
     #[test]
     fn silent_when_threshold_is_zero() {
         let maze = maze_with_triangle_at_distance(0);
-        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 0 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 0, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -154,7 +155,7 @@ mod tests {
     fn silent_when_start_is_missing() {
         let mut maze = maze_with_triangle_at_distance(3);
         maze.meta.start = None;
-        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -172,7 +173,7 @@ mod tests {
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.start = Some(nodes[0]);
-        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
@@ -201,10 +202,63 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.start = Some(maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap());
-        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100 };
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
+    }
+
+    /// Repro for the reported bug: with a huge threshold, `cycle_kind: OneWay` was reported to
+    /// flag every cycle (including fully bidirectional ones), while `TwoWay` behaved correctly.
+    /// One one-way triangle and one fully-bidirectional triangle, both reachable from start,
+    /// far below a threshold of 1000 (so both cycles are "too close" under the base predicate).
+    fn maze_with_one_way_and_two_way_triangle() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 2), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+
+        // one-way triangle on row 0
+        let (a, b, c) = (p(0, 0), p(1, 0), p(2, 0));
+        g.add_edge(a, b, EdgeKind::Basic);
+        g.add_edge(b, c, EdgeKind::Basic);
+        g.add_edge(c, a, EdgeKind::Basic);
+
+        // fully-bidirectional triangle on row 1
+        let (d, e, f) = (p(0, 1), p(1, 1), p(2, 1));
+        g.add_bidirectional_edge(d, e, EdgeKind::Basic);
+        g.add_bidirectional_edge(e, f, EdgeKind::Basic);
+        g.add_bidirectional_edge(f, d, EdgeKind::Basic);
+
+        // link both triangles to start so both are reachable
+        g.add_bidirectional_edge(a, d, EdgeKind::Basic);
+
+        let mut maze = Maze::new(field, g);
+        maze.meta = MazeMeta { start: Some(a), finish: None, route_score: None };
+        maze
+    }
+
+    #[test]
+    fn cycle_kind_one_way_flags_only_the_one_way_triangle_even_with_huge_threshold() {
+        let maze = maze_with_one_way_and_two_way_triangle();
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 1000, cycle_kind: CycleKind::OneWay };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].invalid.len(), 1, "OneWay must flag only the one-way triangle, not the bidirectional one too");
+    }
+
+    #[test]
+    fn cycle_kind_two_way_flags_only_the_two_way_triangle_even_with_huge_threshold() {
+        let maze = maze_with_one_way_and_two_way_triangle();
+        let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 1000, cycle_kind: CycleKind::TwoWay };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].invalid.len(), 1, "TwoWay must flag only the bidirectional triangle");
     }
 }
