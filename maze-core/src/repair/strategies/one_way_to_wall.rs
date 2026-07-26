@@ -19,16 +19,24 @@ impl<T: Tessellation> RepairStrategy<T, InvalidOneWayIssue> for OneWayToWallStra
     fn apply(
         &self,
         issue: &InvalidOneWayIssue,
-        _maze: &Maze<T>,
+        maze: &Maze<T>,
         _rng: &mut dyn RngCore,
         _params: &StrategyParams,
-        _preset_state: &PresetState,
+        preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let commands = issue.invalid.iter()
-            .map(|&id| MutationCommand::RemoveEdge { id })
+        let commands: Vec<MutationCommand> = issue.invalid.iter()
+            .flat_map(|&id| crate::generation::cmd_remove_edge_by_id(&maze.graph, id, preset_state))
             .collect();
-        (RepairResult::Fixed { score: None }, commands)
+        // A preset-protected one-way can never be removed — if every flagged edge is such a case,
+        // nothing can be fixed, so this must report `Failed` (GitHub issue #230) rather than
+        // `Fixed` with an empty command list, or the fixpoint loop retries it forever.
+        let result = if issue.invalid.is_empty() || !commands.is_empty() {
+            RepairResult::Fixed { score: None }
+        } else {
+            RepairResult::Failed
+        };
+        (result, commands)
     }
 }
 
@@ -78,7 +86,10 @@ mod tests {
 
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit_default(&OneWayToWallStrategy, &issue, &mut maze, &mut rng, &preset_state);
-        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        // GitHub issue #230: the only flagged edge is preset-protected and unremovable, so this
+        // must report Failed, not Fixed — a Fixed here would make the fixpoint loop re-detect and
+        // re-"fix" the same unfixable one-way forever.
+        assert!(matches!(result, RepairResult::Failed));
 
         assert!(maze.graph.edge(one_way_id).is_some(), "a preset-protected one-way must survive removal");
     }

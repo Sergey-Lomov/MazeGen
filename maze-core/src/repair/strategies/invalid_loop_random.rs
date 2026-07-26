@@ -36,7 +36,13 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomS
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        (RepairResult::Fixed { score: None }, apply_cuts(&issue.all, &issue.invalid, maze, rng, preset_state))
+        let commands = apply_cuts(&issue.all, &issue.invalid, maze, rng, preset_state);
+        let result = if issue.invalid.is_empty() || !commands.is_empty() {
+            RepairResult::Fixed { score: None }
+        } else {
+            RepairResult::Failed
+        };
+        (result, commands)
     }
 }
 
@@ -351,5 +357,34 @@ mod tests {
             assert!(maze_try.graph.edge_between(unprotected_from, unprotected_to).is_none(),
                 "the only unprotected edge must be cut regardless of seed {seed}");
         }
+    }
+
+    /// GitHub issue #230: a cycle entirely made of preset connections can never be broken — the
+    /// strategy must report `Failed` (not `Fixed`) so the fixpoint loop stops retrying it forever,
+    /// instead of looping until the repair budget is exhausted.
+    #[test]
+    fn apply_reports_failed_when_the_whole_cycle_is_preset_protected() {
+        let maze = maze_with_triangle();
+
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let mut issues = Vec::new();
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
+        let issue = issues.into_iter().next().unwrap();
+
+        let cycle = issue.all[issue.invalid[0]].clone();
+        let mut preset_state = PresetState::empty();
+        for &edge_id in &cycle {
+            let edge = maze.graph.edge(edge_id).unwrap();
+            preset_state.preset_edges.insert((edge.from, edge.to));
+        }
+
+        let mut maze_try = maze_with_triangle();
+        let mut rng = MazeRng::seed_from_u64(7);
+        let edges_before: Vec<_> = maze_try.graph.edges().map(|e| e.id).collect();
+        let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut rng, &no_params(), &preset_state, &[]);
+        assert!(matches!(result, RepairResult::Failed), "fully preset-protected loop must be reported as unfixable");
+        let edges_after: Vec<_> = maze_try.graph.edges().map(|e| e.id).collect();
+        assert_eq!(edges_before, edges_after, "no edge should be touched when the cycle can't be broken");
     }
 }

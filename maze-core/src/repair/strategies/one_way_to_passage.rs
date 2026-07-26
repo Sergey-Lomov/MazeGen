@@ -25,14 +25,23 @@ impl<T: Tessellation> RepairStrategy<T, InvalidOneWayIssue> for OneWayToPassageS
         maze: &Maze<T>,
         _rng: &mut dyn RngCore,
         _params: &StrategyParams,
-        _preset_state: &PresetState,
+        preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let commands = issue.invalid.iter()
+        let commands: Vec<MutationCommand> = issue.invalid.iter()
             .filter_map(|&id| maze.graph.edge(id))
-            .map(|edge| MutationCommand::AddBidirectionalEdge { a: edge.from, b: edge.to })
+            .flat_map(|edge| crate::generation::cmd_add_bidirectional_edge(edge.from, edge.to, preset_state))
             .collect();
-        (RepairResult::Fixed { score: None }, commands)
+        // A preset-blocked reverse direction can never be completed into a passage — if every
+        // flagged edge is such a case, nothing can be fixed, so this must report `Failed` (GitHub
+        // issue #230) rather than `Fixed` with an empty command list, or the fixpoint loop retries
+        // it forever.
+        let result = if issue.invalid.is_empty() || !commands.is_empty() {
+            RepairResult::Fixed { score: None }
+        } else {
+            RepairResult::Failed
+        };
+        (result, commands)
     }
 }
 
@@ -65,6 +74,29 @@ mod tests {
 
         assert!(maze.graph.edge_between(nodes[0], nodes[2]).is_some());
         assert!(maze.graph.edge_between(nodes[2], nodes[0]).is_some(), "reverse direction must be added");
+    }
+
+    #[test]
+    fn apply_reports_failed_when_the_reverse_direction_is_preset_blocked() {
+        // GitHub issue #230: the reverse direction is blocked by preset state, so the one-way can
+        // never be completed into a passage — must report Failed, not Fixed, or the fixpoint loop
+        // retries it forever.
+        let mut ids = IdGenerator::new();
+        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let one_way_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let mut preset_state = PresetState::empty();
+        preset_state.blocked.insert((nodes[2], nodes[0]));
+
+        let issue = InvalidOneWayIssue::new_from_check("test", vec![one_way_id]);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = apply_and_commit_default(&OneWayToPassageStrategy, &issue, &mut maze, &mut rng, &preset_state);
+        assert!(matches!(result, RepairResult::Failed));
+        assert!(maze.graph.edge_between(nodes[2], nodes[0]).is_none(), "blocked reverse direction must not be added");
     }
 
     #[test]

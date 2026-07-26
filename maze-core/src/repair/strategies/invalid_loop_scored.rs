@@ -94,7 +94,12 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
             }
         }
 
-        (RepairResult::Fixed { score: None }, commands)
+        let result = if invalid.is_empty() || !commands.is_empty() {
+            RepairResult::Fixed { score: None }
+        } else {
+            RepairResult::Failed
+        };
+        (result, commands)
     }
 }
 
@@ -369,5 +374,44 @@ mod tests {
         let result = apply_and_commit(&InvalidLoopScoredStrategy, &issue, &mut maze_try, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze_try.graph.edge_between(a, b).is_some(), "protected edge must survive");
+    }
+
+    /// GitHub issue #230: a cycle entirely made of preset connections can never be broken — the
+    /// strategy must report `Failed` (not `Fixed`) so the fixpoint loop stops retrying it forever.
+    #[test]
+    fn apply_reports_failed_when_the_whole_cycle_is_preset_protected() {
+        fn maze_with_single_triangle() -> Maze<SquareTessellation> {
+            let mut ids = IdGenerator::new();
+            let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+            let mut g = Graph::new();
+            field.build_nodes(&mut g);
+            let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+            g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+            g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
+            g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+            Maze::new(field, g)
+        }
+
+        let maze = maze_with_single_triangle();
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let mut issues = Vec::new();
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
+        let issue = issues.into_iter().next().unwrap();
+
+        let cycle = issue.all[issue.invalid[0]].clone();
+        let mut preset_state = PresetState::empty();
+        for &edge_id in &cycle {
+            let edge = maze.graph.edge(edge_id).unwrap();
+            preset_state.preset_edges.insert((edge.from, edge.to));
+        }
+
+        let mut maze_try = maze_with_single_triangle();
+        let mut rng = MazeRng::seed_from_u64(7);
+        let edges_before: Vec<_> = maze_try.graph.edges().map(|e| e.id).collect();
+        let result = apply_and_commit(&InvalidLoopScoredStrategy, &issue, &mut maze_try, &mut rng, &no_params(), &preset_state, &[]);
+        assert!(matches!(result, RepairResult::Failed), "fully preset-protected loop must be reported as unfixable");
+        let edges_after: Vec<_> = maze_try.graph.edges().map(|e| e.id).collect();
+        assert_eq!(edges_before, edges_after, "no edge should be touched when the cycle can't be broken");
     }
 }
