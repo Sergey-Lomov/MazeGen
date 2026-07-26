@@ -211,11 +211,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     });
   };
 
-  const tileNodes: TileFaceNode[] = useMemo(
-    () => rows.map((row) => ({ color: row.color, faces: facesOf(row.endpoint) })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, cfg, point, inFieldCells, draftEdges, nodes, activeSplitNode],
-  );
+  const tileNodes: TileFaceNode[] = rows.map((row) => ({ color: row.color, faces: facesOf(row.endpoint) }));
 
   const handleFaceClick = (offsetIndex: number) => {
     if (!activeEndpoint) return;
