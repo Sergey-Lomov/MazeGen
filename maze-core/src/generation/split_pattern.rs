@@ -79,21 +79,20 @@ impl Default for SplitGenerationConfig {
 /// (`Tessellation::faces().len()`) — shared by `maze-runner` and `maze-wasm`'s own generation
 /// entry points, since neither is generic over `T: Tessellation` until this point in their own
 /// call chain (see each caller's own doc comment for why the check lives here rather than at the
-/// DTO-conversion layer). Three independent failure modes (GitHub issue #222):
+/// DTO-conversion layer). Two independent failure modes (GitHub issue #222):
 /// - `face_index` outside `[0, degree)` — meaningless against the active tessellation, most likely
 ///   a hand-edited or stale project file (the UI itself can't produce one, patterns are edited per
 ///   tessellation via `TileFaceEditor`).
-/// - a node with no `Passage`/`OneWay` face at all (only `Wall`/`Unspecified`, or none declared) —
-///   `enumerate_adaptations` validates each face individually but never required every node to
-///   have at least one connecting face, so such a pattern silently produced a permanently
-///   disconnected split node with no fallback (unlike non-pattern mode's visited-neighbor
-///   fallback).
 /// - `node_count` not matching `faces.len()` — the UI always keeps them in sync (`setNodeCount`/
 ///   `removeNode` both resize `faces` alongside `node_count`), but a hand-edited/stale project
 ///   file could have `node_count` larger than `faces.len()`; `apply_pattern_adaptation` still
 ///   mints exactly `node_count - 1` new nodes regardless, so any node index past `faces.len()`
-///   would get no face applied at all — the same permanently-disconnected-node failure the
-///   previous check exists to catch, just reached through a different, unvalidated input.
+///   would get no face applied at all.
+///
+/// A node with no `Passage`/`OneWay` face at all (only `Wall`/`Unspecified`, or none declared) is
+/// **not** rejected here (GitHub issue #238): it mints a permanently disconnected split node, same
+/// as any other unreachable-node case, and is left for QC to catch (or not) like other
+/// reachability issues instead of aborting the whole generation.
 pub fn validate_split_patterns(patterns: &[SplitPattern], degree: usize) -> Result<(), String> {
     for pattern in patterns {
         if pattern.faces.len() != pattern.node_count {
@@ -102,14 +101,7 @@ pub fn validate_split_patterns(patterns: &[SplitPattern], degree: usize) -> Resu
                 pattern.node_count, pattern.faces.len()
             ));
         }
-        for (node_index, node_faces) in pattern.faces.iter().enumerate() {
-            let has_connecting_face = node_faces.iter()
-                .any(|f| matches!(f.requirement, SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_)));
-            if !has_connecting_face {
-                return Err(format!(
-                    "split pattern node {node_index} has no Passage/OneWay face and can never be connected"
-                ));
-            }
+        for node_faces in pattern.faces.iter() {
             for face in node_faces {
                 if face.face_index >= degree {
                     return Err(format!(
@@ -147,10 +139,10 @@ mod validate_split_patterns_tests {
     }
 
     #[test]
-    fn a_node_with_only_wall_and_unspecified_faces_is_rejected() {
-        // GitHub issue #222 regression: enumerate_adaptations validates each face individually but
-        // never required every node to have at least one connecting face — such a pattern used to
-        // silently mint a permanently disconnected split node.
+    fn a_node_with_only_wall_and_unspecified_faces_is_accepted() {
+        // GitHub issue #238: a node with no Passage/OneWay face is no longer a validation error —
+        // it mints a permanently disconnected split node, left for QC to catch like any other
+        // unreachable-node case, instead of aborting the whole generation.
         let pattern = SplitPattern {
             node_count: 2,
             faces: vec![
@@ -162,18 +154,17 @@ mod validate_split_patterns_tests {
             ],
             weight: 1.0,
         };
-        let err = validate_split_patterns(&[pattern], 4).unwrap_err();
-        assert!(err.contains("node 1"), "error should identify the offending node: {err}");
+        assert!(validate_split_patterns(&[pattern], 4).is_ok());
     }
 
     #[test]
-    fn a_node_with_no_faces_declared_at_all_is_rejected() {
+    fn a_node_with_no_faces_declared_at_all_is_accepted() {
         let pattern = SplitPattern { node_count: 2, faces: vec![vec![passage_face(0)], vec![]], weight: 1.0 };
-        assert!(validate_split_patterns(&[pattern], 4).is_err());
+        assert!(validate_split_patterns(&[pattern], 4).is_ok());
     }
 
     #[test]
-    fn a_one_way_face_counts_as_connecting() {
+    fn a_one_way_face_is_accepted() {
         let pattern = SplitPattern {
             node_count: 1,
             faces: vec![vec![SplitPatternFace { face_index: 0, requirement: SplitFaceRequirement::OneWay(OneWayDirection::Forward), sibling_target: None }]],
