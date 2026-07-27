@@ -33,12 +33,16 @@ use maze_core::{
         MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
         MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
         SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT,
+        MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,
+        MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
+        SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
+        SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         Comparison, CycleKind,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
-        MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue,
+        MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue,
     },
     RegionClass,
 };
@@ -68,6 +72,7 @@ pub(crate) enum KindTag {
     MissingOneWays,
     MissingTeleports,
     InvalidSplitTile,
+    InvalidSplitTileGroup,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -105,6 +110,10 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "min_teleport_count"        => KindTag::MissingTeleports,
         "min_teleport_ratio"        => KindTag::MissingTeleports,
         "split_distance_from_waypoint" => KindTag::InvalidSplitTile,
+        "max_split_count"           => KindTag::InvalidSplitTileGroup,
+        "max_split_density"         => KindTag::InvalidSplitTileGroup,
+        "split_group_geometric_proximity" => KindTag::InvalidSplitTileGroup,
+        "split_group_graph_proximity" => KindTag::InvalidSplitTileGroup,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -525,6 +534,42 @@ pub(crate) fn build_invalid_split_tile_check<T: Tessellation>(instance: &CheckIn
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
             let waypoint = parse_split_waypoint(instance.params.get("waypoint"));
             Some(Box::new(SplitDistanceFromWaypointCheck { instance_id, distance, comparison, waypoint }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_split_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitTileGroupIssue>>> {
+    match instance.type_id.as_str() {
+        "max_split_count" => {
+            let max_split_count = instance.params.get("max_split_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_SPLIT_COUNT_DEFAULT);
+            Some(Box::new(MaxSplitCountCheck { instance_id, max_split_count }))
+        }
+        "max_split_density" => {
+            let max_density = instance.params.get("max_split_density")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(MAX_SPLIT_DENSITY_DEFAULT);
+            Some(Box::new(MaxSplitDensityCheck { instance_id, max_density }))
+        }
+        "split_group_geometric_proximity" => {
+            let distance = instance.params.get("split_group_geometric_proximity_distance")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT);
+            Some(Box::new(SplitGroupGeometricProximityCheck { instance_id, distance }))
+        }
+        "split_group_graph_proximity" => {
+            let distance = instance.params.get("split_group_graph_proximity_distance")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT);
+            Some(Box::new(SplitGroupGraphProximityCheck { instance_id, distance }))
         }
         _ => None,
     }

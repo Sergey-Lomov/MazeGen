@@ -51,11 +51,13 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const regionNodes = sourceCheck != null && (issue.payload.kind === "region_needs_expansion" || issue.payload.kind === "region_needs_shrink")
     ? issue.payload.nodes[sourceCheck] ?? null
     : null;
-  // `invalid_split_tile`'s payload is a flat node list (no group structure) — each flagged node
-  // is wrapped as its own singleton group so it reuses `RegionHighlightRenderer`'s per-group
-  // fill+perimeter, which for a group of size one reads as a border drawn around just that cell.
+  // `invalid_split_tile`'s payload is a flat node list (no group structure) — passed as a single
+  // group so `RegionHighlightRenderer`/`buildRegionGeometry`'s own per-point dedup draws one
+  // fill+perimeter per distinct tile. Wrapping each node as its own singleton group (the previous
+  // approach) double-drew the perimeter whenever two flagged nodes shared the same split tile,
+  // since each singleton was treated as its own isolated one-cell region instead of neighbors.
   const splitTileNodes = sourceCheck != null && issue.payload.kind === "invalid_split_tile"
-    ? issue.payload.nodes[sourceCheck]?.map((id) => [id]) ?? null
+    ? [issue.payload.nodes[sourceCheck] ?? []]
     : null;
   const palette = notificationPalette(severity);
 

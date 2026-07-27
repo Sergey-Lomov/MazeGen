@@ -27,6 +27,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   missing_one_ways: () => ({ label: m["issue.missing_one_ways.label"](), description: m["issue.missing_one_ways.description"](), severity: "warning" }),
   missing_teleports: () => ({ label: m["issue.missing_teleports.label"](), description: m["issue.missing_teleports.description"](), severity: "warning" }),
   invalid_split_tile: () => ({ label: m["issue.invalid_split_tile.label"](), description: m["issue.invalid_split_tile.description"](), severity: "warning" }),
+  invalid_split_tile_group: () => ({ label: m["issue.invalid_split_tile_group.label"](), description: m["issue.invalid_split_tile_group.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -120,6 +121,10 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   min_teleport_count: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_count_label"]({ missing: d.missing }) : undefined,
   min_teleport_ratio: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_ratio_label"]({ missing: d.missing }) : undefined,
   split_distance_from_waypoint: (d) => d.distance !== undefined ? m["issue.invalid_split_tile.split_distance_from_waypoint_label"]({ distance: d.distance }) : undefined,
+  max_split_count: (d) => d.max_split_count !== undefined ? m["issue.invalid_split_tile_group.max_split_count_label"]({ max_split_count: d.max_split_count }) : undefined,
+  max_split_density: (d) => d.max_density !== undefined ? m["issue.invalid_split_tile_group.max_split_density_label"]({ max_density: d.max_density }) : undefined,
+  split_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_split_tile_group.split_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
+  split_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_split_tile_group.split_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

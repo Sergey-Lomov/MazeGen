@@ -1113,6 +1113,30 @@ GitHub issue #208: the candidate-pass/budget/nested-delegation mechanics are now
 
 **`PARAM_PROTECT_ROUTE`** (default `true`): a candidate lying on the maze's current start→finish route (`is_edge_on_route`) is excluded from the candidate pool entirely, for every group, before the visiting order is even built — passed to `group_select_apply` as its `element_allowed` closure.
 
+### SplitGroupSelectStrategy
+
+Handles `INVALID_SPLIT_TILE_GROUP` — see GitHub issue #249, epic #246. For each problematic group flagged by `MaxSplitCountCheck`/`MaxSplitDensityCheck`/`SplitGroupGeometricProximityCheck`/`SplitGroupGraphProximityCheck` (`InvalidSplitTileGroupIssue.groups: Vec<(Vec<SplitTileNodes>, u32)>` — see `quality_control.md`), picks whole split tiles to collapse and delegates each actual collapse to a nested `INVALID_SPLIT_TILE` strategy (`RemoveSplitStrategy`) filling the `fix_target` slot. Built on `group_select_apply` (above), same as `OneWayGroupSelectStrategy`/`TeleportGroupSelectStrategy`, but its candidate `K::Element` is `SplitTileNodes` (a whole tile) rather than a single edge — every fix always collapses one entire tile, never picks nodes across different tiles (GitHub issue #249's regression fix, see `SplitTileNodes`'s own doc comment in `quality_control.md`).
+
+```rust
+pub const SLOT_FIX_TARGET: &str = "fix_target";
+```
+
+One nested slot, `fix_target`, expecting exactly one `INVALID_SPLIT_TILE`-handling strategy (`min: 1, max: Some(1)`).
+
+There is no route-protection concept here (unlike one-way/teleport groups): a split node's own removal feasibility is entirely `RemoveSplitStrategy`'s/`remove_node_feasible`'s job (preset locks, never slot-0), so `element_allowed` always returns `true`.
+
+`element_invalidated`: a tile counts as invalidated once every one of its *extra* (non-slot-0) nodes has been removed — slot-0 is never removed by `RemoveSplitStrategy`, so requiring it to appear among the removed nodes too would make a tile that legitimately has a slot-0 (i.e. every split tile) never register as resolved.
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `priority` | Enum | `problematic` | `random`, `problematic` (membership-across-groups, shared `group_select::PRIORITY_*` semantics), `most_voluminous`/`least_voluminous` (sorts by `SplitTileNodes.0.len()` — total node count, slot-0 included), `most_connected`/`least_connected` (sorts by total incident edge count across every node in the tile, both directions, slot-0 included). |
+
+`SPLIT_PRIORITY_OPTIONS` is a superset of the shared `PRIORITY_OPTIONS` (`random`/`problematic`, see `group_select.rs`) with four split-specific metrics added — kept local to this strategy rather than widening the shared constant, since `OneWayGroupSelectStrategy`/`TeleportGroupSelectStrategy` have no equivalent per-candidate size/connectivity notion (an edge has neither). Every metric respects the epic's "slot-0 is not otherwise special" rule (`quality_control.md`): both `_voluminous` and `_connected` sort by the tile's *entire* node list, not just its extra nodes. Ties (equal volume/connectivity/membership) are broken by an unconditional shuffle applied before sorting, same rationale `order_by_priority` uses.
+
+Connectivity (`most_connected`/`least_connected`) is computed via a `HashMap<NodeId, usize>` incoming-degree map built once per `order_candidates` call (a single O(E) pass over `maze.graph.edges()`) rather than re-scanning the whole edge list per node inside the sort comparator — `Graph` has no incoming-edge index of its own, so a naive per-node `graph.edges().filter(|e| e.to == node).count()` would cost `O(candidates * tile_nodes * E)` across one sort.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

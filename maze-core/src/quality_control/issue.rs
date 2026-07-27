@@ -20,6 +20,7 @@ pub enum IssueKind {
     MissingOneWays,
     MissingTeleports,
     InvalidSplitTile,
+    InvalidSplitTileGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -133,6 +134,16 @@ pub const MISSING_TELEPORTS: IssueKind = IssueKind::MissingTeleports;
 /// itself (a hard constraint across every split-QC strategy, see GitHub epic #246).
 pub const INVALID_SPLIT_TILE: IssueKind = IssueKind::InvalidSplitTile;
 
+/// A field-wide/aggregate condition over the set of split tiles — see GitHub issue #249, part of
+/// epic #246. `InvalidSplitTileGroup` is a distinct kind from `InvalidSplitTile`, not a reuse —
+/// mirrors `InvalidOneWayGroup`'s split from `InvalidOneWay`. Where `InvalidSplitTile` flags a
+/// single tile invalid on its own terms, `InvalidSplitTileGroup` flags tiles selected as part of
+/// a group-level decision across the field (excess split count, excess split density, or a pair
+/// of tiles placed too close together). Carries `InvalidSplitTileGroupIssue` — see that type's
+/// doc comment. Repaired by `SplitGroupSelectStrategy`, which delegates each candidate tile's
+/// collapse to a nested `INVALID_SPLIT_TILE` strategy (`RemoveSplitStrategy`).
+pub const INVALID_SPLIT_TILE_GROUP: IssueKind = IssueKind::InvalidSplitTileGroup;
+
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -154,6 +165,7 @@ impl IssueKind {
             IssueKind::MissingOneWays => "missing_one_ways",
             IssueKind::MissingTeleports => "missing_teleports",
             IssueKind::InvalidSplitTile => "invalid_split_tile",
+            IssueKind::InvalidSplitTileGroup => "invalid_split_tile_group",
         }
     }
 
@@ -185,6 +197,7 @@ impl IssueKind {
             "missing_one_ways" => Some(IssueKind::MissingOneWays),
             "missing_teleports" => Some(IssueKind::MissingTeleports),
             "invalid_split_tile" => Some(IssueKind::InvalidSplitTile),
+            "invalid_split_tile_group" => Some(IssueKind::InvalidSplitTileGroup),
             _ => None,
         }
     }

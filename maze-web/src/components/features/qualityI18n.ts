@@ -135,6 +135,22 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.split_distance_from_waypoint.label"] as MessageFn,
     description: m["check.split_distance_from_waypoint.description"] as MessageFn,
   },
+  max_split_count: {
+    label: m["check.max_split_count.label"] as MessageFn,
+    description: m["check.max_split_count.description"] as MessageFn,
+  },
+  max_split_density: {
+    label: m["check.max_split_density.label"] as MessageFn,
+    description: m["check.max_split_density.description"] as MessageFn,
+  },
+  split_group_geometric_proximity: {
+    label: m["check.split_group_geometric_proximity.label"] as MessageFn,
+    description: m["check.split_group_geometric_proximity.description"] as MessageFn,
+  },
+  split_group_graph_proximity: {
+    label: m["check.split_group_graph_proximity.label"] as MessageFn,
+    description: m["check.split_group_graph_proximity.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -202,6 +218,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_split_tile.label"] as MessageFn,
     description: m["issue.invalid_split_tile.description"] as MessageFn,
   },
+  invalid_split_tile_group: {
+    label: m["issue.invalid_split_tile_group.label"] as MessageFn,
+    description: m["issue.invalid_split_tile_group.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -222,6 +242,8 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   region_needs_expansion: m["issue_select.section.regions"] as MessageFn,
   region_needs_shrink: m["issue_select.section.regions"] as MessageFn,
   excessive_scc_count: m["issue_select.section.regions"] as MessageFn,
+  invalid_split_tile: m["issue_select.section.splits"] as MessageFn,
+  invalid_split_tile_group: m["issue_select.section.splits"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -242,6 +264,8 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   region_needs_expansion: m["issue_select.short_label.expansion"] as MessageFn,
   region_needs_shrink: m["issue_select.short_label.shrink"] as MessageFn,
   excessive_scc_count: m["issue_select.short_label.validate_groups"] as MessageFn,
+  invalid_split_tile: m["issue_select.short_label.validate"] as MessageFn,
+  invalid_split_tile_group: m["issue_select.short_label.validate_groups"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -338,6 +362,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   remove_split: {
     label: m["strategy.remove_split.label"] as MessageFn,
     description: m["strategy.remove_split.description"] as MessageFn,
+  },
+  split_group_select: {
+    label: m["strategy.split_group_select.label"] as MessageFn,
+    description: m["strategy.split_group_select.description"] as MessageFn,
   },
 };
 
@@ -590,6 +618,22 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.redistribute.label"] as MessageFn,
     description: m["param.redistribute.description"] as MessageFn,
   },
+  max_split_count: {
+    label: m["param.max_split_count.label"] as MessageFn,
+    description: m["param.max_split_count.description"] as MessageFn,
+  },
+  max_split_density: {
+    label: m["param.max_split_density.label"] as MessageFn,
+    description: m["param.max_split_density.description"] as MessageFn,
+  },
+  split_group_geometric_proximity_distance: {
+    label: m["param.split_group_geometric_proximity_distance.label"] as MessageFn,
+    description: m["param.split_group_geometric_proximity_distance.description"] as MessageFn,
+  },
+  split_group_graph_proximity_distance: {
+    label: m["param.split_group_graph_proximity_distance.label"] as MessageFn,
+    description: m["param.split_group_graph_proximity_distance.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -640,6 +684,10 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "other_edge.entry_or_exit": m["param.other_edge.option.entry_or_exit"] as MessageFn,
   "priority.random": m["param.priority.option.random"] as MessageFn,
   "priority.problematic": m["param.priority.option.problematic"] as MessageFn,
+  "priority.most_voluminous": m["param.priority.option.most_voluminous"] as MessageFn,
+  "priority.least_voluminous": m["param.priority.option.least_voluminous"] as MessageFn,
+  "priority.most_connected": m["param.priority.option.most_connected"] as MessageFn,
+  "priority.least_connected": m["param.priority.option.least_connected"] as MessageFn,
   "comparison.lt": m["param.comparison.option.lt"] as MessageFn,
   "comparison.gt": m["param.comparison.option.gt"] as MessageFn,
   "comparison.le": m["param.comparison.option.le"] as MessageFn,
@@ -692,6 +740,10 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "other_edge.entry_or_exit": m["param.other_edge.option.entry_or_exit.explanation"] as MessageFn,
   "priority.random": m["param.priority.option.random.explanation"] as MessageFn,
   "priority.problematic": m["param.priority.option.problematic.explanation"] as MessageFn,
+  "priority.most_voluminous": m["param.priority.option.most_voluminous.explanation"] as MessageFn,
+  "priority.least_voluminous": m["param.priority.option.least_voluminous.explanation"] as MessageFn,
+  "priority.most_connected": m["param.priority.option.most_connected.explanation"] as MessageFn,
+  "priority.least_connected": m["param.priority.option.least_connected.explanation"] as MessageFn,
   "cycle_kind.any": m["param.cycle_kind.option.any.explanation"] as MessageFn,
   "cycle_kind.two_way": m["param.cycle_kind.option.two_way.explanation"] as MessageFn,
   "cycle_kind.one_way": m["param.cycle_kind.option.one_way.explanation"] as MessageFn,

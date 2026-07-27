@@ -11,15 +11,17 @@ interface Props {
 }
 
 /** Fixed display order for issue kinds in `IssueSelectDialog`: groups kinds into sections
- * (Waypoints, One-ways, Teleports, Loops, Regions), each internally ordered add → validate →
- * validate groups. `ItemSelectDialog` groups by contiguous `section` runs, so this order is
- * what makes each section's items land together. Kinds absent here sort after all of these. */
+ * (Waypoints, One-ways, Teleports, Loops, Regions, Splits), each internally ordered add →
+ * validate → validate groups. `ItemSelectDialog` groups by contiguous `section` runs, so this
+ * order is what makes each section's items land together. Kinds absent here sort after all of
+ * these. */
 const ISSUE_KIND_ORDER = [
   "missing_endpoints", "unreachable_finish",
   "missing_one_ways", "invalid_one_way", "invalid_one_way_group",
   "missing_teleports", "invalid_teleport", "invalid_teleport_group",
   "missing_loops", "invalid_loop", "invalid_loop_group",
   "missing_regions", "region_needs_expansion", "region_needs_shrink", "excessive_scc_count",
+  "invalid_split_tile", "invalid_split_tile_group",
 ];
 
 /** Step 1 of "Add new rule": pick the issue kind first, narrowing the check list shown in

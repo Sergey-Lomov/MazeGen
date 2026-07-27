@@ -25,6 +25,7 @@ pub mod missing_one_ways_from_passage;
 pub mod missing_one_ways_from_wall;
 pub mod missing_teleports;
 pub mod remove_split;
+pub mod split_group_select;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -51,6 +52,7 @@ pub use missing_one_ways_from_passage::MissingOneWaysFromPassageStrategy;
 pub use missing_one_ways_from_wall::MissingOneWaysFromWallStrategy;
 pub use missing_teleports::{MissingTeleportsStrategy, PARAM_ENTRY_PICK as MISSING_TELEPORTS_PARAM_ENTRY_PICK, PARAM_DESIRED_LENGTH as MISSING_TELEPORTS_PARAM_DESIRED_LENGTH, ENTRY_RANDOM as MISSING_TELEPORTS_ENTRY_RANDOM, ENTRY_FARTHEST_FROM_RANDOM as MISSING_TELEPORTS_ENTRY_FARTHEST_FROM_RANDOM};
 pub use remove_split::{RemoveSplitStrategy, PARAM_REDISTRIBUTE as REMOVE_SPLIT_PARAM_REDISTRIBUTE};
+pub use split_group_select::{SplitGroupSelectStrategy, SLOT_FIX_TARGET as SPLIT_GROUP_SELECT_SLOT_FIX_TARGET, SPLIT_PRIORITY_OPTIONS, PRIORITY_MOST_VOLUMINOUS, PRIORITY_LEAST_VOLUMINOUS, PRIORITY_MOST_CONNECTED, PRIORITY_LEAST_CONNECTED};
 
 #[cfg(test)]
 pub(crate) mod test_utils {

@@ -104,16 +104,17 @@ describe("IssueBubble", () => {
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
 
-  it("hovering an invalid_split_tile bubble sets hoveredIssueRegionGroups to one singleton group per flagged node (shared region-highlight path, reused as a per-cell border); leaving clears it", () => {
-    // The payload is a flat node list (no group structure of its own) -- IssueBubble wraps each
-    // flagged node as its own [id] group so it reuses RegionHighlightRenderer's per-group
-    // fill+perimeter, which for a size-one group reads as a border around just that cell.
+  it("hovering an invalid_split_tile bubble sets hoveredIssueRegionGroups to a single group of every flagged node (shared region-highlight path); leaving clears it", () => {
+    // The payload is a flat node list (no group structure of its own) -- IssueBubble wraps every
+    // flagged node into one group so it reuses RegionHighlightRenderer's per-point dedup: two
+    // flagged nodes sharing the same split tile merge into one fill+perimeter instead of each
+    // drawing its own overlapping border (GitHub issue #249 regression report).
     const issue = invalidSplitTileIssue("split_distance_from_waypoint");
     render(<IssueBubble issue={issue} sourceCheck="split_distance_from_waypoint" />);
 
     const bubble = screen.getByText("Split tile validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[7], [8]]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[7, 8]]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });

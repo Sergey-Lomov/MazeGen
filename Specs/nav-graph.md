@@ -88,12 +88,39 @@ impl NavGraph {
 
 ## NavGraph internal indices
 
-`NavGraph` maintains two lookup maps built during construction:
+`NavGraph` maintains three lookup maps built during construction:
 
 - `node_index: HashMap<NodeId, NavNodeId>` — maps junction maze nodes to their nav node ID.
 - `corridor_index: HashMap<NodeId, NavNodeId>` — maps interior passage maze nodes to the `NavNodeId` of the edge's destination nav node.
+- `corridor_positions: HashMap<NodeId, Vec<(edge_idx: usize, index_within_path: usize)>>` — every `(edge, position)` pair an interior maze node appears as part of. A corridor node can be interior to up to two edges (a corridor edge and its separately-built reverse, see "Reverse edge linking" below), so this is a `Vec`, not a single pair — `corridor_index`'s `entry().or_insert()` only ever keeps the first-built edge's destination, silently dropping the other when both exist.
 
-Both support O(1) lookup. `nav_node_for` queries `node_index`; routing code queries `corridor_index` for corridor nodes that are not themselves nav nodes.
+All three support O(1) lookup. `nav_node_for` queries `node_index`; routing code queries `corridor_index` for corridor nodes that are not themselves nav nodes (an approximation — see below); exact tile-hop distance queries `corridor_positions` via the accessors below.
+
+### Exact intra-corridor offset (GitHub issue #249)
+
+`corridor_index` alone only ever gives the destination nav-node of *whichever* edge happened to be built first for a given interior node — it discards the node's actual position within the corridor. This is an acceptable approximation for routing code that just needs *a* reasonable nav-node to start a search from (`routing::resolve_nav_node`, `SplitDistanceFromWaypointCheck`'s waypoint-distance lookup), but wrong for anything that reports the distance value itself, since the discarded tile count can be arbitrarily large.
+
+Three public accessors expose the precise position, all backed by `corridor_positions`:
+
+```rust
+impl NavGraph {
+    /// Every (nav_node, forward_hops) pair reachable by continuing forward from `node_id` along
+    /// a corridor edge it's interior to -- forward_hops is the exact tile-hop count to that
+    /// edge's destination. Empty for a junction/nav node itself.
+    pub fn corridor_exit_offsets(&self, node_id: NodeId) -> impl Iterator<Item = (NavNodeId, usize)>;
+
+    /// Every (nav_node, forward_hops) pair such that continuing forward from `nav_node` reaches
+    /// `node_id` -- forward_hops is the exact tile-hop count from that edge's source.
+    pub fn corridor_entry_offsets(&self, node_id: NodeId) -> impl Iterator<Item = (NavNodeId, usize)>;
+
+    /// Raw (edge_idx, index_within_path) pairs `node_id` is interior to -- lets a caller detect
+    /// two corridor-interior nodes sharing the very same edge (direct in-path distance) instead
+    /// of always routing through each side's nav-node endpoint.
+    pub fn corridor_edge_positions(&self, node_id: NodeId) -> impl Iterator<Item = (usize, usize)>;
+}
+```
+
+Used by `graph::distance_map::exact_tile_distance` (see `graph-analytics.md`'s "Distance Maps" section) to compute the true directed tile-hop distance between any two maze nodes, corridor-interior or not.
 
 ## Builder
 

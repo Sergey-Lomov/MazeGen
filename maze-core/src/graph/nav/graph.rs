@@ -44,6 +44,12 @@ pub struct NavGraph {
     /// Maps corridor maze NodeId → the NavNodeId of the edge's destination nav node.
     /// Populated during nav graph construction for O(1) lookup of corridor nodes.
     pub(crate) corridor_index: HashMap<NodeId, NavNodeId>,
+    /// Maps corridor maze NodeId → every `(edge_idx, index_within_path)` pair it appears as an
+    /// interior node of — a corridor node can be interior to up to two edges (a corridor edge
+    /// and its reverse, see `link_reverse_edges`), and callers needing the exact tile-hop offset
+    /// to either end of the corridor (not just the coarse "which edge's destination" `corridor_index`
+    /// gives) must see both, not just whichever edge happened to be built first.
+    pub(crate) corridor_positions: HashMap<NodeId, Vec<(usize, usize)>>,
     outgoing: Vec<Vec<usize>>,
     incoming: Vec<Vec<usize>>,
 }
@@ -55,6 +61,7 @@ impl NavGraph {
             edges: Vec::new(),
             node_index: HashMap::new(),
             corridor_index: HashMap::new(),
+            corridor_positions: HashMap::new(),
             outgoing: Vec::new(),
             incoming: Vec::new(),
         }
@@ -74,9 +81,11 @@ impl NavGraph {
 
     pub(super) fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>, is_teleport: bool) {
         let edge_idx = self.edges.len();
-        // Index all interior corridor nodes to the destination nav node.
-        for &corridor_node in path[1..path.len().saturating_sub(1)].iter() {
+        // Index all interior corridor nodes to the destination nav node (coarse lookup), plus
+        // their exact index within this edge's path (precise lookup — see `corridor_positions`).
+        for (i, &corridor_node) in path.iter().enumerate().take(path.len().saturating_sub(1)).skip(1) {
             self.corridor_index.entry(corridor_node).or_insert(to_nav);
+            self.corridor_positions.entry(corridor_node).or_default().push((edge_idx, i));
         }
         self.edges.push(NavEdge { from: from_nav, to: to_nav, path, reverse_edge: None, is_teleport });
         self.outgoing[from_nav].push(edge_idx);
@@ -103,6 +112,40 @@ impl NavGraph {
 
     pub fn edge_by_idx(&self, idx: usize) -> &NavEdge {
         &self.edges[idx]
+    }
+
+    /// For a corridor-interior maze node, every `(nav_node, forward_hops)` pair reachable by
+    /// continuing forward along a corridor edge that node sits on — `forward_hops` is the exact
+    /// tile-hop count from `node_id` to `nav_node`, not the coarse "which edge's destination"
+    /// `corridor_index` gives. A node interior to both a corridor edge and its reverse (the common
+    /// case for a bidirectional corridor) yields one pair per edge, since only forward traversal
+    /// within a single `NavEdge`'s `path` is ever valid (going the other way requires the reverse
+    /// edge, indexed separately). Empty for a junction/nav node itself (callers should treat it as
+    /// already being at its own `NavNodeId`, offset 0).
+    pub fn corridor_exit_offsets(&self, node_id: NodeId) -> impl Iterator<Item = (NavNodeId, usize)> + '_ {
+        self.corridor_positions.get(&node_id).into_iter().flatten().map(|&(edge_idx, i)| {
+            let edge = &self.edges[edge_idx];
+            (edge.to, edge.path.len() - 1 - i)
+        })
+    }
+
+    /// Like `corridor_exit_offsets`, but the other direction: every `(nav_node, forward_hops)`
+    /// pair such that continuing forward from `nav_node` along its corridor edge reaches
+    /// `node_id` — `forward_hops` is the exact tile-hop count from `nav_node` to `node_id`.
+    pub fn corridor_entry_offsets(&self, node_id: NodeId) -> impl Iterator<Item = (NavNodeId, usize)> + '_ {
+        self.corridor_positions.get(&node_id).into_iter().flatten().map(|&(edge_idx, i)| {
+            let edge = &self.edges[edge_idx];
+            (edge.from, i)
+        })
+    }
+
+    /// Every raw `(edge_idx, index_within_path)` pair `node_id` is interior to — the same data
+    /// `corridor_exit_offsets`/`corridor_entry_offsets` derive their nav-node-relative offsets
+    /// from, exposed directly so a caller can detect "these two corridor-interior nodes sit on
+    /// the very same edge" (shared `edge_idx`) and take the direct in-path distance between them,
+    /// instead of always routing through each side's nav-node endpoint.
+    pub fn corridor_edge_positions(&self, node_id: NodeId) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.corridor_positions.get(&node_id).into_iter().flatten().copied()
     }
 
     /// For each edge, find its reverse (same path reversed, same `is_teleport` kind) and link

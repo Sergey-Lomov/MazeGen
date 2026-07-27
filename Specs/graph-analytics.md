@@ -171,6 +171,20 @@ This feeds [issue #33](https://github.com/Sergey-Lomov/MazeGen/issues/33)'s `Loo
 
 `cycle_min_distance(nav, cycle, dist_map)` (same file) is the other shared piece those two checks need: given a cycle (a list of nav-edge indices) and one of the two distance maps, returns the minimum distance among every nav-node the cycle touches (every `from`/`to` endpoint of its nav-edges) — the cycle's closest point to start/finish. A touched nav-node absent from `dist_map` is skipped; if every touched nav-node is absent, returns `usize::MAX` (no defined distance). One function, not duplicated per check — issue #33 explicitly called for extracting any such shared distance-reduction logic rather than letting each check reimplement it.
 
+### `exact_tile_distance` (GitHub issue #249)
+
+```rust
+pub(crate) fn exact_tile_distance(nav: &NavGraph, from: NodeId, to: NodeId, max_dist: Option<usize>) -> Option<usize>;
+```
+
+Exact directed tile-hop distance between two arbitrary maze nodes — unlike `compute_distance_map`, which is nav-domain only (junction/start/finish nodes), this also correctly handles either endpoint being a corridor-interior node, by combining `NavGraph::corridor_exit_offsets`/`corridor_entry_offsets` (see `nav-graph.md`) with a nav-domain Dijkstra pass between the resolved endpoints. `from == to` is always `0`, even when neither resolves to a nav node. Returns `None` if `to` is unreachable from `from` within `max_dist` (or at all, when `max_dist` is `None`).
+
+**Why this exists, not just `nav_node_for(..).or_else(|| corridor_index.get(..))`**: that resolution (`routing::resolve_nav_node`, `SplitDistanceFromWaypointCheck`) snaps a corridor-interior node to its containing edge's destination nav-node, silently dropping however many tiles remain in that segment — acceptable when the caller only needs *a* reasonable nav-node to start a search from, wrong when the distance value itself is compared against a threshold. `SplitGroupGraphProximityCheck` (`quality_control.md`) is exactly this second case: two split nodes anywhere within the same long corridor would otherwise report distance ≈0 regardless of how many tiles actually separate them (GitHub issue #249's original bug report).
+
+**Same-edge shortcut**: if `from` and `to` are both interior to the very same corridor edge (`NavGraph::corridor_edge_positions`), the direct in-path hop count (their path-index difference) is checked first — this is the *only* route between them on a single-edge corridor with no other nav-graph connections, and must never be skipped in favor of a route through either end's nav-node.
+
+**Cost**: up to two bounded Dijkstra passes per call (one per `from`-exit candidate, since a corridor-interior `from` can be interior to both a corridor edge and its reverse). `SplitGroupGraphProximityCheck` calls this once per node-pair inside an `O(tiles²)` scan with no caching across calls, unlike `TeleportGroupProximityCheck`/`OneWayGroupGraphProximityCheck`'s `compute_distance_map_filtered_bounded`-backed caches — a known, not-yet-addressed optimization opportunity for mazes with many split tiles, tracked as a follow-up, not a correctness issue.
+
 ## Quality Control Use Cases
 
 | Metric | QC check |

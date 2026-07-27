@@ -24,10 +24,18 @@ export function buildRegionGeometry(
   const nodeById = new Map<number, NodeDto>();
   for (const node of nodes) nodeById.set(node.id, node);
 
+  // Dedup by coordinate, not just by id -- several distinct node ids (e.g. a split tile's
+  // several nodes) can share one cell, and pushing that cell once per id would fill/stroke it
+  // multiple times over (visibly darker fill, doubled perimeter lines).
+  const seenCells = new Set<string>();
   const cells: [number, number][] = [];
   for (const id of regionNodeIds) {
     const node = nodeById.get(id);
-    if (node) cells.push([node.x, node.y]);
+    if (!node) continue;
+    const key = `${node.x},${node.y}`;
+    if (seenCells.has(key)) continue;
+    seenCells.add(key);
+    cells.push([node.x, node.y]);
   }
   if (cells.length === 0) return { cells, perimeterSegments: [] };
 

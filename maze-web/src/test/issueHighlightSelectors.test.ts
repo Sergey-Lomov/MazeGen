@@ -54,4 +54,14 @@ describe("buildRegionGeometry", () => {
     expect(cells).toEqual([]);
     expect(perimeterSegments).toEqual([]);
   });
+
+  it("dedups cells sharing one coordinate -- e.g. a split tile's several node ids -- to one fill+perimeter", () => {
+    // Ids 10 and 11 both sit at (0, 0), like a split tile's slot-0 and an extra node -- must
+    // collapse to a single cell/perimeter, not double-draw (GitHub issue #249 regression: the
+    // frontend used to pass split tile node ids that could share a cell without deduping first).
+    const nodes = [node(10, 0, 0), node(11, 0, 0), node(1, 1, 0)];
+    const { cells, perimeterSegments } = buildRegionGeometry([10, 11], nodes, cfg);
+    expect(cells).toEqual([[0, 0]]);
+    expect(perimeterSegments).toHaveLength(4);
+  });
 });

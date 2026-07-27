@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::ids::NodeId;
 use super::nav::{NavEdge, NavGraph, NavNodeId};
 use super::pathfinding::{
     dijkstra_forward, dijkstra_forward_filtered_bounded,
@@ -78,6 +79,80 @@ pub(crate) fn cycle_min_distance(nav: &NavGraph, cycle: &[usize], dist_map: &Has
         .filter_map(|node| dist_map.get(&node).copied())
         .min()
         .unwrap_or(usize::MAX)
+}
+
+/// Exact directed tile-hop distance from maze node `from` to maze node `to`, correctly handling
+/// either endpoint being a corridor-interior node (not just a junction/nav node) — unlike naively
+/// resolving each side via `NavGraph::nav_node_for(..).or_else(|| corridor_index.get(..))` (the
+/// approximation `routing::resolve_nav_node`/`SplitDistanceFromWaypointCheck` use, which snaps a
+/// corridor node to its containing edge's destination and silently drops however many tiles
+/// remain in that segment), this returns the true hop count by combining the exact intra-corridor
+/// offset (`NavGraph::corridor_exit_offsets`/`corridor_entry_offsets`) with the nav-domain
+/// distance between the two corridors' junction endpoints. Needed wherever the reported distance
+/// value itself matters (e.g. a proximity check comparing against a threshold), as opposed to
+/// merely picking a reasonable nav-node to start a search from.
+///
+/// `from == to` is always distance 0, even if neither resolves to a nav node (e.g. two waypoints
+/// landing on the same corridor-interior node).
+///
+/// Returns `None` if `to` is unreachable from `from` within `max_dist` (or at all, when
+/// `max_dist` is `None`).
+pub(crate) fn exact_tile_distance(
+    nav: &NavGraph,
+    from: NodeId,
+    to: NodeId,
+    max_dist: Option<usize>,
+) -> Option<usize> {
+    if from == to {
+        return Some(0);
+    }
+
+    let mut best: Option<usize> = None;
+
+    // If `from` and `to` are both interior to the very same corridor edge, the direct in-path
+    // hop count (their index difference) is the true distance along that edge -- checked first
+    // since it can be shorter than anything routing through either end's nav-node would find
+    // (and must never be skipped: it's the only route on a single-edge corridor with no other
+    // nav-graph connections, see `exact_tile_distance_between_two_corridor_interior_nodes_is_the_true_hop_count`).
+    for (from_edge, from_i) in nav.corridor_edge_positions(from) {
+        for (to_edge, to_i) in nav.corridor_edge_positions(to) {
+            if from_edge == to_edge && from_i < to_i {
+                best = min_optional_distance(best, Some(to_i - from_i));
+            }
+        }
+    }
+
+    // Every `(nav_node, hops_from_from_to_nav_node)` `from` can reach by leaving its own
+    // position: itself (offset 0) if it's already a nav node, plus every corridor edge it's
+    // interior to (continuing forward to that edge's destination).
+    let from_exits: Vec<(NavNodeId, usize)> = match nav.nav_node_for(from) {
+        Some(nav_id) => vec![(nav_id, 0)],
+        None => nav.corridor_exit_offsets(from).collect(),
+    };
+    // Every `(nav_node, hops_from_nav_node_to_to)` such that continuing forward from `nav_node`
+    // reaches `to`: itself (offset 0) if `to` is already a nav node, plus every corridor edge
+    // `to` is interior to (arriving from that edge's own source).
+    let to_entries: Vec<(NavNodeId, usize)> = match nav.nav_node_for(to) {
+        Some(nav_id) => vec![(nav_id, 0)],
+        None => nav.corridor_entry_offsets(to).collect(),
+    };
+
+    for &(from_nav, from_offset) in &from_exits {
+        let remaining = max_dist.map(|m| m.saturating_sub(from_offset));
+        let nav_dist = compute_distance_map_filtered_bounded(
+            nav, from_nav, DistanceDirection::Forward, |_| true, remaining.unwrap_or(usize::MAX),
+        );
+        for &(to_nav, to_offset) in &to_entries {
+            if let Some(&d) = nav_dist.get(&to_nav) {
+                best = min_optional_distance(best, Some(from_offset + d + to_offset));
+            }
+        }
+    }
+
+    match (best, max_dist) {
+        (Some(d), Some(m)) if d > m => None,
+        (d, _) => d,
+    }
 }
 
 /// `a.min(b)` treating `None` as absent rather than infinite — `None` only when both are `None`.
@@ -233,5 +308,49 @@ mod tests {
 
         let reverse = compute_distance_map(&nav, nav_a, DistanceDirection::Reverse);
         assert_eq!(reverse.get(&nav_b), None); // no directed path b -> a
+    }
+
+    #[test]
+    fn exact_tile_distance_between_two_corridor_interior_nodes_is_the_true_hop_count() {
+        // 0..9 is a single bidirectional corridor -- every node but the two ends is compressed
+        // into the nav graph's interior. Nodes 2 and 7 are both interior, 5 tiles apart -- the
+        // old nav-node-snapping approximation (corridor_index) would map both to whichever end
+        // happens to be each edge's "destination" and lose this distance entirely.
+        let (g, nodes) = line_graph(10);
+        let nav = build_nav_graph(&g);
+        assert_eq!(exact_tile_distance(&nav, nodes[2], nodes[7], None), Some(5));
+        assert_eq!(exact_tile_distance(&nav, nodes[7], nodes[2], None), Some(5), "bidirectional corridor, symmetric");
+    }
+
+    #[test]
+    fn exact_tile_distance_same_node_is_zero_even_when_corridor_interior() {
+        let (g, nodes) = line_graph(10);
+        let nav = build_nav_graph(&g);
+        assert_eq!(exact_tile_distance(&nav, nodes[4], nodes[4], None), Some(0));
+    }
+
+    #[test]
+    fn exact_tile_distance_respects_max_dist_bound() {
+        let (g, nodes) = line_graph(10);
+        let nav = build_nav_graph(&g);
+        assert_eq!(exact_tile_distance(&nav, nodes[0], nodes[9], Some(20)), Some(9));
+        assert_eq!(exact_tile_distance(&nav, nodes[0], nodes[9], Some(3)), None, "true distance 9 exceeds the bound");
+    }
+
+    #[test]
+    fn exact_tile_distance_one_way_corridor_blocks_the_reverse_direction() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<crate::ids::NodeId> = (0..5)
+            .map(|x| field.node_at(SquarePoint { x, y: 0 }).unwrap())
+            .collect();
+        for w in nodes.windows(2) {
+            g.add_edge(w[0], w[1], EdgeKind::Basic); // one-way only, corridor 0->1->2->3->4
+        }
+        let nav = build_nav_graph(&g);
+        assert_eq!(exact_tile_distance(&nav, nodes[1], nodes[3], None), Some(2));
+        assert_eq!(exact_tile_distance(&nav, nodes[3], nodes[1], None), None, "no directed path backwards along a one-way corridor");
     }
 }

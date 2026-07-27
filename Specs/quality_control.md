@@ -1087,6 +1087,77 @@ Only ever flags extra nodes (`nodes_at(point)[1..]`), never slot-0 — the hard 
 
 `RemoveSplitStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE`.
 
+### Split tiles vs. split nodes — slot-0 is not otherwise special (GitHub epic #246)
+
+**Hard constraint across every strategy in this epic: none of them may remove the original (slot-0) split node.** Outside that one removal-eligibility constraint, slot-0 is an equal member of a split tile for every other purpose — size/volume, connectivity/degree, distance — any metric a check or repair-priority computes over "a split tile's nodes" must include slot-0, not just the extra nodes. Only the actual removal step excludes it, and even there the convention is to pass the whole node set to the removal strategy and let it filter (`RemoveSplitStrategy`/`remove_node_feasible`), not to pre-filter slot-0 out beforehand.
+
+A **split tile** is one `Field` point carrying more than one node (`Field::nodes_at(point).len() >= 2`) — slot-0 plus one or more extra nodes minted by `Field::add_node_at`. `SplitDistanceFromWaypointCheck` above is single-node-flagging (it must name specific extra nodes as removal candidates, so it necessarily excludes slot-0); every check below this point is *tile*-level: it counts, measures, and flags whole split tiles, not individual nodes.
+
+### SplitTileNodes / InvalidSplitTileGroupIssue
+
+```rust
+pub struct SplitTileNodes(pub Vec<NodeId>);
+
+impl SplitTileNodes {
+    pub fn new(mut nodes: Vec<NodeId>) -> Self; // sorts on construction (canonicalized)
+}
+
+pub struct SplitGroupKind; // InvalidGroupIssueKind: Element = SplitTileNodes, KIND = INVALID_SPLIT_TILE_GROUP, NESTED_KIND = INVALID_SPLIT_TILE
+pub type InvalidSplitTileGroupIssue = InvalidGroupIssue<SplitGroupKind>;
+```
+
+`SplitTileNodes` wraps one split tile's *entire* node list (slot-0 included) as a single `InvalidGroupIssueKind::Element` unit — see GitHub issue #249's regression fix. An earlier revision used a flat `Vec<NodeId>` group mixing several tiles' nodes together, which let `group_select_apply`'s per-element candidate pass pick nodes from *different* tiles independently instead of resolving one whole tile at a time; wrapping each tile's nodes in `SplitTileNodes` makes the tile — not any one of its nodes — the candidate unit. Canonicalized (sorted) on construction so two `SplitTileNodes` built from the same node set in different orders compare/hash equal, same rationale `canonical_group_key` uses for a group's own element-level dedup.
+
+`InvalidSplitTileGroupIssue` (`groups: Vec<(Vec<SplitTileNodes>, u32)>`, the generic `InvalidGroupIssue<K>` shape) is produced by any check flagging a *relationship*/*aggregate* condition over the field's split tiles as a whole (excess count, excess density, or a too-close pair of tiles) — distinct from `INVALID_SPLIT_TILE`, which flags a single tile invalid on its own terms. A count/density excess puts every split tile on the field into one group with `to_remove` equal to the excess *tile* count (not node count); a proximity pair puts both tiles into one group with `to_remove: 1` (resolving either side breaks the pair).
+
+### MaxSplitCountCheck / MaxSplitDensityCheck
+
+```rust
+pub const MAX_SPLIT_COUNT_DEFAULT: u32 = 20;
+pub const MAX_SPLIT_DENSITY_DEFAULT: u32 = 30;
+
+pub struct MaxSplitCountCheck {
+    pub instance_id: String,
+    pub max_split_count: u32,
+}
+
+pub struct MaxSplitDensityCheck {
+    pub instance_id: String,
+    pub max_density: u32,
+}
+```
+
+See GitHub issue #249, part of epic #246. Flag a field-wide excess of split *tiles* (not nodes) — mirror `MaxLoopsCountCheck`/`MaxLoopDensityCheck`'s identical rationale: a field-wide/aggregate decision, which tiles to actually collapse is `SplitGroupSelectStrategy`'s job, not the check's. Both scan `Field::all_points()` (deduped via a seen-points set, since it yields one entry per `NodeId` and a split point has several), keep only points with `nodes_at(point).len() >= 2`, and wrap each surviving point's *entire* node list (slot-0 included) as its own `SplitTileNodes` candidate.
+
+`MaxSplitCountCheck`: fires when the raw tile count exceeds `max_split_count`; `to_remove = count - max_split_count` directly (a tile-count excess, not converted from any node-count notion). `MaxSplitDensityCheck`: fires when `density_per_100(tile_count, field_cells)` exceeds `max_density` (same rounding helper `MaxLoopDensityCheck` uses — round-half-up, not floor); `to_remove` is the fewest tiles that would bring density back to `max_density`, found by scanning `(0..=tile_count).rev()` for the largest count whose density is still at or below the max (density is monotonic increasing in count).
+
+Both fire `InvalidSplitTileGroupIssue::new_from_check(instance_id, vec![(tiles, to_remove)])` — one group covering every split tile on the field — with `.with_detail(instance_id, "max_split_count"/"max_density", ...)` chained on.
+
+### SplitGroupGeometricProximityCheck / SplitGroupGraphProximityCheck
+
+```rust
+pub const SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
+pub const SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
+
+pub struct SplitGroupGeometricProximityCheck {
+    pub instance_id: String,
+    pub distance: f64,
+}
+
+pub struct SplitGroupGraphProximityCheck {
+    pub instance_id: String,
+    pub distance: f64,
+}
+```
+
+See GitHub issue #249, part of epic #246. Flag a pair of split tiles placed too close to each other — mirror `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`'s role: no single-tile check (`SplitDistanceFromWaypointCheck`) can catch a problem that only emerges from two tiles being close to each other. Same tile-collection shape as `MaxSplitCountCheck` (deduped `all_points()`, `nodes_at(point).len() >= 2`, full node list including slot-0).
+
+`SplitGroupGeometricProximityCheck` measures Euclidean distance (`space::geometric_distance`) between the two tiles' points directly (unlike an edge-position check, a split tile is a whole point, not a border-crossing edge). `SplitGroupGraphProximityCheck` measures the minimum **exact** directed tile-hop distance (`min(forward, reverse)`, same "worst-case/either-direction" reduction `TeleportGroupProximityCheck`/`OneWayGroupGraphProximityCheck` use) over every combination of the two tiles' own nodes, via `graph::distance_map::exact_tile_distance` (see `graph-analytics.md`) — **not** the coarser `corridor_index`-based nav-node snapping `SplitDistanceFromWaypointCheck` accepts, since this check compares the distance value itself against a threshold (GitHub issue #249's original bug report: the coarse approximation could report two split nodes on the same long corridor as distance ≈0 regardless of their true tile-hop separation).
+
+For each tile, scans every other tile for the first one closer than `distance` — as soon as one problematic pair is found, it's recorded and the scan moves to the next tile. A symmetric pair is typically recorded twice (once per scan direction), each as its own 2-element group with `to_remove: 1` — same shape `OneWayGroupGeometricProximityCheck` produces. If any pairs are found, fires `InvalidSplitTileGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", ...)` chained on. Both allow multiple simultaneous instances (`allow_multiple_instances: true`) — distinct thresholds are a legitimate simultaneous configuration, same rationale as the one-way/teleport proximity checks.
+
+`SplitGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE_GROUP`.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -1305,10 +1376,15 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `min_one_way_ratio` | `missing_one_ways` | `min_ratio: Integer(default=10, min=0, max=100)` | no |
 | `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)` | no |
 | `max_one_way_ratio` | `invalid_one_way_group` | `max_ratio: Integer(default=100, min=0, max=100)` | no |
+| `split_distance_from_waypoint` | `invalid_split_tile` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)` | no |
+| `max_split_count` | `invalid_split_tile_group` | `max_split_count: Integer(default=20, min=0, max=1_000_000)` | no |
+| `max_split_density` | `invalid_split_tile_group` | `max_split_density: Integer(default=30, min=0, max=100)` | no |
+| `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
+| `split_group_graph_proximity` | `invalid_split_tile_group` | `split_group_graph_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 
-`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration.
+`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`.
 
 ## Architectural Contract
 
