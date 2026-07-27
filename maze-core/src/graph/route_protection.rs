@@ -12,7 +12,7 @@ use crate::space::Tessellation;
 /// selection, which must never sever the critical path) needs the same check for `Basic` edges.
 pub fn is_edge_on_route<T: Tessellation>(maze: &Maze<T>, edge_id: EdgeId) -> bool {
     let Some(edge) = maze.graph.edge(edge_id) else { return false; };
-    let Some(route) = maze.analysis.route_info(&maze.graph, &maze.meta) else { return false; };
+    let Some(route) = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta) else { return false; };
 
     let hops: HashSet<(NodeId, NodeId)> = route.path.windows(2)
         .map(|w| (w[0], w[1]))
@@ -52,7 +52,7 @@ pub fn is_teleport_route_protected<T: Tessellation>(maze: &Maze<T>, edge_id: Edg
 /// the route — the removed direction must be the *other* one, never the route's own direction
 /// (`MissingOneWaysFromPassageStrategy`, GitHub issue #201's follow-up).
 pub fn route_direction<T: Tessellation>(maze: &Maze<T>, a: NodeId, b: NodeId) -> Option<(NodeId, NodeId)> {
-    let route = maze.analysis.route_info(&maze.graph, &maze.meta)?;
+    let route = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta)?;
     route.path.windows(2).find_map(|w| {
         let (from, to) = (w[0], w[1]);
         if (from, to) == (a, b) || (from, to) == (b, a) {

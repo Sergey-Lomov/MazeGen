@@ -131,7 +131,7 @@ fn run_generate_typed<T: Tessellation + 'static>(
 
     if start_node.is_some() && finish_node.is_some() {
         let scc = maze.analysis.scc(&maze.graph);
-        let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+        let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
         for (&comp_id, &cls) in &classes {
             region_sizes.entry(cls).or_default().push(scc.components[comp_id].len());
         }

@@ -613,12 +613,14 @@ Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted 
 | `junction_weight` | Float | 3.0 | [0, 100] | Weight applied to number of junction nav nodes on path |
 | `oneway_weight` | Float | 5.0 | [0, 100] | Weight applied to number of one-way nav edges on path |
 | `teleport_weight` | Float | 5.0 | [0, 100] | Weight applied to number of teleport nav edges crossed on path |
+| `split_weight` | Float | 5.0 | [0, 100] | Weight applied to number of split-tile occurrences on path |
 
-Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight + teleport_count * teleport_weight`
+Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight + teleport_count * teleport_weight + split_count * split_weight`
 
 - Junction: nav node with ≥ 3 distinct neighbors (union of incoming and outgoing).
 - One-way edge: nav edge `(u → v)` where no reverse edge `(v → u)` exists.
 - Teleport edge: nav edge whose corridor `path` crosses a `Teleport`-kind edge in the underlying maze graph.
+- Split: a field point with ≥ 2 nodes (GitHub issue #261). `split_count` sums, per path edge, the number of the edge's own tile nodes (excluding its `from` node, already counted by the previous edge) that sit on a split tile, plus 1 if the route's own start nav node is itself a split tile (mirroring how `junction_count` covers the start node too) — so a route crossing the same split point via two distinct nodes counts both, and a route starting on a split tile is not silently undercounted.
 - Path cost (for Dijkstra): edge weight = `path.len() - 1` (tile count).
 
 Behavior per case:

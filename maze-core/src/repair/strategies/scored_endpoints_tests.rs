@@ -150,7 +150,7 @@ fn apply_prefers_junction_path_when_junction_weight_dominates() {
     let start = maze.meta.start.unwrap();
     let finish = maze.meta.finish.unwrap();
     let nav = crate::graph::nav::build_nav_graph_pinned(&maze.graph, &[start, finish].into_iter().collect());
-    let route = crate::graph::routing::compute_route_info(&nav, start, finish)
+    let route = crate::graph::routing::compute_route_info(&nav, &maze.field, start, finish)
         .expect("route must exist between the chosen pair");
     let junction = nodes[&(1, 0)];
     assert!(route.path.contains(&junction), "winning route must pass through the junction node");
@@ -193,13 +193,58 @@ fn apply_prefers_teleport_path_when_teleport_weight_dominates() {
     let start = maze.meta.start.unwrap();
     let finish = maze.meta.finish.unwrap();
     let nav = crate::graph::nav::build_nav_graph_pinned(&maze.graph, &[start, finish].into_iter().collect());
-    let route = crate::graph::routing::compute_route_info(&nav, start, finish)
+    let route = crate::graph::routing::compute_route_info(&nav, &maze.field, start, finish)
         .expect("route must exist between the chosen pair");
     let teleport_src = nodes[&(1, 0)];
     let teleport_dst = nodes[&(1, 1)];
     let crosses_teleport = route.path.windows(2)
         .any(|w| w[0] == teleport_src && w[1] == teleport_dst);
     assert!(crosses_teleport, "winning route must cross the teleport edge");
+}
+
+#[test]
+fn apply_prefers_pair_whose_own_endpoint_sits_on_a_split_tile() {
+    // Two disjoint 3-node corridors: 0-1-2 (node 0's point is split, extra sibling `s`) and
+    // 3-4-5 (no splits at all). With split_weight dominating and every other weight zeroed,
+    // only a pair that includes node 0 or `s` as an endpoint scores positively -- regression
+    // for the route's own start/finish node being excluded from split_count (GitHub issue #261).
+    let mut ids = IdGenerator::new();
+    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 2), &mut ids).unwrap();
+    let extra = field.add_node_at(SquarePoint { x: 0, y: 0 }, &mut ids);
+    let mut graph = Graph::new();
+    field.build_nodes(&mut graph);
+    graph.add_node(extra);
+    let nodes: StdHashMap<(i32, i32), crate::ids::NodeId> = [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]
+        .iter()
+        .map(|&(x, y)| ((x, y), field.node_at(SquarePoint { x, y }).unwrap()))
+        .collect();
+    for x in 0..2 {
+        graph.build_initial_bidirectional_edge(nodes[&(x, 0)], nodes[&(x + 1, 0)], EdgeKind::Basic);
+        graph.build_initial_bidirectional_edge(nodes[&(x, 1)], nodes[&(x + 1, 1)], EdgeKind::Basic);
+    }
+    let mut maze: Maze<SquareTessellation> = Maze::new(field, graph);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_SPLIT_WEIGHT.to_string(), "1000".to_string());
+    overrides.insert(PARAM_PATH_WEIGHT.to_string(), "0".to_string());
+    overrides.insert(PARAM_JUNCTION_WEIGHT.to_string(), "0".to_string());
+    overrides.insert(PARAM_ONEWAY_WEIGHT.to_string(), "0".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
+    // With every other weight zeroed, only a pair whose route touches the split point (0,0)
+    // (via node 0 or its sibling `extra`) scores positively.
+    let start = maze.meta.start.unwrap();
+    let finish = maze.meta.finish.unwrap();
+    let split_point_node = nodes[&(0, 0)];
+    assert!(
+        start == split_point_node || finish == split_point_node || start == extra || finish == extra,
+        "winning pair must have an endpoint on the split tile at (0,0), got start={start} finish={finish}",
+    );
 }
 
 #[test]
@@ -215,16 +260,63 @@ fn score_path_adds_teleport_count_times_weight() {
     let junction_flags = vec![false, false, false];
     let oneway_flags = vec![false, false];
     let teleport_flags = vec![true, false];
-    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 7.0 };
+    let split_counts = vec![0, 0];
+    let split_flags = vec![false, false, false];
+    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 7.0, split_weight: 0.0 };
 
-    let score_one_teleport = score_path(&junction_flags, &oneway_flags, &teleport_flags, &[0], &edges, 1, &weights);
+    let score_one_teleport = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &[0], &edges, 1, &weights);
     assert_eq!(score_one_teleport, 7.0);
 
-    let score_both_edges = score_path(&junction_flags, &oneway_flags, &teleport_flags, &[0, 1], &edges, 2, &weights);
+    let score_both_edges = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &[0, 1], &edges, 2, &weights);
     assert_eq!(score_both_edges, 7.0, "second edge isn't a teleport crossing, so it must not add to the score");
 
-    let score_no_teleport = score_path(&junction_flags, &oneway_flags, &teleport_flags, &[1], &edges, 1, &weights);
+    let score_no_teleport = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &[1], &edges, 1, &weights);
     assert_eq!(score_no_teleport, 0.0);
+}
+
+#[test]
+fn score_path_adds_split_count_times_weight() {
+    // Edge 0 crosses one split-tile occurrence, edge 1 crosses two. Both non-junction,
+    // non-oneway, non-teleport, so with every other weight zeroed the only contribution is
+    // split_weight times the summed per-edge split_counts of the path's edges.
+    let edges_owned = vec![
+        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false },
+        NavEdge { from: 1, to: 2, path: vec![20, 30, 40], reverse_edge: None, is_teleport: false },
+    ];
+    let edges: Vec<&NavEdge> = edges_owned.iter().collect();
+    let junction_flags = vec![false, false, false];
+    let oneway_flags = vec![false, false];
+    let teleport_flags = vec![false, false];
+    let split_counts = vec![1, 2];
+    let split_flags = vec![false, false, false];
+    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 0.0, split_weight: 4.0 };
+
+    let score_one_edge = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &[0], &edges, 1, &weights);
+    assert_eq!(score_one_edge, 4.0);
+
+    let score_both_edges = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &[0, 1], &edges, 3, &weights);
+    assert_eq!(score_both_edges, 12.0, "split_counts of both path edges must sum before multiplying by the weight");
+}
+
+#[test]
+fn score_path_counts_the_routes_own_start_node_as_a_split_too() {
+    // Regression: split_counts (per-edge) structurally excludes each edge's `from` node, so
+    // the route's very first node (edge 0's `from`, nav node 0) would never be checked for
+    // being a split tile unless score_path adds it separately via split_flags -- exactly like
+    // it already does for junction_count via nav_nodes_on_path's i==0 push.
+    let edges_owned = vec![
+        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false },
+    ];
+    let edges: Vec<&NavEdge> = edges_owned.iter().collect();
+    let junction_flags = vec![false, false];
+    let oneway_flags = vec![false];
+    let teleport_flags = vec![false];
+    let split_counts = vec![0]; // edge 0's own tiles (path[1..] = [20]) has no split
+    let split_flags = vec![true, false]; // nav node 0 (the route's start) IS a split tile
+    let weights = ScoreWeights { path_weight: 0.0, junction_weight: 0.0, oneway_weight: 0.0, teleport_weight: 0.0, split_weight: 10.0 };
+
+    let score = score_path(&junction_flags, &oneway_flags, &teleport_flags, &split_counts, &split_flags, &[0], &edges, 1, &weights);
+    assert_eq!(score, 10.0, "the route's start node sitting on a split tile must still contribute to split_count");
 }
 
 #[test]

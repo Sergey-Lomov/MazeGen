@@ -109,7 +109,7 @@ mod tests {
     /// 1 -> 3 -> 2                  (alternative route back into finish's SCC via 3)
     /// 4 -> 5 -> 4                  (isolated cyclic region, unreachable from start)
     /// 1 -> 6                       (trap: reachable from start, dead end, can't reach finish)
-    fn layout() -> (Graph, Vec<NodeId>) {
+    fn layout() -> (Field<SquareTessellation>, Graph, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
         let field: Field<SquareTessellation> = Field::new(square_rect(7, 1), &mut ids).unwrap();
         let mut g = Graph::new();
@@ -124,17 +124,17 @@ mod tests {
         g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
         g.add_edge(nodes[5], nodes[4], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[6], EdgeKind::Basic);
-        (g, nodes)
+        (field, g, nodes)
     }
 
     #[test]
     fn classifies_all_four_kinds() {
-        let (g, nodes) = layout();
+        let (field, g, nodes) = layout();
         let start = nodes[0];
         let finish = nodes[2];
         let pinned: HashSet<NodeId> = [start, finish].into_iter().collect();
         let nav = build_nav_graph_pinned(&g, &pinned);
-        let route = compute_route_info(&nav, start, finish).unwrap();
+        let route = compute_route_info(&nav, &field, start, finish).unwrap();
         let scc = build_scc(&g);
 
         let classes = classify_regions(&g, &scc, Some(&route), start, finish);
@@ -171,12 +171,12 @@ mod tests {
 
     #[test]
     fn start_and_finish_regions_are_path_when_route_exists() {
-        let (g, nodes) = layout();
+        let (field, g, nodes) = layout();
         let start = nodes[0];
         let finish = nodes[2];
         let pinned: HashSet<NodeId> = [start, finish].into_iter().collect();
         let nav = build_nav_graph_pinned(&g, &pinned);
-        let route = compute_route_info(&nav, start, finish).unwrap();
+        let route = compute_route_info(&nav, &field, start, finish).unwrap();
         let scc = build_scc(&g);
 
         let classes = classify_regions(&g, &scc, Some(&route), start, finish);

@@ -71,6 +71,7 @@ Shown only when `routeInfo != null`. Fields:
 - `path_length` — integer, number of nodes on the route
 - `junction_count` — number of junction nodes on the route
 - `one_way_count` — number of one-way passages on the route
+- `split_count` — number of split-tile occurrences on the route (GitHub issue #261)
 - `score` — float, shown only when `routeInfo.score != null`
 
 ### Nodes Block

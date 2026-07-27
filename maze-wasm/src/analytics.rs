@@ -184,7 +184,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         })
         .collect();
 
-    let region_classes: HashMap<String, String> = maze.analysis.region_classes(&maze.graph, &maze.meta).into_iter()
+    let region_classes: HashMap<String, String> = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta).into_iter()
         .map(|(comp_id, class)| (comp_id.to_string(), class.as_str().to_string()))
         .collect();
 
@@ -225,10 +225,11 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         one_way: raw_teleport_stats.one_way,
     };
 
-    let route_info = maze.analysis.route_info(&maze.graph, &maze.meta).map(|r| RouteInfoDto {
+    let route_info = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta).map(|r| RouteInfoDto {
         path_length:    r.path_length,
         junction_count: r.junction_count,
         one_way_count:  r.one_way_count,
+        split_count:    r.split_count,
         score:          maze.meta.route_score,
         path:           r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
     });
@@ -979,7 +980,7 @@ mod tests {
         maze.meta.start = Some(a);
         maze.meta.finish = Some(b);
 
-        let route = maze.analysis.route_info(&maze.graph, &maze.meta);
+        let route = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta);
         assert!(route.is_some(), "expected a route from a to b via the split node {split_node}, got None");
     }
 }

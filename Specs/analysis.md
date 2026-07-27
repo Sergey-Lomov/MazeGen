@@ -8,7 +8,7 @@ Cached derived data attached to a `Maze`. Computed lazily on first access; cache
 pub struct MazeAnalysis {
     nav_graph: RefCell<Option<(u64, Option<NodeId>, Option<NodeId>, graph::nav::NavGraph)>>,
     scc: RefCell<Option<(u64, graph::scc::ConnectedComponents)>>,
-    route_info: RefCell<Option<(u64, NodeId, NodeId, Option<graph::routing::RouteInfo>)>>,
+    route_info: RefCell<Option<(u64, Option<NodeId>, Option<NodeId>, Option<graph::routing::RouteInfo>)>>,
     graph_analytics: RefCell<Option<(u64, Option<NodeId>, Option<NodeId>, GraphAnalytics)>>,
     distance_from_start: RefCell<Option<(u64, NodeId, HashMap<graph::nav::NavNodeId, usize>)>>,
     distance_from_finish: RefCell<Option<(u64, NodeId, HashMap<graph::nav::NavNodeId, usize>)>>,
@@ -23,7 +23,7 @@ The `u64` in each tuple is the `Graph::version()` value the cached entry was bui
 impl MazeAnalysis {
     pub fn nav_graph(&self, graph: &Graph, meta: &MazeMeta) -> NavGraph;
     pub fn scc(&self, graph: &Graph) -> ConnectedComponents;
-    pub fn route_info(&self, graph: &Graph, start: NodeId, finish: NodeId) -> Option<RouteInfo>;
+    pub fn route_info<T: Tessellation>(&self, graph: &Graph, field: &Field<T>, meta: &MazeMeta) -> Option<RouteInfo>;
     pub fn graph_analytics(&self, graph: &Graph, meta: &MazeMeta) -> GraphAnalytics;
     pub fn distance_from_start(&self, graph: &Graph, meta: &MazeMeta) -> Option<HashMap<graph::nav::NavNodeId, usize>>;
     pub fn distance_from_finish(&self, graph: &Graph, meta: &MazeMeta) -> Option<HashMap<graph::nav::NavNodeId, usize>>;
@@ -34,7 +34,7 @@ All return owned values (cloned out of the cache), not references — `RefCell` 
 
 - `nav_graph`: keyed on `(graph.version(), meta.start, meta.finish)`. **Always pins `meta.start`/`meta.finish`** (whichever are `Some`) — once a route endpoint is set, it is forced to be a `NavNode` everywhere this method is the source of the nav graph, instead of risking being silently collapsed into a passage's interior the moment its local degree happens to look like one. This is the single, project-wide pinning policy: `LoopLengthCheck`, `FarthestEndpointsStrategy`, `ScoredEndpointsStrategy`, and the WASM analytics layer all call this method and all observe the same pinned topology. **This is not opt-in per caller** — any future `Check` or `RepairStrategy` that calls `maze.analysis.nav_graph(...)` automatically inherits the pinned topology with no separate decision to make; there is no unpinned variant to fall back to from this method.
 - `scc`: keyed on `graph.version()`; independent of pinning.
-- `route_info`: computes a route between two specific nodes, pinning exactly that `(start, finish)` pair — independent of `nav_graph`'s own cache, since a caller may want to probe a candidate pair before committing it to `meta` (or the pair may differ from `meta.start`/`meta.finish` entirely). Keyed on `(graph.version(), start, finish)`; single-slot — a different key (including a graph mutation with the same pair) triggers a rebuild, and probing alternating pairs in a loop defeats the cache entirely.
+- `route_info`: computes a route between `meta.start`/`meta.finish`, pinning exactly that pair — independent of `nav_graph`'s own cache. Returns `None` if either endpoint is unset. `field` is only used to detect split tiles for `RouteInfo::split_count` (GitHub issue #261). Keyed on `(graph.version(), meta.start, meta.finish)`; single-slot — a different key (including a graph mutation with the same pair) triggers a rebuild, and probing alternating pairs in a loop defeats the cache entirely.
 - `graph_analytics`: keyed on `(graph.version(), meta.start, meta.finish)`, same key as `nav_graph` since it's computed directly on that pinned nav graph (cycle structure, component counts). See `graph-analytics.md`.
 - `distance_from_start`/`distance_from_finish`: keyed on `(graph.version(), meta.start)` / `(graph.version(), meta.finish)` respectively. `NavNodeId`-domain shortest-path distance in tiles (not maze `NodeId`, not nav-edge hop count) — `None` if the corresponding endpoint isn't set. See `graph-analytics.md`'s "Distance Maps" section for the full contract, including the nav-domain rationale and the underlying `compute_distance_map`/`cycle_min_distance` helpers (`graph/distance_map.rs`).
 - Takes `&self` — internally uses `RefCell` so callers don't need `&mut Maze` just to populate or refresh the cache.

@@ -4,15 +4,16 @@ Shortest-path computation between two maze nodes (start and finish) over the nav
 
 ## Location
 
-`maze_core::graph::classify` — `compute_route_info`
+`maze_core::graph::routing` — `compute_route_info`
 
 ## Input
 
 ```rust
-pub fn compute_route_info(nav: &NavGraph, start: NodeId, finish: NodeId) -> Option<RouteInfo>
+pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &Field<T>, start: NodeId, finish: NodeId) -> Option<RouteInfo>
 ```
 
 - `nav` must be built with `build_nav_graph_pinned` where both `start` and `finish` are in the pinned set. This guarantees they are nav nodes and that pathfinding begins and ends exactly at those maze nodes.
+- `field` is the same tessellated field the maze/nav graph was built from — used only to look up which points are split tiles (`field.nodes_at(point).len() >= 2`) for `split_count`.
 - Returns `None` if no path exists (disconnected graph).
 
 ## Output
@@ -22,6 +23,7 @@ pub struct RouteInfo {
     pub path_length: usize,    // number of maze nodes including start and finish
     pub junction_count: usize, // nav nodes with >= 3 distinct outgoing nav neighbors on the path
     pub one_way_count: usize,  // nav edges without a reverse nav edge on the path
+    pub split_count: usize,    // occurrences of a split tile's node among path nodes (see below)
     pub score: Option<f64>,    // filled externally from ScoredEndpointsStrategy; always None here
     pub path: Vec<NodeId>,     // all maze nodes in order from start to finish
 }
@@ -39,6 +41,10 @@ Number of nav nodes on the path (including start and finish) where the number of
 
 Number of nav edges on the path for which no reverse nav edge exists (i.e. you can traverse this passage in one direction only).
 
+### split_count
+
+Count of path nodes (by position, not deduplicated by field point) that sit on a split tile — a field point with two or more nodes (GitHub issue #261). Each occurrence on the path adds to the count independently: a route that passes through two distinct nodes of the same split point (entering via one, exiting via the other) counts 2, even though no single `NodeId` is ever revisited (Dijkstra shortest paths never repeat a node).
+
 ### path
 
 Full ordered list of maze `NodeId`s from `start` to `finish`. Built by concatenating the `NavEdge.path` segments; shared junction nodes at segment boundaries are deduplicated (the first node of each subsequent segment is skipped).
@@ -50,6 +56,7 @@ Under the required precondition (both `start` and `finish` pinned), `start_nav =
 - `path_length` = 1 if `start == finish`, else 2.
 - `path` = `[start]` if `start == finish`, else `[start, finish]`.
 - `junction_count` = 0, `one_way_count` = 0.
+- `split_count` = 1 if the single node sits on a split tile, else 0 (0 if `start == finish` and `path = [start]`; each of the two path nodes checked independently when `start != finish`).
 
 ## Algorithm
 

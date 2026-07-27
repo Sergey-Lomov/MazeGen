@@ -141,6 +141,7 @@ export function AnalyticsFeature() {
               <StatRow label={m["analytics.path_length"]()} count={routeInfo.path_length} />
               <StatRow label={m["analytics.junction_count"]()} count={routeInfo.junction_count} />
               <StatRow label={m["analytics.one_way_count"]()} count={routeInfo.one_way_count} />
+              <StatRow label={m["analytics.split_count"]()} count={routeInfo.split_count} />
               {routeInfo.score != null && (
                 <div style={styles.scoreRow}>
                   <span style={styles.statLabel}>{m["analytics.score"]()}</span>

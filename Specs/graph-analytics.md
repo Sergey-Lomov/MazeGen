@@ -139,10 +139,10 @@ Every region gets exactly one class:
 ### Caching: `MazeAnalysis::region_classes`
 
 ```rust
-pub fn region_classes(&self, graph: &Graph, start: NodeId, finish: NodeId) -> HashMap<ComponentId, RegionClass>
+pub fn region_classes<T: Tessellation>(&self, graph: &Graph, field: &Field<T>, meta: &MazeMeta) -> HashMap<ComponentId, RegionClass>
 ```
 
-Keyed on `(graph.version(), start, finish)` — same invalidation shape as `route_info`/`scc`. Internally calls `self.scc(graph)` and `self.route_info(graph, start, finish)`, both independently cached, so a cache hit on either is reused rather than recomputed.
+Keyed on `(graph.version(), meta.start, meta.finish)` — same invalidation shape as `route_info`/`scc`. Internally calls `self.scc(graph)` and `self.route_info(graph, field, meta)`, both independently cached, so a cache hit on either is reused rather than recomputed. `field` is threaded through only because `route_info` needs it (`RouteInfo::split_count`) — region classification itself never inspects splits.
 
 ### Web Integration
 

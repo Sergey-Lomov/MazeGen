@@ -23,7 +23,7 @@ pub fn find_oversized_regions<T: Tessellation>(
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
             return None;
         }
-        Some(maze.analysis.region_classes(&maze.graph, &maze.meta))
+        Some(maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta))
     };
     let invalid: Vec<usize> = scc.components.iter().enumerate()
         .filter(|(idx, region)| {
@@ -54,7 +54,7 @@ pub fn build_issue<T: Tessellation>(
     }
 
     let classes = (maze.meta.start.is_some() && maze.meta.finish.is_some())
-        .then(|| maze.analysis.region_classes(&maze.graph, &maze.meta));
+        .then(|| maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta));
 
     if let Some(classes) = classes {
         let mut detail_classes: Vec<&'static str> = invalid.iter()

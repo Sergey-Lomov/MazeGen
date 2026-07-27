@@ -88,7 +88,7 @@ fn apply_reuses_unreachable_region_into_trap() {
     let mut rng = MazeRng::seed_from_u64(7);
     let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
     let has_trap = [nodes[3], nodes[4], nodes[5]].iter().any(|&n| {
         scc.component_of(n).and_then(|idx| classes.get(&idx)).copied() == Some(RegionClass::Trap)
@@ -176,7 +176,7 @@ fn apply_never_uses_critical_path_nodes_as_seed_or_bridge_target() {
     apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     // Critical path nodes (0,1,2) must keep their original outgoing edges only to each
     // other -- they should not have been absorbed into the new Trap region's component.
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
     for &n in &[nodes[0], nodes[1], nodes[2]] {
         let class = scc.component_of(n).and_then(|idx| classes.get(&idx)).copied();
@@ -257,7 +257,7 @@ fn apply_grows_from_a_tree_shaped_maze_with_no_non_path_regions_at_all() {
     // has zero Unreachable/Trap regions to reuse or seed growth from (every node is
     // either on the shortest path -- Path -- or reachable both ways through the tree's
     // single connecting path -- Alternative).
-    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     assert!(
         classes_before.values().all(|&c| c == RegionClass::Path || c == RegionClass::Alternative),
         "fixture must start with zero Unreachable/Trap regions, got: {:?}", classes_before.values().collect::<Vec<_>>()
@@ -275,7 +275,7 @@ fn apply_grows_from_a_tree_shaped_maze_with_no_non_path_regions_at_all() {
     let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }), "growth must succeed even with zero pre-existing non-Path regions");
 
-    let classes_after = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes_after = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     assert!(classes_after.values().any(|&c| c == RegionClass::Trap), "expected a Trap region to have been created");
 }
 
@@ -304,7 +304,7 @@ fn apply_two_trap_regions_both_succeed_via_reuse() {
     let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
     let trap_count = [nodes[3], nodes[4], nodes[5], nodes[6], nodes[7]].iter()
         .filter(|&&n| scc.component_of(n).and_then(|idx| classes.get(&idx)).copied() == Some(RegionClass::Trap))
@@ -319,7 +319,7 @@ fn apply_second_item_never_reuses_first_items_committed_nodes() {
     let mut rng = MazeRng::seed_from_u64(13);
     apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
 
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
     let trap_components: HashSet<ComponentId> = [nodes[3], nodes[4], nodes[5], nodes[6], nodes[7]].iter()
         .filter_map(|&n| scc.component_of(n))
@@ -409,7 +409,7 @@ fn apply_growth_never_crosses_into_a_different_scc_component() {
     // grown/converted Trap region, and not connected to anything.
     assert!(maze.graph.edge_between(nodes[4], nodes[5]).is_none());
     assert!(maze.graph.edge_between(nodes[5], nodes[4]).is_none());
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
     assert_eq!(scc.component_of(nodes[5]).and_then(|idx| classes.get(&idx)).copied(), Some(RegionClass::Unreachable));
 }
@@ -500,7 +500,7 @@ fn apply_merges_a_too_small_region_with_an_excess_budgeted_neighbor_to_reach_min
     // absorption and the bridging edge (otherwise region6 would be disconnected from
     // {n3,n4,n5} and membership-check would never have let this land on Trap for all four
     // at once).
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
     let merged_component = scc.component_of(region6);
     assert!(merged_component.is_some(), "region6 must be in some SCC after absorption");
@@ -533,7 +533,7 @@ fn apply_reuses_undersized_region_alone_without_excess_budget() {
     let result = apply_and_commit(&issue, &mut maze, &mut rng, &params, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }), "no excess budget -- region6 must still be reusable alone, below min_region_size");
 
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc = maze.analysis.scc(&maze.graph);
     assert_eq!(classes.get(&scc.component_of(region6).unwrap()).copied(), Some(RegionClass::Trap), "region6 alone became Trap");
     assert_eq!(classes.get(&scc.component_of(n3).unwrap()).copied(), Some(RegionClass::Unreachable), "{{n3,n4,n5}} must remain untouched, not merged in");
@@ -615,7 +615,7 @@ fn apply_reuse_prioritizes_the_region_actually_bordering_the_path() {
     // failing outright. Border-prioritization must always try the actually-convertible
     // region first regardless of seed.
     let (maze, _) = maze_with_one_bordering_region_and_decoys();
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let unreachable_count = classes.values().filter(|&&c| c == RegionClass::Unreachable).count();
     assert!(unreachable_count > MAX_REUSE_ATTEMPTS as usize, "fixture must have more candidates than the attempt budget");
 
@@ -654,7 +654,7 @@ fn apply_makes_trap_from_unreachable_region_with_existing_outbound_edge_to_finis
     maze.meta.finish = Some(nodes[2]);
 
     // Sanity: node 3 starts Unreachable despite already reaching finish.
-    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc_before = maze.analysis.scc(&maze.graph);
     assert_eq!(scc_before.component_of(nodes[3]).and_then(|idx| classes_before.get(&idx)).copied(), Some(RegionClass::Unreachable));
 
@@ -663,7 +663,7 @@ fn apply_makes_trap_from_unreachable_region_with_existing_outbound_edge_to_finis
     let result = apply_and_commit(&issue, &mut maze, &mut rng, &default_params(), &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    let classes_after = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes_after = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let scc_after = maze.analysis.scc(&maze.graph);
     assert_eq!(scc_after.component_of(nodes[3]).and_then(|idx| classes_after.get(&idx)).copied(), Some(RegionClass::Trap));
 }
@@ -737,7 +737,7 @@ fn filter_by_border_drops_a_candidate_with_zero_border_on_every_needed_side() {
     let finish = nodes[1];
     let n3 = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let n3_component = scc.component_of(n3).unwrap();
     let mut candidates = vec![n3_component];
 
@@ -757,7 +757,7 @@ fn filter_by_border_keeps_a_candidate_with_the_needed_border() {
     let finish = nodes[1];
     let region6 = nodes[2];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let region6_component = scc.component_of(region6).unwrap();
     let mut candidates = vec![region6_component];
 
@@ -782,7 +782,7 @@ fn filter_by_border_keeps_alternative_candidate_with_only_one_of_the_two_needed_
     let region6 = nodes[2];
     let n5 = nodes[5];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let region6_component = scc.component_of(region6).unwrap();
     let mut candidates = vec![region6_component];
 
@@ -806,7 +806,7 @@ fn filter_by_border_keeps_a_border_less_candidate_when_its_needed_side_has_geome
     let finish = nodes[1];
     let n3 = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let n3_component = scc.component_of(n3).unwrap();
     let mut candidates = vec![n3_component];
 
@@ -828,7 +828,7 @@ fn filter_by_border_keeps_everything_when_both_geometry_flags_are_disabled() {
     let finish = nodes[1];
     let n3 = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let n3_component = scc.component_of(n3).unwrap();
     let mut candidates = vec![n3_component];
 
@@ -865,7 +865,7 @@ fn absorb_until_min_size_absorbs_a_neighbor_of_a_different_class_when_it_has_bud
     let candidate = nodes[2];
     let trap_neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     assert_eq!(classes.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Unreachable));
     assert_eq!(classes.get(&scc.component_of(trap_neighbor).unwrap()).copied(), Some(RegionClass::Trap), "sanity: neighbor must be a DIFFERENT class than the candidate");
 
@@ -890,7 +890,7 @@ fn absorb_until_min_size_does_not_absorb_when_the_neighbor_has_no_budget() {
     let candidate = nodes[2];
     let trap_neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
 
     let candidate_idx = scc.component_of(candidate).unwrap();
     let mut members: HashSet<NodeId> = [candidate].into_iter().collect();
@@ -931,7 +931,7 @@ fn absorb_until_min_size_skips_a_blocked_edge_and_succeeds_via_another_in_the_po
     maze.meta.finish = Some(finish);
 
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     assert_eq!(classes.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Unreachable));
     assert_eq!(classes.get(&scc.component_of(trap_a).unwrap()).copied(), Some(RegionClass::Trap), "sanity: {{trap_a,trap_b}} must be one Trap component");
     assert_eq!(scc.component_of(trap_a), scc.component_of(trap_b), "sanity: both bridge targets must be the SAME component");
@@ -1028,7 +1028,7 @@ fn convert_region_unreachable_to_trap_adds_inbound_from_scratch() {
 
     assert!(result.is_some(), "must add an inbound edge and land on Trap");
     assert!(draft.maze.graph.edge_between(nodes[1], candidate).is_some(), "inbound edge from finish must have been added");
-    let classes = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.meta);
+    let classes = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.field, &draft.maze.meta);
     let scc = draft.maze.analysis.scc(&draft.maze.graph);
     assert_eq!(classes.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Trap));
 }
@@ -1076,7 +1076,7 @@ fn convert_region_unreachable_to_alternative_adds_both_inbound_and_outbound() {
     let result = convert_region(&mut draft, &members, RegionClass::Alternative, &PresetState::empty(), &mut rng);
 
     assert!(result.is_some(), "must add both inbound and outbound edges and land on Alternative");
-    let classes = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.meta);
+    let classes = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.field, &draft.maze.meta);
     let scc = draft.maze.analysis.scc(&draft.maze.graph);
     assert_eq!(classes.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Alternative));
 }
@@ -1126,7 +1126,7 @@ fn convert_region_trap_to_alternative_adds_outbound_only() {
     let other = nodes[3];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let scc = maze.analysis.scc(&maze.graph);
-    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     assert_eq!(classes_before.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Trap), "sanity: candidate must start as Trap");
     let mut rng = MazeRng::seed_from_u64(1);
 
@@ -1181,7 +1181,7 @@ fn convert_region_alternative_to_trap_cuts_outbound() {
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let scc = maze.analysis.scc(&maze.graph);
-    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     assert_eq!(classes_before.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Alternative), "sanity: candidate must start as Alternative");
     let mut rng = MazeRng::seed_from_u64(1);
 
@@ -1232,7 +1232,7 @@ fn convert_region_audits_away_a_hidden_outbound_edge_before_landing_on_trap() {
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let scc = maze.analysis.scc(&maze.graph);
-    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes_before = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     assert_eq!(classes_before.get(&scc.component_of(candidate).unwrap()).copied(), Some(RegionClass::Unreachable), "sanity: candidate must start Unreachable despite already reaching finish");
     let mut rng = MazeRng::seed_from_u64(1);
 
@@ -1242,7 +1242,7 @@ fn convert_region_audits_away_a_hidden_outbound_edge_before_landing_on_trap() {
     assert!(result.is_some(), "audit must cut the hidden outbound edge before the inbound bridge, landing on Trap");
     assert!(draft.maze.graph.edge_between(candidate, nodes[1]).is_none(), "hidden outbound edge must have been audited away");
     assert!(draft.maze.graph.edge_between(nodes[1], candidate).is_some(), "inbound edge must have been added");
-    let classes_after = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.meta);
+    let classes_after = draft.maze.analysis.region_classes(&draft.maze.graph, &draft.maze.field, &draft.maze.meta);
     let scc_after = draft.maze.analysis.scc(&draft.maze.graph);
     assert_eq!(classes_after.get(&scc_after.component_of(candidate).unwrap()).copied(), Some(RegionClass::Trap));
 }
@@ -1363,9 +1363,9 @@ fn grow_front_with_locality_one_stays_depth_first_on_a_single_arm() {
     // before ever touching another, regardless of which arm it picks.
     let (mut maze, hub, arms) = maze_with_three_armed_star(4);
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(hub).unwrap();
-    let critical: HashSet<NodeId> = maze.analysis.route_info(&maze.graph, &maze.meta)
+    let critical: HashSet<NodeId> = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta)
         .map(|r| r.path.into_iter().collect()).unwrap_or_default();
     let mut budget = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
@@ -1392,9 +1392,9 @@ fn grow_front_with_locality_zero_spreads_breadth_first_across_arms() {
     for seed in 0..30u64 {
         let (mut maze, hub, arms) = maze_with_three_armed_star(6);
         let scc = maze.analysis.scc(&maze.graph);
-        let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+        let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
         let seed_component = scc.component_of(hub).unwrap();
-        let critical: HashSet<NodeId> = maze.analysis.route_info(&maze.graph, &maze.meta)
+        let critical: HashSet<NodeId> = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta)
             .map(|r| r.path.into_iter().collect()).unwrap_or_default();
         let mut budget = HashMap::new();
         let mut rng = MazeRng::seed_from_u64(seed);
@@ -1443,9 +1443,9 @@ fn grow_front_only_expands_through_bidirectional_edges() {
     let two_way = nodes[3];
     let one_way = nodes[4];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
-    let critical: HashSet<NodeId> = maze.analysis.route_info(&maze.graph, &maze.meta)
+    let critical: HashSet<NodeId> = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta)
         .map(|r| r.path.into_iter().collect()).unwrap_or_default();
     let mut budget = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
@@ -1469,9 +1469,9 @@ fn grow_front_fails_when_only_one_way_neighbors_are_available() {
     let (mut maze, nodes) = maze_with_one_way_and_two_way_neighbor();
     let seed = nodes[2];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
-    let critical: HashSet<NodeId> = maze.analysis.route_info(&maze.graph, &maze.meta)
+    let critical: HashSet<NodeId> = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta)
         .map(|r| r.path.into_iter().collect()).unwrap_or_default();
     let mut budget = HashMap::new();
     let mut rng = MazeRng::seed_from_u64(1);
@@ -1507,7 +1507,7 @@ fn try_open_excess_neighbor_bridges_a_single_node_and_debits_full_component_size
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let neighbor_component = scc.component_of(neighbor).unwrap();
     let in_region: HashSet<NodeId> = [seed].into_iter().collect();
@@ -1533,7 +1533,7 @@ fn try_open_excess_neighbor_returns_none_without_budget_for_the_bordering_class(
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let in_region: HashSet<NodeId> = [seed].into_iter().collect();
     let critical: HashSet<NodeId> = [nodes[0], nodes[1]].into_iter().collect();
@@ -1557,7 +1557,7 @@ fn try_open_excess_neighbor_skips_a_critical_bordering_node() {
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let in_region: HashSet<NodeId> = [seed].into_iter().collect();
     // Treat `neighbor` itself as critical -- must be excluded from bordering candidates
@@ -1582,7 +1582,7 @@ fn try_open_excess_neighbor_skips_a_committed_bordering_node() {
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let in_region: HashSet<NodeId> = [seed].into_iter().collect();
     let critical: HashSet<NodeId> = [nodes[0], nodes[1]].into_iter().collect();
@@ -1606,7 +1606,7 @@ fn try_open_excess_neighbor_respects_preset_blocked_bridge() {
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let in_region: HashSet<NodeId> = [seed].into_iter().collect();
     let critical: HashSet<NodeId> = [nodes[0], nodes[1]].into_iter().collect();
@@ -1636,7 +1636,7 @@ fn try_open_excess_neighbor_respects_preset_blocked_return_direction() {
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let in_region: HashSet<NodeId> = [seed].into_iter().collect();
     let critical: HashSet<NodeId> = [nodes[0], nodes[1]].into_iter().collect();
@@ -1677,7 +1677,7 @@ fn grow_front_crosses_into_excess_budgeted_neighbor_component_and_continues_grow
     let beyond = nodes[4];
 
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let critical: HashSet<NodeId> = [nodes[0], nodes[1]].into_iter().collect();
     let mut budget = HashMap::from([(RegionClass::Unreachable, 2)]);
@@ -1740,7 +1740,7 @@ fn grow_front_does_not_cross_into_a_neighbor_component_while_other_frontier_node
     let long_b = nodes[5];
     let bridgeable = nodes[6];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let critical: HashSet<NodeId> = [nodes[0], nodes[1]].into_iter().collect();
 
@@ -1765,7 +1765,7 @@ fn grow_front_fails_when_frontier_exhausted_and_no_excess_budget_to_cross() {
     let (mut maze, nodes) = maze_with_bridgeable_neighbor();
     let seed = nodes[2];
     let scc = maze.analysis.scc(&maze.graph);
-    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(seed).unwrap();
     let critical: HashSet<NodeId> = [nodes[0], nodes[1]].into_iter().collect();
     let mut budget: HashMap<RegionClass, i32> = HashMap::new();
@@ -1966,7 +1966,7 @@ fn apply_end_to_end_grown_region_has_no_leftover_edge_to_its_original_neighborho
     // The Trap region must be exactly one SCC -- nothing left half-connected to the rest of
     // the (now Path-only) graph via a stray edge that would have made it Path/Alternative
     // instead of a clean Trap.
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let trap_components: HashSet<_> = classes.iter().filter(|&(_, &c)| c == RegionClass::Trap).map(|(&idx, _)| idx).collect();
     assert_eq!(trap_components.len(), 1, "exactly one Trap component must exist");
 }

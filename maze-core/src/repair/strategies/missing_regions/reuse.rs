@@ -23,8 +23,8 @@ pub(super) fn try_reuse<T: Tessellation>(
     let committed_nodes = ctx.committed_nodes;
     let preset_state = ctx.preset_state;
     let scc = outer.maze.analysis.scc(&outer.maze.graph);
-    let classes = outer.maze.analysis.region_classes(&outer.maze.graph, &outer.maze.meta);
-    let route = outer.maze.analysis.route_info(&outer.maze.graph, &outer.maze.meta);
+    let classes = outer.maze.analysis.region_classes(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
+    let route = outer.maze.analysis.route_info(&outer.maze.graph, &outer.maze.field, &outer.maze.meta);
     let critical: HashSet<NodeId> = route.as_ref().map(|r| r.path.iter().copied().collect()).unwrap_or_default();
 
     let mut candidates: Vec<ComponentId> = scc.components.iter().enumerate()

@@ -55,6 +55,7 @@ export interface RouteInfoDto {
   path_length: number;
   junction_count: number;
   one_way_count: number;
+  split_count: number;
   score: number | null;
   path: number[];
 }

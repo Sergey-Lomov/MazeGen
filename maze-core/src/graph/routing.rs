@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use crate::ids::NodeId;
+use crate::space::{Field, Tessellation};
 use crate::graph::nav::{NavGraph, NavNodeId};
 use super::pathfinding::{dijkstra_with_prev, build_outgoing_index};
 
@@ -8,6 +9,7 @@ pub struct RouteInfo {
     pub path_length: usize,    // node count including start and finish
     pub junction_count: usize, // nav-nodes with degree >= 3 on the path
     pub one_way_count: usize,  // nav-edges without reverse on the path
+    pub split_count: usize,    // occurrences of a split tile's node among path nodes (each hop counted, not deduped by tile)
     pub path: Vec<NodeId>,     // all maze nodes on the route in order
 }
 
@@ -77,7 +79,15 @@ fn count_junctions(nav: &NavGraph, nav_nodes_on_path: &[NavNodeId]) -> usize {
     }).count()
 }
 
-pub fn compute_route_info(nav: &NavGraph, start: NodeId, finish: NodeId) -> Option<RouteInfo> {
+/// Counts every path-node occurrence that sits on a split tile (a field point with >= 2 nodes) —
+/// each hop is counted independently, so a route crossing the same split tile twice counts twice.
+fn count_splits<T: Tessellation>(field: &Field<T>, path: &[NodeId]) -> usize {
+    path.iter().filter(|&&node_id| {
+        field.point_of(node_id).is_some_and(|point| field.nodes_at(point).len() >= 2)
+    }).count()
+}
+
+pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &Field<T>, start: NodeId, finish: NodeId) -> Option<RouteInfo> {
     // Callers must build `nav` with build_nav_graph_pinned({start, finish}) so that both
     // nodes are guaranteed to be junction (nav) nodes, not corridor nodes.
     debug_assert!(
@@ -95,7 +105,8 @@ pub fn compute_route_info(nav: &NavGraph, start: NodeId, finish: NodeId) -> Opti
     if start_nav == finish_nav {
         let path = if start == finish { vec![start] } else { vec![start, finish] };
         let path_length = path.len();
-        return Some(RouteInfo { path_length, junction_count: 0, one_way_count: 0, path });
+        let split_count = count_splits(field, &path);
+        return Some(RouteInfo { path_length, junction_count: 0, one_way_count: 0, split_count, path });
     }
 
     let all_edges: Vec<_> = nav.edges().collect();
@@ -116,8 +127,9 @@ pub fn compute_route_info(nav: &NavGraph, start: NodeId, finish: NodeId) -> Opti
     let path_length   = maze_path.len();
     let one_way_count = count_one_way(&path_edge_indices, &all_edges, &edge_pairs);
     let junction_count = count_junctions(nav, &nav_nodes_on_path);
+    let split_count   = count_splits(field, &maze_path);
 
-    Some(RouteInfo { path_length, junction_count, one_way_count, path: maze_path })
+    Some(RouteInfo { path_length, junction_count, one_way_count, split_count, path: maze_path })
 }
 
 #[cfg(test)]
@@ -126,6 +138,8 @@ mod tests {
     use std::collections::HashSet;
     use crate::graph::{Graph, EdgeKind};
     use crate::graph::nav::build_nav_graph_pinned;
+    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+    use crate::IdGenerator;
 
     fn bidir(g: &mut Graph, a: NodeId, b: NodeId) {
         g.add_edge(a, b, EdgeKind::Basic);
@@ -136,41 +150,54 @@ mod tests {
         nodes.iter().copied().collect()
     }
 
+    /// A no-split `n`-node field (one node per point) — `NodeId`s come back in point order
+    /// (x = 0..n) so tests can still address nodes by position, same as the old literal ids.
+    fn field_with_nodes(n: usize) -> (Field<SquareTessellation>, Vec<NodeId>) {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(n.max(1), 1), &mut ids).unwrap();
+        let nodes = (0..n).map(|x| field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap()).collect();
+        (field, nodes)
+    }
+
     #[test]
     fn same_node_start_equals_finish() {
+        let (field, nodes) = field_with_nodes(1);
         let mut g = Graph::new();
-        g.add_node(1);
-        let nav = build_nav_graph_pinned(&g, &pinned(&[1]));
-        let route = compute_route_info(&nav, 1, 1).unwrap();
-        assert_eq!(route.path, vec![1]);
+        g.add_node(nodes[0]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[0]).unwrap();
+        assert_eq!(route.path, vec![nodes[0]]);
         assert_eq!(route.path_length, 1);
         assert_eq!(route.junction_count, 0);
         assert_eq!(route.one_way_count, 0);
+        assert_eq!(route.split_count, 0);
     }
 
     #[test]
     fn directly_adjacent_nav_nodes_same_component() {
         // start and finish are both junctions directly connected by one corridor edge each
         // way -- start_nav != finish_nav here since both are pinned, no corridor compression.
+        let (field, nodes) = field_with_nodes(3);
         let mut g = Graph::new();
-        for id in [1u64, 2, 3] { g.add_node(id); }
-        bidir(&mut g, 1, 2);
-        bidir(&mut g, 2, 3);
-        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 3]));
-        let route = compute_route_info(&nav, 1, 3).unwrap();
-        assert_eq!(route.path, vec![1, 2, 3]);
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[1], nodes[2]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[2]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[2]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[2]]);
         assert_eq!(route.path_length, 3);
         assert_eq!(route.one_way_count, 0, "bidirectional corridor must not count as one-way");
     }
 
     #[test]
     fn one_way_corridor_is_counted() {
+        let (field, nodes) = field_with_nodes(2);
         let mut g = Graph::new();
-        for id in [1u64, 2] { g.add_node(id); }
-        g.add_edge(1, 2, EdgeKind::Basic); // one-way only
-        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2]));
-        let route = compute_route_info(&nav, 1, 2).unwrap();
-        assert_eq!(route.path, vec![1, 2]);
+        for &id in &nodes { g.add_node(id); }
+        g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // one-way only
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[1]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1]]);
         assert_eq!(route.one_way_count, 1);
     }
 
@@ -178,67 +205,119 @@ mod tests {
     fn junction_on_path_is_counted() {
         // 1 -> 2 -> 3, plus 2 -> 4 (extra branch) makes node 2 a junction (3 distinct
         // outgoing/incoming neighbors: 1,3,4).
+        let (field, nodes) = field_with_nodes(4);
         let mut g = Graph::new();
-        for id in [1u64, 2, 3, 4] { g.add_node(id); }
-        bidir(&mut g, 1, 2);
-        bidir(&mut g, 2, 3);
-        bidir(&mut g, 2, 4);
-        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 3]));
-        let route = compute_route_info(&nav, 1, 3).unwrap();
-        assert_eq!(route.path, vec![1, 2, 3]);
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[1], nodes[2]);
+        bidir(&mut g, nodes[1], nodes[3]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[2]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[2]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[2]]);
         assert_eq!(route.junction_count, 1, "node 2 has 3 distinct neighbors -> junction");
     }
 
     #[test]
     fn unreachable_finish_returns_none() {
+        let (field, nodes) = field_with_nodes(2);
         let mut g = Graph::new();
-        for id in [1u64, 2] { g.add_node(id); }
-        // no edges at all -- 1 and 2 are disconnected.
-        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2]));
-        assert!(compute_route_info(&nav, 1, 2).is_none());
+        for &id in &nodes { g.add_node(id); }
+        // no edges at all -- nodes are disconnected.
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1]]));
+        assert!(compute_route_info(&nav, &field, nodes[0], nodes[1]).is_none());
     }
 
     #[test]
     fn unreachable_via_one_way_wrong_direction_returns_none() {
+        let (field, nodes) = field_with_nodes(2);
         let mut g = Graph::new();
-        for id in [1u64, 2] { g.add_node(id); }
-        g.add_edge(2, 1, EdgeKind::Basic); // only 2 -> 1, not 1 -> 2
-        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 2]));
-        assert!(compute_route_info(&nav, 1, 2).is_none());
+        for &id in &nodes { g.add_node(id); }
+        g.add_edge(nodes[1], nodes[0], EdgeKind::Basic); // only 1 -> 0, not 0 -> 1
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1]]));
+        assert!(compute_route_info(&nav, &field, nodes[0], nodes[1]).is_none());
     }
 
     #[test]
     fn picks_shortest_of_two_routes() {
-        // 1 -> 2 -> 5 (long way, through extra junction) and 1 -> 3 -> 5 (short way) both
-        // reach finish=5; 1 is pinned (3 neighbors: 2,3,? no -- keep it simple: two parallel
-        // corridors of different lengths via dedicated branch nodes).
+        // 0 -> 1 -> 4 (short way) and 0 -> 2 -> 3 -> 4 (long way) both reach finish=4;
+        // two parallel corridors of different lengths via dedicated branch nodes.
+        let (field, nodes) = field_with_nodes(5);
         let mut g = Graph::new();
-        for id in [1u64, 2, 3, 4, 5] { g.add_node(id); }
-        // short path: 1 -> 2 -> 5 (2 hops)
-        bidir(&mut g, 1, 2);
-        bidir(&mut g, 2, 5);
-        // long path: 1 -> 3 -> 4 -> 5 (3 hops)
-        bidir(&mut g, 1, 3);
-        bidir(&mut g, 3, 4);
-        bidir(&mut g, 4, 5);
-        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 5]));
-        let route = compute_route_info(&nav, 1, 5).unwrap();
-        assert_eq!(route.path, vec![1, 2, 5], "must pick the 2-hop route over the 3-hop one");
+        for &id in &nodes { g.add_node(id); }
+        // short path: 0 -> 1 -> 4 (2 hops)
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[1], nodes[4]);
+        // long path: 0 -> 2 -> 3 -> 4 (3 hops)
+        bidir(&mut g, nodes[0], nodes[2]);
+        bidir(&mut g, nodes[2], nodes[3]);
+        bidir(&mut g, nodes[3], nodes[4]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[4]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[4]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[4]], "must pick the 2-hop route over the 3-hop one");
         assert_eq!(route.path_length, 3);
     }
 
     #[test]
     fn corridor_nodes_are_included_in_path() {
-        // 1 -> 2 -> 3 -> 4, only 1 and 4 pinned -- 2,3 are corridor nodes compressed into one
+        // 0 -> 1 -> 2 -> 3, only 0 and 3 pinned -- 1,2 are corridor nodes compressed into one
         // nav edge, but their maze NodeIds must still appear in RouteInfo.path.
+        let (field, nodes) = field_with_nodes(4);
         let mut g = Graph::new();
-        for id in [1u64, 2, 3, 4] { g.add_node(id); }
-        bidir(&mut g, 1, 2);
-        bidir(&mut g, 2, 3);
-        bidir(&mut g, 3, 4);
-        let nav = build_nav_graph_pinned(&g, &pinned(&[1, 4]));
-        let route = compute_route_info(&nav, 1, 4).unwrap();
-        assert_eq!(route.path, vec![1, 2, 3, 4]);
+        for &id in &nodes { g.add_node(id); }
+        bidir(&mut g, nodes[0], nodes[1]);
+        bidir(&mut g, nodes[1], nodes[2]);
+        bidir(&mut g, nodes[2], nodes[3]);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[3]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[3]).unwrap();
+        assert_eq!(route.path, vec![nodes[0], nodes[1], nodes[2], nodes[3]]);
         assert_eq!(route.path_length, 4);
+    }
+
+    #[test]
+    fn split_tile_on_path_is_counted_once_per_occurrence() {
+        // A 3-point field where point x=1 carries two nodes (a split tile). The route walks
+        // through the split node once, so split_count must be 1 -- not deduped further, but
+        // also not double-counted for the tile's other (off-route) node.
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let extra = field.add_node_at(SquarePoint { x: 1, y: 0 }, &mut ids);
+        let n0 = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let n1 = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let n2 = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        assert_ne!(n1, extra, "split tile must carry two distinct nodes");
+
+        let mut g = Graph::new();
+        for id in [n0, n1, n2, extra] { g.add_node(id); }
+        bidir(&mut g, n0, n1);
+        bidir(&mut g, n1, n2);
+
+        let nav = build_nav_graph_pinned(&g, &pinned(&[n0, n2]));
+        let route = compute_route_info(&nav, &field, n0, n2).unwrap();
+        assert_eq!(route.path, vec![n0, n1, n2]);
+        assert_eq!(route.split_count, 1, "route crosses the split tile's routed node exactly once");
+    }
+
+    #[test]
+    fn split_tile_crossed_via_two_distinct_nodes_counts_twice() {
+        // Point x=1 is a split tile with two distinct nodes, n1 and extra. The route visits
+        // both of them (n0 -> n1 -> extra -> n2), so split_count must count each occurrence --
+        // 2 -- even though no single NodeId repeats (shortest-path routes never revisit a node).
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let extra = field.add_node_at(SquarePoint { x: 1, y: 0 }, &mut ids);
+        let n0 = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let n1 = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let n2 = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+
+        let mut g = Graph::new();
+        for id in [n0, n1, n2, extra] { g.add_node(id); }
+        g.add_edge(n0, n1, EdgeKind::Basic);
+        g.add_edge(n1, extra, EdgeKind::Basic);
+        g.add_edge(extra, n2, EdgeKind::Basic);
+
+        let nav = build_nav_graph_pinned(&g, &pinned(&[n0, n2]));
+        let route = compute_route_info(&nav, &field, n0, n2).unwrap();
+        assert_eq!(route.path, vec![n0, n1, extra, n2]);
+        assert_eq!(route.split_count, 2, "route crosses the split tile via two distinct nodes, each must count");
     }
 }

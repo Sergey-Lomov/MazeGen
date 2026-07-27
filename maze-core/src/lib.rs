@@ -98,7 +98,7 @@ impl MazeAnalysis {
     ///
     /// Returns `None` if either `meta.start` or `meta.finish` is unset, or if no route exists
     /// between them.
-    pub fn route_info(&self, graph: &Graph, meta: &MazeMeta) -> Option<graph::routing::RouteInfo> {
+    pub fn route_info<T: space::Tessellation>(&self, graph: &Graph, field: &space::Field<T>, meta: &MazeMeta) -> Option<graph::routing::RouteInfo> {
         let (start, finish) = (meta.start?, meta.finish?);
         let version = graph.version();
         let mut cache = self.route_info.borrow_mut();
@@ -107,7 +107,7 @@ impl MazeAnalysis {
             pinned.insert(start);
             pinned.insert(finish);
             let nav = graph::nav::build_nav_graph_pinned(graph, &pinned);
-            let info = graph::routing::compute_route_info(&nav, start, finish);
+            let info = graph::routing::compute_route_info(&nav, field, start, finish);
             *cache = Some((version, Some(start), Some(finish), info));
         }
         cache.as_ref().unwrap().3.clone()
@@ -121,14 +121,14 @@ impl MazeAnalysis {
     ///
     /// Returns an empty map if either `meta.start` or `meta.finish` is unset — there is no
     /// start/finish to classify regions relative to.
-    pub fn region_classes(&self, graph: &Graph, meta: &MazeMeta) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
+    pub fn region_classes<T: space::Tessellation>(&self, graph: &Graph, field: &space::Field<T>, meta: &MazeMeta) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
         let Some(start) = meta.start else { return std::collections::HashMap::new(); };
         let Some(finish) = meta.finish else { return std::collections::HashMap::new(); };
         let key = (graph.version(), Some(start), Some(finish));
         let mut cache = self.region_classes.borrow_mut();
         if !matches!(&*cache, Some((v, s, f, _)) if (*v, *s, *f) == key) {
             let scc = self.scc(graph);
-            let route = self.route_info(graph, meta);
+            let route = self.route_info(graph, field, meta);
             let classes = graph::region_class::classify_regions(graph, &scc, route.as_ref(), start, finish);
             *cache = Some((key.0, key.1, key.2, classes));
         }
@@ -551,8 +551,8 @@ mod distance_cache_tests {
         let (mut maze, nodes) = line_maze(4);
         maze.meta.start = Some(nodes[0]);
         maze.meta.finish = Some(nodes[3]);
-        let first = maze.analysis.region_classes(&maze.graph, &maze.meta);
-        let second = maze.analysis.region_classes(&maze.graph, &maze.meta);
+        let first = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
+        let second = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
         assert_eq!(first, second, "repeated call with unchanged graph/start/finish must return identical map");
     }
 
@@ -585,7 +585,7 @@ mod distance_cache_tests {
         maze.graph.remove_edge(cut);
 
         let scc = maze.analysis.scc(&maze.graph);
-        let before = maze.analysis.region_classes(&maze.graph, &maze.meta);
+        let before = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
         assert_eq!(before[&scc.component_of(nodes[2]).unwrap()], RegionClass::Unreachable);
 
         // Reconnect — cached entry for nodes[2]'s region must reflect the new reachability
@@ -593,7 +593,7 @@ mod distance_cache_tests {
         // graph.version() bumped.
         maze.graph.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let scc_after = maze.analysis.scc(&maze.graph);
-        let after = maze.analysis.region_classes(&maze.graph, &maze.meta);
+        let after = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
         assert_eq!(after[&scc_after.component_of(nodes[2]).unwrap()], RegionClass::Path, "cache must invalidate after graph.version() changes");
     }
 
@@ -608,13 +608,13 @@ mod distance_cache_tests {
         let scc = maze.analysis.scc(&maze.graph);
 
         // nodes[0] is start here, so its own region is Path by definition.
-        let with_node0_as_start = maze.analysis.region_classes(&maze.graph, &maze.meta);
+        let with_node0_as_start = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
         assert_eq!(with_node0_as_start[&scc.component_of(nodes[0]).unwrap()], RegionClass::Path);
 
         // Same graph.version(), nodes[0] is no longer start — with no incoming edge into
         // nodes[0], it's unreachable from nodes[1]. Confirms the cache key includes start.
         let meta_with_node1_as_start = MazeMeta { start: Some(nodes[1]), finish: Some(nodes[3]), route_score: None };
-        let with_node1_as_start = maze.analysis.region_classes(&maze.graph, &meta_with_node1_as_start);
+        let with_node1_as_start = maze.analysis.region_classes(&maze.graph, &maze.field, &meta_with_node1_as_start);
         assert_eq!(with_node1_as_start[&scc.component_of(nodes[0]).unwrap()], RegionClass::Unreachable);
     }
 }

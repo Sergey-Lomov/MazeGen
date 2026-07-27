@@ -1,7 +1,7 @@
 ﻿use std::collections::HashSet;
 use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
+use crate::space::{Field, Tessellation};
 use crate::graph::nav::{NavGraph, NavNodeId, NavEdge};
 use crate::graph::pathfinding::{dijkstra_with_prev, build_outgoing_index};
 use crate::quality_control::MissingEndpointsIssue;
@@ -15,27 +15,39 @@ pub const PARAM_PATH_WEIGHT: &str = "path_weight";
 pub const PARAM_JUNCTION_WEIGHT: &str = "junction_weight";
 pub const PARAM_ONEWAY_WEIGHT: &str = "oneway_weight";
 pub const PARAM_TELEPORT_WEIGHT: &str = "teleport_weight";
+pub const PARAM_SPLIT_WEIGHT: &str = "split_weight";
+
+const DEFAULT_PATH_WEIGHT: f64 = 1.0;
+const DEFAULT_JUNCTION_WEIGHT: f64 = 3.0;
+const DEFAULT_ONEWAY_WEIGHT: f64 = 5.0;
+const DEFAULT_TELEPORT_WEIGHT: f64 = 5.0;
+const DEFAULT_SPLIT_WEIGHT: f64 = 5.0;
 
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_PATH_WEIGHT,
         label: "Path length weight",
-        kind: StrategyParamKind::Float { default: 1.0, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float { default: DEFAULT_PATH_WEIGHT, min: 0.0, max: 100.0 },
     },
     StrategyParam {
         id: PARAM_JUNCTION_WEIGHT,
         label: "Junction weight",
-        kind: StrategyParamKind::Float { default: 3.0, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float { default: DEFAULT_JUNCTION_WEIGHT, min: 0.0, max: 100.0 },
     },
     StrategyParam {
         id: PARAM_ONEWAY_WEIGHT,
         label: "One-way passage weight",
-        kind: StrategyParamKind::Float { default: 5.0, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float { default: DEFAULT_ONEWAY_WEIGHT, min: 0.0, max: 100.0 },
     },
     StrategyParam {
         id: PARAM_TELEPORT_WEIGHT,
         label: "Teleport weight",
-        kind: StrategyParamKind::Float { default: 5.0, min: 0.0, max: 100.0 },
+        kind: StrategyParamKind::Float { default: DEFAULT_TELEPORT_WEIGHT, min: 0.0, max: 100.0 },
+    },
+    StrategyParam {
+        id: PARAM_SPLIT_WEIGHT,
+        label: "Split tile weight",
+        kind: StrategyParamKind::Float { default: DEFAULT_SPLIT_WEIGHT, min: 0.0, max: 100.0 },
     },
 ];
 
@@ -61,10 +73,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let path_weight    = params.get(PARAM_PATH_WEIGHT).and_then(|v| v.as_float()).unwrap_or(1.0);
-        let junction_weight = params.get(PARAM_JUNCTION_WEIGHT).and_then(|v| v.as_float()).unwrap_or(3.0);
-        let oneway_weight  = params.get(PARAM_ONEWAY_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
-        let teleport_weight = params.get(PARAM_TELEPORT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
+        let path_weight    = params.get(PARAM_PATH_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_PATH_WEIGHT);
+        let junction_weight = params.get(PARAM_JUNCTION_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_JUNCTION_WEIGHT);
+        let oneway_weight  = params.get(PARAM_ONEWAY_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_ONEWAY_WEIGHT);
+        let teleport_weight = params.get(PARAM_TELEPORT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_TELEPORT_WEIGHT);
+        let split_weight   = params.get(PARAM_SPLIT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_SPLIT_WEIGHT);
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
@@ -73,8 +86,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
             return (RepairResult::Failed, vec![]);
         }
 
-        let ctx = ScoredPathContext::build(nav);
-        let weights = ScoreWeights { path_weight, junction_weight, oneway_weight, teleport_weight };
+        let ctx = ScoredPathContext::build(nav, &maze.field);
+        let weights = ScoreWeights { path_weight, junction_weight, oneway_weight, teleport_weight, split_weight };
 
         // Resolve whichever endpoint is already set to its NavNodeId, fixing it as the
         // corresponding best_pair bound; the other stays None (searched over all nav-nodes).
@@ -114,6 +127,7 @@ struct ScoreWeights {
     junction_weight: f64,
     oneway_weight:  f64,
     teleport_weight: f64,
+    split_weight:   f64,
 }
 
 /// Precomputed data derived from NavGraph for scoring endpoint pairs.
@@ -122,17 +136,28 @@ struct ScoredPathContext<'a> {
     junction_flags:  Vec<bool>,
     oneway_flags:    Vec<bool>,
     teleport_flags:  Vec<bool>,
+    /// Per-edge count of split-tile occurrences among the edge's own tiles (its `to` node plus,
+    /// for corridor edges, every interior node) — the edge's `from` node is excluded so a route's
+    /// per-edge counts sum to the split occurrences on the full tile path without double-counting
+    /// the shared node between consecutive edges (mirrors `routing::build_maze_path`'s split).
+    /// Does not cover the route's own start node — see `split_flags`.
+    split_counts:    Vec<usize>,
+    /// Per-nav-node split flag — only ever consulted for a route's start nav node (the one node
+    /// `split_counts` structurally excludes from every edge).
+    split_flags:     Vec<bool>,
     outgoing_by_node: Vec<Vec<usize>>,
 }
 
 impl<'a> ScoredPathContext<'a> {
-    fn build(nav: &'a NavGraph) -> Self {
+    fn build<T: Tessellation>(nav: &'a NavGraph, field: &Field<T>) -> Self {
         let edges: Vec<&'a NavEdge> = nav.edges().collect();
         let junction_flags = junction_flags(nav);
         let oneway_flags   = oneway_flags(&edges);
         let teleport_flags = teleport_flags(&edges);
+        let split_counts   = split_counts(&edges, field);
+        let split_flags    = nav_node_split_flags(nav, field);
         let outgoing_by_node = build_outgoing_index(nav, &edges);
-        Self { edges, junction_flags, oneway_flags, teleport_flags, outgoing_by_node }
+        Self { edges, junction_flags, oneway_flags, teleport_flags, split_counts, split_flags, outgoing_by_node }
     }
 
     fn best_pair(
@@ -167,6 +192,7 @@ impl<'a> ScoredPathContext<'a> {
                 let path_edges = reconstruct_path_edges(&self.edges, &prev_edge, s, f);
                 let score = score_path(
                     &self.junction_flags, &self.oneway_flags, &self.teleport_flags,
+                    &self.split_counts, &self.split_flags,
                     &path_edges, &self.edges, dist[f], weights,
                 );
 
@@ -202,10 +228,37 @@ fn teleport_flags(edges: &[&NavEdge]) -> Vec<bool> {
     edges.iter().map(|e| e.is_teleport).collect()
 }
 
+/// True if `field.point_of(node_id)` is a split tile (a field point with >= 2 nodes).
+fn is_split_node<T: Tessellation>(field: &Field<T>, node_id: crate::ids::NodeId) -> bool {
+    field.point_of(node_id).is_some_and(|point| field.nodes_at(point).len() >= 2)
+}
+
+/// Per-nav-node split flag, keyed by `NavNodeId` — used only for a route's own start nav node
+/// (`score_path`'s `nav_nodes_on_path[0]`, mirroring how `junction_flags` covers it), since
+/// `split_counts` below deliberately excludes each edge's `from` node.
+fn nav_node_split_flags<T: Tessellation>(nav: &NavGraph, field: &Field<T>) -> Vec<bool> {
+    nav.nodes.iter().map(|n| is_split_node(field, n.node_id)).collect()
+}
+
+/// Per-edge count of split-tile occurrences (a field point with >= 2 nodes) among the edge's own
+/// tiles, i.e. `path[1..]` — the `from` node is excluded so summing this over a route's edges
+/// matches the split occurrences on the route's full tile path exactly once per hop, with no
+/// double-count at the shared node between consecutive edges (see GitHub issue #261). The route's
+/// very first node (edge 0's `from`, never anyone's `path[1..]`) is *not* covered here — callers
+/// must add `nav_node_split_flags` for that node separately, the same way `score_path` adds edge
+/// 0's `from` to `nav_nodes_on_path` for `junction_count`.
+fn split_counts<T: Tessellation>(edges: &[&NavEdge], field: &Field<T>) -> Vec<usize> {
+    edges.iter().map(|e| {
+        e.path.iter().skip(1).filter(|&&node_id| is_split_node(field, node_id)).count()
+    }).collect()
+}
+
 fn score_path(
     junction_flags: &[bool],
     oneway_flags: &[bool],
     teleport_flags: &[bool],
+    split_counts: &[usize],
+    split_flags: &[bool],
     path_edge_indices: &[usize],
     edges: &[&NavEdge],
     path_tiles: usize,
@@ -233,8 +286,17 @@ fn score_path(
         .filter(|&&ei| teleport_flags[ei])
         .count() as f64;
 
+    // split_counts covers every edge's own tiles except its `from` node (see split_counts' doc
+    // comment) -- the route's very first node (nav_nodes_on_path[0], i.e. edge 0's `from`) is
+    // added separately via split_flags, mirroring how nav_nodes_on_path itself includes it above.
+    let split_count = path_edge_indices.iter()
+        .map(|&ei| split_counts[ei])
+        .sum::<usize>() as f64
+        + if split_flags[nav_nodes_on_path[0]] { 1.0 } else { 0.0 };
+
     path_tiles as f64 * weights.path_weight
         + junction_count * weights.junction_weight
+        + split_count * weights.split_weight
         + oneway_count * weights.oneway_weight
         + teleport_count * weights.teleport_weight
 }

@@ -225,7 +225,7 @@ fn add_side_with_membership_retry<T: Tessellation>(
 /// region right now.
 fn current_class<T: Tessellation>(maze: &Maze<T>, members: &HashSet<NodeId>) -> Option<RegionClass> {
     let scc = maze.analysis.scc(&maze.graph);
-    let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+    let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let result_classes: HashSet<RegionClass> = members.iter()
         .filter_map(|n| scc.component_of(*n))
         .filter_map(|idx| classes.get(&idx).copied())

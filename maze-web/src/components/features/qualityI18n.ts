@@ -430,6 +430,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.teleport_weight.label"] as MessageFn,
     description: m["param.teleport_weight.description"] as MessageFn,
   },
+  split_weight: {
+    label: m["param.split_weight.label"] as MessageFn,
+    description: m["param.split_weight.description"] as MessageFn,
+  },
   short_overlap_weight: {
     label: m["param.short_overlap_weight.label"] as MessageFn,
     description: m["param.short_overlap_weight.description"] as MessageFn,

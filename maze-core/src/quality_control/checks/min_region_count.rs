@@ -26,7 +26,7 @@ impl<T: Tessellation> Check<T, MissingRegionsIssue> for MinRegionCountCheck {
         if maze.meta.start.is_none() || maze.meta.finish.is_none() {
             return;
         }
-        let classes = maze.analysis.region_classes(&maze.graph, &maze.meta);
+        let classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
 
         let mut balance_by_class: HashMap<RegionClass, i32> = HashMap::new();
         for class in ALL_REGION_CLASSES {

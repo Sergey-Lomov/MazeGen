@@ -190,6 +190,7 @@ pub struct RouteInfoDto {
     pub path_length: usize,
     pub junction_count: usize,
     pub one_way_count: usize,
+    pub split_count: usize,
     pub score: Option<f64>,
     pub path: Vec<u32>,
 }
