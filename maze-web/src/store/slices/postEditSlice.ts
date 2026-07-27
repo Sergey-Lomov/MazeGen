@@ -134,14 +134,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
       });
 
-    // ruleDisabled rules and rules belonging to a disabled stage excluded — same semantics
-    // as buildGenerateConfig (see generationSlice.ts).
+    // ruleDisabled rules, rules belonging to a disabled stage, and individually disabled checks
+    // excluded — same semantics as buildGenerateConfig/ruleToConfig (see generateConfigBuilder.ts).
     const enabledStageRuleIds = new Set(
       stages.filter((s) => !s.disabled).flatMap((s) => s.ruleIds),
     );
     const checks = state.rules
       .filter((g) => !g.ruleDisabled && enabledStageRuleIds.has(g.id))
-      .flatMap((g) => g.checks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })));
+      .flatMap((g) => g.checks.filter((c) => !c.disabled).map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })));
 
     const config = {
       tessellation: fieldConfigToWasm(activeTessellationConfig),

@@ -122,6 +122,30 @@ describe("mazeStore post-edit actions", () => {
     expect(call?.edges).toEqual([{ from: { kind: "node", id: 0 }, to: { kind: "node", id: 1 }, kind: "basic" }]);
   });
 
+  it("confirmPostEdit excludes individually disabled checks even when their rule is enabled (GitHub issue #264)", async () => {
+    useMazeStore.setState({
+      rules: [{
+        id: "r1",
+        name: "Rule 1",
+        kind: "missing_endpoints",
+        checks: [
+          { localId: 0, typeId: "missing_endpoints", params: {}, disabled: false },
+          { localId: 1, typeId: "unreachable_finish", params: {}, disabled: true },
+        ],
+        nextLocalCheckId: 2,
+        strategyId: null,
+        disabled: false,
+        ruleDisabled: false,
+        nestedStrategies: [],
+      }],
+      stages: [{ id: "s1", name: "Stage 1", ruleIds: ["r1"], disabled: false }],
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.checks).toEqual([{ local_id: "0", type_id: "missing_endpoints", params: {} }]);
+  });
+
   it("confirmPostEdit sends teleport edges to computeAnalytics with kind \"teleport\", separate from postEditDraftEdges", async () => {
     useMazeStore.setState({
       postEditDraftEdges: { [key01]: { from: n(0), to: n(1), kind: "basic" } },
