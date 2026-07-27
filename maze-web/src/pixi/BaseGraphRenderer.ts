@@ -4,8 +4,9 @@ import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
+import type { Pos } from "./tessellationGeometry";
 
-export interface Pos { x: number; y: number; }
+export type { Pos };
 
 export function nodeColor(id: number, selectedNode: number | null, start: number | null, finish: number | null): number {
   if (id === selectedNode) return canvas.node.selected;

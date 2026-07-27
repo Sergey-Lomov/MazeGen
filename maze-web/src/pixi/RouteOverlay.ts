@@ -1,8 +1,8 @@
 import { Container, Graphics } from "pixi.js";
-import { cellCenter } from "./hexGeometry";
 import { NODE_RADIUS } from "./renderConstants";
 import type { RouteInfoDto, NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { buildNodePositions } from "./tessellationGeometry";
 
 const ROUTE_LINE_COLOR = 0xffdd44;
 const ROUTE_LINE_WIDTH = 3;
@@ -27,8 +27,7 @@ export class RouteOverlay {
     this.g.clear();
     if (routeInfo.path.length < 2) return;
 
-    const nodeMap = new Map<number, { x: number; y: number }>();
-    for (const n of nodes) nodeMap.set(n.id, cellCenter(n, cfg));
+    const nodeMap = buildNodePositions(nodes, cfg);
 
     const positions = routeInfo.path
       .map((id) => nodeMap.get(id))

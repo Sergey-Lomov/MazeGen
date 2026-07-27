@@ -3,6 +3,7 @@ import { hexCenter, hexVertices } from "./hexGeometry";
 import { triCenter, triVertices } from "./triGeometry";
 import type { TriOrientation } from "./triGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { TILE_SIZE } from "./constants";
 
 export type Pos = { x: number; y: number };
 
@@ -20,15 +21,77 @@ export const TRI_EDGE_VERTS_DOWN: [number, number][] = [[0, 2], [1, 2], [0, 1]];
 /** Starting rotation (degrees, clockwise) added to a split point's per-node circle-point angles
  *  (GitHub issue #223) before evenly distributing them — a per-tessellation constant so the first
  *  node's point doesn't land exactly on a tile vertex/edge-midpoint by coincidence. Square: 45°
- *  (halfway between its 4 edge directions). Hex/tri: 0° for now, to be tuned visually later. */
+ *  (halfway between its 4 edge directions). Hex: 30° (halfway between its 6 edge directions).
+ *  Triangle: 60° (halfway between its 3 edge directions). */
 export function getSplitCircleRotationDeg(cfg: TessellationConfig): number {
   switch (cfg.type) {
     case "square":
     case "square_custom":
       return 45;
+    case "hex_parallelogram":
+    case "hex_hexagon":
+    case "hex_custom":
+      return 30;
+    case "triangle_rect":
+    case "triangle_triangle":
+    case "triangle_hexagon":
+    case "tri_custom":
+      return 60;
     default:
+      cfg satisfies never;
       return 0;
   }
+}
+
+/** A split point's hub-point circle radius (GitHub issue #223) — 1/2 of the cell's own radius. */
+export const SPLIT_HUB_RADIUS = TILE_SIZE / 4;
+
+/** A split point's per-slot point on its hub circle — shared by every renderer/selector that draws
+ *  or positions a split-tile's individual nodes (`getSplitAwareNodePosition`, `buildSplitPassages`,
+ *  the graph renderers' `buildNodePositions`, GitHub issue #263) so they never drift apart (same
+ *  radius/rotation/slot formula). `slotIndex`/`slotCount` are a node's position and count within
+ *  its own point's node group, not `NodeDto.i` (a stable creation-order id that can leave gaps
+ *  after a sibling removal — using it directly would space remaining siblings unevenly). */
+export function splitHubPoint(
+  center: Pos,
+  slotIndex: number,
+  slotCount: number,
+  cfg: TessellationConfig,
+): Pos {
+  const rotationRad = (getSplitCircleRotationDeg(cfg) * Math.PI) / 180;
+  const angle = rotationRad + (2 * Math.PI * slotIndex) / slotCount;
+  return { x: center.x + SPLIT_HUB_RADIUS * Math.cos(angle), y: center.y + SPLIT_HUB_RADIUS * Math.sin(angle) };
+}
+
+/** Builds a node-id -> screen position map, placing nodes that share the same tile (split-tile
+ * siblings, GitHub issue #263) on their point's hub circle (`splitHubPoint`) instead of stacking
+ * them on top of each other at the shared `getCellCenter` — the exact same radius/rotation/slot
+ * formula the post-generation canvas uses to draw split passages (`buildSplitPassagesCore` in
+ * `mazeSelectors.ts`) and node-anchored markers (`getSplitAwareNodePosition`), so a split node's
+ * graph position always matches where its passages/markers are actually drawn. Lives here (not in
+ * `BaseGraphRenderer.ts`) since it's pure tessellation geometry consumed by several unrelated
+ * overlays, not just the graph-renderer hierarchy. */
+export function buildNodePositions(nodes: { id: number; x: number; y: number }[], cfg: TessellationConfig): Map<number, Pos> {
+  const byTile = new Map<string, typeof nodes>();
+  for (const node of nodes) {
+    const key = `${node.x}:${node.y}`;
+    let group = byTile.get(key);
+    if (!group) { group = []; byTile.set(key, group); }
+    group.push(node);
+  }
+
+  const nodePos = new Map<number, Pos>();
+  for (const group of byTile.values()) {
+    const center = getCellCenter(group[0].x, group[0].y, cfg);
+    if (group.length <= 1) {
+      nodePos.set(group[0].id, center);
+      continue;
+    }
+    for (let i = 0; i < group.length; i++) {
+      nodePos.set(group[i].id, splitHubPoint(center, i, group.length, cfg));
+    }
+  }
+  return nodePos;
 }
 
 export function getCellVertices(x: number, y: number, cfg: TessellationConfig): Pos[] | null {

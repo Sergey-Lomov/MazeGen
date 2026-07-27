@@ -1,9 +1,9 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { cellCenter } from "./hexGeometry";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
+import { buildNodePositions } from "./tessellationGeometry";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
 import { canvas } from "./colorTokens";
@@ -55,8 +55,7 @@ export class IssueHighlightOverlay {
 
     const g = new Graphics();
 
-    const nodePos = new Map<number, Pos>();
-    for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
+    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg);
 
     for (const [from, to] of edges) {
       const a = nodePos.get(from);

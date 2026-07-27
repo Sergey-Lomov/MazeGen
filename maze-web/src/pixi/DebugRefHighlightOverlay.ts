@@ -2,11 +2,11 @@ import { Container } from "pixi.js";
 import type { NodeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { HoveredDebugRef } from "../store/storeTypes";
-import { cellCenter } from "./hexGeometry";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { NodeEdgeHighlightRenderer, type NodeEdgeHighlight } from "./renderers/NodeEdgeHighlightRenderer";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
+import { buildNodePositions } from "./tessellationGeometry";
 import type { Pos } from "./tessellationGeometry";
 
 const HIGHLIGHT_WIDTH = 3;
@@ -58,8 +58,7 @@ export class DebugRefHighlightOverlay {
       return;
     }
 
-    const nodePos = new Map<number, Pos>();
-    for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
+    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg);
     const posOf = (id: bigint): Pos | undefined => nodePos.get(Number(id));
 
     switch (ref.kind) {

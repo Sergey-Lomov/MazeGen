@@ -4,9 +4,9 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { base, hexToNumber } from "../styles/palette";
-import { cellCenter } from "./hexGeometry";
 import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges } from "./BaseGraphRenderer";
-import type { Pos, RenderNode } from "./BaseGraphRenderer";
+import type { RenderNode } from "./BaseGraphRenderer";
+import { buildNodePositions } from "./tessellationGeometry";
 
 const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: hexToNumber(base.textInverse) });
 
@@ -63,8 +63,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     this.nodeLabels.clear();
     this.resetContainers();
 
-    const nodePos = new Map<number, Pos>();
-    for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
+    const nodePos = buildNodePositions(nodes, cfg);
 
     const renderEdges = buildPairedRenderEdges(edges, nodePos);
     this.drawEdges(renderEdges, canvas.edge.default);

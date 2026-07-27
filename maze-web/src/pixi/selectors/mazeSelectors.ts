@@ -3,11 +3,10 @@ import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, PassageKind, TeleportEdge, SplitPassage } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
-import { getCellCenter, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment } from "../tessellationGeometry";
+import { getCellCenter, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, splitHubPoint, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../splitFaceLayout";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
-import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../postEditEndpoint";
@@ -170,22 +169,6 @@ export function buildMazeWalls(
   }
 
   return result;
-}
-
-/** A split point's hub-point circle radius (GitHub issue #223) — 1/2 of the cell's own radius. */
-const SPLIT_HUB_RADIUS = TILE_SIZE / 4;
-
-/** A split point's per-slot point on its hub circle — shared by `getSplitAwareNodePosition` and
- *  `buildSplitPassages` so the two never drift apart (same radius/rotation/slot formula). */
-function splitHubPoint(
-  center: { x: number; y: number },
-  slotIndex: number,
-  slotCount: number,
-  cfg: TessellationConfig,
-): { x: number; y: number } {
-  const rotationRad = (getSplitCircleRotationDeg(cfg) * Math.PI) / 180;
-  const angle = rotationRad + (2 * Math.PI * slotIndex) / slotCount;
-  return { x: center.x + SPLIT_HUB_RADIUS * Math.cos(angle), y: center.y + SPLIT_HUB_RADIUS * Math.sin(angle) };
 }
 
 /** Position to draw a node-anchored entity (start/finish marker, teleport endpoint) at — the

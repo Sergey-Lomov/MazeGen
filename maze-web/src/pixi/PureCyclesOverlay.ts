@@ -1,11 +1,11 @@
 import { Container, Graphics } from "pixi.js";
 import type { NodeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { cellCenter } from "./hexGeometry";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
+import { buildNodePositions } from "./tessellationGeometry";
 
 const PURE_NODE_COLOR = canvas.node.start;
 const PURE_EDGE_COLOR = canvas.node.start;
@@ -37,8 +37,7 @@ export class PureCyclesOverlay {
     const { nodes, navEdges, pureCycleNodeIds, pureCycleEdgeKeys, cfg } = data;
     if (nodes.length === 0) return;
 
-    const nodePos = new Map<number, Pos>();
-    for (const node of nodes) nodePos.set(node.id, cellCenter(node, cfg));
+    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg);
 
     const g = new Graphics();
 
