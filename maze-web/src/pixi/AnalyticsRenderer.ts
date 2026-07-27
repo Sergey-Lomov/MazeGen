@@ -160,9 +160,15 @@ export class AnalyticsRenderer {
     const start  = startEp !== null ? resolveEndpoint(startEp, resolveSplit) ?? null : null;
     const finish = finishEp !== null ? resolveEndpoint(finishEp, resolveSplit) ?? null : null;
 
-    // Maze overlay (grid + floor + walls + markers)
+    // Grid — background context, independent of showMazeOverlay
+    const showGrid = analyticsOpen && nodes.length > 0;
+    this.gridContainer.visible = showGrid;
+    if (showGrid) {
+      this.grid.render({ viewport: this.viewport }, cfg);
+    }
+
+    // Maze overlay (floor + walls + markers)
     const showMaze = analyticsOpen && showMazeOverlay && nodes.length > 0;
-    this.gridContainer.visible        = showMaze;
     this.floorContainer.visible       = showMaze;
     this.closedCellsContainer.visible = showMaze;
     this.wallsContainer.visible       = showMaze;
@@ -170,7 +176,6 @@ export class AnalyticsRenderer {
     this.teleportContainer.visible    = showMaze;
     this.markersContainer.visible     = showMaze;
     if (showMaze) {
-      this.grid.render({ viewport: this.viewport }, cfg);
       this.mazeOverlay.render({ nodes, edges, start, finish, cfg });
     }
 
@@ -261,7 +266,7 @@ export class AnalyticsRenderer {
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
-    if (state.openCard === "analytics" && state.showMazeOverlay && state.nodes.length > 0) {
+    if (state.openCard === "analytics" && state.nodes.length > 0) {
       this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
     }
   }
