@@ -21,6 +21,7 @@ pub enum IssueKind {
     MissingTeleports,
     InvalidSplitTile,
     InvalidSplitTileGroup,
+    MissingSplitTiles,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -144,6 +145,14 @@ pub const INVALID_SPLIT_TILE: IssueKind = IssueKind::InvalidSplitTile;
 /// collapse to a nested `INVALID_SPLIT_TILE` strategy (`RemoveSplitStrategy`).
 pub const INVALID_SPLIT_TILE_GROUP: IssueKind = IssueKind::InvalidSplitTileGroup;
 
+/// The maze has fewer split tiles than some check requires (currently `SplitCountCheck`/
+/// `SplitDensityCheck`) — part of epic #246. Mirrors `MISSING_LOOPS`'s role for loops: a
+/// missing-count condition rather than a specific-tile one. Carries `MissingSplitTilesIssue {
+/// missing }` — see that type's doc comment. Repaired by `AddSplitStrategy`, which mints new split
+/// tiles at eligible points to close the deficit — never removes or alters any existing tile's
+/// slot-0 node (the hard constraint across every split-QC strategy in this epic).
+pub const MISSING_SPLIT_TILES: IssueKind = IssueKind::MissingSplitTiles;
+
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -166,6 +175,7 @@ impl IssueKind {
             IssueKind::MissingTeleports => "missing_teleports",
             IssueKind::InvalidSplitTile => "invalid_split_tile",
             IssueKind::InvalidSplitTileGroup => "invalid_split_tile_group",
+            IssueKind::MissingSplitTiles => "missing_split_tiles",
         }
     }
 
@@ -198,6 +208,7 @@ impl IssueKind {
             "missing_teleports" => Some(IssueKind::MissingTeleports),
             "invalid_split_tile" => Some(IssueKind::InvalidSplitTile),
             "invalid_split_tile_group" => Some(IssueKind::InvalidSplitTileGroup),
+            "missing_split_tiles" => Some(IssueKind::MissingSplitTiles),
             _ => None,
         }
     }

@@ -673,9 +673,7 @@ export interface GenerationActions {
   setRepairTimeBudgetSecs: (v: number | null) => void;
   setSplitPatternMode: (v: boolean) => void;
   setSplitMaxNodes: (v: number) => void;
-  addSplitPattern: (pattern: SplitPattern) => void;
-  removeSplitPattern: (index: number) => void;
-  updateSplitPattern: (index: number, pattern: SplitPattern) => void;
+  setSplitPatterns: (patterns: SplitPattern[]) => void;
 }
 
 export interface AnalyticsOverlayState {

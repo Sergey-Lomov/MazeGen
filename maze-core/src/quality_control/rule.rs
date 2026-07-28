@@ -61,6 +61,7 @@ pub fn apply_commands<T: Tessellation>(
         // return every `EdgeId` actually removed (one or two), so `len() > 1` means the reverse
         // leg was genuinely there and got removed too, not just assumed from the command shape.
         let mut reverse_removed = false;
+        let mut added_split_nodes: Option<Vec<NodeId>> = None;
         let ok = match cmd {
             MutationCommand::AddDirectedEdge { from, to } =>
                 crate::generation::try_add_directed_edge(&mut maze.graph, from, to, preset_state),
@@ -94,10 +95,16 @@ pub fn apply_commands<T: Tessellation>(
             }
             MutationCommand::RemoveNode { node } =>
                 crate::generation::try_remove_node(&mut maze.field, &mut maze.graph, node, preset_state),
+            MutationCommand::AddSplitNode { at, ref nodes } => {
+                let new_nodes = crate::generation::try_add_split_node(&mut maze.field, &mut maze.graph, &mut maze.ids, at, nodes, preset_state);
+                let ok = new_nodes.is_some();
+                added_split_nodes = new_nodes;
+                ok
+            }
         };
         if ok { applied += 1; }
         if let Some(log) = event_log.as_mut() {
-            if let Some(event) = qc_event_for_command(&cmd, ok, edge_endpoints, reverse_removed) {
+            if let Some(event) = qc_event_for_command(&cmd, ok, edge_endpoints, reverse_removed, added_split_nodes) {
                 log.emit(event);
             }
         }
@@ -120,7 +127,7 @@ pub fn apply_commands<T: Tessellation>(
 /// (`applyQc` in `qc.ts`) know whether to also clear the reverse `(to, from)` pair from its own
 /// accumulator instead of guessing and risking a phantom removed-edge entry for a direction that
 /// was never actually there.
-fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Option<(NodeId, NodeId)>, reverse_removed: bool) -> Option<QcEvent> {
+fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Option<(NodeId, NodeId)>, reverse_removed: bool, added_split_nodes: Option<Vec<NodeId>>) -> Option<QcEvent> {
     Some(match (cmd, applied) {
         (MutationCommand::AddDirectedEdge { from, to }, true) => QcEvent::DirectedEdgeAdded { from: *from, to: *to },
         (MutationCommand::AddDirectedEdge { from, to }, false) => QcEvent::DirectedEdgeDeclined { from: *from, to: *to },
@@ -144,6 +151,11 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Op
         (MutationCommand::SetFinish(node), false) => QcEvent::FinishSetDeclined(*node),
         (MutationCommand::RemoveNode { node }, true) => QcEvent::NodeRemoved(*node),
         (MutationCommand::RemoveNode { node }, false) => QcEvent::NodeRemoveDeclined(*node),
+        (MutationCommand::AddSplitNode { at, nodes }, true) => {
+            let new_nodes = added_split_nodes?;
+            QcEvent::SplitNodeAdded { at: *at, new_nodes, nodes: nodes.clone() }
+        }
+        (MutationCommand::AddSplitNode { at, nodes }, false) => QcEvent::SplitNodeAddDeclined { at: *at, nodes: nodes.clone() },
     })
 }
 
@@ -180,6 +192,7 @@ fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &
         MutationCommand::SetStart(node) => QcEvent::StartSetProposed(*node),
         MutationCommand::SetFinish(node) => QcEvent::FinishSetProposed(*node),
         MutationCommand::RemoveNode { node } => QcEvent::NodeRemoveProposed(*node),
+        MutationCommand::AddSplitNode { at, nodes } => QcEvent::SplitNodeAddProposed { at: *at, nodes: nodes.clone() },
     })
 }
 

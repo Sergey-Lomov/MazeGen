@@ -61,16 +61,16 @@ interface DebugMazeViewContribution {
   dsuGroups: Map<bigint, bigint> | null;
   debugMaps: Map<string, Map<bigint, bigint>>;
   debugVertices: Map<string, bigint | null>;
-  /** Node ids minted mid-run by a split event (GitHub issue #222, `VertexBased`-only today) that
-   *  have appeared by this contribution's step — see `VertexBasedApplyResult.createdNodes`'s doc
-   *  comment for why this must gate `DebugMazeView.nodes`, not just `.edges`. Always empty for
-   *  every other source kind (only `vertex_based` ever produces split nodes). */
+  /** Node ids minted mid-run by a split event that have appeared by this contribution's step — a
+   *  generation-time split (GitHub issue #222, `VertexBased`-only) or a QC-time split
+   *  (`MutationCommand::AddSplitNode`, GitHub issue #247's `AddSplitStrategy`, `quality_control`
+   *  only). See `VertexBasedApplyResult.createdNodes`'s doc comment for why this must gate
+   *  `DebugMazeView.nodes`, not just `.edges`. Always empty for every other source kind. */
   createdNodes: bigint[];
   /** Maze node ids removed by QC's `remove_split` strategy (GitHub issue #248's `RemoveNode`
    *  mutation command) that have happened by this contribution's step — only `quality_control`
-   *  ever sets this (mirrors `createdNodes` being `vertex_based`-only). Must gate
-   *  `DebugMazeView.nodes` the same way `createdNodes` does, or a removed split node keeps
-   *  rendering as a stray, edgeless dot for the rest of the replay. */
+   *  ever sets this. Must gate `DebugMazeView.nodes` the same way `createdNodes` does, or a
+   *  removed split node keeps rendering as a stray, edgeless dot for the rest of the replay. */
   removedNodes: bigint[];
 }
 
@@ -164,6 +164,7 @@ function qcContribution(arena: DebugArenaHandle, source: DebugArenaHandle["sourc
   contribution.edges = result.edges;
   contribution.removedEdges = result.removedEdges;
   contribution.removedNodes = result.removedNodes;
+  contribution.createdNodes = result.createdNodes;
   contribution.start = result.start;
   contribution.finish = result.finish;
   return contribution;

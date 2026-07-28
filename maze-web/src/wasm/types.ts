@@ -208,7 +208,18 @@ export type ParamKind =
   | { type: "integer"; default: number; min: number; max: number }
   | { type: "bool"; default: boolean }
   | { type: "enum"; options: string[]; default: string }
-  | { type: "interval"; default_min: number; default_max: number; min: number; max: number };
+  | { type: "interval"; default_min: number; default_max: number; min: number; max: number }
+  /** A split-pattern list (GitHub issue #247) — value round-trips as a JSON-serialized
+   *  `SplitPattern[]` string (same wire shape `SplitGenerationConfigDto.patterns` uses; see
+   *  `maze-runner`'s `parse_split_patterns_param`). `with_weights` distinguishes a check's own
+   *  plain membership filter (no weights) from a strategy's own weighted selection pool. */
+  | { type: "pattern_list"; with_weights: boolean }
+  /** A full split-generation config (pattern mode toggle, `max_split_nodes`, weighted pattern
+   *  list) bundled behind one settings button opening the same dialog generation's own split
+   *  settings use (`AddSplitStrategy`'s `split_config` param, GitHub issue #247). Value
+   *  round-trips as a JSON-serialized `SplitGenerationConfigDto` string (same wire shape
+   *  `GenerateConfig.split_generation` uses; see `maze-runner`'s `parse_split_config_param`). */
+  | { type: "split_generation_config" };
 
 export interface ParamDescriptor {
   id: string;

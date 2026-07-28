@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { ParamDescriptor } from "../../wasm/types";
-import { sharedStyles } from "../../styles/shared";
+import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
+import { sharedStyles, buttonStyle } from "../../styles/shared";
 import { typography, font, spacing } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
 import { Switch } from "../Switch";
 import { Inline } from "../Layout";
+import { Modal } from "../Modal";
+import { SplitPatternListEditor } from "../dialogs/SplitPatternListEditor";
+import { SplitGenerationSettingsBody, type SplitGenerationSettingsValue } from "../dialogs/SplitGenerationSettingsBody";
+import * as m from "~/paraglide/messages";
 
 const OPTION_WIDTH_BUFFER = 10;
 const SELECT_MAX_WIDTH_RATIO = 0.4;
@@ -74,6 +78,8 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
 export function ParamFields({ params, values, getValue, onChange, getDescription, disabled }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [openPatternListParam, setOpenPatternListParam] = useState<string | null>(null);
+  const [openSplitConfigParam, setOpenSplitConfigParam] = useState<string | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -97,6 +103,34 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
     const raw = get(p);
     const [lo, hi] = raw.split(",");
     return [lo ?? "", hi ?? ""];
+  }
+
+  // Mirrors `parse_split_patterns_param`'s own "invalid falls back to empty" contract (GitHub
+  // issue #247) — a malformed or missing value reads as "no patterns" rather than throwing.
+  function getPatterns(p: ParamDescriptor): SplitPattern[] {
+    try {
+      const parsed = JSON.parse(get(p));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Mirrors `parse_split_config_param`'s own "invalid falls back to SplitGenerationConfig::default()"
+  // contract (GitHub issue #247).
+  function getSplitConfig(p: ParamDescriptor): SplitGenerationSettingsValue {
+    const fallback: SplitGenerationSettingsValue = { pattern_mode: false, max_split_nodes: 2, patterns: [] };
+    try {
+      const parsed = JSON.parse(get(p));
+      if (!parsed || typeof parsed !== "object") return fallback;
+      return {
+        pattern_mode: Boolean(parsed.pattern_mode),
+        max_split_nodes: Number.isFinite(parsed.max_split_nodes) ? Math.max(1, Math.trunc(parsed.max_split_nodes)) : 2,
+        patterns: Array.isArray(parsed.patterns) ? parsed.patterns : [],
+      };
+    } catch {
+      return fallback;
+    }
   }
 
   return (
@@ -228,6 +262,26 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   ))}
                 </select>
               )}
+              {p.kind.type === "pattern_list" && (
+                <button
+                  className="hoverable"
+                  style={buttonStyle("toggle")}
+                  disabled={disabled}
+                  onClick={(e) => { e.stopPropagation(); setOpenPatternListParam(p.id); }}
+                >
+                  {m["quality.pattern_list_edit"]()} ({getPatterns(p).length})
+                </button>
+              )}
+              {p.kind.type === "split_generation_config" && (
+                <button
+                  className="hoverable"
+                  style={buttonStyle("toggle")}
+                  disabled={disabled}
+                  onClick={(e) => { e.stopPropagation(); setOpenSplitConfigParam(p.id); }}
+                >
+                  {m["quality.split_config_edit"]()}
+                </button>
+              )}
             </Inline>
             {description && <div style={styles.description}>{description}</div>}
             {description && p.kind.type === "enum" && (
@@ -246,6 +300,32 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
           </div>
         );
       })}
+      {openPatternListParam !== null && (() => {
+        const p = params.find((param) => param.id === openPatternListParam);
+        if (!p || p.kind.type !== "pattern_list") return null;
+        const withWeights = p.kind.with_weights;
+        return (
+          <Modal title={p.label} onClose={() => setOpenPatternListParam(null)}>
+            <SplitPatternListEditor
+              patterns={getPatterns(p)}
+              withWeights={withWeights}
+              onChange={(next) => onChange(p.id, JSON.stringify(next))}
+            />
+          </Modal>
+        );
+      })()}
+      {openSplitConfigParam !== null && (() => {
+        const p = params.find((param) => param.id === openSplitConfigParam);
+        if (!p || p.kind.type !== "split_generation_config") return null;
+        return (
+          <Modal title={p.label} onClose={() => setOpenSplitConfigParam(null)}>
+            <SplitGenerationSettingsBody
+              value={getSplitConfig(p)}
+              onChange={(next) => onChange(p.id, JSON.stringify(next))}
+            />
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

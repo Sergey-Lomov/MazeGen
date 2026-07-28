@@ -796,6 +796,12 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.node_remove_proposed"]() + " " }, { kind: "node", id: event.id }];
     case "StrategyFailed":
       return [{ kind: "text", text: m["debug.tree.qc.strategy_failed"]({ strategyId: quoted(resolveStrategyLabel(event.strategyId)) }) }];
+    case "SplitNodeAdded":
+      return [{ kind: "text", text: m["debug.tree.qc.split_node_added"]({ count: event.newNodes.length }) + " " }, { kind: "node", id: event.at }];
+    case "SplitNodeAddDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.split_node_add_declined"]() + " " }, { kind: "node", id: event.at }];
+    case "SplitNodeAddProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.split_node_add_proposed"]({ count: event.nodes.length }) + " " }, { kind: "node", id: event.at }];
   }
 }
 

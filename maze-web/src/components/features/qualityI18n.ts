@@ -151,6 +151,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.split_group_graph_proximity.label"] as MessageFn,
     description: m["check.split_group_graph_proximity.description"] as MessageFn,
   },
+  split_count: {
+    label: m["check.split_count.label"] as MessageFn,
+    description: m["check.split_count.description"] as MessageFn,
+  },
+  split_density: {
+    label: m["check.split_density.label"] as MessageFn,
+    description: m["check.split_density.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -222,6 +230,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_split_tile_group.label"] as MessageFn,
     description: m["issue.invalid_split_tile_group.description"] as MessageFn,
   },
+  missing_split_tiles: {
+    label: m["issue.missing_split_tiles.label"] as MessageFn,
+    description: m["issue.missing_split_tiles.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -244,6 +256,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   excessive_scc_count: m["issue_select.section.regions"] as MessageFn,
   invalid_split_tile: m["issue_select.section.splits"] as MessageFn,
   invalid_split_tile_group: m["issue_select.section.splits"] as MessageFn,
+  missing_split_tiles: m["issue_select.section.splits"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -266,6 +279,7 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   excessive_scc_count: m["issue_select.short_label.validate_groups"] as MessageFn,
   invalid_split_tile: m["issue_select.short_label.validate"] as MessageFn,
   invalid_split_tile_group: m["issue_select.short_label.validate_groups"] as MessageFn,
+  missing_split_tiles: m["issue_select.short_label.add"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -366,6 +380,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   split_group_select: {
     label: m["strategy.split_group_select.label"] as MessageFn,
     description: m["strategy.split_group_select.description"] as MessageFn,
+  },
+  add_split: {
+    label: m["strategy.add_split.label"] as MessageFn,
+    description: m["strategy.add_split.description"] as MessageFn,
   },
 };
 
@@ -637,6 +655,38 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   split_group_graph_proximity_distance: {
     label: m["param.split_group_graph_proximity_distance.label"] as MessageFn,
     description: m["param.split_group_graph_proximity_distance.description"] as MessageFn,
+  },
+  split_count: {
+    label: m["param.split_count.label"] as MessageFn,
+    description: m["param.split_count.description"] as MessageFn,
+  },
+  split_density: {
+    label: m["param.split_density.label"] as MessageFn,
+    description: m["param.split_density.description"] as MessageFn,
+  },
+  split_tile_estimate: {
+    label: m["param.split_tile_estimate.label"] as MessageFn,
+    description: m["param.split_tile_estimate.description"] as MessageFn,
+  },
+  patterns: {
+    label: m["param.patterns.label"] as MessageFn,
+    description: m["param.patterns.description"] as MessageFn,
+  },
+  allow_lose_connections: {
+    label: m["param.allow_lose_connections.label"] as MessageFn,
+    description: m["param.allow_lose_connections.description"] as MessageFn,
+  },
+  allow_add_connections: {
+    label: m["param.allow_add_connections.label"] as MessageFn,
+    description: m["param.allow_add_connections.description"] as MessageFn,
+  },
+  max_attempts: {
+    label: m["param.max_attempts.label"] as MessageFn,
+    description: m["param.max_attempts.description"] as MessageFn,
+  },
+  split_config: {
+    label: m["param.split_config.label"] as MessageFn,
+    description: m["param.split_config.description"] as MessageFn,
   },
 };
 

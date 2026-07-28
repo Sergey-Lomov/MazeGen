@@ -316,6 +316,7 @@ mod nested_strategy_tests {
 }
 
 mod build_strategy_tests {
+    use std::collections::HashMap;
     use maze_core::space::SquareTessellation;
     use crate::runner::strategy_factory::build_strategy_erased;
 
@@ -331,12 +332,15 @@ mod build_strategy_tests {
         "expand_region_passage", "teleport_region_merge", "missing_regions", "reduce_scc_count",
         "weighted_region_merge", "remove_teleport", "teleport_group_select",
         "one_way_to_passage", "one_way_to_wall",
+        "missing_one_ways_from_passage", "missing_one_ways_from_wall", "missing_teleports",
+        "remove_split", "split_group_select", "add_split",
     ];
 
     #[test]
     fn every_known_id_builds_a_strategy_whose_own_strategy_id_matches() {
+        let no_params = HashMap::new();
         for &id in ALL_KNOWN_STRATEGY_IDS {
-            let strategy = build_strategy_erased::<SquareTessellation>(id)
+            let strategy = build_strategy_erased::<SquareTessellation>(id, &no_params)
                 .unwrap_or_else(|e| panic!("build_strategy_erased({id:?}) failed: {e}"));
             assert_eq!(strategy.strategy_id(), id, "build_strategy_erased({id:?}) constructed a strategy whose own strategy_id() doesn't match — wrong match arm?");
         }
@@ -344,7 +348,7 @@ mod build_strategy_tests {
 
     #[test]
     fn unknown_id_is_rejected() {
-        assert!(build_strategy_erased::<SquareTessellation>("not_a_real_strategy").is_err());
+        assert!(build_strategy_erased::<SquareTessellation>("not_a_real_strategy", &HashMap::new()).is_err());
     }
 }
 

@@ -31,6 +31,7 @@ pub use split_pattern::{
     validate_split_patterns,
 };
 pub use split_logic::StartReassignment;
+pub(crate) use split_logic::split_is_eligible;
 pub(crate) use edge_ops::{
     can_connect, split_aware_neighbors,
     try_add_edge, try_add_edge_kind, try_add_bidirectional_edge,
@@ -38,7 +39,7 @@ pub(crate) use edge_ops::{
     try_remove_edge, try_remove_edge_by_id, try_remove_edge_with_reverse, try_remove_teleport_with_reverse,
     bidirectional_edge_feasible, directed_edge_feasible,
 };
-pub(crate) use node_ops::{try_remove_node, remove_node_feasible};
+pub(crate) use node_ops::{try_remove_node, remove_node_feasible, try_add_split_node, add_split_node_feasible};
 #[cfg(test)]
 pub(crate) use edge_ops::{add_edge, add_edge_kind};
 #[allow(unused_imports)]

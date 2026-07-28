@@ -95,7 +95,8 @@ fn command_endpoints(command: &MutationCommand) -> Option<(crate::ids::NodeId, c
         | MutationCommand::RemoveTeleportWithReverse { .. }
         | MutationCommand::SetStart(_)
         | MutationCommand::SetFinish(_)
-        | MutationCommand::RemoveNode { .. } => None,
+        | MutationCommand::RemoveNode { .. }
+        | MutationCommand::AddSplitNode { .. } => None,
     }
 }
 

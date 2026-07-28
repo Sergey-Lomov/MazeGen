@@ -37,16 +37,19 @@ use maze_core::{
         MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
         SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
         SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
+        SplitCountCheck, SPLIT_COUNT_DEFAULT,
+        SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT,
         Comparison, CycleKind,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
         MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue,
+        MissingSplitTilesIssue,
     },
     RegionClass,
 };
-use crate::config::CheckInstanceConfig;
+use crate::config::{CheckInstanceConfig, parse_split_patterns_param};
 
 /// One tag per concrete `Issue` type — the compile-time-known "which `I`" a rule's checks/
 /// strategy share, chosen at runtime from the first check's `type_id` (see `check_kind_for_type`)
@@ -73,6 +76,7 @@ pub(crate) enum KindTag {
     MissingTeleports,
     InvalidSplitTile,
     InvalidSplitTileGroup,
+    MissingSplitTiles,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -114,6 +118,8 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "max_split_density"         => KindTag::InvalidSplitTileGroup,
         "split_group_geometric_proximity" => KindTag::InvalidSplitTileGroup,
         "split_group_graph_proximity" => KindTag::InvalidSplitTileGroup,
+        "split_count"               => KindTag::MissingSplitTiles,
+        "split_density"             => KindTag::MissingSplitTiles,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -237,6 +243,32 @@ pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanc
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(AVG_LOOP_LENGTH_ESTIMATE_DEFAULT);
             Some(Box::new(MinLoopDensityCheck { instance_id, min_density, avg_loop_length_estimate }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingSplitTilesIssue>>> {
+    match instance.type_id.as_str() {
+        "split_count" => {
+            let min_count = instance.params.get("split_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(SPLIT_COUNT_DEFAULT);
+            let patterns = parse_split_patterns_param(instance.params.get("patterns"));
+            Some(Box::new(SplitCountCheck { instance_id, min_count, patterns }))
+        }
+        "split_density" => {
+            let min_density = instance.params.get("split_density")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.clamp(0, 100) as u32)
+                .unwrap_or(SPLIT_DENSITY_DEFAULT);
+            let split_tile_estimate = instance.params.get("split_tile_estimate")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(SPLIT_DENSITY_ESTIMATE_DEFAULT);
+            let patterns = parse_split_patterns_param(instance.params.get("patterns"));
+            Some(Box::new(SplitDensityCheck { instance_id, min_density, split_tile_estimate, patterns }))
         }
         _ => None,
     }

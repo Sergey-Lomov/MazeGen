@@ -530,16 +530,8 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   setSplitPatternMode: (v) => set((state) => ({ splitPatternMode: v, debugStale: debugStaleOf(state) })),
   setSplitMaxNodes: (v) => set((state) => ({ splitMaxNodes: v, debugStale: debugStaleOf(state) })),
-  addSplitPattern: (pattern) => set((state) => ({
-    splitPatterns: [...state.splitPatterns, pattern],
-    debugStale: debugStaleOf(state),
-  })),
-  removeSplitPattern: (index) => set((state) => ({
-    splitPatterns: state.splitPatterns.filter((_, i) => i !== index),
-    debugStale: debugStaleOf(state),
-  })),
-  updateSplitPattern: (index, pattern) => set((state) => ({
-    splitPatterns: state.splitPatterns.map((p, i) => i === index ? pattern : p),
+  setSplitPatterns: (patterns) => set((state) => ({
+    splitPatterns: patterns,
     debugStale: debugStaleOf(state),
   })),
 });

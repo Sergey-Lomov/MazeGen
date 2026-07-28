@@ -9,8 +9,9 @@ pub mod rule;
 pub mod stage;
 pub mod engine;
 pub mod checks;
+pub mod split_pattern_match;
 
-pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP};
+pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES};
 pub use issue_payload::{IssuePayload, resolve_issue_payload};
 pub use event::QcEvent;
 pub use issue_kinds::{
@@ -22,6 +23,7 @@ pub use issue_kinds::{
     InvalidGroupIssue, InvalidGroupIssueKind, MissingTeleportsIssue,
     InvalidSplitTileIssue,
     InvalidSplitTileGroupIssue, SplitGroupKind, SplitTileNodes,
+    MissingSplitTilesIssue,
 };
 pub use check::Check;
 pub use comparison::Comparison;
@@ -67,4 +69,6 @@ pub use checks::{
     MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
     SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
     SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
+    SplitCountCheck, SPLIT_COUNT_DEFAULT,
+    SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT,
 };

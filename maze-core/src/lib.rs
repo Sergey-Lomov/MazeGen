@@ -242,8 +242,11 @@ pub struct Maze<T: Tessellation> {
     /// Sole source of new `NodeId`s for this maze's lifetime — see GitHub issue #219. Built via
     /// `IdGenerator::resume_after` in `new`, never accepted as a parameter: a caller can't
     /// accidentally supply a fresh, incompatible generator that would collide with IDs `field`
-    /// already holds.
-    ids: IdGenerator,
+    /// already holds. `pub(crate)` (not private) so `quality_control::rule::apply_commands`
+    /// (GitHub issue #247) can pass it straight into `generation::try_add_split_node`, the only
+    /// mutating helper needing a fresh id at repair-apply time — every other `try_*` helper only
+    /// ever touches `field`/`graph`.
+    pub(crate) ids: IdGenerator,
 }
 
 impl<T: Tessellation> Maze<T> {

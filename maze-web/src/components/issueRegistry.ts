@@ -28,6 +28,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   missing_teleports: () => ({ label: m["issue.missing_teleports.label"](), description: m["issue.missing_teleports.description"](), severity: "warning" }),
   invalid_split_tile: () => ({ label: m["issue.invalid_split_tile.label"](), description: m["issue.invalid_split_tile.description"](), severity: "warning" }),
   invalid_split_tile_group: () => ({ label: m["issue.invalid_split_tile_group.label"](), description: m["issue.invalid_split_tile_group.description"](), severity: "warning" }),
+  missing_split_tiles: () => ({ label: m["issue.missing_split_tiles.label"](), description: m["issue.missing_split_tiles.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -125,6 +126,8 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   max_split_density: (d) => d.max_density !== undefined ? m["issue.invalid_split_tile_group.max_split_density_label"]({ max_density: d.max_density }) : undefined,
   split_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_split_tile_group.split_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
   split_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_split_tile_group.split_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
+  split_count: (d) => d.missing !== undefined ? m["issue.missing_split_tiles.split_count_label"]({ missing: d.missing }) : undefined,
+  split_density: (d) => d.missing !== undefined ? m["issue.missing_split_tiles.split_density_label"]({ missing: d.missing }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

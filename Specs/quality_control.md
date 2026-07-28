@@ -22,6 +22,7 @@ pub enum IssueKind {
     MissingRegions,
     InvalidTeleport,
     TeleportGroupProximity,
+    MissingSplitTiles,
 }
 ```
 
@@ -30,6 +31,8 @@ pub enum IssueKind {
 `InvalidLoopGroup` is a distinct kind from `InvalidLoop`, not a reuse — mirrors `TeleportGroupProximity`'s split from `InvalidTeleport` (below). Where `InvalidLoop` flags a single cycle invalid on its own terms, `InvalidLoopGroup` flags cycles selected as part of a group-level decision across every loop on the field (currently `MaxLoopDensityCheck`'s excess field-density and `MaxLoopsCountCheck`'s excess independent-loop count). Carries `InvalidLoopGroupIssue` — `invalid: Vec<Vec<EdgeId>>`/`valid: Vec<Vec<EdgeId>>` (direct cycle lists, not `InvalidLoopIssue`'s `all`/index scheme) plus `invalid_sources`, see that type's doc comment. Every producing check flags the *entire* field-wide cycle set invalid at once when it fires (no partial selection at the check level) — see GitHub issue #183. `InvalidLoopGroupSelectStrategy` (see `Specs/repair.md`'s "Built-in Strategies") is the registered repair strategy: it samples a subset of the flagged cycles and delegates breaking each one to a nested `INVALID_LOOP` strategy.
 
 `MissingLoops` mirrors `InvalidLoop`'s role, but for a missing-count condition (too few loops overall) instead of a specific invalid cycle — currently produced by `MinLoopsCountCheck`/`MinLoopDensityCheck`; future checks needing more loops added may reuse this kind rather than inventing a new one.
+
+`MissingSplitTiles` mirrors `MissingLoops`'s role, but for a deficit in the count of split tiles (GitHub issue #247, part of epic #246) instead of loops — currently produced by `SplitCountCheck`/`SplitDensityCheck`. Carries `MissingSplitTilesIssue { missing: u32 }` — same "just the deficit count" shape as `MissingLoopsIssue`/`MissingRegionsIssue`, see "Built-in Checks" below. Repaired by `AddSplitStrategy` (see `repair.md`).
 
 Each variant has a canonical string representation used in serialization and config:
 
@@ -50,6 +53,7 @@ pub const INVALID_LOOP_GROUP: IssueKind = IssueKind::InvalidLoopGroup;
 pub const MISSING_LOOPS:      IssueKind = IssueKind::MissingLoops;
 pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflowed;
 pub const INVALID_TELEPORT:  IssueKind = IssueKind::InvalidTeleport;
+pub const MISSING_SPLIT_TILES: IssueKind = IssueKind::MissingSplitTiles;
 ```
 
 `IssueKind` still exists exactly as above and remains the runtime-erased representation used for
@@ -377,11 +381,11 @@ type), since "this strategy gave up" carries the same narration meaning regardle
 strategy it was. `strategy_id` duplicates the scope name's own strategy id so a caller with only
 the flat event (no scope context) can still tell which strategy failed.
 
-**Proposed events — one variant per `repair::MutationCommand` variant (11 total)**
+**Proposed events — one variant per `repair::MutationCommand` variant (12 total)**
 (`DirectedEdgeProposed`, `BidirectionalEdgeProposed`, `DirectedTeleportProposed`,
 `BidirectionalTeleportProposed`, `EdgeRemoveProposed`, `EdgeRemoveBetweenProposed`,
 `EdgeRemoveWithReverseProposed`, `TeleportRemoveWithReverseProposed`, `StartSetProposed`,
-`FinishSetProposed`, `NodeRemoveProposed`) — emitted into the `"strategy <id>"` scope for every
+`FinishSetProposed`, `NodeRemoveProposed`, `SplitNodeAddProposed`) — emitted into the `"strategy <id>"` scope for every
 command a strategy's `apply()` returned, before any of them has been revalidated or applied by
 `apply_commands`. Narrates what was *asked for*, independent of whether the separate "apply
 requests" scope right after actually honors it. Not a field-for-field mirror for all 11:
@@ -395,15 +399,19 @@ id, so a fabricated pair would be indistinguishable from a genuine edge. `NodeRe
 (GitHub issue #248) carries `node: NodeId` directly — a node's own id is meaningful on its own,
 unlike an `EdgeId`, so no resolution step is needed.
 
-**Mutating events — one variant per `repair::MutationCommand` variant (11 total)**
+**Mutating events — one variant per `repair::MutationCommand` variant (12 total)**
 (`DirectedEdgeAdded`, `BidirectionalEdgeAdded`, `DirectedTeleportAdded`,
 `BidirectionalTeleportAdded`, `EdgeRemoved`, `EdgeRemovedBetween`, `EdgeRemovedWithReverse`,
-`TeleportRemovedWithReverse`, `StartSet`, `FinishSet`, `NodeRemoved`) — emitted by
+`TeleportRemovedWithReverse`, `StartSet`, `FinishSet`, `NodeRemoved`, `SplitNodeAdded`) — emitted by
 `apply_commands` (`quality_control/rule.rs`) for exactly the commands its own revalidation
-actually applied (`is_mutating()` is `true` for these eleven and only these eleven).
+actually applied (`is_mutating()` is `true` for these twelve and only these twelve).
 `NodeRemoved(NodeId)` (GitHub issue #248) narrates `MutationCommand::RemoveNode` actually applied —
 see `Specs/repair.md`'s `RemoveNode`/`RemoveSplitStrategy` sections for what removes a node and
-why. Each also has a same-fields,
+why. `SplitNodeAdded { at: NodeId, new_nodes: Vec<NodeId>, nodes: Vec<Vec<SplitNodeEdge>> }`
+(GitHub issue #247) narrates `MutationCommand::AddSplitNode` actually applied — see
+`Specs/repair.md`'s `AddSplitStrategy` section for what mints new split-tile siblings and why;
+`new_nodes` is the freshly minted sibling ids (one per `nodes` entry, same order), distinct from
+`at` (the existing point/slot-0 node the siblings were added alongside). Each also has a same-fields,
 trace-only `*Declined` counterpart (`DirectedEdgeDeclined`, etc.) emitted when revalidation rejects
 a proposed command — one dedicated variant per command kind rather than a single payload-less
 `CommandDeclined`, so narration/tests can say exactly which command failed revalidation, not just
@@ -445,11 +453,12 @@ generation algorithm's "debug value" (RB's `recursion_stack`, Wilson's `current_
 deliberately out of scope, not a gap.
 
 **Wire tags** are assigned in `quality_control/event.rs`'s own `wire_tags` module, ordinary local
-tags in `1..=41` (well under the 255 a single source's local tag byte allows) — namespaced by
+tags in `1..=44` (well under the 255 a single source's local tag byte allows) — namespaced by
 source index only when `merge_tapes` folds this tape together with generation's, same mechanism
 every merged source already uses (`Specs/event_log.md`'s "#169" section). `38`/`39`/`40` are
 `NodeRemoved`/`NodeRemoveDeclined`/`NodeRemoveProposed` (GitHub issue #248); `41` is
-`StrategyFailed`.
+`StrategyFailed`; `42`/`43`/`44` are `SplitNodeAdded`/`SplitNodeAddDeclined`/
+`SplitNodeAddProposed` (GitHub issue #247).
 
 ## Built-in Checks
 
@@ -1158,6 +1167,53 @@ For each tile, scans every other tile for the first one closer than `distance` �
 
 `SplitGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE_GROUP`.
 
+### SplitCountCheck / SplitDensityCheck
+
+```rust
+pub const SPLIT_COUNT_DEFAULT: u32 = 1;
+
+pub struct SplitCountCheck {
+    pub instance_id: String,
+    pub min_count: u32,
+    pub patterns: Vec<SplitPattern>,
+}
+
+pub const SPLIT_DENSITY_DEFAULT: u32 = 10;
+pub const SPLIT_DENSITY_ESTIMATE_DEFAULT: u32 = 1;
+
+pub struct SplitDensityCheck {
+    pub instance_id: String,
+    pub min_density: u32,
+    pub split_tile_estimate: u32,
+    pub patterns: Vec<SplitPattern>,
+}
+```
+
+See GitHub issue #247, part of epic #246. Mirror `MinLoopsCountCheck`/`MinLoopDensityCheck`'s shape exactly, one field-wide deficit check parametrized by an absolute count vs. a field-coverage share, both flagging `MISSING_SPLIT_TILES` — same "two separate check types, no merged mode enum" rationale as the loop pair (see the "Comparison operator" section's merge rule: an absolute count and a density share aren't the same corrective action on the same entity).
+
+**"Split cell" metric — tile count, not node count.** Both checks count split *tiles* (`Field::nodes_at(point).len() >= 2`, deduped via a seen-points scan over `Field::all_points()`, same collection shape `MaxSplitCountCheck`/`MaxSplitDensityCheck` use), never the number of extra nodes beyond slot-0 — a 3-node split tile counts as one "split cell" the same as a 2-node one. `field_point_count(maze)` (a deduplicated count of distinct field points, **not** `Field::node_count()`) is the shared denominator for `SplitDensityCheck`'s density — `node_count()` is inflated by every extra split node already on the field and would silently understate density once any split tile exists (see GitHub issue #267, filed against the pre-existing `MaxSplitDensityCheck`'s use of the same wrong denominator — this bug affects every density-style check/strategy that reaches for `node_count()` instead of a field-cell count, not only that one check).
+
+**`patterns` — optional membership filter, shared shape across all three split-QC surfaces.** `Vec<SplitPattern>` (`generation::SplitPattern`, the same type `SplitGenerationConfig`'s own `patterns` field carries): empty (the default) means "count every split tile regardless of shape"; non-empty restricts counting to only those split tiles whose actual topology matches at least one listed pattern, under any rotation/mirror (`quality_control::split_pattern_match::split_tile_matches_any` — see below). Each of generation's own `SplitGenerationConfig`, this check's `patterns`, and `AddSplitStrategy`'s own `patterns` (see `repair.md`) holds its own **independent** list — nothing links them structurally. `SplitPattern` is compared **structurally** (`faces` + `node_count`), never by identity/id — it carries none.
+
+**Known limitation, deliberately out of scope for #247**: a check's `patterns` filter is invisible to the repair strategy that fixes its deficit — `AddSplitStrategy` has no way to know which patterns the producing check actually wanted, so a strategy configured with a different (or unconstrained) pattern set can satisfy the check's `min_count`/`min_density` with tiles the check itself wouldn't have counted, causing the check to immediately re-fire next iteration. Tracked for a future fix by issue #253's "Rule-level parameters" design (a rule-scoped recommended default a check/strategy may inherit instead of configuring independently) — not addressed here.
+
+`SplitCountCheck` (`check_type_id() == "split_count"`): `count = count_matching_split_tiles(maze, &self.patterns)`; if below `min_count`, `missing = min_count.saturating_sub(count)`.
+
+`SplitDensityCheck` (`check_type_id() == "split_density"`): `density = density_per_100(count, field_point_count(maze))` (same round-half-up helper `MinLoopDensityCheck`/`MaxSplitDensityCheck` use); if below `min_density`, the coverage deficit converts into a tile count the same way `MinLoopDensityCheck` converts a cell deficit into a loop count: `missing_cells = ceil((min_density - density) * field_cells / 100)`, then `missing = ceil(missing_cells / split_tile_estimate.max(1))` — `split_tile_estimate` is the estimated field-cell coverage of one newly added split tile (default `1`, i.e. "assume each new split tile covers exactly one more field cell"), the split-tile counterpart to `MinLoopDensityCheck`'s `avg_loop_length_estimate`.
+
+Either way, if `missing` is `0`, the check is silent; otherwise fires `MissingSplitTilesIssue::new_from_check(instance_id, missing)`. Repaired by `AddSplitStrategy` (see `repair.md`) — no strategy-side branching on which check produced the issue, same as the loop pair.
+
+### split_pattern_match — reconstructing a split tile's topology outside generation
+
+`quality_control::split_pattern_match` (GitHub issue #247) answers "does this already-built split tile's actual topology match one of these patterns" — needed by `SplitCountCheck`/`SplitDensityCheck`'s `patterns` filter, which has no generation-time frontier/visited/reserve state to reuse `generation::split_logic`'s own pattern-application machinery.
+
+```rust
+pub fn reconstruct_tile_faces<T: Tessellation>(graph: &Graph, field: &Field<T>, nodes: &[NodeId]) -> Vec<Vec<SplitFaceRequirement>>;
+pub fn split_tile_matches_any<T: Tessellation>(graph: &Graph, field: &Field<T>, nodes: &[NodeId], patterns: &[SplitPattern]) -> bool;
+```
+
+`reconstruct_tile_faces` walks each of `nodes`' outgoing/incoming edges via `T::step`, resolving each face index to `Passage`/`OneWay(Forward|Backward)`/`Wall` from what's actually connected — the tile's real topology, independent of how it was built (generation, preset, or a prior repair pass). `split_tile_matches_any` compares this reconstructed shape against every pattern in `patterns`, trying every `(rotation, mirror)` combination the same way generation's own pattern application does (`transform_face_index`, identical formula) — a pattern matches if *any* orientation reproduces the tile's exact face-by-face shape. `nodes.len() < 2` (not actually a split tile) short-circuits to `false`. An empty `patterns` slice is the caller's job to special-case as "match everything" — this function only ever answers "does it match one of these listed patterns", never "no patterns configured".
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -1268,10 +1324,28 @@ struct ParamDescriptor {
 
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ParamKindDto {
-    Float   { default: f64, min: f64, max: f64 },
-    Integer { default: i64, min: i64, max: i64 },
-    Bool    { default: bool },
-    Enum    { options: Vec<&'static str>, default: &'static str },
+    Float    { default: f64, min: f64, max: f64 },
+    Integer  { default: i64, min: i64, max: i64 },
+    Bool     { default: bool },
+    Enum     { options: Vec<&'static str>, default: &'static str },
+    Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
+    // A split-pattern list (GitHub issue #247) — signals the web UI to render the shared
+    // pattern-list dialog (`SplitPatternListEditor`) instead of a plain input. Wire value is a
+    // JSON-serialized `Vec<SplitPatternDto>` string carried in the check's own `params` map, same
+    // shape `SplitGenerationConfigDto.patterns` uses (parsed by `parse_split_patterns_param`).
+    // `with_weights` is always `false` for the one param currently using this kind
+    // (`SplitCountCheck`/`SplitDensityCheck`'s own `patterns` filter, a plain membership list, no
+    // weights) — `AddSplitStrategy`'s own pattern-selection pool uses `SplitGenerationConfig`
+    // below instead, not this variant, since it needs a mode switch and node-count field this
+    // shape doesn't carry.
+    PatternList { with_weights: bool },
+    // A full split-generation config — pattern mode toggle, `max_split_nodes` (unconstrained
+    // mode), and a weighted pattern list (pattern mode) — bundled behind one settings button that
+    // opens the same dialog (`SplitGenerationSettingsBody`) generation's own split settings use.
+    // Wire value is a JSON-serialized `SplitGenerationConfigDto` string, same shape
+    // `GenerateConfig.split_generation` uses (parsed by `parse_split_config_param`); see
+    // `repair.md`'s `AddSplitStrategy` section, the one param currently using this kind.
+    SplitGenerationConfig,
 }
 ```
 

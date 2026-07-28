@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -223,6 +223,27 @@ pub fn available_strategies() -> JsValue {
             params: strategy_params_dto(<SplitGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileGroupIssue>>::params(&SplitGroupSelectStrategy)),
             experimental: <SplitGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileGroupIssue>>::is_experimental(&SplitGroupSelectStrategy),
             nested_slots: nested_slots_dto(<SplitGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileGroupIssue>>::expected_nested(&SplitGroupSelectStrategy)),
+        },
+        StrategyDescriptor {
+            id: "add_split",
+            handles: MISSING_SPLIT_TILES.as_str(),
+            // AddSplitStrategy's own generic StrategyParams (allow_lose/allow_add_connections,
+            // max_attempts) plus its construction-time pattern-selection config (`config`, GitHub
+            // issue #247), appended manually as one `SplitGenerationConfig`-kind param since it
+            // isn't a `StrategyParamKind` maze-core can express (no serde there to parse it) — see
+            // `maze-runner`'s `build_add_split_strategy`/`parse_split_config_param`.
+            params: {
+                let default_strategy = AddSplitStrategy { config: Default::default() };
+                let mut params = strategy_params_dto(<AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::params(&default_strategy));
+                params.push(ParamDescriptor {
+                    id: "split_config",
+                    label: "Split settings",
+                    kind: ParamKindDto::SplitGenerationConfig,
+                });
+                params
+            },
+            experimental: <AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::is_experimental(&AddSplitStrategy { config: Default::default() }),
+            nested_slots: vec![],
         },
     ];
     strategies.serialize(&serde_wasm_bindgen::Serializer::json_compatible()).unwrap()

@@ -34,6 +34,10 @@ export function defaultParamsFor(descriptor: { params: CheckDescriptor["params"]
 function defaultParamValue(k: CheckDescriptor["params"][number]["kind"]): string {
   if (k.type === "bool") return k.default ? "true" : "false";
   if (k.type === "interval") return `${k.default_min},${k.default_max}`;
+  // Empty pattern list -- "all"/"unconstrained" default (GitHub issue #247), same JSON encoding
+  // `parse_split_patterns_param` round-trips.
+  if (k.type === "pattern_list") return "[]";
+  if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
   return String(k.default);
 }
 

@@ -54,6 +54,41 @@ pub enum MutationCommand {
     /// `AddBidirectionalEdge` commands itself, ahead of this one in its own returned batch — this
     /// command only ever deletes, it never redirects.
     RemoveNode { node: NodeId },
+    /// Mints one or more new split nodes at `at`'s point (`at` must be that point's slot-0/
+    /// original node — `Field::add_node_at` always adds relative to the point, not a specific
+    /// existing node) and wires each one's own `edges` in one atomic step — see GitHub issue
+    /// #247, `AddSplitStrategy`. `nodes[i]` is the `i`th new sibling's own edge list, each entry
+    /// targeting one of `at`'s pre-existing (already-in-graph) neighbors — never another sibling
+    /// in this same batch (inter-split edges are out of `AddSplitStrategy`'s scope, see its own
+    /// doc comment). All or nothing: if any single entry in any sibling's `edges` is no longer
+    /// feasible by apply time (e.g. a preset lock/block that changed since this command was
+    /// proposed), the whole command is declined and **no** node is minted at all — mirrors
+    /// `RemoveSplitStrategy`'s own hard atomicity contract for its collapse step, just for the
+    /// opposite (add) direction. Never removes or alters `at` (slot-0) itself — only ever adds
+    /// siblings and their own edges, honoring the hard "never touch slot-0" constraint shared by
+    /// every split-QC strategy in epic #246.
+    AddSplitNode { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
+}
+
+/// One edge a newly minted split node (`MutationCommand::AddSplitNode`) gets wired with, always
+/// `EdgeKind::Basic` (mirrors `apply_pattern_adaptation`'s own split-face edges, which are never
+/// `Teleport`) — `target` is the existing node on the other end, `direction` which way the edge
+/// points relative to the new node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SplitNodeEdge {
+    pub target: NodeId,
+    pub direction: SplitNodeEdgeDirection,
+}
+
+/// `Forward`/`Backward` mirror `OneWayDirection`'s naming (relative to the new node); `Passage`
+/// is a single entry producing both directions atomically (not two separate `SplitNodeEdge`s) —
+/// same "one edge, one atomic unit" rationale `MutationCommand`'s own doc comment gives for
+/// `AddBidirectionalEdge` vs. two `AddDirectedEdge`s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SplitNodeEdgeDirection {
+    Forward,
+    Backward,
+    Passage,
 }
 
 /// Every `EdgeId` a batch of commands proposes removing — a strategy building on another

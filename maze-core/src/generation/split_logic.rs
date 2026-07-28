@@ -41,7 +41,7 @@ pub struct StartReassignment {
 /// point that already has more than one node (a pre-generation `split_points` declaration — the
 /// only way a point could already be multi-node at generation time, post-edit splits happen after
 /// generation) is never double-split.
-pub(super) fn split_is_eligible<T: Tessellation>(
+pub(crate) fn split_is_eligible<T: Tessellation>(
     field: &Field<T>,
     preset_state: &PresetState,
     src: NodeId,

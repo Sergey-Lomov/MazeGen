@@ -8,6 +8,7 @@ use maze_core::{
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
         MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue,
+        MissingSplitTilesIssue,
     },
 };
 use crate::config::GenerateConfig;
@@ -19,6 +20,7 @@ use super::check_factory::{
     build_missing_regions_check, build_invalid_teleport_check, build_teleport_group_proximity_check,
     build_invalid_one_way_check, build_one_way_group_proximity_check, build_missing_one_ways_check,
     build_missing_teleports_check, build_invalid_split_tile_check, build_split_group_check,
+    build_missing_split_tiles_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
 
@@ -52,7 +54,7 @@ macro_rules! build_rule_for {
                 if strategy_cfg.slot_id.is_some() {
                     return Err(format!("rule {}'s top-level strategy must not declare slot_id", rule_cfg.id));
                 }
-                let erased = build_strategy_erased::<T>(&strategy_cfg.id)?;
+                let erased = build_strategy_erased::<T>(&strategy_cfg.id, &strategy_cfg.params)?;
                 let nested = build_nested::<T>(erased.as_ref(), &strategy_cfg.nested)?;
                 let typed = downcast_strategy::<T, $IssueTy>(erased)?;
                 (Some(typed), strategy_cfg.params.clone(), nested)
@@ -88,6 +90,7 @@ fn build_rule<T: Tessellation + 'static>(rule_cfg: &crate::config::QcRuleConfig)
         KindTag::MissingTeleports => build_rule_for!(MissingTeleportsIssue, build_missing_teleports_check, rule_cfg),
         KindTag::InvalidSplitTile => build_rule_for!(InvalidSplitTileIssue, build_invalid_split_tile_check, rule_cfg),
         KindTag::InvalidSplitTileGroup => build_rule_for!(InvalidSplitTileGroupIssue, build_split_group_check, rule_cfg),
+        KindTag::MissingSplitTiles => build_rule_for!(MissingSplitTilesIssue, build_missing_split_tiles_check, rule_cfg),
     }
 }
 

@@ -40,6 +40,8 @@ pub mod max_split_count;
 pub mod max_split_density;
 pub mod split_group_geometric_proximity;
 pub mod split_group_graph_proximity;
+pub mod split_count;
+pub mod split_density;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -78,3 +80,5 @@ pub use max_split_count::{MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT};
 pub use max_split_density::{MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT};
 pub use split_group_geometric_proximity::{SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT};
 pub use split_group_graph_proximity::{SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT};
+pub use split_count::{SplitCountCheck, SPLIT_COUNT_DEFAULT};
+pub use split_density::{SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT};

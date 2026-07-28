@@ -1,5 +1,6 @@
 use crate::ids::NodeId;
 use crate::event_log::{DebugEvent, EncodeEventPayload};
+use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 use super::issue::IssueKind;
 use super::issue_kinds::RepairLimitKind;
 use super::issue_payload::IssuePayload;
@@ -56,6 +57,10 @@ mod wire_tags {
     pub const NODE_REMOVE_PROPOSED: u16 = 40;
 
     pub const STRATEGY_FAILED: u16 = 41;
+
+    pub const SPLIT_NODE_ADDED: u16 = 42;
+    pub const SPLIT_NODE_ADD_DECLINED: u16 = 43;
+    pub const SPLIT_NODE_ADD_PROPOSED: u16 = 44;
 }
 
 /// Narration-level events for the quality-control/repair pipeline (GitHub issue #147) — see
@@ -140,6 +145,10 @@ pub enum QcEvent {
     /// Mirrors `EdgeRemoveProposed`'s "resolve identity ahead of mutation" rationale — the node's
     /// own id is meaningful on its own (unlike an `EdgeId`), so this just carries `node` directly.
     NodeRemoveProposed(NodeId),
+    /// `MutationCommand::AddSplitNode` proposed — narrates `at` (the point's slot-0 node) and the
+    /// planned per-sibling edge lists (`nodes[i]` = the `i`th new sibling's own edges) before any
+    /// new node itself exists (there is no id to carry yet, unlike `NodeRemoveProposed`).
+    SplitNodeAddProposed { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
 
     // --- mutating: exact mirror of `repair::MutationCommand`'s 10 variants, emitted only for
     // commands `apply_commands` actually applied (its `ok == true` branch). ---
@@ -171,6 +180,11 @@ pub enum QcEvent {
     FinishSet(NodeId),
     /// `MutationCommand::RemoveNode` actually applied — carries the removed node's own id.
     NodeRemoved(NodeId),
+    /// `MutationCommand::AddSplitNode` actually applied — `new_nodes` are the freshly minted
+    /// siblings' own ids, one per `nodes` entry, same order (unknowable until apply time, unlike
+    /// every other mutating variant's identity, which is always resolved from state that already
+    /// existed before the command ran).
+    SplitNodeAdded { at: NodeId, new_nodes: Vec<NodeId>, nodes: Vec<Vec<SplitNodeEdge>> },
 
     // --- trace: same fields as the matching mutating variant above, for a command
     // `apply_commands` proposed but whose revalidation rejected it (its `ok == false` branch). ---
@@ -200,6 +214,11 @@ pub enum QcEvent {
     /// `MutationCommand::RemoveNode` proposed but revalidation rejected it (node no longer exists,
     /// is slot-0, or is preset-protected by the time `apply_commands` ran).
     NodeRemoveDeclined(NodeId),
+    /// `MutationCommand::AddSplitNode` proposed but revalidation rejected it (all-or-nothing — see
+    /// `add_split_node_feasible`'s doc comment: `at` no longer split-eligible, or any one edge of
+    /// any sibling in `nodes` no longer preset-feasible by the time `apply_commands` ran). No node
+    /// was minted at all.
+    SplitNodeAddDeclined { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
 }
 
 impl DebugEvent for QcEvent {
@@ -221,12 +240,31 @@ impl DebugEvent for QcEvent {
                 | QcEvent::StartSet(_)
                 | QcEvent::FinishSet(_)
                 | QcEvent::NodeRemoved(_)
+                | QcEvent::SplitNodeAdded { .. }
         )
     }
 }
 
 fn write_node_id(out: &mut Vec<u8>, id: NodeId) {
     out.extend_from_slice(&id.to_le_bytes());
+}
+
+/// Encodes `SplitNodeAddProposed`/`SplitNodeAdded`/`SplitNodeAddDeclined`'s shared `nodes` field —
+/// one sibling's edge list per entry, each edge as one byte for `direction` (0=Forward,
+/// 1=Backward, 2=Passage) followed by the `target` node.
+fn write_split_nodes(out: &mut Vec<u8>, nodes: &[Vec<SplitNodeEdge>]) {
+    out.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
+    for edges in nodes {
+        out.extend_from_slice(&(edges.len() as u32).to_le_bytes());
+        for edge in edges {
+            out.push(match edge.direction {
+                SplitNodeEdgeDirection::Forward => 0,
+                SplitNodeEdgeDirection::Backward => 1,
+                SplitNodeEdgeDirection::Passage => 2,
+            });
+            write_node_id(out, edge.target);
+        }
+    }
 }
 
 fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
@@ -345,6 +383,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::StartSet(_) => wire_tags::START_SET,
             QcEvent::FinishSet(_) => wire_tags::FINISH_SET,
             QcEvent::NodeRemoved(_) => wire_tags::NODE_REMOVED,
+            QcEvent::SplitNodeAdded { .. } => wire_tags::SPLIT_NODE_ADDED,
 
             QcEvent::DirectedEdgeDeclined { .. } => wire_tags::DIRECTED_EDGE_DECLINED,
             QcEvent::BidirectionalEdgeDeclined { .. } => wire_tags::BIDIRECTIONAL_EDGE_DECLINED,
@@ -357,6 +396,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::StartSetDeclined(_) => wire_tags::START_SET_DECLINED,
             QcEvent::FinishSetDeclined(_) => wire_tags::FINISH_SET_DECLINED,
             QcEvent::NodeRemoveDeclined(_) => wire_tags::NODE_REMOVE_DECLINED,
+            QcEvent::SplitNodeAddDeclined { .. } => wire_tags::SPLIT_NODE_ADD_DECLINED,
 
             QcEvent::DirectedEdgeProposed { .. } => wire_tags::DIRECTED_EDGE_PROPOSED,
             QcEvent::BidirectionalEdgeProposed { .. } => wire_tags::BIDIRECTIONAL_EDGE_PROPOSED,
@@ -369,6 +409,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::StartSetProposed(_) => wire_tags::START_SET_PROPOSED,
             QcEvent::FinishSetProposed(_) => wire_tags::FINISH_SET_PROPOSED,
             QcEvent::NodeRemoveProposed(_) => wire_tags::NODE_REMOVE_PROPOSED,
+            QcEvent::SplitNodeAddProposed { .. } => wire_tags::SPLIT_NODE_ADD_PROPOSED,
 
             QcEvent::StrategyFailed { .. } => wire_tags::STRATEGY_FAILED,
         }
@@ -430,6 +471,19 @@ impl EncodeEventPayload for QcEvent {
             }
 
             QcEvent::StrategyFailed { strategy_id } => write_str(out, strategy_id),
+
+            QcEvent::SplitNodeAddProposed { at, nodes } | QcEvent::SplitNodeAddDeclined { at, nodes } => {
+                write_node_id(out, *at);
+                write_split_nodes(out, nodes);
+            }
+            QcEvent::SplitNodeAdded { at, new_nodes, nodes } => {
+                write_node_id(out, *at);
+                out.extend_from_slice(&(new_nodes.len() as u32).to_le_bytes());
+                for &id in new_nodes {
+                    write_node_id(out, id);
+                }
+                write_split_nodes(out, nodes);
+            }
         }
     }
 }

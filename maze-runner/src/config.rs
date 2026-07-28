@@ -367,10 +367,23 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
 /// `maze_core::generation::SplitGenerationConfig`'s doc comment). `face_index` is passed through
 /// unvalidated here — this layer isn't generic over a concrete `T: Tessellation`, so the
 /// degree-range check happens later, once `T` is known (`dispatch`/`run_generate_typed`).
-fn build_split_generation_config(dto: &SplitGenerationConfigDto) -> maze_core::generation::SplitGenerationConfig {
-    use maze_core::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement, OneWayDirection};
+pub(crate) fn build_split_generation_config(dto: &SplitGenerationConfigDto) -> maze_core::generation::SplitGenerationConfig {
     let max_split_nodes = dto.max_split_nodes.unwrap_or(2).max(1);
-    let patterns = dto.patterns.iter().map(|p| SplitPattern {
+    let patterns = build_split_patterns(&dto.patterns);
+    maze_core::generation::SplitGenerationConfig {
+        pattern_mode: dto.pattern_mode,
+        max_split_nodes,
+        patterns,
+    }
+}
+
+/// Converts a slice of wire-shape `SplitPatternDto` into `maze_core::generation::SplitPattern` —
+/// shared by generation's own `split_generation` field and, via `parse_split_patterns_param`
+/// (GitHub issue #247), any check/strategy param carrying its own independent pattern list
+/// (`SplitCountCheck`/`SplitDensityCheck`/`AddSplitStrategy`).
+pub(crate) fn build_split_patterns(dtos: &[SplitPatternDto]) -> Vec<maze_core::generation::SplitPattern> {
+    use maze_core::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement, OneWayDirection};
+    dtos.iter().map(|p| SplitPattern {
         node_count: p.node_count,
         faces: p.faces.iter().map(|node_faces| node_faces.iter().map(|f| SplitPatternFace {
             face_index: f.face_index,
@@ -386,12 +399,33 @@ fn build_split_generation_config(dto: &SplitGenerationConfigDto) -> maze_core::g
             sibling_target: f.sibling_target,
         }).collect()).collect(),
         weight: p.weight.max(0.0),
-    }).collect();
-    maze_core::generation::SplitGenerationConfig {
-        pattern_mode: dto.pattern_mode,
-        max_split_nodes,
-        patterns,
-    }
+    }).collect()
+}
+
+/// Parses a `params["patterns"]`-style value (GitHub issue #247) — a JSON array of
+/// `SplitPatternDto`, the same wire shape `SplitGenerationConfigDto.patterns` uses, serialized to
+/// a string since `CheckInstanceConfig`/`StrategyConfig.params` is a flat `HashMap<String,
+/// String>`, not structured JSON. Missing key or malformed JSON both fall back to an empty list
+/// (the check's own "no filter"/the strategy's own "unconstrained" default) rather than erroring
+/// the whole config — same "invalid falls back to documented default" contract every other
+/// `params` value in this factory follows.
+pub(crate) fn parse_split_patterns_param(param: Option<&String>) -> Vec<maze_core::generation::SplitPattern> {
+    let Some(raw) = param else { return Vec::new(); };
+    let Ok(dtos) = serde_json::from_str::<Vec<SplitPatternDto>>(raw) else { return Vec::new(); };
+    build_split_patterns(&dtos)
+}
+
+/// Parses a `params["split_config"]`-style value (`AddSplitStrategy`'s own pattern-selection
+/// config, GitHub issue #247) — the exact same wire shape `GenerateConfig.split_generation` uses
+/// (`SplitGenerationConfigDto`), reused as-is rather than a bespoke parallel shape, since
+/// `AddSplitStrategy::config` is itself a plain `generation::SplitGenerationConfig`. Missing key
+/// or malformed JSON both fall back to the type's own `Default` (unconstrained mode,
+/// `max_split_nodes: 2`, no patterns) — same "invalid falls back to documented default" contract
+/// `parse_split_patterns_param` follows.
+pub(crate) fn parse_split_config_param(param: Option<&String>) -> maze_core::generation::SplitGenerationConfig {
+    let Some(raw) = param else { return Default::default(); };
+    let Ok(dto) = serde_json::from_str::<SplitGenerationConfigDto>(raw) else { return Default::default(); };
+    build_split_generation_config(&dto)
 }
 
 fn build_preset_endpoint(dto: &PresetEndpointDto) -> PresetEndpoint {

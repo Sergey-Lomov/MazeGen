@@ -157,6 +157,8 @@ function DraftStrategyParamPanel({ strategyId, params, draftValues, onChange }: 
     if (k.type === "bool") return k.default ? "true" : "false";
     // "min,max" -- mirrors maze-core's `parse_param` Interval encoding (repair/params.rs).
     if (k.type === "interval") return `${k.default_min},${k.default_max}`;
+    if (k.type === "pattern_list") return "[]";
+    if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
     return String(k.default);
   }
 

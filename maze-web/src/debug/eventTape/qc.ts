@@ -1,6 +1,6 @@
 // --- Quality-control/repair event decoding + replay (GitHub issue #147) ---
 
-import { expectLen, readNodeId, readU32, readStr, type ParsedTape } from "./wire";
+import { expectLen, readNodeId, readNodeIdList, readU32, readStr, type ParsedTape } from "./wire";
 import { mutatingEventsWithIndex, type MutatingEventAt } from "./scan";
 import { validateStepShape, type Edge } from "./applyShared";
 
@@ -51,9 +51,22 @@ export const QC_TAG = {
   NODE_REMOVE_PROPOSED: 40,
 
   STRATEGY_FAILED: 41,
+
+  SPLIT_NODE_ADDED: 42,
+  SPLIT_NODE_ADD_DECLINED: 43,
+  SPLIT_NODE_ADD_PROPOSED: 44,
 } as const;
 
 export type RepairLimitKind = "MaxIterations" | "TimeBudget";
+
+/** Mirrors `repair::SplitNodeEdgeDirection`/`SplitNodeEdge` in `maze-core/src/repair/command.rs`
+ *  — one sibling's edge to an already-existing graph node, minted by `MutationCommand::AddSplitNode`
+ *  (GitHub issue #247). */
+export type SplitNodeEdgeDirection = "Forward" | "Backward" | "Passage";
+export interface SplitNodeEdge {
+  target: bigint;
+  direction: SplitNodeEdgeDirection;
+}
 
 /** Mirrors `IssuePayload` in `maze-core/src/quality_control/issue_payload.rs` — `None` for the
  *  `Issue` kinds with no structural edge/node payload (see that type's doc comment). */
@@ -109,6 +122,9 @@ export type QcEvent =
   | { kind: "NodeRemoved"; id: bigint }
   | { kind: "NodeRemoveDeclined"; id: bigint }
   | { kind: "NodeRemoveProposed"; id: bigint }
+  | { kind: "SplitNodeAdded"; at: bigint; newNodes: bigint[]; nodes: SplitNodeEdge[][] }
+  | { kind: "SplitNodeAddDeclined"; at: bigint; nodes: SplitNodeEdge[][] }
+  | { kind: "SplitNodeAddProposed"; at: bigint; nodes: SplitNodeEdge[][] }
   | { kind: "StrategyFailed"; strategyId: string };
 
 /** Reads the `HashMap<String, Vec<Vec<[u32; 2]>>>` wire shape `write_str_keyed_edge_pairs`
@@ -187,6 +203,29 @@ function readStrKeyedFlatNodeLists(bytes: Uint8Array, offset: number): { value: 
     value.set(key, nodes);
   }
   return { value, next: pos };
+}
+
+/** Reads the `Vec<Vec<SplitNodeEdge>>` wire shape `write_split_nodes` produces — one sibling's
+ *  edge list per entry, each edge as one byte for `direction` (0=Forward, 1=Backward, 2=Passage)
+ *  followed by the 8-byte `target` node id. */
+function readSplitNodes(bytes: Uint8Array, offset: number): { value: SplitNodeEdge[][]; next: number } {
+  const siblingCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  const nodes: SplitNodeEdge[][] = [];
+  for (let s = 0; s < siblingCount; s++) {
+    const edgeCount = readU32(bytes, pos);
+    pos += 4;
+    const edges: SplitNodeEdge[] = [];
+    for (let e = 0; e < edgeCount; e++) {
+      const directionByte = bytes[pos];
+      const direction: SplitNodeEdgeDirection = directionByte === 0 ? "Forward" : directionByte === 1 ? "Backward" : "Passage";
+      const target = readNodeId(bytes, pos + 1);
+      edges.push({ target, direction });
+      pos += 9;
+    }
+    nodes.push(edges);
+  }
+  return { value: nodes, next: pos };
 }
 
 /** Reads one check's own raw display details (GitHub issue #171) — mirrors `write_details`
@@ -386,6 +425,23 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       expectLen(tag, bytes, 8);
       return { kind: "NodeRemoveProposed", id: readNodeId(bytes, 0) };
 
+    case QC_TAG.SPLIT_NODE_ADDED: {
+      const at = readNodeId(bytes, 0);
+      const { ids: newNodes, next } = readNodeIdList(bytes, 8);
+      const { value: nodes } = readSplitNodes(bytes, next);
+      return { kind: "SplitNodeAdded", at, newNodes, nodes };
+    }
+    case QC_TAG.SPLIT_NODE_ADD_DECLINED: {
+      const at = readNodeId(bytes, 0);
+      const { value: nodes } = readSplitNodes(bytes, 8);
+      return { kind: "SplitNodeAddDeclined", at, nodes };
+    }
+    case QC_TAG.SPLIT_NODE_ADD_PROPOSED: {
+      const at = readNodeId(bytes, 0);
+      const { value: nodes } = readSplitNodes(bytes, 8);
+      return { kind: "SplitNodeAddProposed", at, nodes };
+    }
+
     case QC_TAG.STRATEGY_FAILED: {
       const { value: strategyId } = readStr(bytes, 0);
       return { kind: "StrategyFailed", strategyId };
@@ -397,7 +453,7 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
 }
 
 /** Mirrors `DebugEvent::is_mutating`'s split for `QcEvent` in
- *  `maze-core/src/quality_control/event.rs` — `true` for the 9 mutation-mirror variants; every
+ *  `maze-core/src/quality_control/event.rs` — `true` for the 11 mutation-mirror variants; every
  *  `*Declined` variant and every trace variant is `false`. */
 export function isMutatingQcEvent(event: QcEvent): boolean {
   return (
@@ -411,7 +467,8 @@ export function isMutatingQcEvent(event: QcEvent): boolean {
     event.kind === "TeleportRemovedWithReverse" ||
     event.kind === "StartSet" ||
     event.kind === "FinishSet" ||
-    event.kind === "NodeRemoved"
+    event.kind === "NodeRemoved" ||
+    event.kind === "SplitNodeAdded"
   );
 }
 
@@ -446,6 +503,11 @@ export interface QcApplyResult {
    *  exclude a removed split node from the reconstructed node list, mirroring how `removedEdges`
    *  lets it retract an earlier source's edges. */
   removedNodes: bigint[];
+  /** Node ids minted by `MutationCommand::AddSplitNode` (GitHub issue #247's `AddSplitStrategy`)
+   *  up to this step — append-only, mirrors `removedNodes`. Lets `mergeDebugMazeView` include a
+   *  freshly minted split-tile sibling in the reconstructed node list, the same way
+   *  `VertexBasedApplyResult.createdNodes` does for a generation-time split. */
+  createdNodes: bigint[];
   start: bigint | null;
   finish: bigint | null;
   step: number;
@@ -484,7 +546,7 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
       throw new Error(`applyQc: from.step ${from.step} is ahead of targetStep ${targetStep}`);
     }
     if (from.step === targetStep) {
-      return { edges: [...from.edges], removedEdges: [...from.removedEdges], removedNodes: [...from.removedNodes], start: from.start, finish: from.finish, step: targetStep, nodeIndex: from.nodeIndex };
+      return { edges: [...from.edges], removedEdges: [...from.removedEdges], removedNodes: [...from.removedNodes], createdNodes: [...from.createdNodes], start: from.start, finish: from.finish, step: targetStep, nodeIndex: from.nodeIndex };
     }
   }
 
@@ -505,6 +567,7 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
   const net = new Map<string, Edge>(from ? from.edges.map((e) => [`${e.from}:${e.to}`, e]) : undefined);
   const removedFromEarlierSources = new Set<string>(from ? from.removedEdges.map((e) => `${e.from}:${e.to}`) : undefined);
   const removedNodes = new Set<bigint>(from?.removedNodes);
+  const createdNodes = new Set<bigint>(from?.createdNodes);
   let start: bigint | null = from?.start ?? null;
   let finish: bigint | null = from?.finish ?? null;
 
@@ -564,6 +627,17 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
       case "NodeRemoved":
         removedNodes.add(event.id);
         break;
+      case "SplitNodeAdded":
+        for (let i = 0; i < event.newNodes.length; i++) {
+          const node = event.newNodes[i];
+          createdNodes.add(node);
+          for (const edge of event.nodes[i]) {
+            if (edge.direction === "Forward") add(node, edge.target, "basic");
+            else if (edge.direction === "Backward") add(edge.target, node, "basic");
+            else { add(node, edge.target, "basic"); add(edge.target, node, "basic"); }
+          }
+        }
+        break;
       default:
         break;
     }
@@ -575,5 +649,5 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
     return { from: BigInt(from), to: BigInt(to) };
   });
 
-  return { edges, removedEdges, removedNodes: [...removedNodes], start, finish, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
+  return { edges, removedEdges, removedNodes: [...removedNodes], createdNodes: [...createdNodes], start, finish, step: targetStep, nodeIndex: events[events.length - 1].nodeIndex };
 }

@@ -1,7 +1,7 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
-    quality_control::{IssueKind, Comparison, CycleKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOPS_COUNT_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, INVALID_ONE_WAY_GROUP, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, MISSING_ONE_WAYS, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT, MISSING_TELEPORTS, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT, INVALID_SPLIT_TILE, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, INVALID_SPLIT_TILE_GROUP, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT},
+    quality_control::{IssueKind, Comparison, CycleKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOPS_COUNT_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, INVALID_ONE_WAY_GROUP, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, MISSING_ONE_WAYS, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT, MISSING_TELEPORTS, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT, INVALID_SPLIT_TILE, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, INVALID_SPLIT_TILE_GROUP, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, MISSING_SPLIT_TILES, SPLIT_COUNT_DEFAULT, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT},
     RegionClass,
 };
 
@@ -20,6 +20,22 @@ pub enum ParamKindDto {
     Bool { default: bool },
     Enum { options: Vec<&'static str>, default: &'static str },
     Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
+    /// A split-pattern list (GitHub issue #247) — signals the web UI to render the dedicated
+    /// pattern-list dialog instead of a generic input. Value is carried as a JSON-serialized
+    /// `Vec<SplitPatternDto>` string in the check/strategy's own `params` map (the same wire shape
+    /// `SplitGenerationConfigDto.patterns` uses; see `maze-runner`'s `parse_split_patterns_param`).
+    /// `with_weights` distinguishes a plain "all vs this list" filter (a check's own pattern-list
+    /// param, no weights) from a full weighted pattern pool with an unconstrained-mode switch (a
+    /// strategy's own pattern-selection config).
+    PatternList { with_weights: bool },
+    /// A full split-generation config — pattern mode toggle, `max_split_nodes` (unconstrained
+    /// mode), and a weighted pattern list (pattern mode) — bundled behind one settings button that
+    /// opens the same dialog generation's own split settings use (`AddSplitStrategy`'s `patterns`
+    /// param, GitHub issue #247). Value round-trips as a JSON-serialized
+    /// `SplitGenerationConfigDto` string (the same wire shape `GenerateConfig.split_generation`
+    /// uses; see `maze-runner`'s `parse_split_config_param`), not the flat `PatternList` shape
+    /// above — a `PatternList` param has no mode switch or node-count field of its own.
+    SplitGenerationConfig,
 }
 
 #[derive(Serialize)]
@@ -108,6 +124,18 @@ fn cycle_kind_param() -> ParamDescriptor {
             options: CycleKind::ALL.iter().map(|k| k.as_str()).collect(),
             default: CycleKind::Any.as_str(),
         },
+    }
+}
+
+/// Shared `patterns` param descriptor for `SplitCountCheck`/`SplitDensityCheck` (GitHub issue
+/// #247) — "all splits count" (empty list, the default) vs. "only splits matching one of these
+/// patterns". No weights: a check's pattern list is a pure membership filter, unlike
+/// `AddSplitStrategy`'s own weighted selection pool.
+fn split_patterns_filter_param() -> ParamDescriptor {
+    ParamDescriptor {
+        id: "patterns",
+        label: "Split patterns",
+        kind: ParamKindDto::PatternList { with_weights: false },
     }
 }
 
@@ -704,6 +732,41 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
             ],
             allow_multiple_instances: true,
+        },
+        CheckDescriptor {
+            id: "split_count",
+            label: "Min count",
+            description: "Fires if the maze has fewer split tiles (optionally filtered to a set of patterns) than the required minimum.",
+            issue_kinds: vec![kind_str(MISSING_SPLIT_TILES)],
+            params: vec![
+                ParamDescriptor {
+                    id: "split_count",
+                    label: "Min count",
+                    kind: ParamKindDto::Integer { default: SPLIT_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+                split_patterns_filter_param(),
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "split_density",
+            label: "Min density",
+            description: "Fires if too small a share of the field carries split tiles (optionally filtered to a set of patterns), converting the coverage deficit into a split tile count via an estimated tiles-per-split.",
+            issue_kinds: vec![kind_str(MISSING_SPLIT_TILES)],
+            params: vec![
+                ParamDescriptor {
+                    id: "split_density",
+                    label: "Min density (per 100 cells)",
+                    kind: ParamKindDto::Integer { default: SPLIT_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+                },
+                ParamDescriptor {
+                    id: "split_tile_estimate",
+                    label: "Split tile coverage estimate",
+                    kind: ParamKindDto::Integer { default: SPLIT_DENSITY_ESTIMATE_DEFAULT as i64, min: 1, max: 100_000 },
+                },
+                split_patterns_filter_param(),
+            ],
+            allow_multiple_instances: false,
         },
     ]
 }

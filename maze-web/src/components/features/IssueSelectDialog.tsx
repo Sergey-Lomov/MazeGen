@@ -21,7 +21,7 @@ const ISSUE_KIND_ORDER = [
   "missing_teleports", "invalid_teleport", "invalid_teleport_group",
   "missing_loops", "invalid_loop", "invalid_loop_group",
   "missing_regions", "region_needs_expansion", "region_needs_shrink", "excessive_scc_count",
-  "invalid_split_tile", "invalid_split_tile_group",
+  "missing_split_tiles", "invalid_split_tile", "invalid_split_tile_group",
 ];
 
 /** Step 1 of "Add new rule": pick the issue kind first, narrowing the check list shown in
