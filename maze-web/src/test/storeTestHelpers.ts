@@ -1,5 +1,5 @@
 import { emptyFreePoints } from "../store/storeHelpers";
-import { RB_TAG, NO_NODE } from "../debug/eventTape";
+import { RECURSIVE_BACKTRACKER_EVENT_TAG, NO_NODE } from "../debug/eventTape";
 import type { DebugValueDescriptor } from "../debug/eventTape";
 
 export { emptyFreePoints };
@@ -78,7 +78,7 @@ export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uin
   edges.forEach((_, i) => {
     const index = MERGED_TAPE_NODE_OFFSET + i;
     const nextSibling = i < edges.length - 1 ? index + 1 : NO_NODE;
-    writeRecord(index, 2, NO_NODE, nextSibling, RB_TAG.EDGE_ADDED, edgeOffsets[i], edgePayloadChunks[i].byteLength);
+    writeRecord(index, 2, NO_NODE, nextSibling, RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, edgeOffsets[i], edgePayloadChunks[i].byteLength);
   });
   // debugValueNames (GitHub issue #131) is a plain array in the real WASM response, not derived
   // from these edges — fixtures using this helper aren't exercising RB's recursion_stack declaration,

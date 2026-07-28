@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, NO_NODE, RECURSIVE_BACKTRACKER_EVENT_TAG, KRUSKAL_EVENT_TAG, WILSON_EVENT_TAG, EDGE_BASED_EVENT_TAG, VERTEX_BASED_EVENT_TAG, type ParsedTape } from "../debug/eventTape";
 import {
   buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, resolveHighlightTarget,
   buildNodeCoordIndex, displayStepForRow,
@@ -84,12 +84,12 @@ function buildTwoStepTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("step") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-    { parent: 1, firstChild: null, nextSibling: 4, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(2n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 1, firstChild: null, nextSibling: 4, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(2n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
     { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step") },
-    { parent: 5, firstChild: null, nextSibling: 7, tag: RB_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
-    { parent: 5, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
+    { parent: 5, firstChild: null, nextSibling: 7, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
+    { parent: 5, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
   ]);
 }
 
@@ -104,12 +104,12 @@ function buildTwoEdgeKruskalTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: rootsPayload },
-    { parent: 1, firstChild: null, nextSibling: 4, tag: KRUSKAL_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 3n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, payloadBytes: rootsPayload },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: KRUSKAL_EVENT_TAG.EDGE_SELECTED, payloadBytes: rootsPayload },
+    { parent: 1, firstChild: null, nextSibling: 4, tag: KRUSKAL_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.SETS_MERGED, payloadBytes: rootsPayload },
     { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 2") },
-    { parent: 5, firstChild: null, nextSibling: 7, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: rootsPayload },
-    { parent: 5, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
+    { parent: 5, firstChild: null, nextSibling: 7, tag: KRUSKAL_EVENT_TAG.EDGE_SELECTED, payloadBytes: rootsPayload },
+    { parent: 5, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
   ]);
 }
 
@@ -127,11 +127,11 @@ function buildOneWalkWilsonTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(5n) },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_EVENT_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(5n) },
     { parent: 1, firstChild: 4, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: concatBytes([u64le(5n), u64le(3n)]) },
-    { parent: 1, firstChild: null, nextSibling: 6, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(5n, 3n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(5n) },
+    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_EVENT_TAG.STEP_TAKEN, payloadBytes: concatBytes([u64le(5n), u64le(3n)]) },
+    { parent: 1, firstChild: null, nextSibling: 6, tag: WILSON_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(5n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: WILSON_EVENT_TAG.NODE_VISITED, payloadBytes: vertexPayload(5n) },
   ]);
 }
 
@@ -164,9 +164,9 @@ function buildOneStepEdgeBasedTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: EDGE_BASED_TAG.CORRIDOR_ROLL_SKIPPED, payloadBytes: new Uint8Array(0) },
-    { parent: 1, firstChild: null, nextSibling: 4, tag: EDGE_BASED_TAG.EDGE_ADDED, payloadBytes: edgeBasedEdgeAddedPayload(1n, 3n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_TAG.NODE_ACTIVATED, payloadBytes: nodeActivatedPayload },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: EDGE_BASED_EVENT_TAG.CORRIDOR_ROLL_SKIPPED, payloadBytes: new Uint8Array(0) },
+    { parent: 1, firstChild: null, nextSibling: 4, tag: EDGE_BASED_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeBasedEdgeAddedPayload(1n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_EVENT_TAG.NODE_ACTIVATED, payloadBytes: nodeActivatedPayload },
   ]);
 }
 
@@ -197,9 +197,9 @@ function buildOneStepVertexBasedTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_TAG.TELEPORT_ROLLED, payloadBytes: teleportRolledPayload },
-    { parent: 1, firstChild: null, nextSibling: 4, tag: VERTEX_BASED_TAG.EDGE_ADDED, payloadBytes: vertexBasedEdgeAddedPayload(1n, 3n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.NODE_VISITED, payloadBytes: nodeVisitedPayload },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_EVENT_TAG.TELEPORT_ROLLED, payloadBytes: teleportRolledPayload },
+    { parent: 1, firstChild: null, nextSibling: 4, tag: VERTEX_BASED_EVENT_TAG.EDGE_ADDED, payloadBytes: vertexBasedEdgeAddedPayload(1n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_EVENT_TAG.NODE_VISITED, payloadBytes: nodeVisitedPayload },
   ]);
 }
 
@@ -228,8 +228,8 @@ describe("buildStepIndex — kruskal dispatch (GitHub issue #146)", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
-      { parent: 1, firstChild: null, nextSibling: 2, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
-      { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
+      { parent: 1, firstChild: null, nextSibling: 2, tag: KRUSKAL_EVENT_TAG.EDGE_SELECTED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
     ]);
     const stepIndex = buildStepIndex(tape, [{ kind: "kruskal", nodeIndex: 0 }]);
     expect(stepIndex.stepToNodeIndex).toEqual([]);
@@ -279,8 +279,8 @@ describe("buildStepIndex / stepForNode / nodeIndexForStep invariants", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step") },
-      { parent: 1, firstChild: null, nextSibling: 3, tag: RB_TAG.VERTEX_SELECTED, payloadBytes: vertexPayload(1n) },
-      { parent: 1, firstChild: null, nextSibling: null, tag: RB_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
+      { parent: 1, firstChild: null, nextSibling: 3, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_SELECTED, payloadBytes: vertexPayload(1n) },
+      { parent: 1, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
     ]);
     const stepIndex = buildStepIndex(tape, [{ kind: "recursive_backtracker", nodeIndex: 0 }]);
     expect(stepIndex.stepToNodeIndex).toEqual([]);
@@ -320,7 +320,7 @@ describe("flattenVisibleRows", () => {
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step") },
       { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("roll") },
-      { parent: 2, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_SELECTED, payloadBytes: vertexPayload(1n) },
+      { parent: 2, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_SELECTED, payloadBytes: vertexPayload(1n) },
     ]);
 
     // Only top-level expanded: nested "roll" scope's child stays hidden.

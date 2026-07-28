@@ -4,7 +4,7 @@ import {
   decodeQcEvent, isMutatingQcEvent, mutatingQcEvents, mutatingQcEventsWithIndex, applyQc,
   decodeRecursiveBacktrackerEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
   resolveDebugArenaMetadata, countMutatingEvents,
-  TAG_SCOPE, NO_NODE, RB_TAG, QC_TAG,
+  TAG_SCOPE, NO_NODE, RECURSIVE_BACKTRACKER_EVENT_TAG, QC_EVENT_TAG,
   type ParsedTape, type QcApplyResult,
 } from "../debug/eventTape";
 import { adapterFor, adapterForNode, adapterForKind, type ScopeTitleLookup } from "../debug/algorithmRegistry";
@@ -89,17 +89,17 @@ function buildFixture(nodes: FixtureNode[]): ParsedTape {
 
 describe("decodeQcEvent", () => {
   it("decodes IterationStarted (4 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.ITERATION_STARTED, u32le(2))).toEqual({ kind: "IterationStarted", iteration: 2 });
+    expect(decodeQcEvent(QC_EVENT_TAG.ITERATION_STARTED, u32le(2))).toEqual({ kind: "IterationStarted", iteration: 2 });
   });
 
   it("decodes CheckRan with issue: null", () => {
     const payload = concatBytes([strPayload("c1"), new Uint8Array([0])]);
-    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({ kind: "CheckRan", checkId: "c1", issue: null });
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({ kind: "CheckRan", checkId: "c1", issue: null });
   });
 
   it("decodes CheckRan with issue present and IssuePayload::None and an empty details map", () => {
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("missing_endpoints"), new Uint8Array([0]), u32le(0)]);
-    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1", issue: { issueKind: "missing_endpoints", payload: { kind: "None" }, details: new Map() },
     });
   });
@@ -112,7 +112,7 @@ describe("decodeQcEvent", () => {
     // details: 1 entry -> "threshold" = "10"
     const detailsMap = concatBytes([u32le(1), strPayload("threshold"), strPayload("10")]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_loop"), new Uint8Array([1]), edgesMap, detailsMap]);
-    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
         issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) },
@@ -127,7 +127,7 @@ describe("decodeQcEvent", () => {
       u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5),
     ]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("region_needs_expansion"), new Uint8Array([2]), nodesMap, u32le(0)]);
-    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
         issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [[5n]]]]) },
@@ -142,7 +142,7 @@ describe("decodeQcEvent", () => {
       u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5),
     ]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("region_needs_shrink"), new Uint8Array([3]), nodesMap, u32le(0)]);
-    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
         issueKind: "region_needs_shrink", payload: { kind: "RegionNeedsShrink", nodes: new Map([["check1", [[5n]]]]) },
@@ -157,7 +157,7 @@ describe("decodeQcEvent", () => {
       u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
     ]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_teleport"), new Uint8Array([4]), groupsMap, u32le(0)]);
-    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
         issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map([["check1", [[[1n, 2n]]]]]) },
@@ -172,7 +172,7 @@ describe("decodeQcEvent", () => {
       u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
     ]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_one_way"), new Uint8Array([5]), groupsMap, u32le(0)]);
-    expect(decodeQcEvent(QC_TAG.CHECK_RAN, payload)).toEqual({
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
         issueKind: "invalid_one_way", payload: { kind: "InvalidOneWay", groups: new Map([["check1", [[[1n, 2n]]]]]) },
@@ -183,7 +183,7 @@ describe("decodeQcEvent", () => {
 
   it("decodes IssuesMerged with IssuePayload::None and an empty details map", () => {
     const payload = concatBytes([strPayload("invalid_loop"), new Uint8Array([0]), u32le(0)]);
-    expect(decodeQcEvent(QC_TAG.ISSUES_MERGED, payload)).toEqual({
+    expect(decodeQcEvent(QC_EVENT_TAG.ISSUES_MERGED, payload)).toEqual({
       kind: "IssuesMerged", issueKind: "invalid_loop", payload: { kind: "None" }, details: new Map(),
     });
   });
@@ -196,7 +196,7 @@ describe("decodeQcEvent", () => {
     // details: 1 contributing check ("check1") -> {"threshold": "10"}
     const detailsMap = concatBytes([u32le(1), strPayload("check1"), u32le(1), strPayload("threshold"), strPayload("10")]);
     const payload = concatBytes([strPayload("invalid_loop"), new Uint8Array([1]), edgesMap, detailsMap]);
-    expect(decodeQcEvent(QC_TAG.ISSUES_MERGED, payload)).toEqual({
+    expect(decodeQcEvent(QC_EVENT_TAG.ISSUES_MERGED, payload)).toEqual({
       kind: "IssuesMerged", issueKind: "invalid_loop",
       payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) },
       details: new Map([["check1", new Map([["threshold", "10"]])]]),
@@ -204,91 +204,91 @@ describe("decodeQcEvent", () => {
   });
 
   it("decodes IterationLimitReached (MaxIterations)", () => {
-    expect(decodeQcEvent(QC_TAG.ITERATION_LIMIT_REACHED, new Uint8Array([0]))).toEqual({ kind: "IterationLimitReached", limit: "MaxIterations" });
+    expect(decodeQcEvent(QC_EVENT_TAG.ITERATION_LIMIT_REACHED, new Uint8Array([0]))).toEqual({ kind: "IterationLimitReached", limit: "MaxIterations" });
   });
 
   it("decodes IterationLimitReached (TimeBudget)", () => {
-    expect(decodeQcEvent(QC_TAG.ITERATION_LIMIT_REACHED, new Uint8Array([1]))).toEqual({ kind: "IterationLimitReached", limit: "TimeBudget" });
+    expect(decodeQcEvent(QC_EVENT_TAG.ITERATION_LIMIT_REACHED, new Uint8Array([1]))).toEqual({ kind: "IterationLimitReached", limit: "TimeBudget" });
   });
 
   it("decodes DirectedEdgeAdded (16 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.DIRECTED_EDGE_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedEdgeAdded", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.DIRECTED_EDGE_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedEdgeAdded", from: 1n, to: 2n });
   });
 
   it("decodes BidirectionalEdgeAdded (16 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_EDGE_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeAdded", a: 1n, b: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_EDGE_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeAdded", a: 1n, b: 2n });
   });
 
   it("decodes DirectedTeleportAdded (16 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.DIRECTED_TELEPORT_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportAdded", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.DIRECTED_TELEPORT_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportAdded", from: 1n, to: 2n });
   });
 
   it("decodes BidirectionalTeleportAdded (16 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportAdded", a: 1n, b: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_TELEPORT_ADDED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportAdded", a: 1n, b: 2n });
   });
 
   it("decodes EdgeRemoved (16 bytes — from/to, GitHub issue #171's follow-up fix)", () => {
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoved", from: 7n, to: 8n });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoved", from: 7n, to: 8n });
   });
 
   it("decodes EdgeRemovedBetween (16 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVED_BETWEEN, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemovedBetween", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVED_BETWEEN, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemovedBetween", from: 1n, to: 2n });
   });
 
   it("decodes TeleportRemovedWithReverse (17 bytes — from/to of the primary id + reverseRemoved byte, GitHub issue #171's follow-up fix / #185's reverseRemoved fix)", () => {
-    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, concatBytes([u64le(3n), u64le(4n), new Uint8Array([1])]))).toEqual({ kind: "TeleportRemovedWithReverse", from: 3n, to: 4n, reverseRemoved: true });
+    expect(decodeQcEvent(QC_EVENT_TAG.TELEPORT_REMOVED_WITH_REVERSE, concatBytes([u64le(3n), u64le(4n), new Uint8Array([1])]))).toEqual({ kind: "TeleportRemovedWithReverse", from: 3n, to: 4n, reverseRemoved: true });
   });
 
   it("decodes EdgeRemovedWithReverse (17 bytes — from/to of the primary id + reverseRemoved byte, GitHub issue #185)", () => {
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVED_WITH_REVERSE, concatBytes([u64le(5n), u64le(6n), new Uint8Array([1])]))).toEqual({ kind: "EdgeRemovedWithReverse", from: 5n, to: 6n, reverseRemoved: true });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVED_WITH_REVERSE, concatBytes([u64le(5n), u64le(6n), new Uint8Array([1])]))).toEqual({ kind: "EdgeRemovedWithReverse", from: 5n, to: 6n, reverseRemoved: true });
   });
 
   it("decodes EdgeRemovedWithReverse with reverseRemoved false when only the primary direction existed", () => {
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVED_WITH_REVERSE, concatBytes([u64le(5n), u64le(6n), new Uint8Array([0])]))).toEqual({ kind: "EdgeRemovedWithReverse", from: 5n, to: 6n, reverseRemoved: false });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVED_WITH_REVERSE, concatBytes([u64le(5n), u64le(6n), new Uint8Array([0])]))).toEqual({ kind: "EdgeRemovedWithReverse", from: 5n, to: 6n, reverseRemoved: false });
   });
 
   it("decodes StartSet (8 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.START_SET, u64le(1n))).toEqual({ kind: "StartSet", id: 1n });
+    expect(decodeQcEvent(QC_EVENT_TAG.START_SET, u64le(1n))).toEqual({ kind: "StartSet", id: 1n });
   });
 
   it("decodes FinishSet (8 bytes)", () => {
-    expect(decodeQcEvent(QC_TAG.FINISH_SET, u64le(2n))).toEqual({ kind: "FinishSet", id: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.FINISH_SET, u64le(2n))).toEqual({ kind: "FinishSet", id: 2n });
   });
 
   it("decodes every *Declined variant identically to its mutating mirror except the kind", () => {
-    expect(decodeQcEvent(QC_TAG.DIRECTED_EDGE_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedEdgeDeclined", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_EDGE_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeDeclined", a: 1n, b: 2n });
-    expect(decodeQcEvent(QC_TAG.DIRECTED_TELEPORT_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportDeclined", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportDeclined", a: 1n, b: 2n });
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_DECLINED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoveDeclined", from: 7n, to: 8n });
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_BETWEEN_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenDeclined", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_WITH_REVERSE_DECLINED, concatBytes([u64le(5n), u64le(6n), new Uint8Array([0])]))).toEqual({ kind: "EdgeRemoveWithReverseDeclined", from: 5n, to: 6n, reverseRemoved: false });
-    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED, concatBytes([u64le(3n), u64le(4n), new Uint8Array([0])]))).toEqual({ kind: "TeleportRemoveWithReverseDeclined", from: 3n, to: 4n, reverseRemoved: false });
-    expect(decodeQcEvent(QC_TAG.START_SET_DECLINED, u64le(1n))).toEqual({ kind: "StartSetDeclined", id: 1n });
-    expect(decodeQcEvent(QC_TAG.FINISH_SET_DECLINED, u64le(2n))).toEqual({ kind: "FinishSetDeclined", id: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.DIRECTED_EDGE_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedEdgeDeclined", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_EDGE_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeDeclined", a: 1n, b: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.DIRECTED_TELEPORT_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportDeclined", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_TELEPORT_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportDeclined", a: 1n, b: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_DECLINED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoveDeclined", from: 7n, to: 8n });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_BETWEEN_DECLINED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenDeclined", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_WITH_REVERSE_DECLINED, concatBytes([u64le(5n), u64le(6n), new Uint8Array([0])]))).toEqual({ kind: "EdgeRemoveWithReverseDeclined", from: 5n, to: 6n, reverseRemoved: false });
+    expect(decodeQcEvent(QC_EVENT_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED, concatBytes([u64le(3n), u64le(4n), new Uint8Array([0])]))).toEqual({ kind: "TeleportRemoveWithReverseDeclined", from: 3n, to: 4n, reverseRemoved: false });
+    expect(decodeQcEvent(QC_EVENT_TAG.START_SET_DECLINED, u64le(1n))).toEqual({ kind: "StartSetDeclined", id: 1n });
+    expect(decodeQcEvent(QC_EVENT_TAG.FINISH_SET_DECLINED, u64le(2n))).toEqual({ kind: "FinishSetDeclined", id: 2n });
   });
 
   it("decodes NodeRemoved/NodeRemoveDeclined/NodeRemoveProposed (8 bytes, GitHub issue #248)", () => {
-    expect(decodeQcEvent(QC_TAG.NODE_REMOVED, u64le(9n))).toEqual({ kind: "NodeRemoved", id: 9n });
-    expect(decodeQcEvent(QC_TAG.NODE_REMOVE_DECLINED, u64le(9n))).toEqual({ kind: "NodeRemoveDeclined", id: 9n });
-    expect(decodeQcEvent(QC_TAG.NODE_REMOVE_PROPOSED, u64le(9n))).toEqual({ kind: "NodeRemoveProposed", id: 9n });
+    expect(decodeQcEvent(QC_EVENT_TAG.NODE_REMOVED, u64le(9n))).toEqual({ kind: "NodeRemoved", id: 9n });
+    expect(decodeQcEvent(QC_EVENT_TAG.NODE_REMOVE_DECLINED, u64le(9n))).toEqual({ kind: "NodeRemoveDeclined", id: 9n });
+    expect(decodeQcEvent(QC_EVENT_TAG.NODE_REMOVE_PROPOSED, u64le(9n))).toEqual({ kind: "NodeRemoveProposed", id: 9n });
   });
 
   it("decodes StrategyFailed (a plain length-prefixed strategy id string)", () => {
-    expect(decodeQcEvent(QC_TAG.STRATEGY_FAILED, strPayload("remove_split"))).toEqual({ kind: "StrategyFailed", strategyId: "remove_split" });
+    expect(decodeQcEvent(QC_EVENT_TAG.STRATEGY_FAILED, strPayload("remove_split"))).toEqual({ kind: "StrategyFailed", strategyId: "remove_split" });
   });
 
   it("decodes every *Proposed variant identically to its mutating mirror except the kind", () => {
-    expect(decodeQcEvent(QC_TAG.DIRECTED_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedEdgeProposed", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeProposed", a: 1n, b: 2n });
-    expect(decodeQcEvent(QC_TAG.DIRECTED_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportProposed", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.BIDIRECTIONAL_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportProposed", a: 1n, b: 2n });
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_PROPOSED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoveProposed", from: 7n, to: 8n });
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_BETWEEN_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenProposed", from: 1n, to: 2n });
-    expect(decodeQcEvent(QC_TAG.EDGE_REMOVE_WITH_REVERSE_PROPOSED, concatBytes([u64le(5n), u64le(6n)]))).toEqual({ kind: "EdgeRemoveWithReverseProposed", from: 5n, to: 6n });
-    expect(decodeQcEvent(QC_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED, concatBytes([u64le(3n), u64le(4n)]))).toEqual({ kind: "TeleportRemoveWithReverseProposed", from: 3n, to: 4n });
-    expect(decodeQcEvent(QC_TAG.START_SET_PROPOSED, u64le(1n))).toEqual({ kind: "StartSetProposed", id: 1n });
-    expect(decodeQcEvent(QC_TAG.FINISH_SET_PROPOSED, u64le(2n))).toEqual({ kind: "FinishSetProposed", id: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.DIRECTED_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedEdgeProposed", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_EDGE_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalEdgeProposed", a: 1n, b: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.DIRECTED_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "DirectedTeleportProposed", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_TELEPORT_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "BidirectionalTeleportProposed", a: 1n, b: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_PROPOSED, concatBytes([u64le(7n), u64le(8n)]))).toEqual({ kind: "EdgeRemoveProposed", from: 7n, to: 8n });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_BETWEEN_PROPOSED, concatBytes([u64le(1n), u64le(2n)]))).toEqual({ kind: "EdgeRemoveBetweenProposed", from: 1n, to: 2n });
+    expect(decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_WITH_REVERSE_PROPOSED, concatBytes([u64le(5n), u64le(6n)]))).toEqual({ kind: "EdgeRemoveWithReverseProposed", from: 5n, to: 6n });
+    expect(decodeQcEvent(QC_EVENT_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED, concatBytes([u64le(3n), u64le(4n)]))).toEqual({ kind: "TeleportRemoveWithReverseProposed", from: 3n, to: 4n });
+    expect(decodeQcEvent(QC_EVENT_TAG.START_SET_PROPOSED, u64le(1n))).toEqual({ kind: "StartSetProposed", id: 1n });
+    expect(decodeQcEvent(QC_EVENT_TAG.FINISH_SET_PROPOSED, u64le(2n))).toEqual({ kind: "FinishSetProposed", id: 2n });
   });
 
   it("throws on an unknown wire tag", () => {
@@ -296,7 +296,7 @@ describe("decodeQcEvent", () => {
   });
 
   it("throws on a payload_len mismatch for a fixed-size variant", () => {
-    expect(() => decodeQcEvent(QC_TAG.START_SET, new Uint8Array(3))).toThrow(/payload_len/);
+    expect(() => decodeQcEvent(QC_EVENT_TAG.START_SET, new Uint8Array(3))).toThrow(/payload_len/);
   });
 
 });
@@ -364,18 +364,18 @@ function buildQcTwoSourceTape(): ParsedTape {
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: 4, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
     { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-    { parent: 2, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 2, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
     { parent: 0, firstChild: 5, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("quality_control") },
     { parent: 4, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 5, firstChild: 7, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("stage s1") },
     { parent: 6, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("iteration 1") },
-    { parent: 7, firstChild: null, nextSibling: 9, tag: QC_TAG.ITERATION_STARTED, payloadBytes: u32le(0) },
+    { parent: 7, firstChild: null, nextSibling: 9, tag: QC_EVENT_TAG.ITERATION_STARTED, payloadBytes: u32le(0) },
     { parent: 7, firstChild: 10, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("rule r1") },
-    { parent: 9, firstChild: null, nextSibling: 11, tag: QC_TAG.START_SET, payloadBytes: u64le(10n) },
-    { parent: 9, firstChild: null, nextSibling: 12, tag: QC_TAG.FINISH_SET, payloadBytes: u64le(20n) },
-    { parent: 9, firstChild: null, nextSibling: 13, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(10n), u64le(20n)]) },
-    { parent: 9, firstChild: null, nextSibling: 14, tag: QC_TAG.EDGE_REMOVED_BETWEEN, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
-    { parent: 9, firstChild: null, nextSibling: null, tag: QC_TAG.DIRECTED_EDGE_DECLINED, payloadBytes: concatBytes([u64le(30n), u64le(40n)]) },
+    { parent: 9, firstChild: null, nextSibling: 11, tag: QC_EVENT_TAG.START_SET, payloadBytes: u64le(10n) },
+    { parent: 9, firstChild: null, nextSibling: 12, tag: QC_EVENT_TAG.FINISH_SET, payloadBytes: u64le(20n) },
+    { parent: 9, firstChild: null, nextSibling: 13, tag: QC_EVENT_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(10n), u64le(20n)]) },
+    { parent: 9, firstChild: null, nextSibling: 14, tag: QC_EVENT_TAG.EDGE_REMOVED_BETWEEN, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+    { parent: 9, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.DIRECTED_EDGE_DECLINED, payloadBytes: concatBytes([u64le(30n), u64le(40n)]) },
   ]);
 }
 
@@ -409,9 +409,9 @@ describe("mutatingQcEvents / applyQc", () => {
     // root (0) -> NodeRemoved(7) (1) -> NodeRemoved(9) (2) -> NodeRemoved(7) (3, duplicate)
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
-      { parent: 0, firstChild: null, nextSibling: 3, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(9n) },
-      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_EVENT_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
+      { parent: 0, firstChild: null, nextSibling: 3, tag: QC_EVENT_TAG.NODE_REMOVED, payloadBytes: u64le(9n) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
     ]);
     const result = applyQc(tape, 2, undefined, 0);
     expect(result.removedNodes).toEqual([7n, 9n]);
@@ -420,8 +420,8 @@ describe("mutatingQcEvents / applyQc", () => {
   it("resuming NodeRemoved accumulation from a previous result matches a full replay to the same targetStep", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
-      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.NODE_REMOVED, payloadBytes: u64le(9n) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_EVENT_TAG.NODE_REMOVED, payloadBytes: u64le(7n) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.NODE_REMOVED, payloadBytes: u64le(9n) },
     ]);
     const from = applyQc(tape, 0, undefined, 0);
     const viaResume = applyQc(tape, 1, from, 0);
@@ -434,10 +434,10 @@ describe("mutatingQcEvents / applyQc", () => {
     //          -> EdgeRemoved(1,2) (3) -> TeleportRemovedWithReverse(3,4) (4)
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
-      { parent: 0, firstChild: null, nextSibling: 3, tag: QC_TAG.BIDIRECTIONAL_TELEPORT_ADDED, payloadBytes: concatBytes([u64le(3n), u64le(4n)]) },
-      { parent: 0, firstChild: null, nextSibling: 4, tag: QC_TAG.EDGE_REMOVED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
-      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.TELEPORT_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(3n), u64le(4n), new Uint8Array([1])]) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_EVENT_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 0, firstChild: null, nextSibling: 3, tag: QC_EVENT_TAG.BIDIRECTIONAL_TELEPORT_ADDED, payloadBytes: concatBytes([u64le(3n), u64le(4n)]) },
+      { parent: 0, firstChild: null, nextSibling: 4, tag: QC_EVENT_TAG.EDGE_REMOVED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.TELEPORT_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(3n), u64le(4n), new Uint8Array([1])]) },
     ]);
     // TeleportRemovedWithReverse must remove BOTH directions of the two-way teleport, even
     // though the wire event only names the primary (3,4) direction — the reverse (4,3) leg must
@@ -452,8 +452,8 @@ describe("mutatingQcEvents / applyQc", () => {
     // root (0) -> BidirectionalEdgeAdded(1,2) (1) -> EdgeRemovedWithReverse(1,2) (2)
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
-      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.EDGE_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(1n), u64le(2n), new Uint8Array([1])]) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_EVENT_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.EDGE_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(1n), u64le(2n), new Uint8Array([1])]) },
     ]);
     const result = applyQc(tape, 1, undefined, 0);
     expect(result.edges).toEqual([]);
@@ -470,9 +470,9 @@ describe("mutatingQcEvents / applyQc", () => {
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: 4, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
       { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 2, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+      { parent: 2, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
       { parent: 0, firstChild: 5, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("quality_control") },
-      { parent: 4, firstChild: null, nextSibling: null, tag: QC_TAG.EDGE_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(1n), u64le(2n), new Uint8Array([0])]) },
+      { parent: 4, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.EDGE_REMOVED_WITH_REVERSE, payloadBytes: concatBytes([u64le(1n), u64le(2n), new Uint8Array([0])]) },
     ]);
     const result = applyQc(tape, 0, undefined, 5);
     expect(result.edges).toEqual([]);
@@ -506,11 +506,11 @@ describe("mutatingQcEvents / applyQc", () => {
     // Scanning RB's own mutating events from node 2 (its former root), bounded to RB's own single
     // mutating event via `limit` — mirrors how a real caller always knows generation's own
     // totalSteps (Contract A) and never scans past it into QC's own tag space, where a numerically
-    // colliding tag (QC_TAG.ITERATION_STARTED == RB_TAG.VERTEX_SELECTED == 1) would otherwise
+    // colliding tag (QC_EVENT_TAG.ITERATION_STARTED == RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_SELECTED == 1) would otherwise
     // mis-decode as an RB event.
     const rbEvents = mutatingRbEventsWithIndex(tape, 1, 2);
     expect(rbEvents).toHaveLength(1);
-    expect(decodeRecursiveBacktrackerEvent(RB_TAG.EDGE_ADDED, tape.payload.subarray(
+    expect(decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, tape.payload.subarray(
       nodeAt(tape, rbEvents[0].nodeIndex).payloadOffset,
       nodeAt(tape, rbEvents[0].nodeIndex).payloadOffset + nodeAt(tape, rbEvents[0].nodeIndex).payloadLen,
     ))).toEqual({ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true });
@@ -529,7 +529,7 @@ describe("mutatingQcEvents / applyQc", () => {
           parent: 0,
           firstChild: null,
           nextSibling: i + 1 < count ? i + 2 : null,
-          tag: QC_TAG.DIRECTED_EDGE_ADDED,
+          tag: QC_EVENT_TAG.DIRECTED_EDGE_ADDED,
           payloadBytes: concatBytes([u64le(BigInt(i + 1)), u64le(BigInt(i + 2))]),
         });
       }
@@ -576,7 +576,7 @@ describe("mutatingQcEvents / applyQc", () => {
       for (let i = 0; i < addCount; i++) {
         nodes.push({
           parent: 0, firstChild: null, nextSibling: i + 1,
-          tag: QC_TAG.DIRECTED_EDGE_ADDED,
+          tag: QC_EVENT_TAG.DIRECTED_EDGE_ADDED,
           payloadBytes: concatBytes([u64le(BigInt(i + 1)), u64le(BigInt(i + 2))]),
         });
       }
@@ -584,12 +584,12 @@ describe("mutatingQcEvents / applyQc", () => {
       // step 549, after the snapshot].
       nodes.push({
         parent: 0, firstChild: null, nextSibling: addCount + 2,
-        tag: QC_TAG.EDGE_REMOVED_BETWEEN,
+        tag: QC_EVENT_TAG.EDGE_REMOVED_BETWEEN,
         payloadBytes: concatBytes([u64le(1n), u64le(2n)]),
       });
       nodes.push({
         parent: 0, firstChild: null, nextSibling: null,
-        tag: QC_TAG.EDGE_REMOVED_BETWEEN,
+        tag: QC_EVENT_TAG.EDGE_REMOVED_BETWEEN,
         payloadBytes: concatBytes([u64le(550n), u64le(551n)]),
       });
       return buildFixture(nodes);
@@ -735,8 +735,8 @@ describe("QC_ADAPTER.scopeLabel — stage/rule title resolution (GitHub issue #1
     // (mutating StartSet) out of 2 total (StartSet + the *Declined event).
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("apply requests") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_TAG.START_SET, payloadBytes: u64le(10n) },
-      { parent: 0, firstChild: null, nextSibling: null, tag: QC_TAG.DIRECTED_EDGE_DECLINED, payloadBytes: concatBytes([u64le(30n), u64le(40n)]) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: QC_EVENT_TAG.START_SET, payloadBytes: u64le(10n) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.DIRECTED_EDGE_DECLINED, payloadBytes: concatBytes([u64le(30n), u64le(40n)]) },
     ]);
     const children = nodeView(tape, 0).children();
     expect(adapterFor("quality_control").scopeLabel("apply requests", children, titleLookup)).toBe("Apply requests (1/2)");

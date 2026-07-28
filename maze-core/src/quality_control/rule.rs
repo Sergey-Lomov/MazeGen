@@ -330,7 +330,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
                     .map(|issue| super::issue_payload::resolve_issue_payload(issue, &maze.graph, scc.as_ref().unwrap()))
                     .unwrap_or_default();
                 let details = merged.as_ref().map(|issue| issue.details().clone()).unwrap_or_default();
-                log.emit(QcEvent::IssuesMerged { kind: I::KIND, payload, details });
+                log.emit(QcEvent::IssuesMerged { issue_kind: I::KIND, payload, details });
             }
         }
         merged

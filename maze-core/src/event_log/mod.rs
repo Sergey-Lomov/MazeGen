@@ -17,6 +17,7 @@ mod deltas;
 mod merge;
 mod tape;
 mod wire;
+pub mod wire_primitives;
 
 pub use deltas::{
     DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta, DebugVertexOp, EventedEventKind,

@@ -452,13 +452,18 @@ yet, and nothing downstream consumes it at that stage.
 generation algorithm's "debug value" (RB's `recursion_stack`, Wilson's `current_walk`, etc.);
 deliberately out of scope, not a gap.
 
-**Wire tags** are assigned in `quality_control/event.rs`'s own `wire_tags` module, ordinary local
-tags in `1..=44` (well under the 255 a single source's local tag byte allows) — namespaced by
-source index only when `merge_tapes` folds this tape together with generation's, same mechanism
-every merged source already uses (`Specs/event_log.md`'s "#169" section). `38`/`39`/`40` are
+**Wire tags** are assigned via `#[wire(tag = N)]` attributes on each `QcEvent` variant, generated
+into `quality_control/qc_wire.rs`'s `wire_tags` module by `codegen` (`Specs/event_log.md`'s
+"Wire-Format Codegen" section) — never hand-typed. Ordinary local tags in `1..=44` (well under the
+255 a single source's local tag byte allows) — namespaced by source index only when `merge_tapes`
+folds this tape together with generation's, same mechanism every merged source already uses
+(`Specs/event_log.md`'s "#169" section). `38`/`39`/`40` are
 `NodeRemoved`/`NodeRemoveDeclined`/`NodeRemoveProposed` (GitHub issue #248); `41` is
 `StrategyFailed`; `42`/`43`/`44` are `SplitNodeAdded`/`SplitNodeAddDeclined`/
-`SplitNodeAddProposed` (GitHub issue #247).
+`SplitNodeAddProposed` (GitHub issue #247). `CheckRan.issue`/`IssuesMerged`'s `issue_kind`/
+`payload`/`details` fields go through named custom codecs (`CheckIssueCodec`/`IssueKindCodec`/
+`IssuePayloadCodec`/`DetailsMapMapCodec`) rather than standard wire types — see that same codegen
+section for the whitelist mechanism.
 
 ## Built-in Checks
 

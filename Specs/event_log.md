@@ -224,7 +224,7 @@ Both layers read node records through the same `nodeAt(tape, index)` — decodes
 
 Both `startIndex` and `limit` bound the scan: it starts at arena index `startIndex` and stops once `limit` mutating events have been collected since then. This is what lets `applyRecursiveBacktracker` (below) avoid decoding either the already-known prefix (when resuming via `from`) or the tape's tail past `targetStep` — a real run can produce tens of thousands of events (see the WASM Boundary section above), so scrubbing forward through a large tape one step at a time must not pay the cost of decoding everything before or after the step actually needed.
 
-Wire format constants (`TAG_SCOPE`, `NO_NODE`, `NODE_RECORD_SIZE`, and the RB wire tags `VERTEX_SELECTED=1` … `VERTEX_PUSHED=8`) are exported `const`s in `eventTape.ts` — a manual TS mirror of the Rust constants in `event_log/mod.rs` and `recursive_backtracker.rs`'s `wire_tags` module (no shared codegen; both sides must be updated together on a wire-format change). Tests and any hand-built fixture import these rather than hardcoding raw numbers.
+Wire format constants: `TAG_SCOPE`, `NO_NODE`, `NODE_RECORD_SIZE` (the node-table framing, shared across every source) are exported `const`s in `wire.ts`, a manual TS mirror of the Rust constants in `event_log/mod.rs` — no codegen covers this framing layer, since it's fixed and shared rather than per-event-enum. The RB wire tags (`VERTEX_SELECTED=1` … `VERTEX_PUSHED=8`) and every other instrumented enum's own tags, by contrast, are generated — see "Wire-Format Codegen" below. Tests and any hand-built fixture import the generated constants rather than hardcoding raw numbers.
 
 ### `step` semantics and `apply`
 
@@ -1565,3 +1565,107 @@ one-way `TeleportEstablished` contributes only its own direction.
 - Migrating Kruskal's own `PresetUnionsApplied` (trace-only DSU seeding, see that section above) to
   this source — the two serve different purposes (DSU pre-union state vs. reconstructable graph
   edges) and remain independent
+
+## Wire-Format Codegen
+
+Every section above that describes an event enum's wire tags/`EncodeEventPayload`/`is_mutating()`
+(Recursive Backtracker, Kruskal, Wilson, `CustomEdgeBased`, `CustomVertexBased`, `QcEvent`, Preset
+Setup) originally paired one hand-written Rust `impl` with one hand-written TS
+`decodeXEvent`/`isMutatingXEvent` — two independently maintained mirrors of the same format, with
+real bugs traced back to their drift (`EdgeId` narrated as `NodeId`, see #171 above;
+`PresetUnionsApplied` silently missing from `edges`). All 7 sources now generate both sides from a
+single annotated Rust enum instead.
+
+### `codegen` crate (`codegen/src/`)
+
+A `syn`-based parser reads `#[wire(...)]`/`#[wire_event(...)]` attributes off each source enum
+(recognized only because a no-op `#[derive(maze_core_macros::WireEvent)]` registers `#[wire(...)]`
+as a legal helper attribute — the derive itself generates nothing) into a language-neutral `Schema`
+(`codegen/src/schema.rs`). Two independent emitters consume only `Schema`, never each other's
+output or the raw `syn::File`:
+
+- `RustEmitter` (`rust_emitter.rs`) writes `<stem>_wire.rs` next to the source enum — `wire_tags`,
+  `impl EncodeEventPayload`, `impl DebugEvent`, plus a golden round-trip test module. It also makes
+  the *only* permitted edit to the source enum's own file: an idempotent
+  `#[path = "<stem>_wire.rs"] mod <stem>_wire;` insertion (`ensure_mod_declared`) — never touches
+  anything else in that file, including existing hand-written tests.
+- `TsEmitter` (`ts_emitter.rs`) writes `maze-web/src/debug/eventTape/generated/<stem>.ts` — tag
+  constants, the event union type, `decode<Name>`, `isMutating<Name>`, and a matching golden test
+  file — importing only the `wire.ts` primitives and custom-codec functions each source actually
+  uses (unused-import lint is a build gate here, per `maze-web/tsconfig.json`'s
+  `noUnusedLocals`/`noUnusedParameters`).
+
+`cargo run -p codegen` regenerates all 7 sources' output in one pass; `--check` is a dry run
+(no file writes) that still reports duplicate/zero tags, unknown custom-codec references, and
+tag/field-layout changes on an already-generated variant (`check.rs`'s `detect_breaking_changes` —
+a warning, not a build failure, since retagging is sometimes legitimate, but it must be a conscious
+choice, not a silent side effect of an unrelated refactor).
+
+**Discovery is not a hardcoded file list**: `discover_sources` walks every `.rs` file under
+`maze-core/src` looking for `#[derive(..., maze_core_macros::WireEvent)]` — an 8th instrumented
+source is picked up automatically, no `main.rs` edit needed.
+
+### Variant shape whitelist and the standard type map
+
+Every variant must be one of exactly three shapes — unit (`DeadEnd`), a tuple with exactly one
+field (`VertexSelected(NodeId)`, which needs `#[wire(name = "...")]` since a tuple field has no
+name of its own to project into the generated TS/Rust field access), or a struct with named fields.
+A tuple with 2+ fields, or any field type absent from both the standard type map and the custom
+codec registry, is a hard parse error naming the offending variant/field/type — never a silent
+fallback into "custom" or a best-effort guess.
+
+`type_map.rs` is the single registry mapping a Rust type string to its TS counterpart, wire width,
+and read/write function pair — `NodeId`, `u32`, `u64`, `usize`, `f64`, `bool`, `String`,
+`&'static str`, `Vec<NodeId>`, `Vec<f64>`, `Option<NodeId>`, `Option<usize>`. Adding a new simple
+type (e.g. a future `EdgeId`) is one entry here, not a change scattered across both emitters.
+
+### Custom codecs — a closed whitelist, not free-form escape hatches
+
+`#[wire(custom = "SomeCodec")]` on a field must name an entry already registered in
+`codecs.rs` — `codegen` never invents a codec name from a type string. Each entry points at an
+already hand-written Rust `write_*` function and TS `read*` function (the codec's actual
+serialization logic is never generated, only wired up by name) plus, when the field's TS type
+references a named type rather than an inline structural one (e.g. `IssuePayload`, a discriminated
+union), which type name(s) to additionally `import type` alongside the read function.
+
+A codec is warranted when a field's type is structurally inexpressible by the standard whitelist
+without losing information — a nested discriminated union with its own per-variant structure
+(`IssuePayloadCodec`), a `HashMap` with a non-atomic value (`DetailsMapMapCodec`,
+`HashMap<String, HashMap<&str, String>>`), or — the least standard-shaped case so far —
+`CheckRan.issue: Option<(IssueKind, IssuePayload, HashMap<&'static str, String>)>`
+(`CheckIssueCodec`), an `Option` wrapping three heterogeneous values at once, which no combination
+of "one field = one standard type" or "one field = one single-type codec" can express; the whole
+tuple is covered by one codec instead of being split into three fields. Registered codecs as of
+this section: `IssuePayloadCodec`, `SplitNodeEdgesCodec`, `DetailsMapCodec`, `EdgePairsCodec`,
+`PresetUnionsCodec`, `IssueKindCodec`, `RepairLimitKindCodec`, `CheckIssueCodec`,
+`DetailsMapMapCodec`. The hand-written functions they reference live next to each source's own
+event enum on the Rust side, and in a `<stem>Custom.ts` sibling file next to `eventTape/` on the TS
+side (e.g. `qcCustom.ts`, `kruskalCustom.ts`) — never inside `generated/`.
+
+### Field-name collision with the discriminant
+
+A struct-variant field literally named `kind` collides with the `kind: "VariantName"` discriminant
+every generated TS union arm already carries (`{ kind: "IssuesMerged"; kind: string; ... }` is
+invalid TS). The emitter does not guard against this — it renders the collision verbatim, so the
+fix is on the source enum: `QcEvent::IssuesMerged`'s field was renamed `kind` → `issue_kind` for
+exactly this reason (its TS field renders as `issueKind`, matching the naming every other QC field
+carrying an issue kind already used).
+
+### Golden tests are a regression net, not a correctness proof
+
+Golden round-trip tests (Rust encodes a hardcoded example value, TS independently decodes the same
+hardcoded byte array, both compared against the same `codegen/golden/<stem>.json` fixture) are
+generated only for variants built entirely from standard types — a variant with any custom-coded
+field has no entry, since `Schema` knows a codec's *name* and *declared type*, not what bytes its
+hand-written function actually produces for a given value. If `Schema` misunderstands a type's wire
+layout, the golden fixture is wrong in exactly the same way the generated code is, so both
+"independently" decoded sides would agree while both being wrong. The primary defense against a
+codegen bug is each source's pre-existing hand-written tests (`event.rs`'s own `#[cfg(test)] mod
+tests`, kept unmodified through migration) — these assert expected bytes without going through
+`Schema` at all, so they catch what golden tests structurally cannot.
+
+### What stays hand-written
+
+`applyX` replay/state-reconstruction functions (bidirectional edge expansion, DSU seeding,
+checkpoint bookkeeping) and narration/i18n (`algorithmRegistry.ts`, `messages/en.json`/`ru.json`)
+are not wire-format mirrors — codegen has no opinion on them and never will.

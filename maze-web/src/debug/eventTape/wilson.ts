@@ -1,6 +1,6 @@
-// --- Wilson event decoding + replay (GitHub issue #145) ---
+// --- Wilson event replay (GitHub issue #145; decoding lives in generated/wilson.ts) ---
 
-import { expectLen, readNodeId, type ParsedTape } from "./wire";
+import { type ParsedTape } from "./wire";
 import { mutatingEventsWithIndex, type MutatingEventAt } from "./scan";
 import {
   cloneDebugMaps, cloneDebugValues, validateStepShape,
@@ -8,74 +8,10 @@ import {
   type DebugVertexOp, type DebugVertices, type Edge,
 } from "./applyShared";
 import { VISITED } from "./recursiveBacktracker";
+import { decodeWilsonEvent, isMutatingWilsonEvent, type WilsonEvent } from "./generated/wilson";
 
-export const WILSON_TAG = {
-  WALK_START_PICKED: 1,
-  STEP_TAKEN: 2,
-  LOOP_ERASED: 3,
-  WALK_DEAD_END: 4,
-  EDGE_ADDED: 5,
-  NODE_VISITED: 6,
-  START_VISITED: 7,
-} as const;
-
-export type WilsonEvent =
-  | { kind: "StartVisited"; id: bigint }
-  | { kind: "WalkStartPicked"; id: bigint }
-  | { kind: "StepTaken"; from: bigint; to: bigint }
-  | { kind: "LoopErased"; node: bigint }
-  | { kind: "WalkDeadEnd" }
-  | { kind: "EdgeAdded"; from: bigint; to: bigint; bidirectional: boolean }
-  | { kind: "NodeVisited"; id: bigint };
-
-/** Decodes one Wilson event's binary payload. Contract: only called with `tag >= 1` (a real
- *  Wilson wire tag) — callers filter out `TAG_SCOPE` before invoking this. Throws on an
- *  unrecognized tag or a `payload_len` that doesn't match the wire format — mirrors every other
- *  decoder's error-on-mismatch contract (a malformed tape means a core/web build mismatch, which
- *  must surface immediately). */
-export function decodeWilsonEvent(tag: number, bytes: Uint8Array): WilsonEvent {
-  switch (tag) {
-    case WILSON_TAG.START_VISITED:
-      expectLen(tag, bytes, 8);
-      return { kind: "StartVisited", id: readNodeId(bytes, 0) };
-    case WILSON_TAG.WALK_START_PICKED:
-      expectLen(tag, bytes, 8);
-      return { kind: "WalkStartPicked", id: readNodeId(bytes, 0) };
-    case WILSON_TAG.STEP_TAKEN:
-      expectLen(tag, bytes, 16);
-      return { kind: "StepTaken", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
-    case WILSON_TAG.LOOP_ERASED:
-      expectLen(tag, bytes, 8);
-      return { kind: "LoopErased", node: readNodeId(bytes, 0) };
-    case WILSON_TAG.WALK_DEAD_END:
-      expectLen(tag, bytes, 0);
-      return { kind: "WalkDeadEnd" };
-    case WILSON_TAG.EDGE_ADDED:
-      expectLen(tag, bytes, 17);
-      return { kind: "EdgeAdded", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
-    case WILSON_TAG.NODE_VISITED:
-      expectLen(tag, bytes, 8);
-      return { kind: "NodeVisited", id: readNodeId(bytes, 0) };
-    default:
-      throw new Error(`WilsonEvent: unknown wire tag ${tag}`);
-  }
-}
-
-/** Mirrors `DebugEvent::is_mutating`'s split for `WilsonEvent` in
- *  `maze-core/src/generation/wilson.rs` — `WalkStartPicked`/`StepTaken`/`LoopErased` are mutating
- *  alongside `EdgeAdded`/`NodeVisited` because they change the walk's `next` map (the state
- *  `applyWilson`'s `"current_walk"` map debug value reconstructs), not because they touch the
- *  graph. */
-export function isMutatingWilsonEvent(event: WilsonEvent): boolean {
-  return (
-    event.kind === "StartVisited" ||
-    event.kind === "WalkStartPicked" ||
-    event.kind === "StepTaken" ||
-    event.kind === "LoopErased" ||
-    event.kind === "EdgeAdded" ||
-    event.kind === "NodeVisited"
-  );
-}
+export type { WilsonEvent } from "./generated/wilson";
+export { decodeWilsonEvent, isMutatingWilsonEvent, WILSON_EVENT_TAG } from "./generated/wilson";
 
 export type MutatingWilsonEventAt = MutatingEventAt<WilsonEvent>;
 

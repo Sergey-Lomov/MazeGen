@@ -1,0 +1,9 @@
+[
+  { "variant": "StartVisited", "value": {"kind":"StartVisited","id":7}, "bytes": [7,0,0,0,0,0,0,0] },
+  { "variant": "WalkStartPicked", "value": {"kind":"WalkStartPicked","id":7}, "bytes": [7,0,0,0,0,0,0,0] },
+  { "variant": "StepTaken", "value": {"kind":"StepTaken","from":7,"to":7}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0] },
+  { "variant": "LoopErased", "value": {"kind":"LoopErased","node":7}, "bytes": [7,0,0,0,0,0,0,0] },
+  { "variant": "WalkDeadEnd", "value": {"kind":"WalkDeadEnd"}, "bytes": [] },
+  { "variant": "EdgeAdded", "value": {"kind":"EdgeAdded","from":7,"to":7,"bidirectional":true}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0,1] },
+  { "variant": "NodeVisited", "value": {"kind":"NodeVisited","id":7}, "bytes": [7,0,0,0,0,0,0,0] }
+]

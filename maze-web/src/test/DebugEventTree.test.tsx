@@ -2,7 +2,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DebugEventTree } from "../components/DebugEventTree";
 import { useMazeStore } from "../store/mazeStore";
-import { parseTape, TAG_SCOPE, NO_NODE, RB_TAG, WILSON_TAG, QC_TAG, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, NO_NODE, RECURSIVE_BACKTRACKER_EVENT_TAG, WILSON_EVENT_TAG, QC_EVENT_TAG, type ParsedTape } from "../debug/eventTape";
 import type { NodeDto } from "../wasm/types";
 import * as m from "~/paraglide/messages";
 
@@ -99,12 +99,12 @@ function buildTwoStepTape(): ParsedTape {
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
     { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 2, firstChild: 4, nextSibling: 7, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 3, firstChild: null, nextSibling: 5, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-    { parent: 3, firstChild: null, nextSibling: 6, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(2n) },
-    { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 3, firstChild: null, nextSibling: 6, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(2n) },
+    { parent: 3, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
     { parent: 2, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
-    { parent: 7, firstChild: null, nextSibling: 9, tag: RB_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
-    { parent: 7, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
+    { parent: 7, firstChild: null, nextSibling: 9, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
+    { parent: 7, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
   ]);
 }
 
@@ -119,12 +119,12 @@ function buildOneWalkWilsonTape(): ParsedTape {
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
     { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
-    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_EVENT_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
     { parent: 3, firstChild: 6, nextSibling: 7, tag: TAG_SCOPE, payloadBytes: scopePayload("search") },
-    { parent: 5, firstChild: null, nextSibling: null, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
+    { parent: 5, firstChild: null, nextSibling: null, tag: WILSON_EVENT_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
     { parent: 3, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("commit") },
-    { parent: 7, firstChild: null, nextSibling: 9, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-    { parent: 7, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(1n) },
+    { parent: 7, firstChild: null, nextSibling: 9, tag: WILSON_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 7, firstChild: null, nextSibling: null, tag: WILSON_EVENT_TAG.NODE_VISITED, payloadBytes: vertexPayload(1n) },
   ]);
 }
 
@@ -138,11 +138,11 @@ function buildLoopErasedDeadEndWilsonTape(): ParsedTape {
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
     { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
-    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_EVENT_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(1n) },
     { parent: 3, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("search") },
-    { parent: 5, firstChild: null, nextSibling: 7, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
-    { parent: 5, firstChild: null, nextSibling: 8, tag: WILSON_TAG.LOOP_ERASED, payloadBytes: vertexPayload(2n) },
-    { parent: 5, firstChild: null, nextSibling: null, tag: WILSON_TAG.WALK_DEAD_END, payloadBytes: new Uint8Array(0) },
+    { parent: 5, firstChild: null, nextSibling: 7, tag: WILSON_EVENT_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(1n, 2n) },
+    { parent: 5, firstChild: null, nextSibling: 8, tag: WILSON_EVENT_TAG.LOOP_ERASED, payloadBytes: vertexPayload(2n) },
+    { parent: 5, firstChild: null, nextSibling: null, tag: WILSON_EVENT_TAG.WALK_DEAD_END, payloadBytes: new Uint8Array(0) },
   ]);
 }
 
@@ -337,7 +337,7 @@ describe("DebugEventTree", () => {
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
       { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-      { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(99n) },
+      { parent: 3, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(99n) },
     ]);
     useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] }], nodes, totalSteps: 1, debugValueNames: [] }, debugStep: 0 });
 
@@ -413,14 +413,14 @@ function buildGenerationPlusQcTape(): ParsedTape {
     { parent: 0, firstChild: 2, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
     { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 3, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
     { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("quality_control") },
     { parent: 5, firstChild: 7, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 6, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("stage s1") },
     { parent: 7, firstChild: 9, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("iteration 1") },
-    { parent: 8, firstChild: null, nextSibling: 10, tag: QC_TAG.ITERATION_STARTED, payloadBytes: u32le(0) },
+    { parent: 8, firstChild: null, nextSibling: 10, tag: QC_EVENT_TAG.ITERATION_STARTED, payloadBytes: u32le(0) },
     { parent: 8, firstChild: 11, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("rule r1") },
-    { parent: 10, firstChild: null, nextSibling: null, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
+    { parent: 10, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.BIDIRECTIONAL_EDGE_ADDED, payloadBytes: concatBytes([u64le(1n), u64le(2n)]) },
   ]);
 }
 

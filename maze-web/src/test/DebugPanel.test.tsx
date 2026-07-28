@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DebugPanel } from "../components/DebugPanel";
 import { useMazeStore } from "../store/mazeStore";
-import { parseTape, TAG_SCOPE, RB_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
+import { parseTape, TAG_SCOPE, RECURSIVE_BACKTRACKER_EVENT_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
 import { adapterForKind } from "../debug/algorithmRegistry";
 import type { NodeDto } from "../wasm/types";
 
@@ -96,11 +96,11 @@ function buildThreeStepTape(): ParsedTape {
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
     { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 2, firstChild: 4, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 3, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 3, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
     { parent: 2, firstChild: 6, nextSibling: 7, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
-    { parent: 5, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(2n, 3n) },
+    { parent: 5, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(2n, 3n) },
     { parent: 2, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 3") },
-    { parent: 7, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
+    { parent: 7, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
   ]);
 }
 
@@ -147,7 +147,7 @@ function buildManyStepTape(stepCount: number): ParsedTape {
       parent: scopeIndex,
       firstChild: null,
       nextSibling: null,
-      tag: RB_TAG.EDGE_ADDED,
+      tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED,
       payloadBytes: edgeAddedPayload(BigInt(i + 1), BigInt(i + 2)),
     });
   }

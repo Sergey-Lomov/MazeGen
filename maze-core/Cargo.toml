@@ -7,6 +7,7 @@ edition = "2024"
 rand = "0.9"
 rand_xoshiro = "0.7"
 bitflags = "2"
+maze-core-macros = { path = "../maze-core-macros" }
 
 [dev-dependencies]
 trybuild = "1"

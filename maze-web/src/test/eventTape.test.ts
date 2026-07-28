@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   parseTape, nodeAt, nodeView, mutatingRbEvents, applyRecursiveBacktracker,
-  decodeRecursiveBacktrackerEvent, isMutatingRbEvent,
+  decodeRecursiveBacktrackerEvent, isMutatingRecursiveBacktrackerEvent,
   resolveDebugArenaMetadata, countMutatingEvents,
   decodeKruskalEvent, isMutatingKruskalEvent, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEvents, applyWilson,
   decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEvents, applyEdgeBased,
   decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEvents, applyVertexBased,
   topLevelSourceScopes,
-  TAG_SCOPE, NO_NODE, RB_TAG, KRUSKAL_TAG, WILSON_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG,
+  TAG_SCOPE, NO_NODE, RECURSIVE_BACKTRACKER_EVENT_TAG, KRUSKAL_EVENT_TAG, WILSON_EVENT_TAG, EDGE_BASED_EVENT_TAG, VERTEX_BASED_EVENT_TAG,
   SOURCE_SHIFT, SOURCE_MASK, LOCAL_TAG_MASK,
   type ParsedTape, type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult,
 } from "../debug/eventTape";
@@ -103,12 +103,12 @@ function buildTwoStepTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: 5, tag: TAG_SCOPE, payloadBytes: scopePayload("step") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-    { parent: 1, firstChild: null, nextSibling: 4, tag: RB_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(2n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    { parent: 1, firstChild: null, nextSibling: 4, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(2n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
     { parent: 0, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step") },
-    { parent: 5, firstChild: null, nextSibling: 7, tag: RB_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
-    { parent: 5, firstChild: null, nextSibling: null, tag: RB_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
+    { parent: 5, firstChild: null, nextSibling: 7, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.DEAD_END, payloadBytes: new Uint8Array(0) },
+    { parent: 5, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_POPPED, payloadBytes: vertexPayload(2n) },
   ]);
 }
 
@@ -145,14 +145,14 @@ describe("mutatingRbEvents invariants", () => {
   });
 
   it("is_mutating split agrees with the Rust-side variant list", () => {
-    expect(isMutatingRbEvent({ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true })).toBe(true);
-    expect(isMutatingRbEvent({ kind: "VertexVisited", id: 1n })).toBe(true);
-    expect(isMutatingRbEvent({ kind: "VertexPopped", id: 1n })).toBe(true);
-    expect(isMutatingRbEvent({ kind: "VertexPushed", id: 1n })).toBe(true);
-    expect(isMutatingRbEvent({ kind: "VertexSelected", id: 1n })).toBe(false);
-    expect(isMutatingRbEvent({ kind: "CandidatesComputed", ids: [] })).toBe(false);
-    expect(isMutatingRbEvent({ kind: "DeadEnd" })).toBe(false);
-    expect(isMutatingRbEvent({ kind: "CandidateChosen", id: 1n })).toBe(false);
+    expect(isMutatingRecursiveBacktrackerEvent({ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: true })).toBe(true);
+    expect(isMutatingRecursiveBacktrackerEvent({ kind: "VertexVisited", id: 1n })).toBe(true);
+    expect(isMutatingRecursiveBacktrackerEvent({ kind: "VertexPopped", id: 1n })).toBe(true);
+    expect(isMutatingRecursiveBacktrackerEvent({ kind: "VertexPushed", id: 1n })).toBe(true);
+    expect(isMutatingRecursiveBacktrackerEvent({ kind: "VertexSelected", id: 1n })).toBe(false);
+    expect(isMutatingRecursiveBacktrackerEvent({ kind: "CandidatesComputed", ids: [] })).toBe(false);
+    expect(isMutatingRecursiveBacktrackerEvent({ kind: "DeadEnd" })).toBe(false);
+    expect(isMutatingRecursiveBacktrackerEvent({ kind: "CandidateChosen", id: 1n })).toBe(false);
   });
 });
 
@@ -170,7 +170,7 @@ describe("nodeView tree layer", () => {
 
     const firstStepChildren = children[0].children();
     expect(firstStepChildren).toHaveLength(3);
-    expect(firstStepChildren[0].payload()).toEqual({ kind: "event", tag: RB_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) });
+    expect(firstStepChildren[0].payload()).toEqual({ kind: "event", tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) });
 
     expect(children[0].parent()?.payload()).toEqual({ kind: "scope", name: "root" });
   });
@@ -189,9 +189,9 @@ describe("applyRecursiveBacktracker — resume via `from`", () => {
     // root -> EdgeAdded(1,2), EdgeAdded(2,3), EdgeAdded(3,4) — flat, no scopes needed for this test.
     return buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-      { parent: 0, firstChild: null, nextSibling: 3, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(2n, 3n) },
-      { parent: 0, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+      { parent: 0, firstChild: null, nextSibling: 3, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(2n, 3n) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
     ]);
   }
 
@@ -269,11 +269,11 @@ describe("applyRecursiveBacktracker — resume via `from`", () => {
 
 describe("decodeRecursiveBacktrackerEvent — trace-only variants", () => {
   it("decodes VertexSelected", () => {
-    expect(decodeRecursiveBacktrackerEvent(RB_TAG.VERTEX_SELECTED, vertexPayload(7n))).toEqual({ kind: "VertexSelected", id: 7n });
+    expect(decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_SELECTED, vertexPayload(7n))).toEqual({ kind: "VertexSelected", id: 7n });
   });
 
   it("decodes CandidateChosen", () => {
-    expect(decodeRecursiveBacktrackerEvent(RB_TAG.CANDIDATE_CHOSEN, vertexPayload(7n))).toEqual({ kind: "CandidateChosen", id: 7n });
+    expect(decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.CANDIDATE_CHOSEN, vertexPayload(7n))).toEqual({ kind: "CandidateChosen", id: 7n });
   });
 });
 
@@ -283,32 +283,32 @@ describe("decodeRecursiveBacktrackerEvent — malformed payload handling", () =>
   });
 
   it("throws when a fixed-size event's payload_len doesn't match, for every fixed-size variant", () => {
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.VERTEX_SELECTED, new Uint8Array(7))).toThrow();
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.CANDIDATE_CHOSEN, new Uint8Array(7))).toThrow();
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.VERTEX_VISITED, new Uint8Array(7))).toThrow();
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.VERTEX_POPPED, new Uint8Array(7))).toThrow();
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.VERTEX_PUSHED, new Uint8Array(7))).toThrow();
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.EDGE_ADDED, new Uint8Array(15))).toThrow();
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.DEAD_END, new Uint8Array(1))).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_SELECTED, new Uint8Array(7))).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.CANDIDATE_CHOSEN, new Uint8Array(7))).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_VISITED, new Uint8Array(7))).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_POPPED, new Uint8Array(7))).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_PUSHED, new Uint8Array(7))).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, new Uint8Array(15))).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.DEAD_END, new Uint8Array(1))).toThrow();
   });
 
   it("throws when CandidatesComputed's payload is shorter than the 4-byte length prefix", () => {
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.CANDIDATES_COMPUTED, new Uint8Array(2))).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.CANDIDATES_COMPUTED, new Uint8Array(2))).toThrow();
   });
 
   it("throws when CandidatesComputed's payload_len doesn't match 4 + count*8", () => {
     const malformed = concatBytes([u32le(2), u64le(1n)]); // claims 2 ids, only provides 1
-    expect(() => decodeRecursiveBacktrackerEvent(RB_TAG.CANDIDATES_COMPUTED, malformed)).toThrow();
+    expect(() => decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.CANDIDATES_COMPUTED, malformed)).toThrow();
   });
 
   it("decodes a well-formed CandidatesComputed payload", () => {
     const payload = candidatesComputedPayload([10n, 20n, 30n]);
-    const event = decodeRecursiveBacktrackerEvent(RB_TAG.CANDIDATES_COMPUTED, payload);
+    const event = decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.CANDIDATES_COMPUTED, payload);
     expect(event).toEqual({ kind: "CandidatesComputed", ids: [10n, 20n, 30n] });
   });
 
   it("decodes an empty CandidatesComputed payload (count=0)", () => {
-    const event = decodeRecursiveBacktrackerEvent(RB_TAG.CANDIDATES_COMPUTED, candidatesComputedPayload([]));
+    const event = decodeRecursiveBacktrackerEvent(RECURSIVE_BACKTRACKER_EVENT_TAG.CANDIDATES_COMPUTED, candidatesComputedPayload([]));
     expect(event).toEqual({ kind: "CandidatesComputed", ids: [] });
   });
 });
@@ -317,8 +317,8 @@ describe("mutatingRbEvents — bounded scan", () => {
   it("limit stops the scan early without decoding the rest of the tape", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-      { parent: 0, firstChild: null, nextSibling: 3, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(2n, 3n) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+      { parent: 0, firstChild: null, nextSibling: 3, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(2n, 3n) },
       // Malformed trailing event — would throw if decoded, proving the scan never reaches it.
       { parent: 0, firstChild: null, nextSibling: null, tag: 99, payloadBytes: new Uint8Array(0) },
     ]);
@@ -332,7 +332,7 @@ describe("mutatingRbEvents — bounded scan", () => {
   it("EdgeAdded with bidirectional=false decodes without a reverse pair", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: null, tag: RB_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n, false) },
+      { parent: 0, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n, false) },
     ]);
     expect(mutatingRbEvents(tape)).toEqual([{ kind: "EdgeAdded", from: 1n, to: 2n, bidirectional: false }]);
     expect(applyRecursiveBacktracker(tape, 0).edges).toEqual([{ from: 1n, to: 2n }]);
@@ -365,7 +365,7 @@ function buildLongEdgeChainTape(count: number): ParsedTape {
       parent: 0,
       firstChild: null,
       nextSibling: i + 1 < count ? i + 2 : null,
-      tag: RB_TAG.EDGE_ADDED,
+      tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED,
       payloadBytes: edgeAddedPayload(BigInt(i + 1), BigInt(i + 2), false),
     });
   }
@@ -378,7 +378,7 @@ function buildLongEdgeChainTape(count: number): ParsedTape {
 function resolveRbMetadata(tape: ParsedTape, startIndex = 0, endIndex = tape.nodeCount) {
   return resolveDebugArenaMetadata<ApplyResult>(
     tape,
-    (t, s, e) => countMutatingEvents(t, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, s, e),
+    (t, s, e) => countMutatingEvents(t, decodeRecursiveBacktrackerEvent, isMutatingRecursiveBacktrackerEvent, s, e),
     (step, previous) => applyRecursiveBacktracker(tape, step, previous, startIndex, endIndex),
     startIndex, endIndex,
   );
@@ -459,60 +459,60 @@ function presetUnionsAppliedPayload(pairs: [bigint, bigint, "basic" | "teleport"
 function buildKruskalTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-    { parent: 0, firstChild: null, nextSibling: 2, tag: KRUSKAL_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "basic"]]) },
+    { parent: 0, firstChild: null, nextSibling: 2, tag: KRUSKAL_EVENT_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "basic"]]) },
     { parent: 0, firstChild: 3, nextSibling: 7, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
-    { parent: 2, firstChild: null, nextSibling: 4, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: rootsComparedPayload(1n, 3n) },
-    { parent: 2, firstChild: null, nextSibling: 5, tag: KRUSKAL_TAG.ROOTS_COMPARED, payloadBytes: rootsComparedFullPayload(1n, 3n, 1n, 3n) },
-    { parent: 2, firstChild: null, nextSibling: 6, tag: KRUSKAL_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 3n) },
-    { parent: 2, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(1n, 3n) },
+    { parent: 2, firstChild: null, nextSibling: 4, tag: KRUSKAL_EVENT_TAG.EDGE_SELECTED, payloadBytes: rootsComparedPayload(1n, 3n) },
+    { parent: 2, firstChild: null, nextSibling: 5, tag: KRUSKAL_EVENT_TAG.ROOTS_COMPARED, payloadBytes: rootsComparedFullPayload(1n, 3n, 1n, 3n) },
+    { parent: 2, firstChild: null, nextSibling: 6, tag: KRUSKAL_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 3n) },
+    { parent: 2, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(1n, 3n) },
     { parent: 0, firstChild: 8, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 2") },
-    { parent: 7, firstChild: null, nextSibling: 9, tag: KRUSKAL_TAG.EDGE_SELECTED, payloadBytes: rootsComparedPayload(3n, 1n) },
-    { parent: 7, firstChild: null, nextSibling: 10, tag: KRUSKAL_TAG.ROOTS_COMPARED, payloadBytes: rootsComparedFullPayload(3n, 1n, 1n, 1n) },
-    { parent: 7, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
+    { parent: 7, firstChild: null, nextSibling: 9, tag: KRUSKAL_EVENT_TAG.EDGE_SELECTED, payloadBytes: rootsComparedPayload(3n, 1n) },
+    { parent: 7, firstChild: null, nextSibling: 10, tag: KRUSKAL_EVENT_TAG.ROOTS_COMPARED, payloadBytes: rootsComparedFullPayload(3n, 1n, 1n, 1n) },
+    { parent: 7, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
   ]);
 }
 
 describe("decodeKruskalEvent", () => {
   it("decodes EdgesShuffled (variable-length)", () => {
     const bytes = concatBytes([u32le(2), u64le(5n), u64le(9n), u64le(1n), u64le(2n)]);
-    expect(decodeKruskalEvent(KRUSKAL_TAG.EDGES_SHUFFLED, bytes)).toEqual({
+    expect(decodeKruskalEvent(KRUSKAL_EVENT_TAG.EDGES_SHUFFLED, bytes)).toEqual({
       kind: "EdgesShuffled", edges: [[5n, 9n], [1n, 2n]],
     });
   });
 
   it("decodes EdgeSelected (16 bytes)", () => {
-    expect(decodeKruskalEvent(KRUSKAL_TAG.EDGE_SELECTED, rootsComparedPayload(1n, 3n))).toEqual({
+    expect(decodeKruskalEvent(KRUSKAL_EVENT_TAG.EDGE_SELECTED, rootsComparedPayload(1n, 3n))).toEqual({
       kind: "EdgeSelected", from: 1n, to: 3n,
     });
   });
 
   it("decodes RootsCompared (32 bytes)", () => {
-    expect(decodeKruskalEvent(KRUSKAL_TAG.ROOTS_COMPARED, rootsComparedFullPayload(1n, 3n, 1n, 3n))).toEqual({
+    expect(decodeKruskalEvent(KRUSKAL_EVENT_TAG.ROOTS_COMPARED, rootsComparedFullPayload(1n, 3n, 1n, 3n))).toEqual({
       kind: "RootsCompared", from: 1n, to: 3n, rootOfFrom: 1n, rootOfTo: 3n,
     });
   });
 
   it("decodes SetsMerged (16 bytes)", () => {
-    expect(decodeKruskalEvent(KRUSKAL_TAG.SETS_MERGED, rootsComparedPayload(1n, 3n))).toEqual({
+    expect(decodeKruskalEvent(KRUSKAL_EVENT_TAG.SETS_MERGED, rootsComparedPayload(1n, 3n))).toEqual({
       kind: "SetsMerged", rootA: 1n, rootB: 3n,
     });
   });
 
   it("decodes EdgeRejected (0 bytes)", () => {
-    expect(decodeKruskalEvent(KRUSKAL_TAG.EDGE_REJECTED, new Uint8Array(0))).toEqual({
+    expect(decodeKruskalEvent(KRUSKAL_EVENT_TAG.EDGE_REJECTED, new Uint8Array(0))).toEqual({
       kind: "EdgeRejected",
     });
   });
 
   it("decodes EdgeAdded (17 bytes)", () => {
-    expect(decodeKruskalEvent(KRUSKAL_TAG.EDGE_ADDED, edgeAddedPayload(1n, 3n))).toEqual({
+    expect(decodeKruskalEvent(KRUSKAL_EVENT_TAG.EDGE_ADDED, edgeAddedPayload(1n, 3n))).toEqual({
       kind: "EdgeAdded", from: 1n, to: 3n, bidirectional: true,
     });
   });
 
   it("decodes PresetUnionsApplied (variable-length)", () => {
     expect(decodeKruskalEvent(
-      KRUSKAL_TAG.PRESET_UNIONS_APPLIED,
+      KRUSKAL_EVENT_TAG.PRESET_UNIONS_APPLIED,
       presetUnionsAppliedPayload([[1n, 2n, "basic"], [4n, 5n, "teleport"]]),
     )).toEqual({
       kind: "PresetUnionsApplied", pairs: [[1n, 2n, "basic"], [4n, 5n, "teleport"]],
@@ -524,7 +524,7 @@ describe("decodeKruskalEvent", () => {
   });
 
   it("throws on a payload_len mismatch", () => {
-    expect(() => decodeKruskalEvent(KRUSKAL_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
+    expect(() => decodeKruskalEvent(KRUSKAL_EVENT_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
   });
 });
 
@@ -583,10 +583,10 @@ describe("applyKruskal", () => {
   it("GitHub issue #193: seeds a preset teleport's PresetUnionsApplied pair into edges with kind \"teleport\"", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
-      { parent: 0, firstChild: null, nextSibling: 2, tag: KRUSKAL_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "teleport"]]) },
+      { parent: 0, firstChild: null, nextSibling: 2, tag: KRUSKAL_EVENT_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "teleport"]]) },
       { parent: 0, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
-      { parent: 2, firstChild: null, nextSibling: 4, tag: KRUSKAL_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
-      { parent: 2, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(3n, 4n) },
+      { parent: 2, firstChild: null, nextSibling: 4, tag: KRUSKAL_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 4n) },
+      { parent: 2, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(3n, 4n) },
     ]);
     const result = applyKruskal(tape, 0);
     expect(result.edges).toEqual([
@@ -599,9 +599,9 @@ describe("applyKruskal", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
-      { parent: 1, firstChild: null, nextSibling: 3, tag: KRUSKAL_TAG.ROOTS_COMPARED, payloadBytes: rootsComparedFullPayload(1n, 2n, 1n, 2n) },
-      { parent: 1, firstChild: null, nextSibling: 4, tag: KRUSKAL_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
-      { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(1n, 2n) },
+      { parent: 1, firstChild: null, nextSibling: 3, tag: KRUSKAL_EVENT_TAG.ROOTS_COMPARED, payloadBytes: rootsComparedFullPayload(1n, 2n, 1n, 2n) },
+      { parent: 1, firstChild: null, nextSibling: 4, tag: KRUSKAL_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+      { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(1n, 2n) },
     ]);
     const result = applyKruskal(tape, 1);
     expect(result.dsuGroups.get(1n)).toBe(1n);
@@ -616,12 +616,12 @@ describe("applyKruskal", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("merged root") },
       { parent: 0, firstChild: 2, nextSibling: 3, tag: TAG_SCOPE, payloadBytes: scopePayload("preset_setup") },
-      { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
+      { parent: 1, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.EDGE_REJECTED, payloadBytes: new Uint8Array(0) },
       { parent: 0, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
-      { parent: 3, firstChild: null, nextSibling: 5, tag: KRUSKAL_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "basic"]]) },
+      { parent: 3, firstChild: null, nextSibling: 5, tag: KRUSKAL_EVENT_TAG.PRESET_UNIONS_APPLIED, payloadBytes: presetUnionsAppliedPayload([[1n, 2n, "basic"]]) },
       { parent: 3, firstChild: 6, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("edge 1") },
-      { parent: 5, firstChild: null, nextSibling: 7, tag: KRUSKAL_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 3n) },
-      { parent: 5, firstChild: null, nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(1n, 3n) },
+      { parent: 5, firstChild: null, nextSibling: 7, tag: KRUSKAL_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 3n) },
+      { parent: 5, firstChild: null, nextSibling: null, tag: KRUSKAL_EVENT_TAG.SETS_MERGED, payloadBytes: rootsComparedPayload(1n, 3n) },
     ]);
     // Kruskal's own source content starts at node 4 (the "generation" wrapper's firstChild).
     const result = applyKruskal(tape, 0, undefined, 4, tape.nodeCount);
@@ -649,7 +649,7 @@ describe("applyKruskal", () => {
           parent: 0,
           firstChild: null,
           nextSibling: i + 1 < count ? i + 2 : null,
-          tag: KRUSKAL_TAG.EDGE_ADDED,
+          tag: KRUSKAL_EVENT_TAG.EDGE_ADDED,
           payloadBytes: edgeAddedPayload(BigInt(i + 1), BigInt(i + 2)),
         });
       }
@@ -703,58 +703,58 @@ function buildWilsonTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("walk 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(5n) },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: WILSON_EVENT_TAG.WALK_START_PICKED, payloadBytes: vertexPayload(5n) },
     { parent: 1, firstChild: 4, nextSibling: 6, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(5n, 3n) },
-    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_TAG.LOOP_ERASED, payloadBytes: vertexPayload(3n) },
+    { parent: 3, firstChild: null, nextSibling: 5, tag: WILSON_EVENT_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(5n, 3n) },
+    { parent: 3, firstChild: null, nextSibling: null, tag: WILSON_EVENT_TAG.LOOP_ERASED, payloadBytes: vertexPayload(3n) },
     { parent: 1, firstChild: 7, nextSibling: 8, tag: TAG_SCOPE, payloadBytes: scopePayload("step 2") },
-    { parent: 6, firstChild: null, nextSibling: null, tag: WILSON_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(3n, 1n) },
-    { parent: 1, firstChild: null, nextSibling: 9, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(5n, 3n) },
-    { parent: 1, firstChild: null, nextSibling: 10, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(5n) },
-    { parent: 1, firstChild: null, nextSibling: 11, tag: WILSON_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 1n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: WILSON_TAG.NODE_VISITED, payloadBytes: vertexPayload(3n) },
+    { parent: 6, firstChild: null, nextSibling: null, tag: WILSON_EVENT_TAG.STEP_TAKEN, payloadBytes: stepTakenPayload(3n, 1n) },
+    { parent: 1, firstChild: null, nextSibling: 9, tag: WILSON_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(5n, 3n) },
+    { parent: 1, firstChild: null, nextSibling: 10, tag: WILSON_EVENT_TAG.NODE_VISITED, payloadBytes: vertexPayload(5n) },
+    { parent: 1, firstChild: null, nextSibling: 11, tag: WILSON_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(3n, 1n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: WILSON_EVENT_TAG.NODE_VISITED, payloadBytes: vertexPayload(3n) },
   ]);
 }
 
 describe("decodeWilsonEvent", () => {
   it("decodes StartVisited (8 bytes)", () => {
-    expect(decodeWilsonEvent(WILSON_TAG.START_VISITED, vertexPayload(5n))).toEqual({
+    expect(decodeWilsonEvent(WILSON_EVENT_TAG.START_VISITED, vertexPayload(5n))).toEqual({
       kind: "StartVisited", id: 5n,
     });
   });
 
   it("decodes WalkStartPicked (8 bytes)", () => {
-    expect(decodeWilsonEvent(WILSON_TAG.WALK_START_PICKED, vertexPayload(5n))).toEqual({
+    expect(decodeWilsonEvent(WILSON_EVENT_TAG.WALK_START_PICKED, vertexPayload(5n))).toEqual({
       kind: "WalkStartPicked", id: 5n,
     });
   });
 
   it("decodes StepTaken (16 bytes)", () => {
-    expect(decodeWilsonEvent(WILSON_TAG.STEP_TAKEN, stepTakenPayload(5n, 3n))).toEqual({
+    expect(decodeWilsonEvent(WILSON_EVENT_TAG.STEP_TAKEN, stepTakenPayload(5n, 3n))).toEqual({
       kind: "StepTaken", from: 5n, to: 3n,
     });
   });
 
   it("decodes LoopErased (8 bytes)", () => {
-    expect(decodeWilsonEvent(WILSON_TAG.LOOP_ERASED, vertexPayload(3n))).toEqual({
+    expect(decodeWilsonEvent(WILSON_EVENT_TAG.LOOP_ERASED, vertexPayload(3n))).toEqual({
       kind: "LoopErased", node: 3n,
     });
   });
 
   it("decodes WalkDeadEnd (0 bytes)", () => {
-    expect(decodeWilsonEvent(WILSON_TAG.WALK_DEAD_END, new Uint8Array(0))).toEqual({
+    expect(decodeWilsonEvent(WILSON_EVENT_TAG.WALK_DEAD_END, new Uint8Array(0))).toEqual({
       kind: "WalkDeadEnd",
     });
   });
 
   it("decodes EdgeAdded (17 bytes)", () => {
-    expect(decodeWilsonEvent(WILSON_TAG.EDGE_ADDED, edgeAddedPayload(5n, 3n))).toEqual({
+    expect(decodeWilsonEvent(WILSON_EVENT_TAG.EDGE_ADDED, edgeAddedPayload(5n, 3n))).toEqual({
       kind: "EdgeAdded", from: 5n, to: 3n, bidirectional: true,
     });
   });
 
   it("decodes NodeVisited (8 bytes)", () => {
-    expect(decodeWilsonEvent(WILSON_TAG.NODE_VISITED, vertexPayload(5n))).toEqual({
+    expect(decodeWilsonEvent(WILSON_EVENT_TAG.NODE_VISITED, vertexPayload(5n))).toEqual({
       kind: "NodeVisited", id: 5n,
     });
   });
@@ -764,7 +764,7 @@ describe("decodeWilsonEvent", () => {
   });
 
   it("throws on a payload_len mismatch", () => {
-    expect(() => decodeWilsonEvent(WILSON_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
+    expect(() => decodeWilsonEvent(WILSON_EVENT_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
   });
 });
 
@@ -848,7 +848,7 @@ describe("mutatingWilsonEvents / applyWilson", () => {
           parent: 0,
           firstChild: null,
           nextSibling: i + 1 < count ? i + 2 : null,
-          tag: WILSON_TAG.NODE_VISITED,
+          tag: WILSON_EVENT_TAG.NODE_VISITED,
           payloadBytes: vertexPayload(BigInt(i + 1)),
         });
       }
@@ -936,150 +936,150 @@ function buildEdgeBasedTape(): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: EDGE_BASED_TAG.CORRIDOR_ROLL_SKIPPED, payloadBytes: new Uint8Array(0) },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: EDGE_BASED_EVENT_TAG.CORRIDOR_ROLL_SKIPPED, payloadBytes: new Uint8Array(0) },
     {
-      parent: 1, firstChild: null, nextSibling: 4, tag: EDGE_BASED_TAG.SRC_CHOSEN_BY_DEPTH_FIRST,
+      parent: 1, firstChild: null, nextSibling: 4, tag: EDGE_BASED_EVENT_TAG.SRC_CHOSEN_BY_DEPTH_FIRST,
       payloadBytes: concatBytes([u64le(1n), u32le(1), u32le(0), f64le(0.9)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 5, tag: EDGE_BASED_TAG.TELEPORT_ROLLED,
+      parent: 1, firstChild: null, nextSibling: 5, tag: EDGE_BASED_EVENT_TAG.TELEPORT_ROLLED,
       payloadBytes: concatBytes([u64le(1n), f64le(0.8), f64le(0.0), boolByte(false)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 6, tag: EDGE_BASED_TAG.CYCLIC_ROLLED,
+      parent: 1, firstChild: null, nextSibling: 6, tag: EDGE_BASED_EVENT_TAG.CYCLIC_ROLLED,
       payloadBytes: concatBytes([u64le(1n), f64le(0.7), f64le(0.0), boolByte(false)]),
     },
-    { parent: 1, firstChild: null, nextSibling: 7, tag: EDGE_BASED_TAG.CANDIDATE_POOL_BUILT, payloadBytes: candidatePoolBuiltPayload(1n, true, [2n]) },
+    { parent: 1, firstChild: null, nextSibling: 7, tag: EDGE_BASED_EVENT_TAG.CANDIDATE_POOL_BUILT, payloadBytes: candidatePoolBuiltPayload(1n, true, [2n]) },
     {
-      parent: 1, firstChild: null, nextSibling: 8, tag: EDGE_BASED_TAG.DST_WEIGHTS_COMPUTED,
+      parent: 1, firstChild: null, nextSibling: 8, tag: EDGE_BASED_EVENT_TAG.DST_WEIGHTS_COMPUTED,
       payloadBytes: concatBytes([nodeIdListPayload([2n]), f64ListPayload([1.0]), f64le(0.0), f64le(0.0), boolByte(true)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 9, tag: EDGE_BASED_TAG.DST_CHOSEN,
+      parent: 1, firstChild: null, nextSibling: 9, tag: EDGE_BASED_EVENT_TAG.DST_CHOSEN,
       payloadBytes: concatBytes([u64le(2n), f64le(0.5), f64le(1.0)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 10, tag: EDGE_BASED_TAG.EDGE_ADDED,
+      parent: 1, firstChild: null, nextSibling: 10, tag: EDGE_BASED_EVENT_TAG.EDGE_ADDED,
       payloadBytes: concatBytes([u64le(1n), u64le(2n), boolByte(false), boolByte(true)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 11, tag: EDGE_BASED_TAG.NODE_ACTIVATED,
+      parent: 1, firstChild: null, nextSibling: 11, tag: EDGE_BASED_EVENT_TAG.NODE_ACTIVATED,
       payloadBytes: concatBytes([u64le(2n), optionalNodeIdPayload(1n), u32le(1)]),
     },
-    { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_TAG.SRC_EXHAUSTED, payloadBytes: u64le(1n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_EVENT_TAG.SRC_EXHAUSTED, payloadBytes: u64le(1n) },
   ]);
 }
 
 describe("decodeEdgeBasedEvent", () => {
   it("decodes CorridorRollSkipped (0 bytes)", () => {
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CORRIDOR_ROLL_SKIPPED, new Uint8Array(0))).toEqual({ kind: "CorridorRollSkipped" });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CORRIDOR_ROLL_SKIPPED, new Uint8Array(0))).toEqual({ kind: "CorridorRollSkipped" });
   });
 
   it("decodes CorridorRolled (25 bytes)", () => {
     const payload = concatBytes([u64le(7n), f64le(0.2), f64le(0.3), boolByte(true)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CORRIDOR_ROLLED, payload)).toEqual({
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CORRIDOR_ROLLED, payload)).toEqual({
       kind: "CorridorRolled", prev: 7n, roll: 0.2, corridorLength: 0.3, continued: true,
     });
   });
 
   it("decodes CorridorDeadNoUnseen (8 bytes)", () => {
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CORRIDOR_DEAD_NO_UNSEEN, u64le(4n))).toEqual({ kind: "CorridorDeadNoUnseen", prev: 4n });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CORRIDOR_DEAD_NO_UNSEEN, u64le(4n))).toEqual({ kind: "CorridorDeadNoUnseen", prev: 4n });
   });
 
   it("decodes SrcChosenByDepthFirst (24 bytes)", () => {
     const payload = concatBytes([u64le(1n), u32le(3), u32le(1), f64le(0.5)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.SRC_CHOSEN_BY_DEPTH_FIRST, payload)).toEqual({
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.SRC_CHOSEN_BY_DEPTH_FIRST, payload)).toEqual({
       kind: "SrcChosenByDepthFirst", src: 1n, activeLen: 3, position: 1, depthFirst: 0.5,
     });
   });
 
   it("decodes TeleportRolled (25 bytes)", () => {
     const payload = concatBytes([u64le(1n), f64le(0.05), f64le(0.1), boolByte(true)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.TELEPORT_ROLLED, payload)).toEqual({
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.TELEPORT_ROLLED, payload)).toEqual({
       kind: "TeleportRolled", src: 1n, roll: 0.05, teleportChance: 0.1, fired: true,
     });
   });
 
   it("decodes TeleportAlreadyRolled (8 bytes)", () => {
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.TELEPORT_ALREADY_ROLLED, u64le(1n))).toEqual({ kind: "TeleportAlreadyRolled", src: 1n });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.TELEPORT_ALREADY_ROLLED, u64le(1n))).toEqual({ kind: "TeleportAlreadyRolled", src: 1n });
   });
 
   it("decodes CyclicRolled (25 bytes)", () => {
     const payload = concatBytes([u64le(1n), f64le(0.5), f64le(0.15), boolByte(false)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_ROLLED, payload)).toEqual({
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CYCLIC_ROLLED, payload)).toEqual({
       kind: "CyclicRolled", src: 1n, roll: 0.5, cyclicity: 0.15, fired: false,
     });
   });
 
   it("decodes CyclicAlreadyRolled (8 bytes)", () => {
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_ALREADY_ROLLED, u64le(1n))).toEqual({ kind: "CyclicAlreadyRolled", src: 1n });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CYCLIC_ALREADY_ROLLED, u64le(1n))).toEqual({ kind: "CyclicAlreadyRolled", src: 1n });
   });
 
   it("decodes CandidatePoolBuilt (variable length)", () => {
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CANDIDATE_POOL_BUILT, candidatePoolBuiltPayload(1n, true, [2n, 3n]))).toEqual({
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CANDIDATE_POOL_BUILT, candidatePoolBuiltPayload(1n, true, [2n, 3n]))).toEqual({
       kind: "CandidatePoolBuilt", src: 1n, geometric: true, candidates: [2n, 3n],
     });
   });
 
   it("decodes SrcExhaustedEmptyPool (8 bytes)", () => {
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.SRC_EXHAUSTED_EMPTY_POOL, u64le(1n))).toEqual({ kind: "SrcExhaustedEmptyPool", src: 1n });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.SRC_EXHAUSTED_EMPTY_POOL, u64le(1n))).toEqual({ kind: "SrcExhaustedEmptyPool", src: 1n });
   });
 
   it("decodes CyclicCandidatesComputed (variable length)", () => {
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_CANDIDATES_COMPUTED, candidatePoolBuiltPayload(1n, false, [4n]))).toEqual({
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CYCLIC_CANDIDATES_COMPUTED, candidatePoolBuiltPayload(1n, false, [4n]))).toEqual({
       kind: "CyclicCandidatesComputed", src: 1n, geometric: false, candidates: [4n],
     });
   });
 
   it("decodes CyclicEdgeAdded (18 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(4n), boolByte(true), boolByte(false)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_EDGE_ADDED, payload)).toEqual({ kind: "CyclicEdgeAdded", src: 1n, dst: 4n, teleport: true, bidirectional: false });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CYCLIC_EDGE_ADDED, payload)).toEqual({ kind: "CyclicEdgeAdded", src: 1n, dst: 4n, teleport: true, bidirectional: false });
   });
 
   it("decodes CyclicEdgeRejected (17 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(4n), boolByte(false)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.CYCLIC_EDGE_REJECTED, payload)).toEqual({ kind: "CyclicEdgeRejected", src: 1n, dst: 4n, teleport: false });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.CYCLIC_EDGE_REJECTED, payload)).toEqual({ kind: "CyclicEdgeRejected", src: 1n, dst: 4n, teleport: false });
   });
 
   it("decodes DstWeightsComputed (variable length)", () => {
     const payload = concatBytes([nodeIdListPayload([2n, 3n]), f64ListPayload([1.5, 2.5]), f64le(0.4), f64le(0.1), boolByte(true)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.DST_WEIGHTS_COMPUTED, payload)).toEqual({
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.DST_WEIGHTS_COMPUTED, payload)).toEqual({
       kind: "DstWeightsComputed", candidates: [2n, 3n], weights: [1.5, 2.5], branching: 0.4, directionality: 0.1, directionalityEligible: true,
     });
   });
 
   it("decodes DstChosen (24 bytes)", () => {
     const payload = concatBytes([u64le(2n), f64le(0.63), f64le(3.0)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.DST_CHOSEN, payload)).toEqual({ kind: "DstChosen", dst: 2n, roll: 0.63, totalWeight: 3.0 });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.DST_CHOSEN, payload)).toEqual({ kind: "DstChosen", dst: 2n, roll: 0.63, totalWeight: 3.0 });
   });
 
   it("decodes EdgeAdded (18 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n), boolByte(false), boolByte(true)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.EDGE_ADDED, payload)).toEqual({ kind: "EdgeAdded", src: 1n, dst: 2n, teleport: false, bidirectional: true });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.EDGE_ADDED, payload)).toEqual({ kind: "EdgeAdded", src: 1n, dst: 2n, teleport: false, bidirectional: true });
   });
 
   it("decodes EdgeRejected (17 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n), boolByte(true)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.EDGE_REJECTED, payload)).toEqual({ kind: "EdgeRejected", src: 1n, dst: 2n, teleport: true });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.EDGE_REJECTED, payload)).toEqual({ kind: "EdgeRejected", src: 1n, dst: 2n, teleport: true });
   });
 
   it("decodes PresetSkipped (16 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.PRESET_SKIPPED, payload)).toEqual({ kind: "PresetSkipped", src: 1n, dst: 2n });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.PRESET_SKIPPED, payload)).toEqual({ kind: "PresetSkipped", src: 1n, dst: 2n });
   });
 
   it("decodes NodeActivated with parent=Some (21 bytes)", () => {
     const payload = concatBytes([u64le(2n), optionalNodeIdPayload(1n), u32le(3)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.NODE_ACTIVATED, payload)).toEqual({ kind: "NodeActivated", node: 2n, parent: 1n, treeDepth: 3 });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.NODE_ACTIVATED, payload)).toEqual({ kind: "NodeActivated", node: 2n, parent: 1n, treeDepth: 3 });
   });
 
   it("decodes NodeActivated with parent=None (21 bytes)", () => {
     const payload = concatBytes([u64le(1n), optionalNodeIdPayload(null), u32le(0)]);
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.NODE_ACTIVATED, payload)).toEqual({ kind: "NodeActivated", node: 1n, parent: null, treeDepth: 0 });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.NODE_ACTIVATED, payload)).toEqual({ kind: "NodeActivated", node: 1n, parent: null, treeDepth: 0 });
   });
 
   it("decodes SrcExhausted (8 bytes)", () => {
-    expect(decodeEdgeBasedEvent(EDGE_BASED_TAG.SRC_EXHAUSTED, u64le(1n))).toEqual({ kind: "SrcExhausted", src: 1n });
+    expect(decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.SRC_EXHAUSTED, u64le(1n))).toEqual({ kind: "SrcExhausted", src: 1n });
   });
 
   it("throws on an unknown wire tag", () => {
@@ -1087,7 +1087,7 @@ describe("decodeEdgeBasedEvent", () => {
   });
 
   it("throws on a payload_len mismatch", () => {
-    expect(() => decodeEdgeBasedEvent(EDGE_BASED_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
+    expect(() => decodeEdgeBasedEvent(EDGE_BASED_EVENT_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
   });
 });
 
@@ -1162,7 +1162,7 @@ describe("mutatingEdgeBasedEvents / applyEdgeBased", () => {
           parent: 0,
           firstChild: null,
           nextSibling: i + 1 < count ? i + 2 : null,
-          tag: EDGE_BASED_TAG.NODE_ACTIVATED,
+          tag: EDGE_BASED_EVENT_TAG.NODE_ACTIVATED,
           payloadBytes: concatBytes([u64le(BigInt(i + 1)), optionalNodeIdPayload(null), u32le(0)]),
         });
       }
@@ -1204,7 +1204,7 @@ describe("mutatingEdgeBasedEvents / applyEdgeBased", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-      { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_TAG.EDGE_ADDED, payloadBytes: teleportEdgeAddedPayload },
+      { parent: 1, firstChild: null, nextSibling: null, tag: EDGE_BASED_EVENT_TAG.EDGE_ADDED, payloadBytes: teleportEdgeAddedPayload },
     ]);
     const result = applyEdgeBased(tape, 0);
     expect(result.edges).toEqual([{ from: 1n, to: 5n, kind: "teleport" }]);
@@ -1234,175 +1234,175 @@ function buildVertexBasedTape(): ParsedTape {
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
     {
-      parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_TAG.SRC_CHOSEN_FROM_FRONTIER,
+      parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_EVENT_TAG.SRC_CHOSEN_FROM_FRONTIER,
       payloadBytes: concatBytes([u64le(1n), u32le(1), u32le(0), f64le(0.0)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 4, tag: VERTEX_BASED_TAG.TELEPORT_ROLLED,
+      parent: 1, firstChild: null, nextSibling: 4, tag: VERTEX_BASED_EVENT_TAG.TELEPORT_ROLLED,
       payloadBytes: concatBytes([u64le(1n), f64le(0.8), f64le(0.0), boolByte(false)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 5, tag: VERTEX_BASED_TAG.CYCLIC_ROLLED,
+      parent: 1, firstChild: null, nextSibling: 5, tag: VERTEX_BASED_EVENT_TAG.CYCLIC_ROLLED,
       payloadBytes: concatBytes([u64le(1n), f64le(0.7), f64le(0.0), boolByte(false)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 6, tag: VERTEX_BASED_TAG.CORRIDOR_ROLLED,
+      parent: 1, firstChild: null, nextSibling: 6, tag: VERTEX_BASED_EVENT_TAG.CORRIDOR_ROLLED,
       payloadBytes: concatBytes([f64le(0.1), f64le(1.0), boolByte(true)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 7, tag: VERTEX_BASED_TAG.CANDIDATE_CHOSEN,
+      parent: 1, firstChild: null, nextSibling: 7, tag: VERTEX_BASED_EVENT_TAG.CANDIDATE_CHOSEN,
       payloadBytes: concatBytes([u64le(1n), u64le(2n), boolByte(false)]),
     },
     {
-      parent: 1, firstChild: null, nextSibling: 8, tag: VERTEX_BASED_TAG.EDGE_ADDED,
+      parent: 1, firstChild: null, nextSibling: 8, tag: VERTEX_BASED_EVENT_TAG.EDGE_ADDED,
       payloadBytes: concatBytes([u64le(1n), u64le(2n), boolByte(true)]),
     },
-    { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.NODE_VISITED, payloadBytes: concatBytes([u64le(2n), u64le(1n)]) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_EVENT_TAG.NODE_VISITED, payloadBytes: concatBytes([u64le(2n), u64le(1n)]) },
   ]);
 }
 
 describe("decodeVertexBasedEvent", () => {
   it("decodes TeleportBridgeRolled (17 bytes)", () => {
     const payload = concatBytes([f64le(0.05), f64le(0.1), boolByte(true)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.TELEPORT_BRIDGE_ROLLED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.TELEPORT_BRIDGE_ROLLED, payload)).toEqual({
       kind: "TeleportBridgeRolled", roll: 0.05, teleportChance: 0.1, fired: true,
     });
   });
 
   it("decodes TeleportBridgeAdded (17 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n), boolByte(true)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.TELEPORT_BRIDGE_ADDED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.TELEPORT_BRIDGE_ADDED, payload)).toEqual({
       kind: "TeleportBridgeAdded", src: 1n, dst: 2n, bidirectional: true,
     });
   });
 
   it("decodes ReserveCandidateRejected (9 bytes)", () => {
     const payload = concatBytes([u64le(3n), optionalReasonByte(true)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.RESERVE_CANDIDATE_REJECTED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.RESERVE_CANDIDATE_REJECTED, payload)).toEqual({
       kind: "ReserveCandidateRejected", node: 3n, alreadyVisited: true,
     });
   });
 
   it("decodes ReserveCandidateChosen (8 bytes)", () => {
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.RESERVE_CANDIDATE_CHOSEN, u64le(3n))).toEqual({ kind: "ReserveCandidateChosen", node: 3n });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.RESERVE_CANDIDATE_CHOSEN, u64le(3n))).toEqual({ kind: "ReserveCandidateChosen", node: 3n });
   });
 
   it("decodes ReserveExhausted (0 bytes)", () => {
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.RESERVE_EXHAUSTED, new Uint8Array(0))).toEqual({ kind: "ReserveExhausted" });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.RESERVE_EXHAUSTED, new Uint8Array(0))).toEqual({ kind: "ReserveExhausted" });
   });
 
   it("decodes BridgeAdded (17 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n), boolByte(false)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.BRIDGE_ADDED, payload)).toEqual({ kind: "BridgeAdded", src: 1n, dst: 2n, bidirectional: false });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.BRIDGE_ADDED, payload)).toEqual({ kind: "BridgeAdded", src: 1n, dst: 2n, bidirectional: false });
   });
 
   it("decodes SrcChosenFromFrontier (24 bytes)", () => {
     const payload = concatBytes([u64le(1n), u32le(3), u32le(1), f64le(0.5)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.SRC_CHOSEN_FROM_FRONTIER, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.SRC_CHOSEN_FROM_FRONTIER, payload)).toEqual({
       kind: "SrcChosenFromFrontier", src: 1n, frontierLen: 3, position: 1, depthFirst: 0.5,
     });
   });
 
   it("decodes TeleportRolled (25 bytes)", () => {
     const payload = concatBytes([u64le(1n), f64le(0.05), f64le(0.1), boolByte(true)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.TELEPORT_ROLLED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.TELEPORT_ROLLED, payload)).toEqual({
       kind: "TeleportRolled", src: 1n, roll: 0.05, teleportChance: 0.1, fired: true,
     });
   });
 
   it("decodes CyclicRolled (25 bytes)", () => {
     const payload = concatBytes([u64le(1n), f64le(0.5), f64le(0.15), boolByte(false)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CYCLIC_ROLLED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.CYCLIC_ROLLED, payload)).toEqual({
       kind: "CyclicRolled", src: 1n, roll: 0.5, cyclicity: 0.15, fired: false,
     });
   });
 
   it("decodes CyclicCandidatesComputed (variable length)", () => {
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CYCLIC_CANDIDATES_COMPUTED, candidatePoolBuiltPayload(1n, false, [4n]))).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.CYCLIC_CANDIDATES_COMPUTED, candidatePoolBuiltPayload(1n, false, [4n]))).toEqual({
       kind: "CyclicCandidatesComputed", src: 1n, geometric: false, candidates: [4n],
     });
   });
 
   it("decodes CyclicEdgeAdded (18 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(4n), boolByte(true), boolByte(false)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CYCLIC_EDGE_ADDED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.CYCLIC_EDGE_ADDED, payload)).toEqual({
       kind: "CyclicEdgeAdded", src: 1n, dst: 4n, teleport: true, bidirectional: false,
     });
   });
 
   it("decodes CorridorRolled (17 bytes)", () => {
     const payload = concatBytes([f64le(0.2), f64le(0.3), boolByte(true)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CORRIDOR_ROLLED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.CORRIDOR_ROLLED, payload)).toEqual({
       kind: "CorridorRolled", roll: 0.2, corridorChance: 0.3, isCorridor: true,
     });
   });
 
   it("decodes CandidateChosen (17 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n), boolByte(true)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.CANDIDATE_CHOSEN, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.CANDIDATE_CHOSEN, payload)).toEqual({
       kind: "CandidateChosen", src: 1n, dst: 2n, usedDirectionality: true,
     });
   });
 
   it("decodes JunctionSlotRolled (21 bytes)", () => {
     const payload = concatBytes([u32le(2), f64le(0.3), f64le(0.5), boolByte(true)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.JUNCTION_SLOT_ROLLED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.JUNCTION_SLOT_ROLLED, payload)).toEqual({
       kind: "JunctionSlotRolled", slot: 2, roll: 0.3, branching: 0.5, taken: true,
     });
   });
 
   it("decodes StartVisited (8 bytes)", () => {
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.START_VISITED, u64le(1n))).toEqual({ kind: "StartVisited", node: 1n });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.START_VISITED, u64le(1n))).toEqual({ kind: "StartVisited", node: 1n });
   });
 
   it("decodes SingleCandidateSkipsDirectionality (8 bytes)", () => {
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.SINGLE_CANDIDATE_SKIPS_DIRECTIONALITY, u64le(7n))).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.SINGLE_CANDIDATE_SKIPS_DIRECTIONALITY, u64le(7n))).toEqual({
       kind: "SingleCandidateSkipsDirectionality", node: 7n,
     });
   });
 
   it("decodes NoParentSkipsDirectionality (8 bytes)", () => {
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.NO_PARENT_SKIPS_DIRECTIONALITY, u64le(4n))).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.NO_PARENT_SKIPS_DIRECTIONALITY, u64le(4n))).toEqual({
       kind: "NoParentSkipsDirectionality", node: 4n,
     });
   });
 
   it("decodes DirectionalityRolled (18 bytes)", () => {
     const payload = concatBytes([f64le(0.1), f64le(0.4), boolByte(true), boolByte(false)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.DIRECTIONALITY_ROLLED, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.DIRECTIONALITY_ROLLED, payload)).toEqual({
       kind: "DirectionalityRolled", roll: 0.1, directionality: 0.4, fired: true, straightFound: false,
     });
   });
 
   it("decodes JunctionCandidatesChosen (variable length)", () => {
     const payload = concatBytes([u64le(1n), nodeIdListPayload([2n, 3n])]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.JUNCTION_CANDIDATES_CHOSEN, payload)).toEqual({
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.JUNCTION_CANDIDATES_CHOSEN, payload)).toEqual({
       kind: "JunctionCandidatesChosen", src: 1n, candidates: [2n, 3n],
     });
   });
 
   it("decodes EdgeAdded (17 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n), boolByte(true)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.EDGE_ADDED, payload)).toEqual({ kind: "EdgeAdded", src: 1n, dst: 2n, bidirectional: true });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.EDGE_ADDED, payload)).toEqual({ kind: "EdgeAdded", src: 1n, dst: 2n, bidirectional: true });
   });
 
   it("decodes PresetNeighborVisited (16 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.PRESET_NEIGHBOR_VISITED, payload)).toEqual({ kind: "PresetNeighborVisited", src: 1n, dst: 2n });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.PRESET_NEIGHBOR_VISITED, payload)).toEqual({ kind: "PresetNeighborVisited", src: 1n, dst: 2n });
   });
 
   it("decodes TeleportConnectAdded (17 bytes)", () => {
     const payload = concatBytes([u64le(1n), u64le(2n), boolByte(false)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.TELEPORT_CONNECT_ADDED, payload)).toEqual({ kind: "TeleportConnectAdded", src: 1n, dst: 2n, bidirectional: false });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.TELEPORT_CONNECT_ADDED, payload)).toEqual({ kind: "TeleportConnectAdded", src: 1n, dst: 2n, bidirectional: false });
   });
 
   it("decodes NodeVisited (16 bytes)", () => {
     const payload = concatBytes([u64le(2n), u64le(1n)]);
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.NODE_VISITED, payload)).toEqual({ kind: "NodeVisited", node: 2n, parent: 1n });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.NODE_VISITED, payload)).toEqual({ kind: "NodeVisited", node: 2n, parent: 1n });
   });
 
   it("decodes NodeQueuedToReserve (8 bytes)", () => {
-    expect(decodeVertexBasedEvent(VERTEX_BASED_TAG.NODE_QUEUED_TO_RESERVE, u64le(5n))).toEqual({ kind: "NodeQueuedToReserve", node: 5n });
+    expect(decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.NODE_QUEUED_TO_RESERVE, u64le(5n))).toEqual({ kind: "NodeQueuedToReserve", node: 5n });
   });
 
   it("throws on an unknown wire tag", () => {
@@ -1410,7 +1410,7 @@ describe("decodeVertexBasedEvent", () => {
   });
 
   it("throws on a payload_len mismatch", () => {
-    expect(() => decodeVertexBasedEvent(VERTEX_BASED_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
+    expect(() => decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.EDGE_ADDED, new Uint8Array(5))).toThrow(/payload_len/);
   });
 });
 
@@ -1501,7 +1501,7 @@ describe("mutatingVertexBasedEvents / applyVertexBased", () => {
           parent: 0,
           firstChild: null,
           nextSibling: i + 1 < count ? i + 2 : null,
-          tag: VERTEX_BASED_TAG.NODE_VISITED,
+          tag: VERTEX_BASED_EVENT_TAG.NODE_VISITED,
           payloadBytes: concatBytes([u64le(BigInt(i + 1)), u64le(BigInt(i))]),
         });
       }
@@ -1542,8 +1542,8 @@ describe("mutatingVertexBasedEvents / applyVertexBased", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-      { parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_TAG.NODE_QUEUED_TO_RESERVE, payloadBytes: u64le(3n) },
-      { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.NODE_VISITED, payloadBytes: concatBytes([u64le(3n), u64le(1n)]) },
+      { parent: 1, firstChild: null, nextSibling: 3, tag: VERTEX_BASED_EVENT_TAG.NODE_QUEUED_TO_RESERVE, payloadBytes: u64le(3n) },
+      { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_EVENT_TAG.NODE_VISITED, payloadBytes: concatBytes([u64le(3n), u64le(1n)]) },
     ]);
     const result = applyVertexBased(tape, 1);
     expect(result.debugValues.get("reserve")).toEqual([]);
@@ -1556,7 +1556,7 @@ describe("mutatingVertexBasedEvents / applyVertexBased", () => {
     const tape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
-      { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_TAG.TELEPORT_BRIDGE_ADDED, payloadBytes: teleportBridgePayload },
+      { parent: 1, firstChild: null, nextSibling: null, tag: VERTEX_BASED_EVENT_TAG.TELEPORT_BRIDGE_ADDED, payloadBytes: teleportBridgePayload },
     ]);
     const result = applyVertexBased(tape, 0);
     expect(result.edges).toEqual([{ from: 1n, to: 5n, kind: "teleport" }]);
@@ -1575,8 +1575,8 @@ describe("mutatingVertexBasedEvents / applyVertexBased", () => {
  *  -> EdgeAdded (6, source_index 1, Kruskal tag) — mirrors merge_tapes' real output shape,
  *  including the namespace prefix merge_tapes bakes into non-scope tags. */
 function buildTwoSourceMergedTape(): ParsedTape {
-  const rbLocalTag = RB_TAG.EDGE_ADDED;
-  const kruskalLocalTag = KRUSKAL_TAG.EDGE_ADDED;
+  const rbLocalTag = RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED;
+  const kruskalLocalTag = KRUSKAL_EVENT_TAG.EDGE_ADDED;
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: 4, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
@@ -1613,14 +1613,14 @@ describe("nodeAt — multi-source tag namespace unpacking", () => {
     const tape = buildTwoSourceMergedTape();
     const record = nodeAt(tape, 3); // the RB EdgeAdded node, source_index 0
     expect(record.sourceIndex).toBe(0);
-    expect(record.tag).toBe(RB_TAG.EDGE_ADDED);
+    expect(record.tag).toBe(RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED);
   });
 
   it("unpacks source_index 1 to a nonzero source-mask nibble, stripping the prefix from the local tag", () => {
     const tape = buildTwoSourceMergedTape();
     const record = nodeAt(tape, 6); // the Kruskal EdgeAdded node, source_index 1
     expect(record.sourceIndex).toBe(1);
-    expect(record.tag).toBe(KRUSKAL_TAG.EDGE_ADDED);
+    expect(record.tag).toBe(KRUSKAL_EVENT_TAG.EDGE_ADDED);
   });
 
   it("never namespaces TAG_SCOPE nodes regardless of which source they belong to", () => {

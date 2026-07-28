@@ -1,27 +1,12 @@
-// --- Kruskal event decoding + replay (GitHub issue #146) ---
+// --- Kruskal event replay (GitHub issue #146; decoding lives in generated/kruskal.ts) ---
 
-import { expectLen, nodeAt, readNodeId, TAG_SCOPE, type ParsedTape } from "./wire";
+import { nodeAt, TAG_SCOPE, type ParsedTape } from "./wire";
 import { mutatingEventsWithIndex, type MutatingEventAt } from "./scan";
 import { validateStepShape, type Edge } from "./applyShared";
+import { decodeKruskalEvent, isMutatingKruskalEvent, type KruskalEvent } from "./generated/kruskal";
 
-export const KRUSKAL_TAG = {
-  EDGES_SHUFFLED: 1,
-  ROOTS_COMPARED: 2,
-  EDGE_REJECTED: 3,
-  EDGE_ADDED: 4,
-  SETS_MERGED: 5,
-  PRESET_UNIONS_APPLIED: 6,
-  EDGE_SELECTED: 7,
-} as const;
-
-export type KruskalEvent =
-  | { kind: "EdgesShuffled"; edges: [bigint, bigint][] }
-  | { kind: "EdgeSelected"; from: bigint; to: bigint }
-  | { kind: "RootsCompared"; from: bigint; to: bigint; rootOfFrom: bigint; rootOfTo: bigint }
-  | { kind: "EdgeRejected" }
-  | { kind: "EdgeAdded"; from: bigint; to: bigint; bidirectional: boolean }
-  | { kind: "SetsMerged"; rootA: bigint; rootB: bigint }
-  | { kind: "PresetUnionsApplied"; pairs: [bigint, bigint, "basic" | "teleport"][] };
+export type { KruskalEvent } from "./generated/kruskal";
+export { decodeKruskalEvent, isMutatingKruskalEvent, KRUSKAL_EVENT_TAG } from "./generated/kruskal";
 
 /** The merged set's new root after a `SetsMerged` event — mirrors
  *  `KruskalEvent::merged_root` in `maze-core/src/generation/kruskal.rs`. A function, not a field
@@ -29,77 +14,6 @@ export type KruskalEvent =
  *  sides derive it identically from the same two pre-merge roots. */
 export function kruskalMergedRoot(rootA: bigint, rootB: bigint): bigint {
   return rootA < rootB ? rootA : rootB;
-}
-
-/** Decodes one Kruskal event's binary payload. Contract: only called with `tag >= 1` (a real
- *  Kruskal wire tag) — callers filter out `TAG_SCOPE` before invoking this. Throws on an
- *  unrecognized tag or a `payload_len` that doesn't match the wire format — mirrors every other
- *  decoder's error-on-mismatch contract (a malformed tape means a core/web build mismatch, which
- *  must surface immediately). */
-export function decodeKruskalEvent(tag: number, bytes: Uint8Array): KruskalEvent {
-  switch (tag) {
-    case KRUSKAL_TAG.EDGE_SELECTED:
-      expectLen(tag, bytes, 16);
-      return { kind: "EdgeSelected", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
-    case KRUSKAL_TAG.ROOTS_COMPARED:
-      expectLen(tag, bytes, 32);
-      return {
-        kind: "RootsCompared",
-        from: readNodeId(bytes, 0), to: readNodeId(bytes, 8),
-        rootOfFrom: readNodeId(bytes, 16), rootOfTo: readNodeId(bytes, 24),
-      };
-    case KRUSKAL_TAG.SETS_MERGED:
-      expectLen(tag, bytes, 16);
-      return { kind: "SetsMerged", rootA: readNodeId(bytes, 0), rootB: readNodeId(bytes, 8) };
-    case KRUSKAL_TAG.EDGE_REJECTED:
-      expectLen(tag, bytes, 0);
-      return { kind: "EdgeRejected" };
-    case KRUSKAL_TAG.EDGE_ADDED:
-      expectLen(tag, bytes, 17);
-      return { kind: "EdgeAdded", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
-    case KRUSKAL_TAG.EDGES_SHUFFLED: {
-      if (bytes.byteLength < 4) {
-        throw new Error(`KruskalEvent: EdgesShuffled payload too short (${bytes.byteLength} bytes, need at least 4)`);
-      }
-      const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      const count = dv.getUint32(0, true);
-      const expected = 4 + count * 16;
-      if (bytes.byteLength !== expected) {
-        throw new Error(`KruskalEvent: EdgesShuffled payload_len ${bytes.byteLength} does not match 4 + count*16 (count=${count}, expected ${expected})`);
-      }
-      const edges: [bigint, bigint][] = [];
-      for (let i = 0; i < count; i++) {
-        edges.push([readNodeId(bytes, 4 + i * 16), readNodeId(bytes, 4 + i * 16 + 8)]);
-      }
-      return { kind: "EdgesShuffled", edges };
-    }
-    case KRUSKAL_TAG.PRESET_UNIONS_APPLIED: {
-      if (bytes.byteLength < 4) {
-        throw new Error(`KruskalEvent: PresetUnionsApplied payload too short (${bytes.byteLength} bytes, need at least 4)`);
-      }
-      const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      const count = dv.getUint32(0, true);
-      const expected = 4 + count * 17;
-      if (bytes.byteLength !== expected) {
-        throw new Error(`KruskalEvent: PresetUnionsApplied payload_len ${bytes.byteLength} does not match 4 + count*17 (count=${count}, expected ${expected})`);
-      }
-      const pairs: [bigint, bigint, "basic" | "teleport"][] = [];
-      for (let i = 0; i < count; i++) {
-        const base = 4 + i * 17;
-        const kind = bytes[base + 16] !== 0 ? "teleport" : "basic";
-        pairs.push([readNodeId(bytes, base), readNodeId(bytes, base + 8), kind]);
-      }
-      return { kind: "PresetUnionsApplied", pairs };
-    }
-    default:
-      throw new Error(`KruskalEvent: unknown wire tag ${tag}`);
-  }
-}
-
-/** Mirrors `DebugEvent::is_mutating`'s split for `KruskalEvent` in
- *  `maze-core/src/generation/kruskal.rs`. */
-export function isMutatingKruskalEvent(event: KruskalEvent): boolean {
-  return event.kind === "EdgeAdded" || event.kind === "SetsMerged";
 }
 
 export type MutatingKruskalEventAt = MutatingEventAt<KruskalEvent>;

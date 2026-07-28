@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTape, RB_TAG, WILSON_TAG, KRUSKAL_TAG, EDGE_BASED_TAG, VERTEX_BASED_TAG, PRESET_SETUP_TAG, QC_TAG, TAG_SCOPE, NO_NODE, type ParsedTape } from "../debug/eventTape";
+import { parseTape, RECURSIVE_BACKTRACKER_EVENT_TAG, WILSON_EVENT_TAG, KRUSKAL_EVENT_TAG, EDGE_BASED_EVENT_TAG, VERTEX_BASED_EVENT_TAG, PRESET_SETUP_EVENT_TAG, QC_EVENT_TAG, TAG_SCOPE, NO_NODE, type ParsedTape } from "../debug/eventTape";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugArenaHandle } from "../store/storeTypes";
 import type { NodeDto } from "../wasm/types";
@@ -38,7 +38,7 @@ interface FixtureNode {
 function buildTapeWithEdges(edges: [bigint, bigint][]): ParsedTape {
   const nodes: FixtureNode[] = edges.map(([from, to], i) => ({
     nextSibling: i < edges.length - 1 ? i + 1 : null,
-    tag: RB_TAG.EDGE_ADDED,
+    tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED,
     payloadBytes: edgeAddedPayload(from, to),
   }));
   const payloadChunks = nodes.map((n) => n.payloadBytes);
@@ -77,8 +77,8 @@ const nodes: NodeDto[] = [
  *  exercises this selector. */
 function buildKruskalArenaTape(): ParsedTape {
   const records: { nextSibling: number | null; tag: number; bytes: Uint8Array }[] = [
-    { nextSibling: 1, tag: KRUSKAL_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
-    { nextSibling: null, tag: KRUSKAL_TAG.SETS_MERGED, bytes: concatBytes([u64le(1n), u64le(2n)]) },
+    { nextSibling: 1, tag: KRUSKAL_EVENT_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
+    { nextSibling: null, tag: KRUSKAL_EVENT_TAG.SETS_MERGED, bytes: concatBytes([u64le(1n), u64le(2n)]) },
   ];
   const payloadChunks = records.map((r) => r.bytes);
   const offsets: number[] = [];
@@ -110,8 +110,8 @@ function buildPresetSetupArenaTape(): ParsedTape {
     return concatBytes([u64le(from), u64le(to)]);
   }
   const records: { nextSibling: number | null; tag: number; bytes: Uint8Array }[] = [
-    { nextSibling: 1, tag: PRESET_SETUP_TAG.PASSAGE_ESTABLISHED, bytes: passagePayload(1n, 2n) },
-    { nextSibling: null, tag: PRESET_SETUP_TAG.ONE_WAY_ESTABLISHED, bytes: passagePayload(3n, 4n) },
+    { nextSibling: 1, tag: PRESET_SETUP_EVENT_TAG.PASSAGE_ESTABLISHED, bytes: passagePayload(1n, 2n) },
+    { nextSibling: null, tag: PRESET_SETUP_EVENT_TAG.ONE_WAY_ESTABLISHED, bytes: passagePayload(3n, 4n) },
   ];
   const payloadChunks = records.map((r) => r.bytes);
   const offsets: number[] = [];
@@ -155,11 +155,11 @@ function buildWilsonArenaTape(): ParsedTape {
   const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
     { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("root") },
     { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("walk 1") },
-    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: WILSON_TAG.WALK_START_PICKED, bytes: u64le(1n) },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: WILSON_EVENT_TAG.WALK_START_PICKED, bytes: u64le(1n) },
     { parent: 1, firstChild: 4, nextSibling: 5, tag: 0, bytes: new TextEncoder().encode("step 1") },
-    { parent: 3, firstChild: NO_NODE, nextSibling: NO_NODE, tag: WILSON_TAG.STEP_TAKEN, bytes: concatBytes([u64le(1n), u64le(2n)]) },
-    { parent: 1, firstChild: NO_NODE, nextSibling: 6, tag: WILSON_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
-    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: WILSON_TAG.NODE_VISITED, bytes: u64le(1n) },
+    { parent: 3, firstChild: NO_NODE, nextSibling: NO_NODE, tag: WILSON_EVENT_TAG.STEP_TAKEN, bytes: concatBytes([u64le(1n), u64le(2n)]) },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 6, tag: WILSON_EVENT_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: WILSON_EVENT_TAG.NODE_VISITED, bytes: u64le(1n) },
   ];
   const offsets: number[] = [];
   let cursor = 0;
@@ -196,9 +196,9 @@ function buildEdgeBasedArenaTape(): ParsedTape {
   const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
     { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("root") },
     { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("step 1") },
-    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: EDGE_BASED_TAG.EDGE_ADDED, bytes: edgeAddedPayload },
-    { parent: 1, firstChild: NO_NODE, nextSibling: 4, tag: EDGE_BASED_TAG.NODE_ACTIVATED, bytes: nodeActivatedPayload },
-    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: EDGE_BASED_TAG.SRC_EXHAUSTED, bytes: srcExhaustedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: EDGE_BASED_EVENT_TAG.EDGE_ADDED, bytes: edgeAddedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 4, tag: EDGE_BASED_EVENT_TAG.NODE_ACTIVATED, bytes: nodeActivatedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: EDGE_BASED_EVENT_TAG.SRC_EXHAUSTED, bytes: srcExhaustedPayload },
   ];
   const offsets: number[] = [];
   let cursor = 0;
@@ -232,8 +232,8 @@ function buildVertexBasedArenaTape(): ParsedTape {
   const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
     { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("root") },
     { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("step 1") },
-    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: VERTEX_BASED_TAG.EDGE_ADDED, bytes: edgeAddedPayload },
-    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: VERTEX_BASED_TAG.NODE_VISITED, bytes: nodeVisitedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: VERTEX_BASED_EVENT_TAG.EDGE_ADDED, bytes: edgeAddedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: VERTEX_BASED_EVENT_TAG.NODE_VISITED, bytes: nodeVisitedPayload },
   ];
   const offsets: number[] = [];
   let cursor = 0;
@@ -282,10 +282,10 @@ function buildVertexBasedSplitArenaTape(): ParsedTape {
   const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
     { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("root") },
     { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: 0, bytes: new TextEncoder().encode("step 1") },
-    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: VERTEX_BASED_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
-    { parent: 1, firstChild: NO_NODE, nextSibling: 4, tag: VERTEX_BASED_TAG.NODE_VISITED, bytes: nodeVisitedPayload },
-    { parent: 1, firstChild: NO_NODE, nextSibling: 5, tag: VERTEX_BASED_TAG.SPLIT_NODES_CREATED, bytes: splitNodesCreatedPayload },
-    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: VERTEX_BASED_TAG.EDGE_ADDED, bytes: edgeAddedPayload(2n, 5n) },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 3, tag: VERTEX_BASED_EVENT_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 4, tag: VERTEX_BASED_EVENT_TAG.NODE_VISITED, bytes: nodeVisitedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: 5, tag: VERTEX_BASED_EVENT_TAG.SPLIT_NODES_CREATED, bytes: splitNodesCreatedPayload },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: VERTEX_BASED_EVENT_TAG.EDGE_ADDED, bytes: edgeAddedPayload(2n, 5n) },
   ];
   const offsets: number[] = [];
   let cursor = 0;
@@ -516,8 +516,8 @@ describe("selectDebugMazeView", () => {
   function buildQcNodeRemovedArenaTape(): ParsedTape {
     const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
       { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: TAG_SCOPE, bytes: new TextEncoder().encode("root") },
-      { parent: 0, firstChild: NO_NODE, nextSibling: 2, tag: QC_TAG.BIDIRECTIONAL_EDGE_ADDED, bytes: concatBytes([u64le(2n), u64le(3n)]) },
-      { parent: 0, firstChild: NO_NODE, nextSibling: NO_NODE, tag: QC_TAG.NODE_REMOVED, bytes: u64le(3n) },
+      { parent: 0, firstChild: NO_NODE, nextSibling: 2, tag: QC_EVENT_TAG.BIDIRECTIONAL_EDGE_ADDED, bytes: concatBytes([u64le(2n), u64le(3n)]) },
+      { parent: 0, firstChild: NO_NODE, nextSibling: NO_NODE, tag: QC_EVENT_TAG.NODE_REMOVED, bytes: u64le(3n) },
     ];
     const offsets: number[] = [];
     let cursor = 0;

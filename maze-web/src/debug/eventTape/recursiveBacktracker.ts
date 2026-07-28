@@ -1,89 +1,18 @@
-// --- Recursive Backtracker event decoding + replay ---
+// --- Recursive Backtracker event replay (decoding lives in generated/recursiveBacktracker.ts) ---
 
-import { expectLen, nodeAt, readNodeId, TAG_SCOPE, type ParsedTape } from "./wire";
+import { nodeAt, TAG_SCOPE, type ParsedTape } from "./wire";
 import { mutatingEventsWithIndex, type MutatingEventAt } from "./scan";
 import {
   cloneDebugValues, foldDebugValueDelta, validateStepShape,
   type DebugValueOp, type DebugValues, type Edge,
 } from "./applyShared";
+import {
+  decodeRecursiveBacktrackerEvent, isMutatingRecursiveBacktrackerEvent,
+  type RecursiveBacktrackerEvent,
+} from "./generated/recursiveBacktracker";
 
-export const RB_TAG = {
-  VERTEX_SELECTED: 1,
-  CANDIDATES_COMPUTED: 2,
-  DEAD_END: 3,
-  CANDIDATE_CHOSEN: 4,
-  EDGE_ADDED: 5,
-  VERTEX_VISITED: 6,
-  VERTEX_POPPED: 7,
-  VERTEX_PUSHED: 8,
-} as const;
-
-export type RecursiveBacktrackerEvent =
-  | { kind: "VertexSelected"; id: bigint }
-  | { kind: "CandidatesComputed"; ids: bigint[] }
-  | { kind: "DeadEnd" }
-  | { kind: "CandidateChosen"; id: bigint }
-  | { kind: "EdgeAdded"; from: bigint; to: bigint; bidirectional: boolean }
-  | { kind: "VertexVisited"; id: bigint }
-  | { kind: "VertexPopped"; id: bigint }
-  | { kind: "VertexPushed"; id: bigint };
-
-/** Decodes one RB event's binary payload. Contract: only called with `tag >= 1` (a real RB wire
- *  tag) — callers (e.g. `mutatingRbEvents`) filter out `TAG_SCOPE` before invoking this; it never
- *  needs to know about scope nodes. Throws on an unrecognized tag or a `payload_len` that doesn't
- *  match the wire format (fixed size per variant — 17 bytes for `EdgeAdded` (GitHub issue #135:
- *  two `NodeId`s plus a 1-byte `bidirectional` flag), or the `4 + count * 8` formula for
- *  `CandidatesComputed`) — a malformed tape means a core/web build mismatch, which must surface
- *  immediately rather than silently produce a wrong reconstructed state. */
-export function decodeRecursiveBacktrackerEvent(tag: number, bytes: Uint8Array): RecursiveBacktrackerEvent {
-  switch (tag) {
-    case RB_TAG.VERTEX_SELECTED:
-      expectLen(tag, bytes, 8);
-      return { kind: "VertexSelected", id: readNodeId(bytes, 0) };
-    case RB_TAG.CANDIDATE_CHOSEN:
-      expectLen(tag, bytes, 8);
-      return { kind: "CandidateChosen", id: readNodeId(bytes, 0) };
-    case RB_TAG.VERTEX_VISITED:
-      expectLen(tag, bytes, 8);
-      return { kind: "VertexVisited", id: readNodeId(bytes, 0) };
-    case RB_TAG.VERTEX_POPPED:
-      expectLen(tag, bytes, 8);
-      return { kind: "VertexPopped", id: readNodeId(bytes, 0) };
-    case RB_TAG.VERTEX_PUSHED:
-      expectLen(tag, bytes, 8);
-      return { kind: "VertexPushed", id: readNodeId(bytes, 0) };
-    case RB_TAG.EDGE_ADDED:
-      expectLen(tag, bytes, 17);
-      return { kind: "EdgeAdded", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), bidirectional: bytes[16] !== 0 };
-    case RB_TAG.DEAD_END:
-      expectLen(tag, bytes, 0);
-      return { kind: "DeadEnd" };
-    case RB_TAG.CANDIDATES_COMPUTED: {
-      if (bytes.byteLength < 4) {
-        throw new Error(`RecursiveBacktrackerEvent: CandidatesComputed payload too short (${bytes.byteLength} bytes, need at least 4)`);
-      }
-      const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      const count = dv.getUint32(0, true);
-      const expected = 4 + count * 8;
-      if (bytes.byteLength !== expected) {
-        throw new Error(`RecursiveBacktrackerEvent: CandidatesComputed payload_len ${bytes.byteLength} does not match 4 + count*8 (count=${count}, expected ${expected})`);
-      }
-      const ids: bigint[] = [];
-      for (let i = 0; i < count; i++) {
-        ids.push(readNodeId(bytes, 4 + i * 8));
-      }
-      return { kind: "CandidatesComputed", ids };
-    }
-    default:
-      throw new Error(`RecursiveBacktrackerEvent: unknown wire tag ${tag}`);
-  }
-}
-
-/** Mirrors `DebugEvent::is_mutating`'s split for `RecursiveBacktrackerEvent` in
- *  `maze-core/src/generation/recursive_backtracker.rs`. */
-export function isMutatingRbEvent(event: RecursiveBacktrackerEvent): boolean {
-  return event.kind === "EdgeAdded" || event.kind === "VertexVisited" || event.kind === "VertexPopped" || event.kind === "VertexPushed";
-}
+export type { RecursiveBacktrackerEvent } from "./generated/recursiveBacktracker";
+export { decodeRecursiveBacktrackerEvent, isMutatingRecursiveBacktrackerEvent, RECURSIVE_BACKTRACKER_EVENT_TAG } from "./generated/recursiveBacktracker";
 
 export const RECURSION_STACK = "recursion_stack";
 export const VISITED = "visited";
@@ -117,7 +46,7 @@ export type MutatingRbEventAt = MutatingEventAt<RecursiveBacktrackerEvent>;
  *  then — a real run can produce tens of thousands of events, per `Specs/event_log.md`'s WASM
  *  Boundary section, so avoiding both the already-known prefix and the unneeded tail matters. */
 export function mutatingRbEventsWithIndex(tape: ParsedTape, limit?: number, startIndex = 0, endIndex?: number): MutatingRbEventAt[] {
-  return mutatingEventsWithIndex(tape, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, limit, startIndex, endIndex);
+  return mutatingEventsWithIndex(tape, decodeRecursiveBacktrackerEvent, isMutatingRecursiveBacktrackerEvent, limit, startIndex, endIndex);
 }
 
 /** Convenience wrapper over `mutatingRbEventsWithIndex` for callers that only need the decoded
@@ -181,7 +110,7 @@ export function applyRecursiveBacktracker(tape: ParsedTape, targetStep: number, 
     // call on this same tape) would otherwise resume scanning from a meaningless position without
     // any error, silently producing a wrong result. Cheap to check: one record read.
     const anchor = nodeAt(tape, from.nodeIndex);
-    if (anchor.tag === TAG_SCOPE || !isMutatingRbEvent(decodeRecursiveBacktrackerEvent(anchor.tag, tape.payload.subarray(anchor.payloadOffset, anchor.payloadOffset + anchor.payloadLen)))) {
+    if (anchor.tag === TAG_SCOPE || !isMutatingRecursiveBacktrackerEvent(decodeRecursiveBacktrackerEvent(anchor.tag, tape.payload.subarray(anchor.payloadOffset, anchor.payloadOffset + anchor.payloadLen)))) {
       throw new Error(`applyRecursiveBacktracker: from.nodeIndex ${from.nodeIndex} does not point at a mutating event`);
     }
     // `from` already *is* the answer when it lands exactly on targetStep — the scan below would

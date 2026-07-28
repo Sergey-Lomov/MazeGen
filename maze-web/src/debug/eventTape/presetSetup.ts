@@ -1,4 +1,4 @@
-// --- Preset setup event decoding + replay (GitHub issue #225) ---
+// --- Preset setup event replay (GitHub issue #225; decoding lives in generated/presetSetup.ts) ---
 //
 // One event per preset connection `build_preset_state` resolves into the graph before any
 // generation algorithm is dispatched (`maze-core/src/generation/preset_state.rs`) — mirrors that
@@ -7,48 +7,13 @@
 // boundary side (`maze-wasm/src/runner.rs`) and `Specs/event_log.md`'s "Preset Setup Source"
 // section.
 
-import { expectLen, readNodeId, type ParsedTape } from "./wire";
+import { type ParsedTape } from "./wire";
 import { mutatingEventsWithIndex, type MutatingEventAt } from "./scan";
 import { validateStepShape, type Edge } from "./applyShared";
+import { decodePresetSetupEvent, isMutatingPresetSetupEvent, type PresetSetupEvent } from "./generated/presetSetup";
 
-export const PRESET_SETUP_TAG = {
-  PASSAGE_ESTABLISHED: 1,
-  ONE_WAY_ESTABLISHED: 2,
-  TELEPORT_ESTABLISHED: 3,
-} as const;
-
-export type PresetSetupEvent =
-  | { kind: "PassageEstablished"; from: bigint; to: bigint }
-  | { kind: "OneWayEstablished"; from: bigint; to: bigint }
-  | { kind: "TeleportEstablished"; from: bigint; to: bigint; twoWay: boolean };
-
-/** Decodes one event this source emits. Contract: only called with `tag >= 1` — callers filter
- *  out `TAG_SCOPE` first, same error-on-mismatch contract as every other decoder. */
-export function decodePresetSetupEvent(tag: number, bytes: Uint8Array): PresetSetupEvent {
-  switch (tag) {
-    case PRESET_SETUP_TAG.PASSAGE_ESTABLISHED: {
-      expectLen(tag, bytes, 16);
-      return { kind: "PassageEstablished", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
-    }
-    case PRESET_SETUP_TAG.ONE_WAY_ESTABLISHED: {
-      expectLen(tag, bytes, 16);
-      return { kind: "OneWayEstablished", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8) };
-    }
-    case PRESET_SETUP_TAG.TELEPORT_ESTABLISHED: {
-      expectLen(tag, bytes, 17);
-      return { kind: "TeleportEstablished", from: readNodeId(bytes, 0), to: readNodeId(bytes, 8), twoWay: bytes[16] !== 0 };
-    }
-    default:
-      throw new Error(`PresetSetupEvent: unknown wire tag ${tag}`);
-  }
-}
-
-/** Mirrors `DebugEvent::is_mutating` for `PresetSetupEvent` in
- *  `maze-core/src/generation/preset_setup_event.rs` — every event this source emits is mutating,
- *  each one is a preset edge the graph already carries before generation starts. */
-export function isMutatingPresetSetupEvent(_event: PresetSetupEvent): boolean {
-  return true;
-}
+export type { PresetSetupEvent } from "./generated/presetSetup";
+export { decodePresetSetupEvent, isMutatingPresetSetupEvent, PRESET_SETUP_EVENT_TAG } from "./generated/presetSetup";
 
 export type MutatingPresetSetupEventAt = MutatingEventAt<PresetSetupEvent>;
 

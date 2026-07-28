@@ -99,6 +99,10 @@ export function readU32(bytes: Uint8Array, offset: number): number {
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(offset, true);
 }
 
+export function readBool(bytes: Uint8Array, offset: number): boolean {
+  return bytes[offset] !== 0;
+}
+
 /** Reads a `u32`-length-prefixed `NodeId[]` starting at `offset` — mirrors the
  *  `push_ids`/`Vec<NodeId>` wire format in `EdgeBasedEvent::encode_payload`. Returns the decoded
  *  ids and the byte offset immediately past the list, so a caller reading further fields after a
@@ -129,6 +133,14 @@ export function readF64List(bytes: Uint8Array, offset: number): { values: number
  *  `EdgeBasedEvent`). */
 export function readOptionalNodeId(bytes: Uint8Array, offset: number): bigint | null {
   return bytes[offset] === 0 ? null : readNodeId(bytes, offset + 1);
+}
+
+/** Reads an `Option<usize>` — a 1-byte presence flag followed by a `u32` LE (`0` when absent) —
+ *  mirrors `VertexBasedEvent::SplitNodesCreated.pattern`'s wire format (the only `Option<usize>`
+ *  field in any source so far). Distinct from `readOptionalNodeId`: the value here is 4 bytes
+ *  wide, not 8. */
+export function readOptionalUsize(bytes: Uint8Array, offset: number): number | null {
+  return bytes[offset] === 0 ? null : readU32(bytes, offset + 1);
 }
 
 /** Reads a `u32`-length-prefixed UTF-8 string starting at `offset` — mirrors `write_str` in

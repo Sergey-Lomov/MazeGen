@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseTape,
   decodePresetSetupEvent, isMutatingPresetSetupEvent, mutatingPresetSetupEvents, applyPresetSetup,
-  TAG_SCOPE, NO_NODE, PRESET_SETUP_TAG,
+  TAG_SCOPE, NO_NODE, PRESET_SETUP_EVENT_TAG,
   type ParsedTape,
 } from "../debug/eventTape";
 
@@ -80,30 +80,30 @@ function buildThreeEventTape(twoWay: boolean): ParsedTape {
   return buildFixture([
     { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
     { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("preset_setup") },
-    { parent: 1, firstChild: null, nextSibling: 3, tag: PRESET_SETUP_TAG.PASSAGE_ESTABLISHED, payloadBytes: passagePayload(1n, 2n) },
-    { parent: 1, firstChild: null, nextSibling: 4, tag: PRESET_SETUP_TAG.ONE_WAY_ESTABLISHED, payloadBytes: passagePayload(3n, 4n) },
-    { parent: 1, firstChild: null, nextSibling: null, tag: PRESET_SETUP_TAG.TELEPORT_ESTABLISHED, payloadBytes: teleportPayload(5n, 6n, twoWay) },
+    { parent: 1, firstChild: null, nextSibling: 3, tag: PRESET_SETUP_EVENT_TAG.PASSAGE_ESTABLISHED, payloadBytes: passagePayload(1n, 2n) },
+    { parent: 1, firstChild: null, nextSibling: 4, tag: PRESET_SETUP_EVENT_TAG.ONE_WAY_ESTABLISHED, payloadBytes: passagePayload(3n, 4n) },
+    { parent: 1, firstChild: null, nextSibling: null, tag: PRESET_SETUP_EVENT_TAG.TELEPORT_ESTABLISHED, payloadBytes: teleportPayload(5n, 6n, twoWay) },
   ]);
 }
 
 describe("decodePresetSetupEvent", () => {
   it("decodes PassageEstablished as from/to", () => {
-    expect(decodePresetSetupEvent(PRESET_SETUP_TAG.PASSAGE_ESTABLISHED, passagePayload(1n, 2n))).toEqual({
+    expect(decodePresetSetupEvent(PRESET_SETUP_EVENT_TAG.PASSAGE_ESTABLISHED, passagePayload(1n, 2n))).toEqual({
       kind: "PassageEstablished", from: 1n, to: 2n,
     });
   });
 
   it("decodes OneWayEstablished as an already-directed from/to", () => {
-    expect(decodePresetSetupEvent(PRESET_SETUP_TAG.ONE_WAY_ESTABLISHED, passagePayload(3n, 4n))).toEqual({
+    expect(decodePresetSetupEvent(PRESET_SETUP_EVENT_TAG.ONE_WAY_ESTABLISHED, passagePayload(3n, 4n))).toEqual({
       kind: "OneWayEstablished", from: 3n, to: 4n,
     });
   });
 
   it("decodes TeleportEstablished with its two_way flag", () => {
-    expect(decodePresetSetupEvent(PRESET_SETUP_TAG.TELEPORT_ESTABLISHED, teleportPayload(5n, 6n, false))).toEqual({
+    expect(decodePresetSetupEvent(PRESET_SETUP_EVENT_TAG.TELEPORT_ESTABLISHED, teleportPayload(5n, 6n, false))).toEqual({
       kind: "TeleportEstablished", from: 5n, to: 6n, twoWay: false,
     });
-    expect(decodePresetSetupEvent(PRESET_SETUP_TAG.TELEPORT_ESTABLISHED, teleportPayload(5n, 6n, true))).toEqual({
+    expect(decodePresetSetupEvent(PRESET_SETUP_EVENT_TAG.TELEPORT_ESTABLISHED, teleportPayload(5n, 6n, true))).toEqual({
       kind: "TeleportEstablished", from: 5n, to: 6n, twoWay: true,
     });
   });
@@ -113,7 +113,7 @@ describe("decodePresetSetupEvent", () => {
   });
 
   it("throws when payload length doesn't match the tag's expected shape", () => {
-    expect(() => decodePresetSetupEvent(PRESET_SETUP_TAG.PASSAGE_ESTABLISHED, new Uint8Array(5))).toThrow(/payload_len/);
+    expect(() => decodePresetSetupEvent(PRESET_SETUP_EVENT_TAG.PASSAGE_ESTABLISHED, new Uint8Array(5))).toThrow(/payload_len/);
   });
 });
 

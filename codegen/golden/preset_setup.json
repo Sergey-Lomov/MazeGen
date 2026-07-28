@@ -1,0 +1,5 @@
+[
+  { "variant": "PassageEstablished", "value": {"kind":"PassageEstablished","from":7,"to":7}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0] },
+  { "variant": "OneWayEstablished", "value": {"kind":"OneWayEstablished","from":7,"to":7}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0] },
+  { "variant": "TeleportEstablished", "value": {"kind":"TeleportEstablished","from":7,"to":7,"two_way":true}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0,1] }
+]

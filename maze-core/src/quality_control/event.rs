@@ -1,67 +1,11 @@
+#[path = "qc_wire.rs"]
+mod qc_wire;
+
 use crate::ids::NodeId;
-use crate::event_log::{DebugEvent, EncodeEventPayload};
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 use super::issue::IssueKind;
 use super::issue_kinds::RepairLimitKind;
 use super::issue_payload::IssuePayload;
-
-/// Stable wire tags for [`QcEvent`] (see `Specs/event_log.md`'s #124 binary encoding, extended by
-/// #169's source-index namespacing — this module only ever assigns plain local tags, `merge_tapes`
-/// applies the source-index prefix on top, same contract every other instrumented algorithm's own
-/// `wire_tags` module already follows). `0` is reserved for scope nodes (`event_log::TAG_SCOPE`)
-/// and must never be assigned here.
-mod wire_tags {
-    pub const ITERATION_STARTED: u16 = 1;
-    pub const CHECK_RAN: u16 = 2;
-    pub const ITERATION_LIMIT_REACHED: u16 = 5;
-    pub const ISSUES_MERGED: u16 = 24;
-
-    pub const DIRECTED_EDGE_ADDED: u16 = 6;
-    pub const BIDIRECTIONAL_EDGE_ADDED: u16 = 7;
-    pub const DIRECTED_TELEPORT_ADDED: u16 = 8;
-    pub const BIDIRECTIONAL_TELEPORT_ADDED: u16 = 9;
-    pub const EDGE_REMOVED: u16 = 10;
-    pub const EDGE_REMOVED_BETWEEN: u16 = 11;
-    pub const TELEPORT_REMOVED_WITH_REVERSE: u16 = 12;
-    pub const START_SET: u16 = 13;
-    pub const FINISH_SET: u16 = 14;
-    // 34 (PRESET_SEEDED) retired — preset seeding moved to its own top-level "preset_setup"
-    // source (GitHub issue #225's follow-up), never re-assign this number to a new variant.
-
-    pub const DIRECTED_EDGE_DECLINED: u16 = 15;
-    pub const BIDIRECTIONAL_EDGE_DECLINED: u16 = 16;
-    pub const DIRECTED_TELEPORT_DECLINED: u16 = 17;
-    pub const BIDIRECTIONAL_TELEPORT_DECLINED: u16 = 18;
-    pub const EDGE_REMOVE_DECLINED: u16 = 19;
-    pub const EDGE_REMOVE_BETWEEN_DECLINED: u16 = 20;
-    pub const TELEPORT_REMOVE_WITH_REVERSE_DECLINED: u16 = 21;
-    pub const START_SET_DECLINED: u16 = 22;
-    pub const FINISH_SET_DECLINED: u16 = 23;
-
-    pub const DIRECTED_EDGE_PROPOSED: u16 = 25;
-    pub const BIDIRECTIONAL_EDGE_PROPOSED: u16 = 26;
-    pub const DIRECTED_TELEPORT_PROPOSED: u16 = 27;
-    pub const BIDIRECTIONAL_TELEPORT_PROPOSED: u16 = 28;
-    pub const EDGE_REMOVE_PROPOSED: u16 = 29;
-    pub const EDGE_REMOVE_BETWEEN_PROPOSED: u16 = 30;
-    pub const TELEPORT_REMOVE_WITH_REVERSE_PROPOSED: u16 = 31;
-    pub const START_SET_PROPOSED: u16 = 32;
-    pub const FINISH_SET_PROPOSED: u16 = 33;
-
-    pub const EDGE_REMOVED_WITH_REVERSE: u16 = 35;
-    pub const EDGE_REMOVE_WITH_REVERSE_DECLINED: u16 = 36;
-    pub const EDGE_REMOVE_WITH_REVERSE_PROPOSED: u16 = 37;
-
-    pub const NODE_REMOVED: u16 = 38;
-    pub const NODE_REMOVE_DECLINED: u16 = 39;
-    pub const NODE_REMOVE_PROPOSED: u16 = 40;
-
-    pub const STRATEGY_FAILED: u16 = 41;
-
-    pub const SPLIT_NODE_ADDED: u16 = 42;
-    pub const SPLIT_NODE_ADD_DECLINED: u16 = 43;
-    pub const SPLIT_NODE_ADD_PROPOSED: u16 = 44;
-}
 
 /// Narration-level events for the quality-control/repair pipeline (GitHub issue #147) — see
 /// `Specs/quality_control.md` for `Stage`/`Rule`/`QualityControlEngine`'s own structure and
@@ -74,9 +18,10 @@ mod wire_tags {
 /// `apply_commands`'s revalidation gets its own trace-only `*Declined` counterpart with the same
 /// fields (not one shared payload-less "declined" event) — so narration/tests can say exactly
 /// which command failed revalidation, not just that some command did.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, maze_core_macros::WireEvent)]
 pub enum QcEvent {
     /// One fixpoint pass of `Stage::run_repair`'s loop has started.
+    #[wire(tag = 1, name = "iteration")]
     IterationStarted(u32),
     /// One check within a rule ran this iteration. `check_id` is the check's own *instance* id
     /// (the composite `"{rule_id}:{local_id}"` routing key `IssueMeta::source_checks`/`details`
@@ -93,7 +38,12 @@ pub enum QcEvent {
     /// directly (not a separate event) — splitting "issue found" from "here's its data" into
     /// separate wire tags would make their pairing an implicit, easily-broken ordering contract
     /// instead of one atomic event.
-    CheckRan { check_id: String, issue: Option<(IssueKind, IssuePayload, std::collections::HashMap<&'static str, String>)> },
+    #[wire(tag = 2)]
+    CheckRan {
+        check_id: String,
+        #[wire(custom = "CheckIssueCodec")]
+        issue: Option<(IssueKind, IssuePayload, std::collections::HashMap<&'static str, String>)>,
+    },
     /// Two or more of a rule's checks each found an issue of the same `kind` this iteration, and
     /// `IssueMerge::merge` folded them into one — emitted once per rule iteration, only when a
     /// merge actually happened (a rule with a single contributing check never emits this).
@@ -104,9 +54,18 @@ pub enum QcEvent {
     /// every contributing check's own instance id — narration shows one "reason" per contributing
     /// check when there's more than one, mirroring how `IssuesBlock` renders one bubble per
     /// `source_checks` entry for a merged `IssueDto`.
-    IssuesMerged { kind: IssueKind, payload: IssuePayload, details: std::collections::HashMap<String, std::collections::HashMap<&'static str, String>> },
+    #[wire(tag = 24)]
+    IssuesMerged {
+        #[wire(custom = "IssueKindCodec")]
+        issue_kind: IssueKind,
+        #[wire(custom = "IssuePayloadCodec")]
+        payload: IssuePayload,
+        #[wire(custom = "DetailsMapMapCodec")]
+        details: std::collections::HashMap<String, std::collections::HashMap<&'static str, String>>,
+    },
     /// `Stage::run_repair`'s fixpoint loop stopped because the shared `RepairBudget` was
     /// exhausted (see `StageOutcome::LimitReached`).
+    #[wire(tag = 5, custom = "RepairLimitKindCodec", name = "limit")]
     IterationLimitReached(RepairLimitKind),
     /// A strategy's `apply()` returned `RepairResult::Failed` this iteration — one shared trace
     /// event for every strategy (not a dedicated variant per strategy type), since "this strategy
@@ -115,52 +74,71 @@ pub enum QcEvent {
     /// `strategy_id` is `RepairStrategy::strategy_id()`, the same wire string the scope name itself
     /// already carries, so a caller with only the flat event (no scope context) can still tell
     /// which strategy failed.
+    #[wire(tag = 41)]
     StrategyFailed { strategy_id: &'static str },
 
     // --- proposed: exact mirror of `repair::MutationCommand`'s 10 variants, emitted for every
     // command a strategy's `apply()` returned, in the `"strategy <id>"` scope, before any of them
     // is applied/revalidated — narrates what the strategy *asked for*, independent of whether
     // `apply_commands` (in the separate `"apply requests"` scope right after) actually honors it. ---
+    #[wire(tag = 25)]
     DirectedEdgeProposed { from: NodeId, to: NodeId },
+    #[wire(tag = 26)]
     BidirectionalEdgeProposed { a: NodeId, b: NodeId },
+    #[wire(tag = 27)]
     DirectedTeleportProposed { from: NodeId, to: NodeId },
+    #[wire(tag = 28)]
     BidirectionalTeleportProposed { a: NodeId, b: NodeId },
     /// `from`/`to` (not `EdgeId`, GitHub issue #171's follow-up fix) — resolved from the graph
     /// (still intact at proposal time, before `apply_commands` runs) via `edge_endpoints`, the
     /// same way `EdgeRemoved`/`EdgeRemoveDeclined` resolve theirs. An `EdgeId` is meaningless to
     /// web-side narration (no coordinate to render — `bubbleLabel` mis-rendered it as a `NodeId`
     /// before this fix, crashing once the id exceeded the maze's own node count).
+    #[wire(tag = 29)]
     EdgeRemoveProposed { from: NodeId, to: NodeId },
+    #[wire(tag = 30)]
     EdgeRemoveBetweenProposed { from: NodeId, to: NodeId },
     /// `from`/`to` of the *primary* `id` only (GitHub issue #185, mirrors `EdgeRemoveProposed`) —
     /// the paired reverse-direction edge (if any) isn't narrated separately, same convention as
     /// `TeleportRemoveWithReverseProposed`.
+    #[wire(tag = 37)]
     EdgeRemoveWithReverseProposed { from: NodeId, to: NodeId },
     /// `from`/`to` of the *primary* `id` only (GitHub issue #171's follow-up fix, mirrors
     /// `EdgeRemoveProposed`) — the paired reverse-direction teleport (if any) isn't narrated
     /// separately, same as before this fix.
+    #[wire(tag = 31)]
     TeleportRemoveWithReverseProposed { from: NodeId, to: NodeId },
+    #[wire(tag = 32, name = "id")]
     StartSetProposed(NodeId),
+    #[wire(tag = 33, name = "id")]
     FinishSetProposed(NodeId),
     /// Mirrors `EdgeRemoveProposed`'s "resolve identity ahead of mutation" rationale — the node's
     /// own id is meaningful on its own (unlike an `EdgeId`), so this just carries `node` directly.
+    #[wire(tag = 40, name = "id")]
     NodeRemoveProposed(NodeId),
     /// `MutationCommand::AddSplitNode` proposed — narrates `at` (the point's slot-0 node) and the
     /// planned per-sibling edge lists (`nodes[i]` = the `i`th new sibling's own edges) before any
     /// new node itself exists (there is no id to carry yet, unlike `NodeRemoveProposed`).
-    SplitNodeAddProposed { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
+    #[wire(tag = 44)]
+    SplitNodeAddProposed { at: NodeId, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
 
     // --- mutating: exact mirror of `repair::MutationCommand`'s 10 variants, emitted only for
     // commands `apply_commands` actually applied (its `ok == true` branch). ---
+    #[wire(tag = 6, mutating)]
     DirectedEdgeAdded { from: NodeId, to: NodeId },
+    #[wire(tag = 7, mutating)]
     BidirectionalEdgeAdded { a: NodeId, b: NodeId },
+    #[wire(tag = 8, mutating)]
     DirectedTeleportAdded { from: NodeId, to: NodeId },
+    #[wire(tag = 9, mutating)]
     BidirectionalTeleportAdded { a: NodeId, b: NodeId },
     /// `from`/`to` (not `EdgeId`, GitHub issue #171's follow-up fix) — resolved from the graph via
     /// `edge_endpoints` immediately before the edge is actually removed (`apply_commands`'s own
     /// `try_remove_edge_by_id` call site), since the id alone is meaningless to web-side
     /// narration. See `EdgeRemoveProposed`'s doc comment for the crash this fixes.
+    #[wire(tag = 10, mutating)]
     EdgeRemoved { from: NodeId, to: NodeId },
+    #[wire(tag = 11, mutating)]
     EdgeRemovedBetween { from: NodeId, to: NodeId },
     /// `from`/`to` of the *primary* `id` only — mirrors `EdgeRemoveWithReverseProposed`'s doc
     /// comment. `reverse_removed` (GitHub issue #185's follow-up fix) is `true` iff the reverse
@@ -171,31 +149,43 @@ pub enum QcEvent {
     /// directions removed" from "only the primary was, the reverse never existed" — and blindly
     /// clearing `(to,from)` too would fabricate a phantom removed-edge entry when the reverse was
     /// never real.
+    #[wire(tag = 35, mutating)]
     EdgeRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
     /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
     /// comment. `reverse_removed` — see `EdgeRemovedWithReverse`'s own doc comment, same
     /// rationale, sourced from `try_remove_teleport_with_reverse`'s `Vec<EdgeId>` length instead.
+    #[wire(tag = 12, mutating)]
     TeleportRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
+    #[wire(tag = 13, mutating, name = "id")]
     StartSet(NodeId),
+    #[wire(tag = 14, mutating, name = "id")]
     FinishSet(NodeId),
     /// `MutationCommand::RemoveNode` actually applied — carries the removed node's own id.
+    #[wire(tag = 38, mutating, name = "id")]
     NodeRemoved(NodeId),
     /// `MutationCommand::AddSplitNode` actually applied — `new_nodes` are the freshly minted
     /// siblings' own ids, one per `nodes` entry, same order (unknowable until apply time, unlike
     /// every other mutating variant's identity, which is always resolved from state that already
     /// existed before the command ran).
-    SplitNodeAdded { at: NodeId, new_nodes: Vec<NodeId>, nodes: Vec<Vec<SplitNodeEdge>> },
+    #[wire(tag = 42, mutating)]
+    SplitNodeAdded { at: NodeId, new_nodes: Vec<NodeId>, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
 
     // --- trace: same fields as the matching mutating variant above, for a command
     // `apply_commands` proposed but whose revalidation rejected it (its `ok == false` branch). ---
+    #[wire(tag = 15)]
     DirectedEdgeDeclined { from: NodeId, to: NodeId },
+    #[wire(tag = 16)]
     BidirectionalEdgeDeclined { a: NodeId, b: NodeId },
+    #[wire(tag = 17)]
     DirectedTeleportDeclined { from: NodeId, to: NodeId },
+    #[wire(tag = 18)]
     BidirectionalTeleportDeclined { a: NodeId, b: NodeId },
     /// `from`/`to` — mirrors `EdgeRemoved`'s doc comment; resolved before revalidation, since a
     /// declined command means the edge was never actually removed but the id is still
     /// meaningless to web-side narration on its own.
+    #[wire(tag = 19)]
     EdgeRemoveDeclined { from: NodeId, to: NodeId },
+    #[wire(tag = 20)]
     EdgeRemoveBetweenDeclined { from: NodeId, to: NodeId },
     /// `from`/`to` of the *primary* `id` only — mirrors `EdgeRemoveWithReverseProposed`'s doc
     /// comment. `reverse_removed` is always `false` here — `apply_commands` only takes the
@@ -204,45 +194,27 @@ pub enum QcEvent {
     /// either. Carried anyway (not omitted) so this variant has the exact same field shape as its
     /// mutating mirror `EdgeRemovedWithReverse` — see that type's own doc comment for why the
     /// field exists at all.
+    #[wire(tag = 36)]
     EdgeRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
     /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
     /// comment. `reverse_removed` — same "always `false`, carried for field-shape symmetry" note
     /// as `EdgeRemoveWithReverseDeclined`'s own doc comment.
+    #[wire(tag = 21)]
     TeleportRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
+    #[wire(tag = 22, name = "id")]
     StartSetDeclined(NodeId),
+    #[wire(tag = 23, name = "id")]
     FinishSetDeclined(NodeId),
     /// `MutationCommand::RemoveNode` proposed but revalidation rejected it (node no longer exists,
     /// is slot-0, or is preset-protected by the time `apply_commands` ran).
+    #[wire(tag = 39, name = "id")]
     NodeRemoveDeclined(NodeId),
     /// `MutationCommand::AddSplitNode` proposed but revalidation rejected it (all-or-nothing — see
     /// `add_split_node_feasible`'s doc comment: `at` no longer split-eligible, or any one edge of
     /// any sibling in `nodes` no longer preset-feasible by the time `apply_commands` ran). No node
     /// was minted at all.
-    SplitNodeAddDeclined { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
-}
-
-impl DebugEvent for QcEvent {
-    /// `true` for the 10 mutation-mirror variants — these are the only `QcEvent`s that change the
-    /// maze graph. Every `*Declined` variant is `false` alongside every trace variant: a declined
-    /// command never touched the graph, only narrates that the strategy's proposal didn't survive
-    /// revalidation.
-    fn is_mutating(&self) -> bool {
-        matches!(
-            self,
-            QcEvent::DirectedEdgeAdded { .. }
-                | QcEvent::BidirectionalEdgeAdded { .. }
-                | QcEvent::DirectedTeleportAdded { .. }
-                | QcEvent::BidirectionalTeleportAdded { .. }
-                | QcEvent::EdgeRemoved { .. }
-                | QcEvent::EdgeRemovedBetween { .. }
-                | QcEvent::EdgeRemovedWithReverse { .. }
-                | QcEvent::TeleportRemovedWithReverse { .. }
-                | QcEvent::StartSet(_)
-                | QcEvent::FinishSet(_)
-                | QcEvent::NodeRemoved(_)
-                | QcEvent::SplitNodeAdded { .. }
-        )
-    }
+    #[wire(tag = 43)]
+    SplitNodeAddDeclined { at: NodeId, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
 }
 
 fn write_node_id(out: &mut Vec<u8>, id: NodeId) {
@@ -364,126 +336,30 @@ fn write_str_keyed_flat_node_lists(out: &mut Vec<u8>, map: &std::collections::Ha
     }
 }
 
-impl EncodeEventPayload for QcEvent {
-    fn type_id(&self) -> u16 {
-        match self {
-            QcEvent::IterationStarted(_) => wire_tags::ITERATION_STARTED,
-            QcEvent::CheckRan { .. } => wire_tags::CHECK_RAN,
-            QcEvent::IssuesMerged { .. } => wire_tags::ISSUES_MERGED,
-            QcEvent::IterationLimitReached(_) => wire_tags::ITERATION_LIMIT_REACHED,
+fn write_issue_kind(out: &mut Vec<u8>, kind: &IssueKind) {
+    write_str(out, kind.as_str());
+}
 
-            QcEvent::DirectedEdgeAdded { .. } => wire_tags::DIRECTED_EDGE_ADDED,
-            QcEvent::BidirectionalEdgeAdded { .. } => wire_tags::BIDIRECTIONAL_EDGE_ADDED,
-            QcEvent::DirectedTeleportAdded { .. } => wire_tags::DIRECTED_TELEPORT_ADDED,
-            QcEvent::BidirectionalTeleportAdded { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_ADDED,
-            QcEvent::EdgeRemoved { .. } => wire_tags::EDGE_REMOVED,
-            QcEvent::EdgeRemovedBetween { .. } => wire_tags::EDGE_REMOVED_BETWEEN,
-            QcEvent::EdgeRemovedWithReverse { .. } => wire_tags::EDGE_REMOVED_WITH_REVERSE,
-            QcEvent::TeleportRemovedWithReverse { .. } => wire_tags::TELEPORT_REMOVED_WITH_REVERSE,
-            QcEvent::StartSet(_) => wire_tags::START_SET,
-            QcEvent::FinishSet(_) => wire_tags::FINISH_SET,
-            QcEvent::NodeRemoved(_) => wire_tags::NODE_REMOVED,
-            QcEvent::SplitNodeAdded { .. } => wire_tags::SPLIT_NODE_ADDED,
+fn write_repair_limit_kind(out: &mut Vec<u8>, kind: &RepairLimitKind) {
+    out.push(match kind {
+        RepairLimitKind::MaxIterations => 0,
+        RepairLimitKind::TimeBudget => 1,
+    });
+}
 
-            QcEvent::DirectedEdgeDeclined { .. } => wire_tags::DIRECTED_EDGE_DECLINED,
-            QcEvent::BidirectionalEdgeDeclined { .. } => wire_tags::BIDIRECTIONAL_EDGE_DECLINED,
-            QcEvent::DirectedTeleportDeclined { .. } => wire_tags::DIRECTED_TELEPORT_DECLINED,
-            QcEvent::BidirectionalTeleportDeclined { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_DECLINED,
-            QcEvent::EdgeRemoveDeclined { .. } => wire_tags::EDGE_REMOVE_DECLINED,
-            QcEvent::EdgeRemoveBetweenDeclined { .. } => wire_tags::EDGE_REMOVE_BETWEEN_DECLINED,
-            QcEvent::EdgeRemoveWithReverseDeclined { .. } => wire_tags::EDGE_REMOVE_WITH_REVERSE_DECLINED,
-            QcEvent::TeleportRemoveWithReverseDeclined { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_DECLINED,
-            QcEvent::StartSetDeclined(_) => wire_tags::START_SET_DECLINED,
-            QcEvent::FinishSetDeclined(_) => wire_tags::FINISH_SET_DECLINED,
-            QcEvent::NodeRemoveDeclined(_) => wire_tags::NODE_REMOVE_DECLINED,
-            QcEvent::SplitNodeAddDeclined { .. } => wire_tags::SPLIT_NODE_ADD_DECLINED,
-
-            QcEvent::DirectedEdgeProposed { .. } => wire_tags::DIRECTED_EDGE_PROPOSED,
-            QcEvent::BidirectionalEdgeProposed { .. } => wire_tags::BIDIRECTIONAL_EDGE_PROPOSED,
-            QcEvent::DirectedTeleportProposed { .. } => wire_tags::DIRECTED_TELEPORT_PROPOSED,
-            QcEvent::BidirectionalTeleportProposed { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_PROPOSED,
-            QcEvent::EdgeRemoveProposed { .. } => wire_tags::EDGE_REMOVE_PROPOSED,
-            QcEvent::EdgeRemoveBetweenProposed { .. } => wire_tags::EDGE_REMOVE_BETWEEN_PROPOSED,
-            QcEvent::EdgeRemoveWithReverseProposed { .. } => wire_tags::EDGE_REMOVE_WITH_REVERSE_PROPOSED,
-            QcEvent::TeleportRemoveWithReverseProposed { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_PROPOSED,
-            QcEvent::StartSetProposed(_) => wire_tags::START_SET_PROPOSED,
-            QcEvent::FinishSetProposed(_) => wire_tags::FINISH_SET_PROPOSED,
-            QcEvent::NodeRemoveProposed(_) => wire_tags::NODE_REMOVE_PROPOSED,
-            QcEvent::SplitNodeAddProposed { .. } => wire_tags::SPLIT_NODE_ADD_PROPOSED,
-
-            QcEvent::StrategyFailed { .. } => wire_tags::STRATEGY_FAILED,
-        }
-    }
-
-    fn encode_payload(&self, out: &mut Vec<u8>) {
-        match self {
-            QcEvent::IterationStarted(n) => out.extend_from_slice(&n.to_le_bytes()),
-            QcEvent::CheckRan { check_id, issue } => {
-                write_str(out, check_id);
-                match issue {
-                    None => out.push(0),
-                    Some((kind, payload, details)) => {
-                        out.push(1);
-                        write_str(out, kind.as_str());
-                        write_issue_payload(out, payload);
-                        write_details(out, details);
-                    }
-                }
-            }
-            QcEvent::IssuesMerged { kind, payload, details } => {
-                write_str(out, kind.as_str());
-                write_issue_payload(out, payload);
-                write_details_map(out, details);
-            }
-            QcEvent::IterationLimitReached(kind) => out.push(match kind {
-                RepairLimitKind::MaxIterations => 0,
-                RepairLimitKind::TimeBudget => 1,
-            }),
-
-            QcEvent::DirectedEdgeAdded { from, to } | QcEvent::DirectedEdgeDeclined { from, to } | QcEvent::DirectedEdgeProposed { from, to }
-            | QcEvent::DirectedTeleportAdded { from, to } | QcEvent::DirectedTeleportDeclined { from, to } | QcEvent::DirectedTeleportProposed { from, to }
-            | QcEvent::EdgeRemovedBetween { from, to } | QcEvent::EdgeRemoveBetweenDeclined { from, to } | QcEvent::EdgeRemoveBetweenProposed { from, to }
-            | QcEvent::EdgeRemoved { from, to } | QcEvent::EdgeRemoveDeclined { from, to } | QcEvent::EdgeRemoveProposed { from, to }
-            | QcEvent::EdgeRemoveWithReverseProposed { from, to }
-            | QcEvent::TeleportRemoveWithReverseProposed { from, to } => {
-                write_node_id(out, *from);
-                write_node_id(out, *to);
-            }
-            // `reverse_removed` (GitHub issue #185's follow-up fix) appended as one trailing byte
-            // after `from`/`to` — see `EdgeRemovedWithReverse`'s own doc comment for why it exists.
-            QcEvent::EdgeRemovedWithReverse { from, to, reverse_removed }
-            | QcEvent::EdgeRemoveWithReverseDeclined { from, to, reverse_removed }
-            | QcEvent::TeleportRemovedWithReverse { from, to, reverse_removed }
-            | QcEvent::TeleportRemoveWithReverseDeclined { from, to, reverse_removed } => {
-                write_node_id(out, *from);
-                write_node_id(out, *to);
-                out.push(if *reverse_removed { 1 } else { 0 });
-            }
-            QcEvent::BidirectionalEdgeAdded { a, b } | QcEvent::BidirectionalEdgeDeclined { a, b } | QcEvent::BidirectionalEdgeProposed { a, b }
-            | QcEvent::BidirectionalTeleportAdded { a, b } | QcEvent::BidirectionalTeleportDeclined { a, b } | QcEvent::BidirectionalTeleportProposed { a, b } => {
-                write_node_id(out, *a);
-                write_node_id(out, *b);
-            }
-            QcEvent::StartSet(id) | QcEvent::StartSetDeclined(id) | QcEvent::StartSetProposed(id)
-            | QcEvent::FinishSet(id) | QcEvent::FinishSetDeclined(id) | QcEvent::FinishSetProposed(id)
-            | QcEvent::NodeRemoved(id) | QcEvent::NodeRemoveDeclined(id) | QcEvent::NodeRemoveProposed(id) => {
-                write_node_id(out, *id);
-            }
-
-            QcEvent::StrategyFailed { strategy_id } => write_str(out, strategy_id),
-
-            QcEvent::SplitNodeAddProposed { at, nodes } | QcEvent::SplitNodeAddDeclined { at, nodes } => {
-                write_node_id(out, *at);
-                write_split_nodes(out, nodes);
-            }
-            QcEvent::SplitNodeAdded { at, new_nodes, nodes } => {
-                write_node_id(out, *at);
-                out.extend_from_slice(&(new_nodes.len() as u32).to_le_bytes());
-                for &id in new_nodes {
-                    write_node_id(out, id);
-                }
-                write_split_nodes(out, nodes);
-            }
+/// Encodes `CheckRan`'s `issue` field — a presence byte, then (if present) the check's issue
+/// `kind`/`payload`/per-check `details` as one atomic unit. Not split into 3 separate standard
+/// fields: `codegen`'s whitelist has no shape for "one `Option` wrapping 3 heterogeneous values",
+/// so this single named codec covers the whole field (see `CheckIssueCodec` in
+/// `codegen/src/codecs.rs`).
+fn write_check_issue(out: &mut Vec<u8>, issue: &Option<(IssueKind, IssuePayload, std::collections::HashMap<&'static str, String>)>) {
+    match issue {
+        None => out.push(0),
+        Some((kind, payload, details)) => {
+            out.push(1);
+            write_issue_kind(out, kind);
+            write_issue_payload(out, payload);
+            write_details(out, details);
         }
     }
 }
@@ -491,6 +367,7 @@ impl EncodeEventPayload for QcEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event_log::{DebugEvent, EncodeEventPayload};
     use std::collections::HashMap;
 
     #[test]
@@ -513,7 +390,7 @@ mod tests {
         assert!(!QcEvent::IterationStarted(0).is_mutating());
         assert!(!QcEvent::CheckRan { check_id: "c".to_string(), issue: None }.is_mutating());
         assert!(!QcEvent::IssuesMerged {
-            kind: IssueKind::from_str("missing_endpoints").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
+            issue_kind: IssueKind::from_str("missing_endpoints").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
         }.is_mutating());
         assert!(!QcEvent::IterationLimitReached(RepairLimitKind::MaxIterations).is_mutating());
     }
@@ -555,7 +432,7 @@ mod tests {
             QcEvent::IterationStarted(0),
             QcEvent::CheckRan { check_id: "c".to_string(), issue: None },
             QcEvent::IssuesMerged {
-                kind: IssueKind::from_str("missing_endpoints").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
+                issue_kind: IssueKind::from_str("missing_endpoints").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
             },
             QcEvent::IterationLimitReached(RepairLimitKind::MaxIterations),
             QcEvent::DirectedEdgeAdded { from: 0, to: 0 },
@@ -838,7 +715,7 @@ mod tests {
     #[test]
     fn issues_merged_encodes_the_kind_string_then_a_zero_payload_variant_byte_then_an_empty_details_map() {
         let event = QcEvent::IssuesMerged {
-            kind: IssueKind::from_str("invalid_loop").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
+            issue_kind: IssueKind::from_str("invalid_loop").unwrap(), payload: IssuePayload::None, details: HashMap::new(),
         };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
@@ -860,7 +737,7 @@ mod tests {
         let mut details = HashMap::new();
         details.insert("r1:check1".to_string(), check1_details);
         let event = QcEvent::IssuesMerged {
-            kind: IssueKind::from_str("invalid_loop").unwrap(),
+            issue_kind: IssueKind::from_str("invalid_loop").unwrap(),
             payload: IssuePayload::InvalidLoop { edges },
             details,
         };

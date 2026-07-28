@@ -17,11 +17,11 @@ import {
   type PresetSetupEvent, type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent, type QcEvent, type IssuePayload,
   type PresetSetupApplyResult, type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult, type QcApplyResult,
   decodePresetSetupEvent, isMutatingPresetSetupEvent, mutatingPresetSetupEventsWithIndex, applyPresetSetup,
-  decodeRecursiveBacktrackerEvent, isMutatingRbEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
+  decodeRecursiveBacktrackerEvent, isMutatingRecursiveBacktrackerEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
   decodeKruskalEvent, isMutatingKruskalEvent, mutatingKruskalEventsWithIndex, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEventsWithIndex, applyWilson,
   decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEventsWithIndex, applyEdgeBased,
-  decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEventsWithIndex, applyVertexBased, VERTEX_BASED_TAG,
+  decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEventsWithIndex, applyVertexBased, VERTEX_BASED_EVENT_TAG,
   decodeQcEvent, isMutatingQcEvent, mutatingQcEventsWithIndex, applyQc, sourceScopeForNode, topLevelSourceScopes,
   resolveDebugArenaMetadata, countMutatingEvents, type DebugArenaMetadata, type TopLevelSourceScope,
 } from "./eventTape";
@@ -273,12 +273,12 @@ const RB_ADAPTER: RbAdapter = {
   mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingRbEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
   resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
     tape,
-    (t, s, e) => countMutatingEvents(t, decodeRecursiveBacktrackerEvent, isMutatingRbEvent, s, e),
+    (t, s, e) => countMutatingEvents(t, decodeRecursiveBacktrackerEvent, isMutatingRecursiveBacktrackerEvent, s, e),
     (step, previous) => applyRecursiveBacktracker(tape, step, previous, startIndex, endIndex),
     startIndex, endIndex,
   ),
   decodeEvent: decodeRecursiveBacktrackerEvent,
-  isMutatingEvent: isMutatingRbEvent,
+  isMutatingEvent: isMutatingRecursiveBacktrackerEvent,
   narrationTokensFor: narrationTokensForRb,
   scopeLabel: (name, _children) => m["debug.tree.step_scope"]({ index: numberedScopeIndex(name) }),
   apply: applyRecursiveBacktracker,
@@ -644,7 +644,7 @@ const VERTEX_BASED_ADAPTER: VertexBasedAdapter = {
       let count = 2;
       for (const child of children) {
         const payload = child.payload();
-        if (payload.kind === "event" && payload.tag === VERTEX_BASED_TAG.JUNCTION_SLOT_ROLLED) {
+        if (payload.kind === "event" && payload.tag === VERTEX_BASED_EVENT_TAG.JUNCTION_SLOT_ROLLED) {
           const event = decodeVertexBasedEvent(payload.tag, payload.bytes);
           if (event.kind === "JunctionSlotRolled" && event.taken) count += 1;
         }

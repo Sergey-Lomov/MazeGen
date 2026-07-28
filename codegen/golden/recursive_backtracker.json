@@ -1,0 +1,10 @@
+[
+  { "variant": "VertexSelected", "value": {"kind":"VertexSelected","id":7}, "bytes": [7,0,0,0,0,0,0,0] },
+  { "variant": "CandidatesComputed", "value": {"kind":"CandidatesComputed","ids":[3,5]}, "bytes": [2,0,0,0,3,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0] },
+  { "variant": "DeadEnd", "value": {"kind":"DeadEnd"}, "bytes": [] },
+  { "variant": "CandidateChosen", "value": {"kind":"CandidateChosen","id":7}, "bytes": [7,0,0,0,0,0,0,0] },
+  { "variant": "EdgeAdded", "value": {"kind":"EdgeAdded","from":7,"to":7,"bidirectional":true}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0,1] },
+  { "variant": "VertexVisited", "value": {"kind":"VertexVisited","id":7}, "bytes": [7,0,0,0,0,0,0,0] },
+  { "variant": "VertexPopped", "value": {"kind":"VertexPopped","id":7}, "bytes": [7,0,0,0,0,0,0,0] },
+  { "variant": "VertexPushed", "value": {"kind":"VertexPushed","id":7}, "bytes": [7,0,0,0,0,0,0,0] }
+]
