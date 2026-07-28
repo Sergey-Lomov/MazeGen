@@ -1083,7 +1083,7 @@ Part of the split-QC epic (#246), GitHub issue #248. Flags an extra split node (
 
 A split point's distance to a waypoint is the **minimum** shortest-path distance (in tiles, via the shared distance maps) over *every* node at that point (`Field::nodes_at`, slot-0 included) — a split point is one physical tile, so its progression-space position is shared by all its nodes. A node absent from the relevant distance map (unreachable, or compressed out of the nav graph as an interior corridor node — see `NavGraph::nav_node_for`) contributes no distance for itself; a point where every node is undefined is never flagged. Silently skips if the maze doesn't have the waypoint(s) this instance needs set (covered by `MissingEndpointsCheck`).
 
-Only ever flags extra nodes (`nodes_at(point)[1..]`), never slot-0 — the hard constraint every strategy in epic #246 shares. Fires `InvalidSplitTileIssue::new_from_check(instance_id, invalid)` with `.with_detail(instance_id, "distance", ...)` chained on, where `invalid` is every flagged point's extra node ids.
+Flags the whole tile (`SplitTileNodes` — every node at the point, slot-0 included, GitHub issue #260) once a point's minimum distance trips the threshold; slot-0 itself is still never a removal candidate — that's `remove_node_feasible`'s job, not this check's. Fires `InvalidSplitTileIssue::new_from_check(instance_id, invalid)` with `.with_detail(instance_id, "distance", ...)` chained on, where `invalid` is one `SplitTileNodes` per flagged point.
 
 `RemoveSplitStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE`.
 
@@ -1091,7 +1091,7 @@ Only ever flags extra nodes (`nodes_at(point)[1..]`), never slot-0 — the hard 
 
 **Hard constraint across every strategy in this epic: none of them may remove the original (slot-0) split node.** Outside that one removal-eligibility constraint, slot-0 is an equal member of a split tile for every other purpose — size/volume, connectivity/degree, distance — any metric a check or repair-priority computes over "a split tile's nodes" must include slot-0, not just the extra nodes. Only the actual removal step excludes it, and even there the convention is to pass the whole node set to the removal strategy and let it filter (`RemoveSplitStrategy`/`remove_node_feasible`), not to pre-filter slot-0 out beforehand.
 
-A **split tile** is one `Field` point carrying more than one node (`Field::nodes_at(point).len() >= 2`) — slot-0 plus one or more extra nodes minted by `Field::add_node_at`. `SplitDistanceFromWaypointCheck` above is single-node-flagging (it must name specific extra nodes as removal candidates, so it necessarily excludes slot-0); every check below this point is *tile*-level: it counts, measures, and flags whole split tiles, not individual nodes.
+A **split tile** is one `Field` point carrying more than one node (`Field::nodes_at(point).len() >= 2`) — slot-0 plus one or more extra nodes minted by `Field::add_node_at`. Every split-QC check, including `SplitDistanceFromWaypointCheck` above (GitHub issue #260), is *tile*-level: it counts, measures, and flags whole split tiles (`SplitTileNodes`), not individual nodes — only the repair strategy's own removal step (`RemoveSplitStrategy`/`remove_node_feasible`) excludes slot-0.
 
 ### SplitTileNodes / InvalidSplitTileGroupIssue
 

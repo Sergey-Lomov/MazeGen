@@ -4,7 +4,7 @@ use crate::space::Tessellation;
 use crate::graph::distance_map::min_optional_distance;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::InvalidSplitTileIssue;
+use crate::quality_control::{InvalidSplitTileIssue, SplitTileNodes};
 
 pub const SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT: u32 = 0;
 pub const SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
@@ -34,9 +34,11 @@ pub enum SplitWaypoint {
 /// `TeleportWaypointDistanceCheck` already follow; a point where every node is undefined is never
 /// flagged.
 ///
-/// Only ever flags extra nodes (`Field::nodes_at(point)[1..]`) — a point's slot-0 original is
-/// never a candidate, mirroring the hard constraint every strategy in epic #246 shares (a repair
-/// strategy for this issue must never remove slot-0).
+/// Flags the whole tile (`SplitTileNodes`, every node at the point including slot-0 — GitHub
+/// issue #260) once a point's minimum distance trips the threshold — slot-0 is still never a
+/// removal candidate itself, mirroring the hard constraint every strategy in epic #246 shares (a
+/// repair strategy for this issue must never remove slot-0), but the issue now reports the tile
+/// as its unit of work, not the bare extra node(s).
 pub struct SplitDistanceFromWaypointCheck {
     pub instance_id: String,
     pub distance: u32,
@@ -91,16 +93,15 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitDistanceFromWaypo
         // a seen-points set instead (order doesn't matter here — every point is only ever
         // resolved into `invalid` via its own `nodes_at`, never compared across points).
         let mut seen_points = std::collections::HashSet::new();
-        let invalid: Vec<_> = maze.field.all_points()
+        let invalid: Vec<SplitTileNodes> = maze.field.all_points()
             .filter(|&point| seen_points.insert(point))
             .filter_map(|point| {
                 let nodes = maze.field.nodes_at(point);
                 if nodes.len() < 2 { return None; }
                 let point_distance = nodes.iter().filter_map(|&n| waypoint_distance(n)).min()?;
                 if !self.comparison.compare(point_distance as u32, self.distance) { return None; }
-                Some(nodes[1..].to_vec())
+                Some(SplitTileNodes::new(nodes.to_vec()))
             })
-            .flatten()
             .collect();
 
         if invalid.is_empty() {
@@ -124,12 +125,14 @@ mod tests {
     const TEST_ID: &str = "split_distance_from_waypoint";
 
     /// start(0) -- 1 -- ... -- split_point (at `split_distance` tiles from start), with an extra
-    /// split node minted on top of the corridor's last point.
-    fn maze_with_split_at_distance(split_distance: usize) -> (Maze<SquareTessellation>, crate::ids::NodeId) {
+    /// split node minted on top of the corridor's last point. Returns the whole tile (slot-0 +
+    /// extra) as the expected `SplitTileNodes` alongside the maze.
+    fn maze_with_split_at_distance(split_distance: usize) -> (Maze<SquareTessellation>, SplitTileNodes) {
         let mut ids = IdGenerator::new();
         let width = split_distance + 1;
         let mut field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
         let split_point = SquarePoint { x: split_distance as i32, y: 0 };
+        let slot0 = field.node_at(split_point).unwrap();
         let extra = field.add_node_at(split_point, &mut ids);
 
         let mut g = Graph::new();
@@ -145,12 +148,12 @@ mod tests {
         let start = p(0);
         let mut maze = Maze::new(field, g);
         maze.meta = MazeMeta { start: Some(start), finish: None, route_score: None };
-        (maze, extra)
+        (maze, SplitTileNodes::new(vec![slot0, extra]))
     }
 
     #[test]
     fn fires_when_split_point_closer_than_threshold() {
-        let (maze, extra) = maze_with_split_at_distance(3);
+        let (maze, tile) = maze_with_split_at_distance(3);
         let check = SplitDistanceFromWaypointCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
@@ -161,7 +164,7 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid, vec![extra], "only the extra node is ever flagged, never slot-0");
+        assert_eq!(issues[0].invalid, vec![tile], "the whole tile (slot-0 + extra) is flagged as one unit");
     }
 
     #[test]
@@ -181,7 +184,7 @@ mod tests {
 
     #[test]
     fn gt_fires_when_split_point_farther_than_threshold() {
-        let (maze, extra) = maze_with_split_at_distance(10);
+        let (maze, tile) = maze_with_split_at_distance(10);
         let check = SplitDistanceFromWaypointCheck {
             instance_id: TEST_ID.to_string(),
             distance: 5,
@@ -192,7 +195,7 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].invalid, vec![extra]);
+        assert_eq!(issues[0].invalid, vec![tile]);
     }
 
     #[test]
@@ -228,6 +231,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut field: Field<SquareTessellation> = Field::new(square_rect(12, 1), &mut ids).unwrap();
         let split_point = SquarePoint { x: 0, y: 0 };
+        let slot0 = field.node_at(split_point).unwrap();
         let extra = field.add_node_at(split_point, &mut ids);
         let mut g = Graph::new();
         field.build_nodes(&mut g);
@@ -251,7 +255,7 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "split point is 0 tiles from finish");
-        assert_eq!(issues[0].invalid, vec![extra]);
+        assert_eq!(issues[0].invalid, vec![SplitTileNodes::new(vec![slot0, extra])]);
     }
 
     #[test]
@@ -259,6 +263,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut field: Field<SquareTessellation> = Field::new(square_rect(12, 1), &mut ids).unwrap();
         let split_point = SquarePoint { x: 0, y: 0 };
+        let slot0 = field.node_at(split_point).unwrap();
         let extra = field.add_node_at(split_point, &mut ids);
         let mut g = Graph::new();
         field.build_nodes(&mut g);
@@ -284,7 +289,7 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "split point is 0 tiles from finish even though far from start");
-        assert_eq!(issues[0].invalid, vec![extra]);
+        assert_eq!(issues[0].invalid, vec![SplitTileNodes::new(vec![slot0, extra])]);
     }
 
     #[test]

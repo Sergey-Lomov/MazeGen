@@ -19,8 +19,9 @@ static PARAMS: &[StrategyParam] = &[
     },
 ];
 
-/// Handles `INVALID_SPLIT_TILE` — see GitHub issue #248, epic #246. Collapses each flagged extra
-/// split node (never a point's slot-0 original — the producing check never flags slot-0, see
+/// Handles `INVALID_SPLIT_TILE` — see GitHub issue #248, epic #246 (issue #260: the issue's unit
+/// of work is a whole tile, `SplitTileNodes`). Collapses every removable node of each flagged
+/// tile (slot-0 itself is always skipped — `remove_node_feasible` never allows it, see
 /// `SplitDistanceFromWaypointCheck`) back into a single node by removing it entirely
 /// (`MutationCommand::RemoveNode`).
 ///
@@ -57,31 +58,34 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileIssue> for RemoveSplitSt
 
         let mut commands = Vec::new();
         let mut any_removable = false;
-        for &node in &issue.invalid {
-            // `remove_node_feasible` is the exact predicate `try_remove_node` uses at apply time
-            // (preset locks/edges, never slot-0) — checked here up front so this strategy's own
-            // `Fixed`/`Failed` verdict agrees with whether `RemoveNode` will actually be applied,
-            // rather than always reporting `Fixed` and letting a preset-protected node re-flag
-            // forever (GitHub issue #230's same "declined command must not silently count as
-            // fixed" rationale).
-            if !crate::generation::remove_node_feasible(&maze.field, preset_state, node) {
-                continue;
-            }
-            let point = maze.field.point_of(node).expect("remove_node_feasible confirmed this node exists");
-            let slot0 = maze.field.nodes_at(point).first().copied().expect("remove_node_feasible confirmed this point has an original node");
-            any_removable = true;
-
-            if redistribute {
-                for edge in maze.graph.edges().filter(|e| e.from == node || e.to == node) {
-                    let (from, to) = if edge.from == node { (slot0, edge.to) } else { (edge.from, slot0) };
-                    if from == to { continue; } // the sibling edge to/from slot-0 itself
-                    commands.push(match edge.kind {
-                        EdgeKind::Basic => MutationCommand::AddDirectedEdge { from, to },
-                        EdgeKind::Teleport => MutationCommand::AddDirectedTeleport { from, to },
-                    });
+        for tile in &issue.invalid {
+            for &node in &tile.0 {
+                // `remove_node_feasible` is the exact predicate `try_remove_node` uses at apply
+                // time (preset locks/edges, never slot-0) — checked here up front so this
+                // strategy's own `Fixed`/`Failed` verdict agrees with whether `RemoveNode` will
+                // actually be applied, rather than always reporting `Fixed` and letting a
+                // preset-protected node re-flag forever (GitHub issue #230's same "declined
+                // command must not silently count as fixed" rationale). This also naturally skips
+                // the tile's own slot-0 entry, since `remove_node_feasible` never allows it.
+                if !crate::generation::remove_node_feasible(&maze.field, preset_state, node) {
+                    continue;
                 }
+                let point = maze.field.point_of(node).expect("remove_node_feasible confirmed this node exists");
+                let slot0 = maze.field.nodes_at(point).first().copied().expect("remove_node_feasible confirmed this point has an original node");
+                any_removable = true;
+
+                if redistribute {
+                    for edge in maze.graph.edges().filter(|e| e.from == node || e.to == node) {
+                        let (from, to) = if edge.from == node { (slot0, edge.to) } else { (edge.from, slot0) };
+                        if from == to { continue; } // the sibling edge to/from slot-0 itself
+                        commands.push(match edge.kind {
+                            EdgeKind::Basic => MutationCommand::AddDirectedEdge { from, to },
+                            EdgeKind::Teleport => MutationCommand::AddDirectedTeleport { from, to },
+                        });
+                    }
+                }
+                commands.push(MutationCommand::RemoveNode { node });
             }
-            commands.push(MutationCommand::RemoveNode { node });
         }
 
         // Every flagged node failed remove_node_feasible (already removed by an earlier command in
@@ -109,6 +113,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::{Graph, IdGenerator};
     use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::quality_control::SplitTileNodes;
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
 
@@ -142,8 +147,8 @@ mod tests {
 
     #[test]
     fn apply_without_redistribute_removes_the_node_and_its_edges() {
-        let (mut maze, _slot0, extra) = maze_with_split_node();
-        let issue = InvalidSplitTileIssue::new_from_check("test", vec![extra]);
+        let (mut maze, slot0, extra) = maze_with_split_node();
+        let issue = InvalidSplitTileIssue::new_from_check("test", vec![SplitTileNodes::new(vec![slot0, extra])]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&RemoveSplitStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -155,9 +160,9 @@ mod tests {
     #[test]
     fn apply_never_removes_slot0() {
         let (mut maze, slot0, _extra) = maze_with_split_node();
-        // Even if a (buggy) caller flagged slot0 directly, this strategy's RemoveNode command
-        // must be declined by try_remove_node's own feasibility check.
-        let issue = InvalidSplitTileIssue::new_from_check("test", vec![slot0]);
+        // Even if a (buggy) caller flagged a tile containing only slot0, this strategy's
+        // RemoveNode command must be declined by try_remove_node's own feasibility check.
+        let issue = InvalidSplitTileIssue::new_from_check("test", vec![SplitTileNodes::new(vec![slot0])]);
         let mut rng = MazeRng::seed_from_u64(1);
         apply_and_commit(&RemoveSplitStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
 
@@ -168,7 +173,7 @@ mod tests {
     fn apply_with_redistribute_reconnects_the_removed_nodes_neighbor_to_slot0() {
         let (mut maze, slot0, extra) = maze_with_split_node();
         let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
-        let issue = InvalidSplitTileIssue::new_from_check("test", vec![extra]);
+        let issue = InvalidSplitTileIssue::new_from_check("test", vec![SplitTileNodes::new(vec![slot0, extra])]);
         let params = params_with(&[(PARAM_REDISTRIBUTE, "true")]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&RemoveSplitStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
@@ -193,7 +198,7 @@ mod tests {
         g.add_bidirectional_edge(slot0, extra, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let issue = InvalidSplitTileIssue::new_from_check("test", vec![extra]);
+        let issue = InvalidSplitTileIssue::new_from_check("test", vec![SplitTileNodes::new(vec![slot0, extra])]);
         let params = params_with(&[(PARAM_REDISTRIBUTE, "true")]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&RemoveSplitStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
@@ -216,7 +221,7 @@ mod tests {
         g.add_edge(extra, far, EdgeKind::Teleport);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let issue = InvalidSplitTileIssue::new_from_check("test", vec![extra]);
+        let issue = InvalidSplitTileIssue::new_from_check("test", vec![SplitTileNodes::new(vec![slot0, extra])]);
         let params = params_with(&[(PARAM_REDISTRIBUTE, "true")]);
         let mut rng = MazeRng::seed_from_u64(1);
         apply_and_commit(&RemoveSplitStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
@@ -233,7 +238,7 @@ mod tests {
         let (mut maze, slot0, extra) = maze_with_split_node();
         let mut preset_state = PresetState::empty();
         preset_state.preset_edges.insert((slot0, extra));
-        let issue = InvalidSplitTileIssue::new_from_check("test", vec![extra]);
+        let issue = InvalidSplitTileIssue::new_from_check("test", vec![SplitTileNodes::new(vec![slot0, extra])]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&RemoveSplitStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Failed));

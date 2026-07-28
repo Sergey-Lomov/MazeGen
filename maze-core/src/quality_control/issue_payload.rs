@@ -48,9 +48,9 @@ pub enum IssuePayload {
     /// `invalid_teleport`), same rationale as every other variant here.
     InvalidOneWay { groups: HashMap<String, Vec<Vec<[u32; 2]>>> },
     /// Keyed by source check id — each entry is the flat list of maze node ids flagged by that
-    /// check (extra split nodes only — never a point's slot-0 node, see `InvalidSplitTileIssue`'s
+    /// check (every node of each flagged tile, slot-0 included — see `InvalidSplitTileIssue`'s
     /// doc comment). Flat rather than list-of-lists (unlike `RegionNeedsExpansion`'s per-region
-    /// grouping) since a split-tile flag has no group structure to preserve — every flagged node
+    /// grouping) since the payload has no group/tile structure to preserve — every flagged node
     /// highlights independently. Mirrors `IssuePayloadDto::InvalidSplitTile`.
     InvalidSplitTile { nodes: HashMap<String, Vec<u32>> },
 }
@@ -190,16 +190,22 @@ fn resolve_invalid_one_way_group_payload(groups: &[(Vec<crate::ids::EdgeId>, u32
     if out.is_empty() { None } else { Some(IssuePayload::InvalidOneWay { groups: out }) }
 }
 
-/// Resolves flagged split-tile `NodeId`s into a flat per-check list, keyed by the specific
-/// check(s) that flagged *that* node (`invalid_sources`) — mirrors `resolve_invalid_teleport_payload`'s
-/// per-node attribution rationale, just without an edge/graph lookup since a split node id is
-/// already the value to report (no edge endpoints to resolve).
-fn resolve_invalid_split_tile_payload(invalid: &[NodeId], invalid_sources: &HashMap<NodeId, Vec<String>>) -> Option<IssuePayload> {
+/// Resolves flagged split tiles' `NodeId`s into a flat per-check list, keyed by the specific
+/// check(s) that flagged *that* tile (`invalid_sources`) — mirrors `resolve_invalid_teleport_payload`'s
+/// per-element attribution rationale. A tile's several nodes (slot-0 included, GitHub issue #260)
+/// all flatten into the same per-check list — the payload has no group/tile structure to
+/// preserve, every flagged node highlights independently regardless of which tile it came from,
+/// same rationale as `resolve_invalid_split_tile_group_payload`.
+fn resolve_invalid_split_tile_payload(invalid: &[SplitTileNodes], invalid_sources: &HashMap<SplitTileNodes, Vec<String>>) -> Option<IssuePayload> {
     let mut nodes: HashMap<String, Vec<u32>> = HashMap::new();
-    for &id in invalid {
-        let Ok(id32) = u32::try_from(id) else { continue };
-        for source in invalid_sources.get(&id).into_iter().flatten() {
-            nodes.entry(source.clone()).or_default().push(id32);
+    for tile in invalid {
+        for source in invalid_sources.get(tile).into_iter().flatten() {
+            let entry = nodes.entry(source.clone()).or_default();
+            for &id in &tile.0 {
+                if let Ok(id32) = u32::try_from(id) {
+                    entry.push(id32);
+                }
+            }
         }
     }
     if nodes.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { nodes }) }

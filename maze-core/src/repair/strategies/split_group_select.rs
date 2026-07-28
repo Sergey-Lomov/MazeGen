@@ -103,7 +103,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileGroupIssue> for SplitGro
         };
 
         let build_nested_issue = |source_check: &str, target: &SplitTileNodes, _others: &[SplitTileNodes]| -> Box<dyn crate::quality_control::Issue> {
-            Box::new(InvalidSplitTileIssue::new_from_check(source_check, target.0.clone()))
+            Box::new(InvalidSplitTileIssue::new_from_check(source_check, vec![target.clone()]))
         };
         let order_candidates = |candidates: &mut Vec<SplitTileNodes>, membership: &HashMap<SplitTileNodes, usize>, rng: &mut dyn RngCore| {
             let priority = match params.get(PARAM_PRIORITY) {

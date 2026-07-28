@@ -1033,7 +1033,7 @@ Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole com
 
 ### RemoveSplitStrategy
 
-Handles `INVALID_SPLIT_TILE` — see GitHub issue #248, split-QC epic #246. Collapses each flagged extra split node (`InvalidSplitTileIssue.invalid`, never a point's slot-0 original — the producing check never flags slot-0) back into a single node via `MutationCommand::RemoveNode`.
+Handles `INVALID_SPLIT_TILE` — see GitHub issue #248, split-QC epic #246 (issue #260: the issue's unit of work is a whole tile). Collapses every removable node of each flagged tile (`InvalidSplitTileIssue.invalid: Vec<SplitTileNodes>` — slot-0 itself is always skipped, `remove_node_feasible` never allows it) back into a single node via `MutationCommand::RemoveNode`.
 
 **Parameters:**
 

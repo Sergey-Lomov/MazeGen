@@ -103,10 +103,11 @@ pub enum IssuePayloadDto {
     InvalidOneWay {
         groups: HashMap<String, Vec<Vec<[u32; 2]>>>,
     },
-    /// Keyed by source check id — each entry is the flat list of flagged extra split-node maze
-    /// ids (never a point's slot-0 node — see `maze_core::InvalidSplitTileIssue`'s doc comment).
-    /// Flat rather than list-of-lists (unlike `RegionNeedsExpansion`) since a split-tile flag has
-    /// no group structure — every flagged node highlights independently. See GitHub issue #248.
+    /// Keyed by source check id — each entry is the flat list of flagged split-tile maze node
+    /// ids (every node of each flagged tile, slot-0 included — see
+    /// `maze_core::InvalidSplitTileIssue`'s doc comment). Flat rather than list-of-lists (unlike
+    /// `RegionNeedsExpansion`) since the payload has no group/tile structure — every flagged node
+    /// highlights independently. See GitHub issues #248, #260.
     InvalidSplitTile {
         nodes: HashMap<String, Vec<u32>>,
     },

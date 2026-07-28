@@ -128,10 +128,10 @@ pub const MISSING_TELEPORTS: IssueKind = IssueKind::MissingTeleports;
 /// node's point sits too close to/far from `meta.start`/`meta.finish`, per a configured
 /// `Comparison`). Mirrors `INVALID_TELEPORT`'s role for teleports: a semantic category, not tied
 /// to one specific reason — future per-split-node checks may flag a split node invalid for other
-/// reasons and reuse this same kind. Carries `InvalidSplitTileIssue { invalid: Vec<NodeId>, .. }`
+/// reasons and reuse this same kind. Carries `InvalidSplitTileIssue { invalid: Vec<SplitTileNodes>, .. }`
 /// — see that type's doc comment. Repaired by `RemoveSplitStrategy` (see `repair.md`), which
-/// collapses the flagged extra node back into its point's slot-0 original — never removes slot-0
-/// itself (a hard constraint across every split-QC strategy, see GitHub epic #246).
+/// collapses every removable node of each flagged tile back into its point's slot-0 original —
+/// never removes slot-0 itself (a hard constraint across every split-QC strategy, see GitHub epic #246).
 pub const INVALID_SPLIT_TILE: IssueKind = IssueKind::InvalidSplitTile;
 
 /// A field-wide/aggregate condition over the set of split tiles — see GitHub issue #249, part of

@@ -1,26 +1,27 @@
 use std::collections::HashMap;
-use crate::ids::NodeId;
 use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_SPLIT_TILE};
+use crate::quality_control::issue_kinds::SplitTileNodes;
 
-/// Produced by any check that flags an extra split node (never a point's slot-0 original)
-/// invalid for a check-specific reason — currently `SplitDistanceFromWaypointCheck`. `invalid`
-/// holds the base-`Graph`/`Field` `NodeId` of each flagged extra split node directly — mirrors
-/// `InvalidTeleportIssue`: a split node is a single node, not a cycle of edges, so there is no
-/// `all`/index-into-`all` indirection here. **Mandatory** for this kind, see
-/// `RemoveSplitStrategy`.
+/// Produced by any check that flags a whole split tile (its full node list, slot-0 included —
+/// see the epic #246 doc comment: slot-0 is an equal member of the tile for every purpose except
+/// the removal step itself) invalid for a check-specific reason — currently
+/// `SplitDistanceFromWaypointCheck`. `invalid` holds one `SplitTileNodes` per flagged tile —
+/// mirrors `InvalidSplitTileGroupIssue`'s candidate unit (GitHub issue #249) at the single-tile
+/// level too (GitHub issue #260): a "split tile" is the natural entity here, not any one of its
+/// individual nodes. **Mandatory** for this kind, see `RemoveSplitStrategy`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct InvalidSplitTileIssue {
     meta: IssueMeta,
-    pub invalid: Vec<NodeId>,
-    /// Per-node check provenance, keyed directly by `NodeId` (no remap needed across merges,
-    /// same rationale as `InvalidTeleportIssue.invalid_sources` — a `NodeId` is already stable
-    /// identity).
-    pub invalid_sources: HashMap<NodeId, Vec<String>>,
+    pub invalid: Vec<SplitTileNodes>,
+    /// Per-tile check provenance, keyed by the tile's own `SplitTileNodes` (canonicalized, so two
+    /// checks flagging the same tile in any node order attribute to the same key) — same
+    /// clone-based-key rationale as `InvalidGroupIssue::invalid_sources`.
+    pub invalid_sources: HashMap<SplitTileNodes, Vec<String>>,
 }
 
 impl InvalidSplitTileIssue {
-    pub fn new_from_check(source_check: &str, invalid: Vec<NodeId>) -> Self {
-        let invalid_sources = invalid.iter().map(|&id| (id, vec![source_check.to_string()])).collect();
+    pub fn new_from_check(source_check: &str, invalid: Vec<SplitTileNodes>) -> Self {
+        let invalid_sources = invalid.iter().map(|tile| (tile.clone(), vec![source_check.to_string()])).collect();
         Self { meta: IssueMeta::new_from_check(source_check), invalid, invalid_sources }
     }
 
@@ -41,12 +42,25 @@ impl IssueRequirement for InvalidSplitTileIssue {
 crate::impl_issue!(InvalidSplitTileIssue);
 
 impl IssueMerge for InvalidSplitTileIssue {
-    /// A split node is a single node, not a cycle of edges — unlike `InvalidLoopIssue` there is
-    /// no index-into-`all` indirection to remap, just a dedup-union of flagged `NodeId`s, mirrors
-    /// `InvalidTeleportIssue::merge`.
+    /// `SplitTileNodes` isn't `Copy` (it wraps a `Vec`), so this can't reuse `merge_id_sets` —
+    /// dedup-union by clone, mirroring `InvalidGroupIssue::merge`'s own clone-based-key approach.
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        super::merge_id_sets(&mut self.invalid, &mut self.invalid_sources, other.invalid, other.invalid_sources);
+
+        let mut seen: std::collections::HashSet<SplitTileNodes> = self.invalid.iter().cloned().collect();
+        for tile in other.invalid {
+            if seen.insert(tile.clone()) {
+                self.invalid.push(tile);
+            }
+        }
+        for (key, sources) in other.invalid_sources {
+            let entry = self.invalid_sources.entry(key).or_default();
+            for source in sources {
+                if !entry.contains(&source) {
+                    entry.push(source);
+                }
+            }
+        }
     }
 }
 
@@ -54,33 +68,37 @@ impl IssueMerge for InvalidSplitTileIssue {
 mod tests {
     use super::*;
 
+    fn tile(nodes: Vec<crate::ids::NodeId>) -> SplitTileNodes {
+        SplitTileNodes::new(nodes)
+    }
+
     #[test]
-    fn merge_unions_disjoint_node_ids() {
-        let mut a = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_a", vec![0]);
-        let b = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_b", vec![1]);
+    fn merge_unions_disjoint_tiles() {
+        let mut a = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_a", vec![tile(vec![0])]);
+        let b = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_b", vec![tile(vec![1])]);
         a.merge(b);
 
         assert_eq!(a.invalid.len(), 2);
-        assert!(a.invalid.contains(&0));
-        assert!(a.invalid.contains(&1));
+        assert!(a.invalid.contains(&tile(vec![0])));
+        assert!(a.invalid.contains(&tile(vec![1])));
     }
 
     #[test]
-    fn merge_attributes_each_node_to_only_its_own_flagging_check() {
-        let mut a = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_a", vec![0]);
-        let b = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_b", vec![1]);
+    fn merge_attributes_each_tile_to_only_its_own_flagging_check() {
+        let mut a = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_a", vec![tile(vec![0])]);
+        let b = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_b", vec![tile(vec![1])]);
         a.merge(b);
 
-        assert_eq!(a.invalid_sources.get(&0), Some(&vec!["split_distance_from_waypoint_a".to_string()]));
-        assert_eq!(a.invalid_sources.get(&1), Some(&vec!["split_distance_from_waypoint_b".to_string()]));
+        assert_eq!(a.invalid_sources.get(&tile(vec![0])), Some(&vec!["split_distance_from_waypoint_a".to_string()]));
+        assert_eq!(a.invalid_sources.get(&tile(vec![1])), Some(&vec!["split_distance_from_waypoint_b".to_string()]));
     }
 
     #[test]
-    fn merge_deduplicates_shared_node_id() {
-        let mut a = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_a", vec![0]);
-        let b = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_b", vec![0]);
+    fn merge_deduplicates_shared_tile() {
+        let mut a = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_a", vec![tile(vec![0])]);
+        let b = InvalidSplitTileIssue::new_from_check("split_distance_from_waypoint_b", vec![tile(vec![0])]);
         a.merge(b);
 
-        assert_eq!(a.invalid, vec![0], "the same node id flagged by both checks must not be duplicated");
+        assert_eq!(a.invalid, vec![tile(vec![0])], "the same tile flagged by both checks must not be duplicated");
     }
 }
