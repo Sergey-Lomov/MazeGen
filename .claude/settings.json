@@ -38,6 +38,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"d:\\Development\\MazeGen\\.claude\\hooks\\no-multi-option-hook.ps1\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
