@@ -18,7 +18,7 @@ use crate::space::{Field, Tessellation};
 use crate::repair::command::{MutationCommand, SplitNodeEdge};
 use super::preset_state::PresetState;
 use super::edge_ops::{directed_edge_feasible, bidirectional_edge_feasible, remove_edge_between_feasible};
-use super::node_ops::{remove_node_feasible, add_split_node_feasible};
+use super::node_ops::{remove_node_feasible, replace_point_nodes_feasible};
 
 // Step 1 of GitHub issue #118's migration (Specs/repair.md): additive, not yet wired into any
 // caller — strategies still mutate `&mut Maze` directly today. `#[allow(dead_code)]` until step 2
@@ -95,9 +95,9 @@ pub(crate) fn cmd_remove_node<T: Tessellation>(field: &Field<T>, preset_state: &
 }
 
 #[allow(dead_code)]
-pub(crate) fn cmd_add_split_node<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, at: NodeId, nodes: Vec<Vec<SplitNodeEdge>>) -> Vec<MutationCommand> {
-    if !add_split_node_feasible(field, preset_state, at, &nodes) { return vec![]; }
-    vec![MutationCommand::AddSplitNode { at, nodes }]
+pub(crate) fn cmd_replace_point_nodes<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, at: NodeId, nodes: Vec<Vec<SplitNodeEdge>>) -> Vec<MutationCommand> {
+    if !replace_point_nodes_feasible(field, preset_state, at, &nodes) { return vec![]; }
+    vec![MutationCommand::ReplacePointNodes { at, nodes }]
 }
 
 /// Direct unit tests for the `cmd_*` `MutationCommand` builders and the feasibility predicates

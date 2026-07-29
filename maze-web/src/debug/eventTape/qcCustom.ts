@@ -10,8 +10,8 @@ import { readNodeId, readStr, readU32 } from "./wire";
 export type RepairLimitKind = "MaxIterations" | "TimeBudget";
 
 /** Mirrors `repair::SplitNodeEdgeDirection`/`SplitNodeEdge` in `maze-core/src/repair/command.rs`
- *  — one sibling's edge to an already-existing graph node, minted by `MutationCommand::AddSplitNode`
- *  (GitHub issue #247). */
+ *  — one new node's edge to an already-existing graph node, minted by
+ *  `MutationCommand::ReplacePointNodes` (GitHub issue #247). */
 export type SplitNodeEdgeDirection = "Forward" | "Backward" | "Passage";
 export interface SplitNodeEdge {
   target: bigint;
@@ -107,14 +107,14 @@ function readStrKeyedFlatNodeLists(bytes: Uint8Array, offset: number): { value: 
   return { value, next: pos };
 }
 
-/** Reads the `Vec<Vec<SplitNodeEdge>>` wire shape `write_split_nodes` produces — one sibling's
- *  edge list per entry, each edge as one byte for `direction` (0=Forward, 1=Backward, 2=Passage)
- *  followed by the 8-byte `target` node id. */
+/** Reads the `Vec<Vec<SplitNodeEdge>>` wire shape `write_split_nodes` produces — one new node's
+ *  edge list per entry (entry 0 the new slot-0), each edge as one byte for `direction`
+ *  (0=Forward, 1=Backward, 2=Passage) followed by the 8-byte `target` node id. */
 export function readSplitNodes(bytes: Uint8Array, offset: number): { value: SplitNodeEdge[][]; next: number } {
-  const siblingCount = readU32(bytes, offset);
+  const nodeCount = readU32(bytes, offset);
   let pos = offset + 4;
   const nodes: SplitNodeEdge[][] = [];
-  for (let s = 0; s < siblingCount; s++) {
+  for (let s = 0; s < nodeCount; s++) {
     const edgeCount = readU32(bytes, pos);
     pos += 4;
     const edges: SplitNodeEdge[] = [];

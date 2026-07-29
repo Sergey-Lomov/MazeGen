@@ -28,7 +28,7 @@ mod wire_tags {
     pub const START_SET_PROPOSED: u16 = 32;
     pub const FINISH_SET_PROPOSED: u16 = 33;
     pub const NODE_REMOVE_PROPOSED: u16 = 40;
-    pub const SPLIT_NODE_ADD_PROPOSED: u16 = 44;
+    pub const POINT_NODES_REPLACE_PROPOSED: u16 = 44;
     pub const DIRECTED_EDGE_ADDED: u16 = 6;
     pub const BIDIRECTIONAL_EDGE_ADDED: u16 = 7;
     pub const DIRECTED_TELEPORT_ADDED: u16 = 8;
@@ -40,7 +40,7 @@ mod wire_tags {
     pub const START_SET: u16 = 13;
     pub const FINISH_SET: u16 = 14;
     pub const NODE_REMOVED: u16 = 38;
-    pub const SPLIT_NODE_ADDED: u16 = 42;
+    pub const POINT_NODES_REPLACED: u16 = 42;
     pub const DIRECTED_EDGE_DECLINED: u16 = 15;
     pub const BIDIRECTIONAL_EDGE_DECLINED: u16 = 16;
     pub const DIRECTED_TELEPORT_DECLINED: u16 = 17;
@@ -52,7 +52,7 @@ mod wire_tags {
     pub const START_SET_DECLINED: u16 = 22;
     pub const FINISH_SET_DECLINED: u16 = 23;
     pub const NODE_REMOVE_DECLINED: u16 = 39;
-    pub const SPLIT_NODE_ADD_DECLINED: u16 = 43;
+    pub const POINT_NODES_REPLACE_DECLINED: u16 = 43;
 }
 
 impl EncodeEventPayload for QcEvent {
@@ -74,7 +74,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::StartSetProposed(..) => wire_tags::START_SET_PROPOSED,
             QcEvent::FinishSetProposed(..) => wire_tags::FINISH_SET_PROPOSED,
             QcEvent::NodeRemoveProposed(..) => wire_tags::NODE_REMOVE_PROPOSED,
-            QcEvent::SplitNodeAddProposed { .. } => wire_tags::SPLIT_NODE_ADD_PROPOSED,
+            QcEvent::PointNodesReplaceProposed { .. } => wire_tags::POINT_NODES_REPLACE_PROPOSED,
             QcEvent::DirectedEdgeAdded { .. } => wire_tags::DIRECTED_EDGE_ADDED,
             QcEvent::BidirectionalEdgeAdded { .. } => wire_tags::BIDIRECTIONAL_EDGE_ADDED,
             QcEvent::DirectedTeleportAdded { .. } => wire_tags::DIRECTED_TELEPORT_ADDED,
@@ -86,7 +86,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::StartSet(..) => wire_tags::START_SET,
             QcEvent::FinishSet(..) => wire_tags::FINISH_SET,
             QcEvent::NodeRemoved(..) => wire_tags::NODE_REMOVED,
-            QcEvent::SplitNodeAdded { .. } => wire_tags::SPLIT_NODE_ADDED,
+            QcEvent::PointNodesReplaced { .. } => wire_tags::POINT_NODES_REPLACED,
             QcEvent::DirectedEdgeDeclined { .. } => wire_tags::DIRECTED_EDGE_DECLINED,
             QcEvent::BidirectionalEdgeDeclined { .. } => wire_tags::BIDIRECTIONAL_EDGE_DECLINED,
             QcEvent::DirectedTeleportDeclined { .. } => wire_tags::DIRECTED_TELEPORT_DECLINED,
@@ -98,7 +98,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::StartSetDeclined(..) => wire_tags::START_SET_DECLINED,
             QcEvent::FinishSetDeclined(..) => wire_tags::FINISH_SET_DECLINED,
             QcEvent::NodeRemoveDeclined(..) => wire_tags::NODE_REMOVE_DECLINED,
-            QcEvent::SplitNodeAddDeclined { .. } => wire_tags::SPLIT_NODE_ADD_DECLINED,
+            QcEvent::PointNodesReplaceDeclined { .. } => wire_tags::POINT_NODES_REPLACE_DECLINED,
         }
     }
 
@@ -163,8 +163,9 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::NodeRemoveProposed(__field0) => {
                 write_node_id(out, *__field0);
             }
-            QcEvent::SplitNodeAddProposed { at, nodes } => {
+            QcEvent::PointNodesReplaceProposed { at, old_nodes, nodes } => {
                 write_node_id(out, *at);
+                push_ids(out, old_nodes);
                 write_split_nodes(out, nodes);
             }
             QcEvent::DirectedEdgeAdded { from, to } => {
@@ -210,8 +211,9 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::NodeRemoved(__field0) => {
                 write_node_id(out, *__field0);
             }
-            QcEvent::SplitNodeAdded { at, new_nodes, nodes } => {
+            QcEvent::PointNodesReplaced { at, old_nodes, new_nodes, nodes } => {
                 write_node_id(out, *at);
+                push_ids(out, old_nodes);
                 push_ids(out, new_nodes);
                 write_split_nodes(out, nodes);
             }
@@ -258,8 +260,9 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::NodeRemoveDeclined(__field0) => {
                 write_node_id(out, *__field0);
             }
-            QcEvent::SplitNodeAddDeclined { at, nodes } => {
+            QcEvent::PointNodesReplaceDeclined { at, old_nodes, nodes } => {
                 write_node_id(out, *at);
+                push_ids(out, old_nodes);
                 write_split_nodes(out, nodes);
             }
         }
@@ -281,7 +284,7 @@ impl DebugEvent for QcEvent {
                 | QcEvent::StartSet(..)
                 | QcEvent::FinishSet(..)
                 | QcEvent::NodeRemoved(..)
-                | QcEvent::SplitNodeAdded { .. }
+                | QcEvent::PointNodesReplaced { .. }
         )
     }
 }

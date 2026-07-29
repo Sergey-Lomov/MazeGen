@@ -54,23 +54,40 @@ pub enum MutationCommand {
     /// `AddBidirectionalEdge` commands itself, ahead of this one in its own returned batch — this
     /// command only ever deletes, it never redirects.
     RemoveNode { node: NodeId },
-    /// Mints one or more new split nodes at `at`'s point (`at` must be that point's slot-0/
-    /// original node — `Field::add_node_at` always adds relative to the point, not a specific
-    /// existing node) and wires each one's own `edges` in one atomic step — see GitHub issue
-    /// #247, `AddSplitStrategy`. `nodes[i]` is the `i`th new sibling's own edge list, each entry
-    /// targeting one of `at`'s pre-existing (already-in-graph) neighbors — never another sibling
-    /// in this same batch (inter-split edges are out of `AddSplitStrategy`'s scope, see its own
-    /// doc comment). All or nothing: if any single entry in any sibling's `edges` is no longer
-    /// feasible by apply time (e.g. a preset lock/block that changed since this command was
-    /// proposed), the whole command is declined and **no** node is minted at all — mirrors
-    /// `RemoveSplitStrategy`'s own hard atomicity contract for its collapse step, just for the
-    /// opposite (add) direction. Never removes or alters `at` (slot-0) itself — only ever adds
-    /// siblings and their own edges, honoring the hard "never touch slot-0" constraint shared by
-    /// every split-QC strategy in epic #246.
-    AddSplitNode { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
+    /// Replaces every node currently at `at`'s point (all of them — slot-0 included, not just
+    /// extra siblings) with a brand-new set of nodes, wiring each one's own edges in one atomic
+    /// step — see GitHub issue #247, `AddSplitStrategy`. `at` only identifies which point is
+    /// affected (resolved via `field.point_of(at)`), not a node that survives the command — every
+    /// node previously at that point is removed, and `nodes.len()` new nodes are minted in its
+    /// place, `nodes[i]` describing the `i`th new node's own edges to already-existing neighbors
+    /// elsewhere on the field.
+    ///
+    /// **`nodes[0]` becomes the point's new slot-0** (`Field::add_node_at`'s own minting order
+    /// always makes the first-minted node at a point its slot-0 — same rule generation itself
+    /// relies on) — there is no other special meaning to index 0 beyond "minted first, therefore
+    /// slot-0 by `Field`'s own convention." Every caller building `nodes` (e.g. `AddSplitStrategy`)
+    /// is expected to put whichever resolved node it means to be the tile's slot-0 at index 0.
+    ///
+    /// Declined outright (no removal, no mint) if `field.point_of(at)` is `None` at apply time —
+    /// e.g. `at` itself was already removed by an earlier command in the same batch, or the point
+    /// was otherwise invalidated since this command was proposed. Same "stale command, silently
+    /// declined" contract every other variant already has.
+    ///
+    /// All or nothing beyond that: if any single edge anywhere in `nodes` is no longer feasible by
+    /// apply time, the whole command is declined and nothing about the point changes at all — no
+    /// removal, no mint.
+    ///
+    /// Deliberately does not special-case a "slot-0" survivor — see epic #246's own convention that
+    /// a point's original node is just another member of its tile everywhere except explicit
+    /// removal-eligibility, which no longer applies here since this command always replaces the
+    /// whole set. A caller whose replaced point happened to be `meta.start`/`meta.finish` leaves
+    /// `meta` pointing at a stale `NodeId` — the same accepted, pre-existing gap
+    /// `RemoveNode`/`RemoveSplitStrategy` already has (neither checks meta before removing a node
+    /// either).
+    ReplacePointNodes { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
 }
 
-/// One edge a newly minted split node (`MutationCommand::AddSplitNode`) gets wired with, always
+/// One edge a newly minted split node (`MutationCommand::ReplacePointNodes`) gets wired with, always
 /// `EdgeKind::Basic` (mirrors `apply_pattern_adaptation`'s own split-face edges, which are never
 /// `Teleport`) — `target` is the existing node on the other end, `direction` which way the edge
 /// points relative to the new node.

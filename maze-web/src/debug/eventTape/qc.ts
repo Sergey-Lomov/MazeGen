@@ -35,15 +35,16 @@ export interface QcApplyResult {
   edges: Edge[];
   removedEdges: { from: bigint; to: bigint }[];
   /** Maze node ids removed by `MutationCommand::RemoveNode` (GitHub issue #248's `remove_split`
-   *  strategy) up to this step — append-only, since a node once removed never reappears within
-   *  QC's own event stream (unlike edges, which can be re-added). Lets `mergeDebugMazeView`
-   *  exclude a removed split node from the reconstructed node list, mirroring how `removedEdges`
-   *  lets it retract an earlier source's edges. */
+   *  strategy) or replaced by `MutationCommand::ReplacePointNodes` (GitHub issue #247's
+   *  `AddSplitStrategy` — its `old_nodes`, slot-0 included) up to this step — append-only, since a
+   *  node once removed never reappears within QC's own event stream (unlike edges, which can be
+   *  re-added). Lets `mergeDebugMazeView` exclude a removed/replaced node from the reconstructed
+   *  node list, mirroring how `removedEdges` lets it retract an earlier source's edges. */
   removedNodes: bigint[];
-  /** Node ids minted by `MutationCommand::AddSplitNode` (GitHub issue #247's `AddSplitStrategy`)
-   *  up to this step — append-only, mirrors `removedNodes`. Lets `mergeDebugMazeView` include a
-   *  freshly minted split-tile sibling in the reconstructed node list, the same way
-   *  `VertexBasedApplyResult.createdNodes` does for a generation-time split. */
+  /** Node ids minted by `MutationCommand::ReplacePointNodes` (GitHub issue #247's
+   *  `AddSplitStrategy`) up to this step — append-only, mirrors `removedNodes`. Lets
+   *  `mergeDebugMazeView` include a freshly minted split-tile node in the reconstructed node list,
+   *  the same way `VertexBasedApplyResult.createdNodes` does for a generation-time split. */
   createdNodes: bigint[];
   start: bigint | null;
   finish: bigint | null;
@@ -164,7 +165,8 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
       case "NodeRemoved":
         removedNodes.add(event.id);
         break;
-      case "SplitNodeAdded":
+      case "PointNodesReplaced":
+        for (const old of event.oldNodes) removedNodes.add(old);
         for (let i = 0; i < event.newNodes.length; i++) {
           const node = event.newNodes[i];
           createdNodes.add(node);

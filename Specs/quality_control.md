@@ -385,7 +385,7 @@ the flat event (no scope context) can still tell which strategy failed.
 (`DirectedEdgeProposed`, `BidirectionalEdgeProposed`, `DirectedTeleportProposed`,
 `BidirectionalTeleportProposed`, `EdgeRemoveProposed`, `EdgeRemoveBetweenProposed`,
 `EdgeRemoveWithReverseProposed`, `TeleportRemoveWithReverseProposed`, `StartSetProposed`,
-`FinishSetProposed`, `NodeRemoveProposed`, `SplitNodeAddProposed`) — emitted into the `"strategy <id>"` scope for every
+`FinishSetProposed`, `NodeRemoveProposed`, `PointNodesReplaceProposed`) — emitted into the `"strategy <id>"` scope for every
 command a strategy's `apply()` returned, before any of them has been revalidated or applied by
 `apply_commands`. Narrates what was *asked for*, independent of whether the separate "apply
 requests" scope right after actually honors it. Not a field-for-field mirror for all 11:
@@ -402,16 +402,18 @@ unlike an `EdgeId`, so no resolution step is needed.
 **Mutating events — one variant per `repair::MutationCommand` variant (12 total)**
 (`DirectedEdgeAdded`, `BidirectionalEdgeAdded`, `DirectedTeleportAdded`,
 `BidirectionalTeleportAdded`, `EdgeRemoved`, `EdgeRemovedBetween`, `EdgeRemovedWithReverse`,
-`TeleportRemovedWithReverse`, `StartSet`, `FinishSet`, `NodeRemoved`, `SplitNodeAdded`) — emitted by
+`TeleportRemovedWithReverse`, `StartSet`, `FinishSet`, `NodeRemoved`, `PointNodesReplaced`) — emitted by
 `apply_commands` (`quality_control/rule.rs`) for exactly the commands its own revalidation
 actually applied (`is_mutating()` is `true` for these twelve and only these twelve).
 `NodeRemoved(NodeId)` (GitHub issue #248) narrates `MutationCommand::RemoveNode` actually applied —
 see `Specs/repair.md`'s `RemoveNode`/`RemoveSplitStrategy` sections for what removes a node and
-why. `SplitNodeAdded { at: NodeId, new_nodes: Vec<NodeId>, nodes: Vec<Vec<SplitNodeEdge>> }`
-(GitHub issue #247) narrates `MutationCommand::AddSplitNode` actually applied — see
-`Specs/repair.md`'s `AddSplitStrategy` section for what mints new split-tile siblings and why;
-`new_nodes` is the freshly minted sibling ids (one per `nodes` entry, same order), distinct from
-`at` (the existing point/slot-0 node the siblings were added alongside). Each also has a same-fields,
+why. `PointNodesReplaced { at: NodeId, old_nodes: Vec<NodeId>, new_nodes: Vec<NodeId>, nodes: Vec<Vec<SplitNodeEdge>> }`
+(GitHub issue #247) narrates `MutationCommand::ReplacePointNodes` actually applied — see
+`Specs/repair.md`'s `AddSplitStrategy` section for what replaces a split tile's nodes and why;
+`old_nodes` is every node that was at `at`'s point before the command ran (slot-0 included),
+`new_nodes` is the freshly minted replacement ids (one per `nodes` entry, same order, `new_nodes[0]`
+the new slot-0) — both distinct from `at`, which only identifies the affected point and does not
+necessarily survive the command. Each also has a same-fields,
 trace-only `*Declined` counterpart (`DirectedEdgeDeclined`, etc.) emitted when revalidation rejects
 a proposed command — one dedicated variant per command kind rather than a single payload-less
 `CommandDeclined`, so narration/tests can say exactly which command failed revalidation, not just
@@ -459,8 +461,8 @@ into `quality_control/qc_wire.rs`'s `wire_tags` module by `codegen` (`Specs/even
 folds this tape together with generation's, same mechanism every merged source already uses
 (`Specs/event_log.md`'s "#169" section). `38`/`39`/`40` are
 `NodeRemoved`/`NodeRemoveDeclined`/`NodeRemoveProposed` (GitHub issue #248); `41` is
-`StrategyFailed`; `42`/`43`/`44` are `SplitNodeAdded`/`SplitNodeAddDeclined`/
-`SplitNodeAddProposed` (GitHub issue #247). `CheckRan.issue`/`IssuesMerged`'s `issue_kind`/
+`StrategyFailed`; `42`/`43`/`44` are `PointNodesReplaced`/`PointNodesReplaceDeclined`/
+`PointNodesReplaceProposed` (GitHub issue #247). `CheckRan.issue`/`IssuesMerged`'s `issue_kind`/
 `payload`/`details` fields go through named custom codecs (`CheckIssueCodec`/`IssueKindCodec`/
 `IssuePayloadCodec`/`DetailsMapMapCodec`) rather than standard wire types — see that same codegen
 section for the whitelist mechanism.

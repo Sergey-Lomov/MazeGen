@@ -4,6 +4,7 @@ use crate::space::{SquareTessellation, Field, square_rect};
 use crate::graph::{Graph, EdgeKind};
 use crate::generation::PresetState;
 use crate::repair::MutationCommand;
+use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 use crate::event_log::{EventLog, DebugEvent};
 use crate::quality_control::event::QcEvent;
 use super::*;
@@ -424,4 +425,42 @@ fn check_and_repair_typed_applies_every_returned_command_to_the_real_maze() {
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
     assert!(maze.graph.edges().count() >= 2, "the bidirectional edge command must have landed too");
+}
+
+/// `replace_point_nodes_feasible`'s own doc comment (`node_ops.rs`) calls out `ReplacePointNodes`
+/// as the one command in the crate that can invalidate another command's edge `target` mid-batch:
+/// unlike every other command, it can remove a node an *earlier* command in the same batch already
+/// referenced as a `target`. This is exactly the scenario the user reported this session (two
+/// adjacent split tiles added in one repair call, where the second candidate's new node wires to
+/// the first candidate's about-to-be-replaced node): the second `ReplacePointNodes` in a batch
+/// targets a node the first one just replaced. It must be declined outright (all-or-nothing — no
+/// partial replacement), not silently wire to the now-vanished id.
+#[test]
+fn replace_point_nodes_declines_when_a_prior_batch_command_already_replaced_its_target() {
+    let (mut maze, nodes) = maze_n(3);
+    // nodes[1] is the shared target: the first command replaces it, the second command's new node
+    // tries to wire to it as if it were still live.
+    let commands = vec![
+        MutationCommand::ReplacePointNodes { at: nodes[1], nodes: vec![vec![]] },
+        MutationCommand::ReplacePointNodes {
+            at: nodes[0],
+            nodes: vec![vec![SplitNodeEdge { target: nodes[1], direction: SplitNodeEdgeDirection::Passage }]],
+        },
+    ];
+
+    let mut log = EventLog::new();
+    let mut scope = log.enter("test scope");
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope));
+    drop(scope);
+    let tape = log.finish();
+
+    assert_eq!(outcome, ApplyOutcome { proposed: 2, applied: 1 }, "the second command must be declined, the first must still land");
+    let point0 = maze.field.point_of(nodes[0]).expect("declined command must leave nodes[0]'s point untouched");
+    assert_eq!(maze.field.nodes_at(point0), &[nodes[0]], "nodes[0]'s point must be untouched by the declined second command");
+    assert!(maze.field.point_of(nodes[1]).is_none(), "nodes[1] must have been replaced by the first command");
+
+    let events: Vec<&QcEvent> = tape.iter().collect();
+    assert_eq!(events.len(), 2);
+    assert!(matches!(events[0], QcEvent::PointNodesReplaced { .. }), "first command applied: {:?}", events[0]);
+    assert!(matches!(events[1], QcEvent::PointNodesReplaceDeclined { .. }), "second command declined, its target already gone: {:?}", events[1]);
 }

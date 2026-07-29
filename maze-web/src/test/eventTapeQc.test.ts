@@ -58,6 +58,23 @@ function edgeAddedPayload(from: bigint, to: bigint, bidirectional = true): Uint8
   return concatBytes([u64le(from), u64le(to), new Uint8Array([bidirectional ? 1 : 0])]);
 }
 
+function nodeIdListPayload(ids: bigint[]): Uint8Array {
+  return concatBytes([u32le(ids.length), ...ids.map(u64le)]);
+}
+
+/** `PointNodesReplaced { at, old_nodes, new_nodes, nodes }` wire payload — `nodes` here is always
+ *  passed empty (no `SplitNodeEdge`s) since these tests only care about `old_nodes`/`new_nodes`
+ *  folding into `removedNodes`/`createdNodes`, mirroring `write_split_nodes`'s per-node u32
+ *  edge-count-then-edges shape with a count of 0 for every entry. */
+function pointNodesReplacedPayload(at: bigint, oldNodes: bigint[], newNodes: bigint[], nodeCount: number): Uint8Array {
+  return concatBytes([
+    u64le(at),
+    nodeIdListPayload(oldNodes),
+    nodeIdListPayload(newNodes),
+    u32le(nodeCount), ...Array.from({ length: nodeCount }, () => u32le(0)),
+  ]);
+}
+
 function buildFixture(nodes: FixtureNode[]): ParsedTape {
   const payloadChunks: Uint8Array[] = [];
   const offsets: number[] = [];
@@ -415,6 +432,16 @@ describe("mutatingQcEvents / applyQc", () => {
     ]);
     const result = applyQc(tape, 2, undefined, 0);
     expect(result.removedNodes).toEqual([7n, 9n]);
+  });
+
+  it("PointNodesReplaced (GitHub issue #247's AddSplitStrategy rework) folds old_nodes into removedNodes and new_nodes into createdNodes", () => {
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: null, nextSibling: null, tag: QC_EVENT_TAG.POINT_NODES_REPLACED, payloadBytes: pointNodesReplacedPayload(5n, [5n], [20n, 21n], 2) },
+    ]);
+    const result = applyQc(tape, 0, undefined, 0);
+    expect(result.removedNodes).toEqual([5n]);
+    expect(result.createdNodes).toEqual([20n, 21n]);
   });
 
   it("resuming NodeRemoved accumulation from a previous result matches a full replay to the same targetStep", () => {

@@ -328,10 +328,13 @@ describe("DebugEventTree", () => {
     expect(screen.getByText("0:0 <-> 3:4")).toBeInTheDocument();
   });
 
-  it("throws when an event references a node id absent from debugArena.nodes (fail loud, not NaN)", () => {
-    // Same tape shape but VertexVisited references id 99, which isn't in `nodes`. The bad event
-    // is a leaf under the top-level scope, so it's only decoded (and only throws) once expanded —
-    // matches how DebugEventTree only calls rowLabel/narrationFor for currently-visible rows.
+  it("renders a fallback #id bubble when an event references a node id absent from debugArena.nodes", () => {
+    // Same tape shape but VertexVisited references id 99, which isn't in `nodes`. `nodes` is the
+    // *final* post-run field snapshot — a node a later command legitimately removed/replaced
+    // (`RemoveNode`, `ReplacePointNodes`) is genuinely absent from it even though an earlier
+    // narration row still names it by its now-stale id. This must degrade gracefully (a `#id`
+    // fallback bubble), not throw — a React render-time throw here previously took down the whole
+    // debug panel (reported bug: a QC-time split-repair pass routinely replaces nodes).
     const brokenTape = buildFixture([
       { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
       { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
@@ -341,13 +344,11 @@ describe("DebugEventTree", () => {
     ]);
     useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] }], nodes, totalSteps: 1, debugValueNames: [] }, debugStep: 0 });
 
-    // Suppress React's expected error-boundary console noise for this deliberate-throw case.
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     render(<DebugEventTree />);
     expandGeneration();
     const stepScopeRow = screen.getByText(m["debug.tree.step_scope"]({ index: 1 }));
-    expect(() => fireEvent.click(stepScopeRow)).toThrow(/node id 99 not found/);
-    consoleError.mockRestore();
+    expect(() => fireEvent.click(stepScopeRow)).not.toThrow();
+    expect(screen.getByText("#99")).toBeInTheDocument();
   });
 });
 

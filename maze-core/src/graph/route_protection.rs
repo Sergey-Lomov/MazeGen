@@ -20,6 +20,18 @@ pub fn is_edge_on_route<T: Tessellation>(maze: &Maze<T>, edge_id: EdgeId) -> boo
     hops.contains(&(edge.from, edge.to))
 }
 
+/// True if `node` sits anywhere on the maze's current start->finish route (`RouteInfo::path`,
+/// endpoints included) — `false` when either endpoint is unset or no route currently connects
+/// them. Unlike `is_edge_on_route`, this checks node membership, not a specific hop: used by a
+/// strategy that must avoid *placing* something at a route-critical point at all (e.g.
+/// `AddSplitStrategy`'s `protect_route` param, which must never choose a route node as a split
+/// candidate), as opposed to `RegionShrinkSplitStrategy`'s use of `is_edge_on_route`, which avoids
+/// *cutting* a specific route hop.
+pub fn is_node_on_route<T: Tessellation>(maze: &Maze<T>, node: NodeId) -> bool {
+    let Some(route) = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta) else { return false; };
+    route.path.contains(&node)
+}
+
 /// True if `edge_id` (a `Teleport` edge) is protected by the maze's current start->finish route:
 /// either the edge itself is a route hop, or — for a two-way teleport — its opposite-direction
 /// counterpart is. A two-way teleport is two independent `EdgeId`s in the base `Graph` (no

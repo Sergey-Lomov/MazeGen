@@ -116,11 +116,12 @@ pub enum QcEvent {
     /// own id is meaningful on its own (unlike an `EdgeId`), so this just carries `node` directly.
     #[wire(tag = 40, name = "id")]
     NodeRemoveProposed(NodeId),
-    /// `MutationCommand::AddSplitNode` proposed — narrates `at` (the point's slot-0 node) and the
-    /// planned per-sibling edge lists (`nodes[i]` = the `i`th new sibling's own edges) before any
-    /// new node itself exists (there is no id to carry yet, unlike `NodeRemoveProposed`).
+    /// `MutationCommand::ReplacePointNodes` proposed — narrates `at`'s point, the `old_nodes`
+    /// currently there (slot-0 included), and the planned per-new-node edge lists (`nodes[i]` =
+    /// the `i`th new node's own edges, `nodes[0]` becoming the new slot-0) before any new node
+    /// itself exists (there is no id to carry yet, unlike `NodeRemoveProposed`).
     #[wire(tag = 44)]
-    SplitNodeAddProposed { at: NodeId, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
+    PointNodesReplaceProposed { at: NodeId, old_nodes: Vec<NodeId>, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
 
     // --- mutating: exact mirror of `repair::MutationCommand`'s 10 variants, emitted only for
     // commands `apply_commands` actually applied (its `ok == true` branch). ---
@@ -163,12 +164,14 @@ pub enum QcEvent {
     /// `MutationCommand::RemoveNode` actually applied — carries the removed node's own id.
     #[wire(tag = 38, mutating, name = "id")]
     NodeRemoved(NodeId),
-    /// `MutationCommand::AddSplitNode` actually applied — `new_nodes` are the freshly minted
-    /// siblings' own ids, one per `nodes` entry, same order (unknowable until apply time, unlike
-    /// every other mutating variant's identity, which is always resolved from state that already
-    /// existed before the command ran).
+    /// `MutationCommand::ReplacePointNodes` actually applied — `old_nodes` are every node that was
+    /// at `at`'s point before this command ran (slot-0 included, resolved before the mutation —
+    /// see `qc_event_for_command`'s doc comment), `new_nodes` are the freshly minted replacements,
+    /// one per `nodes` entry, same order, `new_nodes[0]` the point's new slot-0 (unknowable until
+    /// apply time, unlike every other mutating variant's identity, which is always resolved from
+    /// state that already existed before the command ran).
     #[wire(tag = 42, mutating)]
-    SplitNodeAdded { at: NodeId, new_nodes: Vec<NodeId>, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
+    PointNodesReplaced { at: NodeId, old_nodes: Vec<NodeId>, new_nodes: Vec<NodeId>, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
 
     // --- trace: same fields as the matching mutating variant above, for a command
     // `apply_commands` proposed but whose revalidation rejected it (its `ok == false` branch). ---
@@ -209,19 +212,21 @@ pub enum QcEvent {
     /// is slot-0, or is preset-protected by the time `apply_commands` ran).
     #[wire(tag = 39, name = "id")]
     NodeRemoveDeclined(NodeId),
-    /// `MutationCommand::AddSplitNode` proposed but revalidation rejected it (all-or-nothing — see
-    /// `add_split_node_feasible`'s doc comment: `at` no longer split-eligible, or any one edge of
-    /// any sibling in `nodes` no longer preset-feasible by the time `apply_commands` ran). No node
-    /// was minted at all.
+    /// `MutationCommand::ReplacePointNodes` proposed but revalidation rejected it (all-or-nothing —
+    /// see `replace_point_nodes_feasible`'s doc comment: `at`'s point no longer exists, one of its
+    /// old nodes is no longer removable, or any one edge of any new node in `nodes` no longer
+    /// preset-feasible by the time `apply_commands` ran). No node was replaced at all — `old_nodes`
+    /// is empty when `at`'s point itself no longer resolves (there was nothing to report).
     #[wire(tag = 43)]
-    SplitNodeAddDeclined { at: NodeId, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
+    PointNodesReplaceDeclined { at: NodeId, old_nodes: Vec<NodeId>, #[wire(custom = "SplitNodeEdgesCodec")] nodes: Vec<Vec<SplitNodeEdge>> },
 }
 
 fn write_node_id(out: &mut Vec<u8>, id: NodeId) {
     out.extend_from_slice(&id.to_le_bytes());
 }
 
-/// Encodes `SplitNodeAddProposed`/`SplitNodeAdded`/`SplitNodeAddDeclined`'s shared `nodes` field —
+/// Encodes `PointNodesReplaceProposed`/`PointNodesReplaced`/`PointNodesReplaceDeclined`'s shared
+/// `nodes` field —
 /// one sibling's edge list per entry, each edge as one byte for `direction` (0=Forward,
 /// 1=Backward, 2=Passage) followed by the `target` node.
 fn write_split_nodes(out: &mut Vec<u8>, nodes: &[Vec<SplitNodeEdge>]) {

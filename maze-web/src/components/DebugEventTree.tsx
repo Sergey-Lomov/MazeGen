@@ -54,7 +54,13 @@ function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: numb
   const fmt = (id: bigint) => {
     if (!coords) return `${id}`;
     const p = coords(id);
-    if (!p) throw new Error(`bubbleLabel: node id ${id} not found in debugArena.nodes — core/web tape mismatch`);
+    // `coords` joins against `debugArena.nodes` — the *final* (post-generation, post-QC) field
+    // snapshot, not a per-step reconstruction. A node a later QC command removed/replaced
+    // (`RemoveNode`, `ReplacePointNodes`) is genuinely absent from that final snapshot even though
+    // an earlier narration row still refers to it by its now-stale id — this is expected, not a
+    // core/web tape desync, so it must degrade gracefully rather than crash the whole tree (a
+    // React render-time throw here previously took down the entire debug panel).
+    if (!p) return `#${id}`;
     return `${p.x}:${p.y}`;
   };
   switch (token.kind) {

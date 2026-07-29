@@ -63,9 +63,9 @@ interface DebugMazeViewContribution {
   debugVertices: Map<string, bigint | null>;
   /** Node ids minted mid-run by a split event that have appeared by this contribution's step — a
    *  generation-time split (GitHub issue #222, `VertexBased`-only) or a QC-time split
-   *  (`MutationCommand::AddSplitNode`, GitHub issue #247's `AddSplitStrategy`, `quality_control`
-   *  only). See `VertexBasedApplyResult.createdNodes`'s doc comment for why this must gate
-   *  `DebugMazeView.nodes`, not just `.edges`. Always empty for every other source kind. */
+   *  (`MutationCommand::ReplacePointNodes`, GitHub issue #247's `AddSplitStrategy`,
+   *  `quality_control` only). See `VertexBasedApplyResult.createdNodes`'s doc comment for why this
+   *  must gate `DebugMazeView.nodes`, not just `.edges`. Always empty for every other source kind. */
   createdNodes: bigint[];
   /** Maze node ids removed by QC's `remove_split` strategy (GitHub issue #248's `RemoveNode`
    *  mutation command) that have happened by this contribution's step — only `quality_control`

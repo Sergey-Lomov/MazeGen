@@ -21,7 +21,7 @@ export const QC_EVENT_TAG = {
   START_SET_PROPOSED: 32,
   FINISH_SET_PROPOSED: 33,
   NODE_REMOVE_PROPOSED: 40,
-  SPLIT_NODE_ADD_PROPOSED: 44,
+  POINT_NODES_REPLACE_PROPOSED: 44,
   DIRECTED_EDGE_ADDED: 6,
   BIDIRECTIONAL_EDGE_ADDED: 7,
   DIRECTED_TELEPORT_ADDED: 8,
@@ -33,7 +33,7 @@ export const QC_EVENT_TAG = {
   START_SET: 13,
   FINISH_SET: 14,
   NODE_REMOVED: 38,
-  SPLIT_NODE_ADDED: 42,
+  POINT_NODES_REPLACED: 42,
   DIRECTED_EDGE_DECLINED: 15,
   BIDIRECTIONAL_EDGE_DECLINED: 16,
   DIRECTED_TELEPORT_DECLINED: 17,
@@ -45,7 +45,7 @@ export const QC_EVENT_TAG = {
   START_SET_DECLINED: 22,
   FINISH_SET_DECLINED: 23,
   NODE_REMOVE_DECLINED: 39,
-  SPLIT_NODE_ADD_DECLINED: 43,
+  POINT_NODES_REPLACE_DECLINED: 43,
 } as const;
 
 export type QcEvent =
@@ -65,7 +65,7 @@ export type QcEvent =
   | { kind: "StartSetProposed"; id: bigint }
   | { kind: "FinishSetProposed"; id: bigint }
   | { kind: "NodeRemoveProposed"; id: bigint }
-  | { kind: "SplitNodeAddProposed"; at: bigint; nodes: SplitNodeEdge[][] }
+  | { kind: "PointNodesReplaceProposed"; at: bigint; oldNodes: bigint[]; nodes: SplitNodeEdge[][] }
   | { kind: "DirectedEdgeAdded"; from: bigint; to: bigint }
   | { kind: "BidirectionalEdgeAdded"; a: bigint; b: bigint }
   | { kind: "DirectedTeleportAdded"; from: bigint; to: bigint }
@@ -77,7 +77,7 @@ export type QcEvent =
   | { kind: "StartSet"; id: bigint }
   | { kind: "FinishSet"; id: bigint }
   | { kind: "NodeRemoved"; id: bigint }
-  | { kind: "SplitNodeAdded"; at: bigint; newNodes: bigint[]; nodes: SplitNodeEdge[][] }
+  | { kind: "PointNodesReplaced"; at: bigint; oldNodes: bigint[]; newNodes: bigint[]; nodes: SplitNodeEdge[][] }
   | { kind: "DirectedEdgeDeclined"; from: bigint; to: bigint }
   | { kind: "BidirectionalEdgeDeclined"; a: bigint; b: bigint }
   | { kind: "DirectedTeleportDeclined"; from: bigint; to: bigint }
@@ -89,7 +89,7 @@ export type QcEvent =
   | { kind: "StartSetDeclined"; id: bigint }
   | { kind: "FinishSetDeclined"; id: bigint }
   | { kind: "NodeRemoveDeclined"; id: bigint }
-  | { kind: "SplitNodeAddDeclined"; at: bigint; nodes: SplitNodeEdge[][] };
+  | { kind: "PointNodesReplaceDeclined"; at: bigint; oldNodes: bigint[]; nodes: SplitNodeEdge[][] };
 
 export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
   switch (tag) {
@@ -180,10 +180,11 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       const __f0 = readNodeId(bytes, 0);
       return { kind: "NodeRemoveProposed", id: __f0 };
     }
-    case QC_EVENT_TAG.SPLIT_NODE_ADD_PROPOSED: {
+    case QC_EVENT_TAG.POINT_NODES_REPLACE_PROPOSED: {
       const __f0 = readNodeId(bytes, 0);
-      const __f1Res = readSplitNodes(bytes, 0 + 8); const __f1 = __f1Res.value;
-      return { kind: "SplitNodeAddProposed", at: __f0, nodes: __f1 };
+      const __f1Res = readNodeIdList(bytes, 0 + 8); const __f1 = __f1Res.ids;
+      const __f2Res = readSplitNodes(bytes, __f1Res.next); const __f2 = __f2Res.value;
+      return { kind: "PointNodesReplaceProposed", at: __f0, oldNodes: __f1, nodes: __f2 };
     }
     case QC_EVENT_TAG.DIRECTED_EDGE_ADDED: {
       expectLen(tag, bytes, 16);
@@ -250,11 +251,12 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       const __f0 = readNodeId(bytes, 0);
       return { kind: "NodeRemoved", id: __f0 };
     }
-    case QC_EVENT_TAG.SPLIT_NODE_ADDED: {
+    case QC_EVENT_TAG.POINT_NODES_REPLACED: {
       const __f0 = readNodeId(bytes, 0);
       const __f1Res = readNodeIdList(bytes, 0 + 8); const __f1 = __f1Res.ids;
-      const __f2Res = readSplitNodes(bytes, __f1Res.next); const __f2 = __f2Res.value;
-      return { kind: "SplitNodeAdded", at: __f0, newNodes: __f1, nodes: __f2 };
+      const __f2Res = readNodeIdList(bytes, __f1Res.next); const __f2 = __f2Res.ids;
+      const __f3Res = readSplitNodes(bytes, __f2Res.next); const __f3 = __f3Res.value;
+      return { kind: "PointNodesReplaced", at: __f0, oldNodes: __f1, newNodes: __f2, nodes: __f3 };
     }
     case QC_EVENT_TAG.DIRECTED_EDGE_DECLINED: {
       expectLen(tag, bytes, 16);
@@ -321,10 +323,11 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       const __f0 = readNodeId(bytes, 0);
       return { kind: "NodeRemoveDeclined", id: __f0 };
     }
-    case QC_EVENT_TAG.SPLIT_NODE_ADD_DECLINED: {
+    case QC_EVENT_TAG.POINT_NODES_REPLACE_DECLINED: {
       const __f0 = readNodeId(bytes, 0);
-      const __f1Res = readSplitNodes(bytes, 0 + 8); const __f1 = __f1Res.value;
-      return { kind: "SplitNodeAddDeclined", at: __f0, nodes: __f1 };
+      const __f1Res = readNodeIdList(bytes, 0 + 8); const __f1 = __f1Res.ids;
+      const __f2Res = readSplitNodes(bytes, __f1Res.next); const __f2 = __f2Res.value;
+      return { kind: "PointNodesReplaceDeclined", at: __f0, oldNodes: __f1, nodes: __f2 };
     }
     default:
       throw new Error(`QcEvent: unknown wire tag ${tag}`);
@@ -344,6 +347,6 @@ export function isMutatingQcEvent(event: QcEvent): boolean {
     event.kind === "StartSet" ||
     event.kind === "FinishSet" ||
     event.kind === "NodeRemoved" ||
-    event.kind === "SplitNodeAdded"
+    event.kind === "PointNodesReplaced"
   );
 }

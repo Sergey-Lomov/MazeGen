@@ -238,6 +238,26 @@ impl<T: Tessellation> Field<T> {
         self.point_to_nodes.get(&point).map_or(&[], |v| v.as_slice())
     }
 
+    /// Replaces every node at `point` with `new_ids`, wholesale — unlike `remove_node_at`, this has
+    /// no "never remove index 0" restriction, since the whole point's node list is being replaced
+    /// at once, not shrunk by one. `new_ids[0]` becomes the point's new slot-0 (`nodes_at`'s own
+    /// "original node first" ordering). Panics if `point` isn't in the field (mirrors
+    /// `add_node_at`/`remove_node_at`'s own panic-on-bad-point convention) or if `new_ids` is empty
+    /// (a point must always have at least one node — this method replaces, it does not delete a
+    /// point's presence in the field).
+    pub fn replace_nodes_at(&mut self, point: T::Point, new_ids: Vec<NodeId>) {
+        assert!(!new_ids.is_empty(), "replace_nodes_at: new_ids must not be empty");
+        let old_nodes = self.point_to_nodes.get(&point)
+            .unwrap_or_else(|| panic!("replace_nodes_at: point not in field")).clone();
+        for old in &old_nodes {
+            self.node_to_point.remove(old);
+        }
+        for &new in &new_ids {
+            self.node_to_point.insert(new, point);
+        }
+        self.point_to_nodes.insert(point, new_ids);
+    }
+
     /// `Field` has no notion of which faces belong to which of a point's several nodes (see
     /// `add_node_at`) — this returns every node of every neighboring point (via `nodes_at`) for
     /// each face, not just "the" neighbor. For an unsplit point (the common case) this is

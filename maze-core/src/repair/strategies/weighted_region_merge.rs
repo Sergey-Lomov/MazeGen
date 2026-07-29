@@ -96,7 +96,7 @@ fn command_endpoints(command: &MutationCommand) -> Option<(crate::ids::NodeId, c
         | MutationCommand::SetStart(_)
         | MutationCommand::SetFinish(_)
         | MutationCommand::RemoveNode { .. }
-        | MutationCommand::AddSplitNode { .. } => None,
+        | MutationCommand::ReplacePointNodes { .. } => None,
     }
 }
 
