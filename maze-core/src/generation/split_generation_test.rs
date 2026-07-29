@@ -238,6 +238,47 @@ fn try_split_src_returns_ineligible_when_locked() {
 }
 
 #[test]
+fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_adaptations() {
+    // GitHub issue #275's weighted-pick coverage gap: a heavily-weighted pattern that can never
+    // adapt at this point (requires a face pointing off-field) must be excluded from `remaining`
+    // and retried against a lower-weight pattern that *can* adapt, rather than the whole split
+    // failing outright.
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
+    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+
+    // SquareFace order [N, S, E, W] (indices 0-3). At (0,0) on a 3x3 grid: S (index 1) points
+    // off-field, E (index 2) has a real neighbor at (1,0).
+    let impossible_pattern = SplitPattern {
+        node_count: 2,
+        faces: vec![
+            vec![],
+            vec![SplitPatternFace { face_index: 1, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+        ],
+        weight: 1000.0,
+    };
+    let possible_pattern = SplitPattern {
+        node_count: 2,
+        faces: vec![
+            vec![],
+            vec![SplitPatternFace { face_index: 2, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+        ],
+        weight: 0.001,
+    };
+    let split_config = SplitGenerationConfig {
+        pattern_mode: true,
+        max_split_nodes: 2,
+        patterns: vec![impossible_pattern, possible_pattern],
+    };
+    let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
+    let mut sr = None;
+    let outcome = try_split_src(
+        &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
+        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
+    );
+    assert_eq!(outcome, SplitOutcome::Handled, "must retry onto the second pattern instead of giving up after the first pattern's adaptation search comes up empty");
+}
+
+#[test]
 fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
     let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();

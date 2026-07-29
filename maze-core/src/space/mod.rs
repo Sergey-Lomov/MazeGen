@@ -37,6 +37,35 @@ pub trait Tessellation {
         Self::faces().get(index).copied()
     }
 
+    /// Every rotational symmetry of one tile, as a permutation of `Self::faces()` indices —
+    /// `rotation_symmetries()[k][i]` is the face index that face `i` (in `Self::faces()` order)
+    /// maps to under the `k`-th rotation. Element 0 is always the identity permutation
+    /// (`[0, 1, ..., degree-1]`) — a `SplitPattern` face untouched by "no rotation". Every table
+    /// (here and in `mirror_symmetries`) has exactly `Self::faces().len()` columns — an invariant
+    /// `space::transform_face_index` relies on and `transform_face_index_tests`'s
+    /// `every_rotation_and_mirror_symmetry_is_a_valid_permutation_for_every_tessellation` checks
+    /// directly for every impl.
+    ///
+    /// **Why this exists, not arithmetic on the face index** (GitHub issue #275): `Self::faces()`
+    /// order is whatever's natural to declare per tessellation — `HexFace`'s `[E, NE, NW, W, SW,
+    /// SE]` happens to be angular (each step is a real 60° turn), but `SquareFace`'s `[N, S, E,
+    /// W]` and `TriFace`'s `[Left, Right, Base]` aren't. A single formula like `(index +
+    /// rotation) % degree` silently assumes the hex case's angular order everywhere, which is
+    /// exactly the bug this fixes: applied to `[N, S, E, W]` it doesn't correspond to any real
+    /// 90°-turn permutation at all. Each tessellation instead states its own rotation/mirror
+    /// symmetry explicitly, in terms of its own faces — never derived from a shared arithmetic
+    /// rule, and never expressed in terms of what a split pattern or a specific pair of connected
+    /// tiles needs (this is pure tile geometry, reusable by any future caller, not just splits).
+    fn rotation_symmetries() -> &'static [&'static [usize]];
+
+    /// Every mirror (reflection) symmetry of one tile, same permutation-table shape as
+    /// `rotation_symmetries` — empty when the tessellation's tile has no reflective symmetry at
+    /// all (`TriTessellation`: a triangle's 3-fold symmetry is rotation-only, swapping any two
+    /// sides while fixing the third is not realizable as a rotation of the tile itself). Unlike
+    /// `rotation_symmetries`, there is no implied identity element — an empty slice here means
+    /// "mirroring is not a thing for this tessellation", not "only identity".
+    fn mirror_symmetries() -> &'static [&'static [usize]];
+
     /// Canonical Cartesian projection of `point`, in unit tile scale (one tile = 1.0), with no
     /// rendering-specific orientation/rotation applied — a display-only concept (e.g. hex
     /// flat_top/pointy_top, tri r0/r90/r180/r270 in `maze-web`) that stays entirely on the web
@@ -70,6 +99,31 @@ pub trait Tessellation {
         let (fx, fy) = Self::cartesian(from);
         let (tx, ty) = Self::cartesian(to);
         ((fx + tx) / 2.0, (fy + ty) / 2.0)
+    }
+}
+
+/// Applies a rotation (index into `T::rotation_symmetries()`) then, optionally, a mirror (index
+/// into `T::mirror_symmetries()`) to `face_index`, returning the resulting face index —
+/// `None` if `face_index`/`rotation`/the mirror index is out of range for `T`. Shared by every
+/// split-pattern consumer that needs to reorient a `SplitPattern`'s stored face indices onto a
+/// specific point's real faces: `generation::split_logic` (adaptation search during generation),
+/// `repair::strategies::add_split` (post-generation pattern-mode repair), and
+/// `quality_control::split_pattern_match` (checking whether a built tile matches any configured
+/// pattern) — GitHub issue #275 replaced 3 copies of an arithmetic formula that silently assumed
+/// every tessellation's `faces()` order was angular (true for hex, false for square/tri) with this
+/// single implementation built on each tessellation's own explicit symmetry tables.
+///
+/// No `degree` parameter — `T::faces().len()` is the single source of truth (every caller used to
+/// compute and pass it separately, a redundant value that could in principle drift from `T`'s own
+/// tables; `rotation_symmetries`'s doc comment states the invariant this relies on).
+pub fn transform_face_index<T: Tessellation>(face_index: usize, rotation: usize, mirror: Option<usize>) -> Option<usize> {
+    if face_index >= T::faces().len() {
+        return None;
+    }
+    let rotated = *T::rotation_symmetries().get(rotation)?.get(face_index)?;
+    match mirror {
+        None => Some(rotated),
+        Some(m) => T::mirror_symmetries().get(m)?.get(rotated).copied(),
     }
 }
 
@@ -702,5 +756,122 @@ mod edge_position_tests {
         let d = geometric_edge_distance::<TriTessellation>(n0, n1, n1, n2);
         let node_distance = geometric_distance::<TriTessellation>(n0, n2);
         assert!((d - node_distance / 2.0).abs() < 1e-9, "distance was {d}, expected {}", node_distance / 2.0);
+    }
+}
+
+/// GitHub issue #275: `transform_face_index` used to be a single arithmetic formula shared by
+/// every tessellation, silently assuming an angular `faces()` order (true only for hex) — a
+/// square-grid `SplitPattern` with `mirror` applied came out geometrically wrong (e.g. swapping
+/// `N` and `S` instead of `E`/`W`). These pin down the actual, tessellation-specific symmetry
+/// tables and the round-trip identity every rotation/mirror combination must uphold.
+#[cfg(test)]
+mod transform_face_index_tests {
+    use super::*;
+    use crate::space::{SquareFace, HexFace, TriFace};
+
+    #[test]
+    fn identity_rotation_and_no_mirror_is_a_no_op_for_every_tessellation() {
+        for i in 0..SquareTessellation::faces().len() {
+            assert_eq!(transform_face_index::<SquareTessellation>(i, 0, None), Some(i));
+        }
+        for i in 0..HexTessellation::faces().len() {
+            assert_eq!(transform_face_index::<HexTessellation>(i, 0, None), Some(i));
+        }
+        for i in 0..TriTessellation::faces().len() {
+            assert_eq!(transform_face_index::<TriTessellation>(i, 0, None), Some(i));
+        }
+    }
+
+    #[test]
+    fn square_mirror_across_n_s_axis_swaps_e_and_w_and_fixes_n_s() {
+        // The actual bug (GitHub issue #275): mirroring a square pattern must swap E<->W (or
+        // N<->S, depending on axis), never leave E fixed while turning W into S.
+        let n = SquareTessellation::face_index(SquareFace::N).unwrap();
+        let s = SquareTessellation::face_index(SquareFace::S).unwrap();
+        let e = SquareTessellation::face_index(SquareFace::E).unwrap();
+        let w = SquareTessellation::face_index(SquareFace::W).unwrap();
+
+        let ns_axis = 0; // mirror_symmetries()[0]: N-S axis, per SquareTessellation's own doc comment
+        assert_eq!(transform_face_index::<SquareTessellation>(n, 0, Some(ns_axis)), Some(n));
+        assert_eq!(transform_face_index::<SquareTessellation>(s, 0, Some(ns_axis)), Some(s));
+        assert_eq!(transform_face_index::<SquareTessellation>(e, 0, Some(ns_axis)), Some(w));
+        assert_eq!(transform_face_index::<SquareTessellation>(w, 0, Some(ns_axis)), Some(e));
+    }
+
+    #[test]
+    fn square_90_degree_rotation_cycles_n_e_s_w() {
+        let n = SquareTessellation::face_index(SquareFace::N).unwrap();
+        let e = SquareTessellation::face_index(SquareFace::E).unwrap();
+        let s = SquareTessellation::face_index(SquareFace::S).unwrap();
+        let w = SquareTessellation::face_index(SquareFace::W).unwrap();
+
+        let rot_90 = 1; // rotation_symmetries()[1]
+        assert_eq!(transform_face_index::<SquareTessellation>(n, rot_90, None), Some(e));
+        assert_eq!(transform_face_index::<SquareTessellation>(e, rot_90, None), Some(s));
+        assert_eq!(transform_face_index::<SquareTessellation>(s, rot_90, None), Some(w));
+        assert_eq!(transform_face_index::<SquareTessellation>(w, rot_90, None), Some(n));
+    }
+
+    #[test]
+    fn hex_mirror_across_e_w_axis_fixes_e_and_w_and_swaps_the_rest() {
+        let e = HexTessellation::face_index(HexFace::E).unwrap();
+        let ne = HexTessellation::face_index(HexFace::NE).unwrap();
+        let nw = HexTessellation::face_index(HexFace::NW).unwrap();
+        let w = HexTessellation::face_index(HexFace::W).unwrap();
+        let sw = HexTessellation::face_index(HexFace::SW).unwrap();
+        let se = HexTessellation::face_index(HexFace::SE).unwrap();
+
+        let ew_axis = 0; // mirror_symmetries()[0]: E-W axis, per HexTessellation's own doc comment
+        assert_eq!(transform_face_index::<HexTessellation>(e, 0, Some(ew_axis)), Some(e));
+        assert_eq!(transform_face_index::<HexTessellation>(w, 0, Some(ew_axis)), Some(w));
+        assert_eq!(transform_face_index::<HexTessellation>(ne, 0, Some(ew_axis)), Some(se));
+        assert_eq!(transform_face_index::<HexTessellation>(se, 0, Some(ew_axis)), Some(ne));
+        assert_eq!(transform_face_index::<HexTessellation>(nw, 0, Some(ew_axis)), Some(sw));
+        assert_eq!(transform_face_index::<HexTessellation>(sw, 0, Some(ew_axis)), Some(nw));
+    }
+
+    #[test]
+    fn hex_60_degree_rotation_cycles_every_face() {
+        let faces = HexTessellation::faces();
+        let rot_60 = 1; // rotation_symmetries()[1]
+        for i in 0..faces.len() {
+            let expected = (i + 1) % faces.len();
+            assert_eq!(transform_face_index::<HexTessellation>(i, rot_60, None), Some(expected));
+        }
+    }
+
+    #[test]
+    fn tri_has_no_mirror_symmetry() {
+        assert!(TriTessellation::mirror_symmetries().is_empty());
+    }
+
+    #[test]
+    fn tri_120_degree_rotation_cycles_left_right_base() {
+        let left = TriTessellation::face_index(TriFace::Left).unwrap();
+        let right = TriTessellation::face_index(TriFace::Right).unwrap();
+        let base = TriTessellation::face_index(TriFace::Base).unwrap();
+
+        let rot_120 = 1; // rotation_symmetries()[1]
+        assert_eq!(transform_face_index::<TriTessellation>(left, rot_120, None), Some(right));
+        assert_eq!(transform_face_index::<TriTessellation>(right, rot_120, None), Some(base));
+        assert_eq!(transform_face_index::<TriTessellation>(base, rot_120, None), Some(left));
+    }
+
+    #[test]
+    fn every_rotation_and_mirror_symmetry_is_a_valid_permutation_for_every_tessellation() {
+        fn check_permutations<T: Tessellation>(tables: &[&[usize]], degree: usize) {
+            for perm in tables {
+                assert_eq!(perm.len(), degree, "permutation length must match degree");
+                let mut sorted = perm.to_vec();
+                sorted.sort_unstable();
+                assert_eq!(sorted, (0..degree).collect::<Vec<_>>(), "table must be a permutation of 0..degree: {perm:?}");
+            }
+        }
+        check_permutations::<SquareTessellation>(SquareTessellation::rotation_symmetries(), SquareTessellation::faces().len());
+        check_permutations::<SquareTessellation>(SquareTessellation::mirror_symmetries(), SquareTessellation::faces().len());
+        check_permutations::<HexTessellation>(HexTessellation::rotation_symmetries(), HexTessellation::faces().len());
+        check_permutations::<HexTessellation>(HexTessellation::mirror_symmetries(), HexTessellation::faces().len());
+        check_permutations::<TriTessellation>(TriTessellation::rotation_symmetries(), TriTessellation::faces().len());
+        check_permutations::<TriTessellation>(TriTessellation::mirror_symmetries(), TriTessellation::faces().len());
     }
 }

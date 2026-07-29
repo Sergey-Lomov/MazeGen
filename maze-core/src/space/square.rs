@@ -46,6 +46,24 @@ impl Tessellation for SquareTessellation {
     fn cartesian(point: SquarePoint) -> (f64, f64) {
         (point.x as f64, point.y as f64)
     }
+
+    /// Faces in `[N, S, E, W]` order (indices 0-3). 90°-clockwise rotation cycles N->E->S->W->N.
+    fn rotation_symmetries() -> &'static [&'static [usize]] {
+        &[
+            &[0, 1, 2, 3], // identity
+            &[2, 3, 1, 0], // 90°:  N->E, S->W, E->S, W->N
+            &[1, 0, 3, 2], // 180°: N->S, S->N, E->W, W->E
+            &[3, 2, 0, 1], // 270°: N->W, S->E, E->N, W->S
+        ]
+    }
+
+    /// Two independent mirror axes: N-S (E<->W swap, N/S fixed) and E-W (N<->S swap, E/W fixed).
+    fn mirror_symmetries() -> &'static [&'static [usize]] {
+        &[
+            &[0, 1, 3, 2], // mirror across the N-S axis
+            &[1, 0, 2, 3], // mirror across the E-W axis
+        ]
+    }
 }
 
 pub fn square_rect(width: usize, height: usize) -> Vec<SquarePoint> {

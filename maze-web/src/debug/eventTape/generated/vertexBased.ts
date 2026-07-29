@@ -68,7 +68,7 @@ export type VertexBasedEvent =
   | { kind: "SplitNodesCreated"; src: bigint; nodes: bigint[]; pattern: number | null }
   | { kind: "SplitCyclicRolled"; src: bigint; roll: number; cyclicity: number; fired: boolean }
   | { kind: "PatternAdaptationsComputed"; src: bigint; pattern: number; count: number }
-  | { kind: "PatternAdaptationChosen"; src: bigint; pattern: number; rotation: number; mirror: boolean }
+  | { kind: "PatternAdaptationChosen"; src: bigint; pattern: number; rotation: number; mirror: number | null }
   | { kind: "SplitTeleportRolled"; roll: number; teleportChance: number; fired: boolean; anchor: bigint | null }
   | { kind: "SplitStartReassigned"; original: bigint; reassignedTo: bigint }
   | { kind: "SplitParentEdgeRelocated"; parent: bigint; src: bigint; takenBy: bigint };
@@ -266,11 +266,11 @@ export function decodeVertexBasedEvent(tag: number, bytes: Uint8Array): VertexBa
       return { kind: "PatternAdaptationsComputed", src: __f0, pattern: __f1, count: __f2 };
     }
     case VERTEX_BASED_EVENT_TAG.PATTERN_ADAPTATION_CHOSEN: {
-      expectLen(tag, bytes, 17);
+      expectLen(tag, bytes, 21);
       const __f0 = readNodeId(bytes, 0);
       const __f1 = readU32(bytes, 0 + 8);
       const __f2 = readU32(bytes, 0 + 8 + 4);
-      const __f3 = readBool(bytes, 0 + 8 + 4 + 4);
+      const __f3 = readOptionalUsize(bytes, 0 + 8 + 4 + 4);
       return { kind: "PatternAdaptationChosen", src: __f0, pattern: __f1, rotation: __f2, mirror: __f3 };
     }
     case VERTEX_BASED_EVENT_TAG.SPLIT_TELEPORT_ROLLED: {

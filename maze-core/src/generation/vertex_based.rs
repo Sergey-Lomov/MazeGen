@@ -209,10 +209,12 @@ pub enum VertexBasedEvent {
     #[wire(tag = 29)]
     PatternAdaptationsComputed { src: NodeId, pattern: usize, count: usize },
     /// The adaptation actually applied, picked uniformly at random from
-    /// `PatternAdaptationsComputed`'s candidate set. `rotation`/`mirror` identify which of the
-    /// candidate adaptations this was.
+    /// `PatternAdaptationsComputed`'s candidate set. `rotation` indexes
+    /// `Tessellation::rotation_symmetries()`; `mirror` indexes `Tessellation::mirror_symmetries()`
+    /// (`None` when no mirror was applied) — see GitHub issue #275 (the old plain `bool` assumed
+    /// every tessellation has at most one mirror symmetry, which hex's 3 mirror axes violate).
     #[wire(tag = 30)]
-    PatternAdaptationChosen { src: NodeId, pattern: usize, rotation: usize, mirror: bool },
+    PatternAdaptationChosen { src: NodeId, pattern: usize, rotation: usize, mirror: Option<usize> },
     /// The split event's once-per-event teleport roll (mirrors `TeleportRolled`, but rolled once
     /// for the whole split event rather than per resulting node — matches pattern mode's
     /// once-per-event cyclicity). `anchor` is the resulting node the teleport connects from, when

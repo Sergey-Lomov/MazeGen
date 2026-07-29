@@ -344,8 +344,10 @@ struct ResolvedFace {
 
 #[derive(Debug, Clone)]
 struct Adaptation {
+    /// Index into `T::rotation_symmetries()`.
     rotation: usize,
-    mirror: bool,
+    /// Index into `T::mirror_symmetries()`, or `None` when no mirror was applied.
+    mirror: Option<usize>,
     faces: Vec<ResolvedFace>,
 }
 
@@ -379,22 +381,8 @@ fn handle_pattern_split<T: Tessellation>(
 
     let mut remaining: Vec<usize> = (0..split_config.patterns.len()).collect();
     while !remaining.is_empty() {
-        let total_weight: f64 = remaining.iter().map(|&i| split_config.patterns[i].weight.max(0.0)).sum();
-        let pattern_idx = if total_weight <= 0.0 {
-            remaining[state.rng.random_range(0..remaining.len())]
-        } else {
-            let mut pick = state.rng.random::<f64>() * total_weight;
-            let mut chosen = remaining[0];
-            for &i in &remaining {
-                let w = split_config.patterns[i].weight.max(0.0);
-                if pick < w {
-                    chosen = i;
-                    break;
-                }
-                pick -= w;
-            }
-            chosen
-        };
+        let weights: Vec<f64> = remaining.iter().map(|&i| split_config.patterns[i].weight).collect();
+        let pattern_idx = remaining[crate::math::weighted_index(&weights, &mut state.rng)];
         let pattern = &split_config.patterns[pattern_idx];
 
         let adaptations = enumerate_adaptations(graph, field, preset_state, &state.visited, pattern, src, bridge, parent, cyclic_fired);
@@ -461,9 +449,11 @@ fn enumerate_adaptations<T: Tessellation>(
     let parent_fwd = parent.is_some_and(|p| graph.edge_between(src, p).is_some());
     let parent_bwd = parent.is_some_and(|p| graph.edge_between(p, src).is_some());
 
+    let mirror_choices: Vec<Option<usize>> = std::iter::once(None).chain((0..T::mirror_symmetries().len()).map(Some)).collect();
+
     let mut results = Vec::new();
-    for rotation in 0..degree {
-        for mirror in [false, true] {
+    for rotation in 0..T::rotation_symmetries().len() {
+        for &mirror in &mirror_choices {
             let mut faces: Vec<ResolvedFace> = Vec::new();
             let mut used_neighbors: HashSet<NodeId> = HashSet::new();
             let mut visited_face_used = false;
@@ -473,7 +463,7 @@ fn enumerate_adaptations<T: Tessellation>(
 
             'nodes: for (node_index, node_faces) in pattern.faces.iter().enumerate() {
                 for face in node_faces {
-                    let Some(resolved_index) = transform_face_index(face.face_index, rotation, mirror, degree) else {
+                    let Some(resolved_index) = crate::space::transform_face_index::<T>(face.face_index, rotation, mirror) else {
                         valid = false;
                         break 'nodes;
                     };
@@ -566,17 +556,6 @@ fn enumerate_adaptations<T: Tessellation>(
         }
     }
     results
-}
-
-/// `(face_index + rotation) mod degree`, mirrored first via `(degree - face_index) % degree` when
-/// `mirror` is set — spot-checked against each tessellation's actual `faces()` order via
-/// dedicated unit tests (see `split_generation_test.rs`).
-fn transform_face_index(face_index: usize, rotation: usize, mirror: bool, degree: usize) -> Option<usize> {
-    if face_index >= degree {
-        return None;
-    }
-    let base = if mirror { (degree - face_index) % degree } else { face_index };
-    Some((base + rotation) % degree)
 }
 
 /// Only pattern-local node 0 (= `src`) is subject to any preset constraint — every newly minted

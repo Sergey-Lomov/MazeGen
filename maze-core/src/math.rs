@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngCore};
 use crate::random::MazeRng;
 
 /// Sample a weighted index from a collection of `len` elements using a
@@ -39,6 +39,30 @@ pub fn sample_by_position(len: usize, target: f64, rng: &mut MazeRng) -> usize {
         if r <= 0.0 { return i; }
     }
     len - 1
+}
+
+/// Picks an index weighted by `weights`, falling back to a uniform pick over the same slice when
+/// every weight is `<= 0` (an all-zero/negative config shouldn't make every pick fail). Shared by
+/// generation's own pattern selection (`generation::split_logic::handle_pattern_split`) and
+/// `repair::strategies::add_split`'s `pick_weighted_pattern` — both need the exact same
+/// weight-or-uniform semantics (GitHub issue #275: the repair side used to ignore weight
+/// entirely).
+pub fn weighted_index(weights: &[f64], rng: &mut dyn RngCore) -> usize {
+    debug_assert!(!weights.is_empty());
+    let total: f64 = weights.iter().map(|w| w.max(0.0)).sum();
+    if total <= 0.0 {
+        return rng.random_range(0..weights.len());
+    }
+
+    let mut pick = rng.random::<f64>() * total;
+    for (i, &w) in weights.iter().enumerate() {
+        let w = w.max(0.0);
+        if pick < w {
+            return i;
+        }
+        pick -= w;
+    }
+    weights.len() - 1
 }
 
 #[cfg(test)]
@@ -88,5 +112,36 @@ mod tests {
         let lower: usize = counts[..10].iter().sum();
         let upper: usize = counts[10..].iter().sum();
         assert!(lower > upper * 2, "target=0.25: lower half {lower} should dominate upper {upper}");
+    }
+
+    #[test]
+    fn weighted_index_never_picks_a_zero_weight_entry() {
+        let weights = [0.0, 5.0, 0.0];
+        for seed in 0..200 {
+            let mut r = rng(seed);
+            assert_eq!(weighted_index(&weights, &mut r), 1);
+        }
+    }
+
+    #[test]
+    fn weighted_index_falls_back_to_uniform_when_all_weights_non_positive() {
+        let weights = [0.0, 0.0, 0.0];
+        let mut counts = vec![0usize; 3];
+        for seed in 0..300 {
+            let mut r = rng(seed);
+            counts[weighted_index(&weights, &mut r)] += 1;
+        }
+        assert!(counts.iter().all(|&c| c > 0), "every index should get picked at least once: {counts:?}");
+    }
+
+    #[test]
+    fn weighted_index_respects_relative_weight() {
+        let weights = [1.0, 9.0];
+        let mut counts = [0usize; 2];
+        for seed in 0..1000 {
+            let mut r = rng(seed);
+            counts[weighted_index(&weights, &mut r)] += 1;
+        }
+        assert!(counts[1] > counts[0] * 3, "weight 9 should dominate weight 1: {counts:?}");
     }
 }

@@ -221,7 +221,7 @@ impl EncodeEventPayload for VertexBasedEvent {
                 write_node_id(out, *src);
                 write_usize_as_u32(out, *pattern);
                 write_usize_as_u32(out, *rotation);
-                write_bool(out, *mirror);
+                write_optional_usize_as_u32(out, *mirror);
             }
             VertexBasedEvent::SplitTeleportRolled { roll, teleport_chance, fired, anchor } => {
                 write_f64(out, *roll);
@@ -502,10 +502,10 @@ mod golden_tests {
 
     #[test]
     fn golden_round_trip_pattern_adaptation_chosen() {
-        let event = VertexBasedEvent::PatternAdaptationChosen { src: 7, pattern: 7, rotation: 7, mirror: true };
+        let event = VertexBasedEvent::PatternAdaptationChosen { src: 7, pattern: 7, rotation: 7, mirror: Some(9) };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
-        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 7, 0, 0, 0, 1]);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 7, 0, 0, 0, 1, 9, 0, 0, 0]);
     }
 
     #[test]

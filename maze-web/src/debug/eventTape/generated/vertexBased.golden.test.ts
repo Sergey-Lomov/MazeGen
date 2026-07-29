@@ -150,9 +150,9 @@ describe("VertexBasedEvent golden round trip", () => {
     expect(decoded).toEqual({ kind: "PatternAdaptationsComputed", src: 7n, pattern: 7, count: 7 });
   });
   it("PatternAdaptationChosen", () => {
-    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 7, 0, 0, 0, 1]);
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 7, 0, 0, 0, 1, 9, 0, 0, 0]);
     const decoded = decodeVertexBasedEvent(VERTEX_BASED_EVENT_TAG.PATTERN_ADAPTATION_CHOSEN, bytes);
-    expect(decoded).toEqual({ kind: "PatternAdaptationChosen", src: 7n, pattern: 7, rotation: 7, mirror: true });
+    expect(decoded).toEqual({ kind: "PatternAdaptationChosen", src: 7n, pattern: 7, rotation: 7, mirror: 9 });
   });
   it("SplitTeleportRolled", () => {
     const bytes = new Uint8Array([0, 0, 0, 0, 0, 0, 248, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1, 1, 9, 0, 0, 0, 0, 0, 0, 0]);

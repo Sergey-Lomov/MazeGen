@@ -61,6 +61,23 @@ impl Tessellation for TriTessellation {
         let cy = if pointing_up { -(row * h + h / 3.0) } else { -(row * h + 2.0 * h / 3.0) };
         (cx, cy)
     }
+
+    /// Faces in `[Left, Right, Base]` order (indices 0-2). A triangle's only geometric symmetry is
+    /// its 3-fold rotation, a cyclic shift Left->Right->Base->Left.
+    fn rotation_symmetries() -> &'static [&'static [usize]] {
+        &[
+            &[0, 1, 2], // identity
+            &[1, 2, 0], // 120°
+            &[2, 0, 1], // 240°
+        ]
+    }
+
+    /// A triangle has no reflective symmetry realizable as a permutation of its own 3 faces
+    /// (swapping any two sides while fixing the third isn't a symmetry of an equilateral
+    /// triangle's face *labels* under this tessellation's `pointing_up`-dependent geometry).
+    fn mirror_symmetries() -> &'static [&'static [usize]] {
+        &[]
+    }
 }
 
 pub fn tri_rect(cols: usize, rows: usize) -> Vec<TriPoint> {

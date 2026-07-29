@@ -46,27 +46,19 @@ fn reconstruct_tile_faces<T: Tessellation>(
     }).collect()
 }
 
-/// `(face_index + rotation) mod degree`, mirrored first via `(degree - face_index) % degree` when
-/// `mirror` is set — same transform `split_logic.rs`'s `transform_face_index` uses when applying a
-/// pattern, duplicated here (not `pub(crate)`-shared) since that copy lives in a `fn`-private
-/// module with no reason to expose it beyond generation's own use.
-fn transform_face_index(face_index: usize, rotation: usize, mirror: bool, degree: usize) -> Option<usize> {
-    if face_index >= degree {
-        return None;
-    }
-    let base = if mirror { (degree - face_index) % degree } else { face_index };
-    Some((base + rotation) % degree)
-}
-
 /// A pattern's own per-node, per-face-position requirement — `Wall` filled in for a face position
 /// the pattern doesn't declare at all (mirrors a reconstructed tile's own "no edge = Wall" default,
 /// so the two are directly comparable). `sibling_target` faces compare as their own requirement
 /// (`Passage`/`OneWay`), same simplification `reconstruct_tile_faces` makes.
-fn pattern_faces_at(pattern: &SplitPattern, degree: usize, rotation: usize, mirror: bool) -> Option<Vec<Vec<SplitFaceRequirement>>> {
+///
+/// `rotation`/`mirror` index into `T::rotation_symmetries()`/`T::mirror_symmetries()` (via
+/// `space::transform_face_index`, GitHub issue #275) — never raw arithmetic on the face index,
+/// since `Self::faces()` order isn't angular for every tessellation.
+fn pattern_faces_at<T: Tessellation>(pattern: &SplitPattern, degree: usize, rotation: usize, mirror: Option<usize>) -> Option<Vec<Vec<SplitFaceRequirement>>> {
     let mut out: Vec<Vec<SplitFaceRequirement>> = vec![vec![SplitFaceRequirement::Wall; degree]; pattern.node_count];
     for (node_index, node_faces) in pattern.faces.iter().enumerate() {
         for face in node_faces {
-            let resolved = transform_face_index(face.face_index, rotation, mirror, degree)?;
+            let resolved = crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
             if resolved >= degree {
                 return None;
             }
@@ -101,13 +93,15 @@ pub fn split_tile_matches_any<T: Tessellation>(
         return false;
     }
 
+    let mirror_choices = std::iter::once(None).chain((0..T::mirror_symmetries().len()).map(Some));
+
     patterns.iter().any(|pattern| {
         if pattern.node_count != nodes.len() {
             return false;
         }
-        (0..degree).any(|rotation| {
-            [false, true].into_iter().any(|mirror| {
-                let Some(expected) = pattern_faces_at(pattern, degree, rotation, mirror) else { return false; };
+        (0..T::rotation_symmetries().len()).any(|rotation| {
+            mirror_choices.clone().any(|mirror| {
+                let Some(expected) = pattern_faces_at::<T>(pattern, degree, rotation, mirror) else { return false; };
                 expected == actual
             })
         })
@@ -185,5 +179,39 @@ mod tests {
         let node = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
         let patterns = vec![two_node_pattern(SplitFaceRequirement::Passage)];
         assert!(!split_tile_matches_any(&g, &field, &[node], &patterns));
+    }
+
+    /// `TriTessellation` has `mirror_symmetries()` empty (GitHub issue #275) — this pins down
+    /// that `split_tile_matches_any`'s rotation/mirror loop still finds a match through
+    /// rotation alone when there is no mirror to try at all, i.e. the `mirror_choices` iterator
+    /// built from an empty `mirror_symmetries()` (just `[None]`) doesn't silently skip every
+    /// candidate.
+    #[test]
+    fn tri_tessellation_matches_via_rotation_alone_with_no_mirror_symmetries() {
+        use crate::space::{TriTessellation, TriPoint, tri_rect};
+
+        let mut ids = IdGenerator::new();
+        let mut field: Field<TriTessellation> = Field::new(tri_rect(3, 1), &mut ids).unwrap();
+        let mid = TriPoint { col: 1, row: 0 };
+        let extra = field.add_node_at(mid, &mut ids);
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let left_neighbor = field.node_at(TriPoint { col: 0, row: 0 }).unwrap();
+        let right_neighbor = field.node_at(TriPoint { col: 2, row: 0 }).unwrap();
+        let slot0 = field.nodes_at(mid)[0];
+        g.add_bidirectional_edge(slot0, left_neighbor, crate::graph::EdgeKind::Basic);
+        g.add_bidirectional_edge(extra, right_neighbor, crate::graph::EdgeKind::Basic);
+        let nodes = field.nodes_at(mid).to_vec();
+
+        // Left face = index 0, Right face = index 1 (TriFace::[Left, Right, Base] order).
+        let pattern = SplitPattern {
+            node_count: 2,
+            faces: vec![
+                vec![SplitPatternFace { face_index: 0, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+                vec![SplitPatternFace { face_index: 1, requirement: SplitFaceRequirement::Passage, sibling_target: None }],
+            ],
+            weight: 1.0,
+        };
+        assert!(split_tile_matches_any(&g, &field, &nodes, &[pattern]));
     }
 }

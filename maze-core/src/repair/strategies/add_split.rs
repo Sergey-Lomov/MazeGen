@@ -60,8 +60,9 @@ static PARAMS: &[StrategyParam] = &[
 /// mints every new node in one atomic `MutationCommand::ReplacePointNodes` (all new nodes share
 /// the same all-or-nothing feasibility outcome).
 ///
-/// **`pattern_mode` (via `patterns`, non-empty) — pattern-based candidate**: a candidate point,
-/// pattern, and rotation/mirror are picked at random, then every one of the pattern's
+/// **`pattern_mode` (via `patterns`, non-empty) — pattern-based candidate**: a candidate point is
+/// picked at random, a pattern is picked honoring `SplitPattern::weight` (see `pick_weighted_pattern`
+/// below — GitHub issue #275), and rotation/mirror are picked at random, then every one of the pattern's
 /// `node_count` new nodes — including node 0, the new slot-0 — has its own faces resolved against
 /// the point's actual neighbors (`try_pattern_adaptation` below — independent of generation's own
 /// `enumerate_adaptations`, since there is no frontier/visited state here; every neighbor is
@@ -134,7 +135,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
                 let node_count = self.config.max_split_nodes.max(2) as usize;
                 plan_unconstrained_split(maze, at, node_count, rng)
             } else {
-                let pattern_idx = rng.random_range(0..self.config.patterns.len());
+                let pattern_idx = pick_weighted_pattern(&self.config.patterns, rng);
                 plan_pattern_split(maze, at, &self.config.patterns[pattern_idx], rng, allow_lose, allow_add)
             };
 
@@ -162,6 +163,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
 }
 
 crate::impl_erased_repair_strategy!(AddSplitStrategy, MissingSplitTilesIssue);
+
+/// Picks a pattern index honoring `SplitPattern::weight`, via the same shared
+/// `math::weighted_index` generation's own `handle_pattern_split` (`split_logic.rs`) uses (GitHub
+/// issue #275: this strategy used to ignore weight entirely, always picking uniformly).
+fn pick_weighted_pattern(patterns: &[SplitPattern], rng: &mut dyn RngCore) -> usize {
+    let weights: Vec<f64> = patterns.iter().map(|p| p.weight).collect();
+    crate::math::weighted_index(&weights, rng)
+}
 
 /// Non-pattern candidate: `node_count` new nodes (index 0 becomes the new slot-0), each of `at`'s
 /// existing connections reassigned unchanged to one uniformly random node among all of them —
@@ -230,13 +239,14 @@ fn plan_pattern_split<T: Tessellation>(
         return None;
     }
 
-    let mut rotations: Vec<usize> = (0..degree).collect();
+    let mut rotations: Vec<usize> = (0..T::rotation_symmetries().len()).collect();
     shuffle(&mut rotations, rng);
-    let mirrors = if rng.random::<bool>() { [true, false] } else { [false, true] };
+    let mut mirrors: Vec<Option<usize>> = std::iter::once(None).chain((0..T::mirror_symmetries().len()).map(Some)).collect();
+    shuffle(&mut mirrors, rng);
 
     for &rotation in &rotations {
         for &mirror in &mirrors {
-            if let Some(nodes) = try_pattern_adaptation(maze, at, point, pattern, degree, rotation, mirror, allow_lose, allow_add) {
+            if let Some(nodes) = try_pattern_adaptation(maze, at, point, pattern, rotation, mirror, allow_lose, allow_add) {
                 return Some(nodes);
             }
         }
@@ -244,7 +254,7 @@ fn plan_pattern_split<T: Tessellation>(
     None
 }
 
-fn shuffle(items: &mut [usize], rng: &mut dyn RngCore) {
+fn shuffle<X>(items: &mut [X], rng: &mut dyn RngCore) {
     for i in (1..items.len()).rev() {
         let j = rng.random_range(0..=i);
         items.swap(i, j);
@@ -275,9 +285,8 @@ fn try_pattern_adaptation<T: Tessellation>(
     at: NodeId,
     point: T::Point,
     pattern: &SplitPattern,
-    degree: usize,
     rotation: usize,
-    mirror: bool,
+    mirror: Option<usize>,
     allow_lose: bool,
     allow_add: bool,
 ) -> Option<Vec<Vec<SplitNodeEdge>>> {
@@ -287,7 +296,7 @@ fn try_pattern_adaptation<T: Tessellation>(
     for node_faces in pattern.faces.iter() {
         let mut node_edges: Vec<SplitNodeEdge> = Vec::new();
         for face in node_faces {
-            let resolved_index = transform_face_index(face.face_index, rotation, mirror, degree)?;
+            let resolved_index = crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
             if face.sibling_target.is_some() {
                 continue; // inter-split edge, not an outside connection — out of scope here
             }
@@ -352,18 +361,6 @@ fn try_pattern_adaptation<T: Tessellation>(
     }
 
     Some(per_node)
-}
-
-/// `(face_index + rotation) mod degree`, mirrored first via `(degree - face_index) % degree` when
-/// `mirror` is set — same transform generation's own `split_logic.rs`/`quality_control`'s
-/// `split_pattern_match.rs` use, duplicated here for the same reason `split_pattern_match.rs`
-/// duplicates it (a private helper in a `fn`-private module, not worth sharing beyond copy).
-fn transform_face_index(face_index: usize, rotation: usize, mirror: bool, degree: usize) -> Option<usize> {
-    if face_index >= degree {
-        return None;
-    }
-    let base = if mirror { (degree - face_index) % degree } else { face_index };
-    Some((base + rotation) % degree)
 }
 
 #[cfg(test)]
@@ -583,6 +580,25 @@ mod tests {
     }
 
     #[test]
+    fn pick_weighted_pattern_respects_configured_weight_not_uniform() {
+        // GitHub issue #275: `AddSplitStrategy` used to pick a pattern index uniformly, ignoring
+        // `SplitPattern::weight` entirely. A near-zero-weight pattern must almost never be picked
+        // against a heavily-weighted sibling.
+        let low = SplitPattern { node_count: 2, faces: vec![vec![], vec![]], weight: 0.001 };
+        let high = SplitPattern { node_count: 2, faces: vec![vec![], vec![]], weight: 999.0 };
+        let patterns = vec![low, high];
+
+        let mut low_picks = 0;
+        for seed in 0..500 {
+            let mut rng = MazeRng::seed_from_u64(seed);
+            if pick_weighted_pattern(&patterns, &mut rng) == 0 {
+                low_picks += 1;
+            }
+        }
+        assert!(low_picks < 10, "low-weight pattern picked {low_picks}/500 times, expected near-zero under weighting");
+    }
+
+    #[test]
     fn pattern_mode_fails_when_no_pattern_can_ever_match_and_lose_is_forbidden() {
         // A fully-isolated point (no connections at all) can never satisfy a pattern requiring an
         // East passage without adding a new connection — with allow_add forbidden, every rotation
@@ -698,7 +714,7 @@ mod tests {
             ],
             weight: 1.0,
         };
-        let per_node = try_pattern_adaptation(&maze, at, point, &pattern, 4, 0, false, true, true)
+        let per_node = try_pattern_adaptation(&maze, at, point, &pattern, 0, None, true, true)
             .expect("West face has a real neighbor, must resolve");
 
         let west_slot0 = maze.field.nodes_at(west_point)[0];

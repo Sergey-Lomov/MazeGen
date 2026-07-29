@@ -28,7 +28,7 @@
   { "variant": "SplitNodesCreated", "value": {"kind":"SplitNodesCreated","src":7,"nodes":[3,5],"pattern":9}, "bytes": [7,0,0,0,0,0,0,0,2,0,0,0,3,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0,1,9,0,0,0] },
   { "variant": "SplitCyclicRolled", "value": {"kind":"SplitCyclicRolled","src":7,"roll":1.5,"cyclicity":1.5,"fired":true}, "bytes": [7,0,0,0,0,0,0,0,0,0,0,0,0,0,248,63,0,0,0,0,0,0,248,63,1] },
   { "variant": "PatternAdaptationsComputed", "value": {"kind":"PatternAdaptationsComputed","src":7,"pattern":7,"count":7}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,7,0,0,0] },
-  { "variant": "PatternAdaptationChosen", "value": {"kind":"PatternAdaptationChosen","src":7,"pattern":7,"rotation":7,"mirror":true}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,7,0,0,0,1] },
+  { "variant": "PatternAdaptationChosen", "value": {"kind":"PatternAdaptationChosen","src":7,"pattern":7,"rotation":7,"mirror":9}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,7,0,0,0,1,9,0,0,0] },
   { "variant": "SplitTeleportRolled", "value": {"kind":"SplitTeleportRolled","roll":1.5,"teleport_chance":1.5,"fired":true,"anchor":9}, "bytes": [0,0,0,0,0,0,248,63,0,0,0,0,0,0,248,63,1,1,9,0,0,0,0,0,0,0] },
   { "variant": "SplitStartReassigned", "value": {"kind":"SplitStartReassigned","original":7,"reassigned_to":7}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0] },
   { "variant": "SplitParentEdgeRelocated", "value": {"kind":"SplitParentEdgeRelocated","parent":7,"src":7,"taken_by":7}, "bytes": [7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0,7,0,0,0,0,0,0,0] }
