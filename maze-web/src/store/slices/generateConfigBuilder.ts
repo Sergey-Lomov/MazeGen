@@ -245,7 +245,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
         // resolveDebugArenaMetadata's doc comment for why.
         debugArena = {
           tape, algorithmKind: resolveAlgorithmKind(sources), sources, nodes: snapshot.nodes, totalSteps,
-          debugValueNames: debugTape.debugValueNames,
+          debugValueNames: debugTape.debugValueNames, allNodes: debugTape.allNodes,
         };
         lastStep = Math.max(0, totalSteps - 1);
       }

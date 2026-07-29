@@ -24,7 +24,7 @@ fn generate_vertex_based_default_split(
     event_log: Option<&mut EventLog<VertexBasedEvent>>,
 ) {
     let mut start_reassignment = None;
-    generate_vertex_based(graph, field, ids, seed, start, params, elements, &SplitGenerationConfig::default(), preset_state, &mut start_reassignment, event_log);
+    generate_vertex_based(graph, field, ids, seed, start, params, elements, &SplitGenerationConfig::default(), preset_state, &mut start_reassignment, event_log, None);
 }
 
 /// One test asserting the exact event sequence, on the smallest deterministic input (a 1x2

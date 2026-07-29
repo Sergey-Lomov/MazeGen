@@ -13,6 +13,9 @@ mod node_ops;
 mod mutation_commands;
 mod split_pattern;
 mod split_logic;
+mod debug_state;
+
+pub use debug_state::DebugGenerationState;
 
 pub use preset_state::{PresetState, build_preset_state};
 pub use preset_setup_event::{PresetSetupEvent, PRESET_SETUP_SCOPE_NAME};
@@ -76,7 +79,7 @@ fn dispatch<T: Tessellation>(
             let mut start_reassignment = None;
             vertex_based::generate(
                 graph, field, ids, seed, start, &params, &config.elements, &config.split_generation,
-                preset_state, &mut start_reassignment, None,
+                preset_state, &mut start_reassignment, None, None,
             );
             start_reassignment
         }
@@ -125,7 +128,7 @@ pub fn generate_maze<T: Tessellation>(
 /// `EventedEventKind`, kept alongside rather than folded into a `sources` vec of its own, since
 /// there is exactly one of each here by construction — the caller assembles the final multi-source
 /// `sources` list itself once it knows how many sources it actually has.
-pub struct EventedGenerationResult {
+pub struct EventedGenerationResult<T: Tessellation> {
     pub raw_source: crate::event_log::TapeSource,
     pub event_kind: crate::event_log::EventedEventKind,
     /// Every debug-value name (unqualified — qualification with `"{scope_name}:"` only makes sense
@@ -139,6 +142,13 @@ pub struct EventedGenerationResult {
     /// split the run's traversal-seed node — every other algorithm, and every non-reassigning
     /// `CustomVertexBased` run, leaves this `None`.
     pub start_reassignment: Option<StartReassignment>,
+    /// Every node minted during this generation call, including ones later removed/replaced by
+    /// QC/repair (GitHub issue #271) — only `CustomVertexBased`'s pattern-mode split mints nodes
+    /// during generation itself (see `split_logic::mint_split_nodes`'s only caller,
+    /// `vertex_based.rs`); every other algorithm leaves this empty. Union with QC/repair's own
+    /// mint/removal tracking (`maze-wasm/src/runner.rs::run_generate`) is what lets the debug tape
+    /// resolve coordinates for a node no longer in the final `Field`.
+    pub all_node_points: Vec<(NodeId, T::Point)>,
 }
 
 /// Qualifies debug-value names with their source's scope name when more than one source is
@@ -177,8 +187,9 @@ pub fn generate_maze_with_events<T: Tessellation>(
     start: NodeId,
     config: GenerationConfig,
     preset_state: &PresetState,
-) -> EventedGenerationResult {
+) -> EventedGenerationResult<T> {
     let mut start_reassignment = None;
+    let mut debug_state = debug_state::DebugGenerationState::<T>::new();
     let (scope_name, event_kind, tape, debug_value_names): (
         &'static str,
         crate::event_log::EventedEventKind,
@@ -214,7 +225,7 @@ pub fn generate_maze_with_events<T: Tessellation>(
             let mut log = crate::event_log::EventLog::new();
             vertex_based::generate(
                 graph, field, ids, seed, start, &params, &config.elements, &config.split_generation,
-                preset_state, &mut start_reassignment, Some(&mut log),
+                preset_state, &mut start_reassignment, Some(&mut log), Some(&mut debug_state),
             );
             ("generation", crate::event_log::EventedEventKind::VertexBased, log.finish().encode(), vertex_based::debug_value_names())
         }
@@ -225,6 +236,7 @@ pub fn generate_maze_with_events<T: Tessellation>(
         event_kind,
         debug_value_names: debug_value_names.iter().map(|(name, kind)| (name.to_string(), *kind)).collect(),
         start_reassignment,
+        all_node_points: debug_state.all_node_points().collect(),
     }
 }
 

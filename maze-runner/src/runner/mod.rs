@@ -89,6 +89,7 @@ fn run_generate_typed<T: Tessellation + 'static>(
         &gen_config.split_points,
         &point_from_xy,
         None,
+        None,
     )?;
 
     // `start_id` re-resolves the same gen_source marker `resolve_start` already used to pick
@@ -121,7 +122,7 @@ fn run_generate_typed<T: Tessellation + 'static>(
     let mut qc_log = config.debug_events.then(EventLog::new);
     let (maze, remaining_issues, timing) = build_maze(
         field, graph, seed, qc_engine, &repair_preset_state, limits, preset_start, preset_finish,
-        qc_log.as_mut(),
+        qc_log.as_mut(), None,
     );
     let qc_tape = qc_log.map(EventLog::finish);
 

@@ -105,11 +105,12 @@ pub fn build_maze<T: Tessellation>(
     preset_start: Option<crate::ids::NodeId>,
     preset_finish: Option<crate::ids::NodeId>,
     event_log: Option<&mut EventLog<QcEvent>>,
+    debug_state: Option<&mut super::DebugGenerationState<T>>,
 ) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming) {
     let mut maze = Maze::new(field, graph);
     maze.meta.start = preset_start;
     maze.meta.finish = preset_finish;
     let mut rng = MazeRng::seed_from_u64(seed);
-    let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms, event_log);
+    let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms, event_log, debug_state);
     (maze, issues, timing)
 }

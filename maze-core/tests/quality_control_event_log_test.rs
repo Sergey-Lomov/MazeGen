@@ -83,7 +83,7 @@ fn run_engine_with_log(
 ) {
     let engine = one_rule_engine();
     let mut rng = MazeRng::seed_from_u64(seed);
-    engine.run_full(maze, &mut rng, &PresetState::empty(), RepairLimits::default(), now_ms_stub, log);
+    engine.run_full(maze, &mut rng, &PresetState::empty(), RepairLimits::default(), now_ms_stub, log, None);
 }
 
 // --- exact-sequence test ---
@@ -263,7 +263,7 @@ fn issues_merged_is_emitted_when_two_checks_in_the_same_rule_both_contribute() {
 
     let mut log = EventLog::new();
     let mut rng = MazeRng::seed_from_u64(42);
-    engine.run_full(&mut maze, &mut rng, &PresetState::empty(), RepairLimits::default(), now_ms_stub, Some(&mut log));
+    engine.run_full(&mut maze, &mut rng, &PresetState::empty(), RepairLimits::default(), now_ms_stub, Some(&mut log), None);
     let tape = log.finish();
 
     let merged_count = tape.iter().filter(|e| matches!(e, QcEvent::IssuesMerged { .. })).count();
@@ -297,7 +297,7 @@ fn issues_merged_details_carries_each_contributing_checks_own_detail_values() {
 
     let mut log = EventLog::new();
     let mut rng = MazeRng::seed_from_u64(42);
-    engine.run_full(&mut maze, &mut rng, &PresetState::empty(), RepairLimits::default(), now_ms_stub, Some(&mut log));
+    engine.run_full(&mut maze, &mut rng, &PresetState::empty(), RepairLimits::default(), now_ms_stub, Some(&mut log), None);
     let tape = log.finish();
 
     let merged: Vec<&QcEvent> = tape.iter().filter(|e| matches!(e, QcEvent::IssuesMerged { .. })).collect();

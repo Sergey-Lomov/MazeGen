@@ -22,6 +22,7 @@ function fakeGenerateResult(snapshot: unknown) {
     debugTapePayload: () => undefined,
     debugValueNames: () => [],
     debugValueKinds: () => [],
+    debugAllNodes: () => [],
     free: () => {},
   };
 }
@@ -147,6 +148,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
+      debugAllNodes: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
@@ -154,6 +156,7 @@ describe("generateMaze / validateSnapshot", () => {
       nodeTable: nodeTableBytes, payload: payloadBytes,
       sourceScopeNames: ["generation"], sourceEventKinds: ["recursive_backtracker"],
       debugValueNames: [],
+      allNodes: [],
     });
     // Must be independent copies, not the same views handed back by WASM.
     expect(result.debugTape?.nodeTable).not.toBe(nodeTableBytes);
@@ -171,6 +174,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["kruskal"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
+      debugAllNodes: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
@@ -188,6 +192,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["wilson"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
+      debugAllNodes: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
@@ -205,6 +210,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["edge_based"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
+      debugAllNodes: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
@@ -222,6 +228,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["vertex_based"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
+      debugAllNodes: () => [],
       free: () => {},
     });
     const result = generateMaze(1, defaultConfig);
@@ -237,6 +244,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => [],
       debugValueNames: () => [],
       debugValueKinds: () => [],
+      debugAllNodes: () => [],
       free: () => {},
     });
     expect(() => generateMaze(1, defaultConfig)).toThrow(/sourceScopeNames\/sourceEventKinds is empty/);
@@ -251,6 +259,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
+      debugAllNodes: () => [],
       free: () => {},
     });
     expect(() => generateMaze(1, defaultConfig)).toThrow(/length mismatch/);
@@ -265,6 +274,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["not_a_real_kind"],
       debugValueNames: () => [],
       debugValueKinds: () => [],
+      debugAllNodes: () => [],
       free: () => {},
     });
     expect(() => generateMaze(1, defaultConfig)).toThrow(/unknown event kind/);
@@ -279,6 +289,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => ["recursion_stack", "visited"],
       debugValueKinds: () => ["sequence"],
+      debugAllNodes: () => [],
       free: () => {},
     });
     expect(() => generateMaze(1, defaultConfig)).toThrow(/length mismatch/);
@@ -293,6 +304,7 @@ describe("generateMaze / validateSnapshot", () => {
       sourceEventKinds: () => ["recursive_backtracker"],
       debugValueNames: () => ["recursion_stack"],
       debugValueKinds: () => ["not_a_real_kind"],
+      debugAllNodes: () => [],
       free: () => {},
     });
     expect(() => generateMaze(1, defaultConfig)).toThrow(/unknown debug value kind/);

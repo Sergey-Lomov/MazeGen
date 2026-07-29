@@ -24,7 +24,7 @@ fn generate_default_split<T: Tessellation>(
     event_log: Option<&mut EventLog<VertexBasedEvent>>,
 ) {
     let mut start_reassignment = None;
-    generate(graph, field, ids, seed, start, params, elements, &no_split(), preset_state, &mut start_reassignment, event_log);
+    generate(graph, field, ids, seed, start, params, elements, &no_split(), preset_state, &mut start_reassignment, event_log, None);
 }
 
 // ─── add_to_frontier / pop_reserve / choose_from_frontier ───────────────

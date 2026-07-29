@@ -88,6 +88,7 @@ fn apply_split_points<T: Tessellation>(
     ids: &mut IdGenerator,
     split_points: &[((i32, i32), u32)],
     xy_to_point: &impl Fn(i32, i32) -> T::Point,
+    mut debug_state: Option<&mut super::DebugGenerationState<T>>,
 ) -> Result<HashMap<(i32, i32), Vec<u32>>, String> {
     let mut sorted: Vec<((i32, i32), u32)> = split_points.to_vec();
     sorted.sort_unstable();
@@ -100,6 +101,9 @@ fn apply_split_points<T: Tessellation>(
         }
         let node = field.add_node_at(point, ids);
         graph.add_node(node);
+        if let Some(state) = debug_state.as_deref_mut() {
+            state.note(node, point);
+        }
         slots_by_point.entry(xy).or_default().push(slot_id);
     }
     Ok(slots_by_point)
@@ -152,6 +156,7 @@ pub fn build_preset_state<T: Tessellation>(
     split_points: &[((i32, i32), u32)],
     xy_to_point: impl Fn(i32, i32) -> T::Point,
     mut log: Option<&mut EventLog<PresetSetupEvent>>,
+    debug_state: Option<&mut super::DebugGenerationState<T>>,
 ) -> Result<PresetState, String> {
     let mut blocked:          HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut locked_out:       HashSet<NodeId> = HashSet::new();
@@ -160,7 +165,7 @@ pub fn build_preset_state<T: Tessellation>(
     let mut preset_edges: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut preset_teleports: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
-    let slots_by_point = apply_split_points(field, graph, ids, split_points, &xy_to_point)?;
+    let slots_by_point = apply_split_points(field, graph, ids, split_points, &xy_to_point, debug_state)?;
     let resolve = |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_point, ep);
 
     for preset in preset_connections {

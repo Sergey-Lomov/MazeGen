@@ -1,4 +1,4 @@
-use maze_core::{Graph, IdGenerator, NodeId};
+﻿use maze_core::{Graph, IdGenerator, NodeId};
 use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{
     EdgeBasedParams, ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, PresetState,
@@ -89,7 +89,7 @@ pub fn build_with_split_point_preset_claim() -> (Graph, Field<SquareTessellation
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((1, 0)), to: PresetEndpoint::original((0, 0)), state: PresetConnectionState::Passage,
     }];
-    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None).unwrap();
+    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
 
     let nodes = field.nodes_at(SquarePoint { x: 1, y: 0 });
     let original = nodes[0];
@@ -125,7 +125,7 @@ pub fn build_with_split_point_preset_connected_false_positive() -> (Graph, Field
         // in `preset_connected`, regardless of whether they're connected to *each other*.
         PresetConnection { from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((0, 1)), state: PresetConnectionState::Passage },
     ];
-    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None).unwrap();
+    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
 
     let nodes = field.nodes_at(SquarePoint { x: 1, y: 0 });
     let original = nodes[0];

@@ -1,4 +1,4 @@
-use rand::SeedableRng;
+﻿use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::space::{SquareTessellation, Field, square_rect};
 use crate::graph::{Graph, EdgeKind};
@@ -21,7 +21,7 @@ fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
 #[test]
 fn add_directed_edge_applies_and_counts() {
     let (mut maze, nodes) = maze_n(2);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] }], None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddDirectedEdge { from: nodes[0], to: nodes[1] }], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
 }
@@ -29,7 +29,7 @@ fn add_directed_edge_applies_and_counts() {
 #[test]
 fn add_bidirectional_edge_applies_both_directions() {
     let (mut maze, nodes) = maze_n(2);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddBidirectionalEdge { a: nodes[0], b: nodes[1] }], None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddBidirectionalEdge { a: nodes[0], b: nodes[1] }], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some());
     assert!(maze.graph.edge_between(nodes[1], nodes[0]).is_some());
@@ -38,7 +38,7 @@ fn add_bidirectional_edge_applies_both_directions() {
 #[test]
 fn add_directed_teleport_applies() {
     let (mut maze, nodes) = maze_n(2);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddDirectedTeleport { from: nodes[0], to: nodes[1] }], None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddDirectedTeleport { from: nodes[0], to: nodes[1] }], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     let edge = maze.graph.edge_between(nodes[0], nodes[1]).and_then(|id| maze.graph.edge(id));
     assert_eq!(edge.map(|e| e.kind.clone()), Some(EdgeKind::Teleport));
@@ -47,7 +47,7 @@ fn add_directed_teleport_applies() {
 #[test]
 fn add_bidirectional_teleport_applies_both_directions() {
     let (mut maze, nodes) = maze_n(2);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddBidirectionalTeleport { a: nodes[0], b: nodes[1] }], None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::AddBidirectionalTeleport { a: nodes[0], b: nodes[1] }], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count() == 2);
 }
@@ -56,7 +56,7 @@ fn add_bidirectional_teleport_applies_both_directions() {
 fn remove_edge_by_id_applies() {
     let (mut maze, nodes) = maze_n(2);
     let id = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdge { id }], None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdge { id }], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge(id).is_none());
 }
@@ -65,7 +65,7 @@ fn remove_edge_by_id_applies() {
 fn remove_edge_between_applies() {
     let (mut maze, nodes) = maze_n(2);
     maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }], None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
 }
@@ -75,7 +75,7 @@ fn remove_teleport_with_reverse_removes_both_directions() {
     let (mut maze, nodes) = maze_n(2);
     let fwd = maze.graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Teleport);
     let bwd = maze.graph.build_initial_edge(nodes[1], nodes[0], EdgeKind::Teleport);
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveTeleportWithReverse { id: fwd }], None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveTeleportWithReverse { id: fwd }], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
     assert!(maze.graph.edge(fwd).is_none());
     assert!(maze.graph.edge(bwd).is_none());
@@ -87,13 +87,13 @@ fn set_start_and_finish_apply_and_are_idempotent() {
     let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![
         MutationCommand::SetStart(nodes[0]),
         MutationCommand::SetFinish(nodes[1]),
-    ], None);
+    ], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 2, applied: 2 });
     assert_eq!(maze.meta.start, Some(nodes[0]));
     assert_eq!(maze.meta.finish, Some(nodes[1]));
 
     // Idempotent: a second SetStart with a different node must not overwrite an already-set one.
-    let outcome2 = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::SetStart(nodes[1])], None);
+    let outcome2 = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::SetStart(nodes[1])], None, None);
     assert_eq!(outcome2, ApplyOutcome { proposed: 1, applied: 1 }, "SetStart always reports applied, even when it's a no-op due to idempotency");
     assert_eq!(maze.meta.start, Some(nodes[0]), "already-set start must not be overwritten");
 }
@@ -105,7 +105,7 @@ fn preset_protected_edge_removal_is_dropped_silently() {
     let mut preset_state = PresetState::empty();
     preset_state.preset_edges.insert((nodes[0], nodes[1]));
 
-    let outcome = apply_commands(&mut maze, &preset_state, vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }], None);
+    let outcome = apply_commands(&mut maze, &preset_state, vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 0 }, "preset-protected removal must be silently dropped, not panic or error");
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_some(), "protected edge must survive");
 }
@@ -131,7 +131,7 @@ fn stale_command_in_a_batch_is_dropped_without_blocking_the_rest() {
         MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }, // stale: already gone
         MutationCommand::RemoveEdgeBetween { from: nodes[1], to: nodes[2] },
     ];
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 3, applied: 2 }, "exactly the stale middle command must be dropped");
     assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
     assert!(maze.graph.edge_between(nodes[1], nodes[2]).is_none());
@@ -171,7 +171,7 @@ fn event_log_emits_the_correct_mutating_variant_for_every_command_kind() {
 
     let mut log = EventLog::new();
     let mut scope = log.enter("test scope");
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope));
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope), None);
     drop(scope);
     let tape = log.finish();
 
@@ -216,7 +216,7 @@ fn remove_edge_with_reverse_computes_reverse_removed_false_when_only_one_directi
 
     let mut log = EventLog::new();
     let mut scope = log.enter("test scope");
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdgeWithReverse { id: one_way }], Some(&mut scope));
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveEdgeWithReverse { id: one_way }], Some(&mut scope), None);
     drop(scope);
     let tape = log.finish();
 
@@ -251,7 +251,7 @@ fn remove_edge_with_reverse_second_command_targeting_an_already_removed_reverse_
     ];
     let mut log = EventLog::new();
     let mut scope = log.enter("test scope");
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope));
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope), None);
     drop(scope);
     let tape = log.finish();
 
@@ -280,7 +280,7 @@ fn remove_edge_with_reverse_emits_declined_when_preset_protection_rejects_it() {
 
     let mut log = EventLog::new();
     let mut scope = log.enter("test scope");
-    let outcome = apply_commands(&mut maze, &preset_state, vec![MutationCommand::RemoveEdgeWithReverse { id }], Some(&mut scope));
+    let outcome = apply_commands(&mut maze, &preset_state, vec![MutationCommand::RemoveEdgeWithReverse { id }], Some(&mut scope), None);
     drop(scope);
     let tape = log.finish();
 
@@ -313,6 +313,7 @@ fn event_log_emits_declined_when_revalidation_rejects_a_command() {
         &preset_state,
         vec![MutationCommand::RemoveEdgeBetween { from: nodes[0], to: nodes[1] }],
         Some(&mut scope),
+        None,
     );
     drop(scope);
     let tape = log.finish();
@@ -343,6 +344,7 @@ fn stale_edge_id_that_never_existed_emits_no_event_instead_of_fabricating_from_t
         &PresetState::empty(),
         vec![MutationCommand::RemoveEdge { id: never_built_id }],
         Some(&mut scope),
+        None,
     );
     drop(scope);
     let tape = log.finish();
@@ -366,7 +368,7 @@ fn proposed_narration_for_a_stale_edge_id_emits_nothing() {
 fn empty_batch_is_a_no_op() {
     let (mut maze, _) = maze_n(2);
     let edges_before = maze.graph.edges().count();
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![], None);
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![], None, None);
     assert_eq!(outcome, ApplyOutcome { proposed: 0, applied: 0 });
     assert_eq!(maze.graph.edges().count(), edges_before);
 }
@@ -415,7 +417,7 @@ fn check_and_repair_typed_applies_every_returned_command_to_the_real_maze() {
     let mut per_strategy = HashMap::new();
     let mut qc_ms = 0.0;
     let mut repair_ms = 0.0;
-    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &mut qc_ms, &mut repair_ms, &|| 0.0, None);
+    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &mut qc_ms, &mut repair_ms, &|| 0.0, None, None);
 
     let crate::quality_control::RuleIterationOutcome::Repaired(repair_result, apply_outcome) = outcome else {
         panic!("rule found an issue and has a strategy, must return Repaired")
@@ -450,7 +452,7 @@ fn replace_point_nodes_declines_when_a_prior_batch_command_already_replaced_its_
 
     let mut log = EventLog::new();
     let mut scope = log.enter("test scope");
-    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope));
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), commands, Some(&mut scope), None);
     drop(scope);
     let tape = log.finish();
 
@@ -463,4 +465,52 @@ fn replace_point_nodes_declines_when_a_prior_batch_command_already_replaced_its_
     assert_eq!(events.len(), 2);
     assert!(matches!(events[0], QcEvent::PointNodesReplaced { .. }), "first command applied: {:?}", events[0]);
     assert!(matches!(events[1], QcEvent::PointNodesReplaceDeclined { .. }), "second command declined, its target already gone: {:?}", events[1]);
+}
+
+/// GitHub issue #271: `RemoveNode`/`ReplacePointNodes` must note the *old* node's coordinates into
+/// the debug ledger before removing it — a node removed/replaced by QC/repair may never have been
+/// minted mid-run at all (e.g. one of `Field`'s own original base nodes), so this is the only place
+/// its coordinates ever get recorded before they're gone from both `Field` and the final snapshot.
+#[test]
+fn remove_node_notes_the_removed_nodes_coordinates_into_the_debug_ledger() {
+    use crate::space::SquarePoint;
+    use crate::generation::DebugGenerationState;
+
+    let (mut maze, _nodes) = maze_n(1);
+    let point = SquarePoint { x: 0, y: 0 };
+    let slot0 = maze.field.node_at(point).unwrap();
+    let extra = maze.field.add_node_at(point, &mut maze.ids);
+    maze.graph.add_node(extra);
+
+    let mut debug_state: DebugGenerationState<SquareTessellation> = DebugGenerationState::new();
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::RemoveNode { node: extra }], None, Some(&mut debug_state));
+    assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
+    assert!(maze.field.point_of(extra).is_none(), "the node must actually be gone from the field");
+
+    let noted: Vec<_> = debug_state.all_node_points().collect();
+    assert_eq!(noted, vec![(extra, point)], "the removed node's own coordinates, not slot0's");
+}
+
+/// Mirrors `remove_node_notes_the_removed_nodes_coordinates_into_the_debug_ledger` for
+/// `ReplacePointNodes` — every *old* node at the replaced point (slot-0 included) must be noted,
+/// not just the newly minted replacement (`try_replace_point_nodes` already notes that half).
+#[test]
+fn replace_point_nodes_notes_every_old_nodes_coordinates_into_the_debug_ledger() {
+    use crate::space::SquarePoint;
+    use crate::generation::DebugGenerationState;
+
+    let (mut maze, nodes) = maze_n(1);
+    let point = SquarePoint { x: 0, y: 0 };
+    let slot0 = nodes[0];
+
+    let mut debug_state: DebugGenerationState<SquareTessellation> = DebugGenerationState::new();
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![MutationCommand::ReplacePointNodes { at: slot0, nodes: vec![vec![]] }], None, Some(&mut debug_state));
+    assert_eq!(outcome, ApplyOutcome { proposed: 1, applied: 1 });
+    assert!(maze.field.point_of(slot0).is_none(), "the old slot0 id must be gone from the field");
+
+    let noted: std::collections::HashMap<_, _> = debug_state.all_node_points().collect();
+    assert_eq!(noted.get(&slot0), Some(&point), "the replaced old node's own coordinates must be noted");
+    let new_slot0 = maze.field.nodes_at(point)[0];
+    assert_eq!(noted.get(&new_slot0), Some(&point), "the newly minted replacement is also noted (try_replace_point_nodes's own note())");
+    assert_eq!(noted.len(), 2, "exactly the old node plus the one new node, no extras");
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { parseTape, RECURSIVE_BACKTRACKER_EVENT_TAG, WILSON_EVENT_TAG, KRUSKAL_EVENT_TAG, EDGE_BASED_EVENT_TAG, VERTEX_BASED_EVENT_TAG, PRESET_SETUP_EVENT_TAG, QC_EVENT_TAG, TAG_SCOPE, NO_NODE, type ParsedTape } from "../debug/eventTape";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugArenaHandle } from "../store/storeTypes";
@@ -139,7 +139,7 @@ function arenaWithEdges(edges: [bigint, bigint][]): DebugArenaHandle {
   return {
     tape: buildTapeWithEdges(edges), algorithmKind: "recursive_backtracker",
     sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: edges.length, checkpointFroms: [] }],
-    nodes, totalSteps: edges.length, debugValueNames: [],
+    nodes, allNodes: nodes, totalSteps: edges.length, debugValueNames: [],
   };
 }
 
@@ -378,8 +378,8 @@ describe("selectDebugMazeView", () => {
     const checkpointFroms = [{ step: 0, result: { edges: [{ from: 1n, to: 2n }, { from: 2n, to: 1n }], debugValues: new Map(), step: 0, nodeIndex: 0 } }];
     const sourcesWithCheckpoint: DebugArenaHandle["sources"] = [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: edgePairs.length, checkpointFroms }];
     const sourcesWithoutCheckpoint: DebugArenaHandle["sources"] = [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: edgePairs.length, checkpointFroms: [] }];
-    const arenaWithCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", sources: sourcesWithCheckpoint, nodes, totalSteps: edgePairs.length, debugValueNames: [] };
-    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", sources: sourcesWithoutCheckpoint, nodes, totalSteps: edgePairs.length, debugValueNames: [] };
+    const arenaWithCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", sources: sourcesWithCheckpoint, nodes, allNodes: nodes, totalSteps: edgePairs.length, debugValueNames: [] };
+    const arenaWithoutCheckpoint: DebugArenaHandle = { tape, algorithmKind: "recursive_backtracker", sources: sourcesWithoutCheckpoint, nodes, allNodes: nodes, totalSteps: edgePairs.length, debugValueNames: [] };
 
     const withCheckpoint = selectDebugMazeView(arenaWithCheckpoint, 2);
     const withoutCheckpoint = selectDebugMazeView(arenaWithoutCheckpoint, 2);
@@ -418,7 +418,7 @@ describe("selectDebugMazeView", () => {
     const arena: DebugArenaHandle = {
       tape, algorithmKind: "wilson",
       sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 0, startStep: 0, endStep: 4, checkpointFroms: [] }],
-      nodes, totalSteps: 4,
+      nodes, allNodes: nodes, totalSteps: 4,
       debugValueNames: [{ name: "visited", kind: "region" }, { name: "current_walk", kind: "map" }],
     };
 
@@ -442,7 +442,7 @@ describe("selectDebugMazeView", () => {
     const arena: DebugArenaHandle = {
       tape, algorithmKind: "edge_based",
       sources: [{ scopeName: "generation", kind: "edge_based", nodeIndex: 0, startStep: 0, endStep: 3, checkpointFroms: [] }],
-      nodes, totalSteps: 3,
+      nodes, allNodes: nodes, totalSteps: 3,
       debugValueNames: [{ name: "active", kind: "region" }, { name: "visited", kind: "region" }],
     };
 
@@ -463,7 +463,7 @@ describe("selectDebugMazeView", () => {
     const arena: DebugArenaHandle = {
       tape, algorithmKind: "vertex_based",
       sources: [{ scopeName: "generation", kind: "vertex_based", nodeIndex: 0, startStep: 0, endStep: 2, checkpointFroms: [] }],
-      nodes, totalSteps: 2,
+      nodes, allNodes: nodes, totalSteps: 2,
       debugValueNames: [{ name: "visited", kind: "region" }, { name: "frontier", kind: "region" }, { name: "reserve", kind: "region" }],
     };
 
@@ -492,7 +492,7 @@ describe("selectDebugMazeView", () => {
     const arena: DebugArenaHandle = {
       tape, algorithmKind: "vertex_based",
       sources: [{ scopeName: "generation", kind: "vertex_based", nodeIndex: 0, startStep: 0, endStep: 4, checkpointFroms: [] }],
-      nodes: splitNodes, totalSteps: 4,
+      nodes: splitNodes, allNodes: splitNodes, totalSteps: 4,
       debugValueNames: [{ name: "visited", kind: "region" }, { name: "frontier", kind: "region" }, { name: "reserve", kind: "region" }],
     };
 
@@ -546,6 +546,7 @@ describe("selectDebugMazeView", () => {
       tape, algorithmKind: "quality_control",
       sources: [{ scopeName: "quality_control", kind: "quality_control", nodeIndex: 0, startStep: 0, endStep: 2, checkpointFroms: [] }],
       nodes: [{ id: 2, x: 0, y: 0, i: 0 }, { id: 3, x: 1, y: 0, i: 0 }],
+      allNodes: [{ id: 2, x: 0, y: 0, i: 0 }, { id: 3, x: 1, y: 0, i: 0 }],
       totalSteps: 2,
       debugValueNames: [],
     };
@@ -561,6 +562,76 @@ describe("selectDebugMazeView", () => {
     expect(afterRemoval?.nodes.map((n) => n.id)).toEqual([2]);
   });
 
+  // --- QC point-nodes replacement (GitHub issue #247's AddSplitStrategy, generalized by #271) ---
+
+  // root (0) -> BidirectionalEdgeAdded(2,3) (1) -> PointNodesReplaced(at=3, old=[3], new=[20], edges=[(20->2, Forward)]) (2)
+  function buildQcPointNodesReplacedArenaTape(): ParsedTape {
+    const splitNodesPayload = concatBytes([
+      new Uint8Array([1, 0, 0, 0]), // node count = 1 (little-endian u32)
+      new Uint8Array([1, 0, 0, 0]), // edge count = 1
+      new Uint8Array([0]), // direction = Forward
+      u64le(2n), // target = node 2
+    ]);
+    const pointNodesReplacedPayload = concatBytes([
+      u64le(3n), // at
+      new Uint8Array([1, 0, 0, 0]), u64le(3n), // old_nodes = [3]
+      new Uint8Array([1, 0, 0, 0]), u64le(20n), // new_nodes = [20]
+      splitNodesPayload,
+    ]);
+    const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
+      { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: TAG_SCOPE, bytes: new TextEncoder().encode("root") },
+      { parent: 0, firstChild: NO_NODE, nextSibling: 2, tag: QC_EVENT_TAG.BIDIRECTIONAL_EDGE_ADDED, bytes: concatBytes([u64le(2n), u64le(3n)]) },
+      { parent: 0, firstChild: NO_NODE, nextSibling: NO_NODE, tag: QC_EVENT_TAG.POINT_NODES_REPLACED, bytes: pointNodesReplacedPayload },
+    ];
+    const offsets: number[] = [];
+    let cursor = 0;
+    for (const r of records) {
+      offsets.push(cursor);
+      cursor += r.bytes.byteLength;
+    }
+    const payload = concatBytes(records.map((r) => r.bytes));
+    const nodeTable = new Uint8Array(records.length * 22);
+    const dv = new DataView(nodeTable.buffer);
+    records.forEach((r, i) => {
+      const base = i * 22;
+      dv.setUint32(base + 0, r.parent, true);
+      dv.setUint32(base + 4, r.firstChild, true);
+      dv.setUint32(base + 8, r.nextSibling, true);
+      dv.setUint16(base + 12, r.tag, true);
+      dv.setUint32(base + 14, offsets[i], true);
+      dv.setUint32(base + 18, r.bytes.byteLength, true);
+    });
+    return parseTape(nodeTable, payload);
+  }
+
+  it("a node replaced by QC's ReplacePointNodes (AddSplitStrategy) keeps its earlier edges until the replacement step, then the new node takes over (GitHub issue #271)", () => {
+    const tape = buildQcPointNodesReplacedArenaTape();
+    const arena: DebugArenaHandle = {
+      tape, algorithmKind: "quality_control",
+      sources: [{ scopeName: "quality_control", kind: "quality_control", nodeIndex: 0, startStep: 0, endStep: 2, checkpointFroms: [] }],
+      // Node 3 is gone from the run's final node list — it was replaced by node 20 before the run
+      // ended — mirrors the real WASM boundary shape (`snapshot.nodes` = final survivors only).
+      nodes: [{ id: 2, x: 0, y: 0, i: 0 }, { id: 20, x: 1, y: 0, i: 0 }],
+      // `allNodes` (GitHub issue #271) is the only place node 3's coordinates survive.
+      allNodes: [{ id: 3, x: 1, y: 0, i: 0 }, { id: 20, x: 1, y: 0, i: 0 }],
+      totalSteps: 2,
+      debugValueNames: [],
+    };
+
+    // step 0 = BidirectionalEdgeAdded(2,3) applied — node 3 must render with its real edge, not as
+    // a stray isolated dot and not simply absent because it's missing from the final `nodes` list.
+    const beforeReplace = selectDebugMazeView(arena, 0);
+    expect(beforeReplace?.nodes.map((n) => n.id).sort()).toEqual([2, 3]);
+    expect(beforeReplace?.edges).toContainEqual({ from: 2, to: 3, kind: "basic" });
+    expect(beforeReplace?.edges).toContainEqual({ from: 3, to: 2, kind: "basic" });
+
+    // step 1 = PointNodesReplaced applied — node 3 is gone, node 20 takes over with its own edge.
+    const afterReplace = selectDebugMazeView(arena, 1);
+    expect(afterReplace?.nodes.map((n) => n.id)).toEqual([2, 20]);
+    expect(afterReplace?.edges).toContainEqual({ from: 20, to: 2, kind: "basic" });
+    expect(afterReplace?.edges.some((e) => e.from === 3 || e.to === 3)).toBe(false);
+  });
+
   // --- Kruskal dispatch (GitHub issue #146) ---
 
   it("dispatches Kruskal arenas to applyKruskal, populating edges and dsuGroups", () => {
@@ -568,7 +639,7 @@ describe("selectDebugMazeView", () => {
     const arena: DebugArenaHandle = {
       tape, algorithmKind: "kruskal",
       sources: [{ scopeName: "generation", kind: "kruskal", nodeIndex: 0, startStep: 0, endStep: 2, checkpointFroms: [] }],
-      nodes, totalSteps: 2, debugValueNames: [],
+      nodes, allNodes: nodes, totalSteps: 2, debugValueNames: [],
     };
 
     // targetStep 1 = EdgeAdded(1,2), SetsMerged(1,2) both applied.
@@ -590,7 +661,7 @@ describe("selectDebugMazeView", () => {
     const arena: DebugArenaHandle = {
       tape, algorithmKind: "preset_setup",
       sources: [{ scopeName: "preset_setup", kind: "preset_setup", nodeIndex: 0, startStep: 0, endStep: 2, checkpointFroms: [] }],
-      nodes, totalSteps: 2, debugValueNames: [],
+      nodes, allNodes: nodes, totalSteps: 2, debugValueNames: [],
     };
 
     // targetStep 1 = PassageEstablished(1,2) (bidirectional), then OneWayEstablished(3,4) (one direction only).

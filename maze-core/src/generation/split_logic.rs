@@ -5,6 +5,7 @@ use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
 use crate::event_log::ScopeGuard;
 use super::{ElementsConfig, PresetState, GenerationParams};
+use super::debug_state::DebugGenerationState;
 use super::split_pattern::{SplitGenerationConfig, SplitPattern, SplitFaceRequirement, OneWayDirection};
 use super::edge_ops::{try_add_edge, try_add_edge_kind};
 use super::vertex_based::{VertexBasedEvent, GenState, run_ordinary_step_body_for_node, add_to_frontier, add_edge_and_detect_direction};
@@ -83,6 +84,7 @@ pub(super) fn try_split_src<T: Tessellation>(
     start: NodeId,
     start_reassignment: &mut Option<StartReassignment>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    debug_state: Option<&mut DebugGenerationState<T>>,
 ) -> SplitOutcome {
     let roll = state.rng.random::<f64>();
     let fired = roll < elements.split_chance;
@@ -100,12 +102,12 @@ pub(super) fn try_split_src<T: Tessellation>(
     if split_config.pattern_mode {
         handle_pattern_split(
             graph, field, ids, params, elements, split_config, preset_state, state,
-            src, bridge, parent, start, start_reassignment, scope,
+            src, bridge, parent, start, start_reassignment, scope, debug_state,
         )
     } else {
         handle_non_pattern_split(
             graph, field, ids, params, elements, split_config, preset_state, state,
-            src, bridge, start, start_reassignment, scope,
+            src, bridge, start, start_reassignment, scope, debug_state,
         );
         SplitOutcome::Handled
     }
@@ -120,12 +122,16 @@ fn mint_split_nodes<T: Tessellation>(
     ids: &mut IdGenerator,
     src: NodeId,
     count: usize,
+    mut debug_state: Option<&mut DebugGenerationState<T>>,
 ) -> Vec<NodeId> {
     let point = field.point_of(src).expect("src must be in field");
     let mut nodes = vec![src];
     for _ in 1..count {
         let node = field.add_node_at(point, ids);
         graph.add_node(node);
+        if let Some(state) = debug_state.as_deref_mut() {
+            state.note(node, point);
+        }
         nodes.push(node);
     }
     nodes
@@ -191,9 +197,10 @@ fn handle_non_pattern_split<T: Tessellation>(
     start: NodeId,
     start_reassignment: &mut Option<StartReassignment>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    debug_state: Option<&mut DebugGenerationState<T>>,
 ) {
     let count = (split_config.max_split_nodes as usize).max(1);
-    let nodes = mint_split_nodes(graph, field, ids, src, count);
+    let nodes = mint_split_nodes(graph, field, ids, src, count, debug_state);
     sync_all_nodes(state, &nodes[1..]);
     if let Some(log) = scope.as_deref_mut() {
         log.emit(VertexBasedEvent::SplitNodesCreated { src, nodes: nodes.clone(), pattern: None });
@@ -362,6 +369,7 @@ fn handle_pattern_split<T: Tessellation>(
     start: NodeId,
     start_reassignment: &mut Option<StartReassignment>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    debug_state: Option<&mut DebugGenerationState<T>>,
 ) -> SplitOutcome {
     let cyclic_roll = state.rng.random::<f64>();
     let cyclic_fired = cyclic_roll < params.cyclicity;
@@ -406,7 +414,7 @@ fn handle_pattern_split<T: Tessellation>(
         let faces = chosen.faces.clone();
         apply_pattern_adaptation(
             graph, field, ids, elements, preset_state, state,
-            src, parent, node_count, &faces, pattern_idx, start, start_reassignment, scope,
+            src, parent, node_count, &faces, pattern_idx, start, start_reassignment, scope, debug_state,
         );
         return SplitOutcome::Handled;
     }
@@ -636,8 +644,9 @@ fn apply_pattern_adaptation<T: Tessellation>(
     start: NodeId,
     start_reassignment: &mut Option<StartReassignment>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    debug_state: Option<&mut DebugGenerationState<T>>,
 ) {
-    let nodes = mint_split_nodes(graph, field, ids, src, node_count);
+    let nodes = mint_split_nodes(graph, field, ids, src, node_count, debug_state);
     sync_all_nodes(state, &nodes[1..]);
     if let Some(log) = scope.as_deref_mut() {
         log.emit(VertexBasedEvent::SplitNodesCreated { src, nodes: nodes.clone(), pattern: Some(pattern_idx) });

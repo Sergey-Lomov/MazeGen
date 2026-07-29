@@ -117,7 +117,7 @@ function threeStepArena() {
   return {
     tape, algorithmKind: "recursive_backtracker" as const,
     sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps, checkpointFroms }],
-    nodes, totalSteps, debugValueNames: [],
+    nodes, allNodes: nodes, totalSteps, debugValueNames: [],
   };
 }
 
@@ -161,7 +161,7 @@ function manyStepArena(stepCount: number) {
   return {
     tape, algorithmKind: "recursive_backtracker" as const,
     sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: totalSteps, checkpointFroms }],
-    nodes: manyNodes, totalSteps, debugValueNames: [],
+    nodes: manyNodes, allNodes: manyNodes, totalSteps, debugValueNames: [],
   };
 }
 

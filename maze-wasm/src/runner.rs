@@ -37,34 +37,35 @@ fn run_initial_generation<T: Tessellation>(
     preset_state: &maze_core::generation::PresetState,
     qc_experiment: bool,
     debug_events: bool,
-) -> (Option<maze_core::event_log::TapeSource>, Option<maze_core::event_log::EventedEventKind>, Vec<(String, maze_core::event_log::DebugValueKind)>, f64, Option<maze_core::generation::StartReassignment>) {
+) -> (Option<maze_core::event_log::TapeSource>, Option<maze_core::event_log::EventedEventKind>, Vec<(String, maze_core::event_log::DebugValueKind)>, f64, Option<maze_core::generation::StartReassignment>, Vec<(maze_core::ids::NodeId, T::Point)>) {
     use maze_core::generation::pipeline::now_ms;
 
     let initial_build_start = now_ms();
-    let (raw_source, event_kind, debug_value_names, start_reassignment): (
+    let (raw_source, event_kind, debug_value_names, start_reassignment, all_node_points): (
         Option<maze_core::event_log::TapeSource>,
         Option<maze_core::event_log::EventedEventKind>,
         Vec<(String, maze_core::event_log::DebugValueKind)>,
         Option<maze_core::generation::StartReassignment>,
+        Vec<(maze_core::ids::NodeId, T::Point)>,
     ) = if qc_experiment {
-        (None, None, Vec::new(), None)
+        (None, None, Vec::new(), None, Vec::new())
     } else if debug_events {
         let result = generate_maze_with_events(graph, field, ids, seed, start_id, gen_config, preset_state);
         // Only forward this source past the WASM boundary when the web replay engine can
         // actually decode its event kind (GitHub issue #161) — extend `is_web_decodable` once a
         // new event kind gets a web decoder, and that's the only place this list needs to change.
         if is_web_decodable(Some(result.event_kind)) {
-            (Some(result.raw_source), Some(result.event_kind), result.debug_value_names, result.start_reassignment)
+            (Some(result.raw_source), Some(result.event_kind), result.debug_value_names, result.start_reassignment, result.all_node_points)
         } else {
-            (None, None, Vec::new(), result.start_reassignment)
+            (None, None, Vec::new(), result.start_reassignment, Vec::new())
         }
     } else {
         let start_reassignment = generate_maze(graph, field, ids, seed, start_id, gen_config, preset_state);
-        (None, None, Vec::new(), start_reassignment)
+        (None, None, Vec::new(), start_reassignment, Vec::new())
     };
     let initial_build_ms = now_ms() - initial_build_start;
 
-    (raw_source, event_kind, debug_value_names, initial_build_ms, start_reassignment)
+    (raw_source, event_kind, debug_value_names, initial_build_ms, start_reassignment, all_node_points)
 }
 
 /// Which [`maze_core::event_log::EventedEventKind`]s the web replay engine (`maze-web/src/debug/
@@ -121,6 +122,14 @@ pub fn run_generate<T: Tessellation + 'static>(
     // from the graph afterward. Independent of which algorithm runs or whether `qc_experiment`
     // skips generation entirely. Always the first source when present — see `merge_debug_sources`
     // below.
+    // Ledger of every node minted during this run, including ones later removed/replaced by
+    // QC/repair (GitHub issue #271) — only populated when `debug_events` is on. Fed by preset
+    // split-point minting (`build_preset_state`, below), `CustomVertexBased`'s pattern-mode split
+    // (`run_initial_generation`'s `all_node_points`), and QC/repair's own mint/removal
+    // (`build_maze`, further below) — the union is what lets the debug tape resolve coordinates
+    // for a node no longer present in the final `Field`.
+    let mut debug_node_ledger = config.debug_events.then(maze_core::generation::DebugGenerationState::<T>::new);
+
     let mut preset_setup_log = config.debug_events.then(maze_core::event_log::EventLog::new);
     let preset_state = build_preset_state(
         &mut graph, &mut field, &mut ids,
@@ -129,6 +138,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         &gen_config.split_points,
         &point_from_xy,
         preset_setup_log.as_mut(),
+        debug_node_ledger.as_mut(),
     ).map_err(|e| JsValue::from_str(&e))?;
     let preset_setup_source = preset_setup_log
         .filter(|log| !log.is_empty())
@@ -145,9 +155,14 @@ pub fn run_generate<T: Tessellation + 'static>(
         .or_else(|| field.nodes_at(start).first().copied())
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
-    let (generation_source, generation_kind, generation_debug_value_names, initial_build_ms, start_reassignment) = run_initial_generation(
+    let (generation_source, generation_kind, generation_debug_value_names, initial_build_ms, start_reassignment, generation_node_points) = run_initial_generation(
         &mut graph, &mut field, &mut ids, seed, start_id, gen_config, &preset_state, config.qc_experiment, config.debug_events,
     );
+    if let Some(ledger) = debug_node_ledger.as_mut() {
+        for (id, point) in generation_node_points {
+            ledger.note(id, point);
+        }
+    }
 
     let (qc_engine, check_types) = build_qc_and_repair_with_types::<T>(config)
         .map_err(|e| JsValue::from_str(&e))?;
@@ -192,18 +207,36 @@ pub fn run_generate<T: Tessellation + 'static>(
     let limits = build_repair_limits(config).map_err(|e| JsValue::from_str(&e))?;
     let (mut maze, issues, mut timing) = build_maze(
         field, graph, seed, qc_engine, &repair_preset_state, limits, preset_start, preset_finish,
-        qc_log.as_mut(),
+        qc_log.as_mut(), debug_node_ledger.as_mut(),
     );
     timing.initial_build_ms = initial_build_ms;
 
     // Fresh generation has no removal history yet — a node's position within `nodes_at(point)`
     // already equals its real `i` (GitHub issue #236, `NodeDto.i` doc comment).
-    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, point_to_xy, |_, _, pos| pos as u32)
+    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &point_to_xy, |_, _, pos| pos as u32)
         .map_err(|e| JsValue::from_str(&e))?;
     snapshot.timing = Some(timing_to_dto(timing));
 
+    // Union coordinate set (GitHub issue #271) — every node that ever existed during this run,
+    // including ones removed/replaced by QC/repair. Built only when `debug_events` produced a
+    // ledger; separate from `snapshot.nodes` (final survivors only), which stays untouched since
+    // the live UI/canvas rendering depends on it only ever listing currently-live nodes.
+    let debug_all_nodes: Vec<crate::dto::NodeDto> = debug_node_ledger
+        .map(|ledger| {
+            ledger.all_node_points()
+                .filter_map(|(id, point)| {
+                    let id32 = u32::try_from(id).ok()?;
+                    let (x, y) = point_to_xy(point);
+                    Some(crate::dto::NodeDto { id: id32, x, y, i: 0 })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     use serde::Serialize;
     let snapshot_js = snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let debug_all_nodes_js = debug_all_nodes.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let qc_tape = qc_log.map(|log| log.finish().encode());
@@ -211,7 +244,7 @@ pub fn run_generate<T: Tessellation + 'static>(
         preset_setup_source, generation_source, generation_kind, generation_debug_value_names, qc_tape,
     );
 
-    Ok(build_generate_result(snapshot_js, debug_tape, debug_value_names, sources))
+    Ok(build_generate_result(snapshot_js, debug_tape, debug_value_names, sources, debug_all_nodes_js))
 }
 
 /// Single `merge_tapes` call for the whole pipeline (GitHub issue #147/#169, extended by #225's
@@ -285,6 +318,7 @@ fn build_generate_result(
     debug_tape: Option<maze_core::event_log::EncodedTape>,
     debug_value_names: Vec<(String, maze_core::event_log::DebugValueKind)>,
     sources: Vec<(&'static str, maze_core::event_log::EventedEventKind)>,
+    debug_all_nodes: JsValue,
 ) -> GenerateResult {
     match debug_tape {
         Some(tape) => {
@@ -293,7 +327,7 @@ fn build_generate_result(
                 "build_generate_result: debug_tape is Some but sources is empty — \
                  run_initial_generation must always produce them together"
             );
-            GenerateResult::with_debug_tape(snapshot_js, tape.node_table, tape.payload, debug_value_names, sources)
+            GenerateResult::with_debug_tape(snapshot_js, tape.node_table, tape.payload, debug_value_names, sources, debug_all_nodes)
         }
         None => {
             assert!(

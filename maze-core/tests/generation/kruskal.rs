@@ -1,4 +1,4 @@
-use maze_core::generation::{generate_maze, generate_kruskal, build_preset_state, KruskalEvent, PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection};
+﻿use maze_core::generation::{generate_maze, generate_kruskal, build_preset_state, KruskalEvent, PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection};
 use maze_core::event_log::{DebugEvent, EncodeEventPayload, EventLog, TAG_SCOPE};
 use maze_core::graph::EdgeKind;
 use maze_core::validation::is_connected;
@@ -192,7 +192,7 @@ fn kruskal_preset_connection_emits_preset_unions_applied_before_the_main_loop() 
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((1, 0)), state: PresetConnectionState::Passage,
     }];
-    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
+    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
     let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
 
@@ -235,7 +235,7 @@ fn kruskal_preset_teleport_emits_preset_unions_applied_with_teleport_kind() {
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((2, 2)), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
     }];
-    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
+    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
     let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let b = field.nodes_at(SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
 
@@ -265,7 +265,7 @@ fn kruskal_one_way_preset_teleport_emits_only_the_single_directed_edge() {
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((2, 2)), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
     }];
-    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None).unwrap();
+    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
     let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let b = field.nodes_at(SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
 

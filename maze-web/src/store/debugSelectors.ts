@@ -234,11 +234,12 @@ let lastArena: DebugArenaHandle | null = null;
 let lastStep: number | null = null;
 let lastView: DebugMazeView | null = null;
 
-// Per-arena memo of every split-node id (GitHub issue #222) minted anywhere across the whole tape,
-// regardless of `debugStep` — needed to tell "not yet created at this step" apart from "an
-// ordinary node that was always there" when filtering `arena.nodes` below. Computed once per arena
-// (replaying each vertex_based source fully, at its own last step) rather than per `debugStep`
-// call, since it never changes for a given arena.
+// Per-arena memo of every split-node id (GitHub issue #222, extended to QC/repair mint by #271)
+// minted anywhere across the whole tape, regardless of `debugStep` — needed to tell "not yet
+// created at this step" apart from "an ordinary node that was always there" when filtering
+// `arena.nodes` below. Computed once per arena (replaying each vertex_based/quality_control source
+// fully, at its own last step) rather than per `debugStep` call, since it never changes for a
+// given arena.
 const allSplitNodeIdsByArena = new WeakMap<DebugArenaHandle, ReadonlySet<bigint>>();
 
 function allSplitNodeIdsOf(arena: DebugArenaHandle): ReadonlySet<bigint> {
@@ -248,14 +249,21 @@ function allSplitNodeIdsOf(arena: DebugArenaHandle): ReadonlySet<bigint> {
   const ids = new Set<bigint>();
   for (let i = 0; i < arena.sources.length; i++) {
     const source = arena.sources[i];
-    if (source.kind !== "vertex_based" || source.endStep === source.startStep) continue;
+    if (source.endStep === source.startStep) continue;
+    // Only these two source kinds ever mint a node mid-run (`createdNodes`, GitHub issue #271) —
+    // vertex_based's pattern-mode split during generation, quality_control's `PointNodesReplaced`
+    // during repair. Every other adapter's `ApplyResult` has no `createdNodes` field at all.
     const startIndex = sourceContentStart(arena.tape, source.nodeIndex);
     const endIndex = i + 1 < arena.sources.length
       ? sourceContentStart(arena.tape, arena.sources[i + 1].nodeIndex)
       : arena.tape.nodeCount;
     const localStep = source.endStep - source.startStep - 1;
-    const result = adapterFor("vertex_based").apply(arena.tape, localStep, undefined, startIndex, endIndex);
-    for (const id of result.createdNodes) ids.add(id);
+    const createdNodes = source.kind === "vertex_based"
+      ? adapterFor("vertex_based").apply(arena.tape, localStep, undefined, startIndex, endIndex).createdNodes
+      : source.kind === "quality_control"
+        ? adapterFor("quality_control").apply(arena.tape, localStep, undefined, startIndex).createdNodes
+        : [];
+    for (const id of createdNodes) ids.add(id);
   }
 
   allSplitNodeIdsByArena.set(arena, ids);
@@ -326,29 +334,54 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
     ? new Map([...merged.dsuGroups].map(([id, root]) => [Number(id), Number(root)]))
     : null;
 
-  // `arena.nodes` is the run's final, static node list — it already includes every split node
-  // (GitHub issue #222) that will ever be minted, regardless of `debugStep`. A split node not yet
-  // created by this step must be excluded here, or its point renders as an already-split tile with
-  // no connections at all (fully closed) many steps before the split event actually happens. Only
+  // `arena.nodes` is the run's final, static node list — a node removed/replaced before the run
+  // ended (`RemoveNode`/`ReplacePointNodes`, GitHub issue #271) is already gone from it, so a step
+  // before its removal has nowhere to source its coordinates/existence from. `arena.allNodes` (the
+  // ledger of every node minted mid-run, including later-removed ones) fills that gap — concat the
+  // two, deduped by id (`arena.nodes` wins on overlap, but the two are disjoint in practice: a
+  // surviving node is never in `allNodes`, see that field's own doc comment).
+  const baseNodes = arena.allNodes.length === 0
+    ? arena.nodes
+    : (() => {
+        const seen = new Set(arena.nodes.map((n) => n.id));
+        const extra = arena.allNodes.filter((n) => !seen.has(n.id));
+        return extra.length === 0 ? arena.nodes : arena.nodes.concat(extra);
+      })();
+
+  // `baseNodes` already includes every split node (GitHub issue #222, extended to QC/repair mint
+  // by #271) that will ever be minted, regardless of `debugStep`. A split node not yet created by
+  // this step must be excluded here, or its point renders as an already-split tile with no
+  // connections at all (fully closed) many steps before the split event actually happens. Only
   // filters ids present in `allSplitNodeIds` at all — an ordinary node is never in that set, so
   // this is a no-op whenever the run produced no splits.
   const allSplitNodeIds = allSplitNodeIdsOf(arena);
   const createdSoFar = new Set(merged.createdNodes);
-  // A node removed by QC's `remove_split` strategy (GitHub issue #248) must stop rendering from
-  // this step onward, same "gate DebugMazeView.nodes, not just .edges" rationale as `createdNodes`
-  // above — otherwise it lingers as a stray, edgeless dot once its last edge is retracted.
+  // A node removed by QC's `remove_split` strategy (GitHub issue #248) or replaced
+  // (`ReplacePointNodes`) must stop rendering from this step onward, same "gate
+  // `DebugMazeView.nodes`, not just `.edges`" rationale as `createdNodes` above — otherwise it
+  // lingers as a stray, edgeless dot once its last edge is retracted.
   const removedSoFar = new Set(merged.removedNodes);
   const nodes = (allSplitNodeIds.size === 0 && removedSoFar.size === 0)
-    ? arena.nodes
-    : arena.nodes.filter((n) => {
+    ? baseNodes
+    : baseNodes.filter((n) => {
         const id = BigInt(n.id);
         if (removedSoFar.has(id)) return false;
         return !allSplitNodeIds.has(id) || createdSoFar.has(id);
       });
 
+  // An edge incident to a removed/replaced node (GitHub issue #271's `ReplacePointNodes`) can
+  // originate from *any* earlier source's own contribution — generation's full edge list, not
+  // just whatever QC itself added — so `removedEdges`'s point-in-time `(from, to)` patch alone
+  // can't retract it (that patch only ever cancels an edge the accumulator itself added). Filter
+  // here instead, once, against the same `removedSoFar` set that already gates `nodes` above —
+  // the only place that has both the fully merged edge list and the full removal history at once.
+  const filteredEdges = removedSoFar.size === 0
+    ? merged.edges
+    : merged.edges.filter((e) => !removedSoFar.has(e.from) && !removedSoFar.has(e.to));
+
   const view: DebugMazeView = {
     nodes,
-    edges: merged.edges.map((e) => ({ from: Number(e.from), to: Number(e.to), kind: e.kind ?? "basic" })),
+    edges: filteredEdges.map((e) => ({ from: Number(e.from), to: Number(e.to), kind: e.kind ?? "basic" })),
     start: merged.start === null ? null : Number(merged.start),
     finish: merged.finish === null ? null : Number(merged.finish),
     debugValues: numberKeyedDebugValues,

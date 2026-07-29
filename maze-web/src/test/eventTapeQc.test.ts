@@ -1001,6 +1001,7 @@ describe("selectDebugMazeView — two-source (generation + QC) combine (GitHub i
         { scopeName: "quality_control", kind: "quality_control", nodeIndex: 4, startStep: 1, endStep: 5, checkpointFroms: [] },
       ],
       nodes: [],
+      allNodes: [],
       totalSteps: 5,
       debugValueNames: [],
     };

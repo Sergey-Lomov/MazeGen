@@ -397,6 +397,17 @@ export interface DebugArenaHandle {
     checkpointFroms: Snapshot<unknown>[];
   }[];
   nodes: NodeDto[];
+  /** Nodes minted mid-run (preset split, pattern-mode split, QC/repair mint) — including ones
+   *  later removed or replaced (`MutationCommand::RemoveNode`/`ReplacePointNodes`) — GitHub issue
+   *  #271. Sourced from the WASM response's `debugAllNodes()`. Deliberately *not* a full union of
+   *  every node that ever existed: the field's original base nodes are never removed, so they're
+   *  always already present in `nodes` below — see `DebugGenerationState`'s doc comment.
+   *  Consumers that need the true "every node that ever existed" union (`NodeId -> (x, y)` lookups
+   *  in debug-tape narration, `buildNodeCoordIndex`) must concatenate this with `nodes` themselves.
+   *  Separate from `nodes` (final survivors only, used for canvas rendering via
+   *  `selectDebugMazeView`) — never used for rendering directly, since it can include nodes that
+   *  don't exist at the current `debugStep`. */
+  allNodes: NodeDto[];
   /** Total mutating-event count across every source in `tape` — a static property of the arena
    *  (computed once at generation time), not a per-step cache; lets the UI know the last valid
    *  `debugStep` without a bounded-scan trick on every render. */

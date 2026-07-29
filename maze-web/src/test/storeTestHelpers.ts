@@ -1,6 +1,7 @@
 import { emptyFreePoints } from "../store/storeHelpers";
 import { RECURSIVE_BACKTRACKER_EVENT_TAG, NO_NODE } from "../debug/eventTape";
 import type { DebugValueDescriptor } from "../debug/eventTape";
+import type { NodeDto } from "../wasm/types";
 
 export { emptyFreePoints };
 
@@ -38,7 +39,7 @@ export const MERGED_TAPE_NODE_OFFSET = 3;
  *  the edges, which start at node `MERGED_TAPE_NODE_OFFSET`. Returns raw buffers (not a parsed
  *  `ParsedTape`) since that's the shape `generateWithSeed` receives from
  *  `mazeService.generateMaze` before it calls `parseTape` itself. */
-export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array; sourceScopeNames: string[]; sourceEventKinds: ["recursive_backtracker"]; debugValueNames: DebugValueDescriptor[] } {
+export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uint8Array; payload: Uint8Array; sourceScopeNames: string[]; sourceEventKinds: ["recursive_backtracker"]; debugValueNames: DebugValueDescriptor[]; allNodes: NodeDto[] } {
   const textEncoder = new TextEncoder();
   const rootBytes = textEncoder.encode("root");
   const generationBytes = textEncoder.encode("generation");
@@ -84,7 +85,7 @@ export function encodeEdgeAddedTape(edges: [bigint, bigint][]): { nodeTable: Uin
   // from these edges — fixtures using this helper aren't exercising RB's recursion_stack declaration,
   // so an empty default is correct here; a test that specifically needs a non-empty list should
   // override the field on the returned object.
-  return { nodeTable, payload, sourceScopeNames: ["generation"], sourceEventKinds: ["recursive_backtracker"], debugValueNames: [] };
+  return { nodeTable, payload, sourceScopeNames: ["generation"], sourceEventKinds: ["recursive_backtracker"], debugValueNames: [], allNodes: [] };
 }
 
 export const mockSnapshot = {

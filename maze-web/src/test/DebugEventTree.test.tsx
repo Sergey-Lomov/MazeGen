@@ -175,7 +175,7 @@ function expandGeneration() {
 describe("DebugEventTree", () => {
   beforeEach(() => {
     useMazeStore.setState({
-      debugArena: { tape: buildTwoStepTape(), algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 4, checkpointFroms: [] }], nodes, totalSteps: 4, debugValueNames: [] },
+      debugArena: { tape: buildTwoStepTape(), algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 4, checkpointFroms: [] }], nodes, allNodes: nodes, totalSteps: 4, debugValueNames: [] },
       debugStep: 0,
     });
   });
@@ -342,7 +342,7 @@ describe("DebugEventTree", () => {
       { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
       { parent: 3, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(99n) },
     ]);
-    useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] }], nodes, totalSteps: 1, debugValueNames: [] }, debugStep: 0 });
+    useMazeStore.setState({ debugArena: { tape: brokenTape, algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] }], nodes, allNodes: nodes, totalSteps: 1, debugValueNames: [] }, debugStep: 0 });
 
     render(<DebugEventTree />);
     expandGeneration();
@@ -350,12 +350,44 @@ describe("DebugEventTree", () => {
     expect(() => fireEvent.click(stepScopeRow)).not.toThrow();
     expect(screen.getByText("#99")).toBeInTheDocument();
   });
+
+  it("resolves real coordinates (not the #id fallback) for a node removed before the final snapshot", () => {
+    // GitHub issue #271: a node minted then removed/replaced mid-run (e.g. `remove_split`,
+    // `AddSplitStrategy`) is gone from the final `Field` by the time `nodes` (the post-run
+    // snapshot) is built, but it must still resolve to real coordinates on narration steps that
+    // precede its removal — that's exactly what `allNodes` (the ever-existed union) is for. Node
+    // id 42 here is present in `allNodes` but deliberately absent from `nodes`.
+    const removedNode: NodeDto = { id: 42, x: 7, y: 9, i: 0 };
+    const tapeReferencingRemovedNode = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+      { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+      { parent: 3, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_VISITED, payloadBytes: vertexPayload(42n) },
+    ]);
+    useMazeStore.setState({
+      debugArena: {
+        tape: tapeReferencingRemovedNode, algorithmKind: "recursive_backtracker",
+        sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] }],
+        nodes, allNodes: [...nodes, removedNode], totalSteps: 1, debugValueNames: [],
+      },
+      debugStep: 0,
+    });
+
+    render(<DebugEventTree />);
+    expandGeneration();
+    const stepScopeRow = screen.getByText(m["debug.tree.step_scope"]({ index: 1 }));
+    fireEvent.click(stepScopeRow);
+
+    expect(screen.queryByText("#42")).not.toBeInTheDocument();
+    expect(screen.getByText("7:9")).toBeInTheDocument();
+  });
 });
 
 describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
   beforeEach(() => {
     useMazeStore.setState({
-      debugArena: { tape: buildOneWalkWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3, checkpointFroms: [] }], nodes, totalSteps: 3, debugValueNames: [] },
+      debugArena: { tape: buildOneWalkWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3, checkpointFroms: [] }], nodes, allNodes: nodes, totalSteps: 3, debugValueNames: [] },
       debugStep: 0,
     });
   });
@@ -386,7 +418,7 @@ describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
 
   it("renders LoopErased/WalkDeadEnd narration — untouched by buildOneWalkWilsonTape's straight-line walk", () => {
     useMazeStore.setState({
-      debugArena: { tape: buildLoopErasedDeadEndWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3, checkpointFroms: [] }], nodes, totalSteps: 3, debugValueNames: [] },
+      debugArena: { tape: buildLoopErasedDeadEndWilsonTape(), algorithmKind: "wilson", sources: [{ scopeName: "generation", kind: "wilson", nodeIndex: 1, startStep: 0, endStep: 3, checkpointFroms: [] }], nodes, allNodes: nodes, totalSteps: 3, debugValueNames: [] },
       debugStep: 0,
     });
     render(<DebugEventTree />);
@@ -436,6 +468,7 @@ describe("DebugEventTree with a two-source (generation + QC) tape (GitHub issue 
           { scopeName: "quality_control", kind: "quality_control", nodeIndex: 5, startStep: 1, endStep: 2, checkpointFroms: [] },
         ],
         nodes,
+        allNodes: nodes,
         totalSteps: 2,
         debugValueNames: [],
       },

@@ -12,7 +12,7 @@ function emptyDebugArena(): DebugArenaHandle {
   return {
     tape: parseTape(new Uint8Array(0), new Uint8Array(0)), algorithmKind: "recursive_backtracker",
     sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 0, startStep: 0, endStep: 0, checkpointFroms: [] }],
-    nodes: [], totalSteps: 0, debugValueNames: [],
+    nodes: [], allNodes: [], totalSteps: 0, debugValueNames: [],
   };
 }
 

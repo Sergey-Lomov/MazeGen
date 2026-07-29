@@ -1,4 +1,4 @@
-// Mutating node-removal helper (GitHub issue #248, epic #246) — the `Field`/`Graph` counterpart
+﻿// Mutating node-removal helper (GitHub issue #248, epic #246) — the `Field`/`Graph` counterpart
 // of `edge_ops.rs`'s `try_remove_edge*` family, generic over `T: Tessellation` since removing a
 // node (unlike removing an edge) always touches `Field` as well as `Graph`.
 
@@ -7,6 +7,7 @@ use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
 use super::preset_state::PresetState;
 use super::edge_ops::{directed_edge_feasible, bidirectional_edge_feasible};
+use super::debug_state::DebugGenerationState;
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 
 /// Shared predicate behind `remove_node_feasible` and `replace_point_nodes_feasible`: a node is
@@ -126,6 +127,7 @@ pub(crate) fn try_replace_point_nodes<T: Tessellation>(
     at: NodeId,
     nodes: &[Vec<SplitNodeEdge>],
     preset_state: &PresetState,
+    mut debug_state: Option<&mut DebugGenerationState<T>>,
 ) -> Option<Vec<NodeId>> {
     if !replace_point_nodes_feasible(field, preset_state, at, nodes) {
         return None;
@@ -142,7 +144,11 @@ pub(crate) fn try_replace_point_nodes<T: Tessellation>(
     }
     let mut new_nodes = Vec::with_capacity(nodes.len());
     for _ in nodes {
-        new_nodes.push(ids.next_id());
+        let new_id = ids.next_id();
+        if let Some(state) = debug_state.as_deref_mut() {
+            state.note(new_id, point);
+        }
+        new_nodes.push(new_id);
     }
     field.replace_nodes_at(point, new_nodes.clone());
     for (i, edges) in nodes.iter().enumerate() {
@@ -242,7 +248,7 @@ mod tests {
     #[test]
     fn try_replace_point_nodes_mints_a_new_slot0_at_the_same_point() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
-        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty());
+        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty(), None);
         let new_nodes = new_nodes.expect("an unlocked unsplit point must be replaceable");
         assert_eq!(new_nodes.len(), 1);
         assert_ne!(new_nodes[0], slot0, "replacement mints a brand-new id for the new slot-0");
@@ -254,7 +260,7 @@ mod tests {
     #[test]
     fn try_replace_point_nodes_mints_multiple_nodes_in_one_atomic_call() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
-        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![], vec![]], &PresetState::empty()).unwrap();
+        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![], vec![]], &PresetState::empty(), None).unwrap();
         assert_eq!(new_nodes.len(), 2);
         assert_ne!(new_nodes[0], new_nodes[1]);
         let at_point = field.nodes_at(SquarePoint { x: 0, y: 0 });
@@ -266,7 +272,7 @@ mod tests {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
         let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
         let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Passage }];
-        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty()).unwrap();
+        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
         assert!(g.edge_between(new_node, right).is_some());
         assert!(g.edge_between(right, new_node).is_some());
@@ -277,7 +283,7 @@ mod tests {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
         let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
         let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Forward }];
-        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty()).unwrap();
+        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
         assert!(g.edge_between(new_node, right).is_some());
         assert!(g.edge_between(right, new_node).is_none());
@@ -288,7 +294,7 @@ mod tests {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
         let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
         let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Backward }];
-        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty()).unwrap();
+        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
         assert!(g.edge_between(right, new_node).is_some());
         assert!(g.edge_between(new_node, right).is_none());
@@ -302,7 +308,7 @@ mod tests {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
         let extra = field.add_node_at(SquarePoint { x: 0, y: 0 }, &mut ids);
         g.add_node(extra);
-        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty());
+        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty(), None);
         let new_nodes = new_nodes.expect("a point with an extra node must still be replaceable");
         let at_point = field.nodes_at(SquarePoint { x: 0, y: 0 });
         assert_eq!(at_point, &[new_nodes[0]], "both old nodes gone, only the new one remains");
@@ -317,7 +323,7 @@ mod tests {
         g.build_initial_edge(slot0, right, EdgeKind::Basic);
         g.build_initial_edge(right, slot0, EdgeKind::Basic);
         // New slot-0 has no edges at all — the old passage to `right` must vanish, not survive.
-        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty()).unwrap();
+        let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
         assert!(g.edge_between(slot0, right).is_none());
         assert!(g.edge_between(right, slot0).is_none());
@@ -330,7 +336,7 @@ mod tests {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(slot0);
-        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &preset_state).is_none());
+        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &preset_state, None).is_none());
     }
 
     #[test]
@@ -340,22 +346,22 @@ mod tests {
         g.add_node(extra);
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(extra);
-        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &preset_state).is_none(),
+        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &preset_state, None).is_none(),
             "a locked extra node must block the whole replacement, even though the command targets slot-0");
     }
 
     #[test]
     fn try_replace_point_nodes_refuses_empty_nodes() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
-        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[], &PresetState::empty()).is_none(),
+        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[], &PresetState::empty(), None).is_none(),
             "an empty replacement set must be declined, never panic in Field::replace_nodes_at");
     }
 
     #[test]
     fn try_replace_point_nodes_refuses_a_stale_at() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
-        try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty()).unwrap();
-        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty()).is_none(),
+        try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty(), None).unwrap();
+        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty(), None).is_none(),
             "the old slot0 id no longer resolves to a point after being replaced");
     }
 
@@ -368,7 +374,7 @@ mod tests {
         let edges = vec![
             SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Forward },
         ];
-        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &preset_state).is_none(),
+        assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &preset_state, None).is_none(),
             "a single infeasible edge must fail the whole command, replacing nothing at all");
         assert_eq!(field.nodes_at(SquarePoint { x: 0, y: 0 }), &[slot0], "old slot0 must survive a declined command");
     }

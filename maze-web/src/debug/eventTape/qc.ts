@@ -166,7 +166,17 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
         removedNodes.add(event.id);
         break;
       case "PointNodesReplaced":
-        for (const old of event.oldNodes) removedNodes.add(old);
+        // `net` here only ever holds edges QC itself added/removed on top of generation's own
+        // list — an old node's *generation-time* edges never entered `net` at all, so there's
+        // nothing meaningful to purge from it here. `removedNodes.add(old)` is what actually
+        // keeps a replaced node's edges from leaking into the final view — `mergeDebugMazeView`
+        // (`debugSelectors.ts`) filters `edges` against the accumulated `removedNodes`/
+        // `removedSoFar` set once, after every source's contribution (including generation's) is
+        // merged, which is the only point that can see both an old node's full edge set and its
+        // removal together.
+        for (const old of event.oldNodes) {
+          removedNodes.add(old);
+        }
         for (let i = 0; i < event.newNodes.length; i++) {
           const node = event.newNodes[i];
           createdNodes.add(node);

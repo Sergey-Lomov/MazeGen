@@ -54,12 +54,14 @@ function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: numb
   const fmt = (id: bigint) => {
     if (!coords) return `${id}`;
     const p = coords(id);
-    // `coords` joins against `debugArena.nodes` — the *final* (post-generation, post-QC) field
-    // snapshot, not a per-step reconstruction. A node a later QC command removed/replaced
-    // (`RemoveNode`, `ReplacePointNodes`) is genuinely absent from that final snapshot even though
-    // an earlier narration row still refers to it by its now-stale id — this is expected, not a
-    // core/web tape desync, so it must degrade gracefully rather than crash the whole tree (a
-    // React render-time throw here previously took down the entire debug panel).
+    // `coords` joins against `debugArena.nodes` concatenated with `debugArena.allNodes` (GitHub
+    // issue #271) — the union of every node that ever existed during the run, including ones a
+    // later QC command removed/replaced (`RemoveNode`, `ReplacePointNodes`), not just
+    // `debugArena.nodes`'s final survivors (see `coordIndex`'s own `useMemo` below for why both
+    // are needed). The `#id` fallback below is now only reached for a genuinely unresolvable id (a
+    // real core/web tape desync), not for the common "removed later" case — degrades gracefully
+    // rather than crashing the whole tree either way (a React render-time throw here previously
+    // took down the entire debug panel).
     if (!p) return `#${id}`;
     return `${p.x}:${p.y}`;
   };
@@ -202,7 +204,14 @@ export function DebugEventTree() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tape]);
   const stepIndex = useMemo(() => (tape ? buildStepIndex(tape, stepIndexSources) : null), [tape, stepIndexSources]);
-  const coordIndex = useMemo(() => (debugArena ? buildNodeCoordIndex(debugArena.nodes) : null), [debugArena]);
+  const coordIndex = useMemo(
+    // `allNodes` (GitHub issue #271) is only the ledger of nodes minted mid-run (preset split,
+    // pattern-mode split, QC/repair mint) — it deliberately excludes the field's original base
+    // nodes (see `DebugGenerationState`'s doc comment: they're never removed, so they're always in
+    // `nodes` already). Concatenating both here is what makes the union actually a union.
+    () => (debugArena ? buildNodeCoordIndex([...debugArena.nodes, ...debugArena.allNodes]) : null),
+    [debugArena],
+  );
   const coords = useMemo(() => (coordIndex ? (id: bigint) => coordIndex.get(id) : () => null), [coordIndex]);
 
   const { rows, labels, rowIndexByNodeIndex } = useMemo(() => {

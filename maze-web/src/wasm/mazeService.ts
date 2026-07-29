@@ -66,6 +66,12 @@ export interface DebugTape {
    *  still supports). Empty when the algorithm isn't instrumented for debug values yet. Plain
    *  array, not a WASM buffer — no copy-before-free concern like `nodeTable`/`payload`. */
   debugValueNames: DebugValueDescriptor[];
+  /** Nodes minted mid-run (preset split, pattern-mode split, QC/repair mint), including ones
+   *  later removed or replaced by QC/repair (GitHub issue #271) — sourced from
+   *  `GenerateResult::debugAllNodes()`. Not itself a full "every node that ever existed" union —
+   *  see `DebugArenaHandle.allNodes` in `storeTypes.ts` for the full rationale and what consumers
+   *  must do to get the actual union. Separate from `MazeSnapshot.nodes` (final survivors only). */
+  allNodes: NodeDto[];
 }
 
 /** Mirrors `event_kind_wire_str` in `maze-wasm/src/result.rs` — which concrete event enum a
@@ -154,12 +160,15 @@ export function generateMaze(seed: number, config: GenerateConfig): GenerateMaze
       if (sourceScopeNames.length !== rawSourceEventKinds.length) {
         throw new Error(`generateMaze: sourceScopeNames/sourceEventKinds length mismatch: ${sourceScopeNames.length} vs ${rawSourceEventKinds.length}`);
       }
+      const rawAllNodes = result.debugAllNodes();
+      const allNodes = Array.isArray(rawAllNodes) && rawAllNodes.every(isNodeDto) ? rawAllNodes : [];
       debugTape = {
         nodeTable: nodeTable.slice(),
         payload: payload.slice(),
         sourceScopeNames,
         sourceEventKinds: rawSourceEventKinds.map(toEventedEventKind),
         debugValueNames: zipDebugValueNames(result.debugValueNames(), result.debugValueKinds()),
+        allNodes,
       };
     }
 

@@ -83,9 +83,10 @@ impl<T: Tessellation> QualityControlEngine<T> {
         limits: RepairLimits,
         now_ms: impl Fn() -> f64,
         mut event_log: Option<&mut EventLog<QcEvent>>,
+        mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> (Vec<Box<dyn Issue>>, GenerationTiming) {
         let mut timing = GenerationTiming::default();
-        let budget = self.run_repair_stages(maze, rng, preset_state, limits, &mut timing, &now_ms, event_log.as_deref_mut());
+        let budget = self.run_repair_stages(maze, rng, preset_state, limits, &mut timing, &now_ms, event_log.as_deref_mut(), debug_state.as_deref_mut());
 
         let mut remaining = self.collect_final_report(maze, rng, &mut timing.per_check, &now_ms);
         if let Some(limit) = budget.limit_reached {
@@ -120,6 +121,7 @@ impl<T: Tessellation> QualityControlEngine<T> {
         timing: &mut GenerationTiming,
         now_ms: &impl Fn() -> f64,
         mut event_log: Option<&mut EventLog<QcEvent>>,
+        mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RepairBudget {
         let mut budget = RepairBudget::new(limits, now_ms);
         let mut per_check: HashMap<&'static str, (f64, u32)> = HashMap::new();
@@ -135,7 +137,7 @@ impl<T: Tessellation> QualityControlEngine<T> {
             };
             let outcome = {
                 let mut stage_scope = event_log.as_deref_mut().map(|log| log.enter(format!("stage {}", stage.id)));
-                stage.run_repair(maze, rng, preset_state, &mut budget, &mut sink, now_ms, stage_scope.as_mut())
+                stage.run_repair(maze, rng, preset_state, &mut budget, &mut sink, now_ms, stage_scope.as_mut(), debug_state.as_deref_mut())
             };
             match outcome {
                 StageOutcome::Done => continue,

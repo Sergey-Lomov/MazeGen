@@ -69,6 +69,7 @@ impl<T: Tessellation> Stage<T> {
         timing: &mut TimingSink,
         now_ms: impl Fn() -> f64,
         mut event_log: Option<&mut crate::event_log::ScopeGuard<QcEvent>>,
+        mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> StageOutcome {
         let now_ms: &dyn Fn() -> f64 = &now_ms;
         let mut failed: HashSet<String> = HashSet::new();
@@ -91,7 +92,7 @@ impl<T: Tessellation> Stage<T> {
                     g.emit(QcEvent::IterationStarted(iteration));
                 }
 
-                let found_any = self.check_and_dispatch(maze, rng, preset_state, timing, now_ms, &mut failed, iteration_scope.as_mut());
+                let found_any = self.check_and_dispatch(maze, rng, preset_state, timing, now_ms, &mut failed, iteration_scope.as_mut(), debug_state.as_deref_mut());
 
                 if !found_any {
                     return StageOutcome::Done;
@@ -143,6 +144,7 @@ impl<T: Tessellation> Stage<T> {
         now_ms: &dyn Fn() -> f64,
         failed: &mut HashSet<String>,
         mut event_log: Option<&mut crate::event_log::ScopeGuard<QcEvent>>,
+        mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> bool {
         let mut found_any = false;
         for rule in self.rules.iter() {
@@ -153,6 +155,7 @@ impl<T: Tessellation> Stage<T> {
             let outcome = rule.check_and_repair(
                 maze, rng, preset_state, timing.per_check, timing.per_strategy,
                 timing.qc_total_ms, timing.repair_total_ms, now_ms, rule_scope.as_mut(),
+                debug_state.as_deref_mut(),
             );
             match outcome {
                 // Neither counts toward convergence: a no-strategy ("no_fix") rule can never make

@@ -58,7 +58,7 @@ fn split_chance_zero_matches_baseline_exactly() {
         super::super::vertex_based::generate(
             &mut graph_a, &mut field_a, &mut ids_a, seed, start_a,
             &GenerationParams::default(), &no_split_elements(), &no_split_config(),
-            &empty_presets(), &mut sr_a, None,
+            &empty_presets(), &mut sr_a, None, None,
         );
 
         let (mut field_b, mut graph_b, mut ids_b) = make_field_graph_ids(6, 6);
@@ -67,7 +67,7 @@ fn split_chance_zero_matches_baseline_exactly() {
         super::super::vertex_based::generate(
             &mut graph_b, &mut field_b, &mut ids_b, seed, start_b,
             &GenerationParams::default(), &no_split_elements(), &no_split_config(),
-            &empty_presets(), &mut sr_b, None,
+            &empty_presets(), &mut sr_b, None, None,
         );
 
         let mut e_a: Vec<_> = graph_a.edges().map(|e| (e.from, e.to)).collect();
@@ -91,7 +91,7 @@ fn non_pattern_split_creates_exact_node_count() {
     super::super::vertex_based::generate(
         &mut graph, &mut field, &mut ids, 5, start,
         &GenerationParams::default(), &full_split_elements(), &split_config,
-        &empty_presets(), &mut sr, None,
+        &empty_presets(), &mut sr, None, None,
     );
     // At least one split must have fired somewhere (split_chance=1.0, many steps) creating
     // extra nodes beyond the field's original point count.
@@ -118,7 +118,7 @@ fn non_pattern_split_every_resulting_node_gets_at_least_one_connection() {
     super::super::vertex_based::generate(
         &mut graph, &mut field, &mut ids, 5, start,
         &GenerationParams::default(), &full_split_elements(), &split_config,
-        &empty_presets(), &mut sr, None,
+        &empty_presets(), &mut sr, None, None,
     );
     let mut checked_a_split = false;
     for point in field.all_points() {
@@ -150,7 +150,7 @@ fn non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None,
+        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
     let point = field.point_of(start).unwrap();
@@ -171,7 +171,7 @@ fn non_pattern_max_split_nodes_one_is_a_valid_noop() {
     super::super::vertex_based::generate(
         &mut graph, &mut field, &mut ids, 3, start,
         &GenerationParams::default(), &full_split_elements(), &split_config,
-        &empty_presets(), &mut sr, None,
+        &empty_presets(), &mut sr, None, None,
     );
     assert_eq!(graph.nodes().count(), node_count_before, "max_split_nodes=1 must never mint new nodes");
 }
@@ -217,7 +217,7 @@ fn try_split_src_returns_miss_when_roll_misses() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &no_split_elements(),
-        &no_split_config(), &empty_presets(), &mut state, start, None, None, start, &mut sr, None,
+        &no_split_config(), &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Miss);
 }
@@ -232,7 +232,7 @@ fn try_split_src_returns_ineligible_when_locked() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &no_split_config(), &preset_state, &mut state, start, None, None, start, &mut sr, None,
+        &no_split_config(), &preset_state, &mut state, start, None, None, start, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Ineligible);
 }
@@ -246,7 +246,7 @@ fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None,
+        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::NoAdaptation);
 }
@@ -260,7 +260,7 @@ fn try_split_src_returns_handled_on_non_pattern_hit() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None,
+        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
     assert!(graph.nodes().count() > 9, "a hit must have minted an extra node");
@@ -316,7 +316,7 @@ fn pattern_split_emits_edge_added_for_every_face_edge_it_creates() {
     let mut scope = log.enter("step");
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, src, None, None, src, &mut sr, Some(&mut scope),
+        &split_config, &empty_presets(), &mut state, src, None, None, src, &mut sr, Some(&mut scope), None,
     );
     drop(scope);
     assert_eq!(outcome, SplitOutcome::Handled);
@@ -368,7 +368,7 @@ fn pattern_split_never_pushes_src_or_siblings_into_frontier() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, src, None, None, src, &mut sr, None,
+        &split_config, &empty_presets(), &mut state, src, None, None, src, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
 
@@ -400,7 +400,7 @@ fn non_pattern_split_with_bridge_never_pushes_src_into_frontier() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, src, Some(bridge), None, src, &mut sr, None,
+        &split_config, &empty_presets(), &mut state, src, Some(bridge), None, src, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
     assert!(state.visited.contains(&src), "src must be visited");
@@ -557,7 +557,7 @@ fn pattern_split_relocates_the_parent_edge_to_the_sibling_that_caught_it() {
     let mut scope = log.enter("step");
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, src, None, Some(parent), src, &mut sr, Some(&mut scope),
+        &split_config, &empty_presets(), &mut state, src, None, Some(parent), src, &mut sr, Some(&mut scope), None,
     );
     drop(scope);
     assert_eq!(outcome, SplitOutcome::Handled);
@@ -623,7 +623,7 @@ fn non_pattern_split_teleport_is_rolled_once_per_event_not_per_node() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &elements,
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None,
+        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
     let teleport_edges = graph.edges().filter(|e| e.kind == crate::graph::EdgeKind::Teleport).count();
@@ -643,7 +643,7 @@ fn split_reassigns_start_when_start_node_itself_splits() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None,
+        &split_config, &empty_presets(), &mut state, start, None, None, start, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
     assert!(sr.is_some(), "splitting the start node must produce a start_reassignment");
@@ -661,7 +661,7 @@ fn split_never_reassigns_start_for_a_non_start_node() {
     let mut sr = None;
     let outcome = try_split_src(
         &mut graph, &mut field, &mut ids, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state, other, None, None, start, &mut sr, None,
+        &split_config, &empty_presets(), &mut state, other, None, None, start, &mut sr, None, None,
     );
     assert_eq!(outcome, SplitOutcome::Handled);
     assert!(sr.is_none(), "splitting a non-start node must never touch start_reassignment");
@@ -680,7 +680,7 @@ fn non_pattern_split_nodes_processed_in_creation_order() {
     let mut sr_a = None;
     try_split_src(
         &mut graph_a, &mut field_a, &mut ids_a, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state_a, start_a, None, None, start_a, &mut sr_a, None,
+        &split_config, &empty_presets(), &mut state_a, start_a, None, None, start_a, &mut sr_a, None, None,
     );
 
     let (mut field_b, mut graph_b, mut ids_b) = make_field_graph_ids(6, 6);
@@ -689,7 +689,7 @@ fn non_pattern_split_nodes_processed_in_creation_order() {
     let mut sr_b = None;
     try_split_src(
         &mut graph_b, &mut field_b, &mut ids_b, &GenerationParams::default(), &full_split_elements(),
-        &split_config, &empty_presets(), &mut state_b, start_b, None, None, start_b, &mut sr_b, None,
+        &split_config, &empty_presets(), &mut state_b, start_b, None, None, start_b, &mut sr_b, None, None,
     );
 
     let mut e_a: Vec<_> = graph_a.edges().map(|e| (e.from, e.to)).collect();

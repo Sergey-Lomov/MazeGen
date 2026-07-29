@@ -312,7 +312,7 @@ fn teleport_chance_one_adds_teleport_edges_when_every_geometric_pair_is_preset_p
     let preset_state = crate::generation::build_preset_state(
         &mut graph, &mut field, &mut ids, &connections, &[], &[],
         |x, y| crate::space::SquarePoint { x, y },
-        None,
+        None, None,
     ).unwrap();
     let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &preset_state, None);

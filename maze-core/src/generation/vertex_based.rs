@@ -11,6 +11,7 @@ use crate::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp
 use super::{ElementsConfig, GenerationParams, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
 use super::split_pattern::SplitGenerationConfig;
 use super::split_logic::{try_split_src, SplitOutcome, StartReassignment};
+use super::debug_state::DebugGenerationState;
 
 /// Narration-level events for `CustomVertexBased` generation (see GitHub issue #143). Unlike
 /// `CustomEdgeBased`'s single active-list per step, `vertex_based` has two distinct entry points
@@ -356,6 +357,7 @@ pub fn generate<T: Tessellation>(
     preset_state: &PresetState,
     start_reassignment: &mut Option<StartReassignment>,
     mut event_log: Option<&mut EventLog<VertexBasedEvent>>,
+    mut debug_state: Option<&mut DebugGenerationState<T>>,
 ) {
     let mut state = GenState::new(graph, seed, start);
     if let Some(log) = event_log.as_deref_mut() {
@@ -367,7 +369,7 @@ pub fn generate<T: Tessellation>(
             let mut step_scope = event_log.as_deref_mut().map(|log| log.enter_numbered("step"));
             let keep_going = handle_empty_frontier(
                 graph, field, ids, params, elements, split_config, preset_state, &mut state,
-                start, start_reassignment, step_scope.as_mut(),
+                start, start_reassignment, step_scope.as_mut(), debug_state.as_deref_mut(),
             );
             drop(step_scope);
             if !keep_going {
@@ -379,7 +381,7 @@ pub fn generate<T: Tessellation>(
         let mut step_scope = event_log.as_deref_mut().map(|log| log.enter_numbered("step"));
         step_from_frontier(
             graph, field, ids, params, elements, split_config, preset_state, &mut state,
-            start, start_reassignment, step_scope.as_mut(),
+            start, start_reassignment, step_scope.as_mut(), debug_state.as_deref_mut(),
         );
     }
 }
@@ -423,6 +425,7 @@ fn handle_empty_frontier<T: Tessellation>(
     start: NodeId,
     start_reassignment: &mut Option<StartReassignment>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    mut debug_state: Option<&mut DebugGenerationState<T>>,
 ) -> bool {
     // Teleport roll happens before any reserve lookup — a hit replaces this step's
     // entire mechanism (bridges via a teleport instead of a geometric-adjacency bridge).
@@ -450,7 +453,7 @@ fn handle_empty_frontier<T: Tessellation>(
 
         let outcome = try_split_src(
             graph, field, ids, params, elements, split_config, preset_state, state,
-            src, Some(bridge), None, start, start_reassignment, scope.as_deref_mut(),
+            src, Some(bridge), None, start, start_reassignment, scope.as_deref_mut(), debug_state.as_deref_mut(),
         );
         if outcome == SplitOutcome::Handled {
             return true;
@@ -521,7 +524,7 @@ fn handle_empty_frontier<T: Tessellation>(
 
     let outcome = try_split_src(
         graph, field, ids, params, elements, split_config, preset_state, state,
-        src, Some(bridge), None, start, start_reassignment, scope.as_deref_mut(),
+        src, Some(bridge), None, start, start_reassignment, scope.as_deref_mut(), debug_state.as_deref_mut(),
     );
     if outcome == SplitOutcome::Handled {
         return true;
@@ -557,6 +560,7 @@ fn step_from_frontier<T: Tessellation>(
     start: NodeId,
     start_reassignment: &mut Option<StartReassignment>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+    debug_state: Option<&mut DebugGenerationState<T>>,
 ) {
     let fi = choose_from_frontier(&state.frontier, params, &mut state.rng);
     let src = state.frontier[fi].node;
@@ -571,7 +575,7 @@ fn step_from_frontier<T: Tessellation>(
 
     let outcome = try_split_src(
         graph, field, ids, params, elements, split_config, preset_state, state,
-        src, None, parent, start, start_reassignment, scope.as_deref_mut(),
+        src, None, parent, start, start_reassignment, scope.as_deref_mut(), debug_state,
     );
     if outcome == SplitOutcome::Handled {
         return;

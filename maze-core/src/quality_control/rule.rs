@@ -39,6 +39,7 @@ pub fn apply_commands<T: Tessellation>(
     preset_state: &PresetState,
     commands: Vec<MutationCommand>,
     mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+    mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
 ) -> ApplyOutcome {
     let proposed = commands.len();
     let mut applied = 0;
@@ -102,10 +103,30 @@ pub fn apply_commands<T: Tessellation>(
                 if maze.meta.finish.is_none() { maze.meta.finish = Some(node); }
                 true
             }
-            MutationCommand::RemoveNode { node } =>
-                crate::generation::try_remove_node(&mut maze.field, &mut maze.graph, node, preset_state),
+            MutationCommand::RemoveNode { node } => {
+                // Note the node's own coordinates into the ledger (GitHub issue #271) *before*
+                // removal, same "resolve while it's still live" reasoning as `old_point_nodes`
+                // above — `field.point_of` returns `None` once `try_remove_node` has removed it.
+                // Needed for a node that was never itself minted mid-run (e.g. the field's own
+                // original base nodes), whose coordinates otherwise exist nowhere once gone from
+                // both `Field` and the final snapshot.
+                if let (Some(state), Some(point)) = (debug_state.as_deref_mut(), maze.field.point_of(node)) {
+                    state.note(node, point);
+                }
+                crate::generation::try_remove_node(&mut maze.field, &mut maze.graph, node, preset_state)
+            }
             MutationCommand::ReplacePointNodes { at, ref nodes } => {
-                let new_nodes = crate::generation::try_replace_point_nodes(&mut maze.field, &mut maze.graph, &mut maze.ids, at, nodes, preset_state);
+                // Note every old node's coordinates into the ledger (GitHub issue #271) *before*
+                // replacement — same rationale as `RemoveNode` above. `old_point_nodes` was already
+                // resolved while still live; its point is `at`'s own (every old node lives there).
+                if let (Some(state), Some(old_nodes)) = (debug_state.as_deref_mut(), old_point_nodes.as_ref()) {
+                    if let Some(point) = maze.field.point_of(at) {
+                        for &old in old_nodes {
+                            state.note(old, point);
+                        }
+                    }
+                }
+                let new_nodes = crate::generation::try_replace_point_nodes(&mut maze.field, &mut maze.graph, &mut maze.ids, at, nodes, preset_state, debug_state.as_deref_mut());
                 let ok = new_nodes.is_some();
                 replaced_nodes = new_nodes;
                 ok
@@ -394,6 +415,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         repair_ms: &mut f64,
         now_ms: &dyn Fn() -> f64,
         mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+        mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome {
         let qc_start = now_ms();
         let issue = self.run_checks_typed(maze, rng, per_check, now_ms, event_log.as_deref_mut());
@@ -421,10 +443,10 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         }
 
         let outcome = if commands.is_empty() {
-            apply_commands(maze, preset_state, commands, None)
+            apply_commands(maze, preset_state, commands, None, debug_state.as_deref_mut())
         } else {
             let mut apply_scope = event_log.as_mut().map(|log| log.enter("apply requests"));
-            apply_commands(maze, preset_state, commands, apply_scope.as_mut())
+            apply_commands(maze, preset_state, commands, apply_scope.as_mut(), debug_state.as_deref_mut())
         };
         *repair_ms += now_ms() - repair_start;
         RuleIterationOutcome::Repaired(result, outcome)
@@ -466,6 +488,7 @@ pub trait RuleTrait<T: Tessellation> {
         per_strategy: &mut HashMap<&'static str, (f64, u32)>,
         qc_ms: &mut f64, repair_ms: &mut f64,
         now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+        debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome;
 }
 
@@ -490,8 +513,9 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge + 'static> RuleTrait<T> f
         per_strategy: &mut HashMap<&'static str, (f64, u32)>,
         qc_ms: &mut f64, repair_ms: &mut f64,
         now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
+        debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome {
-        self.check_and_repair_typed(maze, rng, preset_state, per_check, per_strategy, qc_ms, repair_ms, now_ms, event_log)
+        self.check_and_repair_typed(maze, rng, preset_state, per_check, per_strategy, qc_ms, repair_ms, now_ms, event_log, debug_state)
     }
 }
 

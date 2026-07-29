@@ -1566,6 +1566,102 @@ one-way `TeleportEstablished` contributes only its own direction.
   this source — the two serve different purposes (DSU pre-union state vs. reconstructable graph
   edges) and remain independent
 
+## Node Coordinate Ledger (#271)
+
+The debug tape's own wire events never carry a node's `(x, y)` — every `NodeId`-referencing event
+payload (`VertexVisited`, `EdgeAdded`, `PointNodesReplaced`, etc.) stays an opaque id, and web-side
+narration/highlighting resolves it to coordinates by joining against a separate node list, not by
+decoding coordinates out of the event stream itself. Before this issue, that node list was always
+`MazeSnapshot.nodes` — the final, post-generation-and-QC `Field` state — so any node removed or
+replaced mid-run (`MutationCommand::RemoveNode` via the `remove_split` repair strategy, or
+`MutationCommand::ReplacePointNodes` via `AddSplitStrategy`, #247) was already gone from `Field` by
+snapshot time, and web consumers had no coordinates for it at all — not just at the step of its
+removal, but at every earlier step too, since it was never in the join list in the first place. This
+degraded to a `#id` fallback in narration (`bubbleLabel`, `DebugEventTree.tsx`) and, worse, to the
+node being entirely absent from `selectDebugMazeView`'s reconstructed canvas view even on steps
+before its removal, where it should have rendered normally with whatever edges it had at that point.
+
+**`DebugGenerationState<T>`** (`maze-core/src/generation/debug_state.rs`) is an append-only
+`HashMap<NodeId, T::Point>` ledger, separate from `Field` on purpose — `Field` must forget a removed
+node's point for its own `point_of`/`neighbors` correctness, so this is a second, independent
+record that never forgets. Threaded as `Option<&mut DebugGenerationState<T>>` alongside the existing
+`Option<&mut EventLog<E>>` parameter through the same call chain, gated on `debug_events` exactly
+like the event log (`None` on the non-debug path, zero cost beyond the `Option` check). Lives for
+exactly one `run_generate` call — never `Clone`, never persisted, never reused across runs.
+
+Two invariants keep the ledger exhaustive, both documented on the struct itself:
+
+- **Minting invariant** — every runtime call site that mints a `NodeId` must pair it with
+  `.note(id, point)` in the same diff: `preset_state::apply_split_points` (preset split points, all
+  algorithms), `split_logic::mint_split_nodes` (pattern-mode split, `CustomVertexBased` only, since
+  it's the only algorithm whose `generate()` receives an `&mut IdGenerator`), and
+  `node_ops::try_replace_point_nodes` (QC repair mint, `ReplacePointNodes`'s `new_nodes`).
+- **Removal invariant** — every runtime call site that removes/replaces a node must
+  `.note(id, point)` its coordinates *before* the removal (`field.point_of` still resolves it at
+  that point), even when the node was never itself minted mid-run — a node can be one of `Field`'s
+  own original base nodes, whose coordinates otherwise exist nowhere once gone from both `Field` and
+  the final snapshot. The sole call site is `quality_control::rule::apply_commands`, for both
+  `MutationCommand::RemoveNode` and `ReplacePointNodes` (its `old_nodes`, resolved from `at`'s point
+  while still live, mirroring how `old_point_nodes` is already resolved there for `QcEvent`
+  narration).
+
+Both `#[cfg(test)]` module fixtures and `quality_control/checks/*.rs`'s synthetic test fields are
+exempt from both invariants — they never run through a real generation/repair pipeline.
+
+**Assembly** (`maze-wasm/src/runner.rs::run_generate`): one `DebugGenerationState<T>` is created
+per run when `config.debug_events` is on, fed by three independent sources — preset split-point
+minting (`build_preset_state`), `CustomVertexBased`'s pattern-mode split
+(`EventedGenerationResult::all_node_points`, folded in after `run_initial_generation` returns), and
+QC/repair's own mint/removal (threaded into `build_maze`). After the run, its contents are collected
+into `Vec<NodeDto>` (`i: 0` — unused by coordinate-lookup consumers) and serialized the same way
+`snapshot` is, via `serde_wasm_bindgen::Serializer::json_compatible()` — this serialization step
+must happen in `run_generate` itself, not inside `GenerateResult::with_debug_tape`/
+`build_generate_result`, since `serde_wasm_bindgen` serialization needs a real WASM runtime and
+those two are otherwise exercised by native `cargo test` (see `result.rs`'s own doc comments on
+`build_generate_result`).
+
+**WASM boundary** (`maze-wasm/src/result.rs`): `GenerateResult` gained a `debug_all_nodes: JsValue`
+field (`UNDEFINED` on the no-debug-tape path) and a `#[wasm_bindgen(js_name = debugAllNodes)]`
+getter, mirroring `debug_value_names`' "plain-value return, not a zero-copy `Uint8Array::view`"
+treatment.
+
+**Web side**: `DebugArenaHandle.allNodes: NodeDto[]` (`storeTypes.ts`) carries the ledger's contents
+— but it is deliberately *not itself* a full "every node that ever existed" union. It only ever
+holds nodes minted mid-run (preset split, pattern-mode split, QC/repair mint); the field's original
+base nodes are never removed, so they're always already present in `DebugArenaHandle.nodes` (the
+final snapshot). Every consumer that needs the actual union — `NodeId -> (x, y)` coordinate
+resolution — must concatenate `nodes` with `allNodes` itself, deduped by id:
+
+- `DebugEventTree.tsx`'s `coordIndex` (narration bubble labels, `bubbleLabel`'s `#id` fallback) —
+  `buildNodeCoordIndex([...debugArena.nodes, ...debugArena.allNodes])`.
+- `debugSelectors.ts::selectDebugMazeView`'s `baseNodes` — the canvas replay's own node source,
+  same concatenation, deduped by id (`nodes` wins on overlap, though the two are disjoint in
+  practice).
+
+`selectDebugMazeView` additionally had to extend its existing "not yet created at this step" gating
+(`allSplitNodeIdsOf`, originally #222/`vertex_based`-only) to the `quality_control` source too — a
+QC-minted node (`PointNodesReplaced`'s `new_nodes`) must stay invisible until its own mint step, the
+same way a generation-time split node already did, or it renders as an already-split, connectionless
+tile many steps early. And `mergeDebugMazeView`'s final `edges` list must be filtered against the
+accumulated `removedNodes`/`removedSoFar` set (the same set that gates `nodes`) once, after every
+source's contribution is merged — an edge incident to a replaced node can originate from *any*
+earlier source's own contribution (e.g. generation's full edge list), not just whatever QC itself
+added to its own `net` accumulator, so QC's own point-in-time `removedEdges` patch alone can't
+retract it. `eventTape/qc.ts`'s `applyQc` therefore only ever needs to record `PointNodesReplaced`'s
+`old_nodes` into `removedNodes` — it does not attempt to purge those nodes' edges from its own `net`
+itself, since `net` never held generation-time edges to begin with.
+
+### Out of Scope (#271)
+
+- Reusing `Field`'s own `node_to_point` map instead of a separate ledger — `Field` actively clears
+  that map on `remove_node_at`/`replace_nodes_at` by design (its own `point_of`/`neighbors`
+  correctness depends on forgetting a removed node), so it cannot double as an append-only record
+  without compromising that invariant.
+- Carrying coordinates in the wire event payloads themselves (e.g. adding `(x, y)` to
+  `PointNodesReplaced`) — events stay a pure description of what happened; the ledger solves
+  coordinate lookup once, for every current and future node-mint/removal command, rather than
+  growing every payload that references a `NodeId`.
+
 ## Wire-Format Codegen
 
 Every section above that describes an event enum's wire tags/`EncodeEventPayload`/`is_mutating()`
