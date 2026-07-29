@@ -39,13 +39,14 @@ use maze_core::{
         SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         SplitCountCheck, SPLIT_COUNT_DEFAULT,
         SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT,
+        SplitNodeConnectionCountCheck, SplitNodeConnectionDirection, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON,
         Comparison, CycleKind,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
         MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue,
-        MissingSplitTilesIssue,
+        MissingSplitTilesIssue, InvalidSplitNodeIssue,
     },
     RegionClass,
 };
@@ -77,6 +78,7 @@ pub(crate) enum KindTag {
     InvalidSplitTile,
     InvalidSplitTileGroup,
     MissingSplitTiles,
+    InvalidSplitNode,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -120,6 +122,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "split_group_graph_proximity" => KindTag::InvalidSplitTileGroup,
         "split_count"               => KindTag::MissingSplitTiles,
         "split_density"             => KindTag::MissingSplitTiles,
+        "split_node_connection_count" => KindTag::InvalidSplitNode,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -171,6 +174,15 @@ fn parse_split_waypoint(param: Option<&String>) -> SplitWaypoint {
         Some("start") => SplitWaypoint::Start,
         Some("finish") => SplitWaypoint::Finish,
         _ => SplitWaypoint::Any,
+    }
+}
+
+fn parse_split_node_connection_direction(param: Option<&String>) -> SplitNodeConnectionDirection {
+    match param.map(String::as_str) {
+        Some("incoming") => SplitNodeConnectionDirection::Incoming,
+        Some("outgoing") => SplitNodeConnectionDirection::Outgoing,
+        Some("bidirectional") => SplitNodeConnectionDirection::Bidirectional,
+        _ => SplitNodeConnectionDirection::Any,
     }
 }
 
@@ -566,6 +578,21 @@ pub(crate) fn build_invalid_split_tile_check<T: Tessellation>(instance: &CheckIn
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
             let waypoint = parse_split_waypoint(instance.params.get("waypoint"));
             Some(Box::new(SplitDistanceFromWaypointCheck { instance_id, distance, comparison, waypoint }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_invalid_split_node_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitNodeIssue>>> {
+    match instance.type_id.as_str() {
+        "split_node_connection_count" => {
+            let count = instance.params.get("count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(SPLIT_NODE_CONNECTION_COUNT_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON);
+            let direction = parse_split_node_connection_direction(instance.params.get("direction"));
+            Some(Box::new(SplitNodeConnectionCountCheck { instance_id, count, comparison, direction }))
         }
         _ => None,
     }

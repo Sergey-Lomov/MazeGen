@@ -11,7 +11,7 @@ use maze_core::{
         RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy,
         OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy,
         MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy,
-        RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy,
+        RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy,
     },
     quality_control::IssueRequirement,
 };
@@ -51,6 +51,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
         "remove_split"         => Box::new(RemoveSplitStrategy),
         "split_group_select"   => Box::new(SplitGroupSelectStrategy),
         "add_split"            => Box::new(build_add_split_strategy(params)),
+        "remove_split_node"    => Box::new(RemoveSplitNodeStrategy),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }

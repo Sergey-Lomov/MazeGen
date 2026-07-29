@@ -42,6 +42,7 @@ pub mod split_group_geometric_proximity;
 pub mod split_group_graph_proximity;
 pub mod split_count;
 pub mod split_density;
+pub mod split_node_connection_count;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -82,3 +83,4 @@ pub use split_group_geometric_proximity::{SplitGroupGeometricProximityCheck, SPL
 pub use split_group_graph_proximity::{SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT};
 pub use split_count::{SplitCountCheck, SPLIT_COUNT_DEFAULT};
 pub use split_density::{SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT};
+pub use split_node_connection_count::{SplitNodeConnectionCountCheck, SplitNodeConnectionDirection, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON};

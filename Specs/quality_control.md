@@ -23,6 +23,7 @@ pub enum IssueKind {
     InvalidTeleport,
     TeleportGroupProximity,
     MissingSplitTiles,
+    InvalidSplitNode,
 }
 ```
 
@@ -33,6 +34,8 @@ pub enum IssueKind {
 `MissingLoops` mirrors `InvalidLoop`'s role, but for a missing-count condition (too few loops overall) instead of a specific invalid cycle — currently produced by `MinLoopsCountCheck`/`MinLoopDensityCheck`; future checks needing more loops added may reuse this kind rather than inventing a new one.
 
 `MissingSplitTiles` mirrors `MissingLoops`'s role, but for a deficit in the count of split tiles (GitHub issue #247, part of epic #246) instead of loops — currently produced by `SplitCountCheck`/`SplitDensityCheck`. Carries `MissingSplitTilesIssue { missing: u32 }` — same "just the deficit count" shape as `MissingLoopsIssue`/`MissingRegionsIssue`, see "Built-in Checks" below. Repaired by `AddSplitStrategy` (see `repair.md`).
+
+`InvalidSplitNode` — see GitHub issue #250, part of epic #246. A single split node (any node of a split tile, slot-0 included) is invalid for some check-specific reason — currently `SplitNodeConnectionCountCheck` (the node's connection count, filtered by direction, compares against a configured threshold). Distinct from `InvalidSplitTile`: that kind's unit of work is a whole tile (`SplitTileNodes`), this one's is a single node (`NodeId`) — a check here may flag slot-0 itself (epic #246's "slot-0 is not otherwise special" rule), but the registered repair strategy (`RemoveSplitNodeStrategy`) still never removes it, mirroring the hard constraint every strategy in this epic shares. Carries `InvalidSplitNodeIssue { invalid: Vec<NodeId>, .. }` — see that type's doc comment.
 
 Each variant has a canonical string representation used in serialization and config:
 
@@ -1220,6 +1223,35 @@ pub fn split_tile_matches_any<T: Tessellation>(graph: &Graph, field: &Field<T>, 
 ```
 
 `reconstruct_tile_faces` walks each of `nodes`' outgoing/incoming edges via `T::step`, resolving each face index to `Passage`/`OneWay(Forward|Backward)`/`Wall` from what's actually connected — the tile's real topology, independent of how it was built (generation, preset, or a prior repair pass). `split_tile_matches_any` compares this reconstructed shape against every pattern in `patterns`, trying every `(rotation, mirror)` combination the same way generation's own pattern application does — `rotation` indexes `Tessellation::rotation_symmetries()`, `mirror` (`Option<usize>`, `None` = no mirror) indexes `Tessellation::mirror_symmetries()`, both applied via the single shared `space::transform_face_index` (GitHub issue #275 — an earlier per-callsite arithmetic formula silently assumed every tessellation's `faces()` order was angular, which only holds for hex) — a pattern matches if *any* orientation reproduces the tile's exact face-by-face shape. `nodes.len() < 2` (not actually a split tile) short-circuits to `false`. An empty `patterns` slice is the caller's job to special-case as "match everything" — this function only ever answers "does it match one of these listed patterns", never "no patterns configured".
+
+### SplitNodeConnectionCountCheck
+
+```rust
+pub const SPLIT_NODE_CONNECTION_COUNT_DEFAULT: u32 = 2;
+pub const SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
+
+pub enum SplitNodeConnectionDirection { Incoming, Outgoing, Bidirectional, Any }
+
+pub struct SplitNodeConnectionCountCheck {
+    pub instance_id: String,
+    pub count: u32,
+    pub comparison: Comparison,
+    pub direction: SplitNodeConnectionDirection,
+}
+```
+
+See GitHub issue #250, part of epic #246. Validates a single split node's connection count against `count`, per `comparison` — the first node-level (not tile-level) split-QC check. Unlike `SplitDistanceFromWaypointCheck` (which always flags the *whole tile*, `SplitTileNodes`), this check flags individual nodes, one `NodeId` per flagged node — no point-level dedup: a split point contributing two flagged nodes fires with both. Iterates `Field::all_points()`, keeps only points with `nodes_at(point).len() >= 2`, then evaluates every node at that point (slot-0 included — epic #246's "slot-0 is not otherwise special" rule: a check may flag slot-0, only the repair strategy's removal step excludes it).
+
+Every incident edge counts regardless of `EdgeKind` — `Basic` and `Teleport` both contribute.
+
+`direction` restricts which connections count toward `count`:
+- `Incoming`/`Outgoing`: raw directed-edge count in that direction (`graph.edges().filter(|e| e.to == node)` / `.filter(|e| e.from == node)`).
+- `Bidirectional`: count of distinct neighbors reachable via a full two-direction passage (both `graph.edge_between(node, neighbor)` and `graph.edge_between(neighbor, node)` exist) — one physical connection between two tiles counts as one unit, not two directed edges.
+- `Any`: count of distinct neighbors with any edge to or from the node, one-way or bidirectional, each counted once.
+
+Fires `InvalidSplitNodeIssue::new_from_check(instance_id, invalid)` with `.with_detail(instance_id, "count", self.count.to_string())` chained on, where `invalid` is one `NodeId` per flagged node.
+
+`RemoveSplitNodeStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_NODE`.
 
 ## WASM Interface
 

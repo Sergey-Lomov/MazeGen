@@ -22,6 +22,7 @@ pub enum IssueKind {
     InvalidSplitTile,
     InvalidSplitTileGroup,
     MissingSplitTiles,
+    InvalidSplitNode,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -153,6 +154,17 @@ pub const INVALID_SPLIT_TILE_GROUP: IssueKind = IssueKind::InvalidSplitTileGroup
 /// slot-0 node (the hard constraint across every split-QC strategy in this epic).
 pub const MISSING_SPLIT_TILES: IssueKind = IssueKind::MissingSplitTiles;
 
+/// A single split node (any node of a split tile, slot-0 included) is invalid for some
+/// check-specific reason — currently `SplitNodeConnectionCountCheck` (the node's connection count,
+/// filtered by direction, compares against a configured threshold, per a configured `Comparison`)
+/// — see GitHub issue #250, part of epic #246. Distinct from `INVALID_SPLIT_TILE`: that kind's
+/// unit of work is a whole tile (`SplitTileNodes`), this one's is a single node (`NodeId`) — a
+/// check here may flag slot-0 itself (epic #246's "slot-0 is not otherwise special" rule), but the
+/// registered repair strategy (`RemoveSplitNodeStrategy`) still never removes it, mirroring the
+/// hard constraint every strategy in this epic shares. Carries `InvalidSplitNodeIssue { invalid:
+/// Vec<NodeId>, .. }` — see that type's doc comment.
+pub const INVALID_SPLIT_NODE: IssueKind = IssueKind::InvalidSplitNode;
+
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -176,6 +188,7 @@ impl IssueKind {
             IssueKind::InvalidSplitTile => "invalid_split_tile",
             IssueKind::InvalidSplitTileGroup => "invalid_split_tile_group",
             IssueKind::MissingSplitTiles => "missing_split_tiles",
+            IssueKind::InvalidSplitNode => "invalid_split_node",
         }
     }
 
@@ -209,6 +222,7 @@ impl IssueKind {
             "invalid_split_tile" => Some(IssueKind::InvalidSplitTile),
             "invalid_split_tile_group" => Some(IssueKind::InvalidSplitTileGroup),
             "missing_split_tiles" => Some(IssueKind::MissingSplitTiles),
+            "invalid_split_node" => Some(IssueKind::InvalidSplitNode),
             _ => None,
         }
     }

@@ -159,6 +159,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.split_density.label"] as MessageFn,
     description: m["check.split_density.description"] as MessageFn,
   },
+  split_node_connection_count: {
+    label: m["check.split_node_connection_count.label"] as MessageFn,
+    description: m["check.split_node_connection_count.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -234,6 +238,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.missing_split_tiles.label"] as MessageFn,
     description: m["issue.missing_split_tiles.description"] as MessageFn,
   },
+  invalid_split_node: {
+    label: m["issue.invalid_split_node.label"] as MessageFn,
+    description: m["issue.invalid_split_node.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -257,6 +265,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   invalid_split_tile: m["issue_select.section.splits"] as MessageFn,
   invalid_split_tile_group: m["issue_select.section.splits"] as MessageFn,
   missing_split_tiles: m["issue_select.section.splits"] as MessageFn,
+  invalid_split_node: m["issue_select.section.splits"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -277,9 +286,10 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   region_needs_expansion: m["issue_select.short_label.expansion"] as MessageFn,
   region_needs_shrink: m["issue_select.short_label.shrink"] as MessageFn,
   excessive_scc_count: m["issue_select.short_label.validate_groups"] as MessageFn,
-  invalid_split_tile: m["issue_select.short_label.validate"] as MessageFn,
-  invalid_split_tile_group: m["issue_select.short_label.validate_groups"] as MessageFn,
+  invalid_split_tile: m["issue_select.short_label.validate_tile"] as MessageFn,
+  invalid_split_tile_group: m["issue_select.short_label.validate_tile_groups"] as MessageFn,
   missing_split_tiles: m["issue_select.short_label.add"] as MessageFn,
+  invalid_split_node: m["issue_select.short_label.validate_node"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -384,6 +394,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   add_split: {
     label: m["strategy.add_split.label"] as MessageFn,
     description: m["strategy.add_split.description"] as MessageFn,
+  },
+  remove_split_node: {
+    label: m["strategy.remove_split_node.label"] as MessageFn,
+    description: m["strategy.remove_split_node.description"] as MessageFn,
   },
 };
 
@@ -688,6 +702,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.split_config.label"] as MessageFn,
     description: m["param.split_config.description"] as MessageFn,
   },
+  count: {
+    label: m["param.count.label"] as MessageFn,
+    description: m["param.count.description"] as MessageFn,
+  },
+  direction: {
+    label: m["param.direction.label"] as MessageFn,
+    description: m["param.direction.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -752,6 +774,10 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "cycle_kind.one_way": m["param.cycle_kind.option.one_way"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random"] as MessageFn,
+  "direction.incoming": m["param.direction.option.incoming"] as MessageFn,
+  "direction.outgoing": m["param.direction.option.outgoing"] as MessageFn,
+  "direction.bidirectional": m["param.direction.option.bidirectional"] as MessageFn,
+  "direction.any": m["param.direction.option.any"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -803,6 +829,10 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "cycle_kind.one_way": m["param.cycle_kind.option.one_way.explanation"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random.explanation"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random.explanation"] as MessageFn,
+  "direction.incoming": m["param.direction.option.incoming.explanation"] as MessageFn,
+  "direction.outgoing": m["param.direction.option.outgoing.explanation"] as MessageFn,
+  "direction.bidirectional": m["param.direction.option.bidirectional.explanation"] as MessageFn,
+  "direction.any": m["param.direction.option.any.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

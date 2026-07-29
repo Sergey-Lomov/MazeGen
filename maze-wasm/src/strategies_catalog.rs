@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -243,6 +243,13 @@ pub fn available_strategies() -> JsValue {
                 params
             },
             experimental: <AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::is_experimental(&AddSplitStrategy { config: Default::default() }),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "remove_split_node",
+            handles: INVALID_SPLIT_NODE.as_str(),
+            params: strategy_params_dto(<RemoveSplitNodeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeIssue>>::params(&RemoveSplitNodeStrategy)),
+            experimental: <RemoveSplitNodeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeIssue>>::is_experimental(&RemoveSplitNodeStrategy),
             nested_slots: vec![],
         },
     ];

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::ids::NodeId;
 use crate::graph::{Graph, scc::ConnectedComponents};
 use super::issue::Issue;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue};
 
 /// Structural payload data for an `Issue`, resolved against the current `Graph`/`ConnectedComponents`
 /// — one shared source of truth for both `maze-wasm`'s JSON `IssuePayloadDto` (via a thin
@@ -237,6 +237,22 @@ fn resolve_invalid_split_tile_group_payload(groups: &[(Vec<SplitTileNodes>, u32)
     if nodes.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { nodes }) }
 }
 
+/// Resolves flagged single split nodes' `NodeId`s into the same flat per-check shape
+/// `resolve_invalid_split_tile_payload` uses — reused across `INVALID_SPLIT_TILE`/
+/// `INVALID_SPLIT_NODE` (mirrors `InvalidOneWay`'s reuse across `invalid_one_way`/
+/// `invalid_one_way_group`), since a single flagged node is just a one-node tile for highlighting
+/// purposes — no group/tile structure to preserve either way.
+fn resolve_invalid_split_node_payload(invalid: &[NodeId], invalid_sources: &HashMap<NodeId, Vec<String>>) -> Option<IssuePayload> {
+    let mut nodes: HashMap<String, Vec<u32>> = HashMap::new();
+    for &id in invalid {
+        let Ok(id32) = u32::try_from(id) else { continue };
+        for source in invalid_sources.get(&id).into_iter().flatten() {
+            nodes.entry(source.clone()).or_default().push(id32);
+        }
+    }
+    if nodes.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { nodes }) }
+}
+
 pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         if let Some(payload) = resolve_invalid_loop_payload(all, invalid, invalid_sources, graph) {
@@ -310,6 +326,12 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
 
     if let Some(InvalidSplitTileGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitTileGroupIssue>() {
         if let Some(payload) = resolve_invalid_split_tile_group_payload(groups, invalid_sources) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidSplitNodeIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeIssue>() {
+        if let Some(payload) = resolve_invalid_split_node_payload(invalid, invalid_sources) {
             return payload;
         }
     }
